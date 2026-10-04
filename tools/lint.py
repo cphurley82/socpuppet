@@ -42,6 +42,11 @@ LINTERS = [
         patterns=("*.h", "*.cpp"),
         check=("cpplint", "--quiet"),
     ),
+    Linter(
+        "ruff",
+        patterns=("*.py",),
+        check=("ruff", "check", "--quiet"),
+    ),
 ]
 
 
