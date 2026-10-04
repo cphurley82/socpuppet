@@ -7,6 +7,7 @@ MISFORMATTED = "int   answer( ){return 42;}\n"
 def test_when_a_tracked_file_has_been_deleted_from_the_working_tree_lint_passes(
     repo, git, lint
 ):
+    # A second file stays, so that there is still C++ for the linter to run on.
     (repo / "kept.cpp").write_text(CLEAN)
     (repo / "gone.cpp").write_text(CLEAN)
     git("add", "kept.cpp", "gone.cpp")
@@ -24,7 +25,7 @@ def test_when_run_from_a_subdirectory_a_problem_elsewhere_in_the_repository_fail
     assert lint(cwd=repo / "docs").returncode != 0
 
 
-def test_when_there_are_no_cpp_files_lint_passes_without_reading_standard_input(
+def test_when_there_are_no_cpp_files_misformatted_code_on_standard_input_does_not_fail_lint(
     repo, lint
 ):
     (repo / "notes.txt").write_text("Nothing here for any linter.\n")

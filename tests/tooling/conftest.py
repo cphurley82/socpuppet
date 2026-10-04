@@ -62,9 +62,9 @@ def lint_on_a_terminal(repo, monkeypatch):
     # The developer's own preference must not decide the outcome.
     monkeypatch.delenv("NO_COLOR", raising=False)
 
-    def run(*args):
+    def run():
         ours, theirs = pty.openpty()
-        process = subprocess.Popen([*LINT, *args], cwd=repo, stdout=theirs, stderr=theirs)
+        process = subprocess.Popen(LINT, cwd=repo, stdout=theirs, stderr=theirs)
         os.close(theirs)
         sent = b""
         while True:

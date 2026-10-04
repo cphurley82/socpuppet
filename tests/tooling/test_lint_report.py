@@ -36,7 +36,7 @@ def test_when_no_color_is_set_the_result_line_on_a_terminal_is_plain(
 
     sent = lint_on_a_terminal()
 
-    assert "✅ clang-format" in sent.splitlines()
+    assert ESCAPE not in result_line(sent)
 
 
 ESCAPE = "\x1b["
