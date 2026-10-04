@@ -12,6 +12,10 @@ set -euo pipefail
 
 qbox_commit=b745c62ddfe7a521c2afe7107c0bdae086dd1f53 # 2026-09-30
 jobs=${JOBS:-4}
+# QBox builds itself as C++17. socpuppet is C++20, and SystemC only links
+# with code built to the same standard, so putting the two in one program
+# needs QBOX_CXX_STANDARD=20.
+standard=${QBOX_CXX_STANDARD:-17}
 
 if [[ ! -d /qbox/src/.git ]]; then
   git clone --quiet https://github.com/qualcomm/qbox /qbox/src
@@ -19,7 +23,18 @@ fi
 git -C /qbox/src -c advice.detachedHead=false checkout --quiet "${qbox_commit}"
 
 cd /qbox/src
+if [[ ${standard} == 20 && -f systemc-components/common/include/semaphore.h ]]; then
+  # Source patch 1. QBox has a header called semaphore.h. In C++20 the
+  # standard library's <thread> reaches <semaphore>, which includes the C
+  # library's <semaphore.h>, and finds QBox's instead. Give QBox's another
+  # name.
+  git mv systemc-components/common/include/semaphore.h \
+    systemc-components/common/include/gs_semaphore.h
+  sed -i 's|#include <semaphore.h>|#include <gs_semaphore.h>|' \
+    systemc-components/common/include/qkmulti-rolling.h
+fi
 # QBox's own preset, with QEMU built for the two RISC-V word sizes only.
-cmake --preset gcc -DLIBQEMU_TARGETS="riscv64;riscv32"
+cmake --preset gcc -DLIBQEMU_TARGETS="riscv64;riscv32" \
+  -DCMAKE_CXX_STANDARD="${standard}"
 time cmake --build build --parallel "${jobs}"
 du -sh build | sed 's/^/build tree: /'

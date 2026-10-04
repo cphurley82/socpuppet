@@ -74,7 +74,8 @@ inline void AddVirtBoard(socpuppet::Platform& platform,
                          const std::string& board,
                          const std::string& cpu_implementation,
                          const socpuppet::Config& cpu_config = {},
-                         Dmi dmi = Dmi::kOn) {
+                         Dmi dmi = Dmi::kOn,
+                         const std::string& uart = "standin_uart") {
   platform.Add(board + ".cpu", cpu_implementation, cpu_config);
   platform.Add(board + ".bus", "router",
                {{"outputs", 4},
@@ -87,7 +88,7 @@ inline void AddVirtBoard(socpuppet::Platform& platform,
                 {"out3.base", kPlicBase},
                 {"out3.size", kPlicSize}});
   platform.Add(board + ".ram", "memory", {{"size", kRamSize}});
-  platform.Add(board + ".uart", "standin_uart");
+  platform.Add(board + ".uart", uart);
   platform.Add(board + ".clint", "memory", {{"size", kClintSize}});
   platform.Add(board + ".plic", "memory", {{"size", kPlicSize}});
   platform.Add(board + ".ram_probe", "counting_probe",

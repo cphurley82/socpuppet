@@ -141,3 +141,31 @@ target_link_libraries(spike_riscv_vp_tests PRIVATE riscv_vp_core)
 
 # ---- The in-house prototype -------------------------------------------------
 spike_test_program(spike_inhouse_tests inhouse/inhouse_test.cpp)
+
+# ---- VCML (MachineWare, Apache-2.0) -----------------------------------------
+# Not a CPU: a library of TLM models. The probe is whether it builds here
+# and whether one of its models can stand in the harness (see
+# docs/iss-spike.md). Everything optional that would reach for the machine
+# (graphics, networking, USB, scripting) is switched off.
+foreach(extra SDL2 SLIRP TAP LUA SOCKETCAN USB)
+  set(VCML_USE_${extra} OFF)
+endforeach()
+set(VCML_BUILD_TESTS OFF)
+set(VCML_BUILD_UTILS OFF)
+# VCML fetches its support library, mwr, itself, at configure time, from
+# the head of its default branch: there is no pin to set from here. This
+# keeps it from using the machine's libelf. It has to be a cache entry: mwr
+# declares its options with set(CACHE), which discards an ordinary variable
+# of the same name.
+set(MWR_USE_LIBELF OFF CACHE BOOL "Keep mwr off the machine's libelf" FORCE)
+FetchContent_Declare(vcml
+  GIT_REPOSITORY https://github.com/machineware-gmbh/vcml.git
+  GIT_TAG 1ef00c57a6f455864ed300087f6708c75ca13e00 # v2026.10.02
+  GIT_SUBMODULES cmake
+  EXCLUDE_FROM_ALL SYSTEM)
+set(SOCPUPPET_SUPPRESS_INSTALL TRUE)
+FetchContent_MakeAvailable(vcml)
+set(SOCPUPPET_SUPPRESS_INSTALL FALSE)
+
+spike_test_program(spike_vcml_probe_tests vcml_probe/vcml_probe_test.cpp)
+target_link_libraries(spike_vcml_probe_tests PRIVATE vcml)
