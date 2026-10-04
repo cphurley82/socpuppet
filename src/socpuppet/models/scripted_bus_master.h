@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -64,13 +65,13 @@ class ScriptedBusMaster : public sc_core::sc_module {
     wait(sc_core::SC_ZERO_TIME);
     for (;;) {
       while (reset->read()) wait(reset->negedge_event());
-      Script script = start_script_();
+      script_.emplace(start_script_());
       Outcome outcome = Outcome::kCarryOn;
       while (outcome == Outcome::kCarryOn) {
-        const Op* op = script.Next();
+        const Op* op = script_->Next();
         if (op == nullptr) break;
         outcome = std::visit(
-            [&](const auto& each) { return CarryOut(each, script); }, *op);
+            [&](const auto& each) { return CarryOut(each, *script_); }, *op);
       }
       if (outcome == Outcome::kFailed) return;
       if (outcome == Outcome::kCarryOn) {
@@ -138,6 +139,10 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
   std::function<Script()> start_script_;
+  // The script being played. It is kept here, and not as a local of Run(),
+  // because SystemC never unwinds a thread's stack: when a simulation ends
+  // part-way through a script, a local would never be destroyed.
+  std::optional<Script> script_;
 };
 
 }  // namespace socpuppet

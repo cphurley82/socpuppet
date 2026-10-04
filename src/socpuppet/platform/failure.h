@@ -25,8 +25,8 @@ inline std::exception_ptr& ParkedFailure() {
   return failure;
 }
 
-inline void FailSimulation(std::exception_ptr failure) {
-  if (!ParkedFailure()) ParkedFailure() = std::move(failure);
+inline void FailSimulation(const std::exception_ptr& failure) {
+  if (!ParkedFailure()) ParkedFailure() = failure;
   sc_core::sc_pause();
 }
 
