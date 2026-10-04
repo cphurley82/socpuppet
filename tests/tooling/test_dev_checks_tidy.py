@@ -97,3 +97,25 @@ inline int twice_the(int number) { return number * 2; }
     assert result.returncode != 0
     assert "widget.h:4" in result.stdout
     assert "readability-identifier-naming" in result.stdout
+
+
+def test_when_a_method_has_a_name_tlm_imposes_tidy_passes(cmake_project):
+    project = project_with_header(
+        cmake_project,
+        """\
+#ifndef WIDGET_H_
+#define WIDGET_H_
+
+struct Target {
+  int last = 0;
+
+  void b_transport(int transaction) { last = transaction; }
+};
+
+#endif  // WIDGET_H_
+""",
+    )
+
+    result = project.build("tidy")
+
+    assert result.returncode == 0, result.stdout

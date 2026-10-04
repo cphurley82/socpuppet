@@ -46,6 +46,9 @@ CheckOptions:
   readability-identifier-naming.TemplateParameterCase: CamelCase
   readability-identifier-naming.ConceptCase: CamelCase
   readability-identifier-naming.FunctionCase: CamelCase
+  # Names we do not get to choose. TLM-2.0 calls a target's transport
+  # functions by these names, and anyone who has met TLM elsewhere knows them.
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(b_transport|nb_transport_fw|nb_transport_bw|transport_dbg|get_direct_mem_ptr|invalidate_direct_mem_ptr)$'
   readability-identifier-naming.VariableCase: lower_case
   readability-identifier-naming.ParameterCase: lower_case
   readability-identifier-naming.MemberCase: lower_case
