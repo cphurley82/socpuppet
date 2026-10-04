@@ -64,6 +64,11 @@ LINTERS = [
         patterns=("python/*.py",),
         check=("mypy", "--no-error-summary"),
     ),
+    Linter(
+        "rumdl",
+        patterns=("*.md",),
+        check=("rumdl", "check", "--quiet", "--no-cache"),
+    ),
 ]
 
 
