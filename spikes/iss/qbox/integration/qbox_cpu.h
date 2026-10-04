@@ -53,6 +53,7 @@ class QboxCpu : public sc_core::sc_module {
     SC_METHOD(OnResetLine);
     sensitive << reset;
     dont_initialize();
+    SC_THREAD(KeepTimeMoving);
   }
 
   void before_end_of_elaboration() override {
@@ -76,6 +77,14 @@ class QboxCpu : public sc_core::sc_module {
   }
 
   void OnResetLine() { core_->reset->write(reset.read()); }
+
+  // A QBox CPU that has nothing to do (asleep in `wfi`, say) waits for an
+  // event from the host, and has the kernel wait with it: simulated time
+  // stops, and a run for a fixed length of time never returns. Something
+  // scheduled in simulated time keeps the clock moving.
+  void KeepTimeMoving() {
+    for (;;) wait(tlm::tlm_global_quantum::instance().get());
+  }
 
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {

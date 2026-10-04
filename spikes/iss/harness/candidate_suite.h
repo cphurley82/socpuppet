@@ -68,6 +68,25 @@ TEST(TheSmokeProgram, RunsOnBothWordSizesInOneSimulationAndSurvivesATrap) {
   EXPECT_EQ(UartOutput(platform, "rv32"), "OK\nTR\n");
 }
 
+TEST(Sleep, WhenTheCpuIsAsleepARunWithNoTimeLimitReturns) {
+#ifdef SPIKE_CPU_KEEPS_THE_KERNEL_WAITING
+  GTEST_SKIP() << "A sleeping " << Candidate::Name()
+               << " CPU has the kernel wait for the host, so a run with no "
+               << "time limit would never return.";
+#else
+  SetQuantum(Milliseconds(1));
+  socpuppet::Platform platform{Candidate::Components()};
+  AddVirtBoard(platform, "board", Candidate::Cpu(), CpuConfig(64));
+  platform.Elaborate();
+  Load(platform, "board", rv::SmokeProgram(kUartBase));
+
+  // The smoke program ends in `wfi`, and no interrupt will ever come.
+  platform.Run();
+
+  EXPECT_EQ(UartOutput(platform, "board"), "OK\nTR\n");
+#endif
+}
+
 TEST(Reset, HoldsTheCpuWhileHighStartsItWhenReleasedAndRestartsItWhenRaised) {
   SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};

@@ -2,7 +2,7 @@
 
 ## Context
 
-`docs/handoff-socpuppet.md` specifies an open-source SystemC/TLM virtual platform: a chiplet host (RV64 compute die, plus an IO die with an RV32 management core, joined by a UCIe-style D2D link) and an NVMe SSD (RV32 controller). Each runs its own Zephyr firmware inside one simulation that is composed and driven from Python. The repo holds only that brief, a README and a LICENSE.
+`docs/handoff-socpuppet.md` specifies an open-source SystemC/TLM virtual platform: a chiplet host (RV64 compute die, plus an IO die with an RV32 management core, joined by a UCIe-style D2D link) and an NVMe SSD (RV32 controller). Each runs its own Zephyr firmware inside one simulation that is composed and driven from Python. When this plan was written, the repo held only that brief, a README and a LICENSE.
 
 This plan keeps the handoff's Decisions and reorders its suggested steps around how the platform gets consumed. Assumption: a "customer" is a firmware team owning one image (host, SSD, or IO-die manager). Each team first needs to boot its own firmware on its own subsystem with everything else stood in. The full multi-firmware bootchain comes after that.
 
@@ -134,8 +134,9 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| ISS choice; how far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | End of M1 (gates M3) | SCC for the router and logging only |
-| Zephyr version pin | M1 / M3a | latest release with the needed RISC-V drivers |
+| ISS choice; how far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | Now: the M1 report recommends, Chris decides (gates M3) | SCC for the router and logging only |
+| QBox (QEMU, GPL-2.0) as an optional CPU tier that users build from source, outside the wheel | Any time after M3 | not built |
+| Zephyr version pin | With the M1 decision | 4.4.2 with SDK 1.0.1, which the spike used |
 | Host MSI-X on RISC-V | M3b | verify mainline first |
 | Single- vs. multi-core SSD controller | M4b | single core |
 | D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
@@ -152,7 +153,9 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0 is done.** Next up: M1 (the ISS spike) and M2 (PCIe + behavioral NVMe), which do not depend on each other.
+**M0 is done. M1's report is in, and waits for a decision.** Next up: that decision, which gates M3, and M2 (PCIe + behavioral NVMe), which does not wait on it.
+
+What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. It stays until the decision is made and M3a has built the real CPU kit. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 

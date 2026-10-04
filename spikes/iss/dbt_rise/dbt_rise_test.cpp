@@ -1,3 +1,5 @@
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -19,9 +21,15 @@ const char* Candidate::Cpu() { return "cpu_dbt_rise"; }
 socpuppet::Registry Candidate::Components() {
   socpuppet::Registry registry = SpikeComponents();
   registry.Add(Cpu(), [](const char* name, const socpuppet::Config& config) {
+    // For trying the GDB server by hand: SPIKE_GDB_PORT=3333 makes every
+    // CPU wait for a debugger on that port.
+    const char* gdb_port = std::getenv("SPIKE_GDB_PORT");
     auto module = std::make_unique<DbtRiseCpu>(
         name, socpuppet::Required(config, "xlen", Cpu()),
-        socpuppet::Required(config, "reset_pc", Cpu()));
+        socpuppet::Required(config, "reset_pc", Cpu()),
+        gdb_port == nullptr
+            ? 0
+            : static_cast<std::uint16_t>(std::strtoul(gdb_port, nullptr, 10)));
     std::vector<socpuppet::Port> ports{
         socpuppet::InitiatorPort("socket", module->socket),
         socpuppet::WireSinkPort("irq", module->irq),

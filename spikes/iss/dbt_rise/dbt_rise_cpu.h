@@ -29,14 +29,18 @@ class DbtRiseCpu : public sc_core::sc_module {
   sc_core::sc_in<bool> irq{"irq"};
   sc_core::sc_in<bool> reset{"reset"};
 
+  // `gdb_port`, if not zero, is a TCP port on which DBT-RISE's GDB server
+  // listens. The CPU then waits for a debugger before its first
+  // instruction.
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-             std::uint64_t reset_pc)
+             std::uint64_t reset_pc, std::uint16_t gdb_port = 0)
       : sc_module(name) {
     // Machine mode only, with physical memory protection, which Zephyr's
     // boards for QEMU switch on.
     core_.core_type.set_value(xlen == 64 ? "rv64imac_mp" : "rv32imac_mp");
     core_.reset_address.set_value(reset_pc);
     core_.enable_instr_trace.set_value(false);
+    core_.gdb_server_port.set_value(gdb_port);
 
     for (auto* from_core : {&from_fetch_, &from_data_}) {
       from_core->register_b_transport(this, &DbtRiseCpu::b_transport);

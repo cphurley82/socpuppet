@@ -78,6 +78,45 @@ jobs:
       - run: uv run cmake --build --preset dev --target tidy
       - run: uv run cmake --build --preset dev --target check_headers
 
+  iss-spike:
+    # Milestone M1's exit test: each CPU model candidate that builds in this
+    # tree runs a smoke program and boots Zephyr's hello_world behind the
+    # draft CPU slot. See docs/iss-spike.md. QBox is built on its own, with
+    # its own build system, and is not run here.
+    name: ISS spike
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache the firmware
+        id: firmware
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/*.bin
+            build/firmware/*.elf
+            build/firmware/*.opcodes.txt
+          key: firmware-${{ hashFiles('spikes/iss/firmware/**') }}
+      - name: Build the firmware
+        if: steps.firmware.outputs.cache-hit != 'true'
+        run: spikes/iss/firmware/build.sh
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/dev/_deps
+          key: deps-spike-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'spikes/iss/CMakeLists.txt', 'spikes/iss/boost_libraries.cmake', 'spikes/iss/patches/**') }}
+      - run: uv sync
+      - run: uv run cmake --preset spike
+      # Some of the candidates' sources take over a gigabyte each to compile.
+      - run: uv run cmake --build --preset spike --parallel 4
+      - run: uv run ctest --preset spike --verbose
+        env:
+          # A missing firmware image fails the boot tests instead of
+          # skipping them.
+          SPIKE_REQUIRE_FIRMWARE: "1"
+
   coverage:
     # Which lines of our own C++ and Python the tests run. The job fails if
     # either falls below its floor (CMakePresets.json).

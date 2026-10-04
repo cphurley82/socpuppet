@@ -41,6 +41,7 @@ target_include_directories(spike_qbox_tests SYSTEM PRIVATE
   ${QBOX_ROOT}/qemu-components/cpu_riscv/cpu_riscv32/include)
 target_compile_definitions(spike_qbox_tests PRIVATE
   SPIKE_WITHOUT_SCC
+  SPIKE_CPU_KEEPS_THE_KERNEL_WAITING
   SPIKE_FIRMWARE_DIR="${SOCPUPPET_ROOT}/build/firmware")
 target_compile_options(spike_qbox_tests PRIVATE -Wall -Wextra)
 target_link_libraries(spike_qbox_tests PRIVATE qbox::qbox GTest::gmock)
