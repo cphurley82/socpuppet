@@ -135,7 +135,7 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 | Decision | Must be settled by | Default until then |
 |---|---|---|
 | ISS choice; how far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | Now: the M1 report recommends, Chris decides (gates M3) | SCC for the router and logging only |
-| QBox (QEMU, GPL-2.0) as an optional CPU tier that users build from source, outside the wheel | Any time after M3 | not built |
+| When to build the optional QBox CPU tier. (How is settled: QEMU is GPL-2.0, so the tier is built from source by users who opt in and is never in the wheel.) | When a firmware team needs the speed; any time after M3 | not built; the recipe is in `spikes/iss/qbox/` |
 | Zephyr version pin | With the M1 decision | 4.4.2 with SDK 1.0.1, which the spike used |
 | Host MSI-X on RISC-V | M3b | verify mainline first |
 | Single- vs. multi-core SSD controller | M4b | single core |
@@ -156,6 +156,8 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 **M0 is done. M1's report is in, and waits for a decision.** Next up: that decision, which gates M3, and M2 (PCIe + behavioral NVMe), which does not wait on it.
 
 What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. It stays until the decision is made and M3a has built the real CPU kit. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
+
+Decided so far, on 2026-10-04: socpuppet stays MIT, and the rule about GPL code becomes "none in the default wheel". QBox, which is QEMU underneath, may be an optional CPU tier that users build from source. The default CPU, the modeling library and the Zephyr pin are still open.
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 

@@ -21,7 +21,7 @@ The criteria come from the [handoff](handoff-socpuppet.md), with three added tha
 | In-process | One SystemC kernel runs every die and the SSD, so the CPU model has to live inside that process. |
 | Loosely timed, with DMI | 🎓 DMI (direct memory interface) hands the CPU a pointer to the RAM, so that fetching an instruction is a memory read and not a bus transaction. It is what makes a boot take seconds. |
 | Boots Zephyr | The firmware is Zephyr, for RV64 and for RV32IMAC. |
-| License | socpuppet is MIT and ships as a self-contained wheel. The handoff keeps GPL code out of the core. |
+| License | socpuppet is MIT and ships as a self-contained wheel. When the spike ran, the handoff kept GPL code out of the core altogether. |
 | C++20 | Preferred, not required. SystemC bakes the C++ standard into a link-time check, so everything linking it must agree. |
 | Build simplicity | It has to build from source under our CMake, on Ubuntu 24.04 and macOS, with nothing installed on the machine. |
 | Mixed word sizes (added) | An RV64 core and RV32 cores have to coexist in one process. |
@@ -259,21 +259,27 @@ The first two columns are the same Apple silicon laptop: Linux is Ubuntu 24.04 i
 
 This is not legal advice. It sets out which licenses apply to what, and which judgements are Chris's.
 
+**Decided on 2026-10-04:** socpuppet stays MIT, and the rule becomes "the default wheel contains no GPL code". QBox may be an optional CPU tier that users build from source, with its glue kept in the repo as a supported, opt-in component. socpuppet distributes no QEMU code and no QEMU binaries. That is the third arrangement in the table below.
+
 The facts:
 
 - QBox's glue is BSD-3-Clause. QEMU as a whole is GPL-2.0. QBox's wrapper is written against a GPL-2.0-or-later header, and QEMU is only available to it as a shared library.
 - SystemC and SCC are Apache-2.0. The FSF and the ASF both hold that Apache-2.0 is not compatible with GPL version 2.
-- The handoff's decision is that GPL code stays out of the core, and socpuppet's wheel is static and self-contained.
+- When the spike ran, the handoff's decision was that GPL code stays out of the core, and socpuppet's wheel is static and self-contained.
 
 Three ways QBox could be part of socpuppet, and what follows from each:
 
-| Arrangement | What follows | Is "GPL stays out of the core" still true? |
+| Arrangement | What follows | Does GPL code stay out of what socpuppet ships? |
 |---|---|---|
 | In the main wheel | The wheel distributes GPL binaries in one process with Apache-2.0 SystemC, with source-offer duties, and stops being static and self-contained. | No |
 | A separate optional package that the core loads through the registry | The MIT core contains no GPL code. The plug-in package is a GPL distribution that also links SystemC, and SystemC would have to be shared between the two. | Yes for the core. You take on the plug-in's distribution. |
-| Source-only: a recipe and glue in the repo, built by users who opt in | The repo holds MIT glue. You distribute no QEMU code or binaries. This is how QBox itself ships. | Yes, most clearly |
+| Source-only: a recipe and glue in the repo, built by users who opt in (the one chosen) | The repo holds MIT glue. You distribute no QEMU code or binaries. This is how QBox itself ships. | Yes, most clearly |
 
-The judgements that are yours: whether a plug-in that shares data structures in one process is a derived work; whether you are comfortable distributing anything that combines GPLv2 QEMU with Apache-2.0 SystemC; and whether MIT glue written against a GPL header belongs in the repo at all. The spike's QBox glue is in the repo now, under `spikes/iss/qbox/`.
+The judgements that were yours: whether a plug-in that shares data structures in one process is a derived work; whether you are comfortable distributing anything that combines GPLv2 QEMU with Apache-2.0 SystemC; and whether MIT glue written against a GPL header belongs in the repo at all. The decision answers the last with yes and steps around the first two, because nothing combined is distributed. The spike's QBox glue is in the repo now, under `spikes/iss/qbox/`.
+
+**Would a different licence for socpuppet have made QBox easier?** No. MIT is not the obstacle: MIT code can already be combined with GPL code, and the combination is then distributed under the GPL. The conflict is between QEMU (GPL version 2) and SystemC (Apache-2.0), which belongs to their copyright holders and not to socpuppet. Moving socpuppet to the GPL would leave that conflict where it is, and would cost the thing MIT buys: a firmware team can adopt an MIT tool without asking anyone.
+
+⚠️ **What the decision does not cover:** a prebuilt QBox package. Publishing one would make socpuppet a distributor of GPL binaries that share a process with Apache-2.0 SystemC. That is the point at which to get legal advice.
 
 What the spike adds to that picture is practical, not legal: QBox cannot be built inside socpuppet's build in any case. It needs its own SystemC, shared libraries, a C++20 rebuild with patches, and a dozen system packages. So the only arrangements that were ever on the table are the second and third, and the third is the one that was actually exercised.
 
@@ -355,7 +361,7 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 ## Decision needed
 
 1. **The default CPU for M3a**: a core of our own (recommended), or DBT-RISE-RISCV.
-2. **QBox**: keep the recipe as the start of an optional, source-built fast tier (recommended), build that tier now, or drop it. If it stays in any form, which of the licence arrangements above you are comfortable with.
+2. **QBox**: decided on 2026-10-04. It becomes an optional tier that users build from source, socpuppet stays MIT, and no GPL code goes in the default wheel. Still open is when to build the tier: when a firmware team needs the speed (recommended), or now.
 3. **Modeling library**: a thin layer of our own, borrowing VCML models one at a time behind an adapter (recommended), or building on VCML.
 4. **Zephyr**: pin 4.4.2 with SDK 1.0.1 (recommended).
 
