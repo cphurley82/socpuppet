@@ -1,11 +1,13 @@
 """Run the linters over this repository's own files.
 
-Usage: uv run python tools/lint.py
+Usage: uv run python tools/lint.py [--fix]
 
 Lints the git repository the command is run from, and exits non-zero if any
-linter found a problem.
+linter found a problem. With --fix, problems that can be repaired
+automatically are repaired in place.
 """
 
+import argparse
 import subprocess
 import sys
 import sysconfig
@@ -13,8 +15,13 @@ from pathlib import Path
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run the linters over this repository.")
+    parser.add_argument("--fix", action="store_true", help="repair what can be repaired")
+    args = parser.parse_args()
+
     files = [f for f in repo_files() if f.endswith((".h", ".cpp"))]
-    result = subprocess.run([tool("clang-format"), "--dry-run", "--Werror", *files])
+    mode = ["-i"] if args.fix else ["--dry-run", "--Werror"]
+    result = subprocess.run([tool("clang-format"), *mode, *files])
     return result.returncode
 
 
