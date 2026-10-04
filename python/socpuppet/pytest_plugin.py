@@ -20,6 +20,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+from typing import Literal
 
 import pytest
 
@@ -31,8 +32,12 @@ _REPORT_FILE_ENV = "SOCPUPPET_PYTEST_REPORT_FILE"
 # other status means the process did not get to finish normally.
 _FINISHED = (pytest.ExitCode.OK, pytest.ExitCode.TESTS_FAILED)
 
+# The phases pytest reports a test in, and the ones that come before teardown.
+_Phase = Literal["setup", "call", "teardown"]
+_BEFORE_TEARDOWN: tuple[_Phase, ...] = ("setup", "call")
 
-def pytest_configure(config):
+
+def pytest_configure(config: pytest.Config) -> None:
     """Register the `platform` marker, and in a child, report to the parent."""
     config.addinivalue_line(
         "markers",
@@ -44,7 +49,9 @@ def pytest_configure(config):
         config.pluginmanager.register(_ChildReporter(config, report_file))
 
 
-def pytest_runtest_protocol(item, nextitem):
+def pytest_runtest_protocol(
+    item: pytest.Item, nextitem: pytest.Item | None
+) -> bool | None:
     """Run a `platform` test in a process of its own."""
     if (
         item.get_closest_marker("platform") is None
@@ -72,11 +79,11 @@ def pytest_runtest_protocol(item, nextitem):
 class _ChildReporter:
     """In the child: writes each test report where the parent will read it."""
 
-    def __init__(self, config, report_file):
+    def __init__(self, config: pytest.Config, report_file: str) -> None:
         self._config = config
         self._report_file = report_file
 
-    def pytest_runtest_logreport(self, report):
+    def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
         data = self._config.hook.pytest_report_to_serializable(
             config=self._config, report=report
         )
@@ -84,7 +91,7 @@ class _ChildReporter:
             out.write(json.dumps(data) + "\n")
 
 
-def _run_in_child_process(item):
+def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
     """Run one test in a fresh interpreter and return its reports."""
     config = item.config
     with tempfile.NamedTemporaryFile(mode="r", suffix=".jsonl") as report_file:
@@ -118,12 +125,16 @@ def _run_in_child_process(item):
     return reports
 
 
-def _crash_report(item, child, phases_reported):
+def _crash_report(
+    item: pytest.Item,
+    child: subprocess.CompletedProcess[str],
+    phases_reported: set[str],
+) -> pytest.TestReport:
     """A failed report for a child process that died instead of finishing."""
     # Blame the first phase that never reported, so the test is counted once.
     # If every phase reported, the crash came afterwards, on the way out.
-    when = next(
-        (phase for phase in ("setup", "call") if phase not in phases_reported),
+    when: _Phase = next(
+        (phase for phase in _BEFORE_TEARDOWN if phase not in phases_reported),
         "teardown",
     )
     return pytest.TestReport(
@@ -140,7 +151,7 @@ def _crash_report(item, child, phases_reported):
     )
 
 
-def _describe(returncode):
+def _describe(returncode: int) -> str:
     if returncode < 0:
         return f"{returncode} ({signal.Signals(-returncode).name})"
     return str(returncode)

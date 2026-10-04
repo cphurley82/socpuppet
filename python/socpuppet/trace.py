@@ -3,7 +3,9 @@
 import json
 import os
 import sys
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Self
 
 _BOLD, _DIM, _GREEN, _RED, _CYAN, _RESET = (
     "\x1b[1m",
@@ -28,7 +30,9 @@ class TraceRecord:
     ok: bool  #: False if the target answered with an error
 
     @classmethod
-    def from_native(cls, native):
+    def from_native(
+        cls, native: tuple[int, str, str, bool, int, bytes, bool]
+    ) -> Self:
         """A record from the simulator's tuple.
 
         The tuple is (time, source, sink, is_write, address, data, ok).
@@ -45,7 +49,7 @@ class TraceRecord:
         )
 
 
-def wants_color(is_terminal, environment):
+def wants_color(is_terminal: bool, environment: Mapping[str, str]) -> bool:
     """Whether output should be colored.
 
     Color suits a terminal; a file or a pipe gets plain text. A non-empty
@@ -54,7 +58,7 @@ def wants_color(is_terminal, environment):
     return is_terminal and not environment.get("NO_COLOR")
 
 
-def render(records, color=None):
+def render(records: Iterable[TraceRecord], color: bool | None = None) -> str:
     """The trace as text for people, one line per transaction.
 
     `color` defaults to whether standard output wants it (see `wants_color`).
@@ -62,7 +66,7 @@ def render(records, color=None):
     if color is None:
         color = wants_color(sys.stdout.isatty(), os.environ)
 
-    def paint(code, text):
+    def paint(code: str, text: str) -> str:
         return f"{code}{text}{_RESET}" if color else text
 
     lines = []
@@ -81,7 +85,7 @@ def render(records, color=None):
     return "\n".join(lines)
 
 
-def to_json_lines(records):
+def to_json_lines(records: Iterable[TraceRecord]) -> str:
     """The trace for machines: one JSON object per line.
 
     No color, and the field names are stable.

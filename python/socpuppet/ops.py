@@ -16,20 +16,20 @@ class Operation:
     """One thing for a bus master to do. Make these with the functions below."""
 
     kind: str
-    operands: tuple = ()
+    operands: tuple[int, ...] = ()
 
 
-def read32(address):
+def read32(address: int) -> Operation:
     """Read a 32-bit value. The value is sent back into the script."""
     return Operation("read32", (address,))
 
 
-def write32(address, value):
+def write32(address: int, value: int) -> Operation:
     """Write a 32-bit value."""
     return Operation("write32", (address, _fits_32_bits(value)))
 
 
-def expect32(address, value):
+def expect32(address: int, value: int) -> Operation:
     """Read a 32-bit value, and stop the run if it is not `value`.
 
     The run stops with ExpectationFailed.
@@ -37,17 +37,17 @@ def expect32(address, value):
     return Operation("expect32", (address, _fits_32_bits(value)))
 
 
-def wait(duration):
+def wait(duration: int) -> Operation:
     """Let `duration` of simulated time pass (see `ns`, `us`)."""
     return Operation("wait", (duration,))
 
 
-def wait_irq():
+def wait_irq() -> Operation:
     """Wait until the master's interrupt line is high."""
     return Operation("wait_irq")
 
 
-def to_native(yielded):
+def to_native(yielded: object) -> tuple[str | int, ...]:
     """What the simulator needs to carry out something a script yielded.
 
     That is (kind, *operands).
@@ -61,7 +61,7 @@ def to_native(yielded):
     return (yielded.kind, *yielded.operands)
 
 
-def _fits_32_bits(value):
+def _fits_32_bits(value: int) -> int:
     if not 0 <= value < 2**32:
         shown = f"{value:#x}" if value >= 0 else str(value)
         raise ValueError(f"{shown} does not fit in 32 bits (0 to 0xffffffff).")

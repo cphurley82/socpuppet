@@ -9,7 +9,12 @@ import zipfile
 
 def problems_with(names):
     """Yield what is wrong with a wheel holding the files `names`."""
-    extensions = [n for n in names if n.startswith("socpuppet/_core.")]
+    # _core.pyi sits next to the extension and describes it to type checkers.
+    extensions = [
+        n
+        for n in names
+        if n.startswith("socpuppet/_core.") and not n.endswith(".pyi")
+    ]
     if len(extensions) != 1:
         yield (
             "expected exactly one socpuppet/_core extension, "

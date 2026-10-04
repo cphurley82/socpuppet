@@ -5,11 +5,11 @@ resolution. Use these helpers rather than counting zeros.
 """
 
 
-def ns(count):
+def ns(count: int) -> int:
     """`count` nanoseconds."""
     return count * 1_000
 
 
-def us(count):
+def us(count: int) -> int:
     """`count` microseconds."""
     return count * 1_000_000

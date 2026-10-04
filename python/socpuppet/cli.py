@@ -3,9 +3,12 @@
 import argparse
 import runpy
 import sys
+from collections.abc import Sequence
+
+from socpuppet.platform import Platform
 
 
-def main(arguments=None):
+def main(arguments: Sequence[str] | None = None) -> None:
     """Run the `socpuppet` command with `arguments`, or the process's own."""
     parser = argparse.ArgumentParser(
         prog="socpuppet",
@@ -32,7 +35,7 @@ def main(arguments=None):
     sys.stdout.write(_load(options.description).devicetree())
 
 
-def _load(path):
+def _load(path: str) -> Platform:
     """Run a description file and return the Platform it describes."""
     names = runpy.run_path(path)
     if "platform" not in names:
@@ -40,4 +43,5 @@ def _load(path):
             f"{path} does not define `platform`. A description file must "
             "leave its Platform in a variable with that name."
         )
-    return names["platform"]
+    platform: Platform = names["platform"]
+    return platform

@@ -1,19 +1,30 @@
 """Describe a platform in Python, then build and run it."""
 
+from __future__ import annotations
+
 import json
 import os
 import sys
-from typing import NamedTuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, NamedTuple, overload
 
 from socpuppet import devicetree
-from socpuppet.components import Router, ScriptedBusMaster
+from socpuppet.components import (
+    Component,
+    LinkModel,
+    Router,
+    ScriptedBusMaster,
+)
 from socpuppet.trace import TraceRecord, wants_color
+
+if TYPE_CHECKING:
+    from socpuppet import _core
 
 
 class Port:
     """One port of a described component, such as `cpu.socket`."""
 
-    def __init__(self, placed, name):
+    def __init__(self, placed: Placed, name: str) -> None:
         self.placed = placed
         self.name = name
         self.path = f"{placed.path}.{name}"
@@ -22,12 +33,14 @@ class Port:
 class Placed:
     """A component at its place in a platform. Its ports are attributes."""
 
-    def __init__(self, platform, path, component):
+    def __init__(
+        self, platform: Platform, path: str, component: Component
+    ) -> None:
         self._platform = platform
         self.path = path
         self.component = component
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Port:
         # Reached only for names that are not ordinary attributes: the ports.
         if name in self.component.ports:
             return Port(self, name)
@@ -40,7 +53,9 @@ class Placed:
 class PlacedRouter(Placed):
     """A router at its place in a platform."""
 
-    def map(self, target, base):
+    component: Router
+
+    def map(self, target: Port, base: int) -> None:
         """Route accesses starting at `base` to the port `target`.
 
         The range is as long as the target component's own size, and the
@@ -64,7 +79,7 @@ class Link:
     same from `b` to `a`.
     """
 
-    def __init__(self, a, b):
+    def __init__(self, a: Placed, b: Placed) -> None:
         self.a = a
         self.b = b
 
@@ -86,15 +101,19 @@ class Group:
     Components added here get its path as a prefix.
     """
 
-    def __init__(self, platform, path):
+    def __init__(self, platform: Platform, path: str) -> None:
         self._platform = platform
         self.path = path
 
-    def add(self, name, component):
+    @overload
+    def add(self, name: str, component: Router) -> PlacedRouter: ...
+    @overload
+    def add(self, name: str, component: Component) -> Placed: ...
+    def add(self, name: str, component: Component) -> Placed:
         """Place `component` inside this group and return it with its ports."""
         return self._platform.add(f"{self.path}.{name}", component)
 
-    def group(self, name):
+    def group(self, name: str) -> Group:
         """A group nested inside this one."""
         return Group(self._platform, f"{self.path}.{name}")
 
@@ -106,12 +125,16 @@ class Platform:
     Describing needs only Python; the simulator is loaded by `build()`.
     """
 
-    def __init__(self):
-        self._placed = {}
-        self._connections = []
-        self._native = None
+    def __init__(self) -> None:
+        self._placed: dict[str, Placed] = {}
+        self._connections: list[Connection] = []
+        self._native: _core.Platform | None = None
 
-    def add(self, path, component):
+    @overload
+    def add(self, path: str, component: Router) -> PlacedRouter: ...
+    @overload
+    def add(self, path: str, component: Component) -> Placed: ...
+    def add(self, path: str, component: Component) -> Placed:
         """Place `component` at `path` and return it with its ports."""
         self.refuse_if_built("add a component")
         if path in self._placed:
@@ -124,11 +147,17 @@ class Platform:
         self._placed[path] = placed
         return placed
 
-    def group(self, name):
+    def group(self, name: str) -> Group:
         """A named group of components, such as a die."""
         return Group(self, name)
 
-    def link(self, name, model, a=None, b=None):
+    def link(
+        self,
+        name: str,
+        model: LinkModel,
+        a: Group | None = None,
+        b: Group | None = None,
+    ) -> Link:
         """Place a link called `name` between group `a` and group `b`.
 
         Each group gets one endpoint. `model` says which link to use, such
@@ -143,7 +172,7 @@ class Platform:
         self.connect(end_b.peer_initiator, end_a.peer_target)
         return Link(end_a, end_b)
 
-    def connect(self, source, sink, trace=False):
+    def connect(self, source: Port, sink: Port, trace: bool = False) -> None:
         """Connect a source port (an initiator) to a sink port (a target).
 
         With `trace=True`, every transaction crossing the connection is
@@ -154,7 +183,7 @@ class Platform:
         self.refuse_if_built("connect ports")
         self._connections.append(Connection(source, sink, trace))
 
-    def build(self):
+    def build(self) -> None:
         """Create the simulation from the description."""
         self.refuse_if_built("build it again")
         from socpuppet import _core  # the simulator loads here, not on import
@@ -174,24 +203,26 @@ class Platform:
         native.elaborate()
         self._native = native
 
-    def run(self, duration=None):
+    def run(self, duration: int | None = None) -> None:
         """Run for `duration`, or until nothing is left to do.
 
-        For durations, see `ns`, `us` and `ms`.
+        For durations, see `ns` and `us`.
         """
         if duration is None:
             self._built().run()
         else:
             self._built().run_for(duration)
 
-    def step(self):
+    def step(self) -> bool:
         """Move to the next moment anything is scheduled for, and let it happen.
 
         Returns False if nothing was left to do.
         """
         return self._built().step()
 
-    def run_until(self, condition, timeout=None):
+    def run_until(
+        self, condition: Callable[[], bool], timeout: int | None = None
+    ) -> bool:
         """Run until `condition()` is true, and say whether it came true.
 
         The condition is checked each time simulated time is about to move
@@ -211,7 +242,7 @@ class Platform:
         return True
 
     @property
-    def trace(self):
+    def trace(self) -> list[TraceRecord]:
         """Every transaction recorded on traced connections, oldest first."""
         return [
             TraceRecord.from_native(native)
@@ -219,11 +250,11 @@ class Platform:
         ]
 
     @property
-    def time(self):
-        """The simulated time now, in the unit `ns`, `us` and `ms` return."""
+    def time(self) -> int:
+        """The simulated time now, in the unit `ns` and `us` return."""
         return self._built().time_in_picoseconds()
 
-    def peek32(self, address, via=None):
+    def peek32(self, address: int, via: Port | None = None) -> int:
         """Read a 32-bit little-endian value, as a bus master sees memory.
 
         `via` is the master's port to look through, such as `cpu.socket`. It
@@ -238,7 +269,7 @@ class Platform:
             raise self._nothing_at(address, view)
         return int.from_bytes(data, "little")
 
-    def poke32(self, address, value, via=None):
+    def poke32(self, address: int, value: int, via: Port | None = None) -> None:
         """Write a 32-bit little-endian value, as a bus master sees memory.
 
         Like a peek, a poke takes no simulated time. `via` works as in `peek32`.
@@ -249,7 +280,7 @@ class Platform:
         ):
             raise self._nothing_at(address, view)
 
-    def devicetree(self, via=None):
+    def devicetree(self, via: Port | None = None) -> str:
         """The devicetree source for what a bus master can reach.
 
         `via` is the master's port, as in `peek32`. Works on a description;
@@ -257,7 +288,7 @@ class Platform:
         """
         return devicetree.generate(self._connections, self._view(via))
 
-    def to_json(self):
+    def to_json(self) -> str:
         """The description as JSON: every component and every connection.
 
         A scripted bus master's script is behavior, not structure, and is
@@ -280,13 +311,13 @@ class Platform:
             indent=2,
         )
 
-    def _nothing_at(self, address, view):
+    def _nothing_at(self, address: int, view: Port) -> LookupError:
         return LookupError(
             f"Nothing took a 4-byte access at address {address:#x}, as seen "
             f"from {view.path}. Check the address against the memory map."
         )
 
-    def _view(self, via):
+    def _view(self, via: Port | None) -> Port:
         """The port a peek or poke looks through."""
         if via is not None:
             return via
@@ -303,7 +334,7 @@ class Platform:
             )
         return masters[0].socket
 
-    def refuse_if_built(self, change):
+    def refuse_if_built(self, change: str) -> None:
         """Raise if the platform is built, since its topology is then fixed."""
         if self._native is not None:
             raise RuntimeError(
@@ -312,7 +343,7 @@ class Platform:
                 "describe everything before calling build()."
             )
 
-    def _built(self):
+    def _built(self) -> _core.Platform:
         if self._native is None:
             raise RuntimeError(
                 "This platform is only described so far. Call build() first "

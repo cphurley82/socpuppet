@@ -5,10 +5,18 @@ Generating it from the same description that builds the simulation keeps
 the two from drifting apart. No simulation is needed to do it.
 """
 
+from __future__ import annotations
+
+from collections.abc import Collection, Iterator
+from typing import TYPE_CHECKING
+
 from socpuppet.components import Memory
 
+if TYPE_CHECKING:
+    from socpuppet.platform import Connection, Placed, Port
 
-def generate(connections, view):
+
+def generate(connections: Collection[Connection], view: Port) -> str:
     """The devicetree source for the hardware reachable from the port `view`.
 
     `connections` are the platform's connections.
@@ -37,7 +45,9 @@ def generate(connections, view):
     return "\n".join(lines)
 
 
-def _endpoints(connections, view, base=0):
+def _endpoints(
+    connections: Collection[Connection], view: Port, base: int = 0
+) -> Iterator[tuple[int, Placed]]:
     """Yield each component that answers accesses made from `view`.
 
     Each comes as (address, placed component).
@@ -57,11 +67,11 @@ def _endpoints(connections, view, base=0):
         )
 
 
-def _label(path):
+def _label(path: str) -> str:
     """A devicetree label for a component path: `io.ram` becomes `io_ram`."""
     return path.replace(".", "_")
 
 
-def _cells(value):
+def _cells(value: int) -> str:
     """A 64-bit value as two 32-bit devicetree cells, high half first."""
     return f"{value >> 32:#x} {value & 0xFFFF_FFFF:#x}"

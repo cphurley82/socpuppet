@@ -5,25 +5,50 @@ there, its parameters and its ports. Describing a platform uses only these
 classes, so it works without loading the simulator.
 """
 
+from __future__ import annotations
+
 import inspect
-from typing import override
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Iterable, Iterator
+from typing import TYPE_CHECKING, Protocol, override
+
+if TYPE_CHECKING:
+    from socpuppet import _core
+    from socpuppet.ops import Operation
+
+#: A script: a generator function that yields operations. What a read
+#: returned is sent back into the generator.
+Script = Callable[[], Generator["Operation", int | None, None]]
 
 
-class Component:
+class Component(ABC):
     """One block of a platform, as described (not yet built)."""
 
     #: The name of the implementation in the C++ registry.
     implementation: str
-    #: The names of the component's ports.
-    ports: tuple[str, ...]
 
-    def __init__(self, **parameters):
-        self.parameters = parameters
+    def __init__(self, **parameters: int) -> None:
+        self._parameters = parameters
 
-    def configure(self, native, path):
-        """Hand the built component anything its parameters cannot carry."""
+    @property
+    @abstractmethod
+    def ports(self) -> tuple[str, ...]:
+        """The names of the component's ports."""
 
-    def routes(self, port):
+    @property
+    def parameters(self) -> dict[str, int]:
+        """What the implementation is configured with, by name."""
+        return self._parameters
+
+    def configure(self, native: _core.Platform, path: str) -> None:
+        """Hand the built component anything its parameters cannot carry.
+
+        Most components have nothing to hand over, so this does nothing
+        unless a component overrides it.
+        """
+        return
+
+    def routes(self, port: str) -> Iterable[tuple[str, int]]:
         """Where an access arriving at `port` can go next.
 
         Yields (output port, base): an access at `base` comes out of that
@@ -39,7 +64,7 @@ class Memory(Component):
     implementation = "memory"
     ports = ("socket",)
 
-    def __init__(self, *, size):
+    def __init__(self, *, size: int) -> None:
         super().__init__(size=size)
 
 
@@ -53,13 +78,21 @@ class PassThroughLinkEndpoint(Component):
     ports = ("target", "initiator", "peer_initiator", "peer_target")
 
     @override
-    def routes(self, port):
+    def routes(self, port: str) -> Iterable[tuple[str, int]]:
         # Out to the other endpoint, or in from it.
         return (
             (("peer_initiator", 0),)
             if port == "target"
             else (("initiator", 0),)
         )
+
+
+class LinkModel(Protocol):
+    """A kind of link, which `Platform.link()` can place."""
+
+    def endpoint(self) -> Component:
+        """A new endpoint, for one end of the link."""
+        ...
 
 
 class PassThroughLink:
@@ -71,7 +104,7 @@ class PassThroughLink:
     training, no latency, no errors.
     """
 
-    def endpoint(self):
+    def endpoint(self) -> Component:
         """A new endpoint, for one end of the link."""
         return PassThroughLinkEndpoint()
 
@@ -88,7 +121,7 @@ class ScriptedBusMaster(Component):
     implementation = "scripted_bus_master"
     ports = ("socket", "irq", "reset")
 
-    def __init__(self, script=None):
+    def __init__(self, script: Script | None = None) -> None:
         super().__init__()
         if script is not None and not inspect.isgeneratorfunction(script):
             if inspect.isgenerator(script):
@@ -107,7 +140,7 @@ class ScriptedBusMaster(Component):
         self.script = script
 
     @override
-    def configure(self, native, path):
+    def configure(self, native: _core.Platform, path: str) -> None:
         if self.script is not None:
             native.set_script(path, self.script)
 
@@ -122,11 +155,12 @@ class Router(Component):
 
     implementation = "router"
 
-    def __init__(self):
-        self._ranges = []  # (base, size, label), one per output
+    def __init__(self) -> None:
+        # (base, size, label), one per output
+        self._ranges: list[tuple[int, int, str]] = []
 
     @property
-    def ports(self):
+    def ports(self) -> tuple[str, ...]:
         """The target port, then one output port per mapped range."""
         return (
             "target",
@@ -134,7 +168,7 @@ class Router(Component):
         )
 
     @property
-    def parameters(self):
+    def parameters(self) -> dict[str, int]:
         """The address map, flattened to the form the simulator takes.
 
         That form is name -> number: "outputs", then "out<N>.base" and
@@ -147,11 +181,11 @@ class Router(Component):
         return flat
 
     @override
-    def routes(self, port):
+    def routes(self, port: str) -> Iterator[tuple[str, int]]:
         for index, (base, _, _) in enumerate(self._ranges):
             yield f"out{index}", base
 
-    def add_output(self, base, size, label):
+    def add_output(self, base: int, size: int, label: str) -> str:
         """Add an output for the range [base, base + size).
 
         Returns the output's port name. `label` says what the range leads

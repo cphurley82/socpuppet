@@ -54,6 +54,18 @@ def lint(repo):
 
 
 @pytest.fixture
+def check_wheel():
+    """Run tools/check_wheel.py on a wheel."""
+
+    def run(wheel):
+        return subprocess.run(
+            [sys.executable, str(REPO / "tools" / "check_wheel.py"), str(wheel)]
+        )
+
+    return run
+
+
+@pytest.fixture
 def lint_on_a_terminal(repo, monkeypatch):
     """Run tools/lint.py in the throwaway repository, output going to a terminal.
 
