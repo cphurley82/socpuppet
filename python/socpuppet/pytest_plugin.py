@@ -50,6 +50,12 @@ def pytest_runtest_protocol(item, nextitem):
     item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
     for report in _run_in_child_process(item):
         item.ihook.pytest_runtest_logreport(report=report)
+    # The test's own fixtures lived and died in the child. Here, pytest still
+    # has to finish with any class or module it set up for earlier tests and
+    # that the next test does not share. There is no public hook for just
+    # that, so this reaches into pytest's setup state; a test in
+    # test_pytest_plugin.py pins the behavior.
+    item.session._setupstate.teardown_exact(nextitem)
     item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
     return True
 

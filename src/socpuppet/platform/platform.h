@@ -1,11 +1,15 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <systemc>
 #include <tlm>
@@ -53,21 +57,44 @@ class Platform {
     bound_.insert(to.socket);
   }
 
-  // Checks that every port is bound. SystemC would also object to an unbound
-  // port, but only once the simulation starts and in its own terms.
-  void check_wiring() {
-    std::string unbound;
-    for (const auto& [path, instance] : instances_) {
-      for (const Port& candidate : instance.ports) {
-        if (!bound_.contains(candidate.socket)) {
-          unbound += (unbound.empty() ? "" : ", ") + path + "." + candidate.name;
-        }
-      }
-    }
-    if (!unbound.empty()) {
-      throw std::runtime_error("These ports are not bound to anything: " + unbound +
-                               ". Bind every port before the simulation starts.");
-    }
+  // Finishes construction: checks the wiring, then has SystemC complete its
+  // elaboration (resolving every binding) and get ready to simulate, without
+  // running any process yet. After this, debug accesses work and the
+  // topology is fixed.
+  void elaborate() {
+    check_wiring();
+    // sc_start() does exactly this as its first step. Calling it here is not
+    // part of the SystemC standard, but the reference kernel exposes it.
+    sc_core::sc_get_curr_simcontext()->initialize(true);
+  }
+
+  // Runs until nothing is left to do. Call elaborate() first.
+  void run() { sc_core::sc_start(); }
+
+  // Runs for `duration` of simulated time. Call elaborate() first.
+  void run(const sc_core::sc_time& duration) { sc_core::sc_start(duration); }
+
+  // The current simulated time.
+  sc_core::sc_time time() const { return sc_core::sc_time_stamp(); }
+
+  // Debug accesses as seen from an initiator port: no simulated time passes
+  // and nothing in the platform notices, the way a debugger reads memory.
+  // Each returns false if nothing at that address took the access.
+  bool debug_read(const std::string& via, std::uint64_t address, std::span<std::byte> data) {
+    return debug(tlm::TLM_READ_COMMAND, via, address, data.data(), data.size());
+  }
+
+  bool debug_write(const std::string& via, std::uint64_t address,
+                   std::span<const std::byte> data) {
+    return debug(tlm::TLM_WRITE_COMMAND, via, address, const_cast<std::byte*>(data.data()),
+                 data.size());
+  }
+
+  // The names of the ports of the component at `path`.
+  std::vector<std::string> ports(const std::string& path) {
+    std::vector<std::string> names;
+    for (const Port& each : instance(path).ports) names.push_back(each.name);
+    return names;
   }
 
   // The component at `path`, as its concrete C++ type. An escape hatch for
@@ -94,6 +121,41 @@ class Platform {
     if (dot == std::string::npos) return make(path.c_str());
     sc_core::sc_hierarchy_scope scope = group(path.substr(0, dot)).enter();
     return make(path.substr(dot + 1).c_str());
+  }
+
+  // SystemC would also object to an unbound port, but only once the
+  // simulation starts and in its own terms.
+  void check_wiring() {
+    std::string unbound;
+    for (const auto& [path, instance] : instances_) {
+      for (const Port& candidate : instance.ports) {
+        if (!bound_.contains(candidate.socket)) {
+          unbound += (unbound.empty() ? "" : ", ") + path + "." + candidate.name;
+        }
+      }
+    }
+    if (!unbound.empty()) {
+      throw std::runtime_error("These ports are not bound to anything: " + unbound +
+                               ". Bind every port before the simulation starts.");
+    }
+  }
+
+  bool debug(tlm::tlm_command command, const std::string& via, std::uint64_t address,
+             std::byte* data, std::size_t length) {
+    tlm::tlm_generic_payload transaction;
+    transaction.set_command(command);
+    transaction.set_address(address);
+    transaction.set_data_ptr(reinterpret_cast<unsigned char*>(data));
+    transaction.set_data_length(static_cast<unsigned>(length));
+    transaction.set_streaming_width(static_cast<unsigned>(length));
+    const Port& view = port(via);
+    if (view.role != Port::Role::source) {
+      throw std::invalid_argument(
+          "A debug access looks at the platform through a source port (such as a bus "
+          "master's initiator socket), and \"" + via + "\" is a sink.");
+    }
+    auto& socket = dynamic_cast<tlm::tlm_initiator_socket<>&>(*view.socket);
+    return socket->transport_dbg(transaction) == length;
   }
 
   Group& group(const std::string& path) {

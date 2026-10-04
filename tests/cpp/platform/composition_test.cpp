@@ -1,3 +1,7 @@
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <span>
 #include <stdexcept>
 
 #include <gmock/gmock.h>
@@ -22,11 +26,30 @@ TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   platform.add("ram", "memory", {{"size", 0x100}});
   platform.bind("cpu.socket", "link.target");
   platform.bind("link.initiator", "ram.socket");
-  platform.module<socpuppet::ScriptedBusMaster>("cpu").set_script({socpuppet::Write32{0x10, 0xC0FFEE}});
+  platform.module<socpuppet::ScriptedBusMaster>("cpu").set_script(
+      {socpuppet::Write32{0x10, 0xC0FFEE}});
+  platform.elaborate();
 
-  sc_core::sc_start();
+  platform.run();
 
-  EXPECT_EQ(platform.module<socpuppet::Memory>("ram").peek32(0x10), 0xC0FFEEu);
+  std::uint32_t seen = 0;
+  platform.debug_read("cpu.socket", 0x10, std::as_writable_bytes(std::span{&seen, 1}));
+  EXPECT_EQ(seen, 0xC0FFEEu);
+}
+
+TEST(WhenAPlatformIsElaboratedButNotYetRun, DebugWritesAlreadyReachTheMemory) {
+  socpuppet::Platform platform{socpuppet::builtin_components()};
+  platform.add("cpu", "scripted_bus_master");
+  platform.add("ram", "memory", {{"size", 0x100}});
+  platform.bind("cpu.socket", "ram.socket");
+  platform.elaborate();
+  const std::uint32_t written = 0xC0FFEE;
+  std::uint32_t seen = 0;
+
+  platform.debug_write("cpu.socket", 0x10, std::as_bytes(std::span{&written, 1}));
+  platform.debug_read("cpu.socket", 0x10, std::as_writable_bytes(std::span{&seen, 1}));
+
+  EXPECT_EQ(seen, written);
 }
 
 TEST(WhenAnUnknownImplementationIsRequested, TheErrorNamesItAndListsTheKnownOnes) {
@@ -60,13 +83,13 @@ TEST(WhenAPortThatDoesNotExistIsBound, TheErrorListsTheComponentsPorts) {
                   AllOf(HasSubstr("link.tarket"), HasSubstr("target, initiator"))));
 }
 
-TEST(WhenAPortIsLeftUnbound, TheWiringCheckFailsAndNamesThePort) {
+TEST(WhenAPortIsLeftUnbound, ElaborationIsRefusedAndTheErrorNamesThePort) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
   platform.add("link", "pass_through_link");
   platform.bind("cpu.socket", "link.target");
 
-  EXPECT_THAT([&] { platform.check_wiring(); },
+  EXPECT_THAT([&] { platform.elaborate(); },
               ThrowsMessage<std::runtime_error>(HasSubstr("link.initiator")));
 }
 
@@ -109,6 +132,18 @@ TEST(WhenTwoComponentsAreGivenTheSameName, TheSecondIsRefusedAndTheErrorNamesIt)
 
   EXPECT_THAT([&] { platform.add("io.ram", "memory", {{"size", 0x100}}); },
               ThrowsMessage<std::invalid_argument>(HasSubstr("io.ram")));
+}
+
+TEST(WhenADebugAccessIsAskedForThroughATargetPort, TheErrorNamesThePort) {
+  socpuppet::Platform platform{socpuppet::builtin_components()};
+  platform.add("cpu", "scripted_bus_master");
+  platform.add("ram", "memory", {{"size", 0x100}});
+  platform.bind("cpu.socket", "ram.socket");
+  platform.elaborate();
+  std::array<std::byte, 4> data{};
+
+  EXPECT_THAT([&] { platform.debug_read("ram.socket", 0x10, data); },
+              ThrowsMessage<std::invalid_argument>(HasSubstr("ram.socket")));
 }
 
 socpuppet::Factory unused_factory() {

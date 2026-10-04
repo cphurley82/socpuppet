@@ -12,8 +12,7 @@
 
 namespace socpuppet {
 
-// A flat RAM on the bus. peek32 reads directly, without a bus transaction,
-// in host byte order.
+// A flat RAM on the bus.
 class Memory : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<Memory> socket{"socket"};
@@ -23,12 +22,6 @@ class Memory : public sc_core::sc_module {
     socket.register_b_transport(this, &Memory::b_transport);
     socket.register_get_direct_mem_ptr(this, &Memory::get_direct_mem_ptr);
     socket.register_transport_dbg(this, &Memory::transport_dbg);
-  }
-
-  std::uint32_t peek32(std::uint64_t address) const {
-    std::uint32_t value = 0;
-    store_.read(address, {reinterpret_cast<std::uint8_t*>(&value), sizeof value});
-    return value;
   }
 
  private:

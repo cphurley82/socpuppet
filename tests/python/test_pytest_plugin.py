@@ -20,17 +20,20 @@ class TestWhenSeveralPlatformTestsRunInOneSession:
             import pytest
             import socpuppet
 
+            def build_a_platform():
+                platform = socpuppet.Platform()
+                cpu = platform.add("cpu", socpuppet.ScriptedBusMaster(writes=[]))
+                ram = platform.add("ram", socpuppet.Memory(size=0x100))
+                platform.connect(cpu.socket, ram.socket)
+                platform.build()
+
             @pytest.mark.platform
             def test_one_platform():
-                platform = socpuppet.Platform(writes=[(0x10, 1)])
-                platform.run()
-                assert platform.peek32(0x10) == 1
+                build_a_platform()
 
             @pytest.mark.platform
             def test_another_platform():
-                platform = socpuppet.Platform(writes=[(0x20, 2)])
-                platform.run()
-                assert platform.peek32(0x20) == 2
+                build_a_platform()
             """
         )
 
@@ -131,3 +134,27 @@ class TestWhenAPlatformTestPassesButItsProcessCrashesOnExit:
         result = session_with_socpuppet.runpytest_subprocess()
 
         result.assert_outcomes(passed=1, errors=1)
+
+
+class TestWhenAPlatformTestIsTheLastOneInItsClass:
+    def test_the_ordinary_tests_after_it_still_run(self, session_with_socpuppet):
+        session_with_socpuppet.makepyfile(
+            """
+            import pytest
+
+            class TestGroup:
+                def test_ordinary(self):
+                    pass
+
+                @pytest.mark.platform
+                def test_platform(self):
+                    pass
+
+            def test_ordinary_after_the_class():
+                pass
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=3)

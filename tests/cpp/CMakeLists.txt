@@ -14,7 +14,6 @@ add_executable(kernel_tests
   contracts/memory_test.cpp
   platform/composition_test.cpp
   platform/kernel_smoke_test.cpp
-  platform/scc_router_smoke_test.cpp
-  platform/thin_slice_test.cpp)
+  platform/scc_router_smoke_test.cpp)
 target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)
 gtest_discover_tests(kernel_tests)

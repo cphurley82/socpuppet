@@ -16,11 +16,16 @@ class PassThroughLink : public sc_core::sc_module {
 
   explicit PassThroughLink(const sc_core::sc_module_name& name) : sc_module(name) {
     target.register_b_transport(this, &PassThroughLink::b_transport);
+    target.register_transport_dbg(this, &PassThroughLink::transport_dbg);
   }
 
  private:
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
     initiator->b_transport(transaction, delay);
+  }
+
+  unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
+    return initiator->transport_dbg(transaction);
   }
 };
 

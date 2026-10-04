@@ -1,5 +1,8 @@
+#include <cstddef>
 #include <cstdint>
+#include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -7,16 +10,13 @@
 #include <pybind11/stl.h>
 #include <systemc>
 
-#include "socpuppet/models/memory.h"
-#include "socpuppet/models/pass_through_link.h"
+#include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/platform/platform.h"
 
 namespace py = pybind11;
 
 namespace {
-
-// (address, value) pairs, as Python passes them.
-using Writes = std::vector<std::pair<std::uint64_t, std::uint32_t>>;
 
 // The SystemC kernel is a process-wide singleton that cannot be restarted,
 // so the first Platform built in a process is the only one it can have.
@@ -34,41 +34,65 @@ struct KernelClaim {
   }
 };
 
-// The first end-to-end slice, wired by hand, from before the registry
-// existed. It will be replaced by socpuppet::Platform (platform/platform.h): a scripted bus master writes
-// through the pass-through link into a memory.
-class Platform {
- public:
-  explicit Platform(const Writes& writes) {
-    master_.set_script(to_ops(writes));
-    master_.socket.bind(link_.target);
-    link_.initiator.bind(memory_.socket);
-  }
-
-  void run() { sc_core::sc_start(); }
-
-  std::uint32_t peek32(std::uint64_t address) const { return memory_.peek32(address); }
-
- private:
-  static std::vector<socpuppet::Write32> to_ops(
-      const Writes& writes) {
-    std::vector<socpuppet::Write32> ops;
-    for (const auto& [address, value] : writes) ops.push_back({address, value});
-    return ops;
-  }
-
-  KernelClaim kernel_claim_;  // first member: checked before any module is built
-  socpuppet::ScriptedBusMaster master_{"master"};
-  socpuppet::PassThroughLink link_{"link"};
-  socpuppet::Memory memory_{"memory", 0x100};
+// What Python's Platform.build() drives: the C++ platform, plus the claim
+// on this process's one kernel.
+struct NativePlatform {
+  KernelClaim kernel_claim;  // first member: checked before any module is built
+  socpuppet::Platform platform{socpuppet::builtin_components()};
 };
+
+// sc_time counts in units of the kernel's time resolution. This is how many
+// of those make a picosecond, the unit Python uses.
+std::uint64_t one_picosecond() { return sc_core::sc_time(1, sc_core::SC_PS).value(); }
+
+// (address, value) pairs, as Python passes them.
+using Writes = std::vector<std::pair<std::uint64_t, std::uint32_t>>;
 
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
-  py::class_<Platform>(m, "Platform")
-      .def(py::init<const Writes&>(),
-           py::arg("writes"))
-      .def("run", &Platform::run)
-      .def("peek32", &Platform::peek32);
+  // implementations() and Platform.ports() exist so the Python catalogue can
+  // be checked against the registry (tests/python/test_catalogue.py).
+  m.def("implementations", [] { return socpuppet::builtin_components().implementations(); });
+
+  py::class_<NativePlatform>(m, "Platform")
+      .def(py::init<>())
+      .def("add",
+           [](NativePlatform& self, const std::string& path, const std::string& implementation,
+              const socpuppet::Config& config) {
+             self.platform.add(path, implementation, config);
+           })
+      .def("bind", [](NativePlatform& self, const std::string& source,
+                      const std::string& sink) { self.platform.bind(source, sink); })
+      .def("set_writes",
+           [](NativePlatform& self, const std::string& path, const Writes& writes) {
+             std::vector<socpuppet::Write32> ops;
+             for (const auto& [address, value] : writes) ops.push_back({address, value});
+             self.platform.module<socpuppet::ScriptedBusMaster>(path).set_script(std::move(ops));
+           })
+      .def("ports", [](NativePlatform& self,
+                       const std::string& path) { return self.platform.ports(path); })
+      .def("elaborate", [](NativePlatform& self) { self.platform.elaborate(); })
+      .def("run", [](NativePlatform& self) { self.platform.run(); })
+      .def("run_for",
+           [](NativePlatform& self, std::uint64_t picoseconds) {
+             self.platform.run(sc_core::sc_time::from_value(picoseconds * one_picosecond()));
+           })
+      .def("time_in_picoseconds",
+           [](NativePlatform& self) { return self.platform.time().value() / one_picosecond(); })
+      // debug_read returns None, and debug_write False, when nothing took the access.
+      .def("debug_read",
+           [](NativePlatform& self, const std::string& via, std::uint64_t address,
+              std::size_t length) -> py::object {
+             std::string data(length, '\0');
+             if (!self.platform.debug_read(via, address, std::as_writable_bytes(std::span{data}))) {
+               return py::none();
+             }
+             return py::bytes(data);
+           })
+      .def("debug_write",
+           [](NativePlatform& self, const std::string& via, std::uint64_t address,
+              const std::string& data) {
+             return self.platform.debug_write(via, address, std::as_bytes(std::span{data}));
+           });
 }

@@ -57,6 +57,12 @@ class Registry {
     return found->second;
   }
 
+  std::vector<std::string> implementations() const {
+    std::vector<std::string> names;
+    for (const auto& [name, factory] : factories_) names.push_back(name);
+    return names;
+  }
+
  private:
   std::map<std::string, Factory> factories_;
 };
