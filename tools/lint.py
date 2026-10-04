@@ -8,6 +8,7 @@ automatically are repaired in place.
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import sysconfig
@@ -35,9 +36,12 @@ def main():
 
 
 def report(linter, passed):
-    """Print one line saying whether a linter passed, colored on a terminal."""
+    """Print one line saying whether a linter passed.
+
+    It is colored for a person at a terminal, unless they set NO_COLOR.
+    """
     line = f"{'✅' if passed else '❌'} {linter}"
-    if sys.stdout.isatty():
+    if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
         line = f"{GREEN if passed else RED}{line}{RESET}"
     print(line)
 

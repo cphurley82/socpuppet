@@ -27,6 +27,18 @@ def test_when_output_goes_to_a_terminal_the_result_line_is_colored(
     assert ESCAPE in result_line(sent)
 
 
+
+def test_when_no_color_is_set_the_result_line_on_a_terminal_is_plain(
+    repo, lint_on_a_terminal, monkeypatch
+):
+    monkeypatch.setenv("NO_COLOR", "1")
+    (repo / "widget.cpp").write_text("// Clean under any style.\n")
+
+    sent = lint_on_a_terminal()
+
+    assert "✅ clang-format" in sent.splitlines()
+
+
 ESCAPE = "\x1b["
 
 
