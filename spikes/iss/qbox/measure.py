@@ -65,9 +65,8 @@ def main() -> int:
     process.kill()
     process.wait()
     if found is None or started is None:
-        print(
-            f"{marker!r} never appeared. Output:\n{output.decode(errors='replace')}"
-        )
+        text = output.decode(errors="replace")
+        print(f"{marker!r} never appeared. Output:\n{text}")
         return 1
     print(
         f"RV{xlen} {mode}: {marker!r} after {found - started:.3f} s"
