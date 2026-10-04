@@ -42,6 +42,22 @@ def test_when_no_color_is_set_the_result_line_on_a_terminal_is_plain(
     assert ESCAPE not in result_line(sent)
 
 
+def test_when_linters_are_named_only_those_run(repo, lint):
+    (repo / "widget.cpp").write_text("int   answer( ){return 42;}\n")
+    (repo / "notes.md").write_text("# Notes\n\n### Too deep\n")
+
+    result = lint("rumdl")
+
+    assert marked_lines(result.stdout) == ["❌ rumdl"]
+
+
+def marked_lines(output):
+    """The lines that report a linter's result."""
+    return [
+        line for line in output.splitlines() if line.startswith(("✅", "❌"))
+    ]
+
+
 ESCAPE = "\x1b["
 
 

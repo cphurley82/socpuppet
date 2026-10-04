@@ -1,10 +1,11 @@
 """Run the linters over this repository's own files.
 
-Usage: uv run python tools/lint.py [--fix]
+Usage: uv run python tools/lint.py [--fix] [linter ...]
 
 Lints the whole git repository the command is run in, from any directory
 inside it, and exits non-zero if any linter found a problem. With --fix,
-problems that can be repaired automatically are repaired in place.
+problems that can be repaired automatically are repaired in place. Name one
+or more linters to run only those.
 """
 
 import argparse
@@ -93,11 +94,22 @@ def main():
     parser.add_argument(
         "--fix", action="store_true", help="repair what can be repaired"
     )
+    parser.add_argument(
+        "linters",
+        nargs="*",
+        choices=[linter.name for linter in LINTERS],
+        metavar="linter",
+        help="run only these (default: all of them): %(choices)s",
+    )
     args = parser.parse_args()
 
     root = repo_root()
     files = repo_files(root)
-    results = [run(linter, files, root, fix=args.fix) for linter in LINTERS]
+    results = [
+        run(linter, files, root, fix=args.fix)
+        for linter in LINTERS
+        if not args.linters or linter.name in args.linters
+    ]
     return 0 if all(results) else 1
 
 
