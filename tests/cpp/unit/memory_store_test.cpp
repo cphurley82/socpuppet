@@ -67,6 +67,7 @@ using namespace std;
 int   badly_formatted( ){return 0;}
 
 TEST(Deliberately, ReadsPastTheEndOfAnAllocation) {
+  int unused = 0;
   volatile int index = 4;
   int* numbers = new int[4]{};
   int beyond = numbers[index];
