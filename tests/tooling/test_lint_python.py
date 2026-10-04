@@ -12,12 +12,17 @@ def test_when_a_python_file_has_an_unused_import_lint_fails_and_names_the_file(
     assert "widget.py" in result.stdout
 
 
-def test_when_a_public_function_has_no_docstring_lint_fails(repo, lint):
+def test_when_a_public_function_has_no_docstring_lint_fails_and_names_the_line(
+    repo, lint
+):
     (repo / "widget.py").write_text(
         '"""A widget."""\n\n\ndef answer():\n    return 42\n'
     )
 
-    assert lint().returncode != 0
+    result = lint()
+
+    assert result.returncode != 0
+    assert "widget.py:4" in result.stdout
 
 
 def test_when_run_with_fix_a_python_file_with_unsorted_imports_then_passes_lint(
@@ -35,7 +40,7 @@ def test_when_run_with_fix_a_python_file_with_unsorted_imports_then_passes_lint(
 def test_when_a_python_file_is_misformatted_lint_fails_and_names_the_file(
     repo, lint
 ):
-    (repo / "widget.py").write_text(MISFORMATTED)
+    (repo / "widget.py").write_text('"""A widget."""\n\nANSWER   =   42\n')
 
     result = lint()
 
@@ -46,14 +51,14 @@ def test_when_a_python_file_is_misformatted_lint_fails_and_names_the_file(
 def test_when_run_with_fix_a_misformatted_python_file_then_passes_lint(
     repo, lint
 ):
-    (repo / "widget.py").write_text(MISFORMATTED)
+    (repo / "widget.py").write_text('"""A widget."""\n\nANSWER   =   42\n')
 
     lint("--fix")
 
     assert lint().returncode == 0
 
 
-def test_when_package_code_passes_a_value_of_the_wrong_type_lint_fails(
+def test_when_package_code_passes_a_value_of_the_wrong_type_lint_fails_and_names_the_line(
     repo, lint
 ):
     package = repo / "python" / "socpuppet"
@@ -76,7 +81,9 @@ def test_when_package_code_passes_a_value_of_the_wrong_type_lint_fails(
     assert "widget.py:9" in result.stdout
 
 
-def test_when_a_package_function_has_no_type_annotations_lint_fails(repo, lint):
+def test_when_a_package_function_has_no_type_annotations_lint_fails_and_names_the_line(
+    repo, lint
+):
     package = repo / "python" / "socpuppet"
     package.mkdir(parents=True)
     (package / "widget.py").write_text(
@@ -88,7 +95,7 @@ def test_when_a_package_function_has_no_type_annotations_lint_fails(repo, lint):
         "    return number * 2\n"
     )
 
-    assert lint().returncode != 0
+    result = lint()
 
-
-MISFORMATTED = '"""A widget."""\n\nANSWER   =   42\n'
+    assert result.returncode != 0
+    assert "widget.py:4: error" in result.stdout

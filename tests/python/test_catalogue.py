@@ -26,6 +26,12 @@ EXAMPLES = [
 ]
 
 
+class TestAComponentThatDoesNotNameItsPorts:
+    def test_cannot_be_created(self):
+        with pytest.raises(TypeError, match="ports"):
+            Component()
+
+
 class TestTheCatalogue:
     def test_has_an_example_here_for_every_component_class(self):
         assert {type(example) for example in EXAMPLES} == set(

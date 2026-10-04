@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Generator, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import TYPE_CHECKING, Protocol, override
 
 if TYPE_CHECKING:
@@ -17,8 +17,9 @@ if TYPE_CHECKING:
     from socpuppet.ops import Operation
 
 #: A script: a generator function that yields operations. What a read
-#: returned is sent back into the generator.
-Script = Callable[[], Generator["Operation", int | None, None]]
+#: returned is sent back into the generator. The type asks only for the
+#: yields, so a script may be annotated as an Iterator or as any Generator.
+Script = Callable[[], Iterator["Operation"]]
 
 
 class Component(ABC):
