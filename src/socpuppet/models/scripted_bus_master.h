@@ -39,13 +39,13 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   explicit ScriptedBusMaster(const sc_core::sc_module_name& name)
       : sc_module(name) {
-    SC_THREAD(run);
+    SC_THREAD(Run);
   }
 
   // The script to play, as a function that starts it. It is a function and
   // not a Script because a reset starts the script again from the top. Call
   // before the simulation starts.
-  void set_script(std::function<Script()> start_script) {
+  void SetScript(std::function<Script()> start_script) {
     start_script_ = std::move(start_script);
   }
 
@@ -55,9 +55,9 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
  private:
-  enum class Outcome { carry_on, interrupted_by_reset, failed };
+  enum class Outcome { kCarryOn, kInterruptedByReset, kFailed };
 
-  void run() {
+  void Run() {
     if (!start_script_) return;
     // Let one delta cycle pass first, so that a reset line driven high from
     // time zero has taken its value before we look at it.
@@ -65,66 +65,66 @@ class ScriptedBusMaster : public sc_core::sc_module {
     for (;;) {
       while (reset->read()) wait(reset->negedge_event());
       Script script = start_script_();
-      Outcome outcome = Outcome::carry_on;
-      while (outcome == Outcome::carry_on) {
-        const Op* op = script.next();
+      Outcome outcome = Outcome::kCarryOn;
+      while (outcome == Outcome::kCarryOn) {
+        const Op* op = script.Next();
         if (op == nullptr) break;
         outcome = std::visit(
-            [&](const auto& each) { return carry_out(each, script); }, *op);
+            [&](const auto& each) { return CarryOut(each, script); }, *op);
       }
-      if (outcome == Outcome::failed) return;
-      if (outcome == Outcome::carry_on) {
+      if (outcome == Outcome::kFailed) return;
+      if (outcome == Outcome::kCarryOn) {
         // The script ran to its end. Only a reset starts it again.
         wait(reset->posedge_event());
       }
     }
   }
 
-  Outcome carry_out(const Read32& op, Script& script) {
-    script.give_back(read(op.address));
-    return after_an_op();
+  Outcome CarryOut(const Read32& op, Script& script) {
+    script.GiveBack(Read(op.address));
+    return AfterAnOp();
   }
 
-  Outcome carry_out(const Write32& op, Script&) {
+  Outcome CarryOut(const Write32& op, Script&) {
     std::uint32_t value = op.value;
-    transport(tlm::TLM_WRITE_COMMAND, op.address, value);
-    return after_an_op();
+    Transport(tlm::TLM_WRITE_COMMAND, op.address, value);
+    return AfterAnOp();
   }
 
-  Outcome carry_out(const Expect32& op, Script&) {
-    const std::uint32_t actual = read(op.address);
+  Outcome CarryOut(const Expect32& op, Script&) {
+    const std::uint32_t actual = Read(op.address);
     if (actual != op.value) {
-      fail_simulation(ExpectationFailed(
+      FailSimulation(ExpectationFailed(
           std::format("{} expected {:#x} at address {:#x}, but read {:#x}.",
                       name(), op.value, op.address, actual)));
-      return Outcome::failed;
+      return Outcome::kFailed;
     }
-    return after_an_op();
+    return AfterAnOp();
   }
 
-  Outcome carry_out(const Wait& op, Script&) {
-    wait(to_sc_time(op.duration), reset->posedge_event());
-    return after_an_op();
+  Outcome CarryOut(const Wait& op, Script&) {
+    wait(ToScTime(op.duration), reset->posedge_event());
+    return AfterAnOp();
   }
 
-  Outcome carry_out(const WaitIrq&, Script&) {
+  Outcome CarryOut(const WaitIrq&, Script&) {
     while (!irq->read() && !reset->read()) {
       wait(irq->posedge_event() | reset->posedge_event());
     }
-    return after_an_op();
+    return AfterAnOp();
   }
 
-  Outcome after_an_op() {
-    return reset->read() ? Outcome::interrupted_by_reset : Outcome::carry_on;
+  Outcome AfterAnOp() {
+    return reset->read() ? Outcome::kInterruptedByReset : Outcome::kCarryOn;
   }
 
-  std::uint32_t read(std::uint64_t address) {
+  std::uint32_t Read(std::uint64_t address) {
     std::uint32_t value = 0;
-    transport(tlm::TLM_READ_COMMAND, address, value);
+    Transport(tlm::TLM_READ_COMMAND, address, value);
     return value;
   }
 
-  void transport(tlm::tlm_command command, std::uint64_t address,
+  void Transport(tlm::tlm_command command, std::uint64_t address,
                  std::uint32_t& value) {
     tlm::tlm_generic_payload transaction;
     transaction.set_command(command);

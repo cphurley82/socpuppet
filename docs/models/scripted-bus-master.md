@@ -40,9 +40,9 @@ It has three ports: `socket` (the bus), and the inputs `irq` and `reset`.
 In C++ the same thing is a C++20 coroutine, which keeps the C++ tests free of Python:
 
 ```cpp
-socpuppet::Script boot() {
-  co_await socpuppet::write32(0x10, 0xC0FFEE);
-  std::uint32_t value = co_await socpuppet::read32(0x10);
+socpuppet::Script Boot() {
+  co_await socpuppet::Write32(0x10, 0xC0FFEE);
+  std::uint32_t value = co_await socpuppet::Read32(0x10);
 }
 ```
 

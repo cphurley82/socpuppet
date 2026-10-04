@@ -26,7 +26,7 @@ struct Instance {
 };
 
 // The value of a parameter the implementation cannot do without.
-inline std::uint64_t required(const Config& config,
+inline std::uint64_t Required(const Config& config,
                               const std::string& parameter,
                               const std::string& implementation) {
   const auto found = config.find(parameter);
@@ -45,11 +45,11 @@ using Factory = std::function<Instance(const char* name, const Config& config)>;
 // looked up by name. This is what lets Python pick an implementation per slot.
 class Registry {
  public:
-  void add(std::string implementation, Factory factory) {
+  void Add(std::string implementation, Factory factory) {
     factories_.emplace(std::move(implementation), std::move(factory));
   }
 
-  const Factory& find(const std::string& implementation) const {
+  const Factory& Find(const std::string& implementation) const {
     const auto found = factories_.find(implementation);
     if (found == factories_.end()) {
       std::string known;
@@ -63,7 +63,7 @@ class Registry {
     return found->second;
   }
 
-  std::vector<std::string> implementations() const {
+  std::vector<std::string> Implementations() const {
     std::vector<std::string> names;
     names.reserve(factories_.size());
     for (const auto& [name, factory] : factories_) names.push_back(name);

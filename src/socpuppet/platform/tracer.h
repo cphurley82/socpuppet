@@ -54,7 +54,7 @@ class Tracer : public sc_core::sc_module {
     // (temporal decoupling), so the transaction's own time is the sum.
     const sc_core::sc_time when = sc_core::sc_time_stamp() + delay;
     const unsigned char* data = transaction.get_data_ptr();
-    trace_.record({.time = to_picoseconds(when),
+    trace_.Record({.time = ToPicoseconds(when),
                    .source = source_,
                    .sink = sink_,
                    .is_write = transaction.is_write(),

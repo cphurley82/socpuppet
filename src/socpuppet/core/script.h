@@ -11,7 +11,9 @@
 
 namespace socpuppet {
 
-// The operations a script can ask its bus master to carry out.
+// The operations a script can ask its bus master to carry out. A script
+// makes one where it is needed: `co_await Write32(0x10, 0xC0FFEE)`. They
+// have the names the Python API uses (`sp.write32`), in C++'s spelling.
 struct Read32 {
   std::uint64_t address;
 };
@@ -24,6 +26,7 @@ struct Expect32 {
   std::uint64_t address;
   std::uint32_t value;
 };
+// Let simulated time pass.
 struct Wait {
   Picoseconds duration;
 };
@@ -34,9 +37,9 @@ using Op = std::variant<Read32, Write32, Expect32, Wait, WaitIrq>;
 
 // A script for a bus master, written as a C++20 coroutine:
 //
-//   Script boot() {
-//     co_await write32(0x10, 0xC0FFEE);
-//     std::uint32_t value = co_await read32(0x10);
+//   Script Boot() {
+//     co_await Write32(0x10, 0xC0FFEE);
+//     std::uint32_t value = co_await Read32(0x10);
 //   }
 //
 // Each co_await hands one Op to whoever is driving the script and suspends.
@@ -83,13 +86,13 @@ class Script {
       pending = op;
       return AwaitValue{{}, *this};
     }
-    AwaitNothing await_transform(Write32 op) { return hand_over(op); }
-    AwaitNothing await_transform(Expect32 op) { return hand_over(op); }
-    AwaitNothing await_transform(Wait op) { return hand_over(op); }
-    AwaitNothing await_transform(WaitIrq op) { return hand_over(op); }
+    AwaitNothing await_transform(Write32 op) { return HandOver(op); }
+    AwaitNothing await_transform(Expect32 op) { return HandOver(op); }
+    AwaitNothing await_transform(Wait op) { return HandOver(op); }
+    AwaitNothing await_transform(WaitIrq op) { return HandOver(op); }
 
    private:
-    AwaitNothing hand_over(Op op) {
+    AwaitNothing HandOver(Op op) {
       pending = op;
       return {};
     }
@@ -103,13 +106,13 @@ class Script {
 
   // Runs the script up to its next op and returns it, or nullptr when the
   // script has finished.
-  const Op* next() {
+  const Op* Next() {
     coroutine_.resume();
     return coroutine_.done() ? nullptr : &coroutine_.promise().pending;
   }
 
   // The result of the op just carried out, for the script's co_await to return.
-  void give_back(std::uint32_t result) { coroutine_.promise().result = result; }
+  void GiveBack(std::uint32_t result) { coroutine_.promise().result = result; }
 
  private:
   explicit Script(std::coroutine_handle<promise_type> coroutine)
@@ -117,17 +120,6 @@ class Script {
 
   std::coroutine_handle<promise_type> coroutine_;
 };
-
-inline Read32 read32(std::uint64_t address) { return {address}; }
-inline Write32 write32(std::uint64_t address, std::uint32_t value) {
-  return {.address = address, .value = value};
-}
-inline Expect32 expect32(std::uint64_t address, std::uint32_t value) {
-  return {.address = address, .value = value};
-}
-// Python calls this one `wait`; here that name belongs to sc_module::wait.
-inline Wait wait_for(Picoseconds duration) { return {duration}; }
-inline WaitIrq wait_irq() { return {}; }
 
 }  // namespace socpuppet
 

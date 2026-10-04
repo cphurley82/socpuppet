@@ -29,16 +29,16 @@ class PythonExecutor : public sc_core::sc_module {
  public:
   explicit PythonExecutor(const sc_core::sc_module_name& name)
       : sc_module(name) {
-    SC_METHOD(run_job);
+    SC_METHOD(RunJob);
     sensitive << job_posted_;
     dont_initialize();
   }
 
   // Runs `job` on the main stack with the GIL held, and returns once it is
   // done. Call from a SystemC thread process. If the job throws (a Python
-  // exception, say), the simulation is stopped with that failure and run()
+  // exception, say), the simulation is stopped with that failure and Run()
   // returns false.
-  bool run(std::function<void()> job) {
+  bool Run(std::function<void()> job) {
     // One job at a time: several threads can ask in the same delta cycle,
     // before the method process has had its turn.
     while (job_) wait(job_done_);
@@ -49,7 +49,7 @@ class PythonExecutor : public sc_core::sc_module {
   }
 
  private:
-  void run_job() {
+  void RunJob() {
     {
       // sc_start() runs with the GIL released; take it back for the job.
       pybind11::gil_scoped_acquire gil;
@@ -57,7 +57,7 @@ class PythonExecutor : public sc_core::sc_module {
         job_();
         succeeded_ = true;
       } catch (...) {
-        fail_simulation(std::current_exception());
+        FailSimulation(std::current_exception());
         succeeded_ = false;
       }
       job_ = nullptr;

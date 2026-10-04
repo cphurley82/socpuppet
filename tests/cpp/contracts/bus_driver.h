@@ -21,12 +21,12 @@ class DirectMemory {
         bytes_to_end_(dmi.get_end_address() - address + 1),
         read_write_allowed_(dmi.is_read_write_allowed()) {}
 
-  bool granted() const { return pointer_ != nullptr; }
-  bool read_write_allowed() const { return read_write_allowed_; }
+  bool Granted() const { return pointer_ != nullptr; }
+  bool ReadWriteAllowed() const { return read_write_allowed_; }
   // How many bytes the grant covers, from the requested address onwards.
-  std::uint64_t bytes_to_end() const { return bytes_to_end_; }
+  std::uint64_t BytesToEnd() const { return bytes_to_end_; }
 
-  void read(std::span<std::uint8_t> data) const {
+  void Read(std::span<std::uint8_t> data) const {
     std::copy_n(pointer_, data.size(), data.begin());
   }
 
@@ -45,33 +45,33 @@ class BusDriver : public sc_core::sc_module {
   BusDriver(const sc_core::sc_module_name& name,
             std::function<void(BusDriver&)> body)
       : sc_module(name), body_(std::move(body)) {
-    SC_THREAD(run);
+    SC_THREAD(Run);
   }
 
-  tlm::tlm_response_status write(std::uint64_t address,
+  tlm::tlm_response_status Write(std::uint64_t address,
                                  std::span<const std::uint8_t> data) {
-    return transport(tlm::TLM_WRITE_COMMAND, address,
+    return Transport(tlm::TLM_WRITE_COMMAND, address,
                      const_cast<std::uint8_t*>(data.data()), data.size());
   }
 
-  tlm::tlm_response_status read(std::uint64_t address,
+  tlm::tlm_response_status Read(std::uint64_t address,
                                 std::span<std::uint8_t> data) {
-    return transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+    return Transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
   }
 
   // Debug transport: an access that takes no simulated time and has no side
   // effects, the way a debugger looks at memory.
-  void debug_write(std::uint64_t address, std::span<const std::uint8_t> data) {
-    debug(tlm::TLM_WRITE_COMMAND, address,
+  void DebugWrite(std::uint64_t address, std::span<const std::uint8_t> data) {
+    Debug(tlm::TLM_WRITE_COMMAND, address,
           const_cast<std::uint8_t*>(data.data()), data.size());
   }
 
-  void debug_read(std::uint64_t address, std::span<std::uint8_t> data) {
-    debug(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+  void DebugRead(std::uint64_t address, std::span<std::uint8_t> data) {
+    Debug(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
   }
 
   // Asks the target for direct memory access (DMI) at `address`.
-  DirectMemory direct_memory(std::uint64_t address) {
+  DirectMemory RequestDirectMemory(std::uint64_t address) {
     tlm::tlm_generic_payload transaction;
     transaction.set_address(address);
     tlm::tlm_dmi dmi;
@@ -80,26 +80,26 @@ class BusDriver : public sc_core::sc_module {
   }
 
  private:
-  void run() { body_(*this); }
+  void Run() { body_(*this); }
 
-  void debug(tlm::tlm_command command, std::uint64_t address,
+  void Debug(tlm::tlm_command command, std::uint64_t address,
              std::uint8_t* data, std::size_t length) {
     tlm::tlm_generic_payload transaction;
-    fill(transaction, command, address, data, length);
+    Fill(transaction, command, address, data, length);
     socket->transport_dbg(transaction);
   }
 
-  tlm::tlm_response_status transport(tlm::tlm_command command,
+  tlm::tlm_response_status Transport(tlm::tlm_command command,
                                      std::uint64_t address, std::uint8_t* data,
                                      std::size_t length) {
     tlm::tlm_generic_payload transaction;
-    fill(transaction, command, address, data, length);
+    Fill(transaction, command, address, data, length);
     sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
     socket->b_transport(transaction, delay);
     return transaction.get_response_status();
   }
 
-  static void fill(tlm::tlm_generic_payload& transaction,
+  static void Fill(tlm::tlm_generic_payload& transaction,
                    tlm::tlm_command command, std::uint64_t address,
                    std::uint8_t* data, std::size_t length) {
     transaction.set_command(command);
@@ -116,9 +116,9 @@ class BusDriver : public sc_core::sc_module {
 // `socket`) by debug transport, without a bus in between. For tests that
 // need to see or set what a memory holds.
 template <typename Target>
-void debug_access(Target& target, tlm::tlm_command command,
-                  std::uint64_t address, std::uint8_t* data,
-                  std::size_t length) {
+void DebugAccess(Target& target, tlm::tlm_command command,
+                 std::uint64_t address, std::uint8_t* data,
+                 std::size_t length) {
   tlm::tlm_generic_payload transaction;
   transaction.set_command(command);
   transaction.set_address(address);
@@ -129,17 +129,16 @@ void debug_access(Target& target, tlm::tlm_command command,
 }
 
 template <typename Target>
-void debug_read(Target& target, std::uint64_t address,
-                std::span<std::uint8_t> data) {
-  debug_access(target, tlm::TLM_READ_COMMAND, address, data.data(),
-               data.size());
+void DebugRead(Target& target, std::uint64_t address,
+               std::span<std::uint8_t> data) {
+  DebugAccess(target, tlm::TLM_READ_COMMAND, address, data.data(), data.size());
 }
 
 template <typename Target>
-void debug_write(Target& target, std::uint64_t address,
-                 std::span<const std::uint8_t> data) {
-  debug_access(target, tlm::TLM_WRITE_COMMAND, address,
-               const_cast<std::uint8_t*>(data.data()), data.size());
+void DebugWrite(Target& target, std::uint64_t address,
+                std::span<const std::uint8_t> data) {
+  DebugAccess(target, tlm::TLM_WRITE_COMMAND, address,
+              const_cast<std::uint8_t*>(data.data()), data.size());
 }
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_DRIVER_H_

@@ -56,9 +56,13 @@ CheckOptions:
   readability-identifier-naming.TemplateParameterCase: CamelCase
   readability-identifier-naming.ConceptCase: CamelCase
   readability-identifier-naming.FunctionCase: CamelCase
-  # Names we do not get to choose. TLM-2.0 calls a target's transport
-  # functions by these names, and anyone who has met TLM elsewhere knows them.
-  readability-identifier-naming.FunctionIgnoredRegexp: '^(b_transport|nb_transport_fw|nb_transport_bw|transport_dbg|get_direct_mem_ptr|invalidate_direct_mem_ptr)$'
+  # Names we do not get to choose:
+  #   - TLM-2.0 calls a target's transport functions by these names, and
+  #     anyone who has met TLM elsewhere knows them.
+  #   - The compiler calls a coroutine's promise and awaiters by these names
+  #     (see core/script.h).
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(b_transport|nb_transport_fw|nb_transport_bw|transport_dbg|get_direct_mem_ptr|invalidate_direct_mem_ptr|get_return_object|initial_suspend|final_suspend|return_void|return_value|unhandled_exception|await_transform|await_ready|await_suspend|await_resume|yield_value)$'
+  readability-identifier-naming.StructIgnoredRegexp: '^promise_type$'
   readability-identifier-naming.VariableCase: lower_case
   readability-identifier-naming.ParameterCase: lower_case
   readability-identifier-naming.MemberCase: lower_case

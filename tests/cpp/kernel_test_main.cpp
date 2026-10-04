@@ -11,6 +11,6 @@
 // NOLINTNEXTLINE(bugprone-exception-escape)
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  socpuppet::init_logging(false);
+  socpuppet::InitLogging(false);
   return RUN_ALL_TESTS();
 }

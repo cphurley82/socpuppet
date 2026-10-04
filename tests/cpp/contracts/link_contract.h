@@ -33,28 +33,28 @@ template <socpuppet::LinkEndpointSlot Endpoint>
 class LinkContract : public ::testing::Test {
  protected:
   LinkContract() {
-    a.peer_initiator.bind(b.peer_target);
-    b.peer_initiator.bind(a.peer_target);
-    a.initiator.bind(memory_on_a.socket);
-    b.initiator.bind(memory_on_b.socket);
+    a_.peer_initiator.bind(b_.peer_target);
+    b_.peer_initiator.bind(a_.peer_target);
+    a_.initiator.bind(memory_on_a_.socket);
+    b_.initiator.bind(memory_on_b_.socket);
   }
 
   // Runs `on_a` in a thread on die A and `on_b` in a thread on die B, each
   // wired to its own endpoint, to completion.
-  void on_the_dies(
+  void OnTheDies(
       std::function<void(BusDriver&)> on_a,
       std::function<void(BusDriver&)> on_b = [](BusDriver&) {}) {
     BusDriver driver_on_a{"driver_on_a", std::move(on_a)};
     BusDriver driver_on_b{"driver_on_b", std::move(on_b)};
-    driver_on_a.socket.bind(a.target);
-    driver_on_b.socket.bind(b.target);
+    driver_on_a.socket.bind(a_.target);
+    driver_on_b.socket.bind(b_.target);
     sc_core::sc_start();
   }
 
-  Endpoint a{"a"};
-  Endpoint b{"b"};
-  socpuppet::Memory memory_on_a{"memory_on_a", 0x100};
-  socpuppet::Memory memory_on_b{"memory_on_b", 0x100};
+  Endpoint a_{"a"};
+  Endpoint b_{"b"};
+  socpuppet::Memory memory_on_a_{"memory_on_a", 0x100};
+  socpuppet::Memory memory_on_b_{"memory_on_b", 0x100};
 };
 
 TYPED_TEST_SUITE_P(LinkContract);
@@ -63,18 +63,18 @@ TYPED_TEST_P(LinkContract, AWriteOnOneDieLandsInTheMemoryOfTheOther) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> seen_on_b{};
 
-  this->on_the_dies([&](BusDriver& on_a) { on_a.write(0x10, written); });
+  this->OnTheDies([&](BusDriver& on_a) { on_a.Write(0x10, written); });
 
-  debug_read(this->memory_on_b, 0x10, seen_on_b);
+  DebugRead(this->memory_on_b_, 0x10, seen_on_b);
   EXPECT_EQ(seen_on_b, written);
 }
 
 TYPED_TEST_P(LinkContract, AReadOnOneDieReturnsWhatIsInTheMemoryOfTheOther) {
   const std::array<std::uint8_t, 4> stored{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> read_on_a{};
-  debug_write(this->memory_on_b, 0x10, stored);
+  DebugWrite(this->memory_on_b_, 0x10, stored);
 
-  this->on_the_dies([&](BusDriver& on_a) { on_a.read(0x10, read_on_a); });
+  this->OnTheDies([&](BusDriver& on_a) { on_a.Read(0x10, read_on_a); });
 
   EXPECT_EQ(read_on_a, stored);
 }
@@ -85,11 +85,11 @@ TYPED_TEST_P(LinkContract, TrafficFlowsInBothDirectionsAtOnce) {
   std::array<std::uint8_t, 4> seen_on_a{};
   std::array<std::uint8_t, 4> seen_on_b{};
 
-  this->on_the_dies([&](BusDriver& on_a) { on_a.write(0x10, from_a); },
-                    [&](BusDriver& on_b) { on_b.write(0x10, from_b); });
+  this->OnTheDies([&](BusDriver& on_a) { on_a.Write(0x10, from_a); },
+                  [&](BusDriver& on_b) { on_b.Write(0x10, from_b); });
 
-  debug_read(this->memory_on_a, 0x10, seen_on_a);
-  debug_read(this->memory_on_b, 0x10, seen_on_b);
+  DebugRead(this->memory_on_a_, 0x10, seen_on_a);
+  DebugRead(this->memory_on_b_, 0x10, seen_on_b);
   EXPECT_EQ(seen_on_a, from_b);
   EXPECT_EQ(seen_on_b, from_a);
 }
@@ -98,8 +98,7 @@ TYPED_TEST_P(LinkContract, AnErrorResponseComesBackAcrossTheLink) {
   std::array<std::uint8_t, 4> data{};
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
 
-  this->on_the_dies(
-      [&](BusDriver& on_a) { response = on_a.read(0x1000, data); });
+  this->OnTheDies([&](BusDriver& on_a) { response = on_a.Read(0x1000, data); });
 
   EXPECT_EQ(response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
@@ -107,10 +106,10 @@ TYPED_TEST_P(LinkContract, AnErrorResponseComesBackAcrossTheLink) {
 TYPED_TEST_P(LinkContract, ADebugReadOnOneDieSeesTheMemoryOfTheOther) {
   const std::array<std::uint8_t, 4> stored{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> seen_by_debug{};
-  debug_write(this->memory_on_b, 0x10, stored);
+  DebugWrite(this->memory_on_b_, 0x10, stored);
 
-  this->on_the_dies(
-      [&](BusDriver& on_a) { on_a.debug_read(0x10, seen_by_debug); });
+  this->OnTheDies(
+      [&](BusDriver& on_a) { on_a.DebugRead(0x10, seen_by_debug); });
 
   EXPECT_EQ(seen_by_debug, stored);
 }
@@ -123,10 +122,10 @@ TYPED_TEST_P(LinkContract,
   std::array<std::uint8_t, 4> seen_directly =
       written;  // what a refusal leaves untouched
 
-  this->on_the_dies([&](BusDriver& on_a) {
-    const DirectMemory direct = on_a.direct_memory(0x10);
-    on_a.write(0x10, written);
-    if (direct.granted()) direct.read(seen_directly);
+  this->OnTheDies([&](BusDriver& on_a) {
+    const DirectMemory direct = on_a.RequestDirectMemory(0x10);
+    on_a.Write(0x10, written);
+    if (direct.Granted()) direct.Read(seen_directly);
   });
 
   EXPECT_EQ(seen_directly, written);

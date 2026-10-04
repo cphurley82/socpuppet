@@ -29,13 +29,13 @@ class PythonScript {
         executor_(executor) {}
 
   // Starts the Python script from the top and plays it to the end. Stops
-  // early if Python raises; the exception then comes out of run().
-  Script play() {
-    if (!executor_.run([this] { generator_ = generator_function_(); })) {
+  // early if Python raises; the exception then comes out of Run().
+  Script Play() {
+    if (!executor_.Run([this] { generator_ = generator_function_(); })) {
       co_return;
     }
     std::optional<std::uint32_t> read_value;
-    while (std::optional<Op> op = next(read_value)) {
+    while (std::optional<Op> op = Next(read_value)) {
       const std::uint32_t given_back = co_await *op;
       read_value = std::holds_alternative<Read32>(*op)
                        ? std::optional{given_back}
@@ -47,14 +47,14 @@ class PythonScript {
   // Advances the generator, sending it the last read's value if there was
   // one, and returns the op it yields. Returns nothing when the script has
   // finished or has failed.
-  std::optional<Op> next(std::optional<std::uint32_t> read_value) {
+  std::optional<Op> Next(std::optional<std::uint32_t> read_value) {
     std::optional<Op> op;
-    executor_.run([&] {
+    executor_.Run([&] {
       namespace py = pybind11;
       try {
         py::object yielded = read_value ? generator_.attr("send")(*read_value)
                                         : generator_.attr("send")(py::none());
-        op = to_op(to_native_(yielded));
+        op = ToOp(to_native_(yielded));
       } catch (py::error_already_set& error) {
         if (!error.matches(PyExc_StopIteration)) throw;
       }
@@ -62,7 +62,7 @@ class PythonScript {
     return op;
   }
 
-  static Op to_op(const pybind11::tuple& native) {
+  static Op ToOp(const pybind11::tuple& native) {
     const auto kind = native[0].cast<std::string>();
     const auto number = [&](std::size_t index) {
       return native[index].cast<std::uint64_t>();

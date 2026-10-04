@@ -33,50 +33,50 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
 
   explicit PassThroughLinkEndpoint(const sc_core::sc_module_name& name)
       : sc_module(name) {
-    target.register_b_transport(this, &PassThroughLinkEndpoint::send);
-    target.register_transport_dbg(this, &PassThroughLinkEndpoint::send_debug);
+    target.register_b_transport(this, &PassThroughLinkEndpoint::Send);
+    target.register_transport_dbg(this, &PassThroughLinkEndpoint::SendDebug);
     target.register_get_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::send_dmi_request);
+        this, &PassThroughLinkEndpoint::SendDmiRequest);
     peer_initiator.register_invalidate_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::pass_invalidation_to_die);
+        this, &PassThroughLinkEndpoint::PassInvalidationToDie);
 
-    peer_target.register_b_transport(this, &PassThroughLinkEndpoint::deliver);
+    peer_target.register_b_transport(this, &PassThroughLinkEndpoint::Deliver);
     peer_target.register_transport_dbg(this,
-                                       &PassThroughLinkEndpoint::deliver_debug);
+                                       &PassThroughLinkEndpoint::DeliverDebug);
     peer_target.register_get_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::deliver_dmi_request);
+        this, &PassThroughLinkEndpoint::DeliverDmiRequest);
     initiator.register_invalidate_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::pass_invalidation_to_peer);
+        this, &PassThroughLinkEndpoint::PassInvalidationToPeer);
   }
 
  private:
   // Leaving this die.
-  void send(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
+  void Send(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
     peer_initiator->b_transport(transaction, delay);
   }
-  unsigned send_debug(tlm::tlm_generic_payload& transaction) {
+  unsigned SendDebug(tlm::tlm_generic_payload& transaction) {
     return peer_initiator->transport_dbg(transaction);
   }
-  bool send_dmi_request(tlm::tlm_generic_payload& transaction,
-                        tlm::tlm_dmi& dmi) {
+  bool SendDmiRequest(tlm::tlm_generic_payload& transaction,
+                      tlm::tlm_dmi& dmi) {
     return peer_initiator->get_direct_mem_ptr(transaction, dmi);
   }
-  void pass_invalidation_to_peer(sc_dt::uint64 start, sc_dt::uint64 end) {
+  void PassInvalidationToPeer(sc_dt::uint64 start, sc_dt::uint64 end) {
     peer_target->invalidate_direct_mem_ptr(start, end);
   }
 
   // Arriving on this die.
-  void deliver(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
+  void Deliver(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
     initiator->b_transport(transaction, delay);
   }
-  unsigned deliver_debug(tlm::tlm_generic_payload& transaction) {
+  unsigned DeliverDebug(tlm::tlm_generic_payload& transaction) {
     return initiator->transport_dbg(transaction);
   }
-  bool deliver_dmi_request(tlm::tlm_generic_payload& transaction,
-                           tlm::tlm_dmi& dmi) {
+  bool DeliverDmiRequest(tlm::tlm_generic_payload& transaction,
+                         tlm::tlm_dmi& dmi) {
     return initiator->get_direct_mem_ptr(transaction, dmi);
   }
-  void pass_invalidation_to_die(sc_dt::uint64 start, sc_dt::uint64 end) {
+  void PassInvalidationToDie(sc_dt::uint64 start, sc_dt::uint64 end) {
     target->invalidate_direct_mem_ptr(start, end);
   }
 };

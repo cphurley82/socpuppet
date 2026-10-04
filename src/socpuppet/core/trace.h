@@ -28,8 +28,8 @@ struct TraceRecord {
 // transactions completed.
 class Trace {
  public:
-  void record(TraceRecord record) { records_.push_back(std::move(record)); }
-  const std::vector<TraceRecord>& records() const { return records_; }
+  void Record(TraceRecord record) { records_.push_back(std::move(record)); }
+  const std::vector<TraceRecord>& Records() const { return records_; }
 
  private:
   std::vector<TraceRecord> records_;

@@ -37,14 +37,14 @@ class LineDriver : public sc_core::sc_module {
   LineDriver(const sc_core::sc_module_name& name,
              std::function<void(LineDriver&)> body)
       : sc_module(name), body_(std::move(body)) {
-    SC_THREAD(run);
+    SC_THREAD(Run);
   }
 
-  void set(bool level) { line.write(level); }
-  void wait_for(const sc_core::sc_time& duration) { wait(duration); }
+  void Set(bool level) { line.write(level); }
+  void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
 
  private:
-  void run() { body_(*this); }
+  void Run() { body_(*this); }
   std::function<void(LineDriver&)> body_;
 };
 
@@ -61,38 +61,38 @@ struct Lines {
 struct MasterWithRam {
   explicit MasterWithRam(std::function<Script()> script,
                          const Lines& lines = {})
-      : platform{with_line_drivers(lines.irq, lines.reset)} {
+      : platform{WithLineDrivers(lines.irq, lines.reset)} {
     const Drive& irq = lines.irq;
     const Drive& reset = lines.reset;
-    platform.add("cpu", "scripted_bus_master");
-    platform.add("ram", "memory", {{"size", 0x100}});
-    platform.bind("cpu.socket", "ram.socket");
+    platform.Add("cpu", "scripted_bus_master");
+    platform.Add("ram", "memory", {{"size", 0x100}});
+    platform.Bind("cpu.socket", "ram.socket");
     if (irq) {
-      platform.add("irq_driver", "irq_driver");
-      platform.bind("irq_driver.line", "cpu.irq");
+      platform.Add("irq_driver", "irq_driver");
+      platform.Bind("irq_driver.line", "cpu.irq");
     }
     if (reset) {
-      platform.add("reset_driver", "reset_driver");
-      platform.bind("reset_driver.line", "cpu.reset");
+      platform.Add("reset_driver", "reset_driver");
+      platform.Bind("reset_driver.line", "cpu.reset");
     }
-    platform.module<ScriptedBusMaster>("cpu").set_script(std::move(script));
-    platform.elaborate();
+    platform.ModuleAt<ScriptedBusMaster>("cpu").SetScript(std::move(script));
+    platform.Elaborate();
   }
 
-  std::uint32_t peek32(std::uint64_t address) {
+  std::uint32_t Peek32(std::uint64_t address) {
     std::uint32_t value = 0;
-    platform.debug_read("cpu.socket", address,
-                        std::as_writable_bytes(std::span{&value, 1}));
+    platform.DebugRead("cpu.socket", address,
+                       std::as_writable_bytes(std::span{&value, 1}));
     return value;
   }
 
-  static Registry with_line_drivers(const Drive& irq, const Drive& reset) {
-    Registry registry = builtin_components();
+  static Registry WithLineDrivers(const Drive& irq, const Drive& reset) {
+    Registry registry = BuiltinComponents();
     for (const auto& [implementation, body] :
          {std::pair{"irq_driver", irq}, std::pair{"reset_driver", reset}}) {
-      registry.add(implementation, [body](const char* name, const Config&) {
+      registry.Add(implementation, [body](const char* name, const Config&) {
         auto module = std::make_unique<LineDriver>(name, body);
-        std::vector<Port> ports{wire_source_port("line", module->line)};
+        std::vector<Port> ports{WireSourcePort("line", module->line)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
     }
@@ -106,26 +106,26 @@ struct MasterWithRam {
 
 TEST(WhenAScriptReadsAnAddressItWroteEarlier, TheReadReturnsTheWrittenValue) {
   MasterWithRam fixture{[]() -> Script {
-    co_await write32(0x10, 0xC0FFEE);
-    const std::uint32_t read_back = co_await read32(0x10);
-    co_await write32(0x20, read_back);
+    co_await Write32(0x10, 0xC0FFEE);
+    const std::uint32_t read_back = co_await Read32(0x10);
+    co_await Write32(0x20, read_back);
   }};
 
-  fixture.platform.run();
+  fixture.platform.Run();
 
-  EXPECT_EQ(fixture.peek32(0x20), 0xC0FFEEU);
+  EXPECT_EQ(fixture.Peek32(0x20), 0xC0FFEEU);
 }
 
 TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
   MasterWithRam fixture{[]() -> Script {
-    co_await wait_for(Picoseconds{10'000});
-    co_await write32(0x10, 0xC0FFEE);
+    co_await Wait(Picoseconds{10'000});
+    co_await Write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.run(Nanoseconds(9));
-  const std::uint32_t before = fixture.peek32(0x10);
-  fixture.platform.run(Nanoseconds(2));
-  const std::uint32_t after = fixture.peek32(0x10);
+  fixture.platform.Run(Nanoseconds(9));
+  const std::uint32_t before = fixture.Peek32(0x10);
+  fixture.platform.Run(Nanoseconds(2));
+  const std::uint32_t after = fixture.Peek32(0x10);
 
   EXPECT_EQ(before, 0U);
   EXPECT_EQ(after, 0xC0FFEEU);
@@ -134,58 +134,58 @@ TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
 TEST(WhenAnExpectedValueIsNotTheOneInMemory,
      TheRunFailsNamingAddressExpectedAndActual) {
   MasterWithRam fixture{[]() -> Script {
-    co_await write32(0x10, 0xBAD);
-    co_await expect32(0x10, 0xC0FFEE);
+    co_await Write32(0x10, 0xBAD);
+    co_await Expect32(0x10, 0xC0FFEE);
   }};
 
   EXPECT_THAT(
-      [&] { fixture.platform.run(); },
+      [&] { fixture.platform.Run(); },
       ThrowsMessage<ExpectationFailed>(
           AllOf(HasSubstr("0x10"), HasSubstr("0xc0ffee"), HasSubstr("0xbad"))));
 }
 
 TEST(WhenAnExpectedValueIsNotTheOneInMemory, TheScriptDoesNotCarryOn) {
   MasterWithRam fixture{[]() -> Script {
-    co_await expect32(0x10, 0xC0FFEE);
-    co_await write32(0x20, 1);
+    co_await Expect32(0x10, 0xC0FFEE);
+    co_await Write32(0x20, 1);
   }};
 
-  EXPECT_THROW(fixture.platform.run(), ExpectationFailed);
+  EXPECT_THROW(fixture.platform.Run(), ExpectationFailed);
 
-  EXPECT_EQ(fixture.peek32(0x20), 0U);
+  EXPECT_EQ(fixture.Peek32(0x20), 0U);
 }
 
 TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
   MasterWithRam fixture{[]() -> Script {
-                          co_await wait_irq();
-                          co_await write32(0x10, 0xC0FFEE);
+                          co_await WaitIrq();
+                          co_await Write32(0x10, 0xC0FFEE);
                         },
                         {.irq = [](LineDriver& irq) {
-                          irq.wait_for(Nanoseconds(10));
-                          irq.set(true);
+                          irq.WaitFor(Nanoseconds(10));
+                          irq.Set(true);
                         }}};
 
-  fixture.platform.run(Nanoseconds(9));
-  const std::uint32_t before = fixture.peek32(0x10);
-  fixture.platform.run(Nanoseconds(2));
-  const std::uint32_t after = fixture.peek32(0x10);
+  fixture.platform.Run(Nanoseconds(9));
+  const std::uint32_t before = fixture.Peek32(0x10);
+  fixture.platform.Run(Nanoseconds(2));
+  const std::uint32_t after = fixture.Peek32(0x10);
 
   EXPECT_EQ(before, 0U);
   EXPECT_EQ(after, 0xC0FFEEU);
 }
 
 TEST(WhenResetIsHeldFromTimeZero, TheScriptStartsOnlyOnceItIsReleased) {
-  MasterWithRam fixture{[]() -> Script { co_await write32(0x10, 0xC0FFEE); },
+  MasterWithRam fixture{[]() -> Script { co_await Write32(0x10, 0xC0FFEE); },
                         {.reset = [](LineDriver& reset) {
-                          reset.set(true);
-                          reset.wait_for(Nanoseconds(10));
-                          reset.set(false);
+                          reset.Set(true);
+                          reset.WaitFor(Nanoseconds(10));
+                          reset.Set(false);
                         }}};
 
-  fixture.platform.run(Nanoseconds(9));
-  const std::uint32_t during_reset = fixture.peek32(0x10);
-  fixture.platform.run(Nanoseconds(2));
-  const std::uint32_t after_release = fixture.peek32(0x10);
+  fixture.platform.Run(Nanoseconds(9));
+  const std::uint32_t during_reset = fixture.Peek32(0x10);
+  fixture.platform.Run(Nanoseconds(2));
+  const std::uint32_t after_release = fixture.Peek32(0x10);
 
   EXPECT_EQ(during_reset, 0U);
   EXPECT_EQ(after_release, 0xC0FFEEU);
@@ -195,30 +195,30 @@ TEST(WhenResetIsPulsedPartWayThroughAScript, TheScriptStartsOverOnRelease) {
   // Without the reset, the second write would land at 100 ns. The reset at
   // 50..60 ns restarts the script, so it lands 100 ns after the release.
   MasterWithRam fixture{[]() -> Script {
-                          co_await wait_for(Picoseconds{100'000});
-                          co_await write32(0x10, 0xC0FFEE);
+                          co_await Wait(Picoseconds{100'000});
+                          co_await Write32(0x10, 0xC0FFEE);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.wait_for(Nanoseconds(50));
-                          reset.set(true);
-                          reset.wait_for(Nanoseconds(10));
-                          reset.set(false);
+                          reset.WaitFor(Nanoseconds(50));
+                          reset.Set(true);
+                          reset.WaitFor(Nanoseconds(10));
+                          reset.Set(false);
                         }}};
 
-  fixture.platform.run(Nanoseconds(150));
-  const std::uint32_t when_it_would_have_landed = fixture.peek32(0x10);
-  fixture.platform.run(Nanoseconds(20));
-  const std::uint32_t after_the_restarted_script = fixture.peek32(0x10);
+  fixture.platform.Run(Nanoseconds(150));
+  const std::uint32_t when_it_would_have_landed = fixture.Peek32(0x10);
+  fixture.platform.Run(Nanoseconds(20));
+  const std::uint32_t after_the_restarted_script = fixture.Peek32(0x10);
 
   EXPECT_EQ(when_it_would_have_landed, 0U);
   EXPECT_EQ(after_the_restarted_script, 0xC0FFEEU);
 }
 
 TEST(WhenABusPortIsBoundToAWirePort, TheErrorNamesBothPortsAndTheirKinds) {
-  Platform platform{builtin_components()};
-  platform.add("cpu", "scripted_bus_master");
+  Platform platform{BuiltinComponents()};
+  platform.Add("cpu", "scripted_bus_master");
 
-  EXPECT_THAT([&] { platform.bind("cpu.socket", "cpu.irq"); },
+  EXPECT_THAT([&] { platform.Bind("cpu.socket", "cpu.irq"); },
               ThrowsMessage<std::invalid_argument>(
                   AllOf(HasSubstr("cpu.socket"), HasSubstr("cpu.irq"),
                         HasSubstr("bus"), HasSubstr("wire"))));
@@ -229,79 +229,79 @@ TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt,
   // The first write lands once at the start and once more after the reset.
   // The second never lands, because the interrupt never comes.
   MasterWithRam fixture{[]() -> Script {
-                          const std::uint32_t runs = co_await read32(0x10);
-                          co_await write32(0x10, runs + 1);
-                          co_await wait_irq();
-                          co_await write32(0x20, 0xDEAD);
+                          const std::uint32_t runs = co_await Read32(0x10);
+                          co_await Write32(0x10, runs + 1);
+                          co_await WaitIrq();
+                          co_await Write32(0x20, 0xDEAD);
                         },
                         {.irq = [](LineDriver&) {},
                          .reset =
                              [](LineDriver& reset) {
-                               reset.wait_for(Nanoseconds(10));
-                               reset.set(true);
-                               reset.wait_for(Nanoseconds(10));
-                               reset.set(false);
+                               reset.WaitFor(Nanoseconds(10));
+                               reset.Set(true);
+                               reset.WaitFor(Nanoseconds(10));
+                               reset.Set(false);
                              }}};
 
-  fixture.platform.run(Nanoseconds(30));
+  fixture.platform.Run(Nanoseconds(30));
 
-  EXPECT_EQ(fixture.peek32(0x10), 2U);
-  EXPECT_EQ(fixture.peek32(0x20), 0U);
+  EXPECT_EQ(fixture.Peek32(0x10), 2U);
+  EXPECT_EQ(fixture.Peek32(0x20), 0U);
 }
 
 TEST(WhenResetIsPulsedAfterAScriptHasFinished, TheScriptPlaysAgain) {
   MasterWithRam fixture{[]() -> Script {
-                          const std::uint32_t runs = co_await read32(0x10);
-                          co_await write32(0x10, runs + 1);
+                          const std::uint32_t runs = co_await Read32(0x10);
+                          co_await Write32(0x10, runs + 1);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.wait_for(Nanoseconds(10));
-                          reset.set(true);
-                          reset.wait_for(Nanoseconds(10));
-                          reset.set(false);
+                          reset.WaitFor(Nanoseconds(10));
+                          reset.Set(true);
+                          reset.WaitFor(Nanoseconds(10));
+                          reset.Set(false);
                         }}};
 
-  fixture.platform.run(Nanoseconds(30));
+  fixture.platform.Run(Nanoseconds(30));
 
-  EXPECT_EQ(fixture.peek32(0x10), 2U);
+  EXPECT_EQ(fixture.Peek32(0x10), 2U);
 }
 
 TEST(WhenAScriptWaitsForAnInterruptLineThatIsNotConnected, ItWaitsForever) {
   MasterWithRam fixture{[]() -> Script {
-    co_await wait_irq();
-    co_await write32(0x10, 0xC0FFEE);
+    co_await WaitIrq();
+    co_await Write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.run(Nanoseconds(100));
+  fixture.platform.Run(Nanoseconds(100));
 
-  EXPECT_EQ(fixture.peek32(0x10), 0U);
+  EXPECT_EQ(fixture.Peek32(0x10), 0U);
 }
 
 TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
-  Registry registry = MasterWithRam::with_line_drivers(
-      nullptr, [](LineDriver& reset) { reset.set(true); });
+  Registry registry = MasterWithRam::WithLineDrivers(
+      nullptr, [](LineDriver& reset) { reset.Set(true); });
   Platform platform{registry};
   for (const char* cpu : {"first", "second"}) {
     const std::string name = cpu;
-    platform.add(name, "scripted_bus_master");
-    platform.add(name + "_ram", "memory", {{"size", 0x100}});
-    platform.bind(name + ".socket", name + "_ram.socket");
-    platform.module<ScriptedBusMaster>(name).set_script(
-        []() -> Script { co_await write32(0x10, 0xC0FFEE); });
+    platform.Add(name, "scripted_bus_master");
+    platform.Add(name + "_ram", "memory", {{"size", 0x100}});
+    platform.Bind(name + ".socket", name + "_ram.socket");
+    platform.ModuleAt<ScriptedBusMaster>(name).SetScript(
+        []() -> Script { co_await Write32(0x10, 0xC0FFEE); });
   }
-  platform.add("reset_driver", "reset_driver");
-  platform.bind("reset_driver.line", "first.reset");
-  platform.bind("reset_driver.line", "second.reset");
-  platform.elaborate();
+  platform.Add("reset_driver", "reset_driver");
+  platform.Bind("reset_driver.line", "first.reset");
+  platform.Bind("reset_driver.line", "second.reset");
+  platform.Elaborate();
 
-  platform.run(Nanoseconds(10));
+  platform.Run(Nanoseconds(10));
 
   std::uint32_t first = 1;
   std::uint32_t second = 1;
-  platform.debug_read("first.socket", 0x10,
-                      std::as_writable_bytes(std::span{&first, 1}));
-  platform.debug_read("second.socket", 0x10,
-                      std::as_writable_bytes(std::span{&second, 1}));
+  platform.DebugRead("first.socket", 0x10,
+                     std::as_writable_bytes(std::span{&first, 1}));
+  platform.DebugRead("second.socket", 0x10,
+                     std::as_writable_bytes(std::span{&second, 1}));
   EXPECT_EQ(first, 0U);
   EXPECT_EQ(second, 0U);
 }
@@ -311,19 +311,19 @@ TEST(WhenADebugAccessIsAskedForThroughAWirePort, TheErrorSaysItIsAWire) {
   std::array<std::byte, 4> data{};
 
   EXPECT_THAT(
-      [&] { fixture.platform.debug_read("reset_driver.line", 0x10, data); },
+      [&] { fixture.platform.DebugRead("reset_driver.line", 0x10, data); },
       ThrowsMessage<std::invalid_argument>(HasSubstr("wire")));
 }
 
 TEST(WhenAWireConnectionIsAskedToBeTraced,
      TheErrorSaysOnlyBusConnectionsCanBe) {
   Platform platform{
-      MasterWithRam::with_line_drivers(nullptr, [](LineDriver&) {})};
-  platform.add("cpu", "scripted_bus_master");
-  platform.add("reset_driver", "reset_driver");
+      MasterWithRam::WithLineDrivers(nullptr, [](LineDriver&) {})};
+  platform.Add("cpu", "scripted_bus_master");
+  platform.Add("reset_driver", "reset_driver");
 
   EXPECT_THAT(
-      [&] { platform.bind("reset_driver.line", "cpu.reset", /*traced=*/true); },
+      [&] { platform.Bind("reset_driver.line", "cpu.reset", /*traced=*/true); },
       ThrowsMessage<std::invalid_argument>(
           AllOf(HasSubstr("bus"), HasSubstr("wire"))));
 }
