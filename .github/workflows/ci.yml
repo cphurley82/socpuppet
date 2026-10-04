@@ -60,19 +60,20 @@ jobs:
     # own. Nothing else is built: clang-tidy reads the sources and the
     # compile commands that configuring writes.
     #
-    # It runs on macOS because on Ubuntu 24.04 clang-tidy cannot parse one of
-    # SCC's bundled headers (CCI) against GCC 13's standard library, and what
-    # it then says about our code cannot be trusted. See docs/style.md.
+    # Those are GCC's compile commands and GCC's standard library, so
+    # clang-tidy reads our code the way the Linux build compiles it.
     name: clang-tidy and header check
-    runs-on: macos-15
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
       - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
         uses: actions/cache@v6
         with:
           path: build/dev/_deps
-          key: deps-macos-15-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv sync
       - run: uv run cmake --preset dev
       - run: uv run cmake --build --preset dev --target tidy

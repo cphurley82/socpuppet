@@ -1,0 +1,22 @@
+diff --git a/third_party/cci-1.0.1/cci/core/cci_value.h b/third_party/cci-1.0.1/cci/core/cci_value.h
+index 0bf51749..cf084a11 100644
+--- a/third_party/cci-1.0.1/cci/core/cci_value.h
++++ b/third_party/cci-1.0.1/cci/core/cci_value.h
+@@ -783,7 +783,7 @@ public:
+ protected:
+   using impl_type = void* ; // use type-punned pointer for now
+   impl_type pimpl_;
+-  cci_value_map_elem_cref(impl_type i = NULL);
++  explicit cci_value_map_elem_cref(impl_type i = NULL);
+ };
+ 
+ /// reference to a mutable cci_value map element
+@@ -807,7 +807,7 @@ public:
+ protected:
+   using impl_type = void* ; // use type-punned pointer for now
+   impl_type pimpl_;
+-  cci_value_map_elem_ref(impl_type i = NULL);
++  explicit cci_value_map_elem_ref(impl_type i = NULL);
+ };
+ 
+ ///@cond CCI_HIDDEN_FROM_DOXYGEN

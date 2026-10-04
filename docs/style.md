@@ -73,8 +73,6 @@ Includes come in groups, each sorted: the header a file implements or tests, the
 
 - **`check_headers`** compiles each header alone, which shows that it includes everything it uses.
 
-⚠️ On Ubuntu 24.04 the `tidy` target does not work yet. clang-tidy cannot parse one of the headers that SCC brings along (CCI) against GCC 13's standard library, and after that error its findings about our code cannot be trusted. It works on macOS, which is where CI runs it. The other tools work on both.
-
 ## Python
 
 - **ruff format** lays the code out, at 80 columns to match the C++.

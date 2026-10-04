@@ -84,8 +84,18 @@ FetchContent_Declare(scc
   GIT_REPOSITORY https://github.com/Minres/SystemC-Components.git
   GIT_TAG 42a9843e55efe92dfa44676afc7b372192ac1132 # 2026.07
   # SCC probes SystemC with try_compile, which cannot link a target built in
-  # this same tree. The patch points the probe at SystemC's headers instead.
-  PATCH_COMMAND git apply ${CMAKE_CURRENT_LIST_DIR}/patches/scc-in-tree-systemc.patch
+  # this same tree. The first patch points the probe at SystemC's headers
+  # instead.
+  #
+  # The second is for clang-tidy. SCC bundles CCI, whose map element
+  # references convert implicitly from void* through a protected constructor.
+  # GCC 13's standard library asks about that conversion while it classifies
+  # CCI's iterators, and clang reports the protected constructor as an error
+  # where GCC only takes it for a "no". The patch makes the constructors
+  # explicit, so the question is never asked.
+  PATCH_COMMAND git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/scc-in-tree-systemc.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/scc-cci-explicit-elem-ref.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # SCC's install(EXPORT) rules demand that every dependency be installable
