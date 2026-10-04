@@ -49,11 +49,34 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/dev/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/**') }}
+          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv sync
       - run: uv run cmake --preset dev
       - run: uv run cmake --build --preset dev
       - run: uv run ctest --preset dev
+
+  tidy:
+    # clang-tidy over our own C++, and each of our headers compiled on its
+    # own. Nothing else is built: clang-tidy reads the sources and the
+    # compile commands that configuring writes.
+    #
+    # It runs on macOS because on Ubuntu 24.04 clang-tidy cannot parse one of
+    # SCC's bundled headers (CCI) against GCC 13's standard library, and what
+    # it then says about our code cannot be trusted. See docs/style.md.
+    name: clang-tidy and header check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/dev/_deps
+          key: deps-macos-15-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - run: uv sync
+      - run: uv run cmake --preset dev
+      - run: uv run cmake --build --preset dev --target tidy
+      - run: uv run cmake --build --preset dev --target check_headers
 
   wheel:
     name: Wheel, installed with uv and pip (${{ matrix.os }})

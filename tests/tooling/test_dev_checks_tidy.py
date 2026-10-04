@@ -119,3 +119,20 @@ struct Target {
     result = project.build("tidy")
 
     assert result.returncode == 0, result.stdout
+
+
+def test_when_a_program_is_compiled_with_a_gcc_only_warning_flag_tidy_passes(
+    cmake_project,
+):
+    project = cmake_project(
+        {"program.cpp": "int main() { return 0; }\n"},
+        "add_executable(program program.cpp)\n"
+        "target_compile_options(program PRIVATE -Wno-interference-size)\n"
+        "socpuppet_dev_checks(program)\n",
+    )
+    configured = project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
+    assert configured.returncode == 0, configured.stdout
+
+    result = project.build("tidy")
+
+    assert result.returncode == 0, result.stdout

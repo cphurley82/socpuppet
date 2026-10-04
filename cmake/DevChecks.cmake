@@ -46,6 +46,9 @@ if(SOCPUPPET_DEVELOPER_MODE)
             -clang-tidy-binary ${_socpuppet_tools}/clang-tidy
             -p ${CMAKE_BINARY_DIR}
             ${_socpuppet_tidy_sdk}
+            # The compile commands are the real compiler's, and may carry
+            # warning flags that only GCC knows.
+            -extra-arg=-Wno-unknown-warning-option
             "$<TARGET_PROPERTY:tidy,SOCPUPPET_SOURCES>"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Running clang-tidy"
