@@ -168,10 +168,15 @@ def repo_root():
     """The top of the git repository the command was run in."""
     toplevel = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
-        check=True,
-        stdout=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
+    if toplevel.returncode != 0:
+        sys.exit(
+            f"{Path.cwd()} is not inside a git repository. Lint finds its "
+            "files by asking git, so run it from inside your socpuppet "
+            f"checkout. git said: {toplevel.stderr.strip()}"
+        )
     return Path(toplevel.stdout.strip())
 
 
