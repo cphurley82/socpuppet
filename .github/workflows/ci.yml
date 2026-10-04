@@ -11,12 +11,23 @@ concurrency:
 
 jobs:
   test:
-    name: Build and test (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
+        python: ["3.13"]
+        include:
+          # The oldest Python we support, and the newest. 3.14 changed how
+          # CPython guards against stack overflow, which is what the
+          # PythonExecutor exists to stay clear of.
+          - os: ubuntu-24.04
+            python: "3.12"
+          - os: ubuntu-24.04
+            python: "3.14"
+    env:
+      UV_PYTHON: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v4
       - name: Install system packages
