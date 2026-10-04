@@ -40,10 +40,11 @@ def git(repo):
 def lint(repo):
     """Run tools/lint.py in the throwaway repository, output going to a pipe."""
 
-    def run(*args, cwd=repo):
+    def run(*args, cwd=repo, stdin=""):
         return subprocess.run(
             [*LINT, *args],
             cwd=cwd,
+            input=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",

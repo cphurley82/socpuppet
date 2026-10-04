@@ -22,3 +22,11 @@ def test_when_run_from_a_subdirectory_a_problem_elsewhere_in_the_repository_fail
     (repo / "docs").mkdir()
 
     assert lint(cwd=repo / "docs").returncode != 0
+
+
+def test_when_there_are_no_cpp_files_lint_passes_without_reading_standard_input(
+    repo, lint
+):
+    (repo / "notes.txt").write_text("Nothing here for any linter.\n")
+
+    assert lint(stdin=MISFORMATTED).returncode == 0

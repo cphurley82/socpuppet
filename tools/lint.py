@@ -26,6 +26,9 @@ def main():
     os.chdir(repo_root())
 
     files = [f for f in repo_files() if f.endswith((".h", ".cpp"))]
+    if not files:
+        # Given no files, clang-format would format standard input instead.
+        return 0
     mode = ["-i"] if args.fix else ["--dry-run", "--Werror"]
     result = subprocess.run(
         [tool("clang-format"), *mode, *files],
