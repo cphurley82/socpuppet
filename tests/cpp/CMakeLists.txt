@@ -5,6 +5,7 @@ add_executable(unit_tests
   unit/memory_store_test.cpp
   unit/script_test.cpp)
 target_link_libraries(unit_tests PRIVATE socpuppet_core GTest::gtest_main)
+socpuppet_dev_checks(unit_tests)
 gtest_discover_tests(unit_tests)
 
 # Tests that start the SystemC kernel. The kernel cannot be restarted, so
@@ -24,4 +25,5 @@ target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTes
 # The tests' own headers are included by their path from the top of the
 # repository: "tests/cpp/contracts/bus_driver.h".
 target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR})
+socpuppet_dev_checks(kernel_tests)
 gtest_discover_tests(kernel_tests)

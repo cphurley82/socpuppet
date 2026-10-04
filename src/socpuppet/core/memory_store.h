@@ -19,13 +19,14 @@ class MemoryStore {
 
   bool read(std::size_t offset, std::span<std::uint8_t> out) const {
     if (!fits(offset, out.size())) return false;
-    std::copy_n(bytes_.begin() + offset, out.size(), out.begin());
+    std::ranges::copy(std::span{bytes_}.subspan(offset, out.size()),
+                      out.begin());
     return true;
   }
 
   bool write(std::size_t offset, std::span<const std::uint8_t> in) {
     if (!fits(offset, in.size())) return false;
-    std::copy(in.begin(), in.end(), bytes_.begin() + offset);
+    std::ranges::copy(in, std::span{bytes_}.subspan(offset).begin());
     return true;
   }
 

@@ -12,6 +12,7 @@ option(BUILD_SHARED_LIBS "Build dependencies as shared libraries" OFF)
 option(SOCPUPPET_BUILD_TESTS "Build the C++ tests and register pytest with ctest" ON)
 
 include(cmake/Dependencies.cmake)
+include(cmake/DevChecks.cmake)
 
 add_subdirectory(src/socpuppet)
 

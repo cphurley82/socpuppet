@@ -12,6 +12,7 @@ target_link_libraries(socpuppet_models INTERFACE socpuppet_core scc::components 
 # the SystemC kernel.
 pybind11_add_module(_core bindings/core.cpp)
 target_link_libraries(_core PRIVATE socpuppet_models)
+socpuppet_dev_checks(_core)
 if(SKBUILD)
   # Building a wheel: the extension goes inside the installed package.
   install(TARGETS _core LIBRARY DESTINATION socpuppet)
