@@ -182,3 +182,4 @@ Small things that are nobody's milestone. Tick them off or delete them.
 
 - [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before M3, when the first wheels are published.
 - [ ] Offer the SCC build fixes upstream: the `try_compile` probe that cannot see an in-tree SystemC, and the missing `Boost::filesystem` link.
+- [ ] Make the `tidy` target work on Ubuntu 24.04, then move the CI job there. clang-tidy 22 cannot parse SCC's bundled CCI headers against GCC 13's standard library: `std::common_reference` over `cci_value_map_elem_ref` ends in "calling a protected constructor", a hard error, and its findings after that are not to be trusted. Pointing it at libc++ instead gets further but stops in SCC's `pool_allocator.h`. Until then tidy runs on macOS only (see [style.md](style.md)).
