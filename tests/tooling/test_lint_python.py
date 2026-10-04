@@ -76,4 +76,19 @@ def test_when_package_code_passes_a_value_of_the_wrong_type_lint_fails(
     assert "widget.py:9" in result.stdout
 
 
+def test_when_a_package_function_has_no_type_annotations_lint_fails(repo, lint):
+    package = repo / "python" / "socpuppet"
+    package.mkdir(parents=True)
+    (package / "widget.py").write_text(
+        '"""A widget."""\n'
+        "\n"
+        "\n"
+        "def double(number):\n"
+        '    """Twice the number."""\n'
+        "    return number * 2\n"
+    )
+
+    assert lint().returncode != 0
+
+
 MISFORMATTED = '"""A widget."""\n\nANSWER   =   42\n'
