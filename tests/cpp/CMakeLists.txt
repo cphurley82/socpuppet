@@ -18,6 +18,7 @@ add_executable(kernel_tests
   platform/kernel_smoke_test.cpp
   platform/router_test.cpp
   platform/scc_router_smoke_test.cpp
-  platform/scripted_master_test.cpp)
+  platform/scripted_master_test.cpp
+  platform/tracer_test.cpp)
 target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)
 gtest_discover_tests(kernel_tests)

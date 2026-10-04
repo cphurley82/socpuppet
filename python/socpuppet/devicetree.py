@@ -11,7 +11,7 @@ from socpuppet.components import Memory
 def generate(connections, view):
     """The devicetree source for the hardware reachable from the port `view`.
 
-    `connections` are the platform's (source port, sink port) pairs.
+    `connections` are the platform's connections.
     Addresses are the ones a bus master at `view` uses.
     """
     lines = [
@@ -37,7 +37,7 @@ def generate(connections, view):
 
 def _endpoints(connections, view, base=0):
     """Yield (address, placed component) for each component that answers accesses from `view`."""
-    sink = next((sink for source, sink in connections if source.path == view.path), None)
+    sink = next((each.sink for each in connections if each.source.path == view.path), None)
     if sink is None:
         return
     routes = list(sink.placed.component.routes(sink.name))

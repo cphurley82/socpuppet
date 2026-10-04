@@ -3,9 +3,11 @@
 import json
 import os
 import sys
+from typing import NamedTuple
 
 from socpuppet import devicetree
 from socpuppet.components import Router, ScriptedBusMaster
+from socpuppet.trace import TraceRecord, wants_color
 
 
 class Port:
@@ -67,13 +69,12 @@ class Link:
         self.b = b
 
 
-def wants_color(is_terminal, environment):
-    """Whether output should be colored.
+class Connection(NamedTuple):
+    """A source port connected to a sink port, and whether to trace what crosses."""
 
-    Color suits a terminal; a file or a pipe gets plain text. A non-empty
-    NO_COLOR (https://no-color.org) turns color off everywhere.
-    """
-    return is_terminal and not environment.get("NO_COLOR")
+    source: Port
+    sink: Port
+    trace: bool = False
 
 
 class Group:
@@ -121,25 +122,31 @@ class Platform:
         """A named group of components, such as a die."""
         return Group(self, name)
 
-    def link(self, name, kind, a=None, b=None):
+    def link(self, name, model, a=None, b=None):
         """Place a link called `name`, with one endpoint in group `a` and one in group `b`.
 
-        `kind` says which link to use, such as `PassThroughLink()`. The
+        `model` says which link to use, such as `PassThroughLink()`. The
         endpoints are named `<group>.<name>`; with no groups given they are
         `<name>.a` and `<name>.b`.
         """
         path_a = f"{a.path}.{name}" if a is not None else f"{name}.a"
         path_b = f"{b.path}.{name}" if b is not None else f"{name}.b"
-        end_a = self.add(path_a, kind.endpoint())
-        end_b = self.add(path_b, kind.endpoint())
+        end_a = self.add(path_a, model.endpoint())
+        end_b = self.add(path_b, model.endpoint())
         self.connect(end_a.peer_initiator, end_b.peer_target)
         self.connect(end_b.peer_initiator, end_a.peer_target)
         return Link(end_a, end_b)
 
-    def connect(self, source, sink):
-        """Connect a source port (an initiator) to a sink port (a target)."""
+    def connect(self, source, sink, trace=False):
+        """Connect a source port (an initiator) to a sink port (a target).
+
+        With `trace=True`, every transaction crossing the connection is
+        recorded (see `trace`). ⚠️ A traced connection refuses direct memory
+        access, because an access that bypasses the bus would bypass the
+        trace as well.
+        """
         self.refuse_if_built("connect ports")
-        self._connections.append((source, sink))
+        self._connections.append(Connection(source, sink, trace))
 
     def build(self):
         """Create the simulation from the description."""
@@ -150,8 +157,8 @@ class Platform:
         for path, placed in self._placed.items():
             native.add(path, placed.component.implementation, placed.component.parameters)
             placed.component.configure(native, path)
-        for source, sink in self._connections:
-            native.bind(source.path, sink.path)
+        for source, sink, trace in self._connections:
+            native.bind(source.path, sink.path, trace)
         native.elaborate()
         self._native = native
 
@@ -187,6 +194,11 @@ class Platform:
                 return condition()
             native.step()
         return True
+
+    @property
+    def trace(self):
+        """Every transaction recorded on traced connections so far, oldest first."""
+        return [TraceRecord.from_native(native) for native in self._built().trace_records()]
 
     @property
     def time(self):
@@ -241,8 +253,8 @@ class Platform:
                     for path, placed in self._placed.items()
                 },
                 "connections": [
-                    {"source": source.path, "sink": sink.path}
-                    for source, sink in self._connections
+                    {"source": source.path, "sink": sink.path, "trace": trace}
+                    for source, sink, trace in self._connections
                 ],
             },
             indent=2,

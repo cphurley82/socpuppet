@@ -1,16 +1,14 @@
 #pragma once
 
-#include <chrono>
 #include <coroutine>
 #include <cstdint>
 #include <exception>
 #include <utility>
 #include <variant>
 
-namespace socpuppet {
+#include "socpuppet/core/time.h"
 
-// Simulated time, counted in picoseconds.
-using Picoseconds = std::chrono::duration<std::uint64_t, std::pico>;
+namespace socpuppet {
 
 // The operations a script can ask its bus master to carry out.
 struct Read32 {

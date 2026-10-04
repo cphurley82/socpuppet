@@ -69,7 +69,7 @@ class TestWhenADescriptionIsDumpedAsJson:
                 "cpu": {"implementation": "scripted_bus_master", "parameters": {}},
                 "ram": {"implementation": "memory", "parameters": {"size": 0x100}},
             },
-            "connections": [{"source": "cpu.socket", "sink": "ram.socket"}],
+            "connections": [{"source": "cpu.socket", "sink": "ram.socket", "trace": False}],
         }
 
 

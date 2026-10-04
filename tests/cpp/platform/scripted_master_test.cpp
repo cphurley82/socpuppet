@@ -303,3 +303,12 @@ TEST(WhenADebugAccessIsAskedForThroughAWirePort, TheErrorSaysItIsAWire) {
   EXPECT_THAT([&] { fixture.platform.debug_read("reset_driver.line", 0x10, data); },
               ThrowsMessage<std::invalid_argument>(HasSubstr("wire")));
 }
+
+TEST(WhenAWireConnectionIsAskedToBeTraced, TheErrorSaysOnlyBusConnectionsCanBe) {
+  Platform platform{MasterWithRam::with_line_drivers(nullptr, [](LineDriver&) {})};
+  platform.add("cpu", "scripted_bus_master");
+  platform.add("reset_driver", "reset_driver");
+
+  EXPECT_THAT([&] { platform.bind("reset_driver.line", "cpu.reset", /*traced=*/true); },
+              ThrowsMessage<std::invalid_argument>(AllOf(HasSubstr("bus"), HasSubstr("wire"))));
+}

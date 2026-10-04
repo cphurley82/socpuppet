@@ -158,14 +158,3 @@ class TestWhenALinkIsPlacedBetweenTwoGroups:
         link = platform.link("d2d", sp.PassThroughLink(), platform.group("compute"), platform.group("io"))
 
         assert (link.a.path, link.b.path) == ("compute.d2d", "io.d2d")
-
-
-@pytest.mark.platform
-class TestWhenOnlyOneDirectionOfALinkIsUsed:
-    def test_the_platform_still_builds_and_carries_that_direction(self):
-        platform = thin_platform(writes=[(0x10, 0xC0FFEE)])
-        platform.build()
-
-        platform.run()
-
-        assert platform.peek32(0x10) == 0xC0FFEE

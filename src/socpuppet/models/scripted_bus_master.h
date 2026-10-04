@@ -13,6 +13,7 @@
 
 #include "socpuppet/core/script.h"
 #include "socpuppet/platform/failure.h"
+#include "socpuppet/platform/time_conversion.h"
 
 namespace socpuppet {
 
@@ -99,8 +100,7 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome carry_out(const Wait& op, Script&) {
-    const sc_core::sc_time duration(static_cast<double>(op.duration.count()), sc_core::SC_PS);
-    wait(duration, reset->posedge_event());
+    wait(to_sc_time(op.duration), reset->posedge_event());
     return after_an_op();
   }
 

@@ -32,13 +32,13 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
     target.register_transport_dbg(this, &PassThroughLinkEndpoint::send_debug);
     target.register_get_direct_mem_ptr(this, &PassThroughLinkEndpoint::send_dmi_request);
     peer_initiator.register_invalidate_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::return_dmi_invalidation);
+        this, &PassThroughLinkEndpoint::pass_invalidation_to_die);
 
     peer_target.register_b_transport(this, &PassThroughLinkEndpoint::deliver);
     peer_target.register_transport_dbg(this, &PassThroughLinkEndpoint::deliver_debug);
     peer_target.register_get_direct_mem_ptr(this, &PassThroughLinkEndpoint::deliver_dmi_request);
     initiator.register_invalidate_direct_mem_ptr(
-        this, &PassThroughLinkEndpoint::send_dmi_invalidation);
+        this, &PassThroughLinkEndpoint::pass_invalidation_to_peer);
   }
 
  private:
@@ -52,7 +52,7 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
   bool send_dmi_request(tlm::tlm_generic_payload& transaction, tlm::tlm_dmi& dmi) {
     return peer_initiator->get_direct_mem_ptr(transaction, dmi);
   }
-  void send_dmi_invalidation(sc_dt::uint64 start, sc_dt::uint64 end) {
+  void pass_invalidation_to_peer(sc_dt::uint64 start, sc_dt::uint64 end) {
     peer_target->invalidate_direct_mem_ptr(start, end);
   }
 
@@ -66,7 +66,7 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
   bool deliver_dmi_request(tlm::tlm_generic_payload& transaction, tlm::tlm_dmi& dmi) {
     return initiator->get_direct_mem_ptr(transaction, dmi);
   }
-  void return_dmi_invalidation(sc_dt::uint64 start, sc_dt::uint64 end) {
+  void pass_invalidation_to_die(sc_dt::uint64 start, sc_dt::uint64 end) {
     target->invalidate_direct_mem_ptr(start, end);
   }
 };

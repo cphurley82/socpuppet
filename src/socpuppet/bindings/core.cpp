@@ -19,6 +19,7 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
+#include "socpuppet/platform/time_conversion.h"
 
 namespace py = pybind11;
 
@@ -61,10 +62,6 @@ struct NativePlatform {
   std::list<socpuppet::PythonScript> python_scripts;
 };
 
-// sc_time counts in units of the kernel's time resolution. This is how many
-// of those make a picosecond, the unit Python uses.
-std::uint64_t one_picosecond() { return sc_core::sc_time(1, sc_core::SC_PS).value(); }
-
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
@@ -89,8 +86,20 @@ PYBIND11_MODULE(_core, m) {
               const socpuppet::Config& config) {
              self.platform.add(path, implementation, config);
            })
-      .def("bind", [](NativePlatform& self, const std::string& source,
-                      const std::string& sink) { self.platform.bind(source, sink); })
+      .def("bind", [](NativePlatform& self, const std::string& source, const std::string& sink,
+                      bool traced) { self.platform.bind(source, sink, traced); })
+      // Each record is (time in ps, source, sink, is_write, address, data, ok).
+      .def("trace_records",
+           [](NativePlatform& self) {
+             py::list records;
+             for (const socpuppet::TraceRecord& each : self.platform.trace().records()) {
+               records.append(py::make_tuple(
+                   each.time.count(), each.source, each.sink, each.is_write, each.address,
+                   py::bytes(reinterpret_cast<const char*>(each.data.data()), each.data.size()),
+                   each.ok));
+             }
+             return records;
+           })
       .def("set_script",
            [](NativePlatform& self, const std::string& path, py::object generator_function) {
              socpuppet::PythonScript& script = self.python_scripts.emplace_back(
@@ -105,7 +114,7 @@ PYBIND11_MODULE(_core, m) {
       .def("run_for",
            [](NativePlatform& self, std::uint64_t picoseconds) {
              self.without_gil([&] {
-               self.platform.run(sc_core::sc_time::from_value(picoseconds * one_picosecond()));
+               self.platform.run(socpuppet::to_sc_time(socpuppet::Picoseconds{picoseconds}));
              });
            })
       .def("step",
@@ -120,10 +129,10 @@ PYBIND11_MODULE(_core, m) {
              std::optional<sc_core::sc_time> ahead;
              self.without_gil([&] { ahead = self.platform.time_to_next_activity(); });
              if (!ahead) return std::nullopt;
-             return ahead->value() / one_picosecond();
+             return socpuppet::to_picoseconds(*ahead).count();
            })
       .def("time_in_picoseconds",
-           [](NativePlatform& self) { return self.platform.time().value() / one_picosecond(); })
+           [](NativePlatform& self) { return socpuppet::to_picoseconds(self.platform.time()).count(); })
       // debug_read returns None, and debug_write False, when nothing took the access.
       .def("debug_read",
            [](NativePlatform& self, const std::string& via, std::uint64_t address,

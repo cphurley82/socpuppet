@@ -18,8 +18,10 @@
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/trace.h"
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/registry.h"
+#include "socpuppet/platform/tracer.h"
 
 namespace socpuppet {
 
@@ -48,7 +50,10 @@ class Platform {
   // Binds two ports, each named "<component path>.<port>". The first must
   // be a source (a TLM initiator socket, or a wire's driver) and the second
   // a sink (a TLM target socket, or a wire's reader), both of one kind.
-  void bind(const std::string& source, const std::string& sink) {
+  //
+  // A traced bus connection gets a Tracer in the middle, which records every
+  // transaction that crosses it (see trace()).
+  void bind(const std::string& source, const std::string& sink, bool traced = false) {
     const Port& from = port(source);
     const Port& to = port(sink);
     if (from.kind != to.kind) {
@@ -62,9 +67,22 @@ class Platform {
           "\": the first must be a source (a TLM initiator socket, or the port driving a "
           "wire) and the second a sink (a TLM target socket, or a port reading a wire).");
     }
+    if (traced && from.kind != Port::Kind::bus) {
+      throw std::invalid_argument("Cannot trace the connection from \"" + source + "\" to \"" +
+                                  sink + "\": only a bus connection can be traced, and this "
+                                  "is a wire.");
+    }
     if (from.kind == Port::Kind::bus) {
-      dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.object)
-          .bind(dynamic_cast<tlm::tlm_target_socket<>&>(*to.object));
+      auto& initiator = dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.object);
+      auto& target = dynamic_cast<tlm::tlm_target_socket<>&>(*to.object);
+      if (traced) {
+        Tracer& tracer = *tracers_.emplace_back(std::make_unique<Tracer>(
+            flat_name(source + ".trace").c_str(), source, sink, trace_));
+        initiator.bind(tracer.target);
+        tracer.initiator.bind(target);
+      } else {
+        initiator.bind(target);
+      }
     } else {
       dynamic_cast<sc_core::sc_in<bool>&>(*to.object).bind(wire_driven_by(from, source));
     }
@@ -116,6 +134,9 @@ class Platform {
     if (!sc_core::sc_pending_activity()) return std::nullopt;
     return sc_core::sc_time_to_pending_activity();
   }
+
+  // Everything recorded on traced connections so far.
+  const Trace& trace() const { return trace_; }
 
   // The current simulated time.
   sc_core::sc_time time() const { return sc_core::sc_time_stamp(); }
@@ -245,13 +266,18 @@ class Platform {
     return socket->transport_dbg(transaction) == length;
   }
 
+  // A dotted path as a single SystemC name: "io.ram" becomes "io_ram".
+  static std::string flat_name(std::string path) {
+    std::replace(path.begin(), path.end(), '.', '_');
+    return path;
+  }
+
   // The signal a wire source drives, created the first time it is bound.
   // It is named after its driver: "reset_driver.line" drives "reset_driver_line".
-  sc_core::sc_signal<bool>& wire_driven_by(const Port& source, std::string path) {
+  sc_core::sc_signal<bool>& wire_driven_by(const Port& source, const std::string& path) {
     auto& wire = wires_[source.object];
     if (!wire) {
-      std::replace(path.begin(), path.end(), '.', '_');
-      wire = std::make_unique<sc_core::sc_signal<bool>>(path.c_str());
+      wire = std::make_unique<sc_core::sc_signal<bool>>(flat_name(path).c_str());
       dynamic_cast<sc_core::sc_out<bool>&>(*source.object).bind(*wire);
     }
     return *wire;
@@ -297,6 +323,8 @@ class Platform {
   std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>> wires_;
   std::vector<std::unique_ptr<sc_core::sc_module>> tie_offs_;
   std::set<const sc_core::sc_object*> bound_;
+  Trace trace_;
+  std::vector<std::unique_ptr<Tracer>> tracers_;
 };
 
 }  // namespace socpuppet
