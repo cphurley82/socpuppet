@@ -26,6 +26,7 @@ class Linter:
 
     name: str
     # Which files it looks at, as globs on the path from the top of the repo.
+    # A * matches / too, so "*.h" is every header at any depth.
     patterns: tuple[str, ...]
     # The command that reports problems. The files are added to the end.
     check: tuple[str, ...]
@@ -73,7 +74,7 @@ LINTERS = [
     ),
     Linter(
         "actionlint",
-        patterns=(".github/workflows/*.yml",),
+        patterns=(".github/workflows/*.yml", ".github/workflows/*.yaml"),
         check=("actionlint",),
     ),
     Linter(
@@ -86,7 +87,7 @@ LINTERS = [
 
 
 def main():
-    """Run every linter. Returns the exit status."""
+    """Run the linters asked for. Returns the exit status."""
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -153,12 +154,12 @@ def run(linter, files, root, fix):
     return passed
 
 
-def report(linter, passed):
+def report(name, passed):
     """Print one line saying whether a linter passed.
 
     It is colored for a person at a terminal, unless they set NO_COLOR.
     """
-    line = f"{'✅' if passed else '❌'} {linter}"
+    line = f"{'✅' if passed else '❌'} {name}"
     if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
         line = f"{GREEN if passed else RED}{line}{RESET}"
     print(line)
@@ -173,9 +174,10 @@ def repo_root():
     )
     if toplevel.returncode != 0:
         sys.exit(
-            f"{Path.cwd()} is not inside a git repository. Lint finds its "
-            "files by asking git, so run it from inside your socpuppet "
-            f"checkout. git said: {toplevel.stderr.strip()}"
+            f"git could not find the repository: {toplevel.stderr.strip()}\n"
+            f"Lint finds its files by asking git, and {Path.cwd()} is not "
+            "inside a git repository that git will read. Run lint from "
+            "inside your socpuppet checkout."
         )
     return Path(toplevel.stdout.strip())
 

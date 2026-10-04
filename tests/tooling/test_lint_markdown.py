@@ -34,4 +34,5 @@ def test_when_run_with_fix_a_list_with_no_blank_line_before_it_then_passes_lint(
 
     lint("--fix")
 
+    assert "Two things:\n\n- one\n" in (repo / "notes.md").read_text()
     assert lint().returncode == 0

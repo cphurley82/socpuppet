@@ -1,10 +1,21 @@
 BasedOnStyle: Google
 
-# Include order: the related header, then the standard library, then
-# third-party libraries, then our own headers. Stock Google style would sort
-# <gtest/gtest.h> above the standard library and <systemc> in with it.
+# Include order: the related header, then C system headers, then the C++
+# standard library, then third-party libraries, then our own headers. Stock
+# Google style would sort <gtest/gtest.h> above the standard library and
+# <systemc> in with it.
 IncludeBlocks: Regroup
 IncludeCategories:
+  # C system headers: the C standard library, and the POSIX ones we are
+  # likely to meet. cpplint keeps its own list of these (CPPLINT.cfg), so a
+  # header it knows and this does not would be sorted where cpplint objects;
+  # add it here.
+  - Regex: '^<(assert|complex|ctype|errno|fenv|float|inttypes|iso646|limits|locale|math|setjmp|signal|stdalign|stdarg|stdatomic|stdbit|stdbool|stdckdint|stddef|stdint|stdio|stdlib|stdnoreturn|string|tgmath|threads|time|uchar|wchar|wctype)\.h>$'
+    Priority: 1
+  - Regex: '^<(dirent|dlfcn|fcntl|glob|poll|pthread|sched|semaphore|strings|syslog|termios|unistd)\.h>$'
+    Priority: 1
+  - Regex: '^<(sys|arpa|netinet)/.*\.h>$'
+    Priority: 1
   # SystemC's two extensionless headers look like standard library ones.
   - Regex: '^<(systemc|tlm)>$'
     Priority: 3

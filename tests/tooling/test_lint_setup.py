@@ -1,19 +1,12 @@
 """tools/lint.py when something it needs is not there."""
 
-import subprocess
-import sys
-
 
 def test_when_the_linters_are_not_installed_lint_says_how_to_install_them(
-    repo, tmp_path_factory, lint
+    repo, lint, python_without_the_linters
 ):
     (repo / "widget.cpp").write_text("// Clean under any style.\n")
-    bare = tmp_path_factory.mktemp("bare") / "venv"
-    subprocess.run(
-        [sys.executable, "-m", "venv", "--without-pip", str(bare)], check=True
-    )
 
-    result = lint(python=bare / "bin" / "python")
+    result = lint(python=python_without_the_linters)
 
     assert result.returncode != 0
     assert "uv sync" in result.stdout

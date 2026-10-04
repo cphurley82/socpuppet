@@ -63,6 +63,16 @@ def lint(repo):
 
 
 @pytest.fixture
+def python_without_the_linters(tmp_path_factory):
+    """An interpreter in a virtual environment with nothing installed."""
+    bare = tmp_path_factory.mktemp("bare") / "venv"
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(bare)], check=True
+    )
+    return bare / "bin" / "python"
+
+
+@pytest.fixture
 def check_wheel():
     """Run tools/check_wheel.py on a wheel."""
 

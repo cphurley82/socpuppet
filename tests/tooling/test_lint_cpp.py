@@ -145,3 +145,18 @@ def test_when_a_concept_inside_a_namespace_wraps_as_fix_leaves_it_lint_passes(
     lint("--fix")
 
     assert lint().returncode == 0
+
+
+def test_when_c_headers_are_in_the_order_fix_puts_them_in_lint_passes(
+    repo, lint
+):
+    (repo / "widget.cpp").write_text(
+        "#include <string>\n"
+        "#include <unistd.h>\n"
+        "#include <systemc>\n"
+        "#include <stdint.h>\n"
+        "#include <sys/stat.h>\n"
+    )
+    lint("--fix")
+
+    assert lint().returncode == 0

@@ -4,16 +4,15 @@
 def test_when_a_workflow_has_a_key_github_does_not_know_lint_fails_and_names_the_file(
     repo, lint
 ):
-    workflows = repo / ".github" / "workflows"
-    workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
+    write_workflow(
+        repo,
         "name: CI\n"
         "on: push\n"
         "jobs:\n"
         "  test:\n"
         "    runs-on: ubuntu-24.04\n"
         "    stepz:\n"
-        "      - run: echo hello\n"
+        "      - run: echo hello\n",
     )
 
     result = lint()
@@ -35,22 +34,28 @@ def test_when_a_shell_script_expands_a_variable_unquoted_lint_fails_and_names_th
     assert "tidy.sh:3:" in result.stdout
 
 
-def test_when_a_workflow_step_expands_a_variable_unquoted_lint_fails(
+def test_when_a_workflow_step_expands_a_variable_unquoted_lint_fails_and_names_the_line(
     repo, lint
 ):
-    workflows = repo / ".github" / "workflows"
-    workflows.mkdir(parents=True)
-    (workflows / "ci.yml").write_text(
+    write_workflow(
+        repo,
         "name: CI\n"
         "on: push\n"
         "jobs:\n"
         "  test:\n"
         "    runs-on: ubuntu-24.04\n"
         "    steps:\n"
-        "      - run: rm -r $RUNNER_TEMP\n"
+        "      - run: rm -r $RUNNER_TEMP\n",
     )
 
     result = lint()
 
     assert result.returncode != 0
     assert "ci.yml:7:" in result.stdout
+
+
+def write_workflow(repo, text):
+    """Put a CI workflow where GitHub looks for one."""
+    workflows = repo / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(text)
