@@ -27,6 +27,16 @@ def repo(tmp_path):
 
 
 @pytest.fixture
+def git(repo):
+    """Run a git command in the throwaway repository."""
+
+    def run(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True)
+
+    return run
+
+
+@pytest.fixture
 def lint(repo):
     """Run tools/lint.py in the throwaway repository, output going to a pipe."""
 

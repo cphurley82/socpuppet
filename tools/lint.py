@@ -47,14 +47,17 @@ def report(linter, passed):
 
 
 def repo_files():
-    """Every file git tracks, plus new files it has not been told to ignore."""
+    """Every file git tracks, plus new files it has not been told to ignore.
+
+    A file deleted but not yet committed is still tracked, so those are left out.
+    """
     listing = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
         check=True,
         stdout=subprocess.PIPE,
         text=True,
     )
-    return listing.stdout.splitlines()
+    return [f for f in listing.stdout.splitlines() if Path(f).is_file()]
 
 
 def tool(name):
