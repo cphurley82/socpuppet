@@ -35,3 +35,13 @@ A starting set. Add to it when something new keeps coming up.
 | ⚠️ | gotcha |
 | ✅ / ❌ | pass / fail |
 | 🚧 | not built yet |
+
+## Workflow
+
+Changes are made test-first with the skills in `.claude/skills/`:
+
+- `/tdd [specification]` drives a change through Canon TDD: agree on the specifications, write one failing test, make it pass, commit.
+- `/test-design-review` reviews each new test before the code is written. `/tdd` runs it for you.
+- `/software-design-review` reviews the application code once the test is green. `/tdd` runs it for you.
+
+The two reviews can also be run on their own against the working tree.
