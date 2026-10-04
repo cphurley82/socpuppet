@@ -63,6 +63,22 @@ TYPED_TEST_P(MemoryContract,
   EXPECT_EQ(read_response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 
+TYPED_TEST_P(MemoryContract, ACompletedAccessOffersDirectMemoryAccess) {
+  std::array<std::uint8_t, 4> data{};
+  bool offered_after_write = false;
+  bool offered_after_read = false;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    bus.Write(0x10, data);
+    offered_after_write = bus.DirectMemoryWasOffered();
+    bus.Read(0x10, data);
+    offered_after_read = bus.DirectMemoryWasOffered();
+  });
+
+  EXPECT_TRUE(offered_after_write) << "no DMI-allowed hint on the write";
+  EXPECT_TRUE(offered_after_read) << "no DMI-allowed hint on the read";
+}
+
 TYPED_TEST_P(MemoryContract, DirectMemoryAccessSeesLaterWrites) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> seen_directly{};
@@ -120,7 +136,7 @@ TYPED_TEST_P(MemoryContract, ABusReadSeesWhatDebugWrote) {
 REGISTER_TYPED_TEST_SUITE_P(
     MemoryContract, AReadAfterAWriteReturnsTheWrittenBytes,
     AnAccessThatRunsPastTheEndGetsAnAddressErrorResponse,
-    DirectMemoryAccessSeesLaterWrites,
+    ACompletedAccessOffersDirectMemoryAccess, DirectMemoryAccessSeesLaterWrites,
     DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory,
     ADebugReadSeesWhatTheBusWrote, ABusReadSeesWhatDebugWrote);
 

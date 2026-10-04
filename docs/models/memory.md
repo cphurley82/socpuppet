@@ -10,7 +10,7 @@ A block of RAM: DRAM on a host, SRAM in a controller. It is a flat array of byte
 
 - **Reads and writes** through its TLM target socket. Addresses are offsets from the start of the memory; a router in front of it takes care of where it sits in the address map.
 - **Address errors.** An access that runs past the end is answered with an address-error response and changes nothing.
-- **DMI.** It grants direct memory access to the whole memory, read and write. 💡 This is what will let a CPU model run at full speed: after one request, the CPU reads and writes the bytes directly instead of making a transaction per access.
+- **DMI.** It grants direct memory access to the whole memory, read and write. 💡 This is what will let a CPU model run at full speed: after one request, the CPU reads and writes the bytes directly instead of making a transaction per access. Every bus access comes back with the DMI-allowed hint set, which is how a CPU model knows it is worth asking.
 - **Debug transport.** `peek` and `poke` reach it without simulated time passing.
 
 ## What it leaves out

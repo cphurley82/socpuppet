@@ -70,6 +70,11 @@ class BusDriver : public sc_core::sc_module {
     Debug(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
   }
 
+  // Whether the last Read or Write came back with the target's hint that
+  // direct memory access (DMI) is worth asking for. A CPU model waits for
+  // this hint before it requests DMI.
+  bool DirectMemoryWasOffered() const { return direct_memory_was_offered_; }
+
   // Asks the target for direct memory access (DMI) at `address`.
   DirectMemory RequestDirectMemory(std::uint64_t address) {
     tlm::tlm_generic_payload transaction;
@@ -96,6 +101,7 @@ class BusDriver : public sc_core::sc_module {
     Fill(transaction, command, address, data, length);
     sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
     socket->b_transport(transaction, delay);
+    direct_memory_was_offered_ = transaction.is_dmi_allowed();
     return transaction.get_response_status();
   }
 
@@ -110,6 +116,7 @@ class BusDriver : public sc_core::sc_module {
   }
 
   std::function<void(BusDriver&)> body_;
+  bool direct_memory_was_offered_ = false;
 };
 
 // Looks straight into a target (anything with a TLM target socket called

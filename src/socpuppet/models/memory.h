@@ -30,6 +30,8 @@ class Memory : public sc_core::sc_module {
     transaction.set_response_status(Access(transaction)
                                         ? tlm::TLM_OK_RESPONSE
                                         : tlm::TLM_ADDRESS_ERROR_RESPONSE);
+    // The hint that tells an initiator DMI (below) is worth asking for.
+    transaction.set_dmi_allowed(true);
   }
 
   // Debug transport: the same access with no simulated time and no side
