@@ -46,8 +46,8 @@ Build `socpuppet`, an open-source educational virtual platform in which a chiple
   - C++ never parses platform descriptions: gtest contract tests instantiate blocks directly, and full-platform tests run from pytest. A built platform can dump its resolved description to JSON for logging and run reproducibility.
 - C++20 everywhere to start: models, tests, bindings, and SystemC itself built from source as C++20. SystemC's link-time API check encodes the C++ standard (SC_CPLUSPLUS), so the library and everything linking it must match. Good C++20 uses: concepts for slot contracts, `std::span` for DMA buffers, coroutines so the C++ scripted bus master mirrors the Python generator stand-ins. Toolchain: GCC 13+ (Ubuntu 24.04 default) or a recent Clang.
   - If a component won't build as C++20, report it and ask before changing anything. Known fallback: build SystemC as C++17, pin `SC_CPLUSPLUS=201703L` on the SystemC CMake target so every consumer inherits it, override only the offending targets to C++17, and keep any headers those targets include C++17-clean.
-- CMake, deps via FetchContent (SystemC, GoogleTest, pybind11). The repo is a Zephyr module providing out-of-tree boards `socpuppet_host` (monolithic), `socpuppet_compute`, `socpuppet_iomgr` and `socpuppet_ssd`, built with west and the Zephyr SDK.
-- Apache-2.0 license, matching SystemC and Zephyr. This keeps GPL code (e.g. QBox/QEMU) out of the core.
+- CMake, deps via FetchContent (SystemC, GoogleTest, pybind11, plus SCC and the Boost, fmt, spdlog and yaml-cpp it needs; added at M0 for SCC's TLM router and SCP-style logging). The repo is a Zephyr module providing out-of-tree boards `socpuppet_host` (monolithic), `socpuppet_compute`, `socpuppet_iomgr` and `socpuppet_ssd`, built with west and the Zephyr SDK.
+- MIT license (decided at M0; this brief first proposed Apache-2.0). SystemC, SCC and Zephyr are Apache-2.0, which MIT code may depend on. GPL code (e.g. QBox/QEMU) stays out of the core.
 
 ## Constraints
 - Learning tool first: readability and documentation beat raw speed. Each model gets a short doc explaining the real hardware it represents and what it simplifies.

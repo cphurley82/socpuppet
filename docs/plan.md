@@ -51,7 +51,9 @@ M3, M4 and M5 are independent of each other apart from the shared CPU kit, so th
 - Core blocks: memory with DMI, IRQ and reset signals, pass-through link, transaction tracing.
 - Scripted bus master: C++ coroutine version plus the Python generator adapter (GIL released in `sc_start`).
 - Test harness: gtest typed contract tests via `gtest_discover_tests`; pytest with per-test process isolation.
-- Housekeeping: LICENSE is currently MIT, the handoff says Apache-2.0 (needs your call). Confirm whether macOS is a supported dev host or whether a devcontainer covers it.
+- Router and logging come from SCC (Minres SystemC-Components): `scc::router` behind a registry adapter, and SCP-style logging macros through SCC's SCP layer.
+- Built test-first (`.claude/skills/tdd`) wherever there is behavior to specify.
+- Housekeeping, settled: the license stays MIT. macOS is a supported dev host alongside Ubuntu 24.04, and a devcontainer provides the CI environment.
 
 **M1 — ISS spike (time-boxed; M2 does not wait on it)**
 - Compare riscv-vp's ISS, a VCML-based approach and a minimal in-house ISS behind the CPU slot interface, on the handoff's criteria (in-process, LT + DMI, boots Zephyr, license, C++20, build simplicity).
@@ -65,6 +67,8 @@ M3, M4 and M5 are independent of each other apart from the shared CPU kit, so th
 ## Phase 2: Each subsystem boots its firmware standalone
 
 Every track delivers the same kit to its firmware team: a Python platform description with that subsystem at full fidelity and its neighbors as stand-ins, the Zephyr board, a sample app, a pytest boot test, UART capture and GDB attach, and a short "boot your firmware here" doc.
+
+The kit arrives as a Python package, because that is how a firmware developer gets the model: from M3 on, `uv add socpuppet` (or `pip install socpuppet`) pulls a prebuilt wheel for Linux and macOS with no compiler needed. That means cibuildwheel, PyPI publishing and versioning land with M3, and the Zephyr boards must be reachable from the installed package. M0 keeps the road open by building the wheel in CI and testing it installed with both uv and pip.
 
 **M3 — Host subsystem** (board `socpuppet_host`; SSD = behavioral NVMe, D2D = pass-through)
 - a) CPU kit, built once and reused by M4 and M5: ISS wrapper (RV64 and RV32IMAC), ELF loader, DRAM, NS16550 UART with Python capture, machine timer, PLIC, GDB hook. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
@@ -104,12 +108,11 @@ Every track delivers the same kit to its firmware team: a Python platform descri
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| ISS choice; VCML vs. thin in-house layer | End of M1 (gates M3) | none; spike decides |
+| ISS choice; how far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | End of M1 (gates M3) | SCC for the router and logging only |
 | Zephyr version pin | M1 / M3a | latest release with the needed RISC-V drivers |
 | Host MSI-X on RISC-V | M3b | verify mainline first |
 | Single- vs. multi-core SSD controller | M4b | single core |
 | D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
-| LICENSE: MIT in repo vs. Apache-2.0 in handoff | M0 | ask before changing |
 | Does "bootchain" include a ROM/bootloader stage per image? (not in handoff; ELFs are loaded from Python) | After M8 | no bootloader |
 | `native_sim` firmware tier | Optional, any time after M3 | not built |
 | Second compute die; host DRAM on the IO die | After M8 | one compute die, DRAM on compute die |
@@ -123,4 +126,4 @@ Every track delivers the same kit to its firmware team: a Python platform descri
 
 ## Status
 
-No milestone started. Next up: M0.
+M0 in progress.

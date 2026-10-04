@@ -1,0 +1,13 @@
+diff --git a/src/sysc/CMakeLists.txt b/src/sysc/CMakeLists.txt
+index a2f17391..53d50405 100644
+--- a/src/sysc/CMakeLists.txt
++++ b/src/sysc/CMakeLists.txt
+@@ -37,7 +37,7 @@ try_compile(COMPILE_RESULT
+         return 0;
+     }
+     "
+-    LINK_LIBRARIES SystemC::systemc
++    CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${systemc_SOURCE_DIR}/src"
+     OUTPUT_VARIABLE COMPILE_OUTPUT
+ )
+ if(${COMPILE_RESULT})

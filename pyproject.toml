@@ -1,0 +1,19 @@
+[project]
+name = "socpuppet"
+version = "0.0.1"
+description = "A whole SoC simulated in SystemC, with Python pulling the strings."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = [
+    "cmake>=3.28",
+    "ninja>=1.11",
+    "pytest>=9",
+]
+
+[tool.uv]
+# The dev loop builds with CMake directly (see CMakePresets.json), so
+# `uv sync` only installs tools and never builds the project itself.
+package = false
