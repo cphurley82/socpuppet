@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -16,6 +17,22 @@ namespace {
 
 // (address, value) pairs, as Python passes them.
 using Writes = std::vector<std::pair<std::uint64_t, std::uint32_t>>;
+
+// The SystemC kernel is a process-wide singleton that cannot be restarted,
+// so the first Platform built in a process is the only one it can have.
+struct KernelClaim {
+  KernelClaim() {
+    static bool claimed = false;
+    if (claimed) {
+      throw std::runtime_error(
+          "A process can build only one Platform, because the SystemC kernel underneath it "
+          "cannot be restarted. Build each Platform in its own process. In pytest, mark the "
+          "test with @pytest.mark.platform, which does that for you (enable it with "
+          "pytest_plugins = [\"socpuppet.pytest_plugin\"] in conftest.py).");
+    }
+    claimed = true;
+  }
+};
 
 // The first end-to-end slice, wired by hand: a scripted bus master writes
 // through the pass-through link into a memory.
@@ -39,6 +56,7 @@ class Platform {
     return ops;
   }
 
+  KernelClaim kernel_claim_;  // first member: checked before any module is built
   socpuppet::ScriptedBusMaster master_;
   socpuppet::PassThroughLink link_{"link"};
   socpuppet::Memory memory_{"memory", 0x100};
