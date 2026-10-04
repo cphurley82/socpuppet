@@ -159,6 +159,10 @@ class CMakeProject:
             _tool("cmake"), "--build", str(self._build), "--target", target
         )
 
+    def run(self, program):
+        """Run a program the project has built."""
+        return _run(str(self._build / program))
+
 
 @pytest.fixture(scope="module")
 def cmake_project(tmp_path_factory):

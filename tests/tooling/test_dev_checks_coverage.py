@@ -87,6 +87,36 @@ def test_when_as_many_lines_are_run_as_the_floor_asks_for_coverage_passes(
     assert result.returncode == 0, result.stdout
 
 
+def test_counters_left_by_a_program_run_before_do_not_count(cmake_project):
+    # A second program runs the line the test misses, but ctest does not
+    # run it. Here it is run by hand first, as a developer might.
+    project = cmake_project(
+        {
+            "src/widgets/widget.h": WIDGET_HEADER,
+            "vendor/vendor.h": VENDOR_HEADER,
+            "tests/widget_test.cpp": WIDGET_TEST,
+            "tests/runs_every_line.cpp": """\
+#include "widgets/widget.h"
+
+int main() { return AtMostTen(11) - 10 + AtMostTen(0); }
+""",
+        },
+        CMAKE_LISTS
+        + "add_executable(runs_every_line tests/runs_every_line.cpp)\n"
+        "target_include_directories(runs_every_line PRIVATE src)\n"
+        "socpuppet_dev_checks(runs_every_line)\n",
+    )
+    project.configure(
+        "SOCPUPPET_COVERAGE=ON", "SOCPUPPET_COVERAGE_CPP_FLOOR=100"
+    )
+    project.build("runs_every_line")
+    project.run("runs_every_line")
+
+    result = project.build("coverage")
+
+    assert result.returncode != 0
+
+
 def reported_files(output):
     """The files in the C++ report's table.
 

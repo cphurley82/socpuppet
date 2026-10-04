@@ -75,6 +75,11 @@ if(SOCPUPPET_COVERAGE)
   # ran. The report is printed, and written as web pages to coverage/cpp in
   # the build directory.
   add_custom_target(coverage
+    # Counters add up from one run of a program to the next, so the ones
+    # left by earlier runs go first.
+    COMMAND ${Python_EXECUTABLE} -c
+            "import pathlib, sys; [counters.unlink() for counters in pathlib.Path(sys.argv[1]).rglob('*.gcda')]"
+            ${CMAKE_BINARY_DIR}
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
             --output-on-failure
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage/cpp
