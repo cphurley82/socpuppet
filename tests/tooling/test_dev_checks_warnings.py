@@ -31,3 +31,16 @@ def test_in_developer_mode_an_unused_variable_in_our_code_fails_the_build(
 
     assert result.returncode != 0
     assert "unused_variable.cpp:2" in result.stdout
+
+
+def test_without_developer_mode_the_same_unused_variable_builds(cmake_project):
+    project = cmake_project(
+        {"unused_variable.cpp": UNUSED_VARIABLE},
+        "add_executable(unused_variable unused_variable.cpp)\n"
+        "socpuppet_dev_checks(unused_variable)\n",
+    )
+    project.configure()
+
+    result = project.build("unused_variable")
+
+    assert result.returncode == 0, result.stdout
