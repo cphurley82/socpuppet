@@ -4,3 +4,6 @@
 
 # Reformat all C++ with clang-format (Google style, 80 columns)
 c5a96eaac06e2d8be3be8c04df7bc90b90752dd8
+
+# Rename C++ functions to CamelCase and constants to kName
+83e82d687cee599a95c26f1c6ee985e00a8a94c7
