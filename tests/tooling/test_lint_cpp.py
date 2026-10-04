@@ -118,3 +118,24 @@ def comment_of_width(columns):
     """A one-line comment made of short words, so it could be wrapped."""
     words = "// " + "a " * 38
     return words + "a" * (columns - len(words)) + "\n"
+
+
+def test_when_a_concept_inside_a_namespace_wraps_as_fix_leaves_it_lint_passes(
+    repo, lint
+):
+    (repo / "widget.cpp").write_text(
+        "#include <concepts>\n"
+        "#include <cstddef>\n"
+        "\n"
+        "namespace widgets {\n"
+        "\n"
+        "template <typename T>\n"
+        # Long enough that the definition starts on a line of its own.
+        "concept Widget = std::constructible_from<T, std::size_t, std::size_t> && "
+        "requires(T widget) { { widget.size() } -> std::convertible_to<std::size_t>; };\n"
+        "\n"
+        "}  // namespace widgets\n"
+    )
+    lint("--fix")
+
+    assert lint().returncode == 0
