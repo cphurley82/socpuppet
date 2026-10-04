@@ -9,8 +9,12 @@
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/registry.h"
+#include "socpuppet/platform/slots.h"
 
 namespace socpuppet {
+
+static_assert(MemorySlot<Memory>);
+static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 
 // The registry of every component that ships with socpuppet.
 inline Registry builtin_components() {

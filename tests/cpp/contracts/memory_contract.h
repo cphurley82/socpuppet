@@ -10,14 +10,14 @@
 #include <tlm>
 
 #include "bus_driver.h"
+#include "socpuppet/platform/slots.h"
 
 // What every memory implementation must do, whatever is behind it.
 //
 // To hold an implementation to this contract:
 //   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, MemoryContract, ::testing::Types<MyMemory>);
-// MyMemory must be constructible from (name, size in bytes) and expose a TLM
-// target socket named `socket`.
-template <typename MemoryType>
+// MyMemory must fit the memory slot (see socpuppet/platform/slots.h).
+template <socpuppet::MemorySlot MemoryType>
 class MemoryContract : public ::testing::Test {
  protected:
   static constexpr std::uint64_t size = 0x100;

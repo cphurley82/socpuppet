@@ -12,6 +12,7 @@
 
 #include "bus_driver.h"
 #include "socpuppet/models/memory.h"
+#include "socpuppet/platform/slots.h"
 
 // What every die-to-die link must do, whatever happens in between.
 //
@@ -24,8 +25,8 @@
 //
 // To hold an implementation to this contract:
 //   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, LinkContract, ::testing::Types<MyEndpoint>);
-// MyEndpoint must be constructible from a name.
-template <typename Endpoint>
+// MyEndpoint must fit the link endpoint slot (see socpuppet/platform/slots.h).
+template <socpuppet::LinkEndpointSlot Endpoint>
 class LinkContract : public ::testing::Test {
  protected:
   LinkContract() {

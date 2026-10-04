@@ -126,4 +126,23 @@ The kit arrives as a Python package, because that is how a firmware developer ge
 
 ## Status
 
-M0 in progress.
+**M0 is done.** Next up: M1 (the ISS spike) and M2 (PCIe + behavioral NVMe), which do not depend on each other.
+
+What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
+
+Left out of M0 on purpose, because nothing in M0 could exercise them. Each belongs to the milestone named:
+
+| Item from the M0 list | Where it goes | Why |
+|---|---|---|
+| Quantum keeper (temporal decoupling) in the scripted master | M3 | It has no observable effect until a CPU model runs ahead of the kernel or a target reports latency. |
+| Bus-master contract suite | M3 | A contract needs two implementations to be worth its name; the ISS is the second. |
+| "Resolved" JSON dump after build | when a component first has defaults to resolve | Today the description is already complete, so the two dumps would be identical. |
+| Parameter schemas and fidelity tiers in the registry | M2 | Parameters are plain name → number so far, checked by a catalogue parity test. |
+| Driving wires from Python | M5 | The scripted IO-die manager is the first thing that needs to release a reset from Python. |
+
+Things later milestones should know:
+
+- A traced connection refuses DMI. Do not trace a CPU's path to its main memory in M3 and expect speed.
+- The router is used with one master. PCIe (M2) needs several; `scc::router` supports that, the adapter does not expose it yet.
+- `Platform.build()` finishes SystemC elaboration through a kernel call (`sc_simcontext::initialize`) that is public in the reference kernel but not in the SystemC standard.
+- SCC is built with a one-line patch and two other accommodations (see `cmake/Dependencies.cmake`). They are worth offering upstream.
