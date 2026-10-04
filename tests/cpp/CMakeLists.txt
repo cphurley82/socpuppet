@@ -8,6 +8,5 @@ add_executable(kernel_tests
   platform/kernel_smoke_test.cpp
   platform/scc_router_smoke_test.cpp
   platform/thin_slice_test.cpp)
-target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(kernel_tests PRIVATE scc::components SystemC::systemc GTest::gtest)
+target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gtest)
 gtest_discover_tests(kernel_tests)

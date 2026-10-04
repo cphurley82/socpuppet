@@ -17,3 +17,9 @@ dev = [
 # The dev loop builds with CMake directly (see CMakePresets.json), so
 # `uv sync` only installs tools and never builds the project itself.
 package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+# The dev build drops the native extension into python/socpuppet/, so the
+# package is importable straight from the source tree.
+pythonpath = ["python"]

@@ -12,5 +12,8 @@ option(BUILD_SHARED_LIBS "Build dependencies as shared libraries" OFF)
 
 include(cmake/Dependencies.cmake)
 
+add_subdirectory(src/socpuppet)
+
 enable_testing()
 add_subdirectory(tests/cpp)
+add_subdirectory(tests/python)
