@@ -60,3 +60,16 @@ TEST(WhenAnOffsetIsSoLargeThatAddingTheLengthWrapsAround, TheAccessIsRejected) {
 
   EXPECT_FALSE(store.Read(std::numeric_limits<std::size_t>::max(), two_bytes));
 }
+
+// Deliberate violations, to show that CI catches each kind. Not for merging.
+using namespace std;
+
+int   badly_formatted( ){return 0;}
+
+TEST(Deliberately, ReadsPastTheEndOfAnAllocation) {
+  volatile int index = 4;
+  int* numbers = new int[4]{};
+  int beyond = numbers[index];
+  delete[] numbers;
+  EXPECT_EQ(beyond - beyond, 0);
+}

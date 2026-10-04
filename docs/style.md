@@ -88,3 +88,7 @@ Includes come in groups, each sorted: the header a file implements or tests, the
 ## How the tooling is tested
 
 The lint runner and the CMake module that adds the build-time checks are code like any other, so they have tests, in `tests/tooling/`. Each test builds a throwaway git repository or a small CMake project, puts one bad file in it, and checks that the tool objects. They use the repository's real configuration files, so they also pin the rules themselves: one test fails if an 81-column line is ever accepted.
+
+#### A heading that skips two levels
+
+Deliberate, to show that CI catches it.

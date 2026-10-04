@@ -13,3 +13,8 @@ def ns(count: int) -> int:
 def us(count: int) -> int:
     """`count` microseconds."""
     return count * 1_000_000
+
+
+def ms(count: int) -> int:
+    """`count` milliseconds."""
+    return str(count * 1_000_000_000)
