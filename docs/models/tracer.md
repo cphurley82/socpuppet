@@ -27,7 +27,7 @@ Each record holds the time, the two ports, the command, the address as the initi
 
 ## Two things to know
 
-⚠️ **A traced connection refuses DMI.** DMI hands the initiator a pointer so that later accesses skip the bus, and an access that skips the bus skips the tracer too. Refusing keeps every access visible. The price is speed, which is the right trade for a connection you asked to watch, and a reason not to trace a CPU's path to its main memory.
+⚠️ **A traced connection refuses DMI.** DMI hands the initiator a pointer so that later accesses skip the bus, and an access that skips the bus skips the tracer too. Refusing keeps every access visible. The price is speed, which is the right trade for a connection you asked to watch, and a reason not to trace a CPU's path to its main memory. The tracer also clears the DMI-allowed hint, the flag a target sets on a completed transaction to say DMI is worth asking for, so an initiator is never invited to ask.
 
 💡 **Debug accesses are not recorded.** A `peek` or `poke` passes through, but it is you looking in, not the platform's own traffic.
 

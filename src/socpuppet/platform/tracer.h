@@ -50,6 +50,9 @@ class Tracer : public sc_core::sc_module {
     // along rewrites it into an offset within the target.
     const std::uint64_t address = transaction.get_address();
     initiator->b_transport(transaction, delay);
+    // The target may have said DMI is worth asking for. Across this
+    // connection it is not: the request would be refused.
+    transaction.set_dmi_allowed(false);
     // `delay` is how far ahead of the kernel's clock the initiator is running
     // (temporal decoupling), so the transaction's own time is the sum.
     const sc_core::sc_time when = sc_core::sc_time_stamp() + delay;

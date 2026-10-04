@@ -107,4 +107,22 @@ TEST(WhenDirectMemoryAccessIsAskedForAcrossATracedConnection, ItIsRefused) {
   EXPECT_FALSE(granted);
 }
 
+TEST(WhenAnAccessCrossesATracedConnection, DirectMemoryAccessIsNotOffered) {
+  const std::array<std::uint8_t, 4> written{};
+  std::array<std::uint8_t, 4> read{};
+  bool offered_after_write = true;
+  bool offered_after_read = true;
+  TracedConnection traced{[&](BusDriver& bus) {
+    bus.Write(0x10, written);
+    offered_after_write = bus.DirectMemoryWasOffered();
+    bus.Read(0x10, read);
+    offered_after_read = bus.DirectMemoryWasOffered();
+  }};
+
+  sc_core::sc_start();
+
+  EXPECT_FALSE(offered_after_write) << "the hint got through on the write";
+  EXPECT_FALSE(offered_after_read) << "the hint got through on the read";
+}
+
 }  // namespace socpuppet
