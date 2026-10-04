@@ -6,6 +6,9 @@ option(SOCPUPPET_DEVELOPER_MODE
 option(SOCPUPPET_COVERAGE
   "Build our own code so that the tests record which lines they run" OFF)
 
+option(SOCPUPPET_SANITIZE
+  "Build our own programs so that memory errors and undefined behavior stop them" OFF)
+
 find_package(Python REQUIRED COMPONENTS Interpreter)
 set(_socpuppet_lint ${CMAKE_CURRENT_LIST_DIR}/../tools/lint.py)
 
@@ -146,6 +149,14 @@ function(socpuppet_dev_checks)
       target_link_options(${target} PRIVATE --coverage)
       # The tests can only be run once the programs are built.
       add_dependencies(coverage ${target})
+    endif()
+    if(SOCPUPPET_SANITIZE)
+      # AddressSanitizer catches reads and writes outside an object, and uses
+      # after free. UndefinedBehaviorSanitizer catches overflow, bad shifts
+      # and the like, and is told to stop the program rather than only report.
+      set(sanitizers -fsanitize=address,undefined -fno-sanitize-recover=undefined)
+      target_compile_options(${target} PRIVATE ${sanitizers} -fno-omit-frame-pointer)
+      target_link_options(${target} PRIVATE ${sanitizers})
     endif()
     if(TARGET tidy)
       get_target_property(sources ${target} SOURCES)
