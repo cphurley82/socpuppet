@@ -16,8 +16,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync
       - run: uv run python tools/lint.py
 
@@ -40,13 +40,13 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.python }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install system packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/dev/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
@@ -66,10 +66,10 @@ jobs:
     name: clang-tidy and header check
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/dev/_deps
           key: deps-macos-15-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
@@ -86,11 +86,11 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install system packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv build --wheel
       - run: uv run --no-project python tools/check_wheel.py dist/*.whl
       - run: tools/test_wheel.sh uv dist/*.whl
@@ -100,8 +100,8 @@ jobs:
     name: Build and test (devcontainer)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: changed
         with:
           filters: |
