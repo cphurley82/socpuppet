@@ -53,8 +53,8 @@ using Drive = std::function<void(LineDriver&)>;
 // What drives a master's input lines in a test. A line with no driver is
 // left unconnected.
 struct Lines {
-  Drive irq;
-  Drive reset;
+  Drive irq = nullptr;
+  Drive reset = nullptr;
 };
 
 // A scripted bus master wired straight to a 0x100-byte RAM.

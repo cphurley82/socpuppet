@@ -35,3 +35,25 @@ inline int* Nothing() { return 0; }
     assert result.returncode != 0
     assert "widget.h:4" in result.stdout
     assert "modernize-use-nullptr" in result.stdout
+
+
+def test_when_a_clean_header_uses_the_standard_library_tidy_passes(
+    cmake_project,
+):
+    project = project_with_header(
+        cmake_project,
+        """\
+#ifndef WIDGET_H_
+#define WIDGET_H_
+
+#include <vector>
+
+inline std::vector<int> Nothing() { return {}; }
+
+#endif  // WIDGET_H_
+""",
+    )
+
+    result = project.build("tidy")
+
+    assert result.returncode == 0, result.stdout

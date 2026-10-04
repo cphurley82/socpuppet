@@ -26,6 +26,16 @@ get_filename_component(_socpuppet_tools ${Python_EXECUTABLE} DIRECTORY)
 # clang-tidy reads how each source is compiled from compile_commands.json.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Apple's compiler knows where its SDK is without being told, so the compile
+# commands do not say. clang-tidy is not Apple's and has to be told, or it
+# cannot find even the standard library.
+set(_socpuppet_tidy_sdk)
+if(APPLE)
+  execute_process(COMMAND xcrun --show-sdk-path
+    OUTPUT_VARIABLE sdk OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+  set(_socpuppet_tidy_sdk -extra-arg=-isysroot${sdk})
+endif()
+
 if(SOCPUPPET_DEVELOPER_MODE)
   # Runs clang-tidy, several files at a time, over the sources of our
   # targets and the headers of ours that they include. It is a target to ask
@@ -35,6 +45,7 @@ if(SOCPUPPET_DEVELOPER_MODE)
             -quiet
             -clang-tidy-binary ${_socpuppet_tools}/clang-tidy
             -p ${CMAKE_BINARY_DIR}
+            ${_socpuppet_tidy_sdk}
             "$<TARGET_PROPERTY:tidy,SOCPUPPET_SOURCES>"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Running clang-tidy"
