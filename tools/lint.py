@@ -30,6 +30,8 @@ class Linter:
     fix: tuple[str, ...] | None = None
 
 
+# In the order they run. A linter that repairs files comes before the ones
+# that only check the same files, so that --fix leaves them something clean.
 LINTERS = [
     Linter(
         "clang-format",
@@ -52,6 +54,7 @@ LINTERS = [
         "ruff-format",
         patterns=("*.py",),
         check=("ruff", "format", "--quiet", "--check"),
+        fix=("ruff", "format", "--quiet"),
     ),
 ]
 
