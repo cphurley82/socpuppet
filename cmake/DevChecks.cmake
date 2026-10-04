@@ -3,6 +3,9 @@
 option(SOCPUPPET_DEVELOPER_MODE
   "Hold our own code to the project's standards while building it" OFF)
 
+option(SOCPUPPET_COVERAGE
+  "Build our own code so that the tests record which lines they run" OFF)
+
 find_package(Python REQUIRED COMPONENTS Interpreter)
 set(_socpuppet_lint ${CMAKE_CURRENT_LIST_DIR}/../tools/lint.py)
 
@@ -56,6 +59,35 @@ if(SOCPUPPET_DEVELOPER_MODE)
     VERBATIM)
 endif()
 
+if(SOCPUPPET_COVERAGE)
+  # gcov is the tool that reads the counters an instrumented program leaves
+  # behind. Each compiler has its own.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
+    set(_socpuppet_gcov "xcrun llvm-cov gcov")
+  else()
+    set(_socpuppet_gcov gcov)
+  endif()
+
+  # Runs the tests, then reports which lines of the code under src/ they
+  # ran. The report is printed, and written as web pages to coverage/cpp in
+  # the build directory.
+  add_custom_target(coverage
+    COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
+            --output-on-failure
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage/cpp
+    COMMAND ${Python_EXECUTABLE} -m gcovr
+            --root ${PROJECT_SOURCE_DIR}
+            --filter ${PROJECT_SOURCE_DIR}/src/
+            --gcov-executable ${_socpuppet_gcov}
+            --txt
+            --html-details ${CMAKE_BINARY_DIR}/coverage/cpp/index.html
+            ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Running the tests and measuring coverage"
+    USES_TERMINAL
+    VERBATIM)
+endif()
+
 # Applies the checks to the targets named, which must be ours: never call
 # this on a dependency.
 function(socpuppet_dev_checks)
@@ -70,6 +102,13 @@ function(socpuppet_dev_checks)
         -Wsign-conversion  # a conversion that can change the sign
       )
       set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    endif()
+    if(SOCPUPPET_COVERAGE)
+      # No optimization, so that every line is still there to be counted.
+      target_compile_options(${target} PRIVATE --coverage -O0)
+      target_link_options(${target} PRIVATE --coverage)
+      # The tests can only be run once the programs are built.
+      add_dependencies(coverage ${target})
     endif()
     if(TARGET tidy)
       get_target_property(sources ${target} SOURCES)
