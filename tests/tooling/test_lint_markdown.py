@@ -25,3 +25,13 @@ def test_when_claude_md_only_includes_another_file_lint_passes(repo, lint):
     (repo / "CLAUDE.md").write_text("@AGENTS.md\n")
 
     assert lint().returncode == 0
+
+
+def test_when_run_with_fix_a_list_with_no_blank_line_before_it_then_passes_lint(
+    repo, lint
+):
+    (repo / "notes.md").write_text("# Notes\n\nTwo things:\n- one\n- two\n")
+
+    lint("--fix")
+
+    assert lint().returncode == 0

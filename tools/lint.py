@@ -68,6 +68,7 @@ LINTERS = [
         "rumdl",
         patterns=("*.md",),
         check=("rumdl", "check", "--quiet", "--no-cache"),
+        fix=("rumdl", "check", "--quiet", "--no-cache", "--fix"),
     ),
 ]
 
