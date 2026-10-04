@@ -16,9 +16,19 @@ socpuppet = "socpuppet.cli:main"
 
 [dependency-groups]
 dev = [
+    "actionlint-py>=1.7.12.25",
+    "clang-format==23.1.2",
+    "clang-tidy==22.1.8",
     "cmake>=3.28",
+    "coverage>=7.10",
+    "cpplint>=2.0.2",
+    "gcovr>=8.6",
+    "mypy>=1.18",
     "ninja>=1.11",
     "pytest>=9",
+    "ruff>=0.16",
+    "rumdl==0.2.78",
+    "shellcheck-py>=0.11.0.1",
 ]
 
 [tool.uv]
