@@ -29,9 +29,9 @@ TEST(WhenAScriptAwaitsSeveralOps, TheyComeOutInTheOrderItAwaitedThem) {
 
   while (const Op* op = script.next()) ops.push_back(*op);
 
-  ASSERT_EQ(ops.size(), 3u);
-  EXPECT_EQ(std::get<Write32>(ops[0]).address, 0x10u);
-  EXPECT_EQ(std::get<Write32>(ops[1]).address, 0x14u);
+  ASSERT_EQ(ops.size(), 3U);
+  EXPECT_EQ(std::get<Write32>(ops[0]).address, 0x10U);
+  EXPECT_EQ(std::get<Write32>(ops[1]).address, 0x14U);
   EXPECT_EQ(std::get<Wait>(ops[2]).duration, Picoseconds{500});
 }
 
@@ -43,7 +43,7 @@ TEST(WhenAScriptAwaitsARead, ItGetsTheValueTheBusGaveBack) {
   const Op* write = script.next();
 
   ASSERT_NE(write, nullptr);
-  EXPECT_EQ(std::get<Write32>(*write).value, 0xC0FFEEu);
+  EXPECT_EQ(std::get<Write32>(*write).value, 0xC0FFEEU);
 }
 
 }  // namespace socpuppet

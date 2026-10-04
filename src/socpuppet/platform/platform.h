@@ -222,8 +222,9 @@ class Platform {
   void tie_off_unconnected_bus_ports() {
     for (auto& [path, instance] : instances_) {
       for (const Port& each : instance.ports) {
-        if (each.kind != Port::Kind::bus || bound_.contains(each.object))
+        if (each.kind != Port::Kind::bus || bound_.contains(each.object)) {
           continue;
+        }
         const char* name = sc_core::sc_gen_unique_name("unconnected");
         if (each.role == Port::Role::source) {
           auto tie_off = std::make_unique<NothingThere>(name);
@@ -242,8 +243,9 @@ class Platform {
 
   // Runs delta cycles until nothing more is scheduled for the current time.
   void finish_this_moment() {
-    while (sc_core::sc_pending_activity_at_current_time())
+    while (sc_core::sc_pending_activity_at_current_time()) {
       run(sc_core::SC_ZERO_TIME);
+    }
   }
 
   // SystemC would also object to an unbound port, but only once the
@@ -288,7 +290,7 @@ class Platform {
 
   // A dotted path as a single SystemC name: "io.ram" becomes "io_ram".
   static std::string flat_name(std::string path) {
-    std::replace(path.begin(), path.end(), '.', '_');
+    std::ranges::replace(path, '.', '_');
     return path;
   }
 
@@ -319,8 +321,9 @@ class Platform {
     const auto found = instances_.find(path);
     if (found == instances_.end()) {
       std::string known;
-      for (const auto& [name, each] : instances_)
+      for (const auto& [name, each] : instances_) {
         known += (known.empty() ? "" : ", ") + name;
+      }
       throw std::invalid_argument("There is no component called \"" + path +
                                   "\". The components are: " + known + ".");
     }

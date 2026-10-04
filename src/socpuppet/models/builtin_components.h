@@ -26,7 +26,7 @@ inline Registry builtin_components() {
     auto module =
         std::make_unique<Memory>(name, required(config, "size", "memory"));
     std::vector<Port> ports{target_port("socket", module->socket)};
-    return Instance{std::move(module), std::move(ports)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // One end of a link. The die's side may be left unconnected in either
   // direction; the peer side must be bound to the other endpoint.
@@ -38,14 +38,14 @@ inline Registry builtin_components() {
             initiator_port("initiator", module->initiator, /*required=*/false),
             initiator_port("peer_initiator", module->peer_initiator),
             target_port("peer_target", module->peer_target)};
-        return Instance{std::move(module), std::move(ports)};
+        return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
   registry.add("scripted_bus_master", [](const char* name, const Config&) {
     auto module = std::make_unique<ScriptedBusMaster>(name);
     std::vector<Port> ports{initiator_port("socket", module->socket),
                             wire_sink_port("irq", module->irq),
                             wire_sink_port("reset", module->reset)};
-    return Instance{std::move(module), std::move(ports)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter
   // sizes it and loads its address map from the parameters:
@@ -64,7 +64,7 @@ inline Registry builtin_components() {
                                required(config, output + ".size", "router"));
       ports.push_back(initiator_port(output, module->initiator[index]));
     }
-    return Instance{std::move(module), std::move(ports)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   return registry;
 }

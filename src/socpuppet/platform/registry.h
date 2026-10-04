@@ -53,8 +53,9 @@ class Registry {
     const auto found = factories_.find(implementation);
     if (found == factories_.end()) {
       std::string known;
-      for (const auto& [name, factory] : factories_)
+      for (const auto& [name, factory] : factories_) {
         known += (known.empty() ? "" : ", ") + name;
+      }
       throw std::invalid_argument("No component implementation is called \"" +
                                   implementation +
                                   "\". Known implementations: " + known + ".");
@@ -64,6 +65,7 @@ class Registry {
 
   std::vector<std::string> implementations() const {
     std::vector<std::string> names;
+    names.reserve(factories_.size());
     for (const auto& [name, factory] : factories_) names.push_back(name);
     return names;
   }

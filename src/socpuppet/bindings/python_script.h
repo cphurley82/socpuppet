@@ -31,8 +31,9 @@ class PythonScript {
   // Starts the Python script from the top and plays it to the end. Stops
   // early if Python raises; the exception then comes out of run().
   Script play() {
-    if (!executor_.run([this] { generator_ = generator_function_(); }))
+    if (!executor_.run([this] { generator_ = generator_function_(); })) {
       co_return;
+    }
     std::optional<std::uint32_t> read_value;
     while (std::optional<Op> op = next(read_value)) {
       const std::uint32_t given_back = co_await *op;
@@ -67,10 +68,14 @@ class PythonScript {
       return native[index].cast<std::uint64_t>();
     };
     if (kind == "read32") return Read32{number(1)};
-    if (kind == "write32")
-      return Write32{number(1), static_cast<std::uint32_t>(number(2))};
-    if (kind == "expect32")
-      return Expect32{number(1), static_cast<std::uint32_t>(number(2))};
+    if (kind == "write32") {
+      return Write32{.address = number(1),
+                     .value = static_cast<std::uint32_t>(number(2))};
+    }
+    if (kind == "expect32") {
+      return Expect32{.address = number(1),
+                      .value = static_cast<std::uint32_t>(number(2))};
+    }
     if (kind == "wait") return Wait{Picoseconds{number(1)}};
     if (kind == "wait_irq") return WaitIrq{};
     throw std::invalid_argument(

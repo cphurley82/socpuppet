@@ -23,8 +23,8 @@ struct RoutedPlatform {
   static constexpr std::uint64_t high_ram_base = 0x8000'0000;
   static constexpr std::uint64_t unmapped = 0x4000;
 
-  explicit RoutedPlatform(std::function<void(BusDriver&)> body)
-      : platform{with_bus_driver(std::move(body))} {
+  explicit RoutedPlatform(const std::function<void(BusDriver&)>& body)
+      : platform{with_bus_driver(body)} {
     platform.add("cpu", "bus_driver");
     platform.add("bus", "router",
                  {{"outputs", 2},
@@ -41,15 +41,16 @@ struct RoutedPlatform {
   }
 
   static socpuppet::Registry with_bus_driver(
-      std::function<void(BusDriver&)> body) {
+      const std::function<void(BusDriver&)>& body) {
     socpuppet::Registry registry = socpuppet::builtin_components();
-    registry.add(
-        "bus_driver", [body](const char* name, const socpuppet::Config&) {
-          auto module = std::make_unique<BusDriver>(name, body);
-          std::vector<socpuppet::Port> ports{
-              socpuppet::initiator_port("socket", module->socket)};
-          return socpuppet::Instance{std::move(module), std::move(ports)};
-        });
+    registry.add("bus_driver",
+                 [body](const char* name, const socpuppet::Config&) {
+                   auto module = std::make_unique<BusDriver>(name, body);
+                   std::vector<socpuppet::Port> ports{
+                       socpuppet::initiator_port("socket", module->socket)};
+                   return socpuppet::Instance{.module = std::move(module),
+                                              .ports = std::move(ports)};
+                 });
     return registry;
   }
 

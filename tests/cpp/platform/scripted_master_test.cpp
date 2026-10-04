@@ -26,7 +26,7 @@ using ::testing::ThrowsMessage;
 
 namespace {
 
-const sc_core::sc_time ns{1, sc_core::SC_NS};
+sc_core::sc_time Nanoseconds(double count) { return {count, sc_core::SC_NS}; }
 
 // Drives one wire from a test: `body` runs in a simulation thread and can
 // set the line and wait.
@@ -59,7 +59,8 @@ struct Lines {
 
 // A scripted bus master wired straight to a 0x100-byte RAM.
 struct MasterWithRam {
-  explicit MasterWithRam(std::function<Script()> script, Lines lines = {})
+  explicit MasterWithRam(std::function<Script()> script,
+                         const Lines& lines = {})
       : platform{with_line_drivers(lines.irq, lines.reset)} {
     const Drive& irq = lines.irq;
     const Drive& reset = lines.reset;
@@ -85,14 +86,14 @@ struct MasterWithRam {
     return value;
   }
 
-  static Registry with_line_drivers(Drive irq, Drive reset) {
+  static Registry with_line_drivers(const Drive& irq, const Drive& reset) {
     Registry registry = builtin_components();
     for (const auto& [implementation, body] :
          {std::pair{"irq_driver", irq}, std::pair{"reset_driver", reset}}) {
       registry.add(implementation, [body](const char* name, const Config&) {
         auto module = std::make_unique<LineDriver>(name, body);
         std::vector<Port> ports{wire_source_port("line", module->line)};
-        return Instance{std::move(module), std::move(ports)};
+        return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
     }
     return registry;
@@ -112,7 +113,7 @@ TEST(WhenAScriptReadsAnAddressItWroteEarlier, TheReadReturnsTheWrittenValue) {
 
   fixture.platform.run();
 
-  EXPECT_EQ(fixture.peek32(0x20), 0xC0FFEEu);
+  EXPECT_EQ(fixture.peek32(0x20), 0xC0FFEEU);
 }
 
 TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
@@ -121,13 +122,13 @@ TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
     co_await write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.run(9 * ns);
+  fixture.platform.run(Nanoseconds(9));
   const std::uint32_t before = fixture.peek32(0x10);
-  fixture.platform.run(2 * ns);
+  fixture.platform.run(Nanoseconds(2));
   const std::uint32_t after = fixture.peek32(0x10);
 
-  EXPECT_EQ(before, 0u);
-  EXPECT_EQ(after, 0xC0FFEEu);
+  EXPECT_EQ(before, 0U);
+  EXPECT_EQ(after, 0xC0FFEEU);
 }
 
 TEST(WhenAnExpectedValueIsNotTheOneInMemory,
@@ -151,7 +152,7 @@ TEST(WhenAnExpectedValueIsNotTheOneInMemory, TheScriptDoesNotCarryOn) {
 
   EXPECT_THROW(fixture.platform.run(), ExpectationFailed);
 
-  EXPECT_EQ(fixture.peek32(0x20), 0u);
+  EXPECT_EQ(fixture.peek32(0x20), 0U);
 }
 
 TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
@@ -160,34 +161,34 @@ TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
                           co_await write32(0x10, 0xC0FFEE);
                         },
                         {.irq = [](LineDriver& irq) {
-                          irq.wait_for(10 * ns);
+                          irq.wait_for(Nanoseconds(10));
                           irq.set(true);
                         }}};
 
-  fixture.platform.run(9 * ns);
+  fixture.platform.run(Nanoseconds(9));
   const std::uint32_t before = fixture.peek32(0x10);
-  fixture.platform.run(2 * ns);
+  fixture.platform.run(Nanoseconds(2));
   const std::uint32_t after = fixture.peek32(0x10);
 
-  EXPECT_EQ(before, 0u);
-  EXPECT_EQ(after, 0xC0FFEEu);
+  EXPECT_EQ(before, 0U);
+  EXPECT_EQ(after, 0xC0FFEEU);
 }
 
 TEST(WhenResetIsHeldFromTimeZero, TheScriptStartsOnlyOnceItIsReleased) {
   MasterWithRam fixture{[]() -> Script { co_await write32(0x10, 0xC0FFEE); },
                         {.reset = [](LineDriver& reset) {
                           reset.set(true);
-                          reset.wait_for(10 * ns);
+                          reset.wait_for(Nanoseconds(10));
                           reset.set(false);
                         }}};
 
-  fixture.platform.run(9 * ns);
+  fixture.platform.run(Nanoseconds(9));
   const std::uint32_t during_reset = fixture.peek32(0x10);
-  fixture.platform.run(2 * ns);
+  fixture.platform.run(Nanoseconds(2));
   const std::uint32_t after_release = fixture.peek32(0x10);
 
-  EXPECT_EQ(during_reset, 0u);
-  EXPECT_EQ(after_release, 0xC0FFEEu);
+  EXPECT_EQ(during_reset, 0U);
+  EXPECT_EQ(after_release, 0xC0FFEEU);
 }
 
 TEST(WhenResetIsPulsedPartWayThroughAScript, TheScriptStartsOverOnRelease) {
@@ -198,19 +199,19 @@ TEST(WhenResetIsPulsedPartWayThroughAScript, TheScriptStartsOverOnRelease) {
                           co_await write32(0x10, 0xC0FFEE);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.wait_for(50 * ns);
+                          reset.wait_for(Nanoseconds(50));
                           reset.set(true);
-                          reset.wait_for(10 * ns);
+                          reset.wait_for(Nanoseconds(10));
                           reset.set(false);
                         }}};
 
-  fixture.platform.run(150 * ns);
+  fixture.platform.run(Nanoseconds(150));
   const std::uint32_t when_it_would_have_landed = fixture.peek32(0x10);
-  fixture.platform.run(20 * ns);
+  fixture.platform.run(Nanoseconds(20));
   const std::uint32_t after_the_restarted_script = fixture.peek32(0x10);
 
-  EXPECT_EQ(when_it_would_have_landed, 0u);
-  EXPECT_EQ(after_the_restarted_script, 0xC0FFEEu);
+  EXPECT_EQ(when_it_would_have_landed, 0U);
+  EXPECT_EQ(after_the_restarted_script, 0xC0FFEEU);
 }
 
 TEST(WhenABusPortIsBoundToAWirePort, TheErrorNamesBothPortsAndTheirKinds) {
@@ -236,16 +237,16 @@ TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt,
                         {.irq = [](LineDriver&) {},
                          .reset =
                              [](LineDriver& reset) {
-                               reset.wait_for(10 * ns);
+                               reset.wait_for(Nanoseconds(10));
                                reset.set(true);
-                               reset.wait_for(10 * ns);
+                               reset.wait_for(Nanoseconds(10));
                                reset.set(false);
                              }}};
 
-  fixture.platform.run(30 * ns);
+  fixture.platform.run(Nanoseconds(30));
 
-  EXPECT_EQ(fixture.peek32(0x10), 2u);
-  EXPECT_EQ(fixture.peek32(0x20), 0u);
+  EXPECT_EQ(fixture.peek32(0x10), 2U);
+  EXPECT_EQ(fixture.peek32(0x20), 0U);
 }
 
 TEST(WhenResetIsPulsedAfterAScriptHasFinished, TheScriptPlaysAgain) {
@@ -254,15 +255,15 @@ TEST(WhenResetIsPulsedAfterAScriptHasFinished, TheScriptPlaysAgain) {
                           co_await write32(0x10, runs + 1);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.wait_for(10 * ns);
+                          reset.wait_for(Nanoseconds(10));
                           reset.set(true);
-                          reset.wait_for(10 * ns);
+                          reset.wait_for(Nanoseconds(10));
                           reset.set(false);
                         }}};
 
-  fixture.platform.run(30 * ns);
+  fixture.platform.run(Nanoseconds(30));
 
-  EXPECT_EQ(fixture.peek32(0x10), 2u);
+  EXPECT_EQ(fixture.peek32(0x10), 2U);
 }
 
 TEST(WhenAScriptWaitsForAnInterruptLineThatIsNotConnected, ItWaitsForever) {
@@ -271,9 +272,9 @@ TEST(WhenAScriptWaitsForAnInterruptLineThatIsNotConnected, ItWaitsForever) {
     co_await write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.run(100 * ns);
+  fixture.platform.run(Nanoseconds(100));
 
-  EXPECT_EQ(fixture.peek32(0x10), 0u);
+  EXPECT_EQ(fixture.peek32(0x10), 0U);
 }
 
 TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
@@ -293,15 +294,16 @@ TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
   platform.bind("reset_driver.line", "second.reset");
   platform.elaborate();
 
-  platform.run(10 * ns);
+  platform.run(Nanoseconds(10));
 
-  std::uint32_t first = 1, second = 1;
+  std::uint32_t first = 1;
+  std::uint32_t second = 1;
   platform.debug_read("first.socket", 0x10,
                       std::as_writable_bytes(std::span{&first, 1}));
   platform.debug_read("second.socket", 0x10,
                       std::as_writable_bytes(std::span{&second, 1}));
-  EXPECT_EQ(first, 0u);
-  EXPECT_EQ(second, 0u);
+  EXPECT_EQ(first, 0U);
+  EXPECT_EQ(second, 0U);
 }
 
 TEST(WhenADebugAccessIsAskedForThroughAWirePort, TheErrorSaysItIsAWire) {

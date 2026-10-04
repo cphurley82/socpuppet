@@ -40,7 +40,7 @@ TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   std::uint32_t seen = 0;
   platform.debug_read("cpu.socket", 0x10,
                       std::as_writable_bytes(std::span{&seen, 1}));
-  EXPECT_EQ(seen, 0xC0FFEEu);
+  EXPECT_EQ(seen, 0xC0FFEEU);
 }
 
 TEST(WhenAPlatformIsElaboratedButNotYetRun, DebugWritesAlreadyReachTheMemory) {

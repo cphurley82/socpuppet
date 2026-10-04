@@ -70,7 +70,9 @@ struct NativePlatform {
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
-  // C++ failures that have a Python exception of their own.
+  // C++ failures that have a Python exception of their own. pybind11 fixes
+  // the signature of a translator: it takes the exception_ptr by value.
+  // NOLINTNEXTLINE(performance-unnecessary-value-param)
   py::register_exception_translator([](std::exception_ptr failure) {
     try {
       if (failure) std::rethrow_exception(failure);

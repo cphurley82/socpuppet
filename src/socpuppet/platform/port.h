@@ -41,24 +41,36 @@ inline const char* to_string(Port::Kind kind) {
 inline Port initiator_port(std::string name,
                            tlm::tlm_initiator_socket<>& socket,
                            bool required = true) {
-  return {std::move(name), Port::Kind::bus, Port::Role::source, &socket,
-          required};
+  return {.name = std::move(name),
+          .kind = Port::Kind::bus,
+          .role = Port::Role::source,
+          .object = &socket,
+          .required = required};
 }
 
 inline Port target_port(std::string name, tlm::tlm_target_socket<>& socket,
                         bool required = true) {
-  return {std::move(name), Port::Kind::bus, Port::Role::sink, &socket,
-          required};
+  return {.name = std::move(name),
+          .kind = Port::Kind::bus,
+          .role = Port::Role::sink,
+          .object = &socket,
+          .required = required};
 }
 
 inline Port wire_source_port(std::string name, sc_core::sc_out<bool>& out) {
-  return {std::move(name), Port::Kind::wire, Port::Role::source, &out};
+  return {.name = std::move(name),
+          .kind = Port::Kind::wire,
+          .role = Port::Role::source,
+          .object = &out};
 }
 
 // A wire input may be left unconnected; the component then sees it as low.
 inline Port wire_sink_port(std::string name, sc_core::sc_in<bool>& in) {
-  return {std::move(name), Port::Kind::wire, Port::Role::sink, &in,
-          /*required=*/false};
+  return {.name = std::move(name),
+          .kind = Port::Kind::wire,
+          .role = Port::Role::sink,
+          .object = &in,
+          .required = false};
 }
 
 }  // namespace socpuppet

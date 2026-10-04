@@ -23,17 +23,27 @@ Checks:
   # Google style allows `if (done) return;` on one line with no braces. The
   # google- version of this check allows it too, and stays on.
   - -readability-braces-around-statements
+  # A method that does not touch `this` is often still part of an interface
+  # that someone else calls on an object: a coroutine's promise, a TLM
+  # target. Platform's methods act on the one SystemC kernel, not on members.
+  - -readability-convert-member-functions-to-static
   # Short names such as `it` and `id` are fine.
   - -readability-identifier-length
   # Addresses, sizes and test data are numbers; naming each one would bury
   # the code.
   - -readability-magic-numbers
+  # Leaving a parameter unnamed is how C++ says it is unused.
+  - -readability-named-parameter
 
 # Every finding fails the run. A check that is not worth failing for is not
 # worth having on.
 WarningsAsErrors: '*'
 
 CheckOptions:
+  # Count the complexity a person reads, not what gtest's EXPECT_ macros
+  # expand to.
+  readability-function-cognitive-complexity.IgnoreMacros: true
+
   # Google's names. Types and functions are CamelCase, variables are
   # lower_case, a private member ends in an underscore, and a constant is a
   # k followed by CamelCase.

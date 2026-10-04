@@ -120,10 +120,10 @@ class Script {
 
 inline Read32 read32(std::uint64_t address) { return {address}; }
 inline Write32 write32(std::uint64_t address, std::uint32_t value) {
-  return {address, value};
+  return {.address = address, .value = value};
 }
 inline Expect32 expect32(std::uint64_t address, std::uint32_t value) {
-  return {address, value};
+  return {.address = address, .value = value};
 }
 // Python calls this one `wait`; here that name belongs to sc_module::wait.
 inline Wait wait_for(Picoseconds duration) { return {duration}; }
