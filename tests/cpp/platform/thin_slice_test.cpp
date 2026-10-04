@@ -6,7 +6,8 @@
 #include "socpuppet/models/scripted_bus_master.h"
 
 TEST(WhenAMasterWritesAWordThroughThePassThroughLink, TheMemoryHoldsIt) {
-  socpuppet::ScriptedBusMaster master{"master", {socpuppet::Write32{0x10, 0xC0FFEE}}};
+  socpuppet::ScriptedBusMaster master{"master"};
+  master.set_script({socpuppet::Write32{0x10, 0xC0FFEE}});
   socpuppet::PassThroughLink link{"link"};
   socpuppet::Memory memory{"memory", 0x100};
   master.socket.bind(link.target);

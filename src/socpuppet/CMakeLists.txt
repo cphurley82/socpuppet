@@ -3,7 +3,8 @@
 add_library(socpuppet_core INTERFACE)
 target_include_directories(socpuppet_core INTERFACE ${PROJECT_SOURCE_DIR}/src)
 
-# models/: the SystemC wrappers. Header-only for now.
+# models/: the SystemC wrappers. platform/: composing them by name (ports,
+# the registry, the platform builder). Header-only for now.
 add_library(socpuppet_models INTERFACE)
 target_link_libraries(socpuppet_models INTERFACE socpuppet_core SystemC::systemc)
 

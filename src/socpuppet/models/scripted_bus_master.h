@@ -15,18 +15,20 @@ struct Write32 {
   std::uint32_t value;
 };
 
-// A bus master that plays a fixed list of operations, in order.
+// A bus master that plays a fixed list of operations, in order. Hand it the
+// list with set_script() before the simulation starts.
 class ScriptedBusMaster : public sc_core::sc_module {
  public:
   tlm_utils::simple_initiator_socket<ScriptedBusMaster> socket{"socket"};
 
-  ScriptedBusMaster(const sc_core::sc_module_name& name, std::vector<Write32> ops)
-      : sc_module(name), ops_(std::move(ops)) {
-    SC_THREAD(play);
+  explicit ScriptedBusMaster(const sc_core::sc_module_name& name) : sc_module(name) {
+    SC_THREAD(run);
   }
 
+  void set_script(std::vector<Write32> ops) { ops_ = std::move(ops); }
+
  private:
-  void play() {
+  void run() {
     for (Write32& op : ops_) {
       tlm::tlm_generic_payload transaction;
       transaction.set_command(tlm::TLM_WRITE_COMMAND);

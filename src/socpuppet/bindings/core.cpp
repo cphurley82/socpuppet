@@ -34,12 +34,13 @@ struct KernelClaim {
   }
 };
 
-// The first end-to-end slice, wired by hand: a scripted bus master writes
+// The first end-to-end slice, wired by hand, from before the registry
+// existed. It will be replaced by socpuppet::Platform (platform/platform.h): a scripted bus master writes
 // through the pass-through link into a memory.
 class Platform {
  public:
-  explicit Platform(const Writes& writes)
-      : master_{"master", to_ops(writes)} {
+  explicit Platform(const Writes& writes) {
+    master_.set_script(to_ops(writes));
     master_.socket.bind(link_.target);
     link_.initiator.bind(memory_.socket);
   }
@@ -57,7 +58,7 @@ class Platform {
   }
 
   KernelClaim kernel_claim_;  // first member: checked before any module is built
-  socpuppet::ScriptedBusMaster master_;
+  socpuppet::ScriptedBusMaster master_{"master"};
   socpuppet::PassThroughLink link_{"link"};
   socpuppet::Memory memory_{"memory", 0x100};
 };

@@ -12,8 +12,9 @@ gtest_discover_tests(unit_tests)
 add_executable(kernel_tests
   kernel_test_main.cpp
   contracts/memory_test.cpp
+  platform/composition_test.cpp
   platform/kernel_smoke_test.cpp
   platform/scc_router_smoke_test.cpp
   platform/thin_slice_test.cpp)
-target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gtest)
+target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)
 gtest_discover_tests(kernel_tests)
