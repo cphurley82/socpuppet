@@ -50,7 +50,7 @@ print(sp.render_trace(platform.trace))
         0 ns  read  0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
 ```
 
-The same description gives the devicetree that firmware will later be built against, with nothing simulated:
+And now for something completely different: the same description also gives the devicetree that firmware will later be built against, with nothing simulated.
 
 ```sh
 socpuppet devicetree examples/m0_passthrough.py

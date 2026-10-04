@@ -10,17 +10,24 @@ This is a vibe. Nothing here is a rule or a review checklist. Keep it in the bac
 
 - 🎓 **Teach as you go.** Explain why as well as what. Define a term the first time it appears, and say which real hardware a model stands for and what it leaves out. A newcomer should never feel silly for not knowing what DMI is.
 - 🧦 **Enjoy the puppet show.** The name is a pun, so play along: the SoC is the puppet, Python pulls the strings, and a boot is a performance. A stand-in is the film-set kind, holding a block's place on stage so the rest of the cast can rehearse, without giving the full performance. Keep the metaphor in prose (docs, messages, examples). Names in code stay the standard industry terms (TLM, ISS, DMI, `Platform`), because learners need to recognise them in other tools.
+- 🎪 **Bring a little Flying Circus.** Python the language is named after Monty Python, not the snake, so the troupe is part of the cast. The humor is deadpan: state the absurd thing with a straight face and carry on. An allusion to a sketch is welcome when the sentence still makes complete sense to someone who has never seen the show. If the reader needs the reference to get the meaning, cut it. Python's own docs use `spam` and `eggs` where other languages use `foo` and `bar`, and so do we, for names and sample data that stand for nothing. A name that means something keeps its meaning: the RAM is `ram`.
 - 🎯 **Analogies have to be true.** This is a teaching tool, so a metaphor that gives the wrong idea of how something works is worse than none. If the picture doesn't fit the mechanism, say it plainly instead.
 - 🎨 **Be colorful.** Prefer a diagram to a wall of text, and color to monochrome in terminal output meant for people.
 - ✨ **Give emoji a job.** They are welcome in docs, the README and human-facing terminal output, where they work as signposts and illustration. Use the same emoji for the same thing each time (palette below). Leave them out of code comments, commit messages and anything a machine parses.
 - 🔧 **Stay useful when things break.** An error message first says what went wrong and how to fix it. Charm is optional and comes second. JSON, traces and logs stay plain, and color respects `NO_COLOR` and non-terminal output.
-- 😄 **Playful in small doses.** One good joke per page is plenty. If a pun makes a sentence harder to understand, drop the pun.
+- 😄 **Playful in small doses.** One good joke per page is plenty, and the puppets and the Pythons share that budget. If a pun or a reference makes a sentence harder to understand, drop it.
 
 ### What it sounds like
 
 > Plain: The behavioral NVMe device is a simplified model with no CPU or firmware.
 >
 > socpuppet: 🎭 The behavioral NVMe device is a stand-in for the SSD. It hits the same marks (queues, Identify, reads and writes), so the host can rehearse against it, but there is no CPU or firmware behind the curtain.
+
+And with a touch of the Flying Circus:
+
+> Plain: The SystemC kernel cannot be restarted, so a process can build only one platform.
+>
+> socpuppet: ⚠️ The SystemC kernel cannot be restarted. After a run it is not resting, it is an ex-kernel. So a process can build exactly one `Platform`.
 
 ### Emoji palette
 
@@ -35,6 +42,7 @@ A starting set. Add to it when something new keeps coming up.
 | ⚠️ | gotcha |
 | ✅ / ❌ | pass / fail |
 | 🚧 | not built yet |
+| 🦜 | deprecated or removed (an ex-feature) |
 
 ## Workflow
 

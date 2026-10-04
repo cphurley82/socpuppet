@@ -105,7 +105,7 @@ Mixing kinds, or connecting two sources, is refused with a message naming both p
 
 ## ⚠️ One platform per process
 
-The SystemC kernel is a process-wide singleton and cannot be restarted. So a process can build exactly one `Platform`, and a second attempt is refused with an explanation.
+The SystemC kernel is a process-wide singleton and cannot be restarted. After a run it is not resting, it is an ex-kernel. So a process can build exactly one `Platform`, and a second attempt is refused with an explanation.
 
 For tests, each one that builds a platform gets its own process:
 
