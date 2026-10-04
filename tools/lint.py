@@ -68,12 +68,13 @@ def repo_files():
     A file deleted but not yet committed is still tracked, so those are left out.
     """
     listing = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        # -z: names come back as they are, not quoted and escaped.
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
         check=True,
         stdout=subprocess.PIPE,
         text=True,
     )
-    return [f for f in listing.stdout.splitlines() if Path(f).is_file()]
+    return [f for f in listing.stdout.split("\0") if Path(f).is_file()]
 
 
 def tool(name):
