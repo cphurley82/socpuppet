@@ -126,20 +126,27 @@ def run(linter, files, root, fix):
         # input, or everything under the current directory.
         return True
     program, *arguments = linter.fix if fix and linter.fix else linter.check
-    result = subprocess.run(
-        [tool(program), *arguments, *files],
-        # From the top of the repository, where each linter's config is.
-        cwd=root,
-        # A linter may call another: actionlint runs shellcheck on the
-        # scripts inside a workflow, and looks for it on the PATH.
-        env={
-            **os.environ,
-            "PATH": tools_directory() + os.pathsep + os.environ["PATH"],
-        },
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [tool(program), *arguments, *files],
+            # From the top of the repository, where each linter's config is.
+            cwd=root,
+            # A linter may call another: actionlint runs shellcheck on the
+            # scripts inside a workflow, and looks for it on the PATH.
+            env={
+                **os.environ,
+                "PATH": tools_directory() + os.pathsep + os.environ["PATH"],
+            },
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except FileNotFoundError:
+        sys.exit(
+            f"{program} is not installed next to {sys.executable}. "
+            "Run `uv sync` to install the linters, then run this as "
+            "`uv run python tools/lint.py`."
+        )
     passed = result.returncode == 0
     report(linter.name, passed)
     print(result.stdout, end="")

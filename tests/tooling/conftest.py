@@ -20,7 +20,7 @@ CONFIG_FILES = [
     ".rumdl.toml",
 ]
 
-LINT = [sys.executable, str(REPO / "tools" / "lint.py")]
+LINT = REPO / "tools" / "lint.py"
 
 
 @pytest.fixture
@@ -46,9 +46,9 @@ def git(repo):
 def lint(repo):
     """Run tools/lint.py in the throwaway repository, output going to a pipe."""
 
-    def run(*args, cwd=repo, stdin=""):
+    def run(*args, cwd=repo, stdin="", python=sys.executable):
         return subprocess.run(
-            [*LINT, *args],
+            [str(python), str(LINT), *args],
             cwd=cwd,
             # Only the system's own directories: lint must find its tools
             # without the virtual environment being activated.
@@ -85,7 +85,9 @@ def lint_on_a_terminal(repo, monkeypatch):
 
     def run():
         ours, theirs = pty.openpty()
-        process = subprocess.Popen(LINT, cwd=repo, stdout=theirs, stderr=theirs)
+        process = subprocess.Popen(
+            [sys.executable, str(LINT)], cwd=repo, stdout=theirs, stderr=theirs
+        )
         os.close(theirs)
         sent = b""
         while True:
