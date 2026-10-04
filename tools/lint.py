@@ -70,6 +70,11 @@ LINTERS = [
         check=("rumdl", "check", "--quiet", "--no-cache"),
         fix=("rumdl", "check", "--quiet", "--no-cache", "--fix"),
     ),
+    Linter(
+        "actionlint",
+        patterns=(".github/workflows/*.yml",),
+        check=("actionlint",),
+    ),
 ]
 
 
