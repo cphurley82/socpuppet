@@ -33,6 +33,14 @@ if [[ ${standard} == 20 && -f systemc-components/common/include/semaphore.h ]]; 
   sed -i 's|#include <semaphore.h>|#include <gs_semaphore.h>|' \
     systemc-components/common/include/qkmulti-rolling.h
 fi
+if [[ ${standard} == 20 ]]; then
+  # Source patch 2. Two constructors are declared with their template
+  # arguments spelled out, `Name<T>(...)`, which C++20 no longer allows.
+  sed -i 's|FactoryMaker<T, U...>(const char\* _t)|FactoryMaker(const char* _t)|' \
+    systemc-components/common/include/cciutils.h
+  sed -i 's|TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)|TargetSignalSocketProxy(TargetSignalSocket<bool>\& parent)|' \
+    systemc-components/common/include/ports/target-signal-socket.h
+fi
 # QBox's own preset, with QEMU built for the two RISC-V word sizes only.
 cmake --preset gcc -DLIBQEMU_TARGETS="riscv64;riscv32" \
   -DCMAKE_CXX_STANDARD="${standard}"

@@ -7,11 +7,20 @@
 #include <utility>
 #include <vector>
 
-#include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
 #include "spikes/iss/harness/probes.h"
 #include "spikes/iss/harness/standin_uart.h"
+
+// socpuppet's built-in components include SCC's router. A candidate that
+// cannot share a program with SCC is built with SPIKE_WITHOUT_SCC, and
+// gets socpuppet's memory with the spike's own router instead.
+#ifdef SPIKE_WITHOUT_SCC
+#include "socpuppet/models/memory.h"
+#include "spikes/iss/harness/simple_router.h"
+#else
+#include "socpuppet/models/builtin_components.h"
+#endif
 
 namespace spike {
 
@@ -27,9 +36,48 @@ inline constexpr std::uint64_t kUartSize = 0x100;
 inline constexpr std::uint64_t kRamBase = 0x8000'0000;
 inline constexpr std::uint64_t kRamSize = 0x1000'0000;  // 256 MB
 
-// The built-in components, plus the spike's stand-ins.
+// A memory and a router, by the names and with the parameters socpuppet
+// gives them.
+inline socpuppet::Registry MemoryAndRouter() {
+#ifdef SPIKE_WITHOUT_SCC
+  socpuppet::Registry registry;
+  registry.Add("memory", [](const char* name, const socpuppet::Config& config) {
+    auto module = std::make_unique<socpuppet::Memory>(
+        name, socpuppet::Required(config, "size", "memory"));
+    std::vector<socpuppet::Port> ports{
+        socpuppet::TargetPort("socket", module->socket)};
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  registry.Add("router", [](const char* name, const socpuppet::Config& config) {
+    const std::uint64_t outputs =
+        socpuppet::Required(config, "outputs", "router");
+    std::vector<SimpleRouter::Range> ranges;
+    for (std::uint64_t index = 0; index < outputs; ++index) {
+      const std::string output = "out" + std::to_string(index);
+      ranges.push_back(
+          {.base = socpuppet::Required(config, output + ".base", "router"),
+           .size = socpuppet::Required(config, output + ".size", "router")});
+    }
+    auto module = std::make_unique<SimpleRouter>(name, std::move(ranges));
+    std::vector<socpuppet::Port> ports{
+        socpuppet::TargetPort("target", module->target)};
+    for (std::uint64_t index = 0; index < outputs; ++index) {
+      ports.push_back(socpuppet::InitiatorPort("out" + std::to_string(index),
+                                               module->OutputAt(index)));
+    }
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  return registry;
+#else
+  return socpuppet::BuiltinComponents();
+#endif
+}
+
+// Those, plus the spike's stand-ins.
 inline socpuppet::Registry SpikeComponents() {
-  socpuppet::Registry registry = socpuppet::BuiltinComponents();
+  socpuppet::Registry registry = MemoryAndRouter();
   registry.Add("standin_uart", [](const char* name, const socpuppet::Config&) {
     auto module = std::make_unique<StandinUart>(name);
     std::vector<socpuppet::Port> ports{

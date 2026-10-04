@@ -115,6 +115,73 @@ What a learner would read:
 - The interpreter is generated, from a description of the instruction set in a language called CoreDSL. `vm_rv64imac.cpp` is 4,365 lines: a table of bit patterns, then one `case` per instruction. Each case is legible on its own (decode the fields, compute, write the register), but the file is not written to be read from top to bottom, and the source of truth is the CoreDSL, one step removed.
 - The privilege and trap logic is hand-written C++ (`riscv_hart_m_p.h`, 526 lines, on a 1,100-line common base) and is where a learner would look for how a trap is taken.
 
+### riscv-vp-plusplus (stopped at the build step on macOS)
+
+[riscv-vp-plusplus](https://github.com/ics-jku/riscv-vp-plusplus) is the active fork of riscv-vp, from JKU Linz: MIT, RV32 and RV64 up to GC with vectors, already on SystemC 3.0. Tried at commit `1dfbcb1` (2026-09-15).
+
+**Outcome: ❌ its ISS does not compile on macOS, and what it would take is well past a patch.** It was not taken further, on either system.
+
+- The fork's main addition is a faster core, and the speed comes from how it dispatches instructions: each instruction's handler is a label inside one huge function, and the table of labels is collected by the linker from a named ELF section. 🎓 ELF is the object-file format of Linux. macOS uses Mach-O, where sections are named differently and the trick of asking the linker for a section's start and end has another spelling. The first error, 35 times over: `argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and section separated by a comma` (`core/rv64/iss_ctemplate.cpp`).
+- Two smaller ones before it: `__always_inline` is a macro from Linux's C library that the core uses without defining (a compiler flag on our side fixed that), and a call to `sc_time`'s constructor that is ambiguous where `uint64_t` is not `unsigned long`.
+- Its own source says that an RV32 and an RV64 core in one program "compile but give runtime errors", marked as a to-do.
+
+macOS is a supported development host for socpuppet, so a core that builds only on Linux cannot be the default CPU. As the plan allowed, the original riscv-vp's simpler core took its place.
+
+### riscv-vp (supporting)
+
+[riscv-vp](https://github.com/agra-uni-bremen/riscv-vp) is the University of Bremen's original: MIT, RV32GC and RV64GC with machine, supervisor and user modes. Tried at commit `48b2f58` (2024-12-13, its latest).
+
+**Outcome: it passed every step, with two small source patches.**
+
+What it is:
+
+- An ISS as a plain C++ object (`rv32::ISS`, `rv64::ISS`), and a second object that turns its memory accesses into TLM transactions. A platform's `main()` is expected to supply the rest. The interpreter is one hand-written `switch`, about 1,900 lines per word size, and reads like a textbook.
+- Written for SystemC 2.3 and C++17, and last touched in December 2024. Development has moved to the fork.
+- Only the two ISS sources, the instruction decoder and its copy of SoftFloat were compiled, from our own CMake. Its build brings a whole virtual platform and a SystemC of its own. It needs three header-only Boost libraries.
+
+What it took:
+
+| Patch | Lines | Why |
+|---|---|---|
+| Named-thread macro | 3 | It is written against the inside of SystemC 2.3. The fork has the SystemC 3.0 form. |
+| Two global tables | 4 | The 32-bit and 64-bit ISS each define `regnames` and `regcolors`, so the two would not link into one program. |
+
+Plus a 180-line wrapper, which supplies what a riscv-vp `main()` would:
+
+- **The thread.** riscv-vp's own runner stops the simulation when the ISS returns.
+- **Reset.** The ISS has no notion of it. The wrapper uses SystemC's own asynchronous reset of a thread (`async_reset_signal_is`): when the line goes high the kernel abandons whatever the thread was doing and starts it again, and the wrapper builds a fresh ISS. 💡 This needs nothing from the ISS, so it works for any ISS that runs on a thread we own.
+- **DMI.** The ISS takes a raw pointer to RAM before it starts. The wrapper asks for one the TLM way first. ⚠️ The ISS keeps the pointer for good: a target that takes its DMI back is not obeyed.
+- **A timer and a bus lock**, which the ISS expects to be handed.
+
+What it did: RV64 and RV32 side by side, the smoke program, reset in all three phases, Zephyr `hello_world` on both boards, and no bus traffic to RAM at all once DMI was set up. It gives each instruction a time of its own (10 ns, more for loads, stores, multiplies and divides).
+
+What it leaves you holding: its GDB stub and its ELF loader were not built. Both use Linux-only headers, and the stub needs a parser library from a git submodule.
+
+### The in-house prototype (supporting)
+
+`spikes/iss/inhouse/`: a hart written for the spike, to find out how much work a core of our own is.
+
+**Outcome: it passed every step, in about a thousand lines, with no dependencies.**
+
+What it is:
+
+- `hart.h`, 820 lines: registers, the fetch-decode-execute loop, traps, interrupts and the control and status registers, for RV32 and RV64 from one template. `compressed.h`, 210 lines: each 16-bit compressed instruction expanded into the 32-bit one it stands for.
+- Plain C++ with no simulator in it, which is the shape socpuppet already asks of its models: the logic in a class that can be tested without the kernel, and a thin SystemC wrapper around it. The wrapper is 175 lines.
+- I, M, A and C, machine mode only. That is exactly what the two Zephyr images are compiled for: 88 distinct instructions in the 64-bit image and 71 in the 32-bit one.
+
+What it did: everything the others did. It booted both Zephyr images the first time it was run. Its DMI waits for the hint and gives the pointer back when the target says so, which neither riscv-vp nor the QBox wrapper needed asking for and riscv-vp cannot do.
+
+What it does not do, and would have to before M3 is over:
+
+- ⚠️ **It is not validated.** Two programs and a boot are not a test suite. The official `riscv-tests` (BSD-3-Clause) are bare-metal programs that report pass or fail and would run on this harness as they are. Until it passes them, a firmware bug and a CPU bug look the same.
+- **PMP is stored, not enforced.** Zephyr writes the registers and reads them back; nothing checks an access against them.
+- **No GDB stub.** DBT-RISE-RISCV has one, QEMU has one, riscv-vp has one that does not build here.
+- **No floating point, no supervisor or user mode.** Nothing in the plan needs them: every firmware is Zephyr in machine mode, and the handoff rules Linux out.
+
+### QBox (lead)
+
+🚧 Standalone results are in the measurements below. The integration behind the CPU slot is being run.
+
 ## Measurements
 
 Apple M-series laptop, Apple clang, optimized build with debug info. The loop is two instructions long (`addi`, `bne`) and runs 16.8 million times with DMI on and 1 million times with it off. The quantum was 1 ms of simulated time.
