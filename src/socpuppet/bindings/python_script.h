@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_BINDINGS_PYTHON_SCRIPT_H_
+#define SOCPUPPET_BINDINGS_PYTHON_SCRIPT_H_
 
 #include <cstdint>
 #include <optional>
@@ -84,3 +85,5 @@ class PythonScript {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_BINDINGS_PYTHON_SCRIPT_H_

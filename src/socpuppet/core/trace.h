@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_CORE_TRACE_H_
+#define SOCPUPPET_CORE_TRACE_H_
 
 #include <cstdint>
 #include <string>
@@ -35,3 +36,5 @@ class Trace {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_CORE_TRACE_H_

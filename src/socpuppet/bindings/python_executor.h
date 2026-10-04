@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_BINDINGS_PYTHON_EXECUTOR_H_
+#define SOCPUPPET_BINDINGS_PYTHON_EXECUTOR_H_
 
 #include <exception>
 #include <functional>
@@ -71,3 +72,5 @@ class PythonExecutor : public sc_core::sc_module {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_BINDINGS_PYTHON_EXECUTOR_H_

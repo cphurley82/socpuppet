@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_SLOTS_H_
+#define SOCPUPPET_PLATFORM_SLOTS_H_
 
 #include <concepts>
 #include <cstddef>
@@ -45,3 +46,5 @@ concept LinkEndpointSlot =
     };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_SLOTS_H_

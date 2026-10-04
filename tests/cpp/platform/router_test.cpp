@@ -10,9 +10,9 @@
 #include <systemc>
 #include <tlm>
 
-#include "../contracts/bus_driver.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
+#include "tests/cpp/contracts/bus_driver.h"
 
 namespace {
 

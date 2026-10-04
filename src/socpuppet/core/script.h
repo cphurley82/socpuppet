@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_CORE_SCRIPT_H_
+#define SOCPUPPET_CORE_SCRIPT_H_
 
 #include <coroutine>
 #include <cstdint>
@@ -129,3 +130,5 @@ inline Wait wait_for(Picoseconds duration) { return {duration}; }
 inline WaitIrq wait_irq() { return {}; }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_CORE_SCRIPT_H_

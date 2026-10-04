@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TESTS_CPP_CONTRACTS_BUS_DRIVER_H_
+#define TESTS_CPP_CONTRACTS_BUS_DRIVER_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -140,3 +141,5 @@ void debug_write(Target& target, std::uint64_t address,
   debug_access(target, tlm::TLM_WRITE_COMMAND, address,
                const_cast<std::uint8_t*>(data.data()), data.size());
 }
+
+#endif  // TESTS_CPP_CONTRACTS_BUS_DRIVER_H_

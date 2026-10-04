@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_MODELS_MEMORY_H_
+#define SOCPUPPET_MODELS_MEMORY_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -60,3 +61,5 @@ class Memory : public sc_core::sc_module {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_MODELS_MEMORY_H_

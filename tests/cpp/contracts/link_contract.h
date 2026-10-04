@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TESTS_CPP_CONTRACTS_LINK_CONTRACT_H_
+#define TESTS_CPP_CONTRACTS_LINK_CONTRACT_H_
 
 #include <array>
 #include <cstdint>
@@ -10,9 +11,9 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
-#include "bus_driver.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/platform/slots.h"
+#include "tests/cpp/contracts/bus_driver.h"
 
 // What every die-to-die link must do, whatever happens in between.
 //
@@ -137,3 +138,5 @@ REGISTER_TYPED_TEST_SUITE_P(
     TrafficFlowsInBothDirectionsAtOnce, AnErrorResponseComesBackAcrossTheLink,
     ADebugReadOnOneDieSeesTheMemoryOfTheOther,
     DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesLaterWrites);
+
+#endif  // TESTS_CPP_CONTRACTS_LINK_CONTRACT_H_

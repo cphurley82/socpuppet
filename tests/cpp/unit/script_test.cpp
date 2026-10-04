@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-using namespace socpuppet;
+namespace socpuppet {
 
 namespace {
 
@@ -45,3 +45,5 @@ TEST(WhenAScriptAwaitsARead, ItGetsTheValueTheBusGaveBack) {
   ASSERT_NE(write, nullptr);
   EXPECT_EQ(std::get<Write32>(*write).value, 0xC0FFEEu);
 }
+
+}  // namespace socpuppet

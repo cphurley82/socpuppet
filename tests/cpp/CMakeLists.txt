@@ -21,4 +21,7 @@ add_executable(kernel_tests
   platform/scripted_master_test.cpp
   platform/tracer_test.cpp)
 target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)
+# The tests' own headers are included by their path from the top of the
+# repository: "tests/cpp/contracts/bus_driver.h".
+target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR})
 gtest_discover_tests(kernel_tests)

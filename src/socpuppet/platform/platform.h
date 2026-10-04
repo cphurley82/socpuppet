@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_PLATFORM_H_
+#define SOCPUPPET_PLATFORM_PLATFORM_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -354,3 +355,5 @@ class Platform {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_PLATFORM_H_

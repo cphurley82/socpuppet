@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_REGISTRY_H_
+#define SOCPUPPET_PLATFORM_REGISTRY_H_
 
 #include <cstdint>
 #include <functional>
@@ -72,3 +73,5 @@ class Registry {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_REGISTRY_H_

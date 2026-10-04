@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_CORE_TIME_H_
+#define SOCPUPPET_CORE_TIME_H_
 
 #include <chrono>
 #include <cstdint>
@@ -9,3 +10,5 @@ namespace socpuppet {
 using Picoseconds = std::chrono::duration<std::uint64_t, std::pico>;
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_CORE_TIME_H_

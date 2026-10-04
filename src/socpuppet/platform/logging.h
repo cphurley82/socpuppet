@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_LOGGING_H_
+#define SOCPUPPET_PLATFORM_LOGGING_H_
 
 #include <scc/report.h>
 
@@ -17,3 +18,5 @@ inline void init_logging(bool color) {
 }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_LOGGING_H_

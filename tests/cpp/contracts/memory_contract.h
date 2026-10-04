@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TESTS_CPP_CONTRACTS_MEMORY_CONTRACT_H_
+#define TESTS_CPP_CONTRACTS_MEMORY_CONTRACT_H_
 
 #include <array>
 #include <cstdint>
@@ -9,8 +10,8 @@
 #include <systemc>
 #include <tlm>
 
-#include "bus_driver.h"
 #include "socpuppet/platform/slots.h"
+#include "tests/cpp/contracts/bus_driver.h"
 
 // What every memory implementation must do, whatever is behind it.
 //
@@ -121,3 +122,5 @@ REGISTER_TYPED_TEST_SUITE_P(
     DirectMemoryAccessSeesLaterWrites,
     DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory,
     ADebugReadSeesWhatTheBusWrote, ABusReadSeesWhatDebugWrote);
+
+#endif  // TESTS_CPP_CONTRACTS_MEMORY_CONTRACT_H_

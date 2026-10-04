@@ -18,7 +18,8 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/platform.h"
 
-using namespace socpuppet;
+namespace socpuppet {
+
 using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::testing::ThrowsMessage;
@@ -324,3 +325,5 @@ TEST(WhenAWireConnectionIsAskedToBeTraced,
       ThrowsMessage<std::invalid_argument>(
           AllOf(HasSubstr("bus"), HasSubstr("wire"))));
 }
+
+}  // namespace socpuppet

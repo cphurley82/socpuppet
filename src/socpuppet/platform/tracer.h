@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_TRACER_H_
+#define SOCPUPPET_PLATFORM_TRACER_H_
 
 #include <cstdint>
 #include <string>
@@ -72,3 +73,5 @@ class Tracer : public sc_core::sc_module {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_TRACER_H_

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_TIME_CONVERSION_H_
+#define SOCPUPPET_PLATFORM_TIME_CONVERSION_H_
 
 #include <systemc>
 
@@ -22,3 +23,5 @@ inline sc_core::sc_time to_sc_time(Picoseconds time) {
 }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_TIME_CONVERSION_H_

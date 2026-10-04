@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_CORE_MEMORY_STORE_H_
+#define SOCPUPPET_CORE_MEMORY_STORE_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -41,3 +42,5 @@ class MemoryStore {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_CORE_MEMORY_STORE_H_

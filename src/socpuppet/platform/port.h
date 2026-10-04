@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_PORT_H_
+#define SOCPUPPET_PLATFORM_PORT_H_
 
 #include <string>
 #include <utility>
@@ -61,3 +62,5 @@ inline Port wire_sink_port(std::string name, sc_core::sc_in<bool>& in) {
 }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_PORT_H_

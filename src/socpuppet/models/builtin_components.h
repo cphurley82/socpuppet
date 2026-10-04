@@ -1,7 +1,10 @@
-#pragma once
+#ifndef SOCPUPPET_MODELS_BUILTIN_COMPONENTS_H_
+#define SOCPUPPET_MODELS_BUILTIN_COMPONENTS_H_
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <scc/router.h>
 
@@ -67,3 +70,5 @@ inline Registry builtin_components() {
 }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_MODELS_BUILTIN_COMPONENTS_H_

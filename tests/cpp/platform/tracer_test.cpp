@@ -11,11 +11,12 @@
 #include <systemc>
 #include <tlm>
 
-#include "../contracts/bus_driver.h"
 #include "socpuppet/core/trace.h"
 #include "socpuppet/models/memory.h"
+#include "tests/cpp/contracts/bus_driver.h"
 
-using namespace socpuppet;
+namespace socpuppet {
+
 using ::testing::AllOf;
 using ::testing::ElementsAre;
 using ::testing::Field;
@@ -104,3 +105,5 @@ TEST(WhenDirectMemoryAccessIsAskedForAcrossATracedConnection, ItIsRefused) {
 
   EXPECT_FALSE(granted);
 }
+
+}  // namespace socpuppet

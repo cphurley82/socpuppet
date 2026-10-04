@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_MODELS_PASS_THROUGH_LINK_H_
+#define SOCPUPPET_MODELS_PASS_THROUGH_LINK_H_
 
 #include <systemc>
 #include <tlm>
@@ -81,3 +82,5 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_MODELS_PASS_THROUGH_LINK_H_

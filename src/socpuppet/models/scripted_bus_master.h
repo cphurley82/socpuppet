@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_MODELS_SCRIPTED_BUS_MASTER_H_
+#define SOCPUPPET_MODELS_SCRIPTED_BUS_MASTER_H_
 
 #include <cstdint>
 #include <format>
@@ -140,3 +141,5 @@ class ScriptedBusMaster : public sc_core::sc_module {
 };
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_MODELS_SCRIPTED_BUS_MASTER_H_

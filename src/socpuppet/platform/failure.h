@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SOCPUPPET_PLATFORM_FAILURE_H_
+#define SOCPUPPET_PLATFORM_FAILURE_H_
 
 #include <exception>
 #include <utility>
@@ -41,3 +42,5 @@ inline void rethrow_parked_failure() {
 }
 
 }  // namespace socpuppet
+
+#endif  // SOCPUPPET_PLATFORM_FAILURE_H_
