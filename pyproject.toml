@@ -1,9 +1,14 @@
+[build-system]
+requires = ["scikit-build-core>=0.11"]
+build-backend = "scikit_build_core.build"
+
 [project]
 name = "socpuppet"
 version = "0.0.1"
 description = "A whole SoC simulated in SystemC, with Python pulling the strings."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12"
 
 [dependency-groups]
@@ -17,6 +22,18 @@ dev = [
 # The dev loop builds with CMake directly (see CMakePresets.json), so
 # `uv sync` only installs tools and never builds the project itself.
 package = false
+
+[tool.scikit-build]
+# This is the packaging path (`uv build`, `pip install .`). It builds the
+# extension without the C++ tests and installs it into the wheel.
+minimum-version = "build-system.requires"
+cmake.version = ">=3.28"
+wheel.packages = ["python/socpuppet"]
+# Keep the build tree between runs so SystemC and SCC are not rebuilt.
+build-dir = "build/wheel-{wheel_tag}"
+
+[tool.scikit-build.cmake.define]
+SOCPUPPET_BUILD_TESTS = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

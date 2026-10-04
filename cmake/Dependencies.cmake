@@ -10,11 +10,14 @@ FetchContent_Declare(systemc
   URL_HASH SHA256=9b3693ed286aab958b9e5d79bb0ad3bc523bbc46931100553275352038f4a0c4
   EXCLUDE_FROM_ALL SYSTEM)
 
-set(INSTALL_GTEST OFF)
-FetchContent_Declare(googletest
-  URL https://github.com/google/googletest/archive/refs/tags/v1.18.0.tar.gz
-  URL_HASH SHA256=6e3191c1455468b3fc35a417fb565c1c5071aee1b7e7f85e30cf48a98d37d8b5
-  EXCLUDE_FROM_ALL SYSTEM)
+if(SOCPUPPET_BUILD_TESTS)
+  set(INSTALL_GTEST OFF)
+  FetchContent_Declare(googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.18.0.tar.gz
+    URL_HASH SHA256=6e3191c1455468b3fc35a417fb565c1c5071aee1b7e7f85e30cf48a98d37d8b5
+    EXCLUDE_FROM_ALL SYSTEM)
+  FetchContent_MakeAvailable(googletest)
+endif()
 
 # The interpreter that builds the extension is also the one that runs pytest.
 # Under `uv run`, this finds the project's virtual environment.
@@ -25,7 +28,7 @@ FetchContent_Declare(pybind11
   URL_HASH SHA256=ef712655692a2e9bf7bb7874c022564a45f91d847ddee987e720cd9e28849665
   EXCLUDE_FROM_ALL SYSTEM)
 
-FetchContent_MakeAvailable(systemc googletest pybind11)
+FetchContent_MakeAvailable(systemc pybind11)
 
 # --- SCC (SystemC-Components) and what it needs -----------------------------
 # SCC looks its dependencies up with find_package(). OVERRIDE_FIND_PACKAGE

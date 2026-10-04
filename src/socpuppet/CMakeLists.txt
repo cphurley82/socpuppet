@@ -8,7 +8,12 @@ target_link_libraries(socpuppet_models INTERFACE SystemC::systemc)
 # the SystemC kernel.
 pybind11_add_module(_core bindings/core.cpp)
 target_link_libraries(_core PRIVATE socpuppet_models)
-# Emit the extension next to the Python sources so the package is importable
-# straight from the source tree during development.
-set_target_properties(_core PROPERTIES
-  LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/python/socpuppet)
+if(SKBUILD)
+  # Building a wheel: the extension goes inside the installed package.
+  install(TARGETS _core LIBRARY DESTINATION socpuppet)
+else()
+  # Development: emit the extension next to the Python sources so the package
+  # is importable straight from the source tree.
+  set_target_properties(_core PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/python/socpuppet)
+endif()

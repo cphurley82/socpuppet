@@ -33,6 +33,24 @@ jobs:
       - run: uv run cmake --build --preset dev
       - run: uv run ctest --preset dev
 
+  wheel:
+    name: Wheel, installed with uv and pip (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build --wheel
+      - run: uv run --no-project python tools/check_wheel.py dist/*.whl
+      - run: tools/test_wheel.sh uv dist/*.whl
+      - run: tools/test_wheel.sh pip dist/*.whl
+
   devcontainer:
     name: Build and test (devcontainer)
     runs-on: ubuntu-24.04
@@ -42,7 +60,25 @@ jobs:
         id: changed
         with:
           filters: |
-            devcontainer:
+            wheel:
+    name: Wheel, installed with uv and pip (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      - uses: astral-sh/setup-uv@v6
+      - run: uv build --wheel
+      - run: uv run --no-project python tools/check_wheel.py dist/*.whl
+      - run: tools/test_wheel.sh uv dist/*.whl
+      - run: tools/test_wheel.sh pip dist/*.whl
+
+  devcontainer:
               - '.devcontainer/**'
       - name: Build the image and run the tests inside it
         if: steps.changed.outputs.devcontainer == 'true'

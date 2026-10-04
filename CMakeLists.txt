@@ -9,11 +9,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_SHARED_LIBS "Build dependencies as shared libraries" OFF)
+option(SOCPUPPET_BUILD_TESTS "Build the C++ tests and register pytest with ctest" ON)
 
 include(cmake/Dependencies.cmake)
 
 add_subdirectory(src/socpuppet)
 
-enable_testing()
-add_subdirectory(tests/cpp)
-add_subdirectory(tests/python)
+if(SOCPUPPET_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests/cpp)
+  add_subdirectory(tests/python)
+endif()
