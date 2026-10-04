@@ -27,7 +27,7 @@ TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   platform.bind("cpu.socket", "link.target");
   platform.bind("link.initiator", "ram.socket");
   platform.module<socpuppet::ScriptedBusMaster>("cpu").set_script(
-      {socpuppet::Write32{0x10, 0xC0FFEE}});
+      []() -> socpuppet::Script { co_await socpuppet::write32(0x10, 0xC0FFEE); });
   platform.elaborate();
 
   platform.run();

@@ -57,7 +57,7 @@ class ScriptedBusMaster(Component):
     """
 
     implementation = "scripted_bus_master"
-    ports = ("socket",)
+    ports = ("socket", "irq", "reset")
 
     def __init__(self, *, writes):
         super().__init__()

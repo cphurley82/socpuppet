@@ -51,6 +51,12 @@ std::uint64_t one_picosecond() { return sc_core::sc_time(1, sc_core::SC_PS).valu
 // (address, value) pairs, as Python passes them.
 using Writes = std::vector<std::pair<std::uint64_t, std::uint32_t>>;
 
+// A script that carries out the writes in order. Takes the list by value,
+// as every coroutine must (see core/script.h).
+socpuppet::Script write_each(Writes writes) {
+  for (const auto& [address, value] : writes) co_await socpuppet::write32(address, value);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_core, m) {
@@ -69,9 +75,8 @@ PYBIND11_MODULE(_core, m) {
                       const std::string& sink) { self.platform.bind(source, sink); })
       .def("set_writes",
            [](NativePlatform& self, const std::string& path, const Writes& writes) {
-             std::vector<socpuppet::Write32> ops;
-             for (const auto& [address, value] : writes) ops.push_back({address, value});
-             self.platform.module<socpuppet::ScriptedBusMaster>(path).set_script(std::move(ops));
+             self.platform.module<socpuppet::ScriptedBusMaster>(path).set_script(
+                 [writes] { return write_each(writes); });
            })
       .def("ports", [](NativePlatform& self,
                        const std::string& path) { return self.platform.ports(path); })

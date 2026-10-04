@@ -2,7 +2,8 @@ include(GoogleTest)
 
 # Tests of plain C++ logic. No kernel, so they can share one process.
 add_executable(unit_tests
-  unit/memory_store_test.cpp)
+  unit/memory_store_test.cpp
+  unit/script_test.cpp)
 target_link_libraries(unit_tests PRIVATE socpuppet_core GTest::gtest_main)
 gtest_discover_tests(unit_tests)
 
@@ -15,6 +16,7 @@ add_executable(kernel_tests
   platform/composition_test.cpp
   platform/kernel_smoke_test.cpp
   platform/router_test.cpp
-  platform/scc_router_smoke_test.cpp)
+  platform/scc_router_smoke_test.cpp
+  platform/scripted_master_test.cpp)
 target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)
 gtest_discover_tests(kernel_tests)

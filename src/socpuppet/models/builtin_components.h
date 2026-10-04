@@ -28,7 +28,9 @@ inline Registry builtin_components() {
   });
   registry.add("scripted_bus_master", [](const char* name, const Config&) {
     auto module = std::make_unique<ScriptedBusMaster>(name);
-    std::vector<Port> ports{initiator_port("socket", module->socket)};
+    std::vector<Port> ports{initiator_port("socket", module->socket),
+                            wire_sink_port("irq", module->irq),
+                            wire_sink_port("reset", module->reset)};
     return Instance{std::move(module), std::move(ports)};
   });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter

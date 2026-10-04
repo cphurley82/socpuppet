@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -14,6 +15,7 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/registry.h"
 
 namespace socpuppet {
@@ -41,20 +43,30 @@ class Platform {
   }
 
   // Binds two ports, each named "<component path>.<port>". The first must
-  // be a source (a TLM initiator socket) and the second a sink (a target).
+  // be a source (a TLM initiator socket, or a wire's driver) and the second
+  // a sink (a TLM target socket, or a wire's reader), both of one kind.
   void bind(const std::string& source, const std::string& sink) {
     const Port& from = port(source);
     const Port& to = port(sink);
+    if (from.kind != to.kind) {
+      throw std::invalid_argument("Cannot bind \"" + source + "\" to \"" + sink +
+                                  "\": the first is a " + to_string(from.kind) +
+                                  " port and the second is a " + to_string(to.kind) + " port.");
+    }
     if (from.role != Port::Role::source || to.role != Port::Role::sink) {
       throw std::invalid_argument(
           "Cannot bind \"" + source + "\" to \"" + sink +
-          "\": the first must be a source (such as a TLM initiator socket) and the second "
-          "a sink (such as a TLM target socket).");
+          "\": the first must be a source (a TLM initiator socket, or the port driving a "
+          "wire) and the second a sink (a TLM target socket, or a port reading a wire).");
     }
-    dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.socket)
-        .bind(dynamic_cast<tlm::tlm_target_socket<>&>(*to.socket));
-    bound_.insert(from.socket);
-    bound_.insert(to.socket);
+    if (from.kind == Port::Kind::bus) {
+      dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.object)
+          .bind(dynamic_cast<tlm::tlm_target_socket<>&>(*to.object));
+    } else {
+      dynamic_cast<sc_core::sc_in<bool>&>(*to.object).bind(wire_driven_by(from, source));
+    }
+    bound_.insert(from.object);
+    bound_.insert(to.object);
   }
 
   // Finishes construction: checks the wiring, then has SystemC complete its
@@ -68,11 +80,18 @@ class Platform {
     sc_core::sc_get_curr_simcontext()->initialize(true);
   }
 
-  // Runs until nothing is left to do. Call elaborate() first.
-  void run() { sc_core::sc_start(); }
+  // Runs until nothing is left to do. Call elaborate() first. Throws if a
+  // model stopped the simulation with an error (see failure.h).
+  void run() {
+    sc_core::sc_start();
+    rethrow_parked_failure();
+  }
 
   // Runs for `duration` of simulated time. Call elaborate() first.
-  void run(const sc_core::sc_time& duration) { sc_core::sc_start(duration); }
+  void run(const sc_core::sc_time& duration) {
+    sc_core::sc_start(duration);
+    rethrow_parked_failure();
+  }
 
   // The current simulated time.
   sc_core::sc_time time() const { return sc_core::sc_time_stamp(); }
@@ -129,7 +148,7 @@ class Platform {
     std::string unbound;
     for (const auto& [path, instance] : instances_) {
       for (const Port& candidate : instance.ports) {
-        if (!bound_.contains(candidate.socket)) {
+        if (candidate.required && !bound_.contains(candidate.object)) {
           unbound += (unbound.empty() ? "" : ", ") + path + "." + candidate.name;
         }
       }
@@ -149,13 +168,26 @@ class Platform {
     transaction.set_data_length(static_cast<unsigned>(length));
     transaction.set_streaming_width(static_cast<unsigned>(length));
     const Port& view = port(via);
-    if (view.role != Port::Role::source) {
+    if (view.kind != Port::Kind::bus || view.role != Port::Role::source) {
       throw std::invalid_argument(
-          "A debug access looks at the platform through a source port (such as a bus "
-          "master's initiator socket), and \"" + via + "\" is a sink.");
+          "A debug access looks at the platform through a bus source port (such as a bus "
+          "master's initiator socket), and \"" + via + "\" is a " + to_string(view.kind) +
+          (view.role == Port::Role::source ? " source." : " sink."));
     }
-    auto& socket = dynamic_cast<tlm::tlm_initiator_socket<>&>(*view.socket);
+    auto& socket = dynamic_cast<tlm::tlm_initiator_socket<>&>(*view.object);
     return socket->transport_dbg(transaction) == length;
+  }
+
+  // The signal a wire source drives, created the first time it is bound.
+  // It is named after its driver: "reset_driver.line" drives "reset_driver_line".
+  sc_core::sc_signal<bool>& wire_driven_by(const Port& source, std::string path) {
+    auto& wire = wires_[source.object];
+    if (!wire) {
+      std::replace(path.begin(), path.end(), '.', '_');
+      wire = std::make_unique<sc_core::sc_signal<bool>>(path.c_str());
+      dynamic_cast<sc_core::sc_out<bool>&>(*source.object).bind(*wire);
+    }
+    return *wire;
   }
 
   Group& group(const std::string& path) {
@@ -195,6 +227,7 @@ class Platform {
   // built inside them.
   std::map<std::string, std::unique_ptr<Group>> groups_;
   std::map<std::string, Instance> instances_;
+  std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>> wires_;
   std::set<const sc_core::sc_object*> bound_;
 };
 
