@@ -161,6 +161,25 @@ def test_calls_one_function_here_and_the_other_in_a_child_process():
     assert result.returncode == 0, result.stdout
 
 
+def test_a_test_labelled_tooling_is_left_out_of_the_coverage_run(cmake_project):
+    # Tests of the tooling run none of our code, and take a while.
+    project = cmake_project(
+        {
+            "src/widgets/widget.h": WIDGET_HEADER,
+            "vendor/vendor.h": VENDOR_HEADER,
+            "tests/widget_test.cpp": WIDGET_TEST,
+        },
+        CMAKE_LISTS
+        + "add_test(NAME always_fails COMMAND ${CMAKE_COMMAND} -E false)\n"
+        "set_tests_properties(always_fails PROPERTIES LABELS tooling)\n",
+    )
+    project.configure("SOCPUPPET_COVERAGE=ON")
+
+    result = project.build("coverage")
+
+    assert result.returncode == 0, result.stdout
+
+
 def reported_files(output):
     """The files in the C++ report's table.
 

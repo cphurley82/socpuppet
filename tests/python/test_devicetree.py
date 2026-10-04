@@ -121,7 +121,7 @@ def dtc_errors(source_text, scratch):
 def run_socpuppet_unchecked(*arguments):
     return subprocess.run(
         [sys.executable, "-m", "socpuppet", *arguments],
-        env={"PYTHONPATH": os.pathsep.join(sys.path)},
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
         capture_output=True,
         text=True,
     )

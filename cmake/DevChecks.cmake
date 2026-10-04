@@ -105,8 +105,10 @@ if(SOCPUPPET_COVERAGE)
             "import pathlib, sys; [counters.unlink() for counters in pathlib.Path(sys.argv[1]).rglob('*.gcda')]"
             ${CMAKE_BINARY_DIR}
     ${_socpuppet_python_coverage_erase}
+    # The tests of the tooling itself are left out: they run none of the
+    # code being measured, and they take a while.
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
-            --output-on-failure
+            --output-on-failure --label-exclude tooling
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage/cpp
     COMMAND ${Python_EXECUTABLE} -m gcovr
             --root ${PROJECT_SOURCE_DIR}

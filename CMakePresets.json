@@ -8,12 +8,22 @@
       "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "SOCPUPPET_DEVELOPER_MODE": "ON"
+        "SOCPUPPET_DEVELOPER_MODE": "ON",
+        "SOCPUPPET_COVERAGE": "OFF"
+      }
+    },
+    {
+      "name": "coverage",
+      "displayName": "Development build that measures test coverage",
+      "inherits": "dev",
+      "cacheVariables": {
+        "SOCPUPPET_COVERAGE": "ON"
       }
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev" }
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "coverage", "configurePreset": "coverage" }
   ],
   "testPresets": [
     {
