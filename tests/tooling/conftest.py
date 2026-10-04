@@ -27,10 +27,14 @@ LINT = REPO / "tools" / "lint.py"
 @pytest.fixture
 def repo(tmp_path):
     """A throwaway git repository carrying the real lint configuration."""
-    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
-    for name in CONFIG_FILES:
-        shutil.copy(REPO / name, tmp_path / name)
+    _make_repo(tmp_path)
     return tmp_path
+
+
+def _make_repo(path):
+    subprocess.run(["git", "init", "--quiet", str(path)], check=True)
+    for name in CONFIG_FILES:
+        shutil.copy(REPO / name, path / name)
 
 
 @pytest.fixture
@@ -120,21 +124,32 @@ class CMakeProject:
     """A small CMake project that uses the repo's cmake/ modules."""
 
     def __init__(self, source, build):
-        self._source = source
+        self.source = source
         self._build = build
 
-    def configure(self, *options):
-        """Configure the build tree. Options are given as "NAME=value"."""
+    def configure(self, *options, ci=False):
+        """Configure the build tree. Options are given as "NAME=value".
+
+        `ci` says whether to configure as a CI runner does, with CI set in
+        the environment. Whether these tests themselves run in CI must not
+        decide the outcome.
+        """
+        environment = {k: v for k, v in os.environ.items() if k != "CI"}
+        if ci:
+            environment["CI"] = "true"
         return _run(
             _tool("cmake"),
             "-S",
-            str(self._source),
+            str(self.source),
             "-B",
             str(self._build),
             "-G",
             "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={_tool('ninja')}",
+            # The interpreter that has the developer tools next to it.
+            f"-DPython_EXECUTABLE={sys.executable}",
             *(f"-D{option}" for option in options),
+            env=environment,
         )
 
     def build(self, target):
@@ -150,11 +165,15 @@ def cmake_project(tmp_path_factory):
 
     The project's CMakeLists.txt is written for it, up to and including the
     line that includes cmake/DevChecks.cmake; `cmake_lists` is what follows.
+    Its source directory is a throwaway git repository carrying the real
+    lint configuration.
     """
 
     def make(files, cmake_lists):
         root = tmp_path_factory.mktemp("project")
         source = root / "source"
+        source.mkdir()
+        _make_repo(source)
         for path, contents in files.items():
             (source / path).parent.mkdir(parents=True, exist_ok=True)
             (source / path).write_text(contents)
@@ -173,9 +192,10 @@ def _tool(name):
     return str(Path(sysconfig.get_path("scripts")) / name)
 
 
-def _run(*command):
+def _run(*command, env=None):
     return subprocess.run(
         command,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         encoding="utf-8",
