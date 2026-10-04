@@ -1,5 +1,7 @@
 """Fixtures for the tests of the repo's own tooling."""
 
+import os
+import pty
 import shutil
 import subprocess
 import sys
@@ -11,6 +13,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 # The real configuration, so the tests check the rules the repo is held to.
 CONFIG_FILES = [".clang-format"]
+
+LINT = [sys.executable, str(REPO / "tools" / "lint.py")]
 
 
 @pytest.fixture
@@ -24,15 +28,44 @@ def repo(tmp_path):
 
 @pytest.fixture
 def lint(repo):
-    """Run tools/lint.py in the throwaway repository."""
+    """Run tools/lint.py in the throwaway repository, output going to a pipe."""
 
     def run(*args):
         return subprocess.run(
-            [sys.executable, str(REPO / "tools" / "lint.py"), *args],
+            [*LINT, *args],
             cwd=repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
         )
+
+    return run
+
+
+@pytest.fixture
+def lint_on_a_terminal(repo, monkeypatch):
+    """Run tools/lint.py in the throwaway repository, output going to a terminal.
+
+    Returns what the terminal was sent.
+    """
+    # The developer's own preference must not decide the outcome.
+    monkeypatch.delenv("NO_COLOR", raising=False)
+
+    def run(*args):
+        ours, theirs = pty.openpty()
+        process = subprocess.Popen([*LINT, *args], cwd=repo, stdout=theirs, stderr=theirs)
+        os.close(theirs)
+        sent = b""
+        while True:
+            try:
+                chunk = os.read(ours, 4096)
+            except OSError:  # Linux reports the far end closing as an error.
+                break
+            if not chunk:
+                break
+            sent += chunk
+        os.close(ours)
+        process.wait()
+        return sent.decode("utf-8")
 
     return run

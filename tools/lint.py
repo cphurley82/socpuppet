@@ -13,6 +13,8 @@ import sys
 import sysconfig
 from pathlib import Path
 
+GREEN, RED, RESET = "\x1b[32m", "\x1b[31m", "\x1b[0m"
+
 
 def main():
     parser = argparse.ArgumentParser(description="Run the linters over this repository.")
@@ -27,10 +29,17 @@ def main():
         stderr=subprocess.STDOUT,
         text=True,
     )
-    passed = result.returncode == 0
-    print(f"{'✅' if passed else '❌'} clang-format")
+    report("clang-format", passed=result.returncode == 0)
     print(result.stdout, end="")
     return result.returncode
+
+
+def report(linter, passed):
+    """Print one line saying whether a linter passed, colored on a terminal."""
+    line = f"{'✅' if passed else '❌'} {linter}"
+    if sys.stdout.isatty():
+        line = f"{GREEN if passed else RED}{line}{RESET}"
+    print(line)
 
 
 def repo_files():
