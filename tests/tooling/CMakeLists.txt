@@ -13,4 +13,4 @@ add_test(NAME tooling
 
 # Neither runs any of the code that coverage measures, so the coverage
 # target leaves both out (cmake/DevChecks.cmake).
-set_tests_properties(lint tooling PROPERTIES LABELS tooling)
+set_tests_properties(lint tooling PROPERTIES LABELS ${SOCPUPPET_TOOLING_LABEL})

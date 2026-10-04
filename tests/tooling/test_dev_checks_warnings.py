@@ -9,7 +9,10 @@ def developer_mode(cmake_project):
 
     It has one program per scenario, named after it.
     """
-    scenarios = {"unused_variable": UNUSED_VARIABLE, **OTHER_WARNINGS}
+    scenarios = {
+        "unused_variable": UNUSED_VARIABLE,
+        **{name: source for name, (source, _) in OTHER_WARNINGS.items()},
+    }
     project = cmake_project(
         {f"{name}.cpp": source for name, source in scenarios.items()},
         "".join(
@@ -17,8 +20,7 @@ def developer_mode(cmake_project):
             for name in scenarios
         ),
     )
-    configured = project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
-    assert configured.returncode == 0, configured.stdout
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
     return project
 
 
@@ -39,13 +41,19 @@ def test_in_developer_mode_an_unused_variable_in_our_code_fails_the_build(
     assert "unused_variable.cpp:2" in result.stdout
 
 
+# Each scenario's source, and the line of it that the compiler should
+# object to.
 OTHER_WARNINGS = {
-    "unused_parameter": """\
+    "unused_parameter": (
+        """\
 int Twice(int number, int unused) { return number * 2; }
 
 int main() { return Twice(1, 2); }
 """,
-    "shadowed_variable": """\
+        1,
+    ),
+    "shadowed_variable": (
+        """\
 int main() {
   int count = 0;
   {
@@ -55,25 +63,36 @@ int main() {
   return count;
 }
 """,
-    "narrowing_conversion": """\
+        4,
+    ),
+    "narrowing_conversion": (
+        """\
 int main(int argc, char**) {
   long long wide = argc;
   int narrow = wide;
   return narrow;
 }
 """,
-    "sign_conversion": """\
+        3,
+    ),
+    "sign_conversion": (
+        """\
 int main(int argc, char**) {
   unsigned count = argc;
   return static_cast<int>(count);
 }
 """,
-    "zero_length_array": """\
+        2,
+    ),
+    "zero_length_array": (
+        """\
 int main() {
   int nothing[0];
   return static_cast<int>(sizeof(nothing));
 }
 """,
+        2,
+    ),
 }
 
 
@@ -81,10 +100,12 @@ int main() {
 def test_in_developer_mode_other_kinds_of_warning_fail_the_build_too(
     developer_mode, scenario
 ):
+    _, line = OTHER_WARNINGS[scenario]
+
     result = developer_mode.build(scenario)
 
     assert result.returncode != 0
-    assert "-Werror" in result.stdout
+    assert f"{scenario}.cpp:{line}" in result.stdout
 
 
 def test_without_developer_mode_the_same_unused_variable_builds(cmake_project):

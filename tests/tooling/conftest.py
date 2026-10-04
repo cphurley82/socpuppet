@@ -134,12 +134,13 @@ class CMakeProject:
 
         `ci` says whether to configure as a CI runner does, with CI set in
         the environment. Whether these tests themselves run in CI must not
-        decide the outcome.
+        decide the outcome. A project that cannot be configured fails the
+        test there and then.
         """
         environment = {k: v for k, v in os.environ.items() if k != "CI"}
         if ci:
             environment["CI"] = "true"
-        return _run(
+        configured = _run(
             _tool("cmake"),
             "-S",
             str(self.source),
@@ -153,6 +154,7 @@ class CMakeProject:
             *(f"-D{option}" for option in options),
             env=environment,
         )
+        assert configured.returncode == 0, configured.stdout
 
     def build(self, target):
         """Build one target."""

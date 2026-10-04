@@ -46,7 +46,8 @@
     {
       "name": "asan",
       "configurePreset": "asan",
-      "output": { "outputOnFailure": true }
+      "output": { "outputOnFailure": true },
+      "filter": { "include": { "label": "cpp" } }
     }
   ]
 }

@@ -22,22 +22,25 @@ def test_in_developer_mode_building_reformats_a_misformatted_source(project):
     )
 
 
-def test_after_a_build_that_reformatted_a_source_the_next_build_compiles_nothing(
+def test_after_a_build_that_reformatted_a_source_the_next_build_leaves_the_program_alone(
     project,
 ):
     project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
     project.build("program")
+    built = project.built("program").stat().st_mtime_ns
 
     second = project.build("program")
 
-    assert "Building CXX" not in second.stdout
+    assert second.returncode == 0, second.stdout
+    assert project.built("program").stat().st_mtime_ns == built
 
 
 def test_on_a_ci_runner_building_leaves_a_misformatted_source_as_it_is(project):
     project.configure("SOCPUPPET_DEVELOPER_MODE=ON", ci=True)
 
-    project.build("program")
+    result = project.build("program")
 
+    assert result.returncode == 0, result.stdout
     assert (project.source / "program.cpp").read_text() == (
         "int   main( ){return 0;}\n"
     )

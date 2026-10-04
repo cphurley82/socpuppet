@@ -50,8 +50,7 @@ def widget_project(cmake_project, *options):
         },
         CMAKE_LISTS,
     )
-    configured = project.configure("SOCPUPPET_COVERAGE=ON", *options)
-    assert configured.returncode == 0, configured.stdout
+    project.configure("SOCPUPPET_COVERAGE=ON", *options)
     return project
 
 
@@ -151,10 +150,9 @@ def test_calls_one_function_here_and_the_other_in_a_child_process():
         "  ENVIRONMENT PYTHONPATH=${PROJECT_SOURCE_DIR}/python)\n",
     )
     # Every line of widgets.py runs, but only if the child process counts.
-    configured = project.configure(
+    project.configure(
         "SOCPUPPET_COVERAGE=ON", "SOCPUPPET_COVERAGE_PYTHON_FLOOR=100"
     )
-    assert configured.returncode == 0, configured.stdout
 
     result = project.build("coverage")
 
@@ -171,13 +169,57 @@ def test_a_test_labelled_tooling_is_left_out_of_the_coverage_run(cmake_project):
         },
         CMAKE_LISTS
         + "add_test(NAME always_fails COMMAND ${CMAKE_COMMAND} -E false)\n"
-        "set_tests_properties(always_fails PROPERTIES LABELS tooling)\n",
+        "set_tests_properties(always_fails PROPERTIES LABELS ${SOCPUPPET_TOOLING_LABEL})\n",
     )
     project.configure("SOCPUPPET_COVERAGE=ON")
 
     result = project.build("coverage")
 
     assert result.returncode == 0, result.stdout
+
+
+def test_the_coverage_target_leaves_the_cpp_report_as_files_too(cmake_project):
+    project = widget_project(cmake_project)
+
+    project.build("coverage")
+
+    # Web pages to read line by line, and the table again for CI to show.
+    assert project.built("coverage/cpp/index.html").exists()
+    assert project.built("coverage/cpp.md").exists()
+
+
+def test_when_the_cpp_floor_is_missed_the_python_report_is_still_written(
+    cmake_project,
+):
+    project = cmake_project(
+        {
+            "src/widgets/widget.h": WIDGET_HEADER,
+            "vendor/vendor.h": VENDOR_HEADER,
+            "tests/widget_test.cpp": WIDGET_TEST,
+            "python/widgets.py": "ANSWER = 42\n",
+            "tests/test_widgets.py": """\
+import widgets
+
+
+def test_the_answer():
+    assert widgets.ANSWER == 42
+""",
+        },
+        CMAKE_LISTS + "add_test(NAME pytest\n"
+        "  COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest tests\n"
+        "  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})\n"
+        "set_tests_properties(pytest PROPERTIES\n"
+        "  ENVIRONMENT PYTHONPATH=${PROJECT_SOURCE_DIR}/python)\n",
+    )
+    # One line of the C++ header never runs, so this floor is missed.
+    project.configure(
+        "SOCPUPPET_COVERAGE=ON", "SOCPUPPET_COVERAGE_CPP_FLOOR=100"
+    )
+
+    result = project.build("coverage")
+
+    assert result.returncode != 0
+    assert project.built("coverage/python/index.html").exists()
 
 
 def reported_files(output):

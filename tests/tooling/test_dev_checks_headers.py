@@ -24,8 +24,7 @@ def test_when_a_header_uses_something_it_does_not_include_check_headers_fails_an
         "  FILE_SET HEADERS FILES widgets/needs_vector.h)\n"
         "socpuppet_check_headers(widgets)\n",
     )
-    configured = project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
-    assert configured.returncode == 0, configured.stdout
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
 
     result = project.build("check_headers")
 

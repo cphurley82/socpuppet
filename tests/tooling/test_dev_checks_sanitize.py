@@ -77,18 +77,22 @@ def test_when_sanitizing_a_loadable_module_still_loads_into_a_plain_program(
     project.configure("SOCPUPPET_SANITIZE=ON")
     project.build("plugin")
 
+    assert answer_from_a_plain_program(project.built("plugin.so")) == "42"
+
+
+def answer_from_a_plain_program(module):
+    """What Answer() in `module` returns, when Python loads and calls it."""
     loaded = subprocess.run(
         [
             sys.executable,
             "-c",
             "import ctypes, sys; print(ctypes.CDLL(sys.argv[1]).Answer())",
-            str(project.built("plugin.so")),
+            str(module),
         ],
         capture_output=True,
         text=True,
     )
-
-    assert loaded.stdout.strip() == "42", loaded.stderr
+    return loaded.stdout.strip()
 
 
 VENDOR = """\
@@ -129,3 +133,31 @@ def test_when_sanitizing_a_vector_filled_by_a_library_that_is_not_sanitized_can_
     result = project.run("program")
 
     assert result.returncode == 0, result.stdout
+
+
+OVERFLOWS_AN_INT = """\
+int main(int argc, char**) {
+  int largest = 2147483647;
+  // argc is 1, so this is one more than an int can hold.
+  return (largest + argc) < 0;
+}
+"""
+
+
+def test_when_sanitizing_a_signed_overflow_stops_the_program_and_says_where(
+    cmake_project,
+):
+    project = cmake_project(
+        {"overflows_an_int.cpp": OVERFLOWS_AN_INT},
+        "add_executable(overflows_an_int overflows_an_int.cpp)\n"
+        "socpuppet_dev_checks(overflows_an_int)\n",
+    )
+    project.configure("SOCPUPPET_SANITIZE=ON")
+    project.build("overflows_an_int")
+
+    result = project.run("overflows_an_int")
+
+    assert result.returncode != 0
+    assert "overflows_an_int.cpp:4" in result.stdout
+    # The innermost frame of a stack trace: how the program got there.
+    assert "#0 " in result.stdout

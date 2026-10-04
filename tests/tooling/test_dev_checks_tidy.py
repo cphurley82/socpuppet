@@ -10,8 +10,7 @@ def project_with_header(cmake_project, header):
         },
         "add_executable(program program.cpp)\nsocpuppet_dev_checks(program)\n",
     )
-    configured = project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
-    assert configured.returncode == 0, configured.stdout
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
     return project
 
 
@@ -130,9 +129,26 @@ def test_when_a_program_is_compiled_with_a_gcc_only_warning_flag_tidy_passes(
         "target_compile_options(program PRIVATE -Wno-interference-size)\n"
         "socpuppet_dev_checks(program)\n",
     )
-    configured = project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
-    assert configured.returncode == 0, configured.stdout
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
 
     result = project.build("tidy")
 
     assert result.returncode == 0, result.stdout
+
+
+def test_when_a_source_is_listed_by_its_full_path_tidy_still_checks_it(
+    cmake_project,
+):
+    project = cmake_project(
+        {
+            "program.cpp": "int main() {\n  int* nothing = 0;\n  return nothing != 0;\n}\n"
+        },
+        "add_executable(program ${CMAKE_CURRENT_SOURCE_DIR}/program.cpp)\n"
+        "socpuppet_dev_checks(program)\n",
+    )
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
+
+    result = project.build("tidy")
+
+    assert result.returncode != 0
+    assert "program.cpp:2" in result.stdout

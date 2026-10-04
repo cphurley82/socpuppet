@@ -7,12 +7,22 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(BUILD_SHARED_LIBS "Build dependencies as shared libraries" OFF)
 option(SOCPUPPET_BUILD_TESTS "Build the C++ tests and register pytest with ctest" ON)
 
 include(cmake/Dependencies.cmake)
 include(cmake/DevChecks.cmake)
+
+# The presets share one build directory, so the tree holds whichever kind of
+# build was configured last. Say so when it is not the everyday one.
+if(SOCPUPPET_COVERAGE)
+  message(NOTICE "socpuppet: this build tree measures COVERAGE: our code is "
+    "built unoptimized and instrumented. Run `cmake --preset dev` to go back.")
+endif()
+if(SOCPUPPET_SANITIZE)
+  message(NOTICE "socpuppet: this build tree has SANITIZERS in the C++ tests. "
+    "Run `cmake --preset dev` to go back.")
+endif()
 
 add_subdirectory(src/socpuppet)
 
