@@ -161,6 +161,9 @@ function(socpuppet_dev_checks)
       set(sanitizers -fsanitize=address,undefined -fno-sanitize-recover=undefined)
       target_compile_options(${target} PRIVATE ${sanitizers} -fno-omit-frame-pointer)
       target_link_options(${target} PRIVATE ${sanitizers})
+      # The options the sanitizers should run with, built into the program.
+      target_sources(${target} PRIVATE
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/sanitizer_options.cpp)
       # Have the standard library check its own preconditions, such as an
       # index being inside a vector. The first is GCC's library, the second
       # Clang's; each ignores the other's.

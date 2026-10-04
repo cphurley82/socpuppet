@@ -9,7 +9,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SOCPUPPET_DEVELOPER_MODE": "ON",
-        "SOCPUPPET_COVERAGE": "OFF"
+        "SOCPUPPET_COVERAGE": "OFF",
+        "SOCPUPPET_SANITIZE": "OFF"
       }
     },
     {
@@ -17,18 +18,34 @@
       "displayName": "Development build that measures test coverage",
       "inherits": "dev",
       "cacheVariables": {
-        "SOCPUPPET_COVERAGE": "ON"
+        "SOCPUPPET_COVERAGE": "ON",
+        "SOCPUPPET_COVERAGE_CPP_FLOOR": "90",
+        "SOCPUPPET_COVERAGE_PYTHON_FLOOR": "95"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "Development build with sanitizers in the C++ tests",
+      "inherits": "dev",
+      "cacheVariables": {
+        "SOCPUPPET_SANITIZE": "ON"
       }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
-    { "name": "coverage", "configurePreset": "coverage" }
+    { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "asan", "configurePreset": "asan" }
   ],
   "testPresets": [
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
       "output": { "outputOnFailure": true }
     }
   ]

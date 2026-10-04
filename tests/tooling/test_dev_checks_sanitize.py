@@ -56,13 +56,7 @@ def test_when_sanitizing_an_index_past_the_size_of_a_vector_stops_the_program(
     project.configure("SOCPUPPET_SANITIZE=ON")
     project.build("indexes_past_the_size")
 
-    # AddressSanitizer can watch a vector's spare room too. That has to be
-    # off when a dependency is not built the same way, as ours are not, so
-    # the standard library's own check is what must catch this.
-    result = project.run(
-        "indexes_past_the_size",
-        environment={"ASAN_OPTIONS": "detect_container_overflow=0"},
-    )
+    result = project.run("indexes_past_the_size")
 
     # Stopped by a signal (the library aborts or traps), where returning
     # whatever was read would give an exit status of zero or more.
@@ -95,3 +89,43 @@ def test_when_sanitizing_a_loadable_module_still_loads_into_a_plain_program(
     )
 
     assert loaded.stdout.strip() == "42", loaded.stderr
+
+
+VENDOR = """\
+#include <vector>
+
+void Append(std::vector<int>& numbers, int number) { numbers.push_back(number); }
+"""
+
+READS_WHAT_VENDOR_APPENDED = """\
+#include <vector>
+
+void Append(std::vector<int>& numbers, int number);
+
+int main() {
+  std::vector<int> numbers;
+  numbers.reserve(16);
+  Append(numbers, 0);
+  return numbers[0];
+}
+"""
+
+
+def test_when_sanitizing_a_vector_filled_by_a_library_that_is_not_sanitized_can_be_read(
+    cmake_project,
+):
+    # Our dependencies are such libraries. AddressSanitizer tracks which part
+    # of a vector is in use, and a library built without it does not say.
+    project = cmake_project(
+        {"vendor.cpp": VENDOR, "program.cpp": READS_WHAT_VENDOR_APPENDED},
+        "add_library(vendor STATIC vendor.cpp)\n"
+        "add_executable(program program.cpp)\n"
+        "target_link_libraries(program PRIVATE vendor)\n"
+        "socpuppet_dev_checks(program)\n",
+    )
+    project.configure("SOCPUPPET_SANITIZE=ON")
+    project.build("program")
+
+    result = project.run("program")
+
+    assert result.returncode == 0, result.stdout
