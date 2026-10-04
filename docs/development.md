@@ -10,7 +10,7 @@ Ubuntu 24.04 and macOS are both supported and both run in CI. If you would rathe
 
 ## The loop
 
-```
+```sh
 uv sync                                  # tools: Python, cmake, ninja, pytest
 uv run cmake --preset dev                # configure (fetches the dependencies the first time)
 uv run cmake --build --preset dev        # build
@@ -21,7 +21,7 @@ uv run ctest --preset dev                # every test: C++ and Python
 
 The build puts the Python extension next to the Python sources, so the package runs straight from the tree:
 
-```
+```sh
 uv run pytest                            # just the Python tests
 PYTHONPATH=python uv run python examples/m0_passthrough.py
 ```
@@ -39,7 +39,7 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 
 ## The package
 
-```
+```sh
 uv build --wheel
 uv run python tools/check_wheel.py dist/*.whl     # contents are what they should be
 tools/test_wheel.sh uv dist/*.whl                 # install in a clean env, run the tests there

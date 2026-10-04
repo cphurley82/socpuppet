@@ -19,7 +19,7 @@ It hits the same marks as the real link in two respects, which is what lets ever
 - **One endpoint per die.** `platform.link()` places an endpoint in each group and joins them. Each die's logic talks only to its own endpoint.
 - **Traffic both ways.** `a.target` → `b.initiator`, and `b.target` → `a.initiator`. A device on the IO die is the target of a register access and, later, the initiator of a DMA write into the compute die's memory.
 
-```
+```text
 this die                                    the other die
 target ──────────▶ peer_initiator ════▶ peer_target ──────▶ initiator
 initiator ◀─────── peer_target    ◀════ peer_initiator ◀─── target

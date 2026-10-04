@@ -44,7 +44,7 @@ platform.run()
 print(sp.render_trace(platform.trace))
 ```
 
-```
+```text
         0 ns  write 0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
         0 ns  read  0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
         0 ns  read  0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
@@ -52,7 +52,7 @@ print(sp.render_trace(platform.trace))
 
 The same description gives the devicetree that firmware will later be built against, with nothing simulated:
 
-```
+```sh
 socpuppet devicetree examples/m0_passthrough.py
 ```
 
@@ -60,7 +60,7 @@ socpuppet devicetree examples/m0_passthrough.py
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.
 
-```
+```sh
 git clone https://github.com/cphurley82/socpuppet && cd socpuppet
 uv sync
 uv run cmake --preset dev && uv run cmake --build --preset dev

@@ -3,9 +3,11 @@
 **Date:** 2026-10-03 / **Source:** claude.ai conversation
 
 ## Goal
+
 Build `socpuppet`, an open-source educational virtual platform in which a chiplet-based host (a compute die and an IO die joined by a UCIe-style die-to-die link) and an NVMe SSD controller each run their own Zephyr firmware, all inside one SystemC simulation. It must be controllable as a Python object (the name: you pull the SoC's strings from Python), unit-tested with GoogleTest, and clear enough to teach how commercial VP flows (e.g. Synopsys Virtualizer) work using only open tools. Every block must be swappable for a simplified stand-in, so the platform is built and tested incrementally rather than all at once.
 
 ## Context
+
 - The repo is empty; this brief is the starting spec.
 - The project should demonstrate industry VP practice: SoC and chiplet integration from TLM models (plus some RTL), multi-die boot flows, firmware bring-up before silicon, PCIe/NVMe, die-to-die interconnect, validation scenarios, and reusable methodology/automation.
 - Prior art to evaluate and reuse where licenses allow:
@@ -18,6 +20,7 @@ Build `socpuppet`, an open-source educational virtual platform in which a chiple
 ## Decisions
 
 ### Modularity (foundational; everything else builds on this)
+
 - Slot-based architecture: every block (each CPU + its firmware, SSD, NAND, PCIe link, D2D link, peripherals) is defined by an interface contract (TLM sockets, IRQ/reset signals, config parameters) and instantiated by name through a C++ component registry that Python drives. Because any block can then run as a stand-in or a full model without its neighbors changing.
 - Fidelity tiers where useful: **stub** (accepts traffic, returns fixed data, logs), **behavioral** (functionally correct, no internal structure), **full** (the real model, e.g. ISS + firmware). Because it lets each block start simple and grow.
 - CPU stand-in = scripted bus master: a C++ TLM initiator that runs an op sequence (read, write, wait for IRQ, wait time, expect value), plus a Python adapter where a Python generator yields those ops. Because the rest of the platform can be built and tested before any ISS or firmware exists. The C++ version keeps gtest free of Python; `sc_start` releases the GIL and Python stand-in callbacks re-acquire it.
@@ -27,6 +30,7 @@ Build `socpuppet`, an open-source educational virtual platform in which a chiple
 - Each milestone swaps at most one stand-in for a full model, so a failure points at the new block.
 
 ### Platform
+
 - Fully open-source toolchain, no Virtualizer, because learners must be able to build it for free.
 - SystemC 3.0.x + TLM-2.0 loosely-timed, with temporal decoupling and DMI for memories, because LT is the industry norm for software bring-up VPs and keeps Zephyr boots fast.
 - RISC-V everywhere: RV64 host compute die (64-bit PCIe windows/BARs, closer to real hosts), RV32IMAC for the SSD controller and the IO-die management core (mirrors embedded controller cores), because Zephyr's generic RISC-V drivers (machine timer, PLIC, NS16550 UART) need little modeling and open SystemC ISSs exist.
@@ -50,13 +54,16 @@ Build `socpuppet`, an open-source educational virtual platform in which a chiple
 - MIT license (decided at M0; this brief first proposed Apache-2.0). SystemC, SCC and Zephyr are Apache-2.0, which MIT code may depend on. GPL code (e.g. QBox/QEMU) stays out of the core.
 
 ## Constraints
+
 - Learning tool first: readability and documentation beat raw speed. Each model gets a short doc explaining the real hardware it represents and what it simplifies.
 - Stand-ins are first-class, documented and kept working, with CI running configurations that use them. They double as teaching aids: a learner can study one block (e.g. the FTL) with everything around it simplified.
 - Every model unit-testable in isolation with gtest; every milestone ends with an automated end-to-end test in CI (GitHub Actions, Ubuntu LTS).
 - No proprietary tools, IP or NDA material. The UCIe spec evaluation copy is licensed for non-commercial internal evaluation only, and the PCIe Base spec is not freely available, so model "UCIe-style" and PCIe behavior from public sources (white papers, published papers, OS driver code), never copy spec text or register tables, never claim compliance, and say so in the docs. NVMe specs are public and may be followed directly.
 
 ## Suggested approach
+
 Each step names the stand-in it replaces.
+
 1. Scaffold + infrastructure: CMake, deps, CI, LICENSE, `docs/architecture.md`; interface definitions, component registry, Python platform builder and devicetree generator, scripted bus master (C++ + Python adapter), memory, IRQ/reset signals, pass-through link, transaction tracing, contract-test harness.
 2. ISS spike (time-boxed; step 3 does not wait on it): compare riscv-vp's ISS, a VCML-based approach, and a minimal in-house ISS behind the CPU slot interface (TLM initiator + IRQ inputs + GDB hooks). Criteria: in-process, LT + DMI, boots Zephyr, license fit, C++20 compatibility (preferred, not required), build simplicity. Report before committing.
 3. PCIe + behavioral NVMe, no CPUs yet: root complex, endpoint config space, BARs, MSI-X and the behavioral NVMe device, driven by a Python "host driver" stand-in. Milestone: Python creates queues, runs Identify and completes block reads/writes.
@@ -69,6 +76,7 @@ Each step names the stand-in it replaces.
 10. Stretch: a Verilator-compiled RTL block (e.g. CRC/ECC engine in the SSD datapath) integrated through a TLM-to-signal adapter; a power/telemetry model (voltage regulator + sensors) on the IO die controlled by the management firmware.
 
 ## Open questions
+
 - ISS choice (outcome of step 2).
 - Build on VCML vs. a thin in-house layer on raw SystemC/TLM: VCML saves effort, raw SystemC is more transparent for learners.
 - Host MSI-X on RISC-V: verify Zephyr mainline support. If missing, either add RISC-V PCIe MSI hooks to Zephyr (a possible upstream contribution) backed by an IMSIC-like or simple MSI-to-PLIC bridge model, or write a minimal host NVMe driver in this repo. After step 8, MSI writes also cross the D2D link.
@@ -80,6 +88,7 @@ Each step names the stand-in it replaces.
 - Single- vs multi-core SSD controller (real controllers split frontend/FTL/backend across cores).
 
 ## Out of scope (for now)
+
 - Cycle-accurate or AT timing; PCIe/UCIe PHY, electrical and TLP/flit-level modeling.
 - Linux on the host.
 - Ethernet, CXL, and DDR/HBM timing models (candidate later extensions).

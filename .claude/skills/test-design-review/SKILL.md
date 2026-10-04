@@ -25,12 +25,14 @@ Tests are executable specifications: "in scenario X, Y happens".
 The scenario and the outcome both appear in the test name or its enclosing group (pytest class, gtest suite, Rust `mod`). "It works correctly", "handles errors", "validates input" specify nothing.
 
 Bad:
+
 ```python
 class TestScopeFailed:
     def test_returns_the_correct_value(self):
 ```
 
 Good:
+
 ```python
 class TestRerunningOnlyFailedTests:
     def test_when_status_is_passed_returns_passed(self):
@@ -48,6 +50,7 @@ mod when_a_particle_touches_a_grid_cell {
 Assert on the observable end result, never on the means: no `assert_called_once_with`, `EXPECT_CALL`, cache keys, current URL, or a specific internal field. Stub only what you must (external services) and let real code run. One pair covers the whole family:
 
 Bad:
+
 ```python
 def test_queues_the_task(mocker, task):
     worker_pool = mocker.patch("jobs.WorkerPool").return_value
@@ -60,6 +63,7 @@ def test_caches_the_result(test_suite_run):
 ```
 
 Good:
+
 ```python
 def test_queues_the_task(task):
     QueueUnqueuedTasksJob().perform()
@@ -105,6 +109,7 @@ A `timeout=3000`, `time.sleep(3)`, or retry count needs a reason; if it was carg
 Inputs that are part of the specification are hard-coded (`"123"` in, `"task-123"` out). Values the test does not own are not: anything copied from generated code, a config file, a schema, or the environment (a register address from a generated header, a port number from a config file, an ID from a seeded database). Copying such a value couples the test to something that changes for unrelated reasons. Read it from the same source the code under test uses, or shape the assertion so the exact value does not matter.
 
 Bad:
+
 ```python
 def test_when_a_byte_is_written_to_the_data_register_the_uart_holds_it(bus, uart):
     bus.write(0x4000_1000, 0x41)  # copied from the generated memory map
@@ -112,6 +117,7 @@ def test_when_a_byte_is_written_to_the_data_register_the_uart_holds_it(bus, uart
 ```
 
 Good:
+
 ```python
 def test_when_a_byte_is_written_to_the_data_register_the_uart_holds_it(bus, uart):
     bus.write(memory_map.UART0.data, 0x41)

@@ -12,6 +12,7 @@ This plan keeps the handoff's Decisions and reorders its suggested steps around 
 4. **Fidelity and validation.**
 
 Changes from the handoff's step order:
+
 - Step 6 is split. SSD firmware is first proven against the Python host stand-in (M4); host ↔ SSD becomes the first integration milestone (M6).
 - Step 8 is split. The D2D link and IO-manager firmware are brought up standalone with the compute die stood in (M5), before the real host is split into dies (M7) and the manager firmware joins it (M8).
 - Step 7 (realistic NAND) moves after the bootchain because nothing on that path needs it. It can be pulled forward any time after M4.
@@ -33,7 +34,7 @@ Changes from the handoff's step order:
 | M10 | Validation scenarios | 9 | none | M8, M9 | Scenario suite (below) |
 | M11 | Stretch: RTL block, power/telemetry | 10 | none | M8 | To be defined |
 
-```
+```text
 M0 ─┬─ M1 (ISS gate) ── M3 host ──────────────┐
     ├─ M2 (PCIe + behavioral NVMe) ── M4 SSD ─┼─ M6 ── M7 ── M8 ── M10
     └─ M5 IO manager (5a link, 5b firmware) ──┘       M9 NAND: any time after M4
@@ -43,7 +44,8 @@ M3, M4 and M5 are independent of each other apart from the shared CPU kit, so th
 
 ## Phase 1: Foundation
 
-**M0 — Scaffold + stand-in infrastructure**
+### M0 — Scaffold + stand-in infrastructure
+
 - Repo: CMake (C++20), FetchContent for SystemC 3.0.x / GoogleTest / pybind11, scikit-build-core packaging, GitHub Actions on Ubuntu 24.04, `docs/architecture.md`.
 - Slot contracts as C++20 concepts (TLM sockets, IRQ/reset signals, config parameters) and the component registry that instantiates blocks by name.
 - Python platform builder: build → run lifecycle, one Platform per process, description loadable without simulating, JSON dump, run / run_until / step, peek / poke.
@@ -55,11 +57,13 @@ M3, M4 and M5 are independent of each other apart from the shared CPU kit, so th
 - Built test-first (`.claude/skills/tdd`) wherever there is behavior to specify.
 - Housekeeping, settled: the license stays MIT. macOS is a supported dev host alongside Ubuntu 24.04, and a devcontainer provides the CI environment.
 
-**M1 — ISS spike (time-boxed; M2 does not wait on it)**
+### M1 — ISS spike (time-boxed; M2 does not wait on it)
+
 - Compare riscv-vp's ISS, a VCML-based approach and a minimal in-house ISS behind the CPU slot interface, on the handoff's criteria (in-process, LT + DMI, boots Zephyr, license, C++20, build simplicity).
 - Report with a recommendation, and stop for a decision before any CPU-based model is built. The same report settles VCML vs. a thin in-house layer and proposes the Zephyr version to pin.
 
-**M2 — PCIe + behavioral NVMe, no CPUs**
+### M2 — PCIe + behavioral NVMe, no CPUs
+
 - PCIe TLM extension (config/mem space, requester ID); root complex with ECAM window, MMIO window, inbound DMA and MSI-X as memory writes; endpoint config space, BARs, MSI-X table.
 - Behavioral NVMe device: RAM-backed, plain C++ core with a thin SystemC wrapper.
 - Python "host driver" stand-in, and the NVMe contract suite that every later NVMe implementation must pass.
@@ -70,39 +74,61 @@ Every track delivers the same kit to its firmware team: a Python platform descri
 
 The kit arrives as a Python package, because that is how a firmware developer gets the model: from M3 on, `uv add socpuppet` (or `pip install socpuppet`) pulls a prebuilt wheel for Linux and macOS with no compiler needed. That means cibuildwheel, PyPI publishing and versioning land with M3, and the Zephyr boards must be reachable from the installed package. M0 keeps the road open by building the wheel in CI and testing it installed with both uv and pip.
 
-**M3 — Host subsystem** (board `socpuppet_host`; SSD = behavioral NVMe, D2D = pass-through)
+### M3 — Host subsystem
+
+(board `socpuppet_host`; SSD = behavioral NVMe, D2D = pass-through)
+
 - a) CPU kit, built once and reused by M4 and M5: ISS wrapper (RV64 and RV32IMAC), ELF loader, DRAM, NS16550 UART with Python capture, machine timer, PLIC, GDB hook. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
 - b) PCIe enumeration from Zephyr; resolve the MSI-X-on-RISC-V question (verify mainline, else an MSI bridge model plus Zephyr hooks, or a minimal in-repo NVMe driver). Exit: Zephyr NVMe block I/O against the behavioral device.
 
-**M4 — SSD subsystem** (board `socpuppet_ssd`; host = Python host stand-in from M2, NAND = ideal)
+### M4 — SSD subsystem
+
+(board `socpuppet_ssd`; host = Python host stand-in from M2, NAND = ideal)
+
 - a) SSD hardware with a Python "firmware" stand-in in the CPU slot: NVMe frontend (config space, BAR0 registers and doorbells, MSI-X table, SQE fetch engine, DMA engine, completion poster), flash controller, ideal NAND. Exit: M2 host tests and NVMe contract tests pass.
 - b) RV32IMAC CPU, SRAM, DRAM buffer, UART, timer. Exit: Zephyr `hello_world` on `socpuppet_ssd`.
 - c) SSD firmware: admin path, PRP handling, page-mapped FTL. Exit: the same M2 tests pass against the firmware, with data checked against the behavioral device.
 
-**M5 — IO-die manager subsystem** (board `socpuppet_iomgr`; compute die = scripted stand-in held in reset)
+### M5 — IO-die manager subsystem
+
+(board `socpuppet_iomgr`; compute die = scripted stand-in held in reset)
+
 - a) D2D link model: one link module per die, link state machine (reset → training → active, error/retrain), configurable latency and bandwidth, sideband register channel, error injection hooks, compute-die reset control. D2D contract suite passed by both pass-through and full link. Manager slot filled by a Python script that trains the link over sideband.
 - b) RV32IMAC management core, UART, timer; Zephyr link-training and reset-release firmware. Exit: firmware boots, trains the link, releases reset, and the compute-side stand-in then reaches IO-die MMIO across the link.
 
 ## Phase 3: Full bootchain
 
-**M6 — Host firmware ↔ SSD firmware** (monolithic host, pass-through link)
+### M6 — Host firmware ↔ SSD firmware
+
+(monolithic host, pass-through link)
+
 - Two ELF images in one simulation, reset/ready sequencing (host waits on CSTS.RDY while SSD firmware boots), two UART captures, two GDB ports, quantum tuning with two ISSs.
 
-**M7 — Chiplet split** (manager = the M5a script)
+### M7 — Chiplet split
+
+(manager = the M5a script)
+
 - Host description becomes compute die + IO die; PCIe root complex and UART move to the IO die; board `socpuppet_compute` generated from the same description; cross-die address windows.
 - Host Zephyr application source stays unchanged, which is the reuse claim the project exists to show.
 
-**M8 — Full bootchain**
+### M8 — Full bootchain
+
 - Sequence under test: power-on → IO manager boots → trains D2D → releases compute die → host Zephyr boots across the link → PCIe enumeration → NVMe enable against the SSD firmware → block I/O.
 - Three-image co-debug walkthrough in the docs.
 
 ## Phase 4: Fidelity and validation
 
-**M9 — Realistic NAND**: geometry, tR/tPROG/tBERS delays, erase-before-write, sparse or file-backed storage, bad-block and bit-error hooks, NAND contract suite; FTL gains garbage collection.
+### M9 — Realistic NAND
 
-**M10 — Validation scenarios**: boot-sequencing variants and failures, link down/retrain during I/O, cross-die data integrity, bad blocks, power loss, IOPS/latency stats.
+Geometry, tR/tPROG/tBERS delays, erase-before-write, sparse or file-backed storage, bad-block and bit-error hooks, NAND contract suite; FTL gains garbage collection.
 
-**M11 — Stretch**: Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the IO die.
+### M10 — Validation scenarios
+
+Boot-sequencing variants and failures, link down/retrain during I/O, cross-die data integrity, bad blocks, power loss, IOPS/latency stats.
+
+### M11 — Stretch
+
+Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the IO die.
 
 ## Decisions deliberately left open
 

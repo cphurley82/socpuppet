@@ -51,7 +51,7 @@ The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage 
 
 ## Layers
 
-```
+```text
 python/socpuppet/         🧵 what you import: describe, build, run, inspect
 src/socpuppet/bindings/   the pybind11 extension, and the bridge back into Python
 src/socpuppet/platform/   composing by name: ports, registry, Platform, tracer, slots

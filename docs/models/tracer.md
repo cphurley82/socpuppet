@@ -14,7 +14,7 @@ platform.run()
 print(sp.render_trace(platform.trace))
 ```
 
-```
+```text
         0 ns  write 0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
        10 ns  read  0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
 ```
