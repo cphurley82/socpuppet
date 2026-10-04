@@ -146,3 +146,11 @@ Things later milestones should know:
 - The router is used with one master. PCIe (M2) needs several; `scc::router` supports that, the adapter does not expose it yet.
 - `Platform.build()` finishes SystemC elaboration through a kernel call (`sc_simcontext::initialize`) that is public in the reference kernel but not in the SystemC standard.
 - SCC is built with a one-line patch and two other accommodations (see `cmake/Dependencies.cmake`). They are worth offering upstream.
+- `Platform` is one class for both the description and the built simulation (`platform.build()`, then `platform.run()`). Splitting off a separate simulation object was considered and turned down: a process can only ever hold one simulation, so the two objects would always travel as a pair, and one object is easier to learn. The cost is a few "built yet?" checks, which are tested.
+
+## To do
+
+Small things that are nobody's milestone. Tick them off or delete them.
+
+- [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before M3, when the first wheels are published.
+- [ ] Offer the SCC build fixes upstream: the `try_compile` probe that cannot see an in-tree SystemC, and the missing `Boost::filesystem` link.
