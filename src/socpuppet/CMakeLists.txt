@@ -1,8 +1,11 @@
-# The models are header-only for now; this target carries their include path
-# and the SystemC they need.
+# core/: plain C++ with no simulator underneath. Linking only this target is
+# what keeps SystemC out of the kernel-free unit tests.
+add_library(socpuppet_core INTERFACE)
+target_include_directories(socpuppet_core INTERFACE ${PROJECT_SOURCE_DIR}/src)
+
+# models/: the SystemC wrappers. Header-only for now.
 add_library(socpuppet_models INTERFACE)
-target_include_directories(socpuppet_models INTERFACE ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(socpuppet_models INTERFACE SystemC::systemc)
+target_link_libraries(socpuppet_models INTERFACE socpuppet_core SystemC::systemc)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

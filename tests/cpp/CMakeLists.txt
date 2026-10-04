@@ -1,5 +1,11 @@
 include(GoogleTest)
 
+# Tests of plain C++ logic. No kernel, so they can share one process.
+add_executable(unit_tests
+  unit/memory_store_test.cpp)
+target_link_libraries(unit_tests PRIVATE socpuppet_core GTest::gtest_main)
+gtest_discover_tests(unit_tests)
+
 # Tests that start the SystemC kernel. The kernel cannot be restarted, so
 # gtest_discover_tests registers each test with CTest separately and CTest
 # runs each one in its own process.
