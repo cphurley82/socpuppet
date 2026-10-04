@@ -148,7 +148,7 @@ Then behind the CPU slot (`spikes/iss/qbox/integration/`), which is where the bu
 - **No SCC in the same program.** QBox brings its own copies of CCI and SCP, two libraries SCC bundles. socpuppet's router is SCC's, so the harness got a small router of its own for this one candidate (`simple_router.h`).
 - **A sleeping CPU stops the clock.** ⚠️ A QBox CPU with nothing to do waits for an event from the host, and has the kernel wait with it: simulated time stops, and a run for a fixed length of time never returns. `Platform.run()` "until nothing is left to do" would not return either. The wrapper keeps a timed tick going so that time moves. Its own source says of this, "the SystemC kernel will never starve".
 
-With those met, the same suite the others ran passed in full: both word sizes in one simulation, the smoke program, reset in all three phases through QBox's own reset input, both Zephyr boots, and DMI into socpuppet's own `Memory` (one bus transaction for 131,072 instructions). The wrapper is 125 lines.
+With those met, the same suite the others ran passed in full: both word sizes in one simulation, the smoke program, reset in all three phases through QBox's own reset input, both Zephyr boots, and DMI into socpuppet's own `Memory` (one bus transaction for 131,072 instructions). The wrapper is 115 lines.
 
 Not established:
 
@@ -234,13 +234,13 @@ What it does not do, and would have to before M3 is over:
 
 The loop is two instructions long (`addi`, `bne`) and runs 16.8 million times with DMI on and 1 million times with it off. The quantum was 1 ms of simulated time. Optimized builds with debug info. Figures are millions of instructions per second of real time, RV64 then RV32.
 
-| Candidate | macOS, Apple clang | | Linux arm64, GCC 13 | |
-|---|---|---|---|---|
-| | DMI on | DMI off | DMI on | DMI off |
-| DBT-RISE-RISCV (interpreter) | 44, 44 | 11, 11 | 37, 31 | 11, 11 |
-| riscv-vp | 122, 127 | 17, 16 | 118, 121 | 19, 17 |
-| In-house prototype | 166, 166 | 21, 22 | 193, 195 | 22, 23 |
-| QBox behind the slot, deterministic | not tried | | 455, 460 | 0.4, 0.4 |
+| Candidate | macOS arm64, Apple clang | | Linux arm64, GCC 13 | | CI runner, Linux x86-64, GCC 13 | |
+|---|---|---|---|---|---|---|
+| | DMI on | DMI off | DMI on | DMI off | DMI on | DMI off |
+| DBT-RISE-RISCV (interpreter) | 44, 44 | 11, 11 | 37, 31 | 11, 11 | 22, 22 | 7, 7 |
+| riscv-vp | 122, 127 | 17, 16 | 118, 121 | 19, 17 | 58, 43 | 11, 12 |
+| In-house prototype | 166, 166 | 21, 22 | 193, 195 | 22, 23 | 61, 110 | 15, 17 |
+| QBox behind the slot, deterministic | not tried | | 455, 460 | 0.4, 0.4 | not run | |
 
 QBox on its own, on a loop of 2.1 billion instructions, in the same Linux container:
 
@@ -249,7 +249,7 @@ QBox on its own, on a loop of 2.1 billion instructions, in the same Linux contai
 | Deterministic (coroutine, instruction counting) | 414 M/s | 415 M/s |
 | Threaded, unconstrained | 3,800 M/s | 3,800 M/s |
 
-Both machines are the same Apple silicon laptop: Linux is Ubuntu 24.04 in a container on it. The CI job prints the same figures for GitHub's x86-64 runner in its log.
+The first two columns are the same Apple silicon laptop: Linux is Ubuntu 24.04 in a container on it. The third is GitHub's shared runner, from one run of the `ISS spike` job, and is the noisiest of the three. That job builds the firmware and every in-tree candidate and runs the suite in about ten minutes with nothing cached.
 
 ⚠️ A two-instruction loop flatters a simple interpreter and tells you little about real firmware. Read the table as "all three interpreters are in the same class, and QEMU is in another".
 
@@ -323,7 +323,7 @@ What it costs, plainly:
 
 **If you would rather not own a CPU: DBT-RISE-RISCV.** It is the strongest of the ready-made cores that can ship in the wheel. It has a GDB server that works today, the complete instruction set, faster backends to turn on later, and it comes from the people who wrote the router socpuppet already uses. The price is the dependencies, the patches (two would go upstream as fixes for Clang, one is a real bug in reset), and a core a learner cannot follow.
 
-**QBox: not the default, and worth keeping as an optional fast tier that users build from source.** It does everything, ten times faster, and the spike has it working behind the slot in 125 lines. It cannot live in the wheel for licence reasons and cannot live in the build for practical ones. Nothing in M3 to M5 needs its speed: a boot is tens of thousands of instructions. The time to build the tier is when a firmware team wants to run something long, and the recipe in `spikes/iss/qbox/` is the starting point.
+**QBox: not the default, and worth keeping as an optional fast tier that users build from source.** It does everything, ten times faster, and the spike has it working behind the slot in 115 lines. It cannot live in the wheel for licence reasons and cannot live in the build for practical ones. Nothing in M3 to M5 needs its speed: a boot is tens of thousands of instructions. The time to build the tier is when a firmware team wants to run something long, and the recipe in `spikes/iss/qbox/` is the starting point.
 
 **riscv-vp: no.** It works, but it is the unmaintained ancestor of a fork that does not build on macOS. A core of our own has its virtues without its baggage.
 
