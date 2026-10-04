@@ -4,6 +4,7 @@
 #
 # For DBT-RISE-RISCV: its interpreter is built on coroutines, its GDB server
 # on asio, and its debugger command parser on spirit.
+# For riscv-vp: format and io.
 set(SOCPUPPET_SPIKE_BOOST_LIBRARIES
   asio
   bind
@@ -11,7 +12,9 @@ set(SOCPUPPET_SPIKE_BOOST_LIBRARIES
   coroutine
   coroutine2
   foreach
+  format
   fusion
+  io
   lexical_cast
   optional
   phoenix

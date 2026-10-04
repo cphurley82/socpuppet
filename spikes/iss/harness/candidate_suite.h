@@ -48,10 +48,10 @@ inline void Note(const std::string& what) {
 }
 
 TEST(TheSmokeProgram, RunsOnBothWordSizesInOneSimulationAndSurvivesATrap) {
+  SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};
   AddVirtBoard(platform, "rv64", Candidate::Cpu(), CpuConfig(64));
   AddVirtBoard(platform, "rv32", Candidate::Cpu(), CpuConfig(32));
-  SetQuantum(Milliseconds(1));
   platform.Elaborate();
   Load(platform, "rv64", rv::SmokeProgram(kUartBase));
   Load(platform, "rv32", rv::SmokeProgram(kUartBase));
@@ -69,6 +69,7 @@ TEST(TheSmokeProgram, RunsOnBothWordSizesInOneSimulationAndSurvivesATrap) {
 }
 
 TEST(Reset, HoldsTheCpuWhileHighStartsItWhenReleasedAndRestartsItWhenRaised) {
+  SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};
   AddVirtBoard(platform, "board", Candidate::Cpu(), CpuConfig(64));
   platform.Add("reset_driver", "line_driver", {{"initial", 1}});
@@ -76,7 +77,6 @@ TEST(Reset, HoldsTheCpuWhileHighStartsItWhenReleasedAndRestartsItWhenRaised) {
   // High from the start, released at 2 ms, raised at 6 ms, released at 8.
   platform.ModuleAt<LineDriver>("reset_driver")
       .FlipAt({Milliseconds(2), Milliseconds(6), Milliseconds(8)});
-  SetQuantum(Milliseconds(1));
   platform.Elaborate();
   Load(platform, "board", rv::SmokeProgram(kUartBase));
 
@@ -106,9 +106,9 @@ inline void ZephyrHelloWorldPrintsItsGreeting(std::uint64_t xlen,
     GTEST_SKIP() << image << " is missing. Build it with "
                  << "spikes/iss/firmware/build.sh.";
   }
+  SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};
   AddVirtBoard(platform, "board", Candidate::Cpu(), CpuConfig(xlen));
-  SetQuantum(Milliseconds(1));
   platform.Elaborate();
   Load(platform, "board", ReadFile(image));
 
@@ -132,9 +132,9 @@ TEST(ZephyrHelloWorld, PrintsItsGreetingOn32Bits) {
 
 TEST(DirectMemoryAccess, TakesTheRamTrafficOffTheBus) {
   constexpr rv::Word kIterations = 1U << 16;  // 131,072 instructions
+  SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};
   AddVirtBoard(platform, "board", Candidate::Cpu(), CpuConfig(64));
-  SetQuantum(Milliseconds(1));
   platform.Elaborate();
   Load(platform, "board", rv::CountdownProgram(kUartBase, kIterations));
 
@@ -154,9 +154,9 @@ TEST(DirectMemoryAccess, TakesTheRamTrafficOffTheBus) {
 
 // Runs the countdown loop and reports instructions per second of real time.
 inline void MeasureSpeed(std::uint64_t xlen, Dmi dmi, rv::Word iterations) {
+  SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};
   AddVirtBoard(platform, "board", Candidate::Cpu(), CpuConfig(xlen), dmi);
-  SetQuantum(Milliseconds(1));
   platform.Elaborate();
   Load(platform, "board", rv::CountdownProgram(kUartBase, iterations));
 
