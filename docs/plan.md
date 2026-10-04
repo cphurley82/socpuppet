@@ -78,7 +78,7 @@ The kit arrives as a Python package, because that is how a firmware developer ge
 
 (board `socpuppet_host`; SSD = behavioral NVMe, D2D = pass-through)
 
-- a) CPU kit, built once and reused by M4 and M5: ISS wrapper (RV64 and RV32IMAC), ELF loader, DRAM, NS16550 UART with Python capture, machine timer, PLIC, GDB hook. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
+- a) CPU kit, built once and reused by M4 and M5: DBT-RISE-RISCV behind the CPU slot (RV64 and RV32IMAC), ELF loader, DRAM, NS16550 UART with Python capture, machine timer, PLIC, GDB hook. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
 - b) PCIe enumeration from Zephyr; resolve the MSI-X-on-RISC-V question (verify mainline, else an MSI bridge model plus Zephyr hooks, or a minimal in-repo NVMe driver). Exit: Zephyr NVMe block I/O against the behavioral device.
 
 ### M4 — SSD subsystem
@@ -134,9 +134,8 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| ISS choice; how far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | Now: the M1 report recommends, Chris decides (gates M3) | SCC for the router and logging only |
-| When to build the optional QBox CPU tier. (How is settled: QEMU is GPL-2.0, so the tier is built from source by users who opt in and is never in the wheel.) | When a firmware team needs the speed; any time after M3 | not built; the recipe is in `spikes/iss/qbox/` |
-| Zephyr version pin | With the M1 decision | 4.4.2 with SDK 1.0.1, which the spike used |
+| How far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | M2, where PCIe is the first model big enough to matter | SCC for the router and logging only, and a thin layer of our own, as the M1 report recommends |
+| Zephyr version pin | M3a | 4.4.2 with SDK 1.0.1, which the spike used and the M1 report recommends |
 | Host MSI-X on RISC-V | M3b | verify mainline first |
 | Single- vs. multi-core SSD controller | M4b | single core |
 | D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
@@ -153,11 +152,11 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0 is done. M1's report is in, and waits for a decision.** Next up: that decision, which gates M3, and M2 (PCIe + behavioral NVMe), which does not wait on it.
+**M0 and M1 are done.** Next up: M2 (PCIe + behavioral NVMe) and M3a (the CPU kit, on DBT-RISE-RISCV), which do not depend on each other.
 
-What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. It stays until the decision is made and M3a has built the real CPU kit. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
+What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. It stays until M3a has built the real CPU kit. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
 
-Decided so far, on 2026-10-04: socpuppet stays MIT, and the rule about GPL code becomes "none in the default wheel". QBox, which is QEMU underneath, may be an optional CPU tier that users build from source. The default CPU, the modeling library and the Zephyr pin are still open.
+Decided on 2026-10-04, at M1's gate: **DBT-RISE-RISCV is the default CPU**, the one that ships in the wheel. socpuppet stays MIT, and the rule about GPL code becomes "none in the default wheel", so QBox, which is QEMU underneath, may be an optional CPU that users build from source (see the to-do list). The modeling library and the Zephyr pin are still open, with the report's recommendations as their defaults.
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 
@@ -188,3 +187,5 @@ Small things that are nobody's milestone. Tick them off or delete them.
 - [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before M3, when the first wheels are published.
 - [ ] Offer the SCC build fixes upstream: the `try_compile` probe that cannot see an in-tree SystemC, and the missing `Boost::filesystem` link.
 - [ ] Make the `tidy` target work on Ubuntu 24.04, then move the CI job there. clang-tidy 22 cannot parse SCC's bundled CCI headers against GCC 13's standard library: `std::common_reference` over `cci_value_map_elem_ref` ends in "calling a protected constructor", a hard error, and its findings after that are not to be trusted. Pointing it at libc++ instead gets further but stops in SCC's `pool_allocator.h`. Until then tidy runs on macOS only (see [style.md](style.md)).
+- [ ] Enable QBox as an optional CPU. It is about ten times faster than the default and is QEMU underneath (GPL-2.0), so users build it from source and it is never in the wheel. The recipe and a wrapper that passes the CPU suite are in `spikes/iss/qbox/`. What is left: a supported way to build it outside that container (it wants its own SystemC as a shared library, a C++20 build that takes two patches, and about a dozen system packages); a registry entry and a Python class so that a platform can name it; macOS, which was not tried; its sleeping CPU, which keeps the kernel waiting so that `Platform.run()` with no time limit never returns; and a page saying what it is and what it costs. See [iss-spike.md](iss-spike.md).
+- [ ] Try DBT-RISE-RISCV's other backends. The spike built only its interpreter (31 to 44 million instructions a second on a counted loop). asmjit, LLVM and TinyCC translate blocks of guest code into host code and should be faster. For each: run the spike's CPU suite and its speed tests, and write down what it adds to the build and to the wheel. TinyCC is LGPL, so settle whether it may ship before turning it on. On macOS the helper the backends share declares a function called `wait()`, which collides with POSIX: the spike left that file out, and a backend needs it back.

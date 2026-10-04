@@ -1,6 +1,8 @@
 # The ISS spike: which CPU model goes in the CPU slot?
 
-This is the report for milestone M1 in [plan.md](plan.md). It ends with a recommendation and a decision for Chris to make. Nothing that depends on the answer has been built.
+This is the report for milestone M1 in [plan.md](plan.md). It ends with a recommendation and the decisions that followed it. Nothing that depends on the answer has been built.
+
+**Decided on 2026-10-04: DBT-RISE-RISCV is the default CPU.** QBox becomes an optional CPU that users build from source. The recommendation further down was for a core of our own, and is kept as it was written, next to the [decisions](#decisions).
 
 **In one paragraph.** Four CPU models boot stock Zephyr `hello_world` for RV64 and RV32 behind socpuppet's draft CPU slot: DBT-RISE-RISCV, QBox, riscv-vp, and a thousand-line prototype of our own. A fifth, riscv-vp-plusplus, does not compile on macOS. QBox is the fastest by a factor of ten or more and is QEMU underneath, which is GPL. Among the ones that can ship in the wheel, the recommendation is a core of our own, with DBT-RISE-RISCV as the alternative if a working GDB server and a complete instruction set on day one matter more than a core a learner can read.
 
@@ -312,6 +314,8 @@ What the spike adds to that picture is practical, not legal: QBox cannot be buil
 
 ## Recommendation
 
+💡 This is the recommendation as it was made. On the default CPU the decision went to the alternative it names, DBT-RISE-RISCV: see [Decisions](#decisions).
+
 **The default CPU: a core of our own, built test-first in M3a.** The spike's prototype is the sketch for it, not the thing itself.
 
 Why, against the criteria:
@@ -345,7 +349,7 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 - **What a real boot will need that `hello_world` did not**: a timer that fires and an interrupt controller that delivers. Zephyr's `synchronization` sample, M3a's second exit test, depends on both.
 - **Devicetree.** The generator knows only `Memory`. CPU nodes need an `riscv,isa-extensions` property for Zephyr 4.4.
 - **Sleep and `Platform.run()`.** With the three interpreters, a platform whose CPU is asleep in `wfi` has nothing left to do, and `run()` returns. The suite checks that, and it belongs in the contract. QBox is the exception.
-- **If DBT-RISE-RISCV is chosen instead**: the Boost list in `spikes/iss/boost_libraries.cmake`, the patches in `spikes/iss/patches/`, and a static build of its core for the wheel.
+- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list in `spikes/iss/boost_libraries.cmake`; the four patches in `spikes/iss/patches/`, to carry or to send upstream; a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
 
 ## Not exercised
 
@@ -358,11 +362,17 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 - **Real workloads.** The speed figures are for a two-instruction loop.
 - **`riscv-tests`**, on any candidate.
 
-## Decision needed
+## Decisions
 
-1. **The default CPU for M3a**: a core of our own (recommended), or DBT-RISE-RISCV.
-2. **QBox**: decided on 2026-10-04. It becomes an optional tier that users build from source, socpuppet stays MIT, and no GPL code goes in the default wheel. Still open is when to build the tier: when a firmware team needs the speed (recommended), or now.
-3. **Modeling library**: a thin layer of our own, borrowing VCML models one at a time behind an adapter (recommended), or building on VCML.
-4. **Zephyr**: pin 4.4.2 with SDK 1.0.1 (recommended).
+1. **The default CPU: DBT-RISE-RISCV.** Decided on 2026-10-04. It is the CPU that ships in the wheel and that M3a builds its kit on.
+2. **QBox: an optional CPU, built from source.** Decided on 2026-10-04. socpuppet stays MIT, and no GPL code goes in the default wheel. Enabling it is on the to-do list in [plan.md](plan.md).
+3. **Modeling library**: still open. Recommended: a thin layer of our own, borrowing VCML models one at a time behind an adapter. That is the default until M2 says otherwise.
+4. **Zephyr**: still open. Recommended, and the default: pin 4.4.2 with SDK 1.0.1.
 
-Until then `spikes/iss/` stays as it is, with every candidate in place and running in CI, so that the choice can still go any way. Once the choice is made, the candidates that were not chosen are deleted, and the chosen one's code goes when M3a has rebuilt it test-first and passed the same boot.
+What the first decision takes on, from the findings above: eighteen more Boost libraries in the build, four patches to carry or send upstream, a static build of the core for the wheel, and a core that is generated code. The last one matters most for a teaching tool: where a learner cannot read the source, socpuppet's own docs have to explain what the CPU is doing. What it gets in return is a GDB server that works today, the complete instruction set with the privilege modes, and faster backends to turn on, which is the other new item on the to-do list.
+
+What happens to `spikes/iss/`:
+
+- DBT-RISE-RISCV's wrapper and patches stay until M3a has rebuilt them test-first and passed the same boot.
+- QBox's recipe and wrapper stay, as the starting point for the optional CPU.
+- riscv-vp and the in-house prototype were not chosen and can be deleted. Until someone does, they still build and run in CI. The VCML probe runs on the in-house CPU and would move to DBT-RISE-RISCV with it.

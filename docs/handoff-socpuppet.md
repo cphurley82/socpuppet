@@ -77,7 +77,7 @@ Each step names the stand-in it replaces.
 
 ## Open questions
 
-- ISS choice (outcome of step 2).
+- ISS choice (outcome of step 2). Decided 2026-10-04: DBT-RISE-RISCV is the default CPU, with QBox as an optional one built from source. See [iss-spike.md](iss-spike.md).
 - Build on VCML vs. a thin in-house layer on raw SystemC/TLM: VCML saves effort, raw SystemC is more transparent for learners.
 - Host MSI-X on RISC-V: verify Zephyr mainline support. If missing, either add RISC-V PCIe MSI hooks to Zephyr (a possible upstream contribution) backed by an IMSIC-like or simple MSI-to-PLIC bridge model, or write a minimal host NVMe driver in this repo. After step 8, MSI writes also cross the D2D link.
 - An extra firmware fidelity tier: Zephyr built for `native_sim` with its MMIO accesses routed into the VP, for fast firmware iteration without an ISS.

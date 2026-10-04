@@ -1,6 +1,6 @@
 # The ISS spike 🚧
 
-This is milestone M1: an experiment to find out which CPU model should sit in socpuppet's CPU slot. The plan is in [docs/plan.md](../../docs/plan.md).
+This is milestone M1: an experiment to find out which CPU model should sit in socpuppet's CPU slot. The answer was DBT-RISE-RISCV, and the evidence is in [docs/iss-spike.md](../../docs/iss-spike.md). The plan is in [docs/plan.md](../../docs/plan.md).
 
 🎓 An ISS (instruction-set simulator) is the model that executes the firmware's instructions one after another, the way the real processor would. socpuppet has none yet. Several open ones exist, and writing our own is possible too, so before building anything on top of one we try each candidate out against the same checklist.
 
