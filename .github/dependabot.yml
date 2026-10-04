@@ -1,0 +1,20 @@
+# Keeps the pinned tools from going stale. One pull request a week per
+# ecosystem, with every update in it, and CI says whether it is safe to merge.
+version: 2
+updates:
+  # The actions the CI workflow uses.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  # The developer tools in uv.lock: cmake, the linters, pytest.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      tools:
+        patterns: ["*"]

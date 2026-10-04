@@ -10,6 +10,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    # Formatting and static checks on every file, with nothing to build
+    # first. ctest runs the same thing; this job says so in seconds.
+    name: Lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run python tools/lint.py
+
   test:
     name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
@@ -77,5 +88,8 @@ jobs:
         if: steps.changed.outputs.devcontainer == 'true'
         run: |
           docker build -t socpuppet-dev .devcontainer
+          # The checkout belongs to the runner's user and the container runs
+          # as root, so git has to be told the mounted directory is safe to
+          # read. The lint test lists files with git.
           docker run --rm -v "$PWD:/workspace" -w /workspace socpuppet-dev \
-            bash -c "uv sync && uv run cmake --preset dev && uv run cmake --build --preset dev && uv run ctest --preset dev"
+            bash -c "git config --global --add safe.directory /workspace && uv sync && uv run cmake --preset dev && uv run cmake --build --preset dev && uv run ctest --preset dev"

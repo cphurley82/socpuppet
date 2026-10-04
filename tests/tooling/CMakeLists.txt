@@ -1,3 +1,9 @@
+# Hold the whole tree to the lint rules, as CI does. `uv run python
+# tools/lint.py --fix` repairs most of what this finds.
+add_test(NAME lint
+  COMMAND ${Python_EXECUTABLE} tools/lint.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # The tests of the repo's own tooling (tools/). They need the developer tools
 # from `uv sync`, so they stay out of tests/python, which is also run against
 # an installed wheel.
