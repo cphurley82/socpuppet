@@ -16,3 +16,32 @@ def test_when_run_with_fix_a_misformatted_cpp_file_then_passes_lint(repo, lint):
     lint("--fix")
 
     assert lint().returncode == 0
+
+
+def test_when_run_with_fix_includes_are_grouped_as_related_standard_third_party_project(
+    repo, lint
+):
+    (repo / "widget.cpp").write_text(
+        '#include "socpuppet/core/time.h"\n'
+        "#include <tlm>\n"
+        "#include <vector>\n"
+        '#include "widget.h"\n'
+        "#include <gtest/gtest.h>\n"
+        "#include <cstdint>\n"
+        "#include <systemc>\n"
+    )
+
+    lint("--fix")
+
+    assert (repo / "widget.cpp").read_text() == (
+        '#include "widget.h"\n'
+        "\n"
+        "#include <cstdint>\n"
+        "#include <vector>\n"
+        "\n"
+        "#include <gtest/gtest.h>\n"
+        "#include <systemc>\n"
+        "#include <tlm>\n"
+        "\n"
+        '#include "socpuppet/core/time.h"\n'
+    )

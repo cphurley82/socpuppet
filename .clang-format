@@ -1,1 +1,19 @@
 BasedOnStyle: Google
+
+# Include order: the related header, then the standard library, then
+# third-party libraries, then our own headers. Stock Google style would sort
+# <gtest/gtest.h> above the standard library and <systemc> in with it.
+IncludeBlocks: Regroup
+IncludeCategories:
+  # SystemC's two extensionless headers look like standard library ones.
+  - Regex: '^<(systemc|tlm)>$'
+    Priority: 3
+  # Third-party: anything in angle brackets with a directory or an extension.
+  - Regex: '^<.*[/.].*>$'
+    Priority: 3
+  # The standard library.
+  - Regex: '^<.*>$'
+    Priority: 2
+  # Ours.
+  - Regex: '.*'
+    Priority: 4
