@@ -12,7 +12,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 
 # The real configuration, so the tests check the rules the repo is held to.
-CONFIG_FILES = [".clang-format"]
+CONFIG_FILES = [".clang-format", "CPPLINT.cfg"]
 
 LINT = [sys.executable, str(REPO / "tools" / "lint.py")]
 

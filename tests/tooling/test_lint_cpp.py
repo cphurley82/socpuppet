@@ -45,3 +45,18 @@ def test_when_run_with_fix_includes_are_grouped_as_related_standard_third_party_
         "\n"
         '#include "socpuppet/core/time.h"\n'
     )
+
+
+def test_when_a_file_has_a_using_directive_lint_fails_and_names_the_line(repo, lint):
+    (repo / "widget.cpp").write_text(
+        "#include <string>\n"
+        "\n"
+        "using namespace std;\n"
+        "\n"
+        'string Greeting() { return "hello"; }\n'
+    )
+
+    result = lint()
+
+    assert result.returncode != 0
+    assert "widget.cpp:3:" in result.stdout

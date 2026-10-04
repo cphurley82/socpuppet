@@ -37,6 +37,11 @@ LINTERS = [
         check=("clang-format", "--dry-run", "--Werror"),
         fix=("clang-format", "-i"),
     ),
+    Linter(
+        "cpplint",
+        patterns=("*.h", "*.cpp"),
+        check=("cpplint", "--quiet"),
+    ),
 ]
 
 
