@@ -100,7 +100,8 @@ if(SOCPUPPET_COVERAGE)
 
   # Runs the tests, then reports which lines of the code under src/ and
   # python/ they ran. The reports are printed, and written as web pages to
-  # coverage/cpp and coverage/python in the build directory.
+  # coverage/cpp and coverage/python in the build directory. (coverage/cpp.md
+  # is the C++ table again, for CI to show on the job's page.)
   add_custom_target(coverage
     # Counters add up from one run of a program to the next, so the ones
     # left by earlier runs go first.
@@ -120,6 +121,7 @@ if(SOCPUPPET_COVERAGE)
             --txt
             --fail-under-line ${SOCPUPPET_COVERAGE_CPP_FLOOR}
             --html-details ${CMAKE_BINARY_DIR}/coverage/cpp/index.html
+            --markdown ${CMAKE_BINARY_DIR}/coverage/cpp.md
             ${CMAKE_BINARY_DIR}
     ${_socpuppet_python_coverage_report}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -201,3 +203,15 @@ function(socpuppet_check_headers)
     add_dependencies(check_headers ${library}_verify_interface_header_sets)
   endforeach()
 endfunction()
+
+# The presets share one build directory, so the tree holds whichever kind of
+# build was configured last. Say which, where it will be seen.
+if(SOCPUPPET_COVERAGE)
+  message(NOTICE "socpuppet: this build tree measures COVERAGE: our code is "
+    "built unoptimized and instrumented. Configure the dev preset again to "
+    "go back.")
+endif()
+if(SOCPUPPET_SANITIZE)
+  message(NOTICE "socpuppet: this build tree has SANITIZERS in the C++ "
+    "tests. Configure the dev preset again to go back.")
+endif()

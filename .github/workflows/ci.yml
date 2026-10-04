@@ -78,6 +78,61 @@ jobs:
       - run: uv run cmake --build --preset dev --target tidy
       - run: uv run cmake --build --preset dev --target check_headers
 
+  coverage:
+    # Which lines of our own C++ and Python the tests run. The job fails if
+    # either falls below its floor (CMakePresets.json).
+    name: Test coverage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v6
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/dev/_deps
+          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - run: uv sync
+      - run: uv run cmake --preset coverage
+      - run: uv run cmake --build --preset coverage --target coverage
+      - name: Show the figures on the job's page
+        if: always()
+        run: |
+          {
+            cat build/dev/coverage/cpp.md
+            echo
+            echo "# Python coverage"
+            echo
+            uv run python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the line-by-line reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/dev/coverage
+
+  sanitizers:
+    # The C++ tests again, built so that a memory error or undefined
+    # behavior stops the program instead of passing unnoticed.
+    name: C++ tests under sanitizers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v6
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/dev/_deps
+          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - run: uv sync
+      - run: uv run cmake --preset asan
+      - run: uv run cmake --build --preset asan
+      - run: uv run ctest --preset asan
+
   wheel:
     name: Wheel, installed with uv and pip (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
