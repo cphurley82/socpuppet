@@ -39,7 +39,8 @@ class Platform {
            const Config& config = {}) {
     const Factory& create = registry_.find(implementation);
     if (instances_.contains(path)) {
-      throw std::invalid_argument("There is already a component called \"" + path +
+      throw std::invalid_argument("There is already a component called \"" +
+                                  path +
                                   "\". Each component needs its own name.");
     }
     instances_.emplace(path, inside_parent(path, [&](const char* name) {
@@ -53,27 +54,33 @@ class Platform {
   //
   // A traced bus connection gets a Tracer in the middle, which records every
   // transaction that crosses it (see trace()).
-  void bind(const std::string& source, const std::string& sink, bool traced = false) {
+  void bind(const std::string& source, const std::string& sink,
+            bool traced = false) {
     const Port& from = port(source);
     const Port& to = port(sink);
     if (from.kind != to.kind) {
-      throw std::invalid_argument("Cannot bind \"" + source + "\" to \"" + sink +
-                                  "\": the first is a " + to_string(from.kind) +
-                                  " port and the second is a " + to_string(to.kind) + " port.");
-    }
-    if (from.role != Port::Role::source || to.role != Port::Role::sink) {
       throw std::invalid_argument(
           "Cannot bind \"" + source + "\" to \"" + sink +
-          "\": the first must be a source (a TLM initiator socket, or the port driving a "
-          "wire) and the second a sink (a TLM target socket, or a port reading a wire).");
+          "\": the first is a " + to_string(from.kind) +
+          " port and the second is a " + to_string(to.kind) + " port.");
+    }
+    if (from.role != Port::Role::source || to.role != Port::Role::sink) {
+      throw std::invalid_argument("Cannot bind \"" + source + "\" to \"" +
+                                  sink +
+                                  "\": the first must be a source (a TLM "
+                                  "initiator socket, or the port driving a "
+                                  "wire) and the second a sink (a TLM target "
+                                  "socket, or a port reading a wire).");
     }
     if (traced && from.kind != Port::Kind::bus) {
-      throw std::invalid_argument("Cannot trace the connection from \"" + source + "\" to \"" +
-                                  sink + "\": only a bus connection can be traced, and this "
-                                  "is a wire.");
+      throw std::invalid_argument(
+          "Cannot trace the connection from \"" + source + "\" to \"" + sink +
+          "\": only a bus connection can be traced, and this "
+          "is a wire.");
     }
     if (from.kind == Port::Kind::bus) {
-      auto& initiator = dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.object);
+      auto& initiator =
+          dynamic_cast<tlm::tlm_initiator_socket<>&>(*from.object);
       auto& target = dynamic_cast<tlm::tlm_target_socket<>&>(*to.object);
       if (traced) {
         Tracer& tracer = *tracers_.emplace_back(std::make_unique<Tracer>(
@@ -84,7 +91,8 @@ class Platform {
         initiator.bind(target);
       }
     } else {
-      dynamic_cast<sc_core::sc_in<bool>&>(*to.object).bind(wire_driven_by(from, source));
+      dynamic_cast<sc_core::sc_in<bool>&>(*to.object)
+          .bind(wire_driven_by(from, source));
     }
     bound_.insert(from.object);
     bound_.insert(to.object);
@@ -144,14 +152,15 @@ class Platform {
   // Debug accesses as seen from an initiator port: no simulated time passes
   // and nothing in the platform notices, the way a debugger reads memory.
   // Each returns false if nothing at that address took the access.
-  bool debug_read(const std::string& via, std::uint64_t address, std::span<std::byte> data) {
+  bool debug_read(const std::string& via, std::uint64_t address,
+                  std::span<std::byte> data) {
     return debug(tlm::TLM_READ_COMMAND, via, address, data.data(), data.size());
   }
 
   bool debug_write(const std::string& via, std::uint64_t address,
                    std::span<const std::byte> data) {
-    return debug(tlm::TLM_WRITE_COMMAND, via, address, const_cast<std::byte*>(data.data()),
-                 data.size());
+    return debug(tlm::TLM_WRITE_COMMAND, via, address,
+                 const_cast<std::byte*>(data.data()), data.size());
   }
 
   // The names of the ports of the component at `path`.
@@ -194,7 +203,8 @@ class Platform {
   // address-error response.
   struct NothingThere : sc_core::sc_module {
     tlm_utils::simple_target_socket<NothingThere> socket{"socket"};
-    explicit NothingThere(const sc_core::sc_module_name& name) : sc_module(name) {
+    explicit NothingThere(const sc_core::sc_module_name& name)
+        : sc_module(name) {
       socket.register_b_transport(this, &NothingThere::b_transport);
     }
     void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
@@ -204,21 +214,25 @@ class Platform {
   // An unconnected target is bound to this, which never sends anything.
   struct NobodyThere : sc_core::sc_module {
     tlm_utils::simple_initiator_socket<NobodyThere> socket{"socket"};
-    explicit NobodyThere(const sc_core::sc_module_name& name) : sc_module(name) {}
+    explicit NobodyThere(const sc_core::sc_module_name& name)
+        : sc_module(name) {}
   };
 
   void tie_off_unconnected_bus_ports() {
     for (auto& [path, instance] : instances_) {
       for (const Port& each : instance.ports) {
-        if (each.kind != Port::Kind::bus || bound_.contains(each.object)) continue;
+        if (each.kind != Port::Kind::bus || bound_.contains(each.object))
+          continue;
         const char* name = sc_core::sc_gen_unique_name("unconnected");
         if (each.role == Port::Role::source) {
           auto tie_off = std::make_unique<NothingThere>(name);
-          dynamic_cast<tlm::tlm_initiator_socket<>&>(*each.object).bind(tie_off->socket);
+          dynamic_cast<tlm::tlm_initiator_socket<>&>(*each.object)
+              .bind(tie_off->socket);
           tie_offs_.push_back(std::move(tie_off));
         } else {
           auto tie_off = std::make_unique<NobodyThere>(name);
-          tie_off->socket.bind(dynamic_cast<tlm::tlm_target_socket<>&>(*each.object));
+          tie_off->socket.bind(
+              dynamic_cast<tlm::tlm_target_socket<>&>(*each.object));
           tie_offs_.push_back(std::move(tie_off));
         }
       }
@@ -227,7 +241,8 @@ class Platform {
 
   // Runs delta cycles until nothing more is scheduled for the current time.
   void finish_this_moment() {
-    while (sc_core::sc_pending_activity_at_current_time()) run(sc_core::SC_ZERO_TIME);
+    while (sc_core::sc_pending_activity_at_current_time())
+      run(sc_core::SC_ZERO_TIME);
   }
 
   // SystemC would also object to an unbound port, but only once the
@@ -237,18 +252,20 @@ class Platform {
     for (const auto& [path, instance] : instances_) {
       for (const Port& candidate : instance.ports) {
         if (candidate.required && !bound_.contains(candidate.object)) {
-          unbound += (unbound.empty() ? "" : ", ") + path + "." + candidate.name;
+          unbound +=
+              (unbound.empty() ? "" : ", ") + path + "." + candidate.name;
         }
       }
     }
     if (!unbound.empty()) {
-      throw std::runtime_error("These ports are not bound to anything: " + unbound +
-                               ". Bind every port before the simulation starts.");
+      throw std::runtime_error(
+          "These ports are not bound to anything: " + unbound +
+          ". Bind every port before the simulation starts.");
     }
   }
 
-  bool debug(tlm::tlm_command command, const std::string& via, std::uint64_t address,
-             std::byte* data, std::size_t length) {
+  bool debug(tlm::tlm_command command, const std::string& via,
+             std::uint64_t address, std::byte* data, std::size_t length) {
     tlm::tlm_generic_payload transaction;
     transaction.set_command(command);
     transaction.set_address(address);
@@ -258,8 +275,10 @@ class Platform {
     const Port& view = port(via);
     if (view.kind != Port::Kind::bus || view.role != Port::Role::source) {
       throw std::invalid_argument(
-          "A debug access looks at the platform through a bus source port (such as a bus "
-          "master's initiator socket), and \"" + via + "\" is a " + to_string(view.kind) +
+          "A debug access looks at the platform through a bus source port "
+          "(such as a bus "
+          "master's initiator socket), and \"" +
+          via + "\" is a " + to_string(view.kind) +
           (view.role == Port::Role::source ? " source." : " sink."));
     }
     auto& socket = dynamic_cast<tlm::tlm_initiator_socket<>&>(*view.object);
@@ -273,11 +292,14 @@ class Platform {
   }
 
   // The signal a wire source drives, created the first time it is bound.
-  // It is named after its driver: "reset_driver.line" drives "reset_driver_line".
-  sc_core::sc_signal<bool>& wire_driven_by(const Port& source, const std::string& path) {
+  // It is named after its driver: "reset_driver.line" drives
+  // "reset_driver_line".
+  sc_core::sc_signal<bool>& wire_driven_by(const Port& source,
+                                           const std::string& path) {
     auto& wire = wires_[source.object];
     if (!wire) {
-      wire = std::make_unique<sc_core::sc_signal<bool>>(flat_name(path).c_str());
+      wire =
+          std::make_unique<sc_core::sc_signal<bool>>(flat_name(path).c_str());
       dynamic_cast<sc_core::sc_out<bool>&>(*source.object).bind(*wire);
     }
     return *wire;
@@ -286,7 +308,8 @@ class Platform {
   Group& group(const std::string& path) {
     auto& found = groups_[path];
     if (!found) {
-      found = inside_parent(path, [](const char* name) { return std::make_unique<Group>(name); });
+      found = inside_parent(
+          path, [](const char* name) { return std::make_unique<Group>(name); });
     }
     return *found;
   }
@@ -295,7 +318,8 @@ class Platform {
     const auto found = instances_.find(path);
     if (found == instances_.end()) {
       std::string known;
-      for (const auto& [name, each] : instances_) known += (known.empty() ? "" : ", ") + name;
+      for (const auto& [name, each] : instances_)
+        known += (known.empty() ? "" : ", ") + name;
       throw std::invalid_argument("There is no component called \"" + path +
                                   "\". The components are: " + known + ".");
     }
@@ -311,8 +335,9 @@ class Platform {
       if (candidate.name == name) return candidate;
       known += (known.empty() ? "" : ", ") + candidate.name;
     }
-    throw std::invalid_argument("\"" + component + "\" has no port called \"" + name +
-                                "\" (asked for \"" + path + "\"). Its ports are: " + known + ".");
+    throw std::invalid_argument("\"" + component + "\" has no port called \"" +
+                                name + "\" (asked for \"" + path +
+                                "\"). Its ports are: " + known + ".");
   }
 
   Registry registry_;
@@ -320,7 +345,8 @@ class Platform {
   // built inside them.
   std::map<std::string, std::unique_ptr<Group>> groups_;
   std::map<std::string, Instance> instances_;
-  std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>> wires_;
+  std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>>
+      wires_;
   std::vector<std::unique_ptr<sc_core::sc_module>> tie_offs_;
   std::set<const sc_core::sc_object*> bound_;
   Trace trace_;

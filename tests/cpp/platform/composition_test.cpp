@@ -30,13 +30,16 @@ TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   platform.bind("far.peer_initiator", "near.peer_target");
   platform.bind("far.initiator", "ram.socket");
   platform.module<socpuppet::ScriptedBusMaster>("cpu").set_script(
-      []() -> socpuppet::Script { co_await socpuppet::write32(0x10, 0xC0FFEE); });
+      []() -> socpuppet::Script {
+        co_await socpuppet::write32(0x10, 0xC0FFEE);
+      });
   platform.elaborate();
 
   platform.run();
 
   std::uint32_t seen = 0;
-  platform.debug_read("cpu.socket", 0x10, std::as_writable_bytes(std::span{&seen, 1}));
+  platform.debug_read("cpu.socket", 0x10,
+                      std::as_writable_bytes(std::span{&seen, 1}));
   EXPECT_EQ(seen, 0xC0FFEEu);
 }
 
@@ -49,21 +52,25 @@ TEST(WhenAPlatformIsElaboratedButNotYetRun, DebugWritesAlreadyReachTheMemory) {
   const std::uint32_t written = 0xC0FFEE;
   std::uint32_t seen = 0;
 
-  platform.debug_write("cpu.socket", 0x10, std::as_bytes(std::span{&written, 1}));
-  platform.debug_read("cpu.socket", 0x10, std::as_writable_bytes(std::span{&seen, 1}));
+  platform.debug_write("cpu.socket", 0x10,
+                       std::as_bytes(std::span{&written, 1}));
+  platform.debug_read("cpu.socket", 0x10,
+                      std::as_writable_bytes(std::span{&seen, 1}));
 
   EXPECT_EQ(seen, written);
 }
 
-TEST(WhenAnUnknownImplementationIsRequested, TheErrorNamesItAndListsTheKnownOnes) {
+TEST(WhenAnUnknownImplementationIsRequested,
+     TheErrorNamesItAndListsTheKnownOnes) {
   socpuppet::Registry registry;
   registry.add("memory", unused_factory());
   registry.add("uart", unused_factory());
   socpuppet::Platform platform{registry};
 
-  EXPECT_THAT([&] { platform.add("ram", "memroy"); },
-              ThrowsMessage<std::invalid_argument>(
-                  AllOf(HasSubstr("memroy"), HasSubstr("memory"), HasSubstr("uart"))));
+  EXPECT_THAT(
+      [&] { platform.add("ram", "memroy"); },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("memroy"), HasSubstr("memory"), HasSubstr("uart"))));
 }
 
 TEST(WhenTwoPortsOfTheSameRoleAreBound, TheErrorNamesBothPorts) {
@@ -82,8 +89,8 @@ TEST(WhenAPortThatDoesNotExistIsBound, TheErrorListsTheComponentsPorts) {
   platform.add("link", "pass_through_link_endpoint");
 
   EXPECT_THAT([&] { platform.bind("cpu.socket", "link.tarket"); },
-              ThrowsMessage<std::invalid_argument>(
-                  AllOf(HasSubstr("link.tarket"), HasSubstr("target, initiator"))));
+              ThrowsMessage<std::invalid_argument>(AllOf(
+                  HasSubstr("link.tarket"), HasSubstr("target, initiator"))));
 }
 
 TEST(WhenAPortIsLeftUnbound, ElaborationIsRefusedAndTheErrorNamesThePort) {
@@ -92,8 +99,9 @@ TEST(WhenAPortIsLeftUnbound, ElaborationIsRefusedAndTheErrorNamesThePort) {
   platform.add("link", "pass_through_link_endpoint");
   platform.bind("cpu.socket", "link.target");
 
-  EXPECT_THAT([&] { platform.elaborate(); },
-              ThrowsMessage<std::runtime_error>(HasSubstr("link.peer_initiator")));
+  EXPECT_THAT(
+      [&] { platform.elaborate(); },
+      ThrowsMessage<std::runtime_error>(HasSubstr("link.peer_initiator")));
 }
 
 TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
@@ -104,15 +112,18 @@ TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
   EXPECT_STREQ(platform.module<socpuppet::Memory>("io.ram").name(), "io.ram");
 }
 
-TEST(WhenAComponentIsAddedInsideNestedGroups, ItsSimulationNameCarriesEveryGroup) {
+TEST(WhenAComponentIsAddedInsideNestedGroups,
+     ItsSimulationNameCarriesEveryGroup) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
 
   platform.add("host.io.ram", "memory", {{"size", 0x100}});
 
-  EXPECT_STREQ(platform.module<socpuppet::Memory>("host.io.ram").name(), "host.io.ram");
+  EXPECT_STREQ(platform.module<socpuppet::Memory>("host.io.ram").name(),
+               "host.io.ram");
 }
 
-TEST(WhenAPortOfAnUnknownComponentIsBound, TheErrorNamesItAndListsTheKnownComponents) {
+TEST(WhenAPortOfAnUnknownComponentIsBound,
+     TheErrorNamesItAndListsTheKnownComponents) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
   platform.add("link", "pass_through_link_endpoint");
@@ -122,14 +133,17 @@ TEST(WhenAPortOfAnUnknownComponentIsBound, TheErrorNamesItAndListsTheKnownCompon
                   AllOf(HasSubstr("lnik"), HasSubstr("cpu, link"))));
 }
 
-TEST(WhenARequiredParameterIsMissing, TheErrorNamesTheParameterAndTheImplementation) {
+TEST(WhenARequiredParameterIsMissing,
+     TheErrorNamesTheParameterAndTheImplementation) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
 
   EXPECT_THAT([&] { platform.add("ram", "memory"); },
-              ThrowsMessage<std::invalid_argument>(AllOf(HasSubstr("size"), HasSubstr("memory"))));
+              ThrowsMessage<std::invalid_argument>(
+                  AllOf(HasSubstr("size"), HasSubstr("memory"))));
 }
 
-TEST(WhenTwoComponentsAreGivenTheSameName, TheSecondIsRefusedAndTheErrorNamesIt) {
+TEST(WhenTwoComponentsAreGivenTheSameName,
+     TheSecondIsRefusedAndTheErrorNamesIt) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("io.ram", "memory", {{"size", 0x100}});
 
@@ -150,5 +164,7 @@ TEST(WhenADebugAccessIsAskedForThroughATargetPort, TheErrorNamesThePort) {
 }
 
 socpuppet::Factory unused_factory() {
-  return [](const char*, const socpuppet::Config&) { return socpuppet::Instance{}; };
+  return [](const char*, const socpuppet::Config&) {
+    return socpuppet::Instance{};
+  };
 }

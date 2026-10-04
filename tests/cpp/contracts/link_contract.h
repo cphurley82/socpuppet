@@ -17,14 +17,16 @@
 // What every die-to-die link must do, whatever happens in between.
 //
 // A link is a pair of endpoints, one per die. Each endpoint has:
-//   target, initiator            the die's side: traffic leaving and entering the die
+//   target, initiator            the die's side: traffic leaving it and
+//                                entering it
 //   peer_initiator, peer_target  the side facing the other endpoint
 // Traffic flows both ways, because a device on one die may be the target of
 // one transaction (a register access) and the initiator of the next (a DMA
 // write into the other die's memory).
 //
 // To hold an implementation to this contract:
-//   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, LinkContract, ::testing::Types<MyEndpoint>);
+//   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, LinkContract,
+//                                  ::testing::Types<MyEndpoint>);
 // MyEndpoint must fit the link endpoint slot (see socpuppet/platform/slots.h).
 template <socpuppet::LinkEndpointSlot Endpoint>
 class LinkContract : public ::testing::Test {
@@ -38,8 +40,9 @@ class LinkContract : public ::testing::Test {
 
   // Runs `on_a` in a thread on die A and `on_b` in a thread on die B, each
   // wired to its own endpoint, to completion.
-  void on_the_dies(std::function<void(BusDriver&)> on_a,
-                   std::function<void(BusDriver&)> on_b = [](BusDriver&) {}) {
+  void on_the_dies(
+      std::function<void(BusDriver&)> on_a,
+      std::function<void(BusDriver&)> on_b = [](BusDriver&) {}) {
     BusDriver driver_on_a{"driver_on_a", std::move(on_a)};
     BusDriver driver_on_b{"driver_on_b", std::move(on_b)};
     driver_on_a.socket.bind(a.target);
@@ -94,7 +97,8 @@ TYPED_TEST_P(LinkContract, AnErrorResponseComesBackAcrossTheLink) {
   std::array<std::uint8_t, 4> data{};
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
 
-  this->on_the_dies([&](BusDriver& on_a) { response = on_a.read(0x1000, data); });
+  this->on_the_dies(
+      [&](BusDriver& on_a) { response = on_a.read(0x1000, data); });
 
   EXPECT_EQ(response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
@@ -104,16 +108,19 @@ TYPED_TEST_P(LinkContract, ADebugReadOnOneDieSeesTheMemoryOfTheOther) {
   std::array<std::uint8_t, 4> seen_by_debug{};
   debug_write(this->memory_on_b, 0x10, stored);
 
-  this->on_the_dies([&](BusDriver& on_a) { on_a.debug_read(0x10, seen_by_debug); });
+  this->on_the_dies(
+      [&](BusDriver& on_a) { on_a.debug_read(0x10, seen_by_debug); });
 
   EXPECT_EQ(seen_by_debug, stored);
 }
 
 // A link may refuse direct memory access (a real link does: every access
 // has to cross it). If it grants it, the grant has to be real.
-TYPED_TEST_P(LinkContract, DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesLaterWrites) {
+TYPED_TEST_P(LinkContract,
+             DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesLaterWrites) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
-  std::array<std::uint8_t, 4> seen_directly = written;  // what a refusal leaves untouched
+  std::array<std::uint8_t, 4> seen_directly =
+      written;  // what a refusal leaves untouched
 
   this->on_the_dies([&](BusDriver& on_a) {
     const DirectMemory direct = on_a.direct_memory(0x10);
@@ -124,9 +131,9 @@ TYPED_TEST_P(LinkContract, DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesL
   EXPECT_EQ(seen_directly, written);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(LinkContract, AWriteOnOneDieLandsInTheMemoryOfTheOther,
-                            AReadOnOneDieReturnsWhatIsInTheMemoryOfTheOther,
-                            TrafficFlowsInBothDirectionsAtOnce,
-                            AnErrorResponseComesBackAcrossTheLink,
-                            ADebugReadOnOneDieSeesTheMemoryOfTheOther,
-                            DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesLaterWrites);
+REGISTER_TYPED_TEST_SUITE_P(
+    LinkContract, AWriteOnOneDieLandsInTheMemoryOfTheOther,
+    AReadOnOneDieReturnsWhatIsInTheMemoryOfTheOther,
+    TrafficFlowsInBothDirectionsAtOnce, AnErrorResponseComesBackAcrossTheLink,
+    ADebugReadOnOneDieSeesTheMemoryOfTheOther,
+    DirectMemoryAccessAcrossTheLinkIsEitherRefusedOrSeesLaterWrites);

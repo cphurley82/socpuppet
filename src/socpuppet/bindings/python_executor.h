@@ -26,7 +26,8 @@ namespace socpuppet {
 // no simulated time and no delta cycle.
 class PythonExecutor : public sc_core::sc_module {
  public:
-  explicit PythonExecutor(const sc_core::sc_module_name& name) : sc_module(name) {
+  explicit PythonExecutor(const sc_core::sc_module_name& name)
+      : sc_module(name) {
     SC_METHOD(run_job);
     sensitive << job_posted_;
     dont_initialize();

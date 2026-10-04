@@ -30,9 +30,12 @@ class Tracer : public sc_core::sc_module {
   tlm_utils::simple_initiator_socket<Tracer> initiator{"initiator"};
 
   // `source` and `sink` name the two ports of the connection being traced.
-  Tracer(const sc_core::sc_module_name& name, std::string source, std::string sink,
-         Trace& trace)
-      : sc_module(name), source_(std::move(source)), sink_(std::move(sink)), trace_(trace) {
+  Tracer(const sc_core::sc_module_name& name, std::string source,
+         std::string sink, Trace& trace)
+      : sc_module(name),
+        source_(std::move(source)),
+        sink_(std::move(sink)),
+        trace_(trace) {
     target.register_b_transport(this, &Tracer::b_transport);
     target.register_transport_dbg(this, &Tracer::transport_dbg);
     // No get_direct_mem_ptr is registered: the socket then answers every
@@ -40,7 +43,8 @@ class Tracer : public sc_core::sc_module {
   }
 
  private:
-  void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
+  void b_transport(tlm::tlm_generic_payload& transaction,
+                   sc_core::sc_time& delay) {
     // Note the address before passing the transaction on: a router further
     // along rewrites it into an offset within the target.
     const std::uint64_t address = transaction.get_address();

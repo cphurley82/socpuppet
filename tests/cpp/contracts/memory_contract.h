@@ -15,7 +15,8 @@
 // What every memory implementation must do, whatever is behind it.
 //
 // To hold an implementation to this contract:
-//   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, MemoryContract, ::testing::Types<MyMemory>);
+//   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, MemoryContract,
+//                                  ::testing::Types<MyMemory>);
 // MyMemory must fit the memory slot (see socpuppet/platform/slots.h).
 template <socpuppet::MemorySlot MemoryType>
 class MemoryContract : public ::testing::Test {
@@ -46,7 +47,8 @@ TYPED_TEST_P(MemoryContract, AReadAfterAWriteReturnsTheWrittenBytes) {
   EXPECT_EQ(read, written);
 }
 
-TYPED_TEST_P(MemoryContract, AnAccessThatRunsPastTheEndGetsAnAddressErrorResponse) {
+TYPED_TEST_P(MemoryContract,
+             AnAccessThatRunsPastTheEndGetsAnAddressErrorResponse) {
   std::array<std::uint8_t, 4> data{};
   tlm::tlm_response_status write_response = tlm::TLM_INCOMPLETE_RESPONSE;
   tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
@@ -77,12 +79,14 @@ TYPED_TEST_P(MemoryContract, DirectMemoryAccessSeesLaterWrites) {
   EXPECT_EQ(seen_directly, written);
 }
 
-TYPED_TEST_P(MemoryContract, DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory) {
+TYPED_TEST_P(MemoryContract,
+             DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory) {
   DirectMemory direct;
 
   this->on_the_bus([&](BusDriver& bus) { direct = bus.direct_memory(0x10); });
 
-  ASSERT_TRUE(direct.granted()) << "the memory did not grant direct memory access";
+  ASSERT_TRUE(direct.granted())
+      << "the memory did not grant direct memory access";
   EXPECT_TRUE(direct.read_write_allowed());
   EXPECT_LE(direct.bytes_to_end(), this->size - 0x10);
 }
@@ -111,8 +115,9 @@ TYPED_TEST_P(MemoryContract, ABusReadSeesWhatDebugWrote) {
   EXPECT_EQ(seen_by_bus, written);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(MemoryContract, AReadAfterAWriteReturnsTheWrittenBytes,
-                            AnAccessThatRunsPastTheEndGetsAnAddressErrorResponse,
-                            DirectMemoryAccessSeesLaterWrites,
-                            DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory,
-                            ADebugReadSeesWhatTheBusWrote, ABusReadSeesWhatDebugWrote);
+REGISTER_TYPED_TEST_SUITE_P(
+    MemoryContract, AReadAfterAWriteReturnsTheWrittenBytes,
+    AnAccessThatRunsPastTheEndGetsAnAddressErrorResponse,
+    DirectMemoryAccessSeesLaterWrites,
+    DirectMemoryAccessIsReadWriteAndStopsAtTheEndOfTheMemory,
+    ADebugReadSeesWhatTheBusWrote, ABusReadSeesWhatDebugWrote);

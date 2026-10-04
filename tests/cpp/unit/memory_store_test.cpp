@@ -1,10 +1,10 @@
+#include "socpuppet/core/memory_store.h"
+
 #include <array>
 #include <cstdint>
 #include <limits>
 
 #include <gtest/gtest.h>
-
-#include "socpuppet/core/memory_store.h"
 
 using socpuppet::MemoryStore;
 

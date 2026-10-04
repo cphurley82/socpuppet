@@ -20,20 +20,23 @@ static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 inline Registry builtin_components() {
   Registry registry;
   registry.add("memory", [](const char* name, const Config& config) {
-    auto module = std::make_unique<Memory>(name, required(config, "size", "memory"));
+    auto module =
+        std::make_unique<Memory>(name, required(config, "size", "memory"));
     std::vector<Port> ports{target_port("socket", module->socket)};
     return Instance{std::move(module), std::move(ports)};
   });
   // One end of a link. The die's side may be left unconnected in either
   // direction; the peer side must be bound to the other endpoint.
-  registry.add("pass_through_link_endpoint", [](const char* name, const Config&) {
-    auto module = std::make_unique<PassThroughLinkEndpoint>(name);
-    std::vector<Port> ports{target_port("target", module->target, /*required=*/false),
-                            initiator_port("initiator", module->initiator, /*required=*/false),
-                            initiator_port("peer_initiator", module->peer_initiator),
-                            target_port("peer_target", module->peer_target)};
-    return Instance{std::move(module), std::move(ports)};
-  });
+  registry.add(
+      "pass_through_link_endpoint", [](const char* name, const Config&) {
+        auto module = std::make_unique<PassThroughLinkEndpoint>(name);
+        std::vector<Port> ports{
+            target_port("target", module->target, /*required=*/false),
+            initiator_port("initiator", module->initiator, /*required=*/false),
+            initiator_port("peer_initiator", module->peer_initiator),
+            target_port("peer_target", module->peer_target)};
+        return Instance{std::move(module), std::move(ports)};
+      });
   registry.add("scripted_bus_master", [](const char* name, const Config&) {
     auto module = std::make_unique<ScriptedBusMaster>(name);
     std::vector<Port> ports{initiator_port("socket", module->socket),
@@ -53,7 +56,8 @@ inline Registry builtin_components() {
     std::vector<Port> ports{target_port("target", module->target[0])};
     for (std::uint64_t index = 0; index < outputs; ++index) {
       const std::string output = "out" + std::to_string(index);
-      module->set_target_range(index, required(config, output + ".base", "router"),
+      module->set_target_range(index,
+                               required(config, output + ".base", "router"),
                                required(config, output + ".size", "router"));
       ports.push_back(initiator_port(output, module->initiator[index]));
     }

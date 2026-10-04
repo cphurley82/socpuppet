@@ -1,3 +1,5 @@
+#include "socpuppet/platform/tracer.h"
+
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -12,7 +14,6 @@
 #include "../contracts/bus_driver.h"
 #include "socpuppet/core/trace.h"
 #include "socpuppet/models/memory.h"
-#include "socpuppet/platform/tracer.h"
 
 using namespace socpuppet;
 using ::testing::AllOf;
@@ -37,7 +38,8 @@ struct TracedConnection {
 
 }  // namespace
 
-TEST(WhenAWriteCrossesATracedConnection, TheTraceRecordsWhatWasWrittenWhereAndWhen) {
+TEST(WhenAWriteCrossesATracedConnection,
+     TheTraceRecordsWhatWasWrittenWhereAndWhen) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   TracedConnection traced{[&](BusDriver& bus) {
     wait(sc_core::sc_time(10, sc_core::SC_NS));
@@ -66,7 +68,8 @@ TEST(WhenAReadCrossesATracedConnection, TheTraceRecordsTheDataThatCameBack) {
 
   EXPECT_THAT(traced.trace.records(),
               ElementsAre(AllOf(Field(&TraceRecord::is_write, false),
-                                Field(&TraceRecord::data, ElementsAre(0x11, 0x22, 0x33, 0x44)))));
+                                Field(&TraceRecord::data,
+                                      ElementsAre(0x11, 0x22, 0x33, 0x44)))));
 }
 
 TEST(WhenATracedAccessGetsAnErrorResponse, TheTraceRecordsThatItFailed) {
@@ -75,10 +78,12 @@ TEST(WhenATracedAccessGetsAnErrorResponse, TheTraceRecordsThatItFailed) {
 
   sc_core::sc_start();
 
-  EXPECT_THAT(traced.trace.records(), ElementsAre(Field(&TraceRecord::ok, false)));
+  EXPECT_THAT(traced.trace.records(),
+              ElementsAre(Field(&TraceRecord::ok, false)));
 }
 
-TEST(WhenADebugAccessCrossesATracedConnection, ItReachesTheTargetButIsNotRecorded) {
+TEST(WhenADebugAccessCrossesATracedConnection,
+     ItReachesTheTargetButIsNotRecorded) {
   const std::array<std::uint8_t, 4> stored{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> seen{};
   TracedConnection traced{[&](BusDriver& bus) { bus.debug_read(0x10, seen); }};
@@ -92,7 +97,8 @@ TEST(WhenADebugAccessCrossesATracedConnection, ItReachesTheTargetButIsNotRecorde
 
 TEST(WhenDirectMemoryAccessIsAskedForAcrossATracedConnection, ItIsRefused) {
   bool granted = true;
-  TracedConnection traced{[&](BusDriver& bus) { granted = bus.direct_memory(0x10).granted(); }};
+  TracedConnection traced{
+      [&](BusDriver& bus) { granted = bus.direct_memory(0x10).granted(); }};
 
   sc_core::sc_start();
 

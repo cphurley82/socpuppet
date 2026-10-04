@@ -26,8 +26,9 @@ class Memory : public sc_core::sc_module {
 
  private:
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
-    transaction.set_response_status(access(transaction) ? tlm::TLM_OK_RESPONSE
-                                                        : tlm::TLM_ADDRESS_ERROR_RESPONSE);
+    transaction.set_response_status(access(transaction)
+                                        ? tlm::TLM_OK_RESPONSE
+                                        : tlm::TLM_ADDRESS_ERROR_RESPONSE);
   }
 
   // Debug transport: the same access with no simulated time and no side
@@ -39,8 +40,9 @@ class Memory : public sc_core::sc_module {
   bool access(tlm::tlm_generic_payload& transaction) {
     const std::span<std::uint8_t> data{transaction.get_data_ptr(),
                                        transaction.get_data_length()};
-    return transaction.is_read() ? store_.read(transaction.get_address(), data)
-                                 : store_.write(transaction.get_address(), data);
+    return transaction.is_read()
+               ? store_.read(transaction.get_address(), data)
+               : store_.write(transaction.get_address(), data);
   }
 
   // DMI: hand the initiator a pointer to the whole memory, so it can read and

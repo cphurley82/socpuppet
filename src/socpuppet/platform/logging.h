@@ -10,8 +10,10 @@ namespace socpuppet {
 //
 // `color` suits a terminal and is wrong for a file or a pipe.
 inline void init_logging(bool color) {
-  scc::init_logging(
-      scc::LogConfig().logLevel(scc::log::WARNING).coloredOutput(color).logAsync(false));
+  scc::init_logging(scc::LogConfig()
+                        .logLevel(scc::log::WARNING)
+                        .coloredOutput(color)
+                        .logAsync(false));
 }
 
 }  // namespace socpuppet

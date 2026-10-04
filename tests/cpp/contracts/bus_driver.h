@@ -41,24 +41,28 @@ class BusDriver : public sc_core::sc_module {
  public:
   tlm_utils::simple_initiator_socket<BusDriver> socket{"socket"};
 
-  BusDriver(const sc_core::sc_module_name& name, std::function<void(BusDriver&)> body)
+  BusDriver(const sc_core::sc_module_name& name,
+            std::function<void(BusDriver&)> body)
       : sc_module(name), body_(std::move(body)) {
     SC_THREAD(run);
   }
 
-  tlm::tlm_response_status write(std::uint64_t address, std::span<const std::uint8_t> data) {
-    return transport(tlm::TLM_WRITE_COMMAND, address, const_cast<std::uint8_t*>(data.data()),
-                     data.size());
+  tlm::tlm_response_status write(std::uint64_t address,
+                                 std::span<const std::uint8_t> data) {
+    return transport(tlm::TLM_WRITE_COMMAND, address,
+                     const_cast<std::uint8_t*>(data.data()), data.size());
   }
 
-  tlm::tlm_response_status read(std::uint64_t address, std::span<std::uint8_t> data) {
+  tlm::tlm_response_status read(std::uint64_t address,
+                                std::span<std::uint8_t> data) {
     return transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
   }
 
   // Debug transport: an access that takes no simulated time and has no side
   // effects, the way a debugger looks at memory.
   void debug_write(std::uint64_t address, std::span<const std::uint8_t> data) {
-    debug(tlm::TLM_WRITE_COMMAND, address, const_cast<std::uint8_t*>(data.data()), data.size());
+    debug(tlm::TLM_WRITE_COMMAND, address,
+          const_cast<std::uint8_t*>(data.data()), data.size());
   }
 
   void debug_read(std::uint64_t address, std::span<std::uint8_t> data) {
@@ -77,15 +81,16 @@ class BusDriver : public sc_core::sc_module {
  private:
   void run() { body_(*this); }
 
-  void debug(tlm::tlm_command command, std::uint64_t address, std::uint8_t* data,
-             std::size_t length) {
+  void debug(tlm::tlm_command command, std::uint64_t address,
+             std::uint8_t* data, std::size_t length) {
     tlm::tlm_generic_payload transaction;
     fill(transaction, command, address, data, length);
     socket->transport_dbg(transaction);
   }
 
-  tlm::tlm_response_status transport(tlm::tlm_command command, std::uint64_t address,
-                                     std::uint8_t* data, std::size_t length) {
+  tlm::tlm_response_status transport(tlm::tlm_command command,
+                                     std::uint64_t address, std::uint8_t* data,
+                                     std::size_t length) {
     tlm::tlm_generic_payload transaction;
     fill(transaction, command, address, data, length);
     sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
@@ -93,8 +98,9 @@ class BusDriver : public sc_core::sc_module {
     return transaction.get_response_status();
   }
 
-  static void fill(tlm::tlm_generic_payload& transaction, tlm::tlm_command command,
-                   std::uint64_t address, std::uint8_t* data, std::size_t length) {
+  static void fill(tlm::tlm_generic_payload& transaction,
+                   tlm::tlm_command command, std::uint64_t address,
+                   std::uint8_t* data, std::size_t length) {
     transaction.set_command(command);
     transaction.set_address(address);
     transaction.set_data_ptr(data);
@@ -109,8 +115,9 @@ class BusDriver : public sc_core::sc_module {
 // `socket`) by debug transport, without a bus in between. For tests that
 // need to see or set what a memory holds.
 template <typename Target>
-void debug_access(Target& target, tlm::tlm_command command, std::uint64_t address,
-                  std::uint8_t* data, std::size_t length) {
+void debug_access(Target& target, tlm::tlm_command command,
+                  std::uint64_t address, std::uint8_t* data,
+                  std::size_t length) {
   tlm::tlm_generic_payload transaction;
   transaction.set_command(command);
   transaction.set_address(address);
@@ -121,12 +128,15 @@ void debug_access(Target& target, tlm::tlm_command command, std::uint64_t addres
 }
 
 template <typename Target>
-void debug_read(Target& target, std::uint64_t address, std::span<std::uint8_t> data) {
-  debug_access(target, tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+void debug_read(Target& target, std::uint64_t address,
+                std::span<std::uint8_t> data) {
+  debug_access(target, tlm::TLM_READ_COMMAND, address, data.data(),
+               data.size());
 }
 
 template <typename Target>
-void debug_write(Target& target, std::uint64_t address, std::span<const std::uint8_t> data) {
-  debug_access(target, tlm::TLM_WRITE_COMMAND, address, const_cast<std::uint8_t*>(data.data()),
-               data.size());
+void debug_write(Target& target, std::uint64_t address,
+                 std::span<const std::uint8_t> data) {
+  debug_access(target, tlm::TLM_WRITE_COMMAND, address,
+               const_cast<std::uint8_t*>(data.data()), data.size());
 }

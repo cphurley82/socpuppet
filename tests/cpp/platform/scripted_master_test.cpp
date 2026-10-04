@@ -33,7 +33,8 @@ class LineDriver : public sc_core::sc_module {
  public:
   sc_core::sc_out<bool> line{"line"};
 
-  LineDriver(const sc_core::sc_module_name& name, std::function<void(LineDriver&)> body)
+  LineDriver(const sc_core::sc_module_name& name,
+             std::function<void(LineDriver&)> body)
       : sc_module(name), body_(std::move(body)) {
     SC_THREAD(run);
   }
@@ -78,14 +79,15 @@ struct MasterWithRam {
 
   std::uint32_t peek32(std::uint64_t address) {
     std::uint32_t value = 0;
-    platform.debug_read("cpu.socket", address, std::as_writable_bytes(std::span{&value, 1}));
+    platform.debug_read("cpu.socket", address,
+                        std::as_writable_bytes(std::span{&value, 1}));
     return value;
   }
 
   static Registry with_line_drivers(Drive irq, Drive reset) {
     Registry registry = builtin_components();
-    for (const auto& [implementation, body] : {std::pair{"irq_driver", irq},
-                                               std::pair{"reset_driver", reset}}) {
+    for (const auto& [implementation, body] :
+         {std::pair{"irq_driver", irq}, std::pair{"reset_driver", reset}}) {
       registry.add(implementation, [body](const char* name, const Config&) {
         auto module = std::make_unique<LineDriver>(name, body);
         std::vector<Port> ports{wire_source_port("line", module->line)};
@@ -127,15 +129,17 @@ TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
   EXPECT_EQ(after, 0xC0FFEEu);
 }
 
-TEST(WhenAnExpectedValueIsNotTheOneInMemory, TheRunFailsNamingAddressExpectedAndActual) {
+TEST(WhenAnExpectedValueIsNotTheOneInMemory,
+     TheRunFailsNamingAddressExpectedAndActual) {
   MasterWithRam fixture{[]() -> Script {
     co_await write32(0x10, 0xBAD);
     co_await expect32(0x10, 0xC0FFEE);
   }};
 
-  EXPECT_THAT([&] { fixture.platform.run(); },
-              ThrowsMessage<ExpectationFailed>(
-                  AllOf(HasSubstr("0x10"), HasSubstr("0xc0ffee"), HasSubstr("0xbad"))));
+  EXPECT_THAT(
+      [&] { fixture.platform.run(); },
+      ThrowsMessage<ExpectationFailed>(
+          AllOf(HasSubstr("0x10"), HasSubstr("0xc0ffee"), HasSubstr("0xbad"))));
 }
 
 TEST(WhenAnExpectedValueIsNotTheOneInMemory, TheScriptDoesNotCarryOn) {
@@ -155,9 +159,9 @@ TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
                           co_await write32(0x10, 0xC0FFEE);
                         },
                         {.irq = [](LineDriver& irq) {
-                           irq.wait_for(10 * ns);
-                           irq.set(true);
-                         }}};
+                          irq.wait_for(10 * ns);
+                          irq.set(true);
+                        }}};
 
   fixture.platform.run(9 * ns);
   const std::uint32_t before = fixture.peek32(0x10);
@@ -171,10 +175,10 @@ TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
 TEST(WhenResetIsHeldFromTimeZero, TheScriptStartsOnlyOnceItIsReleased) {
   MasterWithRam fixture{[]() -> Script { co_await write32(0x10, 0xC0FFEE); },
                         {.reset = [](LineDriver& reset) {
-                           reset.set(true);
-                           reset.wait_for(10 * ns);
-                           reset.set(false);
-                         }}};
+                          reset.set(true);
+                          reset.wait_for(10 * ns);
+                          reset.set(false);
+                        }}};
 
   fixture.platform.run(9 * ns);
   const std::uint32_t during_reset = fixture.peek32(0x10);
@@ -193,11 +197,11 @@ TEST(WhenResetIsPulsedPartWayThroughAScript, TheScriptStartsOverOnRelease) {
                           co_await write32(0x10, 0xC0FFEE);
                         },
                         {.reset = [](LineDriver& reset) {
-                           reset.wait_for(50 * ns);
-                           reset.set(true);
-                           reset.wait_for(10 * ns);
-                           reset.set(false);
-                         }}};
+                          reset.wait_for(50 * ns);
+                          reset.set(true);
+                          reset.wait_for(10 * ns);
+                          reset.set(false);
+                        }}};
 
   fixture.platform.run(150 * ns);
   const std::uint32_t when_it_would_have_landed = fixture.peek32(0x10);
@@ -213,12 +217,13 @@ TEST(WhenABusPortIsBoundToAWirePort, TheErrorNamesBothPortsAndTheirKinds) {
   platform.add("cpu", "scripted_bus_master");
 
   EXPECT_THAT([&] { platform.bind("cpu.socket", "cpu.irq"); },
-              ThrowsMessage<std::invalid_argument>(AllOf(
-                  HasSubstr("cpu.socket"), HasSubstr("cpu.irq"), HasSubstr("bus"),
-                  HasSubstr("wire"))));
+              ThrowsMessage<std::invalid_argument>(
+                  AllOf(HasSubstr("cpu.socket"), HasSubstr("cpu.irq"),
+                        HasSubstr("bus"), HasSubstr("wire"))));
 }
 
-TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt, TheScriptStartsOverOnRelease) {
+TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt,
+     TheScriptStartsOverOnRelease) {
   // The first write lands once at the start and once more after the reset.
   // The second never lands, because the interrupt never comes.
   MasterWithRam fixture{[]() -> Script {
@@ -228,12 +233,13 @@ TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt, TheScriptStartsOverOnRel
                           co_await write32(0x20, 0xDEAD);
                         },
                         {.irq = [](LineDriver&) {},
-                         .reset = [](LineDriver& reset) {
-                           reset.wait_for(10 * ns);
-                           reset.set(true);
-                           reset.wait_for(10 * ns);
-                           reset.set(false);
-                         }}};
+                         .reset =
+                             [](LineDriver& reset) {
+                               reset.wait_for(10 * ns);
+                               reset.set(true);
+                               reset.wait_for(10 * ns);
+                               reset.set(false);
+                             }}};
 
   fixture.platform.run(30 * ns);
 
@@ -247,11 +253,11 @@ TEST(WhenResetIsPulsedAfterAScriptHasFinished, TheScriptPlaysAgain) {
                           co_await write32(0x10, runs + 1);
                         },
                         {.reset = [](LineDriver& reset) {
-                           reset.wait_for(10 * ns);
-                           reset.set(true);
-                           reset.wait_for(10 * ns);
-                           reset.set(false);
-                         }}};
+                          reset.wait_for(10 * ns);
+                          reset.set(true);
+                          reset.wait_for(10 * ns);
+                          reset.set(false);
+                        }}};
 
   fixture.platform.run(30 * ns);
 
@@ -270,9 +276,8 @@ TEST(WhenAScriptWaitsForAnInterruptLineThatIsNotConnected, ItWaitsForever) {
 }
 
 TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
-  Registry registry = MasterWithRam::with_line_drivers(nullptr, [](LineDriver& reset) {
-    reset.set(true);
-  });
+  Registry registry = MasterWithRam::with_line_drivers(
+      nullptr, [](LineDriver& reset) { reset.set(true); });
   Platform platform{registry};
   for (const char* cpu : {"first", "second"}) {
     const std::string name = cpu;
@@ -290,8 +295,10 @@ TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
   platform.run(10 * ns);
 
   std::uint32_t first = 1, second = 1;
-  platform.debug_read("first.socket", 0x10, std::as_writable_bytes(std::span{&first, 1}));
-  platform.debug_read("second.socket", 0x10, std::as_writable_bytes(std::span{&second, 1}));
+  platform.debug_read("first.socket", 0x10,
+                      std::as_writable_bytes(std::span{&first, 1}));
+  platform.debug_read("second.socket", 0x10,
+                      std::as_writable_bytes(std::span{&second, 1}));
   EXPECT_EQ(first, 0u);
   EXPECT_EQ(second, 0u);
 }
@@ -300,15 +307,20 @@ TEST(WhenADebugAccessIsAskedForThroughAWirePort, TheErrorSaysItIsAWire) {
   MasterWithRam fixture{nullptr, {.reset = [](LineDriver&) {}}};
   std::array<std::byte, 4> data{};
 
-  EXPECT_THAT([&] { fixture.platform.debug_read("reset_driver.line", 0x10, data); },
-              ThrowsMessage<std::invalid_argument>(HasSubstr("wire")));
+  EXPECT_THAT(
+      [&] { fixture.platform.debug_read("reset_driver.line", 0x10, data); },
+      ThrowsMessage<std::invalid_argument>(HasSubstr("wire")));
 }
 
-TEST(WhenAWireConnectionIsAskedToBeTraced, TheErrorSaysOnlyBusConnectionsCanBe) {
-  Platform platform{MasterWithRam::with_line_drivers(nullptr, [](LineDriver&) {})};
+TEST(WhenAWireConnectionIsAskedToBeTraced,
+     TheErrorSaysOnlyBusConnectionsCanBe) {
+  Platform platform{
+      MasterWithRam::with_line_drivers(nullptr, [](LineDriver&) {})};
   platform.add("cpu", "scripted_bus_master");
   platform.add("reset_driver", "reset_driver");
 
-  EXPECT_THAT([&] { platform.bind("reset_driver.line", "cpu.reset", /*traced=*/true); },
-              ThrowsMessage<std::invalid_argument>(AllOf(HasSubstr("bus"), HasSubstr("wire"))));
+  EXPECT_THAT(
+      [&] { platform.bind("reset_driver.line", "cpu.reset", /*traced=*/true); },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("bus"), HasSubstr("wire"))));
 }

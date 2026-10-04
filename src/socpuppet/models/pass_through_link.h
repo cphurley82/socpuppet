@@ -22,21 +22,28 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
   // The die's side: `target` takes traffic leaving this die, `initiator`
   // delivers traffic arriving on it.
   tlm_utils::simple_target_socket<PassThroughLinkEndpoint> target{"target"};
-  tlm_utils::simple_initiator_socket<PassThroughLinkEndpoint> initiator{"initiator"};
+  tlm_utils::simple_initiator_socket<PassThroughLinkEndpoint> initiator{
+      "initiator"};
   // The side facing the other endpoint.
-  tlm_utils::simple_initiator_socket<PassThroughLinkEndpoint> peer_initiator{"peer_initiator"};
-  tlm_utils::simple_target_socket<PassThroughLinkEndpoint> peer_target{"peer_target"};
+  tlm_utils::simple_initiator_socket<PassThroughLinkEndpoint> peer_initiator{
+      "peer_initiator"};
+  tlm_utils::simple_target_socket<PassThroughLinkEndpoint> peer_target{
+      "peer_target"};
 
-  explicit PassThroughLinkEndpoint(const sc_core::sc_module_name& name) : sc_module(name) {
+  explicit PassThroughLinkEndpoint(const sc_core::sc_module_name& name)
+      : sc_module(name) {
     target.register_b_transport(this, &PassThroughLinkEndpoint::send);
     target.register_transport_dbg(this, &PassThroughLinkEndpoint::send_debug);
-    target.register_get_direct_mem_ptr(this, &PassThroughLinkEndpoint::send_dmi_request);
+    target.register_get_direct_mem_ptr(
+        this, &PassThroughLinkEndpoint::send_dmi_request);
     peer_initiator.register_invalidate_direct_mem_ptr(
         this, &PassThroughLinkEndpoint::pass_invalidation_to_die);
 
     peer_target.register_b_transport(this, &PassThroughLinkEndpoint::deliver);
-    peer_target.register_transport_dbg(this, &PassThroughLinkEndpoint::deliver_debug);
-    peer_target.register_get_direct_mem_ptr(this, &PassThroughLinkEndpoint::deliver_dmi_request);
+    peer_target.register_transport_dbg(this,
+                                       &PassThroughLinkEndpoint::deliver_debug);
+    peer_target.register_get_direct_mem_ptr(
+        this, &PassThroughLinkEndpoint::deliver_dmi_request);
     initiator.register_invalidate_direct_mem_ptr(
         this, &PassThroughLinkEndpoint::pass_invalidation_to_peer);
   }
@@ -49,7 +56,8 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
   unsigned send_debug(tlm::tlm_generic_payload& transaction) {
     return peer_initiator->transport_dbg(transaction);
   }
-  bool send_dmi_request(tlm::tlm_generic_payload& transaction, tlm::tlm_dmi& dmi) {
+  bool send_dmi_request(tlm::tlm_generic_payload& transaction,
+                        tlm::tlm_dmi& dmi) {
     return peer_initiator->get_direct_mem_ptr(transaction, dmi);
   }
   void pass_invalidation_to_peer(sc_dt::uint64 start, sc_dt::uint64 end) {
@@ -63,7 +71,8 @@ class PassThroughLinkEndpoint : public sc_core::sc_module {
   unsigned deliver_debug(tlm::tlm_generic_payload& transaction) {
     return initiator->transport_dbg(transaction);
   }
-  bool deliver_dmi_request(tlm::tlm_generic_payload& transaction, tlm::tlm_dmi& dmi) {
+  bool deliver_dmi_request(tlm::tlm_generic_payload& transaction,
+                           tlm::tlm_dmi& dmi) {
     return initiator->get_direct_mem_ptr(transaction, dmi);
   }
   void pass_invalidation_to_die(sc_dt::uint64 start, sc_dt::uint64 end) {

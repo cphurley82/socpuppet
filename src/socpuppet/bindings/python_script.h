@@ -23,17 +23,21 @@ class PythonScript {
  public:
   PythonScript(pybind11::object generator_function, PythonExecutor& executor)
       : generator_function_(std::move(generator_function)),
-        to_native_(pybind11::module_::import("socpuppet.ops").attr("to_native")),
+        to_native_(
+            pybind11::module_::import("socpuppet.ops").attr("to_native")),
         executor_(executor) {}
 
   // Starts the Python script from the top and plays it to the end. Stops
   // early if Python raises; the exception then comes out of run().
   Script play() {
-    if (!executor_.run([this] { generator_ = generator_function_(); })) co_return;
+    if (!executor_.run([this] { generator_ = generator_function_(); }))
+      co_return;
     std::optional<std::uint32_t> read_value;
     while (std::optional<Op> op = next(read_value)) {
       const std::uint32_t given_back = co_await *op;
-      read_value = std::holds_alternative<Read32>(*op) ? std::optional{given_back} : std::nullopt;
+      read_value = std::holds_alternative<Read32>(*op)
+                       ? std::optional{given_back}
+                       : std::nullopt;
     }
   }
 
@@ -58,14 +62,19 @@ class PythonScript {
 
   static Op to_op(const pybind11::tuple& native) {
     const auto kind = native[0].cast<std::string>();
-    const auto number = [&](std::size_t index) { return native[index].cast<std::uint64_t>(); };
+    const auto number = [&](std::size_t index) {
+      return native[index].cast<std::uint64_t>();
+    };
     if (kind == "read32") return Read32{number(1)};
-    if (kind == "write32") return Write32{number(1), static_cast<std::uint32_t>(number(2))};
-    if (kind == "expect32") return Expect32{number(1), static_cast<std::uint32_t>(number(2))};
+    if (kind == "write32")
+      return Write32{number(1), static_cast<std::uint32_t>(number(2))};
+    if (kind == "expect32")
+      return Expect32{number(1), static_cast<std::uint32_t>(number(2))};
     if (kind == "wait") return Wait{Picoseconds{number(1)}};
     if (kind == "wait_irq") return WaitIrq{};
-    throw std::invalid_argument("socpuppet.ops produced an operation of unknown kind \"" +
-                                kind + "\".");
+    throw std::invalid_argument(
+        "socpuppet.ops produced an operation of unknown kind \"" + kind +
+        "\".");
   }
 
   pybind11::object generator_function_;

@@ -25,11 +25,13 @@ struct Instance {
 };
 
 // The value of a parameter the implementation cannot do without.
-inline std::uint64_t required(const Config& config, const std::string& parameter,
+inline std::uint64_t required(const Config& config,
+                              const std::string& parameter,
                               const std::string& implementation) {
   const auto found = config.find(parameter);
   if (found == config.end()) {
-    throw std::invalid_argument("A \"" + implementation + "\" needs a \"" + parameter +
+    throw std::invalid_argument("A \"" + implementation + "\" needs a \"" +
+                                parameter +
                                 "\" parameter, and none was given.");
   }
   return found->second;
@@ -50,8 +52,10 @@ class Registry {
     const auto found = factories_.find(implementation);
     if (found == factories_.end()) {
       std::string known;
-      for (const auto& [name, factory] : factories_) known += (known.empty() ? "" : ", ") + name;
-      throw std::invalid_argument("No component implementation is called \"" + implementation +
+      for (const auto& [name, factory] : factories_)
+        known += (known.empty() ? "" : ", ") + name;
+      throw std::invalid_argument("No component implementation is called \"" +
+                                  implementation +
                                   "\". Known implementations: " + known + ".");
     }
     return found->second;

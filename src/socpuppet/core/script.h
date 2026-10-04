@@ -94,7 +94,8 @@ class Script {
     }
   };
 
-  Script(Script&& other) noexcept : coroutine_(std::exchange(other.coroutine_, nullptr)) {}
+  Script(Script&& other) noexcept
+      : coroutine_(std::exchange(other.coroutine_, nullptr)) {}
   ~Script() {
     if (coroutine_) coroutine_.destroy();
   }
@@ -110,14 +111,19 @@ class Script {
   void give_back(std::uint32_t result) { coroutine_.promise().result = result; }
 
  private:
-  explicit Script(std::coroutine_handle<promise_type> coroutine) : coroutine_(coroutine) {}
+  explicit Script(std::coroutine_handle<promise_type> coroutine)
+      : coroutine_(coroutine) {}
 
   std::coroutine_handle<promise_type> coroutine_;
 };
 
 inline Read32 read32(std::uint64_t address) { return {address}; }
-inline Write32 write32(std::uint64_t address, std::uint32_t value) { return {address, value}; }
-inline Expect32 expect32(std::uint64_t address, std::uint32_t value) { return {address, value}; }
+inline Write32 write32(std::uint64_t address, std::uint32_t value) {
+  return {address, value};
+}
+inline Expect32 expect32(std::uint64_t address, std::uint32_t value) {
+  return {address, value};
+}
 // Python calls this one `wait`; here that name belongs to sc_module::wait.
 inline Wait wait_for(Picoseconds duration) { return {duration}; }
 inline WaitIrq wait_irq() { return {}; }

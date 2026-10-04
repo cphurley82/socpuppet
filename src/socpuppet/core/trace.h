@@ -16,8 +16,9 @@ struct TraceRecord {
   std::string sink;    // the port it went to
   bool is_write;
   std::uint64_t address;
-  std::vector<std::uint8_t> data;  // what was written, or what the read returned
-  bool ok;                         // false if the target answered with an error
+  std::vector<std::uint8_t>
+      data;  // what was written, or what the read returned
+  bool ok;   // false if the target answered with an error
 
   bool operator==(const TraceRecord&) const = default;
 };

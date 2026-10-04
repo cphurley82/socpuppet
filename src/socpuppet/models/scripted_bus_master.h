@@ -36,7 +36,8 @@ class ScriptedBusMaster : public sc_core::sc_module {
   sc_core::sc_in<bool> irq{"irq"};
   sc_core::sc_in<bool> reset{"reset"};
 
-  explicit ScriptedBusMaster(const sc_core::sc_module_name& name) : sc_module(name) {
+  explicit ScriptedBusMaster(const sc_core::sc_module_name& name)
+      : sc_module(name) {
     SC_THREAD(run);
   }
 
@@ -67,7 +68,8 @@ class ScriptedBusMaster : public sc_core::sc_module {
       while (outcome == Outcome::carry_on) {
         const Op* op = script.next();
         if (op == nullptr) break;
-        outcome = std::visit([&](const auto& each) { return carry_out(each, script); }, *op);
+        outcome = std::visit(
+            [&](const auto& each) { return carry_out(each, script); }, *op);
       }
       if (outcome == Outcome::failed) return;
       if (outcome == Outcome::carry_on) {
@@ -92,8 +94,8 @@ class ScriptedBusMaster : public sc_core::sc_module {
     const std::uint32_t actual = read(op.address);
     if (actual != op.value) {
       fail_simulation(ExpectationFailed(
-          std::format("{} expected {:#x} at address {:#x}, but read {:#x}.", name(), op.value,
-                      op.address, actual)));
+          std::format("{} expected {:#x} at address {:#x}, but read {:#x}.",
+                      name(), op.value, op.address, actual)));
       return Outcome::failed;
     }
     return after_an_op();
@@ -121,7 +123,8 @@ class ScriptedBusMaster : public sc_core::sc_module {
     return value;
   }
 
-  void transport(tlm::tlm_command command, std::uint64_t address, std::uint32_t& value) {
+  void transport(tlm::tlm_command command, std::uint64_t address,
+                 std::uint32_t& value) {
     tlm::tlm_generic_payload transaction;
     transaction.set_command(command);
     transaction.set_address(address);

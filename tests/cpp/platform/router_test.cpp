@@ -40,13 +40,16 @@ struct RoutedPlatform {
     platform.elaborate();
   }
 
-  static socpuppet::Registry with_bus_driver(std::function<void(BusDriver&)> body) {
+  static socpuppet::Registry with_bus_driver(
+      std::function<void(BusDriver&)> body) {
     socpuppet::Registry registry = socpuppet::builtin_components();
-    registry.add("bus_driver", [body](const char* name, const socpuppet::Config&) {
-      auto module = std::make_unique<BusDriver>(name, body);
-      std::vector<socpuppet::Port> ports{socpuppet::initiator_port("socket", module->socket)};
-      return socpuppet::Instance{std::move(module), std::move(ports)};
-    });
+    registry.add(
+        "bus_driver", [body](const char* name, const socpuppet::Config&) {
+          auto module = std::make_unique<BusDriver>(name, body);
+          std::vector<socpuppet::Port> ports{
+              socpuppet::initiator_port("socket", module->socket)};
+          return socpuppet::Instance{std::move(module), std::move(ports)};
+        });
     return registry;
   }
 
@@ -55,7 +58,8 @@ struct RoutedPlatform {
 
 }  // namespace
 
-TEST(WhenAnAccessFallsInsideAMappedRange, ItReachesThatTargetAtTheOffsetWithinTheRange) {
+TEST(WhenAnAccessFallsInsideAMappedRange,
+     ItReachesThatTargetAtTheOffsetWithinTheRange) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   std::array<std::uint8_t, 4> read{};
   RoutedPlatform routed{[&](BusDriver& bus) {

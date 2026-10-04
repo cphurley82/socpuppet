@@ -1,10 +1,10 @@
+#include "socpuppet/core/script.h"
+
 #include <cstdint>
 #include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
-
-#include "socpuppet/core/script.h"
 
 using namespace socpuppet;
 

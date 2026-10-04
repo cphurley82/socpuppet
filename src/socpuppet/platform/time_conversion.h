@@ -17,7 +17,8 @@ inline Picoseconds to_picoseconds(const sc_core::sc_time& time) {
 }
 
 inline sc_core::sc_time to_sc_time(Picoseconds time) {
-  return sc_core::sc_time::from_value(time.count() * resolution_units_per_picosecond());
+  return sc_core::sc_time::from_value(time.count() *
+                                      resolution_units_per_picosecond());
 }
 
 }  // namespace socpuppet
