@@ -10,7 +10,8 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SOCPUPPET_DEVELOPER_MODE": "ON",
         "SOCPUPPET_COVERAGE": "OFF",
-        "SOCPUPPET_SANITIZE": "OFF"
+        "SOCPUPPET_SANITIZE": "OFF",
+        "SOCPUPPET_BUILD_SPIKES": "OFF"
       }
     },
     {
@@ -30,12 +31,21 @@
       "cacheVariables": {
         "SOCPUPPET_SANITIZE": "ON"
       }
+    },
+    {
+      "name": "spike",
+      "displayName": "Development build plus the exploratory code under spikes/",
+      "inherits": "dev",
+      "cacheVariables": {
+        "SOCPUPPET_BUILD_SPIKES": "ON"
+      }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "coverage", "configurePreset": "coverage" },
-    { "name": "asan", "configurePreset": "asan" }
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "spike", "configurePreset": "spike" }
   ],
   "testPresets": [
     {
@@ -48,6 +58,12 @@
       "configurePreset": "asan",
       "output": { "outputOnFailure": true },
       "filter": { "include": { "label": "cpp" } }
+    },
+    {
+      "name": "spike",
+      "configurePreset": "spike",
+      "output": { "outputOnFailure": true },
+      "filter": { "include": { "label": "spike" } }
     }
   ]
 }

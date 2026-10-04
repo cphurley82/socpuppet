@@ -65,15 +65,27 @@ uv run ctest --preset asan
 
 🎓 The tools are AddressSanitizer and UndefinedBehaviorSanitizer, which the compiler builds into the test programs. On Linux they also report memory that was never freed. Only our two C++ test programs are built this way. The Python extension is not, because Python itself is not, and a sanitized module cannot be loaded into a program that is not sanitized.
 
-## One build tree, three kinds of build
+## One build tree, four kinds of build
 
-⚠️ The `dev`, `coverage` and `asan` presets share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage or sanitizer run, go back with:
+⚠️ The `dev`, `coverage`, `asan` and `spike` presets share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage, sanitizer or spike run, go back with:
 
 ```sh
 uv run cmake --preset dev
 ```
 
 Configuring prints a note when the tree is in one of the two special modes.
+
+## Spikes
+
+Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted and still built with warnings as errors.
+
+```sh
+uv run cmake --preset spike
+uv run cmake --build --preset spike
+uv run ctest --preset spike              # only the tests labelled `spike`
+```
+
+The `spike` preset is the `dev` build plus `spikes/`, in the same build tree. The everyday presets leave it out, and so do coverage and the wheel. What each spike is for is in its own README, for example [spikes/iss](../spikes/iss/README.md).
 
 ## The package
 

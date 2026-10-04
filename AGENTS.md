@@ -54,6 +54,8 @@ Changes are made test-first with the skills in `.claude/skills/`:
 
 The two reviews can also be run on their own against the working tree.
 
+Code under `spikes/` is the exception: it is exploratory, so it is not written test-first, and nothing outside `spikes/` may depend on it.
+
 ## Style
 
 The rules for each language, and the reasons for them, are in [docs/style.md](docs/style.md). The ones that matter while writing:
