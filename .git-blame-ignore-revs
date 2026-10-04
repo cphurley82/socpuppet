@@ -1,0 +1,6 @@
+# Commits that only reformat or rename, so that git blame looks past them.
+# Use it with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file by itself.)
+
+# Reformat all C++ with clang-format (Google style, 80 columns)
+c5a96eaac06e2d8be3be8c04df7bc90b90752dd8
