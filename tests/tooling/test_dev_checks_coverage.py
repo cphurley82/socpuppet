@@ -65,6 +65,28 @@ def test_the_coverage_report_lists_our_header_but_not_a_vendors_or_the_test(
     assert reported_files(result.stdout) == ["src/widgets/widget.h"]
 
 
+def test_when_fewer_lines_are_run_than_the_floor_asks_for_coverage_fails(
+    cmake_project,
+):
+    # One line of the header never runs, so it is short of 100%.
+    project = widget_project(cmake_project, "SOCPUPPET_COVERAGE_CPP_FLOOR=100")
+
+    result = project.build("coverage")
+
+    assert result.returncode != 0
+
+
+def test_when_as_many_lines_are_run_as_the_floor_asks_for_coverage_passes(
+    cmake_project,
+):
+    # Most of the header's lines run, so it is well over half.
+    project = widget_project(cmake_project, "SOCPUPPET_COVERAGE_CPP_FLOOR=50")
+
+    result = project.build("coverage")
+
+    assert result.returncode == 0, result.stdout
+
+
 def reported_files(output):
     """The files in the C++ report's table.
 

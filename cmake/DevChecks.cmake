@@ -59,6 +59,9 @@ if(SOCPUPPET_DEVELOPER_MODE)
     VERBATIM)
 endif()
 
+set(SOCPUPPET_COVERAGE_CPP_FLOOR 0 CACHE STRING
+  "The coverage target fails if the tests run less than this percentage of our C++ lines")
+
 if(SOCPUPPET_COVERAGE)
   # gcov is the tool that reads the counters an instrumented program leaves
   # behind. Each compiler has its own.
@@ -80,6 +83,7 @@ if(SOCPUPPET_COVERAGE)
             --filter ${PROJECT_SOURCE_DIR}/src/
             --gcov-executable ${_socpuppet_gcov}
             --txt
+            --fail-under-line ${SOCPUPPET_COVERAGE_CPP_FLOOR}
             --html-details ${CMAKE_BINARY_DIR}/coverage/cpp/index.html
             ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
