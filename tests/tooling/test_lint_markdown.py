@@ -19,3 +19,9 @@ def test_when_a_paragraph_is_one_300_column_line_lint_passes(repo, lint):
     (repo / "notes.md").write_text(f"# Notes\n\n{paragraph}\n")
 
     assert lint().returncode == 0
+
+
+def test_when_claude_md_only_includes_another_file_lint_passes(repo, lint):
+    (repo / "CLAUDE.md").write_text("@AGENTS.md\n")
+
+    assert lint().returncode == 0

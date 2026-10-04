@@ -6,3 +6,7 @@ disable = [
     # wraps it for display. Hard-wrapped prose makes for noisy diffs.
     "MD013",
 ]
+
+[per-file-ignores]
+# CLAUDE.md is a one-line include of AGENTS.md, so it has no heading.
+"CLAUDE.md" = ["MD041"]
