@@ -141,14 +141,15 @@ TEST(DirectMemoryAccess, TakesTheRamTrafficOffTheBus) {
   const bool finished =
       RunUntilPrinted(platform, "board", "D", Milliseconds(1000));
 
-  const CountingProbe& ram = RamProbe(platform, "board");
+  const std::uint64_t transactions = RamProbe(platform, "board").Transactions();
+  const std::uint64_t grants = RamProbe(platform, "board").DmiGrants();
   EXPECT_TRUE(finished);
-  EXPECT_GE(ram.DmiGrants(), 1U) << "the CPU never asked for DMI";
-  EXPECT_LT(ram.Transactions(), 100U)
+  EXPECT_GE(grants, 1U) << "the CPU never asked for DMI";
+  EXPECT_LT(transactions, 100U)
       << "the CPU kept fetching instructions over the bus";
   Note(std::to_string(2 * kIterations) + " instructions made " +
-       std::to_string(ram.Transactions()) + " RAM transactions and " +
-       std::to_string(ram.DmiGrants()) + " DMI requests that were granted");
+       std::to_string(transactions) + " RAM transactions and " +
+       std::to_string(grants) + " DMI requests that were granted");
 }
 
 // Runs the countdown loop and reports instructions per second of real time.
