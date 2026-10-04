@@ -58,6 +58,12 @@ LINTERS = [
         check=("ruff", "format", "--quiet", "--check"),
         fix=("ruff", "format", "--quiet"),
     ),
+    Linter(
+        "mypy",
+        # The package, where a wrong type would reach a user.
+        patterns=("python/*.py",),
+        check=("mypy", "--no-error-summary"),
+    ),
 ]
 
 

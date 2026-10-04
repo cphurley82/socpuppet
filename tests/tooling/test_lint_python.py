@@ -53,4 +53,27 @@ def test_when_run_with_fix_a_misformatted_python_file_then_passes_lint(
     assert lint().returncode == 0
 
 
+def test_when_package_code_passes_a_value_of_the_wrong_type_lint_fails(
+    repo, lint
+):
+    package = repo / "python" / "socpuppet"
+    package.mkdir(parents=True)
+    (package / "widget.py").write_text(
+        '"""A widget."""\n'
+        "\n"
+        "\n"
+        "def double(number: int) -> int:\n"
+        '    """Twice the number."""\n'
+        "    return number * 2\n"
+        "\n"
+        "\n"
+        'ANSWER = double("21")\n'
+    )
+
+    result = lint()
+
+    assert result.returncode != 0
+    assert "widget.py:9" in result.stdout
+
+
 MISFORMATTED = '"""A widget."""\n\nANSWER   =   42\n'
