@@ -150,7 +150,11 @@ function(socpuppet_dev_checks)
       # The tests can only be run once the programs are built.
       add_dependencies(coverage ${target})
     endif()
-    if(SOCPUPPET_SANITIZE)
+    # Only programs are sanitized. A module that another program loads, as
+    # Python loads our extension, would refuse to start in a program that is
+    # not sanitized itself.
+    get_target_property(type ${target} TYPE)
+    if(SOCPUPPET_SANITIZE AND type STREQUAL "EXECUTABLE")
       # AddressSanitizer catches reads and writes outside an object, and uses
       # after free. UndefinedBehaviorSanitizer catches overflow, bad shifts
       # and the like, and is told to stop the program rather than only report.

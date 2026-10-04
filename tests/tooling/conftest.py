@@ -160,6 +160,10 @@ class CMakeProject:
             _tool("cmake"), "--build", str(self._build), "--target", target
         )
 
+    def built(self, name):
+        """The path of a file the build produced."""
+        return self._build / name
+
     def run(self, program, environment=None):
         """Run a program the project has built.
 

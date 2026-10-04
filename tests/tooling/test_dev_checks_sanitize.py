@@ -1,5 +1,8 @@
 """cmake/DevChecks.cmake: building our programs with sanitizers."""
 
+import subprocess
+import sys
+
 READS_PAST_THE_END = """\
 int main(int argc, char**) {
   int* numbers = new int[4]{};
@@ -64,3 +67,31 @@ def test_when_sanitizing_an_index_past_the_size_of_a_vector_stops_the_program(
     # Stopped by a signal (the library aborts or traps), where returning
     # whatever was read would give an exit status of zero or more.
     assert result.returncode < 0
+
+
+def test_when_sanitizing_a_loadable_module_still_loads_into_a_plain_program(
+    cmake_project,
+):
+    # The Python extension is such a module, and the interpreter that loads
+    # it is not built with sanitizers.
+    project = cmake_project(
+        {"plugin.cpp": 'extern "C" int Answer() { return 42; }\n'},
+        "add_library(plugin MODULE plugin.cpp)\n"
+        'set_target_properties(plugin PROPERTIES PREFIX "" SUFFIX .so)\n'
+        "socpuppet_dev_checks(plugin)\n",
+    )
+    project.configure("SOCPUPPET_SANITIZE=ON")
+    project.build("plugin")
+
+    loaded = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import ctypes, sys; print(ctypes.CDLL(sys.argv[1]).Answer())",
+            str(project.built("plugin.so")),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert loaded.stdout.strip() == "42", loaded.stderr
