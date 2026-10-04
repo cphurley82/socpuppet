@@ -22,6 +22,8 @@ def main():
     files = [f for f in repo_files() if f.endswith((".h", ".cpp"))]
     mode = ["-i"] if args.fix else ["--dry-run", "--Werror"]
     result = subprocess.run([tool("clang-format"), *mode, *files])
+    if result.returncode == 0:
+        print("✅ clang-format")
     return result.returncode
 
 
