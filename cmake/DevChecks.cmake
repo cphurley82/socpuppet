@@ -157,6 +157,12 @@ function(socpuppet_dev_checks)
       set(sanitizers -fsanitize=address,undefined -fno-sanitize-recover=undefined)
       target_compile_options(${target} PRIVATE ${sanitizers} -fno-omit-frame-pointer)
       target_link_options(${target} PRIVATE ${sanitizers})
+      # Have the standard library check its own preconditions, such as an
+      # index being inside a vector. The first is GCC's library, the second
+      # Clang's; each ignores the other's.
+      target_compile_definitions(${target} PRIVATE
+        _GLIBCXX_ASSERTIONS
+        _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
     endif()
     if(TARGET tidy)
       get_target_property(sources ${target} SOURCES)

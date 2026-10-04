@@ -160,9 +160,15 @@ class CMakeProject:
             _tool("cmake"), "--build", str(self._build), "--target", target
         )
 
-    def run(self, program):
-        """Run a program the project has built."""
-        return _run(str(self._build / program))
+    def run(self, program, environment=None):
+        """Run a program the project has built.
+
+        `environment` is added to the environment the program gets.
+        """
+        return _run(
+            str(self._build / program),
+            env={**os.environ, **(environment or {})},
+        )
 
 
 @pytest.fixture(scope="module")
