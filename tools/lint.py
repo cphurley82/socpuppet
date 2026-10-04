@@ -48,6 +48,11 @@ LINTERS = [
         check=("ruff", "check", "--quiet"),
         fix=("ruff", "check", "--quiet", "--fix"),
     ),
+    Linter(
+        "ruff-format",
+        patterns=("*.py",),
+        check=("ruff", "format", "--quiet", "--check"),
+    ),
 ]
 
 

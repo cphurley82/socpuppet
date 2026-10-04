@@ -30,3 +30,15 @@ def test_when_run_with_fix_a_python_file_with_unsorted_imports_then_passes_lint(
     lint("--fix")
 
     assert lint().returncode == 0
+
+
+def test_when_a_python_file_is_misformatted_lint_fails_and_names_the_file(repo, lint):
+    (repo / "widget.py").write_text(MISFORMATTED)
+
+    result = lint()
+
+    assert result.returncode != 0
+    assert "widget.py" in result.stdout
+
+
+MISFORMATTED = '"""A widget."""\n\nANSWER   =   42\n'
