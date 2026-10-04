@@ -22,10 +22,13 @@ socpuppet::Factory unused_factory();
 TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
-  platform.add("link", "pass_through_link");
+  platform.add("near", "pass_through_link_endpoint");
+  platform.add("far", "pass_through_link_endpoint");
   platform.add("ram", "memory", {{"size", 0x100}});
-  platform.bind("cpu.socket", "link.target");
-  platform.bind("link.initiator", "ram.socket");
+  platform.bind("cpu.socket", "near.target");
+  platform.bind("near.peer_initiator", "far.peer_target");
+  platform.bind("far.peer_initiator", "near.peer_target");
+  platform.bind("far.initiator", "ram.socket");
   platform.module<socpuppet::ScriptedBusMaster>("cpu").set_script(
       []() -> socpuppet::Script { co_await socpuppet::write32(0x10, 0xC0FFEE); });
   platform.elaborate();
@@ -66,7 +69,7 @@ TEST(WhenAnUnknownImplementationIsRequested, TheErrorNamesItAndListsTheKnownOnes
 TEST(WhenTwoPortsOfTheSameRoleAreBound, TheErrorNamesBothPorts) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
-  platform.add("link", "pass_through_link");
+  platform.add("link", "pass_through_link_endpoint");
 
   EXPECT_THAT([&] { platform.bind("cpu.socket", "link.initiator"); },
               ThrowsMessage<std::invalid_argument>(
@@ -76,7 +79,7 @@ TEST(WhenTwoPortsOfTheSameRoleAreBound, TheErrorNamesBothPorts) {
 TEST(WhenAPortThatDoesNotExistIsBound, TheErrorListsTheComponentsPorts) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
-  platform.add("link", "pass_through_link");
+  platform.add("link", "pass_through_link_endpoint");
 
   EXPECT_THAT([&] { platform.bind("cpu.socket", "link.tarket"); },
               ThrowsMessage<std::invalid_argument>(
@@ -86,11 +89,11 @@ TEST(WhenAPortThatDoesNotExistIsBound, TheErrorListsTheComponentsPorts) {
 TEST(WhenAPortIsLeftUnbound, ElaborationIsRefusedAndTheErrorNamesThePort) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
-  platform.add("link", "pass_through_link");
+  platform.add("link", "pass_through_link_endpoint");
   platform.bind("cpu.socket", "link.target");
 
   EXPECT_THAT([&] { platform.elaborate(); },
-              ThrowsMessage<std::runtime_error>(HasSubstr("link.initiator")));
+              ThrowsMessage<std::runtime_error>(HasSubstr("link.peer_initiator")));
 }
 
 TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
@@ -112,7 +115,7 @@ TEST(WhenAComponentIsAddedInsideNestedGroups, ItsSimulationNameCarriesEveryGroup
 TEST(WhenAPortOfAnUnknownComponentIsBound, TheErrorNamesItAndListsTheKnownComponents) {
   socpuppet::Platform platform{socpuppet::builtin_components()};
   platform.add("cpu", "scripted_bus_master");
-  platform.add("link", "pass_through_link");
+  platform.add("link", "pass_through_link_endpoint");
 
   EXPECT_THAT([&] { platform.bind("cpu.socket", "lnik.target"); },
               ThrowsMessage<std::invalid_argument>(

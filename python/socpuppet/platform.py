@@ -55,6 +55,18 @@ class PlacedRouter(Placed):
         self._platform.connect(Port(self, output), target)
 
 
+class Link:
+    """A link placed between two dies: endpoint `a` on one, `b` on the other.
+
+    Send traffic into `a.target` and it comes out of `b.initiator`, and the
+    same from `b` to `a`.
+    """
+
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
+
+
 def wants_color(is_terminal, environment):
     """Whether output should be colored.
 
@@ -69,15 +81,15 @@ class Group:
 
     def __init__(self, platform, path):
         self._platform = platform
-        self._path = path
+        self.path = path
 
     def add(self, name, component):
         """Place `component` inside this group and return it with its ports."""
-        return self._platform.add(f"{self._path}.{name}", component)
+        return self._platform.add(f"{self.path}.{name}", component)
 
     def group(self, name):
         """A group nested inside this one."""
-        return Group(self._platform, f"{self._path}.{name}")
+        return Group(self._platform, f"{self.path}.{name}")
 
 
 class Platform:
@@ -108,6 +120,21 @@ class Platform:
     def group(self, name):
         """A named group of components, such as a die."""
         return Group(self, name)
+
+    def link(self, name, kind, a=None, b=None):
+        """Place a link called `name`, with one endpoint in group `a` and one in group `b`.
+
+        `kind` says which link to use, such as `PassThroughLink()`. The
+        endpoints are named `<group>.<name>`; with no groups given they are
+        `<name>.a` and `<name>.b`.
+        """
+        path_a = f"{a.path}.{name}" if a is not None else f"{name}.a"
+        path_b = f"{b.path}.{name}" if b is not None else f"{name}.b"
+        end_a = self.add(path_a, kind.endpoint())
+        end_b = self.add(path_b, kind.endpoint())
+        self.connect(end_a.peer_initiator, end_b.peer_target)
+        self.connect(end_b.peer_initiator, end_a.peer_target)
+        return Link(end_a, end_b)
 
     def connect(self, source, sink):
         """Connect a source port (an initiator) to a sink port (a target)."""

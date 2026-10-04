@@ -30,12 +30,16 @@ struct Port {
 
 inline const char* to_string(Port::Kind kind) { return kind == Port::Kind::bus ? "bus" : "wire"; }
 
-inline Port initiator_port(std::string name, tlm::tlm_initiator_socket<>& socket) {
-  return {std::move(name), Port::Kind::bus, Port::Role::source, &socket};
+// A bus port that is not required may be left unconnected. An access sent
+// out of an unconnected initiator gets an address-error response.
+inline Port initiator_port(std::string name, tlm::tlm_initiator_socket<>& socket,
+                           bool required = true) {
+  return {std::move(name), Port::Kind::bus, Port::Role::source, &socket, required};
 }
 
-inline Port target_port(std::string name, tlm::tlm_target_socket<>& socket) {
-  return {std::move(name), Port::Kind::bus, Port::Role::sink, &socket};
+inline Port target_port(std::string name, tlm::tlm_target_socket<>& socket,
+                        bool required = true) {
+  return {std::move(name), Port::Kind::bus, Port::Role::sink, &socket, required};
 }
 
 inline Port wire_source_port(std::string name, sc_core::sc_out<bool>& out) {

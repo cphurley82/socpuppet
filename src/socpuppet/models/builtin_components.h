@@ -20,10 +20,14 @@ inline Registry builtin_components() {
     std::vector<Port> ports{target_port("socket", module->socket)};
     return Instance{std::move(module), std::move(ports)};
   });
-  registry.add("pass_through_link", [](const char* name, const Config&) {
-    auto module = std::make_unique<PassThroughLink>(name);
-    std::vector<Port> ports{target_port("target", module->target),
-                            initiator_port("initiator", module->initiator)};
+  // One end of a link. The die's side may be left unconnected in either
+  // direction; the peer side must be bound to the other endpoint.
+  registry.add("pass_through_link_endpoint", [](const char* name, const Config&) {
+    auto module = std::make_unique<PassThroughLinkEndpoint>(name);
+    std::vector<Port> ports{target_port("target", module->target, /*required=*/false),
+                            initiator_port("initiator", module->initiator, /*required=*/false),
+                            initiator_port("peer_initiator", module->peer_initiator),
+                            target_port("peer_target", module->peer_target)};
     return Instance{std::move(module), std::move(ports)};
   });
   registry.add("scripted_bus_master", [](const char* name, const Config&) {

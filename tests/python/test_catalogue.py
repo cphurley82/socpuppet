@@ -8,7 +8,7 @@ why they look inside socpuppet._core.
 import pytest
 
 import socpuppet as sp
-from socpuppet.components import Component
+from socpuppet.components import Component, PassThroughLinkEndpoint
 
 def router_with_one_output():
     router = sp.Router()
@@ -19,7 +19,7 @@ def router_with_one_output():
 # One instance of every catalogue class, with whatever parameters it needs.
 EXAMPLES = [
     sp.Memory(size=0x100),
-    sp.PassThroughLink(),
+    PassThroughLinkEndpoint(),
     router_with_one_output(),
     sp.ScriptedBusMaster(),
 ]

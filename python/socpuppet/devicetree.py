@@ -40,7 +40,7 @@ def _endpoints(connections, view, base=0):
     sink = next((sink for source, sink in connections if source.path == view.path), None)
     if sink is None:
         return
-    routes = list(sink.placed.component.routes())
+    routes = list(sink.placed.component.routes(sink.name))
     if not routes:
         yield base, sink.placed
     for output, offset in routes:

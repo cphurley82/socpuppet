@@ -12,6 +12,7 @@ gtest_discover_tests(unit_tests)
 # runs each one in its own process.
 add_executable(kernel_tests
   kernel_test_main.cpp
+  contracts/link_test.cpp
   contracts/memory_test.cpp
   platform/composition_test.cpp
   platform/kernel_smoke_test.cpp

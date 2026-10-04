@@ -81,12 +81,12 @@ class TestWhenATargetWithNoSizeOfItsOwnIsMapped:
     def test_the_error_says_only_sized_targets_can_be_mapped(self):
         platform = sp.Platform()
         bus = platform.add("bus", sp.Router())
-        link = platform.add("link", sp.PassThroughLink())
+        link = platform.link("link", sp.PassThroughLink())
 
         with pytest.raises(ValueError) as error:
-            bus.map(link.target, base=0x1000)
+            bus.map(link.a.target, base=0x1000)
 
-        assert "link.target" in str(error.value)
+        assert "link.a.target" in str(error.value)
         assert "size" in str(error.value)
 
 

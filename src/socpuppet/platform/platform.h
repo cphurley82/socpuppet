@@ -15,6 +15,8 @@
 
 #include <systemc>
 #include <tlm>
+#include <tlm_utils/simple_initiator_socket.h>
+#include <tlm_utils/simple_target_socket.h>
 
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/registry.h"
@@ -76,6 +78,7 @@ class Platform {
   // topology is fixed.
   void elaborate() {
     check_wiring();
+    tie_off_unconnected_bus_ports();
     // sc_start() does exactly this as its first step. Calling it here is not
     // part of the SystemC standard, but the reference kernel exposes it.
     sc_core::sc_get_curr_simcontext()->initialize(true);
@@ -161,6 +164,44 @@ class Platform {
     if (dot == std::string::npos) return make(path.c_str());
     sc_core::sc_hierarchy_scope scope = group(path.substr(0, dot)).enter();
     return make(path.substr(dot + 1).c_str());
+  }
+
+  // What an optional bus port is bound to when nobody connected it, since
+  // SystemC insists that every socket be bound to something.
+  //
+  // An access sent out of an unconnected initiator ends up here and gets an
+  // address-error response.
+  struct NothingThere : sc_core::sc_module {
+    tlm_utils::simple_target_socket<NothingThere> socket{"socket"};
+    explicit NothingThere(const sc_core::sc_module_name& name) : sc_module(name) {
+      socket.register_b_transport(this, &NothingThere::b_transport);
+    }
+    void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
+      transaction.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+    }
+  };
+  // An unconnected target is bound to this, which never sends anything.
+  struct NobodyThere : sc_core::sc_module {
+    tlm_utils::simple_initiator_socket<NobodyThere> socket{"socket"};
+    explicit NobodyThere(const sc_core::sc_module_name& name) : sc_module(name) {}
+  };
+
+  void tie_off_unconnected_bus_ports() {
+    for (auto& [path, instance] : instances_) {
+      for (const Port& each : instance.ports) {
+        if (each.kind != Port::Kind::bus || bound_.contains(each.object)) continue;
+        const char* name = sc_core::sc_gen_unique_name("unconnected");
+        if (each.role == Port::Role::source) {
+          auto tie_off = std::make_unique<NothingThere>(name);
+          dynamic_cast<tlm::tlm_initiator_socket<>&>(*each.object).bind(tie_off->socket);
+          tie_offs_.push_back(std::move(tie_off));
+        } else {
+          auto tie_off = std::make_unique<NobodyThere>(name);
+          tie_off->socket.bind(dynamic_cast<tlm::tlm_target_socket<>&>(*each.object));
+          tie_offs_.push_back(std::move(tie_off));
+        }
+      }
+    }
   }
 
   // Runs delta cycles until nothing more is scheduled for the current time.
@@ -254,6 +295,7 @@ class Platform {
   std::map<std::string, std::unique_ptr<Group>> groups_;
   std::map<std::string, Instance> instances_;
   std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>> wires_;
+  std::vector<std::unique_ptr<sc_core::sc_module>> tie_offs_;
   std::set<const sc_core::sc_object*> bound_;
 };
 

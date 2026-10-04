@@ -8,10 +8,10 @@ def thin_platform(writes):
     """A scripted master that writes through a pass-through link into a RAM."""
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.ScriptedBusMaster(writing(writes)))
-    link = platform.add("link", sp.PassThroughLink())
+    link = platform.link("link", sp.PassThroughLink())
     ram = platform.add("ram", sp.Memory(size=0x100))
-    platform.connect(cpu.socket, link.target)
-    platform.connect(link.initiator, ram.socket)
+    platform.connect(cpu.socket, link.a.target)
+    platform.connect(link.b.initiator, ram.socket)
     return platform
 
 
@@ -149,3 +149,23 @@ def two_masters_each_with_a_ram():
         platform.connect(cpu.socket, ram.socket)
         cpus.append(cpu)
     return platform, *cpus
+
+
+class TestWhenALinkIsPlacedBetweenTwoGroups:
+    def test_each_group_gets_an_endpoint_named_after_the_link(self):
+        platform = sp.Platform()
+
+        link = platform.link("d2d", sp.PassThroughLink(), platform.group("compute"), platform.group("io"))
+
+        assert (link.a.path, link.b.path) == ("compute.d2d", "io.d2d")
+
+
+@pytest.mark.platform
+class TestWhenOnlyOneDirectionOfALinkIsUsed:
+    def test_the_platform_still_builds_and_carries_that_direction(self):
+        platform = thin_platform(writes=[(0x10, 0xC0FFEE)])
+        platform.build()
+
+        platform.run()
+
+        assert platform.peek32(0x10) == 0xC0FFEE

@@ -12,13 +12,14 @@ import socpuppet as sp
 def ram_behind_a_link_and_a_router():
     """A 64 KiB RAM at 0x8000_0000, reached through a link and then a router."""
     platform = sp.Platform()
-    cpu = platform.group("compute").add("cpu", sp.ScriptedBusMaster())
-    link = platform.add("d2d", sp.PassThroughLink())
+    compute = platform.group("compute")
     io = platform.group("io")
+    cpu = compute.add("cpu", sp.ScriptedBusMaster())
+    link = platform.link("d2d", sp.PassThroughLink(), compute, io)
     bus = io.add("bus", sp.Router())
     ram = io.add("ram", sp.Memory(size=0x10000))
-    platform.connect(cpu.socket, link.target)
-    platform.connect(link.initiator, bus.target)
+    platform.connect(cpu.socket, link.a.target)
+    platform.connect(link.b.initiator, bus.target)
     bus.map(ram.socket, base=0x8000_0000)
     return platform, cpu
 

@@ -48,10 +48,10 @@ def run_python(code):
 
 class TestWhenAPortThatDoesNotExistIsNamed:
     def test_the_error_lists_the_ports_the_component_has(self):
-        link = sp.Platform().add("link", sp.PassThroughLink())
+        link = sp.Platform().link("link", sp.PassThroughLink())
 
         with pytest.raises(AttributeError) as error:
-            link.tarket
+            link.a.tarket
 
         assert "target" in str(error.value)
         assert "initiator" in str(error.value)

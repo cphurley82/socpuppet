@@ -22,8 +22,8 @@ class Component:
     def configure(self, native, path):
         """Hand the built component anything its parameters cannot carry."""
 
-    def routes(self):
-        """Where an access arriving at this component can go next.
+    def routes(self, port):
+        """Where an access arriving at `port` can go next.
 
         Yields (output port, base): an access at `base` comes out of that
         port as address 0. A component that answers accesses itself, like a
@@ -42,14 +42,27 @@ class Memory(Component):
         super().__init__(size=size)
 
 
-class PassThroughLink(Component):
-    """🎭 Stand-in for the die-to-die link: passes every transaction on, unchanged."""
+class PassThroughLinkEndpoint(Component):
+    """🎭 One end of a pass-through link. `Platform.link()` places these in pairs."""
 
-    implementation = "pass_through_link"
-    ports = ("target", "initiator")
+    implementation = "pass_through_link_endpoint"
+    ports = ("target", "initiator", "peer_initiator", "peer_target")
 
-    def routes(self):
-        return (("initiator", 0),)
+    def routes(self, port):
+        # Out to the other endpoint, or in from it.
+        return ((("peer_initiator", 0),) if port == "target" else (("initiator", 0),))
+
+
+class PassThroughLink:
+    """🎭 Stand-in for the die-to-die link: passes every transaction on, unchanged.
+
+    Hand it to `Platform.link()`. It keeps the real link's shape (one
+    endpoint per die, traffic both ways) and leaves out everything else:
+    no training, no latency, no errors.
+    """
+
+    def endpoint(self):
+        return PassThroughLinkEndpoint()
 
 
 class ScriptedBusMaster(Component):
@@ -111,7 +124,7 @@ class Router(Component):
             flat[f"out{index}.size"] = size
         return flat
 
-    def routes(self):
+    def routes(self, port):
         for index, (base, _, _) in enumerate(self._ranges):
             yield f"out{index}", base
 
