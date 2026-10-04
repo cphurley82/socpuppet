@@ -50,6 +50,9 @@ def lint(repo):
         return subprocess.run(
             [*LINT, *args],
             cwd=cwd,
+            # Only the system's own directories: lint must find its tools
+            # without the virtual environment being activated.
+            env={**os.environ, "PATH": os.defpath},
             input=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

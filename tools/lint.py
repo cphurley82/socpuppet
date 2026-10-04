@@ -118,6 +118,12 @@ def run(linter, files, root, fix):
         [tool(program), *arguments, *files],
         # From the top of the repository, where each linter's config is.
         cwd=root,
+        # A linter may call another: actionlint runs shellcheck on the
+        # scripts inside a workflow, and looks for it on the PATH.
+        env={
+            **os.environ,
+            "PATH": tools_directory() + os.pathsep + os.environ["PATH"],
+        },
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -168,11 +174,13 @@ def repo_files(root):
 
 
 def tool(name):
-    """The path of a linter's program.
+    """The path of a linter's program."""
+    return str(Path(tools_directory()) / name)
 
-    They are installed next to the interpreter (see pyproject.toml).
-    """
-    return str(Path(sysconfig.get_path("scripts")) / name)
+
+def tools_directory():
+    """Where the linters are: next to the interpreter (see pyproject.toml)."""
+    return sysconfig.get_path("scripts")
 
 
 if __name__ == "__main__":

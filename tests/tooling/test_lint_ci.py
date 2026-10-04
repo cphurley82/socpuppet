@@ -33,3 +33,24 @@ def test_when_a_shell_script_expands_a_variable_unquoted_lint_fails_and_names_th
 
     assert result.returncode != 0
     assert "tidy.sh:3:" in result.stdout
+
+
+def test_when_a_workflow_step_expands_a_variable_unquoted_lint_fails(
+    repo, lint
+):
+    workflows = repo / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "ci.yml").write_text(
+        "name: CI\n"
+        "on: push\n"
+        "jobs:\n"
+        "  test:\n"
+        "    runs-on: ubuntu-24.04\n"
+        "    steps:\n"
+        "      - run: rm -r $RUNNER_TEMP\n"
+    )
+
+    result = lint()
+
+    assert result.returncode != 0
+    assert "ci.yml:7:" in result.stdout
