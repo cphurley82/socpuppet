@@ -75,6 +75,12 @@ LINTERS = [
         patterns=(".github/workflows/*.yml",),
         check=("actionlint",),
     ),
+    Linter(
+        "shellcheck",
+        patterns=("*.sh",),
+        # gcc format: one line per finding, starting file:line:column.
+        check=("shellcheck", "--format=gcc"),
+    ),
 ]
 
 
