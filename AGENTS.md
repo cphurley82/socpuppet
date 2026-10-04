@@ -45,3 +45,12 @@ Changes are made test-first with the skills in `.claude/skills/`:
 - `/software-design-review` reviews the application code once the test is green. `/tdd` runs it for you.
 
 The two reviews can also be run on their own against the working tree.
+
+## Style
+
+The rules for each language, and the reasons for them, are in [docs/style.md](docs/style.md). The ones that matter while writing:
+
+- C++ is Google style: `CamelCase()` functions, `lower_case` variables, `kCamelCase` constants, `member_` for private members, 80 columns. Names imposed by TLM, SystemC and the coroutine protocol keep their own spelling.
+- Python is formatted by ruff and fully type-annotated in the package. Docstrings follow Google's convention.
+- Markdown is one paragraph per line. Do not wrap prose by hand.
+- `uv run python tools/lint.py --fix` repairs what can be repaired, and `uv run ctest --preset dev` includes the lint check. Tools added to the repo are tested in `tests/tooling/`.

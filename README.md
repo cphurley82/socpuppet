@@ -71,6 +71,7 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🔧 [Building and testing](docs/development.md).
+- 🎨 [Style, and the tools that hold us to it](docs/style.md).
 
 ## Who's it for?
 

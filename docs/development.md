@@ -11,13 +11,15 @@ Ubuntu 24.04 and macOS are both supported and both run in CI. If you would rathe
 ## The loop
 
 ```sh
-uv sync                                  # tools: Python, cmake, ninja, pytest
+uv sync                                  # tools: Python, cmake, ninja, pytest, the linters
 uv run cmake --preset dev                # configure (fetches the dependencies the first time)
-uv run cmake --build --preset dev        # build
-uv run ctest --preset dev                # every test: C++ and Python
+uv run cmake --build --preset dev        # format, then build
+uv run ctest --preset dev                # every test: C++, Python, lint
 ```
 
 ⚠️ The first build takes several minutes: SystemC, SCC and the parts of Boost that SCC needs are compiled from source. After that, builds are incremental.
+
+💡 Building formats the C++ and Python for you and treats compiler warnings in our code as errors, and `ctest` includes a lint check over the whole tree. [Style, and the tools that hold us to it](style.md) says what the rules are and why.
 
 The build puts the Python extension next to the Python sources, so the package runs straight from the tree:
 
@@ -34,8 +36,44 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 | `tests/cpp/contracts/` | contract suites every implementation of a slot must pass | one process per test |
 | `tests/cpp/platform/` | composed platforms | one process per test |
 | `tests/python/` | the Python API | `@pytest.mark.platform` tests get a process each |
+| `tests/tooling/` | the lint runner and the build-time checks | each makes a throwaway repository or CMake project |
 
 💡 "One process per test" is because the SystemC kernel cannot be restarted. Run the C++ kernel tests through `ctest`, not by launching the test binary by hand: launched directly, the second test in the binary would find the kernel already used.
+
+## Coverage
+
+How much of our own code do the tests run?
+
+```sh
+uv run cmake --preset coverage
+uv run cmake --build --preset coverage --target coverage
+```
+
+That builds our code with counters in it, runs the tests, and prints two tables: one for the C++ under `src/` and one for the Python under `python/`. The line-by-line reports are web pages in `build/dev/coverage/`. The target fails if either figure drops below its floor, which is set in `CMakePresets.json`. CI runs it and keeps the reports as an artifact of the run.
+
+💡 Coverage counts lines of code the compiler produced. An inline or template function that nothing calls produces no code, so it is missing from the C++ report, where you might expect to see it at 0%. A file that is absent from the table has not been tested at all.
+
+## Sanitizers
+
+The C++ tests can be built so that a mistake which usually goes unnoticed stops the program instead: reading past the end of an allocation, using memory after freeing it, overflowing a signed integer, indexing past the end of a vector.
+
+```sh
+uv run cmake --preset asan
+uv run cmake --build --preset asan
+uv run ctest --preset asan
+```
+
+🎓 The tools are AddressSanitizer and UndefinedBehaviorSanitizer, which the compiler builds into the test programs. On Linux they also report memory that was never freed. Only our two C++ test programs are built this way. The Python extension is not, because Python itself is not, and a sanitized module cannot be loaded into a program that is not sanitized.
+
+## One build tree, three kinds of build
+
+⚠️ The `dev`, `coverage` and `asan` presets share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage or sanitizer run, go back with:
+
+```sh
+uv run cmake --preset dev
+```
+
+Configuring prints a note when the tree is in one of the two special modes.
 
 ## The package
 

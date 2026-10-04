@@ -156,6 +156,8 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 
+Added after M0, before any more models: code-quality checks for every language in the tree, enforced in CI. C++ follows Google style (clang-format, cpplint, clang-tidy, warnings as errors), Python is formatted and linted by ruff and type-checked by mypy, Markdown is linted by rumdl, and there are coverage and sanitizer builds. See [style.md](style.md).
+
 Left out of M0 on purpose, because nothing in M0 could exercise them. Each belongs to the milestone named:
 
 | Item from the M0 list | Where it goes | Why |
