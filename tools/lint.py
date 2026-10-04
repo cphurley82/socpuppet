@@ -2,8 +2,8 @@
 
 Usage: uv run python tools/lint.py [--fix]
 
-Lints the git repository the command is run from, and exits non-zero if any
-linter found a problem. With --fix, problems that can be repaired
+Lints the whole git repository the command is run in, from any directory
+inside it, and exits non-zero if any linter found a problem. With --fix, problems that can be repaired
 automatically are repaired in place.
 """
 
@@ -21,6 +21,9 @@ def main():
     parser = argparse.ArgumentParser(description="Run the linters over this repository.")
     parser.add_argument("--fix", action="store_true", help="repair what can be repaired")
     args = parser.parse_args()
+
+    # Every linter runs from the top of the repository, where its config is.
+    os.chdir(repo_root())
 
     files = [f for f in repo_files() if f.endswith((".h", ".cpp"))]
     mode = ["-i"] if args.fix else ["--dry-run", "--Werror"]
@@ -44,6 +47,16 @@ def report(linter, passed):
     if sys.stdout.isatty() and not os.environ.get("NO_COLOR"):
         line = f"{GREEN if passed else RED}{line}{RESET}"
     print(line)
+
+
+def repo_root():
+    toplevel = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    return toplevel.stdout.strip()
 
 
 def repo_files():
