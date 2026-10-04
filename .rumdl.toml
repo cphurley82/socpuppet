@@ -1,0 +1,8 @@
+# Lint rules for the Markdown. Run them with tools/lint.py.
+
+[global]
+disable = [
+    # Line length. A paragraph is one line here, however long, and the editor
+    # wraps it for display. Hard-wrapped prose makes for noisy diffs.
+    "MD013",
+]
