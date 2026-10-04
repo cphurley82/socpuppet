@@ -117,6 +117,50 @@ int main() { return AtMostTen(11) - 10 + AtMostTen(0); }
     assert result.returncode != 0
 
 
+def test_a_python_line_run_only_in_a_child_process_counts_as_run(cmake_project):
+    project = cmake_project(
+        {
+            "python/widgets.py": """\
+def in_this_process():
+    return 1
+
+
+def in_a_child_process():
+    return 2
+""",
+            "tests/test_widgets.py": """\
+import subprocess
+import sys
+
+import widgets
+
+
+def test_calls_one_function_here_and_the_other_in_a_child_process():
+    widgets.in_this_process()
+    subprocess.run(
+        [sys.executable, "-c", "import widgets; widgets.in_a_child_process()"],
+        check=True,
+    )
+""",
+        },
+        "enable_testing()\n"
+        "add_test(NAME pytest\n"
+        "  COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest tests\n"
+        "  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})\n"
+        "set_tests_properties(pytest PROPERTIES\n"
+        "  ENVIRONMENT PYTHONPATH=${PROJECT_SOURCE_DIR}/python)\n",
+    )
+    # Every line of widgets.py runs, but only if the child process counts.
+    configured = project.configure(
+        "SOCPUPPET_COVERAGE=ON", "SOCPUPPET_COVERAGE_PYTHON_FLOOR=100"
+    )
+    assert configured.returncode == 0, configured.stdout
+
+    result = project.build("coverage")
+
+    assert result.returncode == 0, result.stdout
+
+
 def reported_files(output):
     """The files in the C++ report's table.
 

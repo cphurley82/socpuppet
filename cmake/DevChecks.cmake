@@ -61,6 +61,15 @@ endif()
 
 set(SOCPUPPET_COVERAGE_CPP_FLOOR 0 CACHE STRING
   "The coverage target fails if the tests run less than this percentage of our C++ lines")
+set(SOCPUPPET_COVERAGE_PYTHON_FLOOR 0 CACHE STRING
+  "The coverage target fails if the tests run less than this percentage of our Python lines")
+
+# What to run the Python tests with: `${SOCPUPPET_TEST_PYTHON} -m pytest`.
+# When coverage is being measured, that is the interpreter under coverage.py.
+set(SOCPUPPET_TEST_PYTHON ${Python_EXECUTABLE})
+if(SOCPUPPET_COVERAGE)
+  list(APPEND SOCPUPPET_TEST_PYTHON -m coverage run)
+endif()
 
 if(SOCPUPPET_COVERAGE)
   # gcov is the tool that reads the counters an instrumented program leaves
@@ -71,15 +80,31 @@ if(SOCPUPPET_COVERAGE)
     set(_socpuppet_gcov gcov)
   endif()
 
-  # Runs the tests, then reports which lines of the code under src/ they
-  # ran. The report is printed, and written as web pages to coverage/cpp in
-  # the build directory.
+  # A project with Python in it gets a report on that too.
+  set(_socpuppet_python_coverage_erase)
+  set(_socpuppet_python_coverage_report)
+  if(EXISTS ${PROJECT_SOURCE_DIR}/python)
+    set(_socpuppet_coverage ${Python_EXECUTABLE} -m coverage)
+    set(_socpuppet_python_coverage_erase
+      COMMAND ${_socpuppet_coverage} erase)
+    set(_socpuppet_python_coverage_report
+      COMMAND ${_socpuppet_coverage} combine
+      COMMAND ${_socpuppet_coverage} html
+              --directory ${CMAKE_BINARY_DIR}/coverage/python
+      COMMAND ${_socpuppet_coverage} report
+              --fail-under ${SOCPUPPET_COVERAGE_PYTHON_FLOOR})
+  endif()
+
+  # Runs the tests, then reports which lines of the code under src/ and
+  # python/ they ran. The reports are printed, and written as web pages to
+  # coverage/cpp and coverage/python in the build directory.
   add_custom_target(coverage
     # Counters add up from one run of a program to the next, so the ones
     # left by earlier runs go first.
     COMMAND ${Python_EXECUTABLE} -c
             "import pathlib, sys; [counters.unlink() for counters in pathlib.Path(sys.argv[1]).rglob('*.gcda')]"
             ${CMAKE_BINARY_DIR}
+    ${_socpuppet_python_coverage_erase}
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
             --output-on-failure
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/coverage/cpp
@@ -91,6 +116,7 @@ if(SOCPUPPET_COVERAGE)
             --fail-under-line ${SOCPUPPET_COVERAGE_CPP_FLOOR}
             --html-details ${CMAKE_BINARY_DIR}/coverage/cpp/index.html
             ${CMAKE_BINARY_DIR}
+    ${_socpuppet_python_coverage_report}
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     COMMENT "Running the tests and measuring coverage"
     USES_TERMINAL

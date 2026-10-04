@@ -16,6 +16,7 @@ REPO = Path(__file__).resolve().parents[2]
 CONFIG_FILES = [
     ".clang-format",
     ".clang-tidy",
+    ".coveragerc",
     "CPPLINT.cfg",
     "ruff.toml",
     "mypy.ini",

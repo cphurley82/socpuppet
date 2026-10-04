@@ -1,0 +1,13 @@
+# What coverage.py measures when the tests run under it, which the build's
+# `coverage` target arranges.
+[run]
+source = python
+# Measure the processes a test starts as well. A test marked
+# @pytest.mark.platform runs in a process of its own, and so does anything
+# launched with subprocess.
+patch = subprocess
+# Each process writes a data file of its own, to be combined afterwards.
+parallel = true
+
+[report]
+show_missing = true
