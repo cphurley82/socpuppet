@@ -20,3 +20,24 @@ def test_in_developer_mode_building_reformats_a_misformatted_source(project):
     assert (project.source / "program.cpp").read_text() == (
         "int main() { return 0; }\n"
     )
+
+
+def test_after_a_build_that_reformatted_a_source_the_next_build_compiles_nothing(
+    project,
+):
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON")
+    project.build("program")
+
+    second = project.build("program")
+
+    assert "Building CXX" not in second.stdout
+
+
+def test_on_a_ci_runner_building_leaves_a_misformatted_source_as_it_is(project):
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON", ci=True)
+
+    project.build("program")
+
+    assert (project.source / "program.cpp").read_text() == (
+        "int   main( ){return 0;}\n"
+    )

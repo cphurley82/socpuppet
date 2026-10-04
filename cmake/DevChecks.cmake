@@ -6,7 +6,9 @@ option(SOCPUPPET_DEVELOPER_MODE
 find_package(Python REQUIRED COMPONENTS Interpreter)
 set(_socpuppet_lint ${CMAKE_CURRENT_LIST_DIR}/../tools/lint.py)
 
-if(SOCPUPPET_DEVELOPER_MODE)
+# CI sets this variable. There, a misformatted file should fail the lint
+# check, not be quietly repaired in a checkout that is then thrown away.
+if(SOCPUPPET_DEVELOPER_MODE AND NOT DEFINED ENV{CI})
   # Formats the project's C++ and Python in place. Our targets depend on it,
   # so it has finished before anything is compiled. (The plain name "format"
   # is taken: yaml-cpp defines a target called that.)
@@ -32,6 +34,8 @@ function(socpuppet_dev_checks)
         -Wsign-conversion  # a conversion that can change the sign
       )
       set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    endif()
+    if(TARGET socpuppet_format)
       add_dependencies(${target} socpuppet_format)
     endif()
   endforeach()
