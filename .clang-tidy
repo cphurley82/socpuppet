@@ -1,0 +1,34 @@
+# clang-tidy's checks for our C++. Run them with the build's `tidy` target:
+#   uv run cmake --build --preset dev --target tidy
+Checks:
+  - bugprone-*
+  - clang-analyzer-*
+  - google-*
+  - modernize-*
+  - performance-*
+  - portability-*
+  - readability-*
+
+  # Switched off, each for a reason:
+
+  # Any two parameters of one type "could be swapped". True of most functions
+  # that take an address and a value.
+  - -bugprone-easily-swappable-parameters
+  # `auto f() -> int` everywhere is not Google style.
+  - -modernize-use-trailing-return-type
+  # [[nodiscard]] on every getter is noise.
+  - -modernize-use-nodiscard
+  # Asks for a one-byte base type on every small enum.
+  - -performance-enum-size
+  # Google style allows `if (done) return;` on one line with no braces. The
+  # google- version of this check allows it too, and stays on.
+  - -readability-braces-around-statements
+  # Short names such as `it` and `id` are fine.
+  - -readability-identifier-length
+  # Addresses, sizes and test data are numbers; naming each one would bury
+  # the code.
+  - -readability-magic-numbers
+
+# Every finding fails the run. A check that is not worth failing for is not
+# worth having on.
+WarningsAsErrors: '*'

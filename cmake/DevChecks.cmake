@@ -20,6 +20,28 @@ if(SOCPUPPET_DEVELOPER_MODE AND NOT DEFINED ENV{CI})
     VERBATIM)
 endif()
 
+# The developer tools are installed next to the interpreter (pyproject.toml).
+get_filename_component(_socpuppet_tools ${Python_EXECUTABLE} DIRECTORY)
+
+# clang-tidy reads how each source is compiled from compile_commands.json.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+if(SOCPUPPET_DEVELOPER_MODE)
+  # Runs clang-tidy, several files at a time, over the sources of our
+  # targets and the headers of ours that they include. It is a target to ask
+  # for, not part of every build, because it takes far longer than compiling.
+  add_custom_target(tidy
+    COMMAND ${Python_EXECUTABLE} ${_socpuppet_tools}/run-clang-tidy.py
+            -quiet
+            -clang-tidy-binary ${_socpuppet_tools}/clang-tidy
+            -p ${CMAKE_BINARY_DIR}
+            "$<TARGET_PROPERTY:tidy,SOCPUPPET_SOURCES>"
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Running clang-tidy"
+    COMMAND_EXPAND_LISTS
+    VERBATIM)
+endif()
+
 # Applies the checks to the targets named, which must be ours: never call
 # this on a dependency.
 function(socpuppet_dev_checks)
@@ -34,6 +56,12 @@ function(socpuppet_dev_checks)
         -Wsign-conversion  # a conversion that can change the sign
       )
       set_target_properties(${target} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    endif()
+    if(TARGET tidy)
+      get_target_property(sources ${target} SOURCES)
+      get_target_property(directory ${target} SOURCE_DIR)
+      list(TRANSFORM sources PREPEND ${directory}/)
+      set_property(TARGET tidy APPEND PROPERTY SOCPUPPET_SOURCES ${sources})
     endif()
     if(TARGET socpuppet_format)
       add_dependencies(${target} socpuppet_format)

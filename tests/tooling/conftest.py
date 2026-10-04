@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parents[2]
 # The real configuration, so the tests check the rules the repo is held to.
 CONFIG_FILES = [
     ".clang-format",
+    ".clang-tidy",
     "CPPLINT.cfg",
     "ruff.toml",
     "mypy.ini",
