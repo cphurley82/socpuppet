@@ -5,6 +5,7 @@ import pty
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -113,3 +114,69 @@ def lint_on_a_terminal(repo, monkeypatch):
         return sent.decode("utf-8")
 
     return run
+
+
+class CMakeProject:
+    """A small CMake project that uses the repo's cmake/ modules."""
+
+    def __init__(self, source, build):
+        self._source = source
+        self._build = build
+
+    def configure(self, *options):
+        """Configure the build tree. Options are given as "NAME=value"."""
+        return _run(
+            _tool("cmake"),
+            "-S",
+            str(self._source),
+            "-B",
+            str(self._build),
+            "-G",
+            "Ninja",
+            f"-DCMAKE_MAKE_PROGRAM={_tool('ninja')}",
+            *(f"-D{option}" for option in options),
+        )
+
+    def build(self, target):
+        """Build one target."""
+        return _run(
+            _tool("cmake"), "--build", str(self._build), "--target", target
+        )
+
+
+@pytest.fixture(scope="module")
+def cmake_project(tmp_path_factory):
+    """Make a CMake project from its files, given as {path: contents}.
+
+    The project's CMakeLists.txt is written for it, up to and including the
+    line that includes cmake/DevChecks.cmake; `cmake_lists` is what follows.
+    """
+
+    def make(files, cmake_lists):
+        root = tmp_path_factory.mktemp("project")
+        source = root / "source"
+        for path, contents in files.items():
+            (source / path).parent.mkdir(parents=True, exist_ok=True)
+            (source / path).write_text(contents)
+        (source / "CMakeLists.txt").write_text(
+            "cmake_minimum_required(VERSION ${CMAKE_VERSION})\n"
+            "project(fixture LANGUAGES CXX)\n"
+            f"include({REPO / 'cmake' / 'DevChecks.cmake'})\n" + cmake_lists
+        )
+        return CMakeProject(source, root / "build")
+
+    return make
+
+
+def _tool(name):
+    """A developer tool installed next to the interpreter, such as cmake."""
+    return str(Path(sysconfig.get_path("scripts")) / name)
+
+
+def _run(*command):
+    return subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+    )
