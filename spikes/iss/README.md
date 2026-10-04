@@ -30,3 +30,12 @@ The `spike` preset shares `build/dev` with the others, so go back to `dev` when 
 | `harness/virt_board.h` | A board for a candidate to run on: router, RAM and a UART at the addresses of QEMU's RISC-V `virt` machine, so a stock Zephyr image runs without a board of our own. |
 | `harness/standin_uart.h` | 🎭 A stand-in for the NS16550 UART. It is always ready to transmit and keeps every byte for the test to read. |
 | `harness/harness_test.cpp` | The harness on its own, with the scripted bus master playing the CPU. |
+| `firmware/build.sh` | Builds the firmware the candidates boot: Zephyr's `hello_world` for the stock `qemu_riscv64` and `qemu_riscv32` boards. |
+
+## The firmware
+
+```sh
+spikes/iss/firmware/build.sh             # into build/firmware
+```
+
+The first run downloads the Zephyr SDK's RISC-V toolchain and Zephyr itself (about 250 MB) into `build/firmware`, and nothing is installed anywhere else. Later runs take seconds. Besides each image it writes a count of the instructions the image uses, which says how much of the instruction set a CPU model needs before this firmware runs on it.
