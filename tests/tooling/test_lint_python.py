@@ -10,3 +10,11 @@ def test_when_a_python_file_has_an_unused_import_lint_fails_and_names_the_file(
 
     assert result.returncode != 0
     assert "widget.py" in result.stdout
+
+
+def test_when_a_public_function_has_no_docstring_lint_fails(repo, lint):
+    (repo / "widget.py").write_text(
+        '"""A widget."""\n\n\ndef answer():\n    return 42\n'
+    )
+
+    assert lint().returncode != 0

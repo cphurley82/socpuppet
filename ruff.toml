@@ -1,0 +1,36 @@
+# Lint and format rules for the Python code. Run them with tools/lint.py.
+
+# The same width as the C++.
+line-length = 80
+target-version = "py312"
+# Where our own packages live, so that imports of them sort last.
+src = ["python", "tests/python"]
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes: unused imports, undefined names
+    "I",    # import order
+    "N",    # naming
+    "D",    # docstrings
+    "UP",   # idioms that newer Python has replaced
+    "B",    # likely bugs
+    "C4",   # comprehensions
+    "SIM",  # code that can be simpler
+    "PT",   # pytest style
+    "RUF",  # ruff's own checks
+]
+ignore = [
+    # A dunder method's name already says what it does, and __init__ is
+    # documented by its class.
+    "D105",
+    "D107",
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.per-file-ignores]
+# A test's name is its documentation: it states the scenario and the outcome.
+"tests/**" = ["D"]
