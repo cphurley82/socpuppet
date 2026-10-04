@@ -8,7 +8,9 @@ import socpuppet
 @pytest.fixture
 def session_with_socpuppet(pytester, monkeypatch):
     """A scratch pytest session that can import socpuppet and uses its plugin."""
-    monkeypatch.setenv("PYTHONPATH", str(Path(socpuppet.__file__).parent.parent))
+    monkeypatch.setenv(
+        "PYTHONPATH", str(Path(socpuppet.__file__).parent.parent)
+    )
     pytester.makeconftest('pytest_plugins = ["socpuppet.pytest_plugin"]')
     return pytester
 
@@ -43,7 +45,9 @@ class TestWhenSeveralPlatformTestsRunInOneSession:
 
 
 class TestWhenAPlatformTestFails:
-    def test_the_session_reports_the_failed_assertion(self, session_with_socpuppet):
+    def test_the_session_reports_the_failed_assertion(
+        self, session_with_socpuppet
+    ):
         session_with_socpuppet.makepyfile(
             """
             import pytest
@@ -78,8 +82,12 @@ class TestWhenAPlatformTestSkipsItself:
 
 
 class TestWhenPytestIsStartedFromASubdirectory:
-    def test_a_platform_test_there_runs_in_that_directory(self, session_with_socpuppet, monkeypatch):
-        session_with_socpuppet.makeini("[pytest]")  # pins the rootdir above the subdirectory
+    def test_a_platform_test_there_runs_in_that_directory(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        session_with_socpuppet.makeini(
+            "[pytest]"
+        )  # pins the rootdir above the subdirectory
         subdirectory = session_with_socpuppet.mkdir("nested")
         subdirectory.joinpath("test_nested.py").write_text(
             "from pathlib import Path\n"
@@ -137,7 +145,9 @@ class TestWhenAPlatformTestPassesButItsProcessCrashesOnExit:
 
 
 class TestWhenAPlatformTestIsTheLastOneInItsClass:
-    def test_the_ordinary_tests_after_it_still_run(self, session_with_socpuppet):
+    def test_the_ordinary_tests_after_it_still_run(
+        self, session_with_socpuppet
+    ):
         session_with_socpuppet.makepyfile(
             """
             import pytest

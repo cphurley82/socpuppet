@@ -21,6 +21,8 @@ GREEN, RED, RESET = "\x1b[32m", "\x1b[31m", "\x1b[0m"
 
 @dataclass(frozen=True)
 class Linter:
+    """One linter: what it is called, which files it checks, and how."""
+
     name: str
     # Which files it looks at, as globs on the path from the top of the repo.
     patterns: tuple[str, ...]
@@ -60,10 +62,14 @@ LINTERS = [
 
 
 def main():
+    """Run every linter. Returns the exit status."""
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--fix", action="store_true", help="repair what can be repaired")
+    parser.add_argument(
+        "--fix", action="store_true", help="repair what can be repaired"
+    )
     args = parser.parse_args()
 
     root = repo_root()
@@ -73,8 +79,13 @@ def main():
 
 
 def run(linter, files, root, fix):
-    """Run one linter over the files that are its business. True if it passed."""
-    files = [f for f in files if any(fnmatch.fnmatch(f, p) for p in linter.patterns)]
+    """Run one linter over the files that are its business.
+
+    Returns True if it passed.
+    """
+    files = [
+        f for f in files if any(fnmatch.fnmatch(f, p) for p in linter.patterns)
+    ]
     if not files:
         # Given no files, a linter finds something else to read: standard
         # input, or everything under the current directory.
@@ -106,6 +117,7 @@ def report(linter, passed):
 
 
 def repo_root():
+    """The top of the git repository the command was run in."""
     toplevel = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
         check=True,
@@ -133,7 +145,10 @@ def repo_files(root):
 
 
 def tool(name):
-    """The linters are installed next to the interpreter (see pyproject.toml)."""
+    """The path of a linter's program.
+
+    They are installed next to the interpreter (see pyproject.toml).
+    """
     return str(Path(sysconfig.get_path("scripts")) / name)
 
 

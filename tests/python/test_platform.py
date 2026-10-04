@@ -63,7 +63,6 @@ class TestWhenThePlatformIsAlreadyBuilt:
 
         assert "already built" in str(error.value)
 
-
     def test_building_it_again_is_refused_and_the_error_says_why(self):
         platform = thin_platform(writes=[])
         platform.build()
@@ -129,14 +128,14 @@ class TestWhenAPlatformHasTwoBusMasters:
 
         assert platform.peek32(0x10, via=first_cpu.socket) == 0xAAAA
 
-    def test_a_peek_that_names_no_port_is_refused_and_the_error_asks_for_one(self):
+    def test_a_peek_that_names_no_port_is_refused_and_the_error_asks_for_one(
+        self,
+    ):
         platform, _, _ = two_masters_each_with_a_ram()
         platform.build()
 
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match="via="):
             platform.peek32(0x10)
-
-        assert "via=" in str(error.value)
 
 
 def two_masters_each_with_a_ram():
@@ -155,6 +154,11 @@ class TestWhenALinkIsPlacedBetweenTwoGroups:
     def test_each_group_gets_an_endpoint_named_after_the_link(self):
         platform = sp.Platform()
 
-        link = platform.link("d2d", sp.PassThroughLink(), platform.group("compute"), platform.group("io"))
+        link = platform.link(
+            "d2d",
+            sp.PassThroughLink(),
+            platform.group("compute"),
+            platform.group("io"),
+        )
 
         assert (link.a.path, link.b.path) == ("compute.d2d", "io.d2d")

@@ -10,6 +10,7 @@ import pytest
 import socpuppet as sp
 from socpuppet.components import Component, PassThroughLinkEndpoint
 
+
 def router_with_one_output():
     router = sp.Router()
     router.add_output(base=0, size=0x100, label="example")
@@ -27,16 +28,22 @@ EXAMPLES = [
 
 class TestTheCatalogue:
     def test_has_an_example_here_for_every_component_class(self):
-        assert {type(example) for example in EXAMPLES} == set(Component.__subclasses__())
+        assert {type(example) for example in EXAMPLES} == set(
+            Component.__subclasses__()
+        )
 
     @pytest.mark.platform
     def test_names_exactly_the_implementations_the_simulator_has(self):
         from socpuppet import _core
 
-        assert {example.implementation for example in EXAMPLES} == set(_core.implementations())
+        assert {example.implementation for example in EXAMPLES} == set(
+            _core.implementations()
+        )
 
     @pytest.mark.platform
-    @pytest.mark.parametrize("example", EXAMPLES, ids=lambda example: example.implementation)
+    @pytest.mark.parametrize(
+        "example", EXAMPLES, ids=lambda example: example.implementation
+    )
     def test_declares_the_ports_the_simulator_creates(self, example):
         from socpuppet import _core
 

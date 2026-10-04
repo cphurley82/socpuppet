@@ -21,7 +21,9 @@ def generate(connections, view):
         "\t#address-cells = <2>;",
         "\t#size-cells = <2>;",
     ]
-    for base, placed in sorted(_endpoints(connections, view), key=lambda found: found[0]):
+    for base, placed in sorted(
+        _endpoints(connections, view), key=lambda found: found[0]
+    ):
         if isinstance(placed.component, Memory):
             size = placed.component.parameters["size"]
             lines += [
@@ -36,15 +38,23 @@ def generate(connections, view):
 
 
 def _endpoints(connections, view, base=0):
-    """Yield (address, placed component) for each component that answers accesses from `view`."""
-    sink = next((each.sink for each in connections if each.source.path == view.path), None)
+    """Yield each component that answers accesses made from `view`.
+
+    Each comes as (address, placed component).
+    """
+    sink = next(
+        (each.sink for each in connections if each.source.path == view.path),
+        None,
+    )
     if sink is None:
         return
     routes = list(sink.placed.component.routes(sink.name))
     if not routes:
         yield base, sink.placed
     for output, offset in routes:
-        yield from _endpoints(connections, getattr(sink.placed, output), base + offset)
+        yield from _endpoints(
+            connections, getattr(sink.placed, output), base + offset
+        )
 
 
 def _label(path):

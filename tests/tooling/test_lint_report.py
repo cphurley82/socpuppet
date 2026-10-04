@@ -1,7 +1,9 @@
 """What tools/lint.py prints."""
 
 
-def test_when_a_linter_finds_nothing_its_name_is_printed_with_a_pass_mark(repo, lint):
+def test_when_a_linter_finds_nothing_its_name_is_printed_with_a_pass_mark(
+    repo, lint
+):
     (repo / "widget.cpp").write_text("// Clean under any style.\n")
 
     result = lint()
@@ -9,7 +11,9 @@ def test_when_a_linter_finds_nothing_its_name_is_printed_with_a_pass_mark(repo, 
     assert "✅ clang-format" in result.stdout.splitlines()
 
 
-def test_when_a_linter_finds_a_problem_its_name_is_printed_with_a_fail_mark(repo, lint):
+def test_when_a_linter_finds_a_problem_its_name_is_printed_with_a_fail_mark(
+    repo, lint
+):
     (repo / "widget.cpp").write_text("int   answer( ){return 42;}\n")
 
     result = lint()
@@ -25,7 +29,6 @@ def test_when_output_goes_to_a_terminal_the_result_line_is_colored(
     sent = lint_on_a_terminal()
 
     assert ESCAPE in result_line(sent)
-
 
 
 def test_when_no_color_is_set_the_result_line_on_a_terminal_is_plain(

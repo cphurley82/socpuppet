@@ -3,7 +3,9 @@
 import re
 
 
-def test_when_a_cpp_file_is_misformatted_lint_fails_and_names_the_file(repo, lint):
+def test_when_a_cpp_file_is_misformatted_lint_fails_and_names_the_file(
+    repo, lint
+):
     (repo / "widget.cpp").write_text("int   answer( ){return 42;}\n")
 
     result = lint()
@@ -49,7 +51,9 @@ def test_when_run_with_fix_includes_are_grouped_as_related_standard_third_party_
     )
 
 
-def test_when_a_file_has_a_using_directive_lint_fails_and_names_the_line(repo, lint):
+def test_when_a_file_has_a_using_directive_lint_fails_and_names_the_line(
+    repo, lint
+):
     (repo / "widget.cpp").write_text(
         "#include <string>\n"
         "\n"
@@ -85,7 +89,9 @@ def test_when_a_header_guard_does_not_spell_the_headers_path_lint_fails_and_says
     assert re.search(r"\bSOCPUPPET_CORE_WIDGET_H_\b", result.stdout)
 
 
-def test_when_includes_are_in_the_order_fix_puts_them_in_lint_passes(repo, lint):
+def test_when_includes_are_in_the_order_fix_puts_them_in_lint_passes(
+    repo, lint
+):
     source = repo / "src" / "socpuppet" / "core" / "widget.cpp"
     source.parent.mkdir(parents=True)
     source.write_text(

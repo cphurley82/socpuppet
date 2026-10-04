@@ -6,18 +6,26 @@ import sys
 
 
 def main(arguments=None):
+    """Run the `socpuppet` command with `arguments`, or the process's own."""
     parser = argparse.ArgumentParser(
-        prog="socpuppet", description="🧦 A whole SoC, with Python pulling the strings."
+        prog="socpuppet",
+        description="🧦 A whole SoC, with Python pulling the strings.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     devicetree = commands.add_parser(
         "devicetree",
         help="print the devicetree for a platform description",
-        description="Print the devicetree for a platform description. Nothing is simulated.",
+        description=(
+            "Print the devicetree for a platform description. "
+            "Nothing is simulated."
+        ),
     )
     devicetree.add_argument(
         "description",
-        help="a Python file that leaves its Platform in a variable called `platform`",
+        help=(
+            "a Python file that leaves its Platform in a variable called "
+            "`platform`"
+        ),
     )
     options = parser.parse_args(arguments)
 
@@ -29,7 +37,7 @@ def _load(path):
     names = runpy.run_path(path)
     if "platform" not in names:
         sys.exit(
-            f"{path} does not define `platform`. A description file must leave its "
-            "Platform in a variable with that name."
+            f"{path} does not define `platform`. A description file must "
+            "leave its Platform in a variable with that name."
         )
     return names["platform"]

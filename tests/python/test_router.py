@@ -40,7 +40,9 @@ class TestWhenAMasterWritesToAnAddressNothingIsMappedAt:
 
         assert f"{UNMAPPED:#x}" in capfd.readouterr().out
 
-    def test_the_log_carries_no_color_codes_when_output_is_not_a_terminal(self, capfd):
+    def test_the_log_carries_no_color_codes_when_output_is_not_a_terminal(
+        self, capfd
+    ):
         platform = routed_platform(writes=[(UNMAPPED, 1)])
         platform.build()
 
@@ -70,10 +72,9 @@ class TestWhenTwoMappedRangesOverlap:
         second = platform.add("second_ram", sp.Memory(size=0x100))
         bus.map(first.socket, base=0x1000)
 
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match=r"first_ram\.socket") as error:
             bus.map(second.socket, base=0x10FF)
 
-        assert "first_ram.socket" in str(error.value)
         assert "second_ram.socket" in str(error.value)
 
 
@@ -83,10 +84,9 @@ class TestWhenATargetWithNoSizeOfItsOwnIsMapped:
         bus = platform.add("bus", sp.Router())
         link = platform.link("link", sp.PassThroughLink())
 
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match=r"link\.a\.target") as error:
             bus.map(link.a.target, base=0x1000)
 
-        assert "link.a.target" in str(error.value)
         assert "size" in str(error.value)
 
 

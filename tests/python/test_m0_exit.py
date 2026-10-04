@@ -1,7 +1,7 @@
 """The M0 exit test: Python pulls the strings of a small two-die platform.
 
-    compute die                              IO die
-    scripted master ─▶ link endpoint ══ link endpoint ─▶ router ─▶ memory
+compute die                              IO die
+scripted master ─▶ link endpoint ══ link endpoint ─▶ router ─▶ memory
 """
 
 import pytest
@@ -54,6 +54,16 @@ class TestWhenAPythonScriptedBusMasterUsesMemoryOnTheOtherSideOfThePassThroughLi
             (record.command, record.address, record.source, record.sink)
             for record in platform.trace
         ] == [
-            ("write", RAM_BASE + 0x10, "compute.cpu.socket", "compute.d2d.target"),
-            ("read", RAM_BASE + 0x10, "compute.cpu.socket", "compute.d2d.target"),
+            (
+                "write",
+                RAM_BASE + 0x10,
+                "compute.cpu.socket",
+                "compute.d2d.target",
+            ),
+            (
+                "read",
+                RAM_BASE + 0x10,
+                "compute.cpu.socket",
+                "compute.d2d.target",
+            ),
         ]

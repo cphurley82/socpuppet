@@ -1,7 +1,7 @@
+import os
 import signal
 import subprocess
 import sys
-import os
 import textwrap
 
 import pytest
@@ -143,7 +143,9 @@ class TestWhenTwoScriptedMastersRunAtOnce:
         cpus = []
         for name in ("first", "second"):
             group = platform.group(name)
-            cpu = group.add("cpu", sp.ScriptedBusMaster(writing([(0x10, 1), (0x14, 2)])))
+            cpu = group.add(
+                "cpu", sp.ScriptedBusMaster(writing([(0x10, 1), (0x14, 2)]))
+            )
             ram = group.add("ram", sp.Memory(size=0x100))
             platform.connect(cpu.socket, ram.socket)
             cpus.append(cpu)
@@ -152,13 +154,18 @@ class TestWhenTwoScriptedMastersRunAtOnce:
         platform.run()
 
         assert [
-            (platform.peek32(0x10, via=cpu.socket), platform.peek32(0x14, via=cpu.socket))
+            (
+                platform.peek32(0x10, via=cpu.socket),
+                platform.peek32(0x14, via=cpu.socket),
+            )
             for cpu in cpus
         ] == [(1, 2), (1, 2)]
 
 
 class TestWhenAScriptIsNotAGeneratorFunction:
-    def test_a_generator_object_is_refused_and_the_error_says_to_pass_the_function(self):
+    def test_a_generator_object_is_refused_and_the_error_says_to_pass_the_function(
+        self,
+    ):
         def script():
             yield sp.write32(0x10, 1)
 
@@ -167,7 +174,9 @@ class TestWhenAScriptIsNotAGeneratorFunction:
 
         assert "Pass the function" in str(error.value)
 
-    def test_a_function_that_never_yields_is_refused_and_the_error_says_to_yield(self):
+    def test_a_function_that_never_yields_is_refused_and_the_error_says_to_yield(
+        self,
+    ):
         def not_a_script():
             return 42
 
@@ -179,16 +188,12 @@ class TestWhenAScriptIsNotAGeneratorFunction:
 
 class TestWhenAnOperationIsGivenAValueThatDoesNotFitIn32Bits:
     def test_it_is_refused_and_the_error_names_the_value(self):
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match="0x100000001"):
             sp.write32(0x10, 0x1_0000_0001)
 
-        assert "0x100000001" in str(error.value)
-
     def test_a_negative_value_is_refused_too(self):
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match="-1"):
             sp.write32(0x10, -1)
-
-        assert "-1" in str(error.value)
 
 
 class TestWhenARunIsInterruptedFromTheKeyboard:
@@ -252,7 +257,9 @@ def two_writes_ten_and_fifteen_nanoseconds_in():
 
 @pytest.mark.platform
 class TestWhenThePlatformIsStepped:
-    def test_time_moves_to_the_next_scheduled_activity_and_that_activity_happens(self):
+    def test_time_moves_to_the_next_scheduled_activity_and_that_activity_happens(
+        self,
+    ):
         platform = master_with_ram(two_writes_ten_and_fifteen_nanoseconds_in)
 
         platform.step()
@@ -260,7 +267,9 @@ class TestWhenThePlatformIsStepped:
         assert platform.time == sp.ns(10)
         assert platform.peek32(0x10) == 1
 
-    def test_step_returns_true_while_the_script_still_has_something_scheduled(self):
+    def test_step_returns_true_while_the_script_still_has_something_scheduled(
+        self,
+    ):
         platform = master_with_ram(two_writes_ten_and_fifteen_nanoseconds_in)
 
         assert platform.step()
@@ -282,7 +291,9 @@ class TestWhenThePlatformRunsUntilACondition:
         assert held
         assert platform.time == sp.ns(10)
 
-    def test_it_says_so_when_the_simulation_ends_without_the_condition_holding(self):
+    def test_it_says_so_when_the_simulation_ends_without_the_condition_holding(
+        self,
+    ):
         platform = master_with_ram(two_writes_ten_and_fifteen_nanoseconds_in)
 
         assert not platform.run_until(lambda: platform.peek32(0x10) == 3)

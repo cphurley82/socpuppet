@@ -26,6 +26,9 @@ ignore = [
     # documented by its class.
     "D105",
     "D107",
+    # Our exceptions are named for what happened (ExpectationFailed), and do
+    # not all end in "Error".
+    "N818",
 ]
 
 [lint.pydocstyle]
@@ -33,4 +36,5 @@ convention = "google"
 
 [lint.per-file-ignores]
 # A test's name is its documentation: it states the scenario and the outcome.
-"tests/**" = ["D"]
+# That makes for names longer than a line, which is fine.
+"tests/**" = ["D", "E501"]

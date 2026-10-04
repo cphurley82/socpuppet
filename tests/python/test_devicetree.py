@@ -25,7 +25,8 @@ def ram_behind_a_link_and_a_router():
 
 
 needs_dtc = pytest.mark.skipif(
-    shutil.which("dtc") is None, reason="dtc (the devicetree compiler) is not installed"
+    shutil.which("dtc") is None,
+    reason="dtc (the devicetree compiler) is not installed",
 )
 
 
@@ -70,7 +71,9 @@ class TestWhenAPlatformHasTwoBusMasters:
 
 
 class TestWhenTheDevicetreeCommandIsGivenAPlatformFile:
-    def test_it_prints_the_devicetree_of_the_platform_the_file_describes(self, tmp_path):
+    def test_it_prints_the_devicetree_of_the_platform_the_file_describes(
+        self, tmp_path
+    ):
         description = tmp_path / "my_platform.py"
         description.write_text(
             textwrap.dedent(

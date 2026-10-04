@@ -13,4 +13,3 @@ def ns(count):
 def us(count):
     """`count` microseconds."""
     return count * 1_000_000
-

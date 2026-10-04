@@ -50,8 +50,8 @@ class PlacedRouter(Placed):
         size = target.placed.component.parameters.get("size")
         if size is None:
             raise ValueError(
-                f"Cannot map {target.path}: only a component with a size of its own, "
-                "such as a Memory, can be mapped onto a router."
+                f"Cannot map {target.path}: only a component with a size of "
+                "its own, such as a Memory, can be mapped onto a router."
             )
         output = self.component.add_output(base, size, label=target.path)
         self._platform.connect(Port(self, output), target)
@@ -70,7 +70,10 @@ class Link:
 
 
 class Connection(NamedTuple):
-    """A source port connected to a sink port, and whether to trace what crosses."""
+    """A source port connected to a sink port.
+
+    `trace` says whether to record what crosses.
+    """
 
     source: Port
     sink: Port
@@ -78,7 +81,10 @@ class Connection(NamedTuple):
 
 
 class Group:
-    """A level of naming, such as a die. Components added here get its path as a prefix."""
+    """A level of naming, such as a die.
+
+    Components added here get its path as a prefix.
+    """
 
     def __init__(self, platform, path):
         self._platform = platform
@@ -123,11 +129,11 @@ class Platform:
         return Group(self, name)
 
     def link(self, name, model, a=None, b=None):
-        """Place a link called `name`, with one endpoint in group `a` and one in group `b`.
+        """Place a link called `name` between group `a` and group `b`.
 
-        `model` says which link to use, such as `PassThroughLink()`. The
-        endpoints are named `<group>.<name>`; with no groups given they are
-        `<name>.a` and `<name>.b`.
+        Each group gets one endpoint. `model` says which link to use, such
+        as `PassThroughLink()`. The endpoints are named `<group>.<name>`;
+        with no groups given they are `<name>.a` and `<name>.b`.
         """
         path_a = f"{a.path}.{name}" if a is not None else f"{name}.a"
         path_b = f"{b.path}.{name}" if b is not None else f"{name}.b"
@@ -153,9 +159,15 @@ class Platform:
         self.refuse_if_built("build it again")
         from socpuppet import _core  # the simulator loads here, not on import
 
-        native = _core.Platform(color_log=wants_color(sys.stdout.isatty(), os.environ))
+        native = _core.Platform(
+            color_log=wants_color(sys.stdout.isatty(), os.environ)
+        )
         for path, placed in self._placed.items():
-            native.add(path, placed.component.implementation, placed.component.parameters)
+            native.add(
+                path,
+                placed.component.implementation,
+                placed.component.parameters,
+            )
             placed.component.configure(native, path)
         for source, sink, trace in self._connections:
             native.bind(source.path, sink.path, trace)
@@ -163,7 +175,10 @@ class Platform:
         self._native = native
 
     def run(self, duration=None):
-        """Run for `duration` (see `ns`, `us`, `ms`), or until nothing is left to do."""
+        """Run for `duration`, or until nothing is left to do.
+
+        For durations, see `ns`, `us` and `ms`.
+        """
         if duration is None:
             self._built().run()
         else:
@@ -197,12 +212,15 @@ class Platform:
 
     @property
     def trace(self):
-        """Every transaction recorded on traced connections so far, oldest first."""
-        return [TraceRecord.from_native(native) for native in self._built().trace_records()]
+        """Every transaction recorded on traced connections, oldest first."""
+        return [
+            TraceRecord.from_native(native)
+            for native in self._built().trace_records()
+        ]
 
     @property
     def time(self):
-        """The current simulated time, in the same unit `ns`, `us` and `ms` return."""
+        """The simulated time now, in the unit `ns`, `us` and `ms` return."""
         return self._built().time_in_picoseconds()
 
     def peek32(self, address, via=None):
@@ -226,7 +244,9 @@ class Platform:
         Like a peek, a poke takes no simulated time. `via` works as in `peek32`.
         """
         view = self._view(via)
-        if not self._built().debug_write(view.path, address, value.to_bytes(4, "little")):
+        if not self._built().debug_write(
+            view.path, address, value.to_bytes(4, "little")
+        ):
             raise self._nothing_at(address, view)
 
     def devicetree(self, via=None):
@@ -262,8 +282,8 @@ class Platform:
 
     def _nothing_at(self, address, view):
         return LookupError(
-            f"Nothing took a 4-byte access at address {address:#x}, as seen from "
-            f"{view.path}. Check the address against the memory map."
+            f"Nothing took a 4-byte access at address {address:#x}, as seen "
+            f"from {view.path}. Check the address against the memory map."
         )
 
     def _view(self, via):
@@ -277,8 +297,9 @@ class Platform:
         ]
         if len(masters) != 1:
             raise ValueError(
-                f"This platform has {len(masters)} bus masters, so say whose view of "
-                "memory you want: pass via=<a master's port>, such as via=cpu.socket."
+                f"This platform has {len(masters)} bus masters, so say whose "
+                "view of memory you want: pass via=<a master's port>, such as "
+                "via=cpu.socket."
             )
         return masters[0].socket
 
@@ -286,15 +307,15 @@ class Platform:
         """Raise if the platform is built, since its topology is then fixed."""
         if self._native is not None:
             raise RuntimeError(
-                f"Cannot {change}: this platform is already built. SystemC fixes the "
-                "topology once the simulation is created, so describe everything "
-                "before calling build()."
+                f"Cannot {change}: this platform is already built. SystemC "
+                "fixes the topology once the simulation is created, so "
+                "describe everything before calling build()."
             )
 
     def _built(self):
         if self._native is None:
             raise RuntimeError(
-                "This platform is only described so far. Call build() first to create "
-                "the simulation."
+                "This platform is only described so far. Call build() first "
+                "to create the simulation."
             )
         return self._native

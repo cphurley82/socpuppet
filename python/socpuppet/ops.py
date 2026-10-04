@@ -30,7 +30,10 @@ def write32(address, value):
 
 
 def expect32(address, value):
-    """Read a 32-bit value and stop the run with ExpectationFailed if it is not `value`."""
+    """Read a 32-bit value, and stop the run if it is not `value`.
+
+    The run stops with ExpectationFailed.
+    """
     return Operation("expect32", (address, _fits_32_bits(value)))
 
 
@@ -45,12 +48,15 @@ def wait_irq():
 
 
 def to_native(yielded):
-    """What the simulator needs to carry out something a script yielded: (kind, *operands)."""
+    """What the simulator needs to carry out something a script yielded.
+
+    That is (kind, *operands).
+    """
     if not isinstance(yielded, Operation):
         raise TypeError(
-            f"A script yielded {yielded!r}, which is not a bus operation. Yield "
-            "operations such as sp.write32(address, value), sp.read32(address) "
-            "or sp.wait(sp.ns(10))."
+            f"A script yielded {yielded!r}, which is not a bus operation. "
+            "Yield operations such as sp.write32(address, value), "
+            "sp.read32(address) or sp.wait(sp.ns(10))."
         )
     return (yielded.kind, *yielded.operands)
 

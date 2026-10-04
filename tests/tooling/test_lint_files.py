@@ -48,7 +48,9 @@ def test_when_a_tracked_file_is_misformatted_lint_fails(repo, git, lint):
     assert lint().returncode != 0
 
 
-def test_when_a_file_with_a_non_ascii_name_is_misformatted_lint_fails(repo, lint):
+def test_when_a_file_with_a_non_ascii_name_is_misformatted_lint_fails(
+    repo, lint
+):
     (repo / "wídget.cpp").write_text(MISFORMATTED)
 
     assert lint().returncode != 0

@@ -6,6 +6,7 @@ classes, so it works without loading the simulator.
 """
 
 import inspect
+from typing import override
 
 
 class Component:
@@ -43,31 +44,42 @@ class Memory(Component):
 
 
 class PassThroughLinkEndpoint(Component):
-    """🎭 One end of a pass-through link. `Platform.link()` places these in pairs."""
+    """🎭 One end of a pass-through link.
+
+    `Platform.link()` places these in pairs.
+    """
 
     implementation = "pass_through_link_endpoint"
     ports = ("target", "initiator", "peer_initiator", "peer_target")
 
+    @override
     def routes(self, port):
         # Out to the other endpoint, or in from it.
-        return ((("peer_initiator", 0),) if port == "target" else (("initiator", 0),))
+        return (
+            (("peer_initiator", 0),)
+            if port == "target"
+            else (("initiator", 0),)
+        )
 
 
 class PassThroughLink:
-    """🎭 Stand-in for the die-to-die link: passes every transaction on, unchanged.
+    """🎭 Stand-in for the die-to-die link.
 
-    Hand it to `Platform.link()`. It keeps the real link's shape (one
-    endpoint per die, traffic both ways) and leaves out everything else:
-    no training, no latency, no errors.
+    It passes every transaction on, unchanged. Hand it to `Platform.link()`.
+    It keeps the real link's shape (one
+    endpoint per die, traffic both ways) and leaves out everything else: no
+    training, no latency, no errors.
     """
 
     def endpoint(self):
+        """A new endpoint, for one end of the link."""
         return PassThroughLinkEndpoint()
 
 
 class ScriptedBusMaster(Component):
-    """🎭 Stand-in for a CPU: plays a script of bus operations instead of running firmware.
+    """🎭 Stand-in for a CPU.
 
+    It plays a script of bus operations instead of running firmware.
     `script` is a generator function that yields operations (see
     `socpuppet.ops`). It is called again after each reset, so the script
     starts over. With no script, the master does nothing.
@@ -81,28 +93,31 @@ class ScriptedBusMaster(Component):
         if script is not None and not inspect.isgeneratorfunction(script):
             if inspect.isgenerator(script):
                 raise TypeError(
-                    "A script must be a generator function, and this is a generator "
-                    "that has already been started. Pass the function itself, "
-                    "without calling it: ScriptedBusMaster(script), not "
+                    "A script must be a generator function, and this is a "
+                    "generator that has already been started. Pass the "
+                    "function itself, without calling it: "
+                    "ScriptedBusMaster(script), not "
                     "ScriptedBusMaster(script())."
                 )
             raise TypeError(
-                f"A script must be a generator function, and {script!r} never yields. "
-                "Write it as a function that yields operations, such as "
-                "`yield sp.write32(address, value)`."
+                f"A script must be a generator function, and {script!r} "
+                "never yields. Write it as a function that yields operations, "
+                "such as `yield sp.write32(address, value)`."
             )
         self.script = script
 
+    @override
     def configure(self, native, path):
         if self.script is not None:
             native.set_script(path, self.script)
 
 
 class Router(Component):
-    """An address decoder: sends each access to the target mapped at its address.
+    """An address decoder.
 
-    The model is `scc::router` from SystemC-Components. Map targets onto it
-    with `map()` on the placed router.
+    It sends each access to the target mapped at its address. The model is
+    `scc::router` from SystemC-Components. Map targets onto it with `map()`
+    on the placed router.
     """
 
     implementation = "router"
@@ -112,32 +127,42 @@ class Router(Component):
 
     @property
     def ports(self):
-        return ("target", *(f"out{index}" for index in range(len(self._ranges))))
+        """The target port, then one output port per mapped range."""
+        return (
+            "target",
+            *(f"out{index}" for index in range(len(self._ranges))),
+        )
 
     @property
     def parameters(self):
-        # The address map, flattened to the name -> number form the simulator
-        # takes: "outputs", then "out<N>.base" and "out<N>.size" per output.
+        """The address map, flattened to the form the simulator takes.
+
+        That form is name -> number: "outputs", then "out<N>.base" and
+        "out<N>.size" per output.
+        """
         flat = {"outputs": len(self._ranges)}
         for index, (base, size, _) in enumerate(self._ranges):
             flat[f"out{index}.base"] = base
             flat[f"out{index}.size"] = size
         return flat
 
+    @override
     def routes(self, port):
         for index, (base, _, _) in enumerate(self._ranges):
             yield f"out{index}", base
 
     def add_output(self, base, size, label):
-        """Add an output for the range [base, base + size) and return its port name.
+        """Add an output for the range [base, base + size).
 
-        `label` says what the range leads to, for error messages.
+        Returns the output's port name. `label` says what the range leads
+        to, for error messages.
         """
         for other_base, other_size, other_label in self._ranges:
             if base < other_base + other_size and other_base < base + size:
+                other_end = other_base + other_size - 1
                 raise ValueError(
                     f"{label} at {base:#x}..{base + size - 1:#x} overlaps "
-                    f"{other_label} at {other_base:#x}..{other_base + other_size - 1:#x}. "
+                    f"{other_label} at {other_base:#x}..{other_end:#x}. "
                     "Each address can lead to only one target."
                 )
         self._ranges.append((base, size, label))

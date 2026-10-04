@@ -37,14 +37,18 @@ d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
 bus = io.add("bus", sp.Router())
 ram = io.add("ram", sp.Memory(size=64 * 1024))
 
-platform.connect(cpu.socket, d2d.a.target, trace=True)  # watch what crosses onto the link
+# trace=True: watch what crosses onto the link.
+platform.connect(cpu.socket, d2d.a.target, trace=True)
 platform.connect(d2d.b.initiator, bus.target)
 bus.map(ram.socket, base=RAM_BASE)
 
 if __name__ == "__main__":
-    platform.build()  # the simulation exists from here on, and the wiring is fixed
+    # The simulation exists from here on, and the wiring is fixed.
+    platform.build()
     platform.run()
 
     print(sp.render_trace(platform.trace))
-    print(f"\n✅ The show ran for {platform.time // sp.ns(1)} ns of simulated time.")
-    print(f"   RAM now holds {platform.peek32(RAM_BASE):#x} and {platform.peek32(RAM_BASE + 4):#x}.")
+    elapsed = platform.time // sp.ns(1)
+    first, second = platform.peek32(RAM_BASE), platform.peek32(RAM_BASE + 4)
+    print(f"\n✅ The show ran for {elapsed} ns of simulated time.")
+    print(f"   RAM now holds {first:#x} and {second:#x}.")

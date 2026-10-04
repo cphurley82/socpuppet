@@ -51,7 +51,7 @@ class TestWhenAPortThatDoesNotExistIsNamed:
         link = sp.Platform().link("link", sp.PassThroughLink())
 
         with pytest.raises(AttributeError) as error:
-            link.a.tarket
+            _ = link.a.tarket
 
         assert "target" in str(error.value)
         assert "initiator" in str(error.value)
@@ -66,10 +66,18 @@ class TestWhenADescriptionIsDumpedAsJson:
 
         assert json.loads(platform.to_json()) == {
             "components": {
-                "cpu": {"implementation": "scripted_bus_master", "parameters": {}},
-                "ram": {"implementation": "memory", "parameters": {"size": 0x100}},
+                "cpu": {
+                    "implementation": "scripted_bus_master",
+                    "parameters": {},
+                },
+                "ram": {
+                    "implementation": "memory",
+                    "parameters": {"size": 0x100},
+                },
             },
-            "connections": [{"source": "cpu.socket", "sink": "ram.socket", "trace": False}],
+            "connections": [
+                {"source": "cpu.socket", "sink": "ram.socket", "trace": False}
+            ],
         }
 
 
@@ -77,7 +85,9 @@ class TestWhenAComponentIsAddedThroughAGroup:
     def test_its_path_carries_every_group(self):
         platform = sp.Platform()
 
-        ram = platform.group("host").group("io").add("ram", sp.Memory(size=0x100))
+        ram = (
+            platform.group("host").group("io").add("ram", sp.Memory(size=0x100))
+        )
 
         assert ram.path == "host.io.ram"
 
@@ -87,7 +97,5 @@ class TestWhenTwoComponentsAreGivenTheSamePath:
         platform = sp.Platform()
         platform.group("io").add("ram", sp.Memory(size=0x100))
 
-        with pytest.raises(ValueError) as error:
+        with pytest.raises(ValueError, match=r"io\.ram"):
             platform.group("io").add("ram", sp.Memory(size=0x200))
-
-        assert "io.ram" in str(error.value)

@@ -29,9 +29,20 @@ class TraceRecord:
 
     @classmethod
     def from_native(cls, native):
-        """A record from the simulator's (time, source, sink, is_write, address, data, ok)."""
+        """A record from the simulator's tuple.
+
+        The tuple is (time, source, sink, is_write, address, data, ok).
+        """
         time, source, sink, is_write, address, data, ok = native
-        return cls(time, source, sink, "write" if is_write else "read", address, data, ok)
+        return cls(
+            time,
+            source,
+            sink,
+            "write" if is_write else "read",
+            address,
+            data,
+            ok,
+        )
 
 
 def wants_color(is_terminal, environment):
@@ -56,18 +67,25 @@ def render(records, color=None):
 
     lines = []
     for record in records:
-        command = paint(_GREEN if record.command == "read" else _CYAN, f"{record.command:<5}")
+        command = paint(
+            _GREEN if record.command == "read" else _CYAN,
+            f"{record.command:<5}",
+        )
+        time = paint(_DIM, f"{record.time / 1000:g} ns".rjust(12))
+        address = paint(_BOLD, f"{record.address:#010x}")
+        route = paint(_DIM, f"{record.source} → {record.sink}")
         lines.append(
-            f"{paint(_DIM, f'{record.time / 1000:g} ns'.rjust(12))}  {command} "
-            f"{paint(_BOLD, f'{record.address:#010x}')}  {record.data.hex(' ')}  "
-            f"{'✅' if record.ok else paint(_RED, '❌')}  "
-            f"{paint(_DIM, f'{record.source} → {record.sink}')}"
+            f"{time}  {command} {address}  {record.data.hex(' ')}  "
+            f"{'✅' if record.ok else paint(_RED, '❌')}  {route}"
         )
     return "\n".join(lines)
 
 
 def to_json_lines(records):
-    """The trace for machines: one JSON object per line, no color, stable field names."""
+    """The trace for machines: one JSON object per line.
+
+    No color, and the field names are stable.
+    """
     return "".join(
         json.dumps(
             {

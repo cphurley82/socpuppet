@@ -8,11 +8,18 @@ import zipfile
 
 
 def problems_with(names):
+    """Yield what is wrong with a wheel holding the files `names`."""
     extensions = [n for n in names if n.startswith("socpuppet/_core.")]
     if len(extensions) != 1:
-        yield f"expected exactly one socpuppet/_core extension, found {extensions}"
+        yield (
+            "expected exactly one socpuppet/_core extension, "
+            f"found {extensions}"
+        )
     if not any(n.endswith("licenses/THIRD_PARTY_NOTICES.md") for n in names):
-        yield "THIRD_PARTY_NOTICES.md is missing (the wheel embeds third-party code)"
+        yield (
+            "THIRD_PARTY_NOTICES.md is missing "
+            "(the wheel embeds third-party code)"
+        )
     # SystemC, SCC and friends are linked statically into _core. Their own
     # headers, libraries and CMake files must not ride along.
     allowed = ("socpuppet/", "socpuppet-")
@@ -22,6 +29,10 @@ def problems_with(names):
 
 
 def main(wheel_path):
+    """Print the verdict on the wheel at `wheel_path`.
+
+    Returns the exit status.
+    """
     with zipfile.ZipFile(wheel_path) as wheel:
         problems = list(problems_with(wheel.namelist()))
     for problem in problems:

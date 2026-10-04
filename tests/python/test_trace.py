@@ -75,16 +75,27 @@ class TestWhenAWriteCrossesAConnectionThatIsNotTraced:
 
 class TestWhenATraceIsRenderedWithATimeThatIsNotAWholeNanosecond:
     def test_the_time_is_shown_as_a_fraction_of_a_nanosecond(self):
-        half_a_nanosecond_in = TraceRecord(500, "cpu.socket", "ram.socket", "read", 0, bytes(4), True)
+        half_a_nanosecond_in = TraceRecord(
+            500, "cpu.socket", "ram.socket", "read", 0, bytes(4), True
+        )
 
         assert "0.5 ns" in render([half_a_nanosecond_in], color=False)
 
 
 class TestWhenATraceIsRenderedForATerminal:
-    def test_each_record_is_a_line_with_time_command_address_data_and_ports(self):
+    def test_each_record_is_a_line_with_time_command_address_data_and_ports(
+        self,
+    ):
         (line,) = render([A_WRITE], color=False).splitlines()
 
-        for part in ("10 ns", "write", "0x00000010", "ee ff c0 00", "cpu.socket", "ram.socket"):
+        for part in (
+            "10 ns",
+            "write",
+            "0x00000010",
+            "ee ff c0 00",
+            "cpu.socket",
+            "ram.socket",
+        ):
             assert part in line
 
     def test_a_failed_access_is_marked(self):
