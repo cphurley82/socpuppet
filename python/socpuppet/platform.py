@@ -1,34 +1,67 @@
 """Describe a platform in Python, then build and run it."""
 
 import json
+import os
+import sys
 
-from socpuppet.components import ScriptedBusMaster
+from socpuppet import devicetree
+from socpuppet.components import Router, ScriptedBusMaster
 
 
 class Port:
     """One port of a described component, such as `cpu.socket`."""
 
-    def __init__(self, component_path, name):
-        self.path = f"{component_path}.{name}"
+    def __init__(self, placed, name):
+        self.placed = placed
+        self.name = name
+        self.path = f"{placed.path}.{name}"
 
 
 class Placed:
     """A component at its place in a platform. Its ports are attributes."""
 
-    def __init__(self, path, component):
+    def __init__(self, platform, path, component):
+        self._platform = platform
         self.path = path
         self.component = component
-        self._ports = {name: Port(path, name) for name in component.ports}
 
     def __getattr__(self, name):
         # Reached only for names that are not ordinary attributes: the ports.
-        try:
-            return self._ports[name]
-        except KeyError:
-            raise AttributeError(
-                f'"{self.path}" has no port called "{name}". '
-                f"Its ports are: {', '.join(self._ports)}."
-            ) from None
+        if name in self.component.ports:
+            return Port(self, name)
+        raise AttributeError(
+            f'"{self.path}" has no port called "{name}". '
+            f"Its ports are: {', '.join(self.component.ports)}."
+        )
+
+
+class PlacedRouter(Placed):
+    """A router at its place in a platform."""
+
+    def map(self, target, base):
+        """Route accesses starting at `base` to the port `target`.
+
+        The range is as long as the target component's own size, and the
+        target sees addresses as offsets from `base`.
+        """
+        self._platform.refuse_if_built("map a range")
+        size = target.placed.component.parameters.get("size")
+        if size is None:
+            raise ValueError(
+                f"Cannot map {target.path}: only a component with a size of its own, "
+                "such as a Memory, can be mapped onto a router."
+            )
+        output = self.component.add_output(base, size, label=target.path)
+        self._platform.connect(Port(self, output), target)
+
+
+def wants_color(is_terminal, environment):
+    """Whether output should be colored.
+
+    Color suits a terminal; a file or a pipe gets plain text. A non-empty
+    NO_COLOR (https://no-color.org) turns color off everywhere.
+    """
+    return is_terminal and not environment.get("NO_COLOR")
 
 
 class Group:
@@ -61,13 +94,14 @@ class Platform:
 
     def add(self, path, component):
         """Place `component` at `path` and return it with its ports."""
-        self._refuse_if_built("add a component")
+        self.refuse_if_built("add a component")
         if path in self._placed:
             raise ValueError(
                 f'There is already a component called "{path}". '
                 "Each component needs its own name."
             )
-        placed = Placed(path, component)
+        placed_type = PlacedRouter if isinstance(component, Router) else Placed
+        placed = placed_type(self, path, component)
         self._placed[path] = placed
         return placed
 
@@ -77,15 +111,15 @@ class Platform:
 
     def connect(self, source, sink):
         """Connect a source port (an initiator) to a sink port (a target)."""
-        self._refuse_if_built("connect ports")
+        self.refuse_if_built("connect ports")
         self._connections.append((source, sink))
 
     def build(self):
         """Create the simulation from the description."""
-        self._refuse_if_built("build it again")
+        self.refuse_if_built("build it again")
         from socpuppet import _core  # the simulator loads here, not on import
 
-        native = _core.Platform()
+        native = _core.Platform(color_log=wants_color(sys.stdout.isatty(), os.environ))
         for path, placed in self._placed.items():
             native.add(path, placed.component.implementation, placed.component.parameters)
             placed.component.configure(native, path)
@@ -129,6 +163,14 @@ class Platform:
         view = self._view(via)
         if not self._built().debug_write(view.path, address, value.to_bytes(4, "little")):
             raise self._nothing_at(address, view)
+
+    def devicetree(self, via=None):
+        """The devicetree source for what a bus master can reach.
+
+        `via` is the master's port, as in `peek32`. Works on a description;
+        nothing needs to be built.
+        """
+        return devicetree.generate(self._connections, self._view(via))
 
     def to_json(self):
         """The description as JSON: every component and every connection.
@@ -175,7 +217,8 @@ class Platform:
             )
         return masters[0].socket
 
-    def _refuse_if_built(self, change):
+    def refuse_if_built(self, change):
+        """Raise if the platform is built, since its topology is then fixed."""
         if self._native is not None:
             raise RuntimeError(
                 f"Cannot {change}: this platform is already built. SystemC fixes the "

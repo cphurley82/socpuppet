@@ -10,10 +10,17 @@ import pytest
 import socpuppet as sp
 from socpuppet.components import Component
 
+def router_with_one_output():
+    router = sp.Router()
+    router.add_output(base=0, size=0x100, label="example")
+    return router
+
+
 # One instance of every catalogue class, with whatever parameters it needs.
 EXAMPLES = [
     sp.Memory(size=0x100),
     sp.PassThroughLink(),
+    router_with_one_output(),
     sp.ScriptedBusMaster(writes=[]),
 ]
 
@@ -33,7 +40,7 @@ class TestTheCatalogue:
     def test_declares_the_ports_the_simulator_creates(self, example):
         from socpuppet import _core
 
-        native = _core.Platform()
+        native = _core.Platform(color_log=False)
         native.add("example", example.implementation, example.parameters)
 
         assert set(example.ports) == set(native.ports("example"))

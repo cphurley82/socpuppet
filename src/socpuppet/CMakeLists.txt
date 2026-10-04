@@ -6,7 +6,7 @@ target_include_directories(socpuppet_core INTERFACE ${PROJECT_SOURCE_DIR}/src)
 # models/: the SystemC wrappers. platform/: composing them by name (ports,
 # the registry, the platform builder). Header-only for now.
 add_library(socpuppet_models INTERFACE)
-target_link_libraries(socpuppet_models INTERFACE socpuppet_core SystemC::systemc)
+target_link_libraries(socpuppet_models INTERFACE socpuppet_core scc::components SystemC::systemc)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

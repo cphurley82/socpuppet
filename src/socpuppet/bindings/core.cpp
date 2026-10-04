@@ -12,6 +12,7 @@
 
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
 
 namespace py = pybind11;
@@ -37,6 +38,8 @@ struct KernelClaim {
 // What Python's Platform.build() drives: the C++ platform, plus the claim
 // on this process's one kernel.
 struct NativePlatform {
+  explicit NativePlatform(bool color_log) { socpuppet::init_logging(color_log); }
+
   KernelClaim kernel_claim;  // first member: checked before any module is built
   socpuppet::Platform platform{socpuppet::builtin_components()};
 };
@@ -56,7 +59,7 @@ PYBIND11_MODULE(_core, m) {
   m.def("implementations", [] { return socpuppet::builtin_components().implementations(); });
 
   py::class_<NativePlatform>(m, "Platform")
-      .def(py::init<>())
+      .def(py::init<bool>(), py::arg("color_log"))
       .def("add",
            [](NativePlatform& self, const std::string& path, const std::string& implementation,
               const socpuppet::Config& config) {

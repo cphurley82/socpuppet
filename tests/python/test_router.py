@@ -1,0 +1,106 @@
+import pytest
+
+import socpuppet as sp
+from socpuppet.platform import wants_color
+
+RAM_BASE = 0x8000_0000
+UNMAPPED = 0x4000
+
+
+def routed_platform(writes):
+    """A scripted master in front of a router with one RAM at RAM_BASE."""
+    platform = sp.Platform()
+    cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=writes))
+    bus = platform.add("bus", sp.Router())
+    ram = platform.add("ram", sp.Memory(size=0x100))
+    platform.connect(cpu.socket, bus.target)
+    bus.map(ram.socket, base=RAM_BASE)
+    return platform
+
+
+@pytest.mark.platform
+class TestWhenAMasterWritesToAMappedAddress:
+    def test_peek_at_that_address_returns_the_value(self):
+        platform = routed_platform(writes=[(RAM_BASE + 0x10, 0xC0FFEE)])
+        platform.build()
+
+        platform.run()
+
+        assert platform.peek32(RAM_BASE + 0x10) == 0xC0FFEE
+
+
+@pytest.mark.platform
+class TestWhenAMasterWritesToAnAddressNothingIsMappedAt:
+    def test_a_warning_naming_the_address_is_logged(self, capfd):
+        platform = routed_platform(writes=[(UNMAPPED, 1)])
+        platform.build()
+
+        platform.run()
+
+        assert f"{UNMAPPED:#x}" in capfd.readouterr().out
+
+    def test_the_log_carries_no_color_codes_when_output_is_not_a_terminal(self, capfd):
+        platform = routed_platform(writes=[(UNMAPPED, 1)])
+        platform.build()
+
+        platform.run()
+
+        assert "\x1b[" not in capfd.readouterr().out
+
+
+class TestWhenOutputGoesToATerminal:
+    def test_the_log_is_colored(self):
+        assert wants_color(is_terminal=True, environment={})
+
+    def test_the_log_is_not_colored_if_no_color_is_set(self):
+        assert not wants_color(is_terminal=True, environment={"NO_COLOR": "1"})
+
+
+class TestWhenOutputDoesNotGoToATerminal:
+    def test_the_log_is_not_colored(self):
+        assert not wants_color(is_terminal=False, environment={})
+
+
+class TestWhenTwoMappedRangesOverlap:
+    def test_the_second_is_refused_and_the_error_names_both_targets(self):
+        platform = sp.Platform()
+        bus = platform.add("bus", sp.Router())
+        first = platform.add("first_ram", sp.Memory(size=0x100))
+        second = platform.add("second_ram", sp.Memory(size=0x100))
+        bus.map(first.socket, base=0x1000)
+
+        with pytest.raises(ValueError) as error:
+            bus.map(second.socket, base=0x10FF)
+
+        assert "first_ram.socket" in str(error.value)
+        assert "second_ram.socket" in str(error.value)
+
+
+class TestWhenATargetWithNoSizeOfItsOwnIsMapped:
+    def test_the_error_says_only_sized_targets_can_be_mapped(self):
+        platform = sp.Platform()
+        bus = platform.add("bus", sp.Router())
+        link = platform.add("link", sp.PassThroughLink())
+
+        with pytest.raises(ValueError) as error:
+            bus.map(link.target, base=0x1000)
+
+        assert "link.target" in str(error.value)
+        assert "size" in str(error.value)
+
+
+@pytest.mark.platform
+class TestWhenARangeIsMappedAfterThePlatformIsBuilt:
+    def test_it_is_refused_and_the_router_is_left_as_it_was(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[]))
+        bus = platform.add("bus", sp.Router())
+        ram = platform.add("ram", sp.Memory(size=0x100))
+        platform.connect(cpu.socket, bus.target)
+        bus.map(ram.socket, base=0)
+        platform.build()
+
+        with pytest.raises(RuntimeError):
+            bus.map(ram.socket, base=0x1000)
+
+        assert bus.component.ports == ("target", "out0")

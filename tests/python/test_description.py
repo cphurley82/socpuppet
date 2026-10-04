@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -37,7 +38,7 @@ def run_python(code):
     """Run a snippet in a fresh interpreter and return what it printed."""
     result = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(code)],
-        env={"PYTHONPATH": ":".join(sys.path)},
+        env={"PYTHONPATH": os.pathsep.join(sys.path)},
         capture_output=True,
         text=True,
         check=True,
