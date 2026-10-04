@@ -12,7 +12,7 @@ import socpuppet as sp
 def ram_behind_a_link_and_a_router():
     """A 64 KiB RAM at 0x8000_0000, reached through a link and then a router."""
     platform = sp.Platform()
-    cpu = platform.group("compute").add("cpu", sp.ScriptedBusMaster(writes=[]))
+    cpu = platform.group("compute").add("cpu", sp.ScriptedBusMaster())
     link = platform.add("d2d", sp.PassThroughLink())
     io = platform.group("io")
     bus = io.add("bus", sp.Router())
@@ -58,7 +58,7 @@ class TestWhenAPlatformHasARamBehindALinkAndARouter:
 class TestWhenAPlatformHasTwoBusMasters:
     def test_the_devicetree_is_the_view_from_the_named_one(self):
         platform, cpu = ram_behind_a_link_and_a_router()
-        other_cpu = platform.add("other_cpu", sp.ScriptedBusMaster(writes=[]))
+        other_cpu = platform.add("other_cpu", sp.ScriptedBusMaster())
         other_ram = platform.add("other_ram", sp.Memory(size=0x100))
         platform.connect(other_cpu.socket, other_ram.socket)
 
@@ -77,7 +77,7 @@ class TestWhenTheDevicetreeCommandIsGivenAPlatformFile:
                 import socpuppet as sp
 
                 platform = sp.Platform()
-                cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[]))
+                cpu = platform.add("cpu", sp.ScriptedBusMaster())
                 bus = platform.add("bus", sp.Router())
                 ram = platform.add("ram", sp.Memory(size=0x100))
                 platform.connect(cpu.socket, bus.target)

@@ -78,6 +78,12 @@ class Script {
       pending = op;
       return AwaitValue{{}, *this};
     }
+    // An op whose kind is only known at run time. Resumes with the value
+    // given back, which means something only if the op was a read.
+    AwaitValue await_transform(Op op) {
+      pending = op;
+      return AwaitValue{{}, *this};
+    }
     AwaitNothing await_transform(Write32 op) { return hand_over(op); }
     AwaitNothing await_transform(Expect32 op) { return hand_over(op); }
     AwaitNothing await_transform(Wait op) { return hand_over(op); }
@@ -114,6 +120,7 @@ class Script {
 inline Read32 read32(std::uint64_t address) { return {address}; }
 inline Write32 write32(std::uint64_t address, std::uint32_t value) { return {address, value}; }
 inline Expect32 expect32(std::uint64_t address, std::uint32_t value) { return {address, value}; }
+// Python calls this one `wait`; here that name belongs to sc_module::wait.
 inline Wait wait_for(Picoseconds duration) { return {duration}; }
 inline WaitIrq wait_irq() { return {}; }
 

@@ -1,6 +1,7 @@
 import pytest
 
 import socpuppet as sp
+from scripts import writing
 from socpuppet.platform import wants_color
 
 RAM_BASE = 0x8000_0000
@@ -10,7 +11,7 @@ UNMAPPED = 0x4000
 def routed_platform(writes):
     """A scripted master in front of a router with one RAM at RAM_BASE."""
     platform = sp.Platform()
-    cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=writes))
+    cpu = platform.add("cpu", sp.ScriptedBusMaster(writing(writes)))
     bus = platform.add("bus", sp.Router())
     ram = platform.add("ram", sp.Memory(size=0x100))
     platform.connect(cpu.socket, bus.target)
@@ -93,7 +94,7 @@ class TestWhenATargetWithNoSizeOfItsOwnIsMapped:
 class TestWhenARangeIsMappedAfterThePlatformIsBuilt:
     def test_it_is_refused_and_the_router_is_left_as_it_was(self):
         platform = sp.Platform()
-        cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[]))
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
         bus = platform.add("bus", sp.Router())
         ram = platform.add("ram", sp.Memory(size=0x100))
         platform.connect(cpu.socket, bus.target)

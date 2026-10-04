@@ -21,7 +21,7 @@ EXAMPLES = [
     sp.Memory(size=0x100),
     sp.PassThroughLink(),
     router_with_one_output(),
-    sp.ScriptedBusMaster(writes=[]),
+    sp.ScriptedBusMaster(),
 ]
 
 

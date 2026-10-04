@@ -17,7 +17,7 @@ class TestWhenAPlatformIsOnlyDescribed:
             import socpuppet as sp
 
             platform = sp.Platform()
-            cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[(0x10, 1)]))
+            cpu = platform.add("cpu", sp.ScriptedBusMaster())
             ram = platform.add("ram", sp.Memory(size=0x100))
             platform.connect(cpu.socket, ram.socket)
 
@@ -60,7 +60,7 @@ class TestWhenAPortThatDoesNotExistIsNamed:
 class TestWhenADescriptionIsDumpedAsJson:
     def test_it_lists_each_component_and_connection(self):
         platform = sp.Platform()
-        cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[]))
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
         ram = platform.add("ram", sp.Memory(size=0x100))
         platform.connect(cpu.socket, ram.socket)
 

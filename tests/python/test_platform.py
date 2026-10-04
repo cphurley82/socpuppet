@@ -1,12 +1,13 @@
 import pytest
 
 import socpuppet as sp
+from scripts import writing
 
 
 def thin_platform(writes):
     """A scripted master that writes through a pass-through link into a RAM."""
     platform = sp.Platform()
-    cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=writes))
+    cpu = platform.add("cpu", sp.ScriptedBusMaster(writing(writes)))
     link = platform.add("link", sp.PassThroughLink())
     ram = platform.add("ram", sp.Memory(size=0x100))
     platform.connect(cpu.socket, link.target)
@@ -52,7 +53,7 @@ class TestWhenThePlatformIsAlreadyBuilt:
 
     def test_connecting_ports_is_refused_and_the_error_says_why(self):
         platform = sp.Platform()
-        cpu = platform.add("cpu", sp.ScriptedBusMaster(writes=[]))
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
         ram = platform.add("ram", sp.Memory(size=0x100))
         platform.connect(cpu.socket, ram.socket)
         platform.build()
@@ -143,7 +144,7 @@ def two_masters_each_with_a_ram():
     cpus = []
     for name in ("first", "second"):
         group = platform.group(name)
-        cpu = group.add("cpu", sp.ScriptedBusMaster(writes=[]))
+        cpu = group.add("cpu", sp.ScriptedBusMaster())
         ram = group.add("ram", sp.Memory(size=0x100))
         platform.connect(cpu.socket, ram.socket)
         cpus.append(cpu)

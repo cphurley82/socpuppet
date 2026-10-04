@@ -22,7 +22,7 @@ class TestWhenSeveralPlatformTestsRunInOneSession:
 
             def build_a_platform():
                 platform = socpuppet.Platform()
-                cpu = platform.add("cpu", socpuppet.ScriptedBusMaster(writes=[]))
+                cpu = platform.add("cpu", socpuppet.ScriptedBusMaster())
                 ram = platform.add("ram", socpuppet.Memory(size=0x100))
                 platform.connect(cpu.socket, ram.socket)
                 platform.build()

@@ -24,10 +24,14 @@ inline std::exception_ptr& parked_failure() {
   return failure;
 }
 
+inline void fail_simulation(std::exception_ptr failure) {
+  if (!parked_failure()) parked_failure() = std::move(failure);
+  sc_core::sc_pause();
+}
+
 template <typename Exception>
 void fail_simulation(Exception exception) {
-  if (!parked_failure()) parked_failure() = std::make_exception_ptr(std::move(exception));
-  sc_core::sc_pause();
+  fail_simulation(std::make_exception_ptr(std::move(exception)));
 }
 
 inline void rethrow_parked_failure() {

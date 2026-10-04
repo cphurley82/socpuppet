@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <span>
 #include <stdexcept>
@@ -93,6 +94,26 @@ class Platform {
     rethrow_parked_failure();
   }
 
+  // Moves to the next moment at which anything is scheduled and lets
+  // everything scheduled for that moment happen. Returns false, having done
+  // nothing more than finish the current moment, if nothing further is
+  // scheduled.
+  bool step() {
+    const std::optional<sc_core::sc_time> ahead = time_to_next_activity();
+    if (!ahead) return false;
+    run(*ahead);
+    finish_this_moment();
+    return true;
+  }
+
+  // How far away the next scheduled activity is, once everything scheduled
+  // for the current moment has happened. Nothing, if nothing is scheduled.
+  std::optional<sc_core::sc_time> time_to_next_activity() {
+    finish_this_moment();
+    if (!sc_core::sc_pending_activity()) return std::nullopt;
+    return sc_core::sc_time_to_pending_activity();
+  }
+
   // The current simulated time.
   sc_core::sc_time time() const { return sc_core::sc_time_stamp(); }
 
@@ -140,6 +161,11 @@ class Platform {
     if (dot == std::string::npos) return make(path.c_str());
     sc_core::sc_hierarchy_scope scope = group(path.substr(0, dot)).enter();
     return make(path.substr(dot + 1).c_str());
+  }
+
+  // Runs delta cycles until nothing more is scheduled for the current time.
+  void finish_this_moment() {
+    while (sc_core::sc_pending_activity_at_current_time()) run(sc_core::SC_ZERO_TIME);
   }
 
   // SystemC would also object to an unbound port, but only once the

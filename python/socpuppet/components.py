@@ -5,6 +5,8 @@ there, its parameters and its ports. Describing a platform uses only these
 classes, so it works without loading the simulator.
 """
 
+import inspect
+
 
 class Component:
     """One block of a platform, as described (not yet built)."""
@@ -51,20 +53,36 @@ class PassThroughLink(Component):
 
 
 class ScriptedBusMaster(Component):
-    """🎭 Stand-in for a CPU: plays a script of bus operations.
+    """🎭 Stand-in for a CPU: plays a script of bus operations instead of running firmware.
 
-    `writes` is a list of (address, 32-bit value) pairs, written in order.
+    `script` is a generator function that yields operations (see
+    `socpuppet.ops`). It is called again after each reset, so the script
+    starts over. With no script, the master does nothing.
     """
 
     implementation = "scripted_bus_master"
     ports = ("socket", "irq", "reset")
 
-    def __init__(self, *, writes):
+    def __init__(self, script=None):
         super().__init__()
-        self.writes = list(writes)
+        if script is not None and not inspect.isgeneratorfunction(script):
+            if inspect.isgenerator(script):
+                raise TypeError(
+                    "A script must be a generator function, and this is a generator "
+                    "that has already been started. Pass the function itself, "
+                    "without calling it: ScriptedBusMaster(script), not "
+                    "ScriptedBusMaster(script())."
+                )
+            raise TypeError(
+                f"A script must be a generator function, and {script!r} never yields. "
+                "Write it as a function that yields operations, such as "
+                "`yield sp.write32(address, value)`."
+            )
+        self.script = script
 
     def configure(self, native, path):
-        native.set_writes(path, self.writes)
+        if self.script is not None:
+            native.set_script(path, self.script)
 
 
 class Router(Component):

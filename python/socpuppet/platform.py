@@ -135,6 +135,32 @@ class Platform:
         else:
             self._built().run_for(duration)
 
+    def step(self):
+        """Move to the next moment anything is scheduled for, and let it happen.
+
+        Returns False if nothing was left to do.
+        """
+        return self._built().step()
+
+    def run_until(self, condition, timeout=None):
+        """Run until `condition()` is true, and say whether it came true.
+
+        The condition is checked each time simulated time is about to move
+        on. The run also ends when nothing is left to do, or when `timeout`
+        (see `ns`, `us`) has passed.
+        """
+        native = self._built()
+        deadline = None if timeout is None else self.time + timeout
+        while not condition():
+            ahead = native.picoseconds_to_next_activity()
+            if ahead is None:
+                return False  # nothing left to do
+            if deadline is not None and self.time + ahead > deadline:
+                native.run_for(deadline - self.time)
+                return condition()
+            native.step()
+        return True
+
     @property
     def time(self):
         """The current simulated time, in the same unit `ns`, `us` and `ms` return."""
