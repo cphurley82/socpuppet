@@ -79,3 +79,22 @@ function(socpuppet_dev_checks)
     endif()
   endforeach()
 endfunction()
+
+if(SOCPUPPET_DEVELOPER_MODE)
+  # Compiles each header of our header-only libraries on its own, which
+  # shows that it includes everything it uses. A target to ask for.
+  add_custom_target(check_headers)
+endif()
+
+# Has `check_headers` cover the header-only libraries named. Their headers
+# must be listed in a FILE_SET HEADERS.
+function(socpuppet_check_headers)
+  if(NOT TARGET check_headers)
+    return()
+  endif()
+  foreach(library IN LISTS ARGN)
+    set_target_properties(${library} PROPERTIES VERIFY_INTERFACE_HEADER_SETS ON)
+    # CMake names the target that does the compiling after the library.
+    add_dependencies(check_headers ${library}_verify_interface_header_sets)
+  endforeach()
+endfunction()
