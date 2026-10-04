@@ -138,3 +138,6 @@ target_compile_definitions(riscv_vp_core PUBLIC SC_ALLOW_DEPRECATED_IEEE_API)
 
 spike_test_program(spike_riscv_vp_tests riscv_vp/riscv_vp_test.cpp)
 target_link_libraries(spike_riscv_vp_tests PRIVATE riscv_vp_core)
+
+# ---- The in-house prototype -------------------------------------------------
+spike_test_program(spike_inhouse_tests inhouse/inhouse_test.cpp)
