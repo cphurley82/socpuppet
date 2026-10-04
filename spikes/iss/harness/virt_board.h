@@ -10,6 +10,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
+#include "spikes/iss/harness/probes.h"
 #include "spikes/iss/harness/standin_uart.h"
 
 namespace spike {
@@ -36,18 +37,44 @@ inline socpuppet::Registry SpikeComponents() {
     return socpuppet::Instance{.module = std::move(module),
                                .ports = std::move(ports)};
   });
+  // `allow_dmi` says whether direct memory access gets through it.
+  registry.Add("counting_probe", [](const char* name,
+                                    const socpuppet::Config& config) {
+    auto module = std::make_unique<CountingProbe>(
+        name, socpuppet::Required(config, "allow_dmi", "counting_probe") != 0);
+    std::vector<socpuppet::Port> ports{
+        socpuppet::TargetPort("target", module->target),
+        socpuppet::InitiatorPort("initiator", module->initiator)};
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  // A wire driver. `initial` is the level it starts at.
+  registry.Add(
+      "line_driver", [](const char* name, const socpuppet::Config& config) {
+        auto module = std::make_unique<LineDriver>(
+            name, socpuppet::Required(config, "initial", "line_driver") != 0);
+        std::vector<socpuppet::Port> ports{
+            socpuppet::WireSourcePort("line", module->line)};
+        return socpuppet::Instance{.module = std::move(module),
+                                   .ports = std::move(ports)};
+      });
   return registry;
 }
+
+// Whether the board's RAM grants direct memory access (DMI).
+enum class Dmi { kOff, kOn };
 
 // Builds one board in the group `board`: a CPU of the implementation named,
 // a router, RAM and the stand-in UART. The interrupt controller and timer
 // (PLIC and CLINT) are plain memories that soak up what is written to them.
 //
-// The pieces are "<board>.cpu", ".bus", ".ram", ".uart", ".clint", ".plic".
+// The pieces are "<board>.cpu", ".bus", ".ram", ".uart", ".clint", ".plic",
+// and ".ram_probe", which counts what reaches the RAM over the bus.
 inline void AddVirtBoard(socpuppet::Platform& platform,
                          const std::string& board,
                          const std::string& cpu_implementation,
-                         const socpuppet::Config& cpu_config = {}) {
+                         const socpuppet::Config& cpu_config = {},
+                         Dmi dmi = Dmi::kOn) {
   platform.Add(board + ".cpu", cpu_implementation, cpu_config);
   platform.Add(board + ".bus", "router",
                {{"outputs", 4},
@@ -63,8 +90,11 @@ inline void AddVirtBoard(socpuppet::Platform& platform,
   platform.Add(board + ".uart", "standin_uart");
   platform.Add(board + ".clint", "memory", {{"size", kClintSize}});
   platform.Add(board + ".plic", "memory", {{"size", kPlicSize}});
+  platform.Add(board + ".ram_probe", "counting_probe",
+               {{"allow_dmi", dmi == Dmi::kOn ? 1U : 0U}});
   platform.Bind(board + ".cpu.socket", board + ".bus.target");
-  platform.Bind(board + ".bus.out0", board + ".ram.socket");
+  platform.Bind(board + ".bus.out0", board + ".ram_probe.target");
+  platform.Bind(board + ".ram_probe.initiator", board + ".ram.socket");
   platform.Bind(board + ".bus.out1", board + ".uart.socket");
   platform.Bind(board + ".bus.out2", board + ".clint.socket");
   platform.Bind(board + ".bus.out3", board + ".plic.socket");
@@ -74,6 +104,12 @@ inline void AddVirtBoard(socpuppet::Platform& platform,
 inline const std::string& UartOutput(socpuppet::Platform& platform,
                                      const std::string& board) {
   return platform.ModuleAt<StandinUart>(board + ".uart").Output();
+}
+
+// The probe in front of the board's RAM.
+inline const CountingProbe& RamProbe(socpuppet::Platform& platform,
+                                     const std::string& board) {
+  return platform.ModuleAt<CountingProbe>(board + ".ram_probe");
 }
 
 }  // namespace spike

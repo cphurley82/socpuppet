@@ -11,6 +11,9 @@ option(BUILD_SHARED_LIBS "Build dependencies as shared libraries" OFF)
 option(SOCPUPPET_BUILD_TESTS "Build the C++ tests and register pytest with ctest" ON)
 option(SOCPUPPET_BUILD_SPIKES "Build the exploratory code under spikes/, which is not part of socpuppet" OFF)
 
+if(SOCPUPPET_BUILD_SPIKES)
+  include(spikes/iss/boost_libraries.cmake)
+endif()
 include(cmake/Dependencies.cmake)
 include(cmake/DevChecks.cmake)
 

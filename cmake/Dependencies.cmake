@@ -35,7 +35,9 @@ FetchContent_MakeAvailable(systemc pybind11)
 # makes those calls resolve to the copies fetched here, so nothing has to be
 # installed on the machine.
 
-set(BOOST_INCLUDE_LIBRARIES date_time filesystem)
+# A spike may ask for more of Boost than socpuppet uses (see spikes/).
+set(BOOST_INCLUDE_LIBRARIES date_time filesystem
+  ${SOCPUPPET_SPIKE_BOOST_LIBRARIES})
 FetchContent_Declare(Boost
   URL https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz
   URL_HASH SHA256=67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74
