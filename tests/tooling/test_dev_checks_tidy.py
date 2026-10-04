@@ -57,3 +57,43 @@ inline std::vector<int> Nothing() { return {}; }
     result = project.build("tidy")
 
     assert result.returncode == 0, result.stdout
+
+
+def test_when_a_header_uses_pragma_once_tidy_fails_and_names_the_check(
+    cmake_project,
+):
+    project = project_with_header(
+        cmake_project,
+        """\
+#pragma once
+
+inline int Answer() { return 42; }
+""",
+    )
+
+    result = project.build("tidy")
+
+    assert result.returncode != 0
+    assert "portability-avoid-pragma-once" in result.stdout
+
+
+def test_when_a_function_is_named_in_snake_case_tidy_fails_and_names_the_line(
+    cmake_project,
+):
+    project = project_with_header(
+        cmake_project,
+        """\
+#ifndef WIDGET_H_
+#define WIDGET_H_
+
+inline int twice_the(int number) { return number * 2; }
+
+#endif  // WIDGET_H_
+""",
+    )
+
+    result = project.build("tidy")
+
+    assert result.returncode != 0
+    assert "widget.h:4" in result.stdout
+    assert "readability-identifier-naming" in result.stdout
