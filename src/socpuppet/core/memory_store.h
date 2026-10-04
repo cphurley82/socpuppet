@@ -28,6 +28,10 @@ class MemoryStore {
     return true;
   }
 
+  // The whole memory as one block, for callers that are allowed to bypass
+  // read() and write() (direct memory access).
+  std::span<std::uint8_t> bytes() { return bytes_; }
+
  private:
   bool fits(std::size_t offset, std::size_t length) const {
     return offset <= bytes_.size() && length <= bytes_.size() - offset;
