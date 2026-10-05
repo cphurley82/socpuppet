@@ -13,7 +13,6 @@ from socpuppet.components import (
     Component,
     LinkModel,
     Router,
-    ScriptedBusMaster,
 )
 from socpuppet.trace import TraceRecord, wants_color
 
@@ -324,7 +323,7 @@ class Platform:
         masters = [
             placed
             for placed in self._placed.values()
-            if isinstance(placed.component, ScriptedBusMaster)
+            if placed.component.is_bus_master
         ]
         if len(masters) != 1:
             raise ValueError(

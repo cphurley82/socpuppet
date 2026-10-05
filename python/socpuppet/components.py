@@ -28,6 +28,11 @@ class Component(ABC):
     #: The name of the implementation in the C++ registry.
     implementation: str
 
+    #: Whether the component is one whose view of memory a peek, a poke or
+    #: the devicetree takes: a CPU or its stand-in. A device that only
+    #: starts accesses for DMA is not one.
+    is_bus_master: bool = False
+
     def __init__(self, **parameters: int) -> None:
         self._parameters = parameters
 
@@ -75,6 +80,7 @@ class DbtRiseCpu(Component):
 
     implementation = "dbt_rise_cpu"
     ports = ("socket",)
+    is_bus_master = True
 
     def __init__(self, *, xlen: int, reset_vector: int) -> None:
         super().__init__(xlen=xlen, reset_vector=reset_vector)
@@ -142,6 +148,7 @@ class ScriptedBusMaster(Component):
 
     implementation = "scripted_bus_master"
     ports = ("socket", "irq", "reset")
+    is_bus_master = True
 
     def __init__(self, script: Script | None = None) -> None:
         super().__init__()
