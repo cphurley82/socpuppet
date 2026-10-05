@@ -1,13 +1,19 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <stdexcept>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <systemc>
 
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/riscv_program.h"
+
+using ::testing::AllOf;
+using ::testing::HasSubstr;
+using ::testing::ThrowsMessage;
 
 namespace {
 
@@ -75,4 +81,16 @@ TEST(WhenXlenIs64, TheCpusRegistersAre64BitsWide) {
 
   // 64 ones shifted right by 28 leave 36, so the low byte is full.
   EXPECT_EQ(with_cpu.Result(), 0b1111'1111);
+}
+
+TEST(WhenXlenIsNeither32Nor64, TheCpuIsRefusedAndTheErrorNamesItAndTheChoices) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("cpu", "dbt_rise_cpu",
+                     {{"xlen", 16}, {"reset_vector", 0}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("16"), HasSubstr("32"), HasSubstr("64"))));
 }

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
+#include <string>
 
 #include <sysc/core_complex.h>
 #include <systemc>
@@ -9,6 +11,28 @@
 #include <tlm_utils/simple_target_socket.h>
 
 namespace socpuppet {
+
+namespace {
+
+// DBT-RISE's name for the core with registers of `xlen` bits: machine mode
+// only, with physical memory protection, which Zephyr's RISC-V boards
+// switch on. Any other width is refused. Called before the Core is built,
+// so that a refusal comes before any of DBT-RISE's core exists.
+const char* CoreType(std::uint64_t xlen) {
+  switch (xlen) {
+    case 32:
+      return "rv32imac_mp";
+    case 64:
+      return "rv64imac_mp";
+    default:
+      throw std::invalid_argument(
+          "The \"xlen\" of a \"dbt_rise_cpu\" is the width of its "
+          "registers in bits, 32 or 64, and " +
+          std::to_string(xlen) + " was given.");
+  }
+}
+
+}  // namespace
 
 // DBT-RISE's CPU, `core_complex`, and what it takes to fit its outside to
 // ours:
@@ -18,11 +42,9 @@ namespace socpuppet {
 //     how much simulated time one instruction takes.
 //   - Its reset and its 32 interrupt inputs are tied low.
 struct DbtRiseCpu::Core {
-  Core(DbtRiseCpu& cpu, std::uint64_t xlen, std::uint64_t reset_vector)
+  Core(DbtRiseCpu& cpu, const char* core_type, std::uint64_t reset_vector)
       : cpu_(cpu) {
-    // Machine mode only, with physical memory protection, which Zephyr's
-    // RISC-V boards switch on.
-    complex_.core_type.set_value(xlen == 32 ? "rv32imac_mp" : "rv64imac_mp");
+    complex_.core_type.set_value(core_type);
     complex_.reset_address.set_value(reset_vector);
 
     from_fetch_.register_b_transport(this, &Core::b_transport);
@@ -61,7 +83,7 @@ struct DbtRiseCpu::Core {
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector)
     : sc_module(name),
-      core_(std::make_unique<Core>(*this, xlen, reset_vector)) {}
+      core_(std::make_unique<Core>(*this, CoreType(xlen), reset_vector)) {}
 
 DbtRiseCpu::~DbtRiseCpu() = default;
 
