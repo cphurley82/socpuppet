@@ -126,7 +126,49 @@ TYPED_TEST_P(BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts) {
                                  ::testing::Ge(released_at))));
 }
 
+TYPED_TEST_P(BusMasterContract, WhenResetIsRaisedAgainTheMasterStartsOver) {
+  const sc_core::sc_time raised_again_at = this->Microseconds(20);
+  const sc_core::sc_time released_again_at = this->Microseconds(25);
+  this->Build(
+      {.behavior = Behavior::kWriteToTheProbe, .reset = [&](LineDriver& reset) {
+         // By now the master has done what it was given to do.
+         reset.WaitFor(raised_again_at);
+         reset.Set(true);
+         reset.WaitFor(released_again_at - raised_again_at);
+         reset.Set(false);
+       }});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_,
+              ::testing::ElementsAre(
+                  ::testing::Field("kernel_time", &RecordedAccess::kernel_time,
+                                   ::testing::Lt(raised_again_at)),
+                  ::testing::Field("kernel_time", &RecordedAccess::kernel_time,
+                                   ::testing::Ge(released_again_at))));
+}
+
+TYPED_TEST_P(BusMasterContract, WithNothingConnectedToItsInputsTheMasterRuns) {
+  this->Build({.behavior = Behavior::kWriteToTheProbe});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_, ::testing::SizeIs(1));
+}
+
+TYPED_TEST_P(BusMasterContract, AMasterWithNothingLeftToDoLetsTheRunEnd) {
+  this->Build({.behavior = Behavior::kWriteToTheProbe});
+
+  // A run with no time limit, which only returns once nothing is scheduled.
+  this->platform_->Run();
+
+  EXPECT_THAT(this->probed_, ::testing::SizeIs(1));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(BusMasterContract,
-                            WhileResetIsHighTheMasterWaitsAndThenStarts);
+                            WhileResetIsHighTheMasterWaitsAndThenStarts,
+                            WhenResetIsRaisedAgainTheMasterStartsOver,
+                            WithNothingConnectedToItsInputsTheMasterRuns,
+                            AMasterWithNothingLeftToDoLetsTheRunEnd);
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_MASTER_CONTRACT_H_

@@ -163,7 +163,7 @@ Each entry says:
   1. The run loop ends on any interruption and then stops the whole simulation, and a reset counts as an interruption.
   2. A core asleep in `wfi` wakes only for an interrupt, so it does not notice reset at all.
   3. Reset sets the core's cycle count back to zero, but `last_sync_cycle`, which the quantum keeper measures progress from, keeps its old value. The difference comes out as an enormous number of cycles, and the core waits that long before its first instruction.
-- **How to see it**: a platform that raises `rst_i` on a running core. In socpuppet that is `Reset.HoldsTheCpuWhileHighStartsItWhenReleasedAndRestartsItWhenRaised` in `spikes/iss/harness/candidate_suite.h`, with the patch taken out.
+- **How to see it**: a platform that raises `rst_i` on a running core. In socpuppet that is `BusMasterContract.WhenResetIsRaisedAgainTheMasterStartsOver` in `tests/cpp/contracts/bus_master_contract.h`, run for the CPU with the patch taken out.
 - **What we do**: `cmake/patches/dbt-rise-riscv-reset-restart.patch`, three edits. The loop condition becomes `while(!core->get_interrupt_execution() || rst_i.read())`. The reset callback also calls `vm->get_arch()->cancel_wait()`. And `last_sync_cycle` is set from the core's cycle count next to `quantum_keeper.reset(...)`.
 - **Upstream fix**: the same three edits, sent as one change with the scenario above as the test.
 - **Kind**: bug.
