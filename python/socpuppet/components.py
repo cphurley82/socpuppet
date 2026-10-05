@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, Protocol, override
+from typing import TYPE_CHECKING, NamedTuple, Protocol, override
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -20,6 +20,27 @@ if TYPE_CHECKING:
 #: returned is sent back into the generator. The type asks only for the
 #: yields, so a script may be annotated as an Iterator or as any Generator.
 Script = Callable[[], Iterator["Operation"]]
+
+
+class DeviceNode(NamedTuple):
+    """How a component appears in a devicetree: one node.
+
+    A devicetree tells firmware what hardware exists and where.
+    """
+
+    #: The node's name, before the `@address`.
+    name: str
+    #: The node's registers, as (address, size) ranges. The first one's
+    #: address is the one after the `@`.
+    reg: tuple[tuple[int, int], ...]
+    #: The node's other properties, one line each, such as
+    #: `compatible = "x";`. The first should say what the device is.
+    properties: tuple[str, ...]
+    #: Whether the node goes under `soc`, with the other devices on the bus.
+    #: Memory does not: by convention it sits at the top of the tree.
+    on_bus: bool = True
+    #: The `chosen` properties this node can fill, such as `zephyr,console`.
+    chosen: tuple[str, ...] = ()
 
 
 class Component(ABC):
@@ -69,6 +90,32 @@ class Component(ABC):
         """
         return
 
+    def device_node(self, base: int) -> DeviceNode | None:
+        """The devicetree node for this component mapped at `base`.
+
+        None for a component that firmware has no driver for and need not
+        know about.
+        """
+        return None
+
+    def cpu_node(self, label: str) -> tuple[str, ...] | None:
+        """This component's `cpu` node in a devicetree, labelled `label`.
+
+        The node's lines, from `label: cpu@0 {` to its closing `};`. None
+        for anything that is not a CPU.
+        """
+        return None
+
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        """How a devicetree refers to an interrupt arriving at `port`.
+
+        A device whose interrupt line is connected to this port gets
+        `interrupts-extended = <...>` with what this returns inside, such
+        as `&plic 5 1`. `label` is this component's own label. None if
+        `port` is not an interrupt input.
+        """
+        return None
+
     def routes(self, port: str) -> Iterable[tuple[str, int]]:
         """Where an access arriving at `port` can go next.
 
@@ -101,6 +148,36 @@ class DbtRiseCpu(Component):
         super().__init__(xlen=xlen, reset_vector=reset_vector)
         self.xlen = xlen
         self.reset_vector = reset_vector
+
+    @override
+    def cpu_node(self, label: str) -> tuple[str, ...]:
+        # Every RISC-V CPU has an interrupt controller inside it: the
+        # handful of interrupt inputs the core itself has. Devices refer to
+        # it, not to the CPU, which is why it has a label of its own.
+        return (
+            f"{label}: cpu@0 {{",
+            '\tdevice_type = "cpu";',
+            '\tcompatible = "riscv";',
+            "\treg = <0>;",
+            f'\triscv,isa-base = "rv{self.xlen}i";',
+            '\triscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";',
+            "",
+            f"\t{label}_intc: interrupt-controller {{",
+            '\t\tcompatible = "riscv,cpu-intc";',
+            "\t\t#address-cells = <0>;",
+            "\t\t#interrupt-cells = <1>;",
+            "\t\tinterrupt-controller;",
+            "\t};",
+            "};",
+        )
+
+    @override
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        # RISC-V numbers a CPU's interrupts by their bit in its
+        # interrupt-pending register: 7 is the machine timer, 11 the
+        # machine external interrupt.
+        number = {"timer_irq": 7, "irq": 11}.get(port)
+        return None if number is None else f"&{label}_intc {number}"
 
     @override
     def refuse_image(
@@ -139,6 +216,19 @@ class MachineTimer(Component):
     def __init__(self, *, frequency_hz: int = 10_000_000) -> None:
         super().__init__(frequency_hz=frequency_hz)
 
+    @override
+    def device_node(self, base: int) -> DeviceNode:
+        mtime = base + 0xBFF8
+        mtimecmp = base + 0x4000
+        return DeviceNode(
+            "timer",
+            ((mtime, 8), (mtimecmp, 8)),
+            (
+                'compatible = "riscv,machine-timer";',
+                'reg-names = "mtime", "mtimecmp";',
+            ),
+        )
+
 
 class Memory(Component):
     """A flat RAM of `size` bytes."""
@@ -149,6 +239,16 @@ class Memory(Component):
     def __init__(self, *, size: int) -> None:
         super().__init__(size=size)
         self.mapped_size = size
+
+    @override
+    def device_node(self, base: int) -> DeviceNode:
+        return DeviceNode(
+            "memory",
+            ((base, self.parameters["size"]),),
+            ('device_type = "memory";',),
+            on_bus=False,
+            chosen=("zephyr,sram",),
+        )
 
 
 class Ns16550(Component):
@@ -163,6 +263,19 @@ class Ns16550(Component):
     ports = ("socket",)
     #: The 16550's eight registers, one byte each.
     mapped_size = 8
+
+    @override
+    def device_node(self, base: int) -> DeviceNode:
+        return DeviceNode(
+            "uart",
+            ((base, self.mapped_size),),
+            (
+                'compatible = "ns16550";',
+                # The registers are one byte apart.
+                "reg-shift = <0>;",
+            ),
+            chosen=("zephyr,console", "zephyr,shell-uart"),
+        )
 
 
 class PassThroughLinkEndpoint(Component):
@@ -225,6 +338,31 @@ class Plic(Component):
     )
     #: The PLIC's registers are spread over 64 MB of address space.
     mapped_size = 0x400_0000
+
+    @override
+    def device_node(self, base: int) -> DeviceNode:
+        return DeviceNode(
+            "interrupt-controller",
+            ((base, self.mapped_size),),
+            (
+                'compatible = "sifive,plic-1.0.0";',
+                "#address-cells = <0>;",
+                # An interrupt is named by two numbers: source and priority.
+                "#interrupt-cells = <2>;",
+                "interrupt-controller;",
+                "riscv,max-priority = <7>;",
+                # Source 0, which means "none", counts as one.
+                f"riscv,ndev = <{self.SOURCES + 1}>;",
+            ),
+        )
+
+    @override
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        if not port.startswith("source"):
+            return None
+        # The source's number, and the priority the firmware gives it unless
+        # it chooses another: 1, the lowest that can interrupt.
+        return f"&{label} {port.removeprefix('source')} 1"
 
 
 class ScriptedBusMaster(Component):
