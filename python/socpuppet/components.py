@@ -59,6 +59,25 @@ class Component(ABC):
         return ()
 
 
+class DbtRiseCpu(Component):
+    """A RISC-V CPU that runs real firmware.
+
+    The model is DBT-RISE-RISCV (Minres), an instruction-set simulator: it
+    executes the firmware's instructions one after another, the way the
+    processor would. `reset_vector` is the address of the first one.
+
+    It is an RV64IMAC core in machine mode only: no floating point, and no
+    supervisor or user mode. Build firmware for it with
+    `-march=rv64imac_zicsr_zifencei`.
+    """
+
+    implementation = "dbt_rise_cpu"
+    ports = ("socket",)
+
+    def __init__(self, *, reset_vector: int) -> None:
+        super().__init__(reset_vector=reset_vector)
+
+
 class Memory(Component):
     """A flat RAM of `size` bytes."""
 

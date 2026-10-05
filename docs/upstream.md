@@ -80,14 +80,14 @@ Each entry says:
 
 ## DBT-RISE-Core
 
-[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model. 🚧 Until M3a moves the CPU into the main build, these patches live in `spikes/iss/patches/dbt_rise_core.cmake` as text replacements. They are explained in [iss-spike.md](iss-spike.md).
+[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model. How each of these was found is in [iss-spike.md](iss-spike.md).
 
 ### asio names that Boost 1.87 removed
 
 - **Where**: `src/iss/debugger/serialized_connection.h` and `src/iss/debugger/server.h`.
 - **What is wrong**: the GDB server uses `boost::asio::io_service` and `boost::asio::io_context::work`. Boost 1.87 removed both names.
 - **How to see it**: compile against Boost 1.87 or newer. Ours is 1.89.0. It fails on every platform.
-- **What we do**: three replacements. `io_service&` becomes `io_context&` in the connection's constructor. The `work` object becomes an `executor_work_guard<io_context::executor_type>`, constructed from `io_service.get_executor()`.
+- **What we do**: `cmake/patches/dbt-rise-core-asio-names.patch`, three edits. `io_service&` becomes `io_context&` in the connection's constructor. The `work` object becomes an `executor_work_guard<io_context::executor_type>`, constructed from `io_service.get_executor()`.
 - **Upstream fix**: the same. The new names have existed since Boost 1.66, so no version check is needed.
 - **Kind**: portability.
 - **When it lands**: drop the patch.
@@ -97,7 +97,7 @@ Each entry says:
 - **Where**: `src/iss/interp/vm_base.h`, the block after `using uint128_t = unsigned __int128;` that opens `namespace std`.
 - **What is wrong**: it specializes `std::__make_unsigned_selector`, which is a private template of GCC's standard library, along with `is_signed` and `is_unsigned`. Clang's library has no such template, forbids specializing these traits, and already knows the 128-bit types.
 - **How to see it**: compile with Apple clang or with Clang and libc++.
-- **What we do**: wrap the block in `#ifdef __GLIBCXX__`.
+- **What we do**: `cmake/patches/dbt-rise-core-int128-traits.patch` wraps the block in `#ifdef __GLIBCXX__`.
 - **Upstream fix**: the same guard.
 - **Kind**: portability.
 - **When it lands**: drop the patch.
@@ -107,7 +107,7 @@ Each entry says:
 - **Where**: `src/iss/vm_jit_funcs.h` line 13 and `src/iss/vm_jit_funcs.cpp` line 79: `extern void wait(void*, uint64_t);`
 - **What is wrong**: it is a C-linkage helper for the translating backends, and POSIX already declares `wait()`. On macOS the two declarations meet and the file does not compile.
 - **How to see it**: build DBT-RISE-Core on macOS.
-- **What we do**: no patch. No translating backend is built, so the file is removed from the target's sources. A backend would need it back, which is why this blocks the "try the other backends" to-do on macOS.
+- **What we do**: no patch. No translating backend is built, so `cmake/Dependencies.cmake` removes the file from the target's sources. A backend would need it back, which is why this blocks the "try the other backends" to-do on macOS.
 - **Upstream fix**: rename the helper, for example to `iss_wait`, along with the other helpers in that file that the generated code calls.
 - **Kind**: portability.
 - **When it lands**: stop removing the file.
@@ -117,21 +117,31 @@ Each entry says:
 - **Where**: the `CMakeLists.txt` of DBT-RISE-Core and of DBT-RISE-RISCV.
 - **What is wrong**: they include headers from about fifteen Boost libraries and link only a few of them. As with SCC above, that works with a system-wide Boost and not with one target per library.
 - **How to see it**: build against a Boost fetched with `FetchContent`.
-- **What we do**: link the list by hand onto `dbt-rise-core` and `dbt-rise-riscv`: asio, bind, coroutine2, foreach, fusion, lexical_cast, optional, phoenix, serialization, smart_ptr, spirit, thread, tokenizer, tuple, variant.
+- **What we do**: `cmake/Dependencies.cmake` links the list by hand onto `dbt-rise-core` and `dbt-rise-riscv`: asio, bind, coroutine2, foreach, fusion, lexical_cast, optional, phoenix, serialization, smart_ptr, spirit, thread, tokenizer, tuple, variant.
 - **Upstream fix**: link each library whose headers are included.
 - **Kind**: build.
 - **When it lands**: delete the list.
 
+### One GDB server per process
+
+- **Where**: `src/iss/debugger/server.h`, `server<SESSION>::run_server`, lines 50 to 56.
+- **What is wrong**: the server is a singleton. A second call logs "server already initialized" as fatal. So only one CPU in a process can have a debugger attached, whatever port each asks for. A platform with three CPUs and three firmware images wants three.
+- **How to see it**: two `core_complex` instances in one simulation, each with a `gdb_server_port`.
+- **What we do**: nothing yet. One debugger is enough until the milestone that runs two firmware images together (M6 in [plan.md](plan.md)).
+- **Upstream fix**: one server per port, owned by the core that asked for it.
+- **Kind**: missing feature.
+- **When it lands**: several CPUs can each take a `gdb_port`.
+
 ## DBT-RISE-RISCV
 
-[Minres/DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV), pinned at `2ad3223`. It is the default CPU. 🚧 Until M3a moves it into the main build, these patches live in `spikes/iss/patches/dbt_rise_riscv.cmake`.
+[Minres/DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV), pinned at `2ad3223`. It is the default CPU, wrapped by `src/socpuppet/models/dbt_rise_cpu.cpp`.
 
 ### `offsetof` with a qualified member name
 
 - **Where**: the generated register tables in `src/iss/arch/*.h`, nine headers. They come from the template `gen_input/templates/CORENAME.h.gtl`, lines 198 to 202.
 - **What is wrong**: the tables say `offsetof(core::regs, core::regs::X0)`. GCC accepts a qualified member name there and Clang does not.
 - **How to see it**: compile with Clang on any platform.
-- **What we do**: one regular expression over the nine headers, dropping the qualification: `offsetof(core::regs, X0)`. About 600 changed lines.
+- **What we do**: `cmake/patches/dbt-rise-riscv-offsetof.patch` drops the qualification in all nine headers: `offsetof(core::regs, X0)`. About 600 changed lines, all from one rule: the regular expression `offsetof\(([a-z0-9_]+::[A-Za-z0-9_]+), [a-z0-9_]+::[A-Za-z0-9_]+::` replaced by `offsetof(\1,`.
 - **Upstream fix**: change the template, then regenerate the headers. Patching the headers alone would be undone by the next generation.
 - **Kind**: portability.
 - **When it lands**: drop the patch.
@@ -144,10 +154,30 @@ Each entry says:
   2. A core asleep in `wfi` wakes only for an interrupt, so it does not notice reset at all.
   3. Reset sets the core's cycle count back to zero, but `last_sync_cycle`, which the quantum keeper measures progress from, keeps its old value. The difference comes out as an enormous number of cycles, and the core waits that long before its first instruction.
 - **How to see it**: a platform that raises `rst_i` on a running core. In socpuppet that is `Reset.HoldsTheCpuWhileHighStartsItWhenReleasedAndRestartsItWhenRaised` in `spikes/iss/harness/candidate_suite.h`, with the patch taken out.
-- **What we do**: three edits. The loop condition becomes `while(!core->get_interrupt_execution() || rst_i.read())`. The reset callback also calls `vm->get_arch()->cancel_wait()`. And `last_sync_cycle` is set from the core's cycle count next to `quantum_keeper.reset(...)`.
+- **What we do**: `cmake/patches/dbt-rise-riscv-reset-restart.patch`, three edits. The loop condition becomes `while(!core->get_interrupt_execution() || rst_i.read())`. The reset callback also calls `vm->get_arch()->cancel_wait()`. And `last_sync_cycle` is set from the core's cycle count next to `quantum_keeper.reset(...)`.
 - **Upstream fix**: the same three edits, sent as one change with the scenario above as the test.
 - **Kind**: bug.
 - **When it lands**: drop the patch.
+
+### The library is `SHARED` whatever the build asks for
+
+- **Where**: `CMakeLists.txt` line 175, `add_library(${PROJECT_NAME} SHARED ${LIB_SOURCES})`, and line 187, `target_force_link_libraries(${PROJECT_NAME} PRIVATE dbt-rise-core)`.
+- **What is wrong**: `BUILD_SHARED_LIBS=OFF` has no effect, so a project that links everything statically cannot. 🎓 socpuppet has to: one binary must hold the one SystemC kernel, and the Python wheel ships a single extension module with nothing beside it. The second line pulls all of the core library into the shared one with raw linker flags, which mean nothing for a static library.
+- **How to see it**: configure with `-DBUILD_SHARED_LIBS=OFF` and look at what is built.
+- **What we do**: `cmake/patches/dbt-rise-riscv-static-library.patch`. When `BUILD_SHARED_LIBS` is set and off, the library is `STATIC` and links `dbt-rise-core` in the ordinary way. When it is on or not set at all, nothing changes.
+- **Upstream fix**: the patch as it is. It keeps their default.
+- **Kind**: build.
+- **When it lands**: drop the patch.
+
+### Cores register themselves from a static initializer
+
+- **Where**: `src/sysc/register_cores.cpp`, in the `dbt-rise-riscv_sc_sig` and `dbt-rise-riscv_sc_tlm` libraries.
+- **What is wrong**: each core type adds itself to a factory from a static initializer that no other code refers to. As a static library, a linker that takes only what is needed leaves that object file out, and `core_complex` then fails with "Could not create core" for every type.
+- **How to see it**: link `dbt-rise-riscv_sc_sig` as an ordinary static library and construct a `core_complex`.
+- **What we do**: no patch. `src/socpuppet/CMakeLists.txt` links the whole archive: `$<LINK_LIBRARY:WHOLE_ARCHIVE,dbt-rise-riscv_sc_sig>`.
+- **Upstream fix**: a function to call, such as `sysc::riscv::register_cores()`, next to or in place of the static initializer. Or make the library an `OBJECT` library.
+- **Kind**: build.
+- **When it lands**: link the library in the ordinary way.
 
 ## softvector
 
@@ -158,7 +188,7 @@ Each entry says:
 - **Where**: `src/vector_functions.hpp`, lines 57 to 66.
 - **What is wrong**: it specializes `std::make_signed` for `__uint128_t`, `__int128_t` and a helper type. The standard forbids specializing that trait, and Clang treats it as an error.
 - **How to see it**: compile with Clang.
-- **What we do**: no patch. `-Wno-invalid-specialization` on the `softvector` target for Clang and Apple clang.
+- **What we do**: no patch. `cmake/Dependencies.cmake` puts `-Wno-invalid-specialization` on the `softvector` target for Clang and Apple clang.
 - **Upstream fix**: a trait of its own, in its own namespace, in place of the specializations.
 - **Kind**: portability.
 - **When it lands**: delete the compile option.

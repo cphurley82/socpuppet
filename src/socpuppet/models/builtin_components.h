@@ -8,6 +8,7 @@
 
 #include <scc/router.h>
 
+#include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/scripted_bus_master.h"
@@ -22,6 +23,12 @@ static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 // The registry of every component that ships with socpuppet.
 inline Registry BuiltinComponents() {
   Registry registry;
+  registry.Add("dbt_rise_cpu", [](const char* name, const Config& config) {
+    auto module = std::make_unique<DbtRiseCpu>(
+        name, Required(config, "reset_vector", "dbt_rise_cpu"));
+    std::vector<Port> ports{InitiatorPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("memory", [](const char* name, const Config& config) {
     auto module =
         std::make_unique<Memory>(name, Required(config, "size", "memory"));

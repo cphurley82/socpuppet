@@ -12,8 +12,22 @@ target_sources(socpuppet_core INTERFACE
     core/time.h
     core/trace.h)
 
+# The CPU model is the one part of models/ that is compiled on its own. Its
+# source file is the only one that sees DBT-RISE's headers.
+add_library(socpuppet_dbt_rise_cpu STATIC models/dbt_rise_cpu.cpp)
+target_sources(socpuppet_dbt_rise_cpu PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/dbt_rise_cpu.h)
+# DBT-RISE's cores register themselves with a factory from a static
+# initializer that nothing refers to, so a linker picking what it needs out
+# of the library would leave them all behind. The whole library is linked.
+target_link_libraries(socpuppet_dbt_rise_cpu
+  PUBLIC SystemC::systemc
+  PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,dbt-rise-riscv_sc_sig>)
+socpuppet_dev_checks(socpuppet_dbt_rise_cpu)
+
 # models/: the SystemC wrappers. platform/: composing them by name (ports,
-# the registry, the platform builder). Header-only for now.
+# the registry, the platform builder). Header-only, apart from the CPU.
 add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
@@ -29,8 +43,10 @@ target_sources(socpuppet_models INTERFACE
     platform/slots.h
     platform/time_conversion.h
     platform/tracer.h)
-target_link_libraries(socpuppet_models INTERFACE socpuppet_core scc::components SystemC::systemc)
-socpuppet_check_headers(socpuppet_core socpuppet_models)
+target_link_libraries(socpuppet_models INTERFACE
+  socpuppet_core socpuppet_dbt_rise_cpu scc::components SystemC::systemc)
+socpuppet_check_headers(
+  socpuppet_core socpuppet_models socpuppet_dbt_rise_cpu)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

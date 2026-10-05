@@ -1,0 +1,20 @@
+diff --git a/src/iss/interp/vm_base.h b/src/iss/interp/vm_base.h
+index 9005f0c..4a6dcdc 100644
+--- a/src/iss/interp/vm_base.h
++++ b/src/iss/interp/vm_base.h
+@@ -55,6 +55,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -66,6 +67,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {

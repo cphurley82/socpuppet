@@ -1,0 +1,36 @@
+diff --git a/src/iss/debugger/serialized_connection.h b/src/iss/debugger/serialized_connection.h
+index 245ae50..8a22bd7 100644
+--- a/src/iss/debugger/serialized_connection.h
++++ b/src/iss/debugger/serialized_connection.h
+@@ -76,7 +76,7 @@ public:
+         virtual void receive_completed(const boost::system::error_code& error, TREQ* result) = 0;
+     };
+     /// Constructor.
+-    connection(boost::asio::io_service& io_service)
++    connection(boost::asio::io_context& io_service)
+     : socket_(io_service) {}
+     /// Get the underlying socket. Used for making a connection or for accepting
+     /// an incoming connection.
+diff --git a/src/iss/debugger/server.h b/src/iss/debugger/server.h
+index daf62ce..d62c7cb 100644
+--- a/src/iss/debugger/server.h
++++ b/src/iss/debugger/server.h
+@@ -81,7 +81,7 @@ protected:
+     , acceptor(io_service, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)) {
+         // Create a pool of threads to run all of the io_services.
+         std::size_t thread_pool_size_ = 1;
+-        work_ctrl = new boost::asio::io_context::work(io_service);
++        work_ctrl = new work_guard(io_service.get_executor());
+         // boost::thread::hardware_concurrency();
+         for(std::size_t i = 0; i < thread_pool_size_; ++i) {
+             threads.create_thread([this]() -> void { io_service.run(); });
+@@ -119,7 +119,8 @@ private:
+     }
+     // server related members
+     boost::asio::io_context io_service;
+-    boost::asio::io_service::work* work_ctrl;
++    using work_guard = boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
++    work_guard* work_ctrl;
+     boost::asio::ip::tcp::acceptor acceptor;
+     boost::thread_group threads;
+ };

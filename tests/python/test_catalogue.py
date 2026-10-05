@@ -19,6 +19,7 @@ def router_with_one_output():
 
 # One instance of every catalogue class, with whatever parameters it needs.
 EXAMPLES = [
+    sp.DbtRiseCpu(reset_vector=0x8000_0000),
     sp.Memory(size=0x100),
     PassThroughLinkEndpoint(),
     router_with_one_output(),

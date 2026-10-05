@@ -1,0 +1,28 @@
+diff --git a/src/sysc/core_complex.cpp b/src/sysc/core_complex.cpp
+index 488fdbe..9932c53 100644
+--- a/src/sysc/core_complex.cpp
++++ b/src/sysc/core_complex.cpp
+@@ -356,8 +356,10 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::s
+ }
+ 
+ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::rst_cb() {
+-    if(rst_i.read())
++    if(rst_i.read()) {
+         core->set_interrupt_execution(true);
++        vm->get_arch()->cancel_wait();
++    }
+ }
+ 
+ #ifndef USE_TLM_SIGNAL
+@@ -384,9 +386,10 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::r
+             wait(curr_clk.value_changed_event());
+         }
+         quantum_keeper.reset(sc_core::sc_time_stamp());
++        last_sync_cycle = vm->get_arch()->get_instrumentation_if()->get_total_cycles();
+         core->set_interrupt_execution(false);
+         run_iss();
+-    } while(!core->get_interrupt_execution());
++    } while(!core->get_interrupt_execution() || rst_i.read());
+     if(finish_evt_inuse)
+         finish_evt.notify();
+     else {

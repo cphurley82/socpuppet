@@ -35,8 +35,16 @@ FetchContent_MakeAvailable(systemc pybind11)
 # makes those calls resolve to the copies fetched here, so nothing has to be
 # installed on the machine.
 
-# A spike may ask for more of Boost than socpuppet uses (see spikes/).
+# The Boost libraries whose headers DBT-RISE includes: its interpreter is
+# built on coroutines, its GDB server on asio and threads, and its
+# debugger's command parser on spirit.
+set(_dbt_rise_boost
+  asio bind coroutine2 foreach fusion lexical_cast optional phoenix
+  serialization smart_ptr spirit thread tokenizer tuple variant)
+# SCC needs the first two. DBT-RISE needs its list, and looks three more up
+# with find_package. A spike may ask for more still (see spikes/).
 set(BOOST_INCLUDE_LIBRARIES date_time filesystem
+  ${_dbt_rise_boost} context coroutine program_options
   ${SOCPUPPET_SPIKE_BOOST_LIBRARIES})
 FetchContent_Declare(Boost
   URL https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz
@@ -112,3 +120,77 @@ set(SOCPUPPET_SUPPRESS_INSTALL FALSE)
 # SCC includes <boost/filesystem.hpp> but relies on a system-wide Boost to
 # put it on the include path. With a fetched Boost it has to be linked.
 target_link_libraries(scc-sysc PUBLIC Boost::filesystem)
+
+# --- DBT-RISE-RISCV (Minres, BSD-3-Clause): the CPU model --------------------
+# An instruction-set simulator with a SystemC wrapper, built by its own
+# CMakeLists as an interpreter only. Its three translating backends stay
+# off: TinyCC is LGPL, and asmjit and LLVM would each be one more dependency.
+# Every patch and accommodation below is written up in docs/upstream.md.
+FetchContent_Declare(elfio
+  URL https://github.com/serge1/ELFIO/archive/refs/tags/Release_3.12.tar.gz
+  URL_HASH SHA256=e4ebc9ce3d6916461bc3e7765bb45e6210f0a9b93978bf91e59b05388c024489
+  EXCLUDE_FROM_ALL SYSTEM)
+set(WITH_TCC OFF)
+set(WITH_ASMJIT OFF)
+set(WITH_LLVM OFF)
+# No cores with the vector extension. Its helper library, softvector, is
+# still built and linked: DBT-RISE asks for it either way.
+set(DBT_RISE_RISCV_ENABLE_VECTOR OFF)
+# DBT-RISE's own switch for pulling its fetched projects again on every
+# configure. They are pinned here.
+set(UPDATE_EXTERNAL_PROJECT OFF)
+FetchContent_Declare(dbt_rise_riscv
+  GIT_REPOSITORY https://github.com/Minres/DBT-RISE-RISCV.git
+  GIT_TAG 2ad322399bc367db6b45f76ec3d7150d8dadeae6 # 2026-09-24
+  GIT_SUBMODULES softvector
+  # offsetof: Clang rejects the qualified member names in the generated
+  # register tables. reset-restart: raising reset on a running core stopped
+  # the simulation instead of restarting the core. static-library: the
+  # library was SHARED whatever the build asked for, and one binary must
+  # hold the one SystemC kernel.
+  PATCH_COMMAND git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-static-library.patch
+  UPDATE_DISCONNECTED TRUE
+  EXCLUDE_FROM_ALL SYSTEM)
+# DBT-RISE-RISCV fetches its core library itself, under this name and at
+# this commit. Declaring it here first is how the patches get applied.
+FetchContent_Declare(dbt_rise_core_git
+  GIT_REPOSITORY https://github.com/Minres/DBT-RISE-Core.git
+  GIT_TAG 29e97c021c988370f5c5af5b5076afe8043402b6
+  # asio-names: Boost 1.87 removed the names its GDB server used.
+  # int128-traits: it specialized a private template of GCC's standard
+  # library, which Clang's library does not have.
+  PATCH_COMMAND git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-asio-names.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-int128-traits.patch
+  UPDATE_DISCONNECTED TRUE
+  EXCLUDE_FROM_ALL SYSTEM)
+set(SOCPUPPET_SUPPRESS_INSTALL TRUE)
+FetchContent_MakeAvailable(elfio dbt_rise_riscv)
+set(SOCPUPPET_SUPPRESS_INSTALL FALSE)
+# A system-wide Boost keeps every header in one directory, and DBT-RISE
+# relies on that. The fetched Boost has one target per library, so each
+# library whose headers are used has to be named. DBT-RISE-RISCV passes on
+# the core library's include path as it stood when it was configured, so it
+# has to be told as well.
+list(TRANSFORM _dbt_rise_boost PREPEND Boost::)
+target_link_libraries(dbt-rise-core PUBLIC ${_dbt_rise_boost})
+target_link_libraries(dbt-rise-riscv PUBLIC ${_dbt_rise_boost})
+# A helper for the translating backends declares a C function called wait(),
+# which POSIX has already taken, and on macOS the two collide. No such
+# backend is built, so the file is left out.
+get_target_property(_dbt_rise_core_sources dbt-rise-core SOURCES)
+list(REMOVE_ITEM _dbt_rise_core_sources src/iss/vm_jit_funcs.cpp)
+set_target_properties(dbt-rise-core PROPERTIES
+  SOURCES "${_dbt_rise_core_sources}")
+# The vector helpers specialize std::make_signed for 128-bit integers, which
+# the standard forbids and Clang treats as an error.
+target_compile_options(softvector PUBLIC
+  $<$<CXX_COMPILER_ID:AppleClang,Clang>:-Wno-invalid-specialization>)
+# Some of the interpreter's sources need over a gigabyte of memory each to
+# compile, so only a few are compiled at once. (Ninja only; other
+# generators ignore the pool.)
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS dbt_rise=4)
+set_target_properties(dbt-rise-riscv PROPERTIES JOB_POOL_COMPILE dbt_rise)

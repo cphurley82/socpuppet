@@ -1,0 +1,30 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a994a13..733a33f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -172,7 +172,11 @@ if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/../dbt-rise-custom")
+     endif()
+ endif()
+ # Define the library
+-add_library(${PROJECT_NAME} SHARED ${LIB_SOURCES})
++if(BUILD_SHARED_LIBS OR NOT DEFINED BUILD_SHARED_LIBS)
++    add_library(${PROJECT_NAME} SHARED ${LIB_SOURCES})
++else()
++    add_library(${PROJECT_NAME} STATIC ${LIB_SOURCES})
++endif()
+ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+     target_compile_options(${PROJECT_NAME} PRIVATE -Wno-shift-count-overflow)
+ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+@@ -184,7 +188,11 @@ if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/../dbt-rise-custom")
+     target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/../dbt-rise-custom/src)
+ endif()
+ 
+-target_force_link_libraries(${PROJECT_NAME} PRIVATE dbt-rise-core)
++if(BUILD_SHARED_LIBS OR NOT DEFINED BUILD_SHARED_LIBS)
++    target_force_link_libraries(${PROJECT_NAME} PRIVATE dbt-rise-core)
++else()
++    target_link_libraries(${PROJECT_NAME} PUBLIC dbt-rise-core)
++endif()
+ 
+ # only re-export the include paths
+ get_target_property(DBT_CORE_INCL dbt-rise-core INTERFACE_INCLUDE_DIRECTORIES)
