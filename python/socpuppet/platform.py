@@ -265,7 +265,7 @@ class Platform:
         view = self._view(via)
         data = self._built().debug_read(view.path, address, 4)
         if data is None:
-            raise self._nothing_at(address, view)
+            raise self._nothing_at(address, 4, view)
         return int.from_bytes(data, "little")
 
     def poke32(self, address: int, value: int, via: Port | None = None) -> None:
@@ -273,11 +273,17 @@ class Platform:
 
         Like a peek, a poke takes no simulated time. `via` works as in `peek32`.
         """
+        self.poke(address, value.to_bytes(4, "little"), via)
+
+    def poke(self, address: int, data: bytes, via: Port | None = None) -> None:
+        """Write `data` starting at `address`, as a bus master sees memory.
+
+        This is how a program gets into memory before the CPU runs it. Like
+        a peek, a poke takes no simulated time. `via` works as in `peek32`.
+        """
         view = self._view(via)
-        if not self._built().debug_write(
-            view.path, address, value.to_bytes(4, "little")
-        ):
-            raise self._nothing_at(address, view)
+        if not self._built().debug_write(view.path, address, data):
+            raise self._nothing_at(address, len(data), view)
 
     def devicetree(self, via: Port | None = None) -> str:
         """The devicetree source for what a bus master can reach.
@@ -310,10 +316,12 @@ class Platform:
             indent=2,
         )
 
-    def _nothing_at(self, address: int, view: Port) -> LookupError:
+    def _nothing_at(self, address: int, length: int, view: Port) -> LookupError:
         return LookupError(
-            f"Nothing took a 4-byte access at address {address:#x}, as seen "
-            f"from {view.path}. Check the address against the memory map."
+            f"Nothing took a {length}-byte access at address {address:#x}, "
+            f"as seen from {view.path}. The whole access has to fit inside "
+            "one entry of the memory map: check the address, and that the "
+            "access does not run past the end of what is there."
         )
 
     def _view(self, via: Port | None) -> Port:
