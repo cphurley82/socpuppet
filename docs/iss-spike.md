@@ -295,7 +295,7 @@ What the spike adds to that picture is practical, not legal: QBox cannot be buil
 - It defines `SC_DISABLE_API_VERSION_CHECK` for everything that links it, which switches off the SystemC check that catches mixed C++ standards.
 - It is about 80,000 lines.
 
-**Can one of its models stand in a socpuppet platform?** ✅ Yes. `spikes/iss/vcml_probe/` puts VCML's 16550 UART where the stand-in UART was, under the in-house CPU, and Zephyr's own driver prints its greeting through it. The adapter is about fifty lines: VCML's socket hands out a plain TLM socket on request, and its clock, reset, interrupt and receive ports each need something bound to them.
+**Can one of its models stand in a socpuppet platform?** ✅ Yes. `spikes/iss/vcml_probe/` (removed since, see [Decisions](#decisions)) puts VCML's 16550 UART where the stand-in UART was, under the in-house CPU, and Zephyr's own driver prints its greeting through it. The adapter is about fifty lines: VCML's socket hands out a plain TLM socket on request, and its clock, reset, interrupt and receive ports each need something bound to them.
 
 **Recommendation: a thin layer of our own, with VCML as a library to borrow from one model at a time.**
 
@@ -375,4 +375,5 @@ What happens to `spikes/iss/`:
 
 - DBT-RISE-RISCV's wrapper and patches stay until M3a has rebuilt them test-first and passed the same boot.
 - QBox's recipe and wrapper stay, as the starting point for the optional CPU. They are all that is left of the directory when M3a finishes.
-- riscv-vp, the in-house prototype and the VCML probe go with the rest of the spike at the end of M3a. Until then they still build and run in CI.
+- riscv-vp and the in-house prototype go with the rest of the spike at the end of M3a. Until then they still build and run in CI.
+- 🦜 The VCML probe went first. Its clone of mwr failed whenever CI restored the fetched dependencies from its cache, which kept the spike job red. The last commit that holds `spikes/iss/vcml_probe/` and its build rules is `23a0f1b`.

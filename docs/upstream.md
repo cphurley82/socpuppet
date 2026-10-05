@@ -188,7 +188,7 @@ Each entry says:
 - **Where**: `src/vector_functions.hpp`, lines 57 to 66.
 - **What is wrong**: it specializes `std::make_signed` for `__uint128_t`, `__int128_t` and a helper type. The standard forbids specializing that trait, and Clang treats it as an error.
 - **How to see it**: compile with Clang.
-- **What we do**: no patch. `cmake/Dependencies.cmake` puts `-Wno-invalid-specialization` on the `softvector` target for Clang and Apple clang.
+- **What we do**: no patch. `cmake/Dependencies.cmake` puts `-Wno-invalid-specialization` on the `softvector` target, privately, for Clang and Apple clang. Only newer Clangs have the diagnostic (Apple clang 21 does, the one on GitHub's `macos-15` runners does not), so how it shows depends on the compiler's version.
 - **Upstream fix**: a trait of its own, in its own namespace, in place of the specializations.
 - **Kind**: portability.
 - **When it lands**: delete the compile option.
@@ -201,7 +201,7 @@ Each entry says:
 
 - **Where**: `CMakeLists.txt` line 32, `find_github_repo(mwr "machineware-gmbh/mwr")`.
 - **What is wrong**: it clones the head of mwr's default branch while CMake configures. There is nothing to set from outside, so two builds of the same VCML release a week apart can differ.
-- **How to see it**: configure the same VCML tag on two different days and compare the mwr commits.
+- **How to see it**: configure the same VCML tag on two different days and compare the mwr commits. A second symptom: the clone goes into VCML's build directory, and it fails with "destination path already exists" when that directory is there but CMake's cache is new. That is exactly what a CI job gets when it restores its fetched dependencies from a cache, and it kept socpuppet's spike job red until the probe was removed.
 - **What we do**: nothing. It is one reason VCML stayed out of the default build.
 - **Upstream fix**: record the mwr commit in each VCML release, or accept a variable that names one.
 - **Kind**: build.

@@ -163,7 +163,7 @@ Decided on 2026-10-04, planning M3a:
 - **Borrow before building.** Using existing open source matters as much as the teaching goal. Where an open model fits, socpuppet uses it behind an adapter and holds it to a contract suite, and where it falls short the first answer is to fix it, not to write our own. This replaces the M1 report's "thin layer of our own" as the default. For M3a the UART, the machine timer and the PLIC come from VPV-Peripherals, and ELF parsing from ELFIO.
 - **Upstreaming is for later, and written down now.** Every patch and workaround to someone else's code has an entry in [upstream.md](upstream.md), with enough context to send it from there.
 - **cibuildwheel is in M3a, publishing is not.**
-- **Only `spikes/iss/qbox/` is left when M3a finishes.** riscv-vp, the in-house prototype and the VCML probe are deleted with the rest of the spike.
+- **Only `spikes/iss/qbox/` is left when M3a finishes.** riscv-vp and the in-house prototype are deleted with the rest of the spike. The VCML probe has gone already, because it was breaking the spike's CI job (see [iss-spike.md](iss-spike.md)).
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 

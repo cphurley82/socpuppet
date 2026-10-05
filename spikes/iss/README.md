@@ -36,7 +36,6 @@ The report, with what each candidate did and what is recommended, is [docs/iss-s
 | `firmware/build.sh` | Builds the firmware the candidates boot: Zephyr's `hello_world` for the stock `qemu_riscv64` and `qemu_riscv32` boards. |
 | `dbt_rise/`, `riscv_vp/`, `inhouse/` | One candidate each: its wrapper for the slot, and the test program that runs the suite on it. |
 | `qbox/` | QBox, which is built on its own in a container: the recipe, a standalone platform, and the integration behind the slot. |
-| `vcml_probe/` | VCML's UART model in the harness. |
 | `patches/` | The source patches each candidate needed, with the reason for each. |
 
 ## The firmware
