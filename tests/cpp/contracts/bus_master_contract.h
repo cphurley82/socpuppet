@@ -24,6 +24,8 @@ enum class Behavior {
   kWriteToTheProbeTwice,
   // And four times.
   kWriteToTheProbeFourTimes,
+  // Wait until the interrupt line is high, and then write to the probe.
+  kWaitForTheInterruptThenWriteToTheProbe,
 };
 
 // What every bus master must do, whether it is a CPU model running a
@@ -35,7 +37,7 @@ enum class Behavior {
 // A rig says how to make the master do things:
 //   static const char* Implementation();   its name in the registry. The
 //       master must have a bus port called "socket" and a wire input
-//       called "reset".
+//       inputs called "reset" and "irq".
 //   static socpuppet::Config Config();     what it is created with
 //   static void Load(socpuppet::Platform&, Behavior);
 //       gives the master at "cpu" something to run. Programs go at
@@ -58,6 +60,8 @@ class BusMasterContract : public ::testing::Test {
     Behavior behavior;
     // What drives the master's reset input. Left unconnected if empty.
     Drive reset = nullptr;
+    // What drives its interrupt input, likewise.
+    Drive irq = nullptr;
     // How long the probe says each access to it takes.
     sc_core::sc_time probe_latency = sc_core::SC_ZERO_TIME;
     // The global quantum: how far a master may run ahead of the
@@ -68,7 +72,6 @@ class BusMasterContract : public ::testing::Test {
   // Builds the platform: the master at "cpu", with a RAM and the probe
   // behind a router.
   void Build(const Scenario& scenario) {
-    const Drive& reset = scenario.reset;
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     registry.Add("probe", [this, latency = scenario.probe_latency](
                               const char* name, const socpuppet::Config&) {
@@ -78,14 +81,18 @@ class BusMasterContract : public ::testing::Test {
       return socpuppet::Instance{.module = std::move(module),
                                  .ports = std::move(ports)};
     });
-    registry.Add("line_driver",
-                 [reset](const char* name, const socpuppet::Config&) {
-                   auto module = std::make_unique<LineDriver>(name, reset);
-                   std::vector<socpuppet::Port> ports{
-                       socpuppet::WireSourcePort("line", module->line)};
-                   return socpuppet::Instance{.module = std::move(module),
-                                              .ports = std::move(ports)};
-                 });
+    for (const auto& [implementation, body] :
+         {std::pair{"reset_driver", scenario.reset},
+          std::pair{"irq_driver", scenario.irq}}) {
+      registry.Add(implementation,
+                   [body](const char* name, const socpuppet::Config&) {
+                     auto module = std::make_unique<LineDriver>(name, body);
+                     std::vector<socpuppet::Port> ports{
+                         socpuppet::WireSourcePort("line", module->line)};
+                     return socpuppet::Instance{.module = std::move(module),
+                                                .ports = std::move(ports)};
+                   });
+    }
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->SetQuantum(scenario.quantum);
     platform_->Add("cpu", Rig::Implementation(), Rig::Config());
@@ -100,9 +107,13 @@ class BusMasterContract : public ::testing::Test {
     platform_->Bind("cpu.socket", "bus.target");
     platform_->Bind("bus.out0", "ram.socket");
     platform_->Bind("bus.out1", "probe.socket");
-    if (reset) {
-      platform_->Add("reset_driver", "line_driver");
+    if (scenario.reset) {
+      platform_->Add("reset_driver", "reset_driver");
       platform_->Bind("reset_driver.line", "cpu.reset");
+    }
+    if (scenario.irq) {
+      platform_->Add("irq_driver", "irq_driver");
+      platform_->Bind("irq_driver.line", "cpu.irq");
     }
     platform_->Elaborate();
     Rig::Load(*platform_, scenario.behavior);
@@ -243,6 +254,22 @@ TYPED_TEST_P(
   EXPECT_LT(first_after_reset.delay, this->Microseconds(3));
 }
 
+TYPED_TEST_P(BusMasterContract,
+             AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises) {
+  const sc_core::sc_time raised_at = this->Microseconds(5);
+  this->Build({.behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
+               .irq = [&](LineDriver& irq) {
+                 irq.WaitFor(raised_at);
+                 irq.Set(true);
+               }});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_, ::testing::ElementsAre(::testing::Field(
+                                 "kernel_time", &RecordedAccess::kernel_time,
+                                 ::testing::Ge(raised_at))));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts,
     WhenResetIsRaisedAgainTheMasterStartsOver,
@@ -251,6 +278,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     TimeATargetAddsDelaysTheMastersNextAccess,
     WithNoQuantumEveryAccessArrivesWithNoDelay,
     WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat,
-    WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead);
+    WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead,
+    AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises);
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_MASTER_CONTRACT_H_

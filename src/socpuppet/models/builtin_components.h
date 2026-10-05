@@ -21,6 +21,8 @@ namespace socpuppet {
 static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
+static_assert(CpuSlot<ScriptedBusMaster>);
+static_assert(CpuSlot<DbtRiseCpu>);
 
 // The registry of every component that ships with socpuppet.
 inline Registry BuiltinComponents() {
@@ -30,6 +32,7 @@ inline Registry BuiltinComponents() {
         name, Required(config, "xlen", "dbt_rise_cpu"),
         Required(config, "reset_vector", "dbt_rise_cpu"));
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
+                            WireSinkPort("irq", module->irq),
                             WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });

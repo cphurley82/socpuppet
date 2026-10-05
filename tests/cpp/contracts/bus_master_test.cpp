@@ -44,6 +44,12 @@ struct ScriptedRig {
           }
         });
         break;
+      case Behavior::kWaitForTheInterruptThenWriteToTheProbe:
+        master.SetScript([]() -> socpuppet::Script {
+          co_await socpuppet::WaitIrq{};
+          co_await socpuppet::Write32(Contract::kProbeBase, 0);
+        });
+        break;
     }
   }
 };
@@ -68,6 +74,10 @@ struct DbtRiseRig {
         break;
       case Behavior::kWriteToTheProbeFourTimes:
         program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/4);
+        break;
+      case Behavior::kWaitForTheInterruptThenWriteToTheProbe:
+        program = riscv::SleepUntilTheExternalInterruptThenStoreWord(
+            Contract::kProbeBase);
         break;
     }
     platform.DebugWrite("cpu.socket", Contract::kProgramBase,

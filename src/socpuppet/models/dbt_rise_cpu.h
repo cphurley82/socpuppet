@@ -25,6 +25,9 @@ class DbtRiseCpu : public sc_core::sc_module {
   // While high, the CPU does nothing. When it goes low, the CPU starts from
   // its reset vector. Left unconnected, it is tied low.
   sc_core::sc_in<bool> reset{"reset"};
+  // The machine external interrupt: what a platform's interrupt controller
+  // drives. Left unconnected, it is tied low.
+  sc_core::sc_in<bool> irq{"irq"};
 
   // `xlen` is the width of its registers in bits, 32 or 64 (XLEN is the
   // RISC-V specification's name for it). `reset_vector` is the address of

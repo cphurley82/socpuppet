@@ -40,7 +40,9 @@ const char* CoreType(std::uint64_t xlen) {
 //     Both are funnelled into the adapter's single socket.
 //   - It is clocked by a signal that carries the clock period, which says
 //     how much simulated time one instruction takes.
-//   - Its 32 interrupt inputs are tied low.
+//   - It has 32 interrupt inputs, numbered as RISC-V numbers the bits of
+//     its interrupt-pending register. The machine external interrupt is
+//     ours to connect, and the rest are tied low.
 struct DbtRiseCpu::Core {
   Core(DbtRiseCpu& cpu, const char* core_type, std::uint64_t reset_vector)
       : cpu_(cpu) {
@@ -54,8 +56,12 @@ struct DbtRiseCpu::Core {
 
     complex_.clk_i.bind(clock_period_);
     complex_.rst_i.bind(cpu_.reset);
-    for (auto& interrupt : complex_.clint_irq_i) {
-      interrupt.bind(cpu_.tied_low_);
+    for (unsigned line = 0; line < complex_.clint_irq_i.size(); ++line) {
+      if (line == sysc::riscv::EXT_IRQ) {
+        complex_.clint_irq_i[line].bind(cpu_.irq);
+      } else {
+        complex_.clint_irq_i[line].bind(cpu_.tied_low_);
+      }
     }
   }
 
@@ -90,6 +96,7 @@ DbtRiseCpu::~DbtRiseCpu() = default;
 
 void DbtRiseCpu::before_end_of_elaboration() {
   if (reset.size() == 0) reset.bind(tied_low_);
+  if (irq.size() == 0) irq.bind(tied_low_);
 }
 
 }  // namespace socpuppet

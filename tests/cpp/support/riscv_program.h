@@ -42,6 +42,10 @@ constexpr Word Li(Word rd, std::int32_t immediate) {
 constexpr Word Srli(Word rd, Word rs1, Word amount) {
   return (amount << 20) | (rs1 << 15) | (5 << 12) | (rd << 7) | 0x13;
 }
+// rd = rs1 shifted left by `amount` bits (fewer than 32, as for Srli).
+constexpr Word Slli(Word rd, Word rs1, Word amount) {
+  return (amount << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x13;
+}
 // Store the low byte of rs2 at offset(rs1).
 constexpr Word Sb(Word rs2, Word rs1, std::int32_t offset) {
   const Word immediate = Field(offset, 12);
@@ -59,6 +63,14 @@ constexpr Word Jal(Word rd, std::int32_t offset) {
          (((immediate >> 11) & 1) << 20) | (((immediate >> 12) & 0xFF) << 12) |
          (rd << 7) | 0x6F;
 }
+// Set, in a control and status register, the bits that are set in rs1.
+constexpr Word Csrs(Word csr, Word rs1) {
+  return (csr << 20) | (rs1 << 15) | (2 << 12) | 0x73;
+}
+// The control and status register that says which interrupts are enabled,
+// and its bit for the machine external interrupt.
+inline constexpr Word kMie = 0x304;
+inline constexpr Word kMachineExternalInterrupt = 11;
 // Wait for an interrupt.
 inline constexpr Word kWfi = 0x1050'0073;
 
@@ -104,6 +116,26 @@ inline Program StoreWordThenSleep(std::uint64_t address, int times = 1) {
   for (int count = 0; count < times; ++count) {
     program.push_back(Sw(kZero, kT0, 0));
   }
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that sleeps until the external interrupt line is high, then
+// stores a word at `address` (as for StoreWordThenSleep) and sleeps again.
+//
+// It enables the interrupt but leaves interrupts as a whole switched off,
+// which is how they are after reset. In that state `wfi` still wakes up for
+// the interrupt, and the program carries on from the next instruction with
+// no trap taken.
+inline Program SleepUntilTheExternalInterruptThenStoreWord(
+    std::uint64_t address) {
+  Program program;
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(kWfi);
+  program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
+  program.push_back(Sw(kZero, kT0, 0));
   AppendSleepForEver(program);
   return program;
 }
