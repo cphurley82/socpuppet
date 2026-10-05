@@ -56,18 +56,24 @@ class PlacedRouter(Placed):
 
     component: Router
 
-    def map(self, target: Port, base: int) -> None:
+    def map(self, target: Port, base: int, size: int | None = None) -> None:
         """Route accesses starting at `base` to the port `target`.
 
         The range is as long as the target component's own size, and the
         target sees addresses as offsets from `base`.
+
+        Something with no size of its own, such as a link to another die,
+        needs to be told one: `size` is then how much address space lies
+        behind it.
         """
         self._platform.refuse_if_built("map a range")
-        size = target.placed.component.mapped_size
+        if size is None:
+            size = target.placed.component.mapped_size
         if size is None:
             raise ValueError(
-                f"Cannot map {target.path}: only a component with a size of "
-                "its own, such as a Memory, can be mapped onto a router."
+                f"Cannot map {target.path}: it has no size of its own, as a "
+                "Memory has. Say how much address space lies behind it with "
+                "size=<bytes>."
             )
         output = self.component.add_output(base, size, label=target.path)
         self._platform.connect(Port(self, output), target)

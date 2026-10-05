@@ -79,7 +79,7 @@ class TestWhenTwoMappedRangesOverlap:
 
 
 class TestWhenATargetWithNoSizeOfItsOwnIsMapped:
-    def test_the_error_says_only_sized_targets_can_be_mapped(self):
+    def test_it_is_refused_and_the_error_asks_for_a_size(self):
         platform = sp.Platform()
         bus = platform.add("bus", sp.Router())
         link = platform.link("link", sp.PassThroughLink())
@@ -105,3 +105,25 @@ class TestWhenARangeIsMappedAfterThePlatformIsBuilt:
             bus.map(ram.socket, base=0x1000)
 
         assert bus.component.ports == ("target", "out0")
+
+
+@pytest.mark.platform
+class TestWhenAWindowOfAStatedSizeIsMappedOntoALink:
+    def test_an_access_inside_it_crosses_the_link_at_its_offset(self):
+        platform = sp.Platform()
+        near = platform.group("near")
+        far = platform.group("far")
+        cpu = near.add("cpu", sp.ScriptedBusMaster())
+        near_bus = near.add("bus", sp.Router())
+        link = platform.link("link", sp.PassThroughLink(), near, far)
+        far_bus = far.add("bus", sp.Router())
+        ram = far.add("ram", sp.Memory(size=0x100))
+        platform.connect(cpu.socket, near_bus.target)
+        near_bus.map(link.a.target, base=0x1000_0000, size=0x1_0000)
+        platform.connect(link.b.initiator, far_bus.target)
+        far_bus.map(ram.socket, base=0x2000)
+        platform.build()
+
+        platform.poke32(0x1000_2010, 0xC0FFEE)
+
+        assert platform.peek32(0x1000_2010) == 0xC0FFEE
