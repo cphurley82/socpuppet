@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_MODELS_BUILTIN_COMPONENTS_H_
 #define SOCPUPPET_MODELS_BUILTIN_COMPONENTS_H_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
+#include "socpuppet/models/plic.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/slots.h"
@@ -23,6 +25,7 @@ static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
 static_assert(MachineTimerSlot<MachineTimer>);
+static_assert(InterruptControllerSlot<Plic>);
 static_assert(CpuSlot<ScriptedBusMaster>);
 static_assert(CpuSlot<DbtRiseCpu>);
 
@@ -69,6 +72,18 @@ inline Registry BuiltinComponents() {
             TargetPort("peer_target", module->peer_target)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
+  // Its sources are ports "source1" to "source31", numbered as the PLIC
+  // numbers them.
+  registry.Add("plic", [](const char* name, const Config&) {
+    auto module = std::make_unique<Plic>(name);
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            WireSourcePort("irq", module->irq)};
+    for (std::size_t source = 1; source <= Plic::kSources; ++source) {
+      ports.push_back(WireSinkPort("source" + std::to_string(source),
+                                   module->sources[source - 1]));
+    }
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("scripted_bus_master", [](const char* name, const Config&) {
     auto module = std::make_unique<ScriptedBusMaster>(name);
     std::vector<Port> ports{InitiatorPort("socket", module->socket),

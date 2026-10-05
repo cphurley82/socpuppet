@@ -24,6 +24,7 @@ EXAMPLES = [
     sp.Memory(size=0x100),
     sp.Ns16550(),
     PassThroughLinkEndpoint(),
+    sp.Plic(),
     router_with_one_output(),
     sp.ScriptedBusMaster(),
 ]

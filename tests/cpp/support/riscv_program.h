@@ -66,6 +66,10 @@ constexpr Word Bne(Word rs1, Word rs2, std::int32_t offset) {
          (((immediate >> 1) & 0xF) << 8) | (((immediate >> 11) & 1) << 7) |
          0x63;
 }
+// Load the 32-bit word at offset(rs1) into rd.
+constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
+  return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x03;
+}
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
   const Word immediate = Field(offset, 21);
@@ -236,6 +240,52 @@ inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
   program.push_back(Sw(kT1, kT3, 4));
   program.push_back(Lui(kT0, static_cast<Word>(probe >> 12)));
   program.push_back(Sw(kZero, kT0, 0));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
+  return program;
+}
+
+// A program that takes interrupts from one device through a PLIC, the way
+// an operating system does. It gives the PLIC's source 1 a priority,
+// enables it, switches the external interrupt on and sleeps. Its handler
+// claims the interrupt from the PLIC, quiets the device at `device` by
+// writing to it, tells the PLIC it has completed, and returns to sleep.
+// `plic` and `device` are addresses as for StoreWordThenSleep.
+inline Program HandleInterruptsThroughAPlic(std::uint64_t plic,
+                                            std::uint64_t device) {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  Program program;
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  // Source 1: priority 1, at the PLIC's offset 4.
+  program.push_back(Lui(kT3, static_cast<Word>(plic >> 12)));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Sw(kT1, kT3, 4));
+  // Source 1's enable bit, at offset 0x2000.
+  program.push_back(Lui(kT3, static_cast<Word>((plic + 0x2000) >> 12)));
+  program.push_back(Li(kT1, 1 << 1));
+  program.push_back(Sw(kT1, kT3, 0));
+  // t4 = offset 0x20'0000, where the threshold is, and the claim register
+  // 4 further on. The threshold stays at 0.
+  program.push_back(Lui(kT4, static_cast<Word>((plic + 0x20'0000) >> 12)));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Lw(kT1, kT4, 4));  // claim
+  program.push_back(Lui(kT0, static_cast<Word>(device >> 12)));
+  program.push_back(Sw(kZero, kT0, 0));  // quiet the device
+  program.push_back(Sw(kT1, kT4, 4));    // complete
   program.push_back(kMret);
 
   program[addi_at] =

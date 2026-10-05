@@ -6,6 +6,7 @@ from socpuppet.components import (
     Memory,
     Ns16550,
     PassThroughLink,
+    Plic,
     Router,
     ScriptedBusMaster,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "Ns16550",
     "PassThroughLink",
     "Platform",
+    "Plic",
     "Router",
     "ScriptedBusMaster",
     "TraceRecord",

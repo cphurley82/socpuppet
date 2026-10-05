@@ -361,3 +361,46 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   EXPECT_GE(probed.front().Time(), due);
   EXPECT_LE(probed.front().Time(), due + quantum);
 }
+
+TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {
+  constexpr std::uint64_t kRamBase = 0x8000'0000;
+  constexpr std::uint64_t kPlicBase = 0x0C00'0000;
+  constexpr std::uint64_t kDeviceBase = 0x1000'0000;
+  socpuppet::Platform platform{
+      CpuPlatformWithAnInterruptSource::WithAnInterruptSource(
+          [](InterruptSource& device) {
+            device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+            device.Raise();
+            device.WaitFor(sc_core::sc_time{300, sc_core::SC_US});
+            device.Raise();
+          })};
+  platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
+  platform.Add("cpu", "dbt_rise_cpu",
+               {{"xlen", 64}, {"reset_vector", kRamBase}});
+  platform.Add("bus", "router",
+               {{"outputs", 3},
+                {"out0.base", kRamBase},
+                {"out0.size", 0x1000},
+                {"out1.base", kPlicBase},
+                {"out1.size", 0x400'0000},
+                {"out2.base", kDeviceBase},
+                {"out2.size", 0x100}});
+  platform.Add("ram", "memory", {{"size", 0x1000}});
+  platform.Add("plic", "plic");
+  platform.Add("device", "interrupt_source");
+  platform.Bind("cpu.socket", "bus.target");
+  platform.Bind("bus.out0", "ram.socket");
+  platform.Bind("bus.out1", "plic.socket");
+  platform.Bind("bus.out2", "device.socket");
+  platform.Bind("device.line", "plic.source1");
+  platform.Bind("plic.irq", "cpu.irq");
+  platform.Elaborate();
+  const riscv::Program program =
+      riscv::HandleInterruptsThroughAPlic(kPlicBase, kDeviceBase);
+  platform.DebugWrite("cpu.socket", kRamBase,
+                      std::as_bytes(std::span{program}));
+
+  platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(platform.ModuleAt<InterruptSource>("device").TimesQuieted(), 2);
+}

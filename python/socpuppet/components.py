@@ -206,6 +206,27 @@ class PassThroughLink:
         return PassThroughLinkEndpoint()
 
 
+class Plic(Component):
+    """The RISC-V platform-level interrupt controller (PLIC).
+
+    It is where the interrupt lines of a platform's devices meet. Connect a
+    device's interrupt to one of `source1` to `source31`, and `irq` to the
+    CPU's `irq`. The firmware gives each source a priority and enables the
+    ones it wants. The model is borrowed from VPV-Peripherals.
+    """
+
+    implementation = "plic"
+    #: The PLIC numbers its sources from 1. 0 means "no interrupt".
+    SOURCES = 31
+    ports = (
+        "socket",
+        "irq",
+        *(f"source{number}" for number in range(1, SOURCES + 1)),
+    )
+    #: The PLIC's registers are spread over 64 MB of address space.
+    mapped_size = 0x400_0000
+
+
 class ScriptedBusMaster(Component):
     """🎭 Stand-in for a CPU.
 
