@@ -106,4 +106,6 @@ Test-first, following `.claude/skills/tdd`: state the behavior as "in scenario X
 
 Pinned in `cmake/Dependencies.cmake` and fetched at configure time. Third-party licenses are listed in `THIRD_PARTY_NOTICES.md`.
 
-SCC needed three accommodations to build inside this tree, each commented where it is made: a one-line patch to a configure-time probe (`cmake/patches/`), its install rules switched off, and Boost.Filesystem linked explicitly.
+SCC needed a few accommodations to build inside this tree, each commented where it is made: two small patches (`cmake/patches/`), one to a configure-time probe and one so that clang-tidy can read the CCI headers it bundles, its install rules switched off, our SystemC declared as already found, and Boost.Filesystem linked explicitly.
+
+📮 A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [upstream.md](upstream.md) saying what is wrong, how to see it and what to propose. That page is the list to work from when the fixes are sent upstream.

@@ -349,7 +349,7 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 - **What a real boot will need that `hello_world` did not**: a timer that fires and an interrupt controller that delivers. Zephyr's `synchronization` sample, M3a's second exit test, depends on both.
 - **Devicetree.** The generator knows only `Memory`. CPU nodes need an `riscv,isa-extensions` property for Zephyr 4.4.
 - **Sleep and `Platform.run()`.** With the three interpreters, a platform whose CPU is asleep in `wfi` has nothing left to do, and `run()` returns. The suite checks that, and it belongs in the contract. QBox is the exception.
-- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list in `spikes/iss/boost_libraries.cmake`; the four patches in `spikes/iss/patches/`, to carry or to send upstream; a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
+- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list in `spikes/iss/boost_libraries.cmake`; the four patches in `spikes/iss/patches/`, to carry until they are sent upstream (each is written up in [upstream.md](upstream.md)); a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
 
 ## Not exercised
 
@@ -366,13 +366,13 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 
 1. **The default CPU: DBT-RISE-RISCV.** Decided on 2026-10-04. It is the CPU that ships in the wheel and that M3a builds its kit on.
 2. **QBox: an optional CPU, built from source.** Decided on 2026-10-04. socpuppet stays MIT, and no GPL code goes in the default wheel. Enabling it is on the to-do list in [plan.md](plan.md).
-3. **Modeling library**: still open. Recommended: a thin layer of our own, borrowing VCML models one at a time behind an adapter. That is the default until M2 says otherwise.
-4. **Zephyr**: still open. Recommended, and the default: pin 4.4.2 with SDK 1.0.1.
+3. **Modeling library**: open until M2. The report recommended a thin layer of our own, borrowing VCML models one at a time behind an adapter. On 2026-10-04, planning M3a, the default became "borrow first": use an existing open model where one fits, fix it where it falls short, and write our own where none does. M3a takes its UART, machine timer and PLIC from VPV-Peripherals, which is built on SCC and so adds no second framework. See [plan.md](plan.md).
+4. **Zephyr**: pinned at 4.4.2 with SDK 1.0.1, as recommended. Decided on 2026-10-04, planning M3a.
 
 What the first decision takes on, from the findings above: eighteen more Boost libraries in the build, four patches to carry or send upstream, a static build of the core for the wheel, and a core that is generated code. The last one matters most for a teaching tool: where a learner cannot read the source, socpuppet's own docs have to explain what the CPU is doing. What it gets in return is a GDB server that works today, the complete instruction set with the privilege modes, and faster backends to turn on, which is the other new item on the to-do list.
 
 What happens to `spikes/iss/`:
 
 - DBT-RISE-RISCV's wrapper and patches stay until M3a has rebuilt them test-first and passed the same boot.
-- QBox's recipe and wrapper stay, as the starting point for the optional CPU.
-- riscv-vp and the in-house prototype were not chosen and can be deleted. Until someone does, they still build and run in CI. The VCML probe runs on the in-house CPU and would move to DBT-RISE-RISCV with it.
+- QBox's recipe and wrapper stay, as the starting point for the optional CPU. They are all that is left of the directory when M3a finishes.
+- riscv-vp, the in-house prototype and the VCML probe go with the rest of the spike at the end of M3a. Until then they still build and run in CI.

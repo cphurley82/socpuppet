@@ -9,7 +9,7 @@ This is milestone M1: an experiment to find out which CPU model should sit in so
 - It is not built unless you ask for it (`SOCPUPPET_BUILD_SPIKES`, which the `spike` preset turns on).
 - Nothing under `src/`, `python/` or `tests/` may include or import it.
 - It is not written test-first and does not count towards coverage. It is still linted, and still built with warnings as errors.
-- When M3 builds the real CPU kit, this directory goes.
+- When M3a has built the real CPU kit, this directory goes, apart from `qbox/`, which stays as the starting point for the optional CPU.
 
 ## Running it
 

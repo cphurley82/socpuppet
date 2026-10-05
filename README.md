@@ -72,6 +72,7 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🔧 [Building and testing](docs/development.md).
 - 🎨 [Style, and the tools that hold us to it](docs/style.md).
+- 📮 [What we owe upstream](docs/upstream.md): the fixes we carry for the projects we borrow from.
 
 ## Who's it for?
 

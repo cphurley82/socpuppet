@@ -43,6 +43,7 @@ A starting set. Add to it when something new keeps coming up.
 | ✅ / ❌ | pass / fail |
 | 🚧 | not built yet |
 | 🦜 | deprecated or removed (an ex-feature) |
+| 📮 | something to send upstream |
 
 ## Workflow
 
@@ -55,6 +56,15 @@ Changes are made test-first with the skills in `.claude/skills/`:
 The two reviews can also be run on their own against the working tree.
 
 Code under `spikes/` is the exception: it is exploratory, so it is not written test-first, and nothing outside `spikes/` may depend on it.
+
+## Borrow before building
+
+Using existing open source matters as much as the teaching goal. Before writing a model, a parser or a tool, look for an open one that fits, starting with the projects already in the build and their siblings.
+
+- A borrowed model sits behind an adapter of ours and is held to a contract suite written first, so that the tests say what socpuppet relies on.
+- Where a borrowed piece falls short, the first answer is to fix it. Writing our own instead is a decision to bring to the maintainer, with the failing tests.
+- A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [docs/upstream.md](docs/upstream.md): what is wrong, how to see it, and what to propose. A limitation worked around without a patch gets an entry too.
+- Nothing is sent to another project unless the maintainer asks. The page is the list to work from when they do.
 
 ## Style
 

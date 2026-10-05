@@ -8,7 +8,7 @@ Each is used unmodified except where noted.
 |---|---|---|
 | SystemC 3.0.2 | Apache-2.0 | <https://github.com/accellera-official/systemc> |
 | SystemC-Components (SCC) 2026.07, with a one-line build patch (`cmake/patches/`) | Apache-2.0 | <https://github.com/Minres/SystemC-Components> |
-| SystemC CCI, bundled with SCC | Apache-2.0 | <https://github.com/accellera-official/cci> |
+| SystemC CCI, bundled with SCC, with two constructors made `explicit` (`cmake/patches/`) | Apache-2.0 | <https://github.com/accellera-official/cci> |
 | LWTR4SC, bundled with SCC | Apache-2.0 | <https://github.com/Minres/LWTR4SC> |
 | RapidJSON, bundled with SCC | MIT | <https://github.com/Tencent/rapidjson> |
 | lz4, bundled with SCC | BSD-2-Clause | <https://github.com/lz4/lz4> |

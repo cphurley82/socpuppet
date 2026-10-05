@@ -72,13 +72,13 @@ M3, M4 and M5 are independent of each other apart from the shared CPU kit, so th
 
 Every track delivers the same kit to its firmware team: a Python platform description with that subsystem at full fidelity and its neighbors as stand-ins, the Zephyr board, a sample app, a pytest boot test, UART capture and GDB attach, and a short "boot your firmware here" doc.
 
-The kit arrives as a Python package, because that is how a firmware developer gets the model: from M3 on, `uv add socpuppet` (or `pip install socpuppet`) pulls a prebuilt wheel for Linux and macOS with no compiler needed. That means cibuildwheel, PyPI publishing and versioning land with M3, and the Zephyr boards must be reachable from the installed package. M0 keeps the road open by building the wheel in CI and testing it installed with both uv and pip.
+The kit arrives as a Python package, because that is how a firmware developer gets the model: from M3 on, `uv add socpuppet` (or `pip install socpuppet`) pulls a prebuilt wheel for Linux and macOS with no compiler needed. That means cibuildwheel, PyPI publishing and versioning land with M3, and the Zephyr boards must be reachable from the installed package. M3a builds and tests the portable wheels in CI with cibuildwheel. Publishing to PyPI and versioning follow in M3b or a step of their own, so that nothing irreversible goes out with the first CPU. M0 keeps the road open by building the wheel in CI and testing it installed with both uv and pip.
 
 ### M3 — Host subsystem
 
 (board `socpuppet_host`; SSD = behavioral NVMe, D2D = pass-through)
 
-- a) CPU kit, built once and reused by M4 and M5: DBT-RISE-RISCV behind the CPU slot (RV64 and RV32IMAC), ELF loader, DRAM, NS16550 UART with Python capture, machine timer, PLIC, GDB hook. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
+- a) CPU kit, built once and reused by M4 and M5: DBT-RISE-RISCV behind the CPU slot (RV64 and RV32IMAC), ELF loader, DRAM, a 16550-style UART with Python capture, machine timer, PLIC, GDB hook. The three peripherals are borrowed from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) behind adapters of ours, each held to a contract suite written first. Zephyr module and board with devicetree generated from the platform description. Exit: `hello_world`, `synchronization`.
 - b) PCIe enumeration from Zephyr; resolve the MSI-X-on-RISC-V question (verify mainline, else an MSI bridge model plus Zephyr hooks, or a minimal in-repo NVMe driver). Exit: Zephyr NVMe block I/O against the behavioral device.
 
 ### M4 — SSD subsystem
@@ -134,8 +134,7 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| How far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | M2, where PCIe is the first model big enough to matter | SCC for the router and logging only, and a thin layer of our own, as the M1 report recommends |
-| Zephyr version pin | M3a | 4.4.2 with SDK 1.0.1, which the spike used and the M1 report recommends |
+| How far to lean on a modeling library (SCC is in the build since M0; VCML is the other candidate) | M2, where PCIe is the first model big enough to matter | Borrow first: use an existing open model where one fits and fix it where it falls short, and write our own where none does. SCC supplies the router and logging, and VPV-Peripherals, which is built on SCC, supplies M3a's peripherals. VCML is not in the build |
 | Host MSI-X on RISC-V | M3b | verify mainline first |
 | Single- vs. multi-core SSD controller | M4b | single core |
 | D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
@@ -148,15 +147,23 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 - Every milestone ends with the automated end-to-end test in its "Exit test" column, run in GitHub Actions on Ubuntu LTS.
 - Every slot interface has one gtest contract suite; a stand-in and its full model both pass it before either is used in an integration milestone.
 - Stand-in configurations from earlier milestones stay in CI, so the standalone kits from M3 to M5 keep working after M6 to M8 land.
-- Model logic lives in plain C++ classes, unit-tested without the SystemC kernel.
+- Model logic lives in plain C++ classes, unit-tested without the SystemC kernel. A borrowed model is the exception: it is tested through its contract suite, behind its adapter.
 
 ## Status
 
-**M0 and M1 are done.** Next up: M2 (PCIe + behavioral NVMe) and M3a (the CPU kit, on DBT-RISE-RISCV), which do not depend on each other.
+**M0 and M1 are done.** M3a (the CPU kit, on DBT-RISE-RISCV) is under way. M2 (PCIe + behavioral NVMe) does not depend on it and comes next.
 
-What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. It stays until M3a has built the real CPU kit. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
+What M1 delivered: [iss-spike.md](iss-spike.md), the report. Five CPU models were built and run behind a draft CPU slot (DBT-RISE-RISCV, QBox, riscv-vp, a prototype of our own, and riscv-vp-plusplus, which stopped at the build step on macOS), and VCML was probed as a library of peripheral models. Four of them boot stock Zephyr `hello_world` for RV64 and RV32. The code is under `spikes/iss/`, outside the rules for the rest of the tree, and CI runs it. M3a rebuilds the DBT-RISE-RISCV wrapper test-first and then clears the directory, leaving only QBox's recipe. The spike also set `Memory` to advertise DMI and the tracer to withhold it, test-first, because CPU models wait for that hint.
 
-Decided on 2026-10-04, at M1's gate: **DBT-RISE-RISCV is the default CPU**, the one that ships in the wheel. socpuppet stays MIT, and the rule about GPL code becomes "none in the default wheel", so QBox, which is QEMU underneath, may be an optional CPU that users build from source (see the to-do list). The modeling library and the Zephyr pin are still open, with the report's recommendations as their defaults.
+Decided on 2026-10-04, at M1's gate: **DBT-RISE-RISCV is the default CPU**, the one that ships in the wheel. socpuppet stays MIT, and the rule about GPL code becomes "none in the default wheel", so QBox, which is QEMU underneath, may be an optional CPU that users build from source (see the to-do list). The modeling library and the Zephyr pin were left open, with the report's recommendations as their defaults.
+
+Decided on 2026-10-04, planning M3a:
+
+- **Zephyr is pinned at 4.4.2 with SDK 1.0.1.**
+- **Borrow before building.** Using existing open source matters as much as the teaching goal. Where an open model fits, socpuppet uses it behind an adapter and holds it to a contract suite, and where it falls short the first answer is to fix it, not to write our own. This replaces the M1 report's "thin layer of our own" as the default. For M3a the UART, the machine timer and the PLIC come from VPV-Peripherals, and ELF parsing from ELFIO.
+- **Upstreaming is for later, and written down now.** Every patch and workaround to someone else's code has an entry in [upstream.md](upstream.md), with enough context to send it from there.
+- **cibuildwheel is in M3a, publishing is not.**
+- **Only `spikes/iss/qbox/` is left when M3a finishes.** riscv-vp, the in-house prototype and the VCML probe are deleted with the rest of the spike.
 
 What M0 delivered: the build (SystemC and SCC from source, CI on Ubuntu and macOS, a devcontainer, a self-contained wheel tested with uv and pip), composing a platform by name through a registry, the Python description layer with devicetree and JSON output, `Memory`, the SCC router, the pass-through link as a pair of endpoints, wires for interrupt and reset, the scripted bus master (C++ coroutine and Python generator), the tracer, and contract suites for the memory and link slots. See [architecture.md](architecture.md).
 
@@ -177,16 +184,14 @@ Things later milestones should know:
 - A traced connection refuses DMI. Do not trace a CPU's path to its main memory in M3 and expect speed.
 - The router is used with one master. PCIe (M2) needs several; `scc::router` supports that, the adapter does not expose it yet.
 - `Platform.build()` finishes SystemC elaboration through a kernel call (`sc_simcontext::initialize`) that is public in the reference kernel but not in the SystemC standard.
-- SCC is built with two small patches and two other accommodations (see `cmake/Dependencies.cmake`). They are worth offering upstream.
+- SCC is built with two small patches and three other accommodations (see `cmake/Dependencies.cmake`). Each is written up in [upstream.md](upstream.md), ready to offer upstream.
 - `Platform` is one class for both the description and the built simulation (`platform.build()`, then `platform.run()`). Splitting off a separate simulation object was considered and turned down: a process can only ever hold one simulation, so the two objects would always travel as a pair, and one object is easier to learn. The cost is a few "built yet?" checks, which are tested.
 
 ## To do
 
 Small things that are nobody's milestone. Tick them off or delete them.
 
-- [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before M3, when the first wheels are published.
-- [ ] Offer the SCC fixes upstream: the `try_compile` probe that cannot see an in-tree SystemC, the missing `Boost::filesystem` link, and the two constructors in the bundled CCI that have to be `explicit` before clang-tidy can read its headers against GCC 13's standard library (CCI is Accellera's, so that one may belong there). The patches are in `cmake/patches/`.
-- [ ] Offer the DBT-RISE fixes upstream. It is the default CPU now, so the four patches in `spikes/iss/patches/` are ours to carry until they land. To DBT-RISE-Core: the asio names that Boost 1.87 removed, and the 128-bit integer traits that only GCC's standard library accepts. To DBT-RISE-RISCV: `offsetof` with a qualified member name, which Clang rejects (the headers are generated, so the fix belongs in the generator's templates), and a reset raised a second time, which stops the simulation instead of restarting the core. Worth reporting alongside: on macOS a helper for the translating backends declares a function called `wait()`, which collides with POSIX. Each is explained in [iss-spike.md](iss-spike.md).
+- [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before the first wheels are published, which is M3b at the earliest.
+- [ ] Send the fixes and accommodations we carry to the projects they belong to: SCC, CCI, DBT-RISE-Core, DBT-RISE-RISCV and softvector so far. Each has an entry in [upstream.md](upstream.md) with what is wrong, how to see it and what to propose.
 - [ ] Enable QBox as an optional CPU. It is about ten times faster than the default and is QEMU underneath (GPL-2.0), so users build it from source and it is never in the wheel. The recipe and a wrapper that passes the CPU suite are in `spikes/iss/qbox/`. What is left: a supported way to build it outside that container (it wants its own SystemC as a shared library, a C++20 build that takes two patches, and about a dozen system packages); a registry entry and a Python class so that a platform can name it; macOS, which was not tried; its sleeping CPU, which keeps the kernel waiting so that `Platform.run()` with no time limit never returns; and a page saying what it is and what it costs. See [iss-spike.md](iss-spike.md).
 - [ ] Try DBT-RISE-RISCV's other backends. The spike built only its interpreter (31 to 44 million instructions a second on a counted loop). asmjit, LLVM and TinyCC translate blocks of guest code into host code and should be faster. For each: run the spike's CPU suite and its speed tests, and write down what it adds to the build and to the wheel. TinyCC is LGPL, so settle whether it may ship before turning it on. On macOS the helper the backends share declares a function called `wait()`, which collides with POSIX: the spike left that file out, and a backend needs it back.
-- [ ] Delete the candidates that were not chosen from `spikes/iss/`: riscv-vp and the in-house prototype. They still build and run in CI. First move the VCML probe, which runs on the in-house CPU, over to DBT-RISE-RISCV. Then remove `riscv_vp/`, `inhouse/` and `patches/riscv_vp.cmake`, their sections of `spikes/iss/CMakeLists.txt`, and the two Boost libraries only riscv-vp needs (`format` and `io`) from `boost_libraries.cmake`, and bring the spike's README and the last section of [iss-spike.md](iss-spike.md) up to date. Have the report name the last commit that held them, so that they can be found again.
