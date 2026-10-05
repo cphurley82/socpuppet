@@ -2,6 +2,7 @@
 
 from socpuppet.components import (
     DbtRiseCpu,
+    MachineTimer,
     Memory,
     Ns16550,
     PassThroughLink,
@@ -18,6 +19,7 @@ from socpuppet.trace import render as render_trace
 __all__ = [
     "DbtRiseCpu",
     "ExpectationFailed",
+    "MachineTimer",
     "Memory",
     "Ns16550",
     "PassThroughLink",

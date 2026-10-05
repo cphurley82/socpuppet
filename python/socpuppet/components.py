@@ -121,6 +121,25 @@ class DbtRiseCpu(Component):
             )
 
 
+class MachineTimer(Component):
+    """The RISC-V machine timer, which gives an operating system its tick.
+
+    It has a counter, `mtime`, that counts up `frequency_hz` times a second
+    of simulated time, and a compare register, `mtimecmp`. Its `irq` is high
+    for as long as the counter is at or past the compare value: connect it
+    to a CPU's `timer_irq`. The registers are where SiFive's CLINT has them.
+    The model is borrowed from VPV-Peripherals (the Minres ACLINT).
+    """
+
+    implementation = "machine_timer"
+    ports = ("socket", "irq")
+    #: As on the CLINT: `mtimecmp` at 0x4000 and `mtime` at 0xBFF8.
+    mapped_size = 0x1_0000
+
+    def __init__(self, *, frequency_hz: int = 10_000_000) -> None:
+        super().__init__(frequency_hz=frequency_hz)
+
+
 class Memory(Component):
     """A flat RAM of `size` bytes."""
 

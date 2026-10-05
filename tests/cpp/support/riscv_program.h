@@ -204,6 +204,45 @@ inline Program HandleInterruptsByWritingTo(std::uint64_t device,
   return program;
 }
 
+// A program that asks the machine timer for one interrupt and takes it.
+// The timer's `mtimecmp` register is at `mtimecmp` and the interrupt is
+// asked for when the timer has counted to `ticks` (below 2048). The handler
+// puts the compare value out of reach again, writes a word to `probe` and
+// goes back to sleep. Both addresses are as for StoreWordThenSleep.
+inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
+                                     std::uint64_t probe) {
+  constexpr Word kT3 = 28;
+  Program program;
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineTimerInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  // The compare value is 64 bits, written as two words. Its high word is
+  // all ones after reset, so the low word can go first.
+  program.push_back(Lui(kT3, static_cast<Word>(mtimecmp >> 12)));
+  program.push_back(Li(kT1, ticks));
+  program.push_back(Sw(kT1, kT3, 0));
+  program.push_back(Sw(kZero, kT3, 4));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Li(kT1, -1));
+  program.push_back(Sw(kT1, kT3, 4));
+  program.push_back(Lui(kT0, static_cast<Word>(probe >> 12)));
+  program.push_back(Sw(kZero, kT0, 0));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
+  return program;
+}
+
 }  // namespace riscv
 
 #endif  // TESTS_CPP_SUPPORT_RISCV_PROGRAM_H_

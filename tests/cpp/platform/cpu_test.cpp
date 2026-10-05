@@ -18,6 +18,7 @@
 #include "socpuppet/platform/registry.h"
 #include "tests/cpp/support/counting_probe.h"
 #include "tests/cpp/support/interrupt_source.h"
+#include "tests/cpp/support/recording_target.h"
 #include "tests/cpp/support/riscv_program.h"
 
 using ::testing::AllOf;
@@ -308,4 +309,55 @@ TEST(WhenAHandlerQuietsTheDeviceThatInterrupted, ItRunsOncePerInterrupt) {
   with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
 
   EXPECT_EQ(with_device.TimesTheHandlerRan(), 2);
+}
+
+TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
+  constexpr std::uint64_t kRamBase = 0x8000'0000;
+  constexpr std::uint64_t kTimerBase = 0x0200'0000;
+  constexpr std::uint64_t kProbeBase = 0x1000'0000;
+  std::vector<RecordedAccess> probed;
+  socpuppet::Registry registry = socpuppet::BuiltinComponents();
+  registry.Add("probe", [&](const char* name, const socpuppet::Config&) {
+    auto module =
+        std::make_unique<RecordingTarget>(name, probed, sc_core::SC_ZERO_TIME);
+    std::vector<socpuppet::Port> ports{
+        socpuppet::TargetPort("socket", module->socket)};
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  socpuppet::Platform platform{std::move(registry)};
+  // The CPU runs up to 100 us ahead of the clock that the timer counts by.
+  const sc_core::sc_time quantum{100, sc_core::SC_US};
+  platform.SetQuantum(quantum);
+  platform.Add("cpu", "dbt_rise_cpu",
+               {{"xlen", 64}, {"reset_vector", kRamBase}});
+  platform.Add("bus", "router",
+               {{"outputs", 3},
+                {"out0.base", kRamBase},
+                {"out0.size", 0x1000},
+                {"out1.base", kTimerBase},
+                {"out1.size", 0x1'0000},
+                {"out2.base", kProbeBase},
+                {"out2.size", 0x100}});
+  platform.Add("ram", "memory", {{"size", 0x1000}});
+  platform.Add("timer", "machine_timer", {{"frequency_hz", 10'000'000}});
+  platform.Add("probe", "probe");
+  platform.Bind("cpu.socket", "bus.target");
+  platform.Bind("bus.out0", "ram.socket");
+  platform.Bind("bus.out1", "timer.socket");
+  platform.Bind("bus.out2", "probe.socket");
+  platform.Bind("timer.irq", "cpu.timer_irq");
+  platform.Elaborate();
+  // 1,000 ticks at ten a microsecond: the interrupt is due at 100 us.
+  const riscv::Program program =
+      riscv::TakeOneTimerInterrupt(kTimerBase + 0x4000, 1000, kProbeBase);
+  platform.DebugWrite("cpu.socket", kRamBase,
+                      std::as_bytes(std::span{program}));
+
+  platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  ASSERT_THAT(probed, ::testing::SizeIs(1));
+  const sc_core::sc_time due{100, sc_core::SC_US};
+  EXPECT_GE(probed.front().Time(), due);
+  EXPECT_LE(probed.front().Time(), due + quantum);
 }

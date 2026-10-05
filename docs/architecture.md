@@ -159,6 +159,7 @@ When the real die-to-die link arrives it passes `LinkContract` too, and the plat
 
 Each has a page saying what real hardware it stands for and what it leaves out.
 
+- [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
 - [Router](models/router.md)
 - [UART (16550)](models/ns16550.md)

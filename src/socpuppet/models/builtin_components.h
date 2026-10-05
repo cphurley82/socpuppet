@@ -9,6 +9,7 @@
 #include <scc/router.h>
 
 #include "socpuppet/models/dbt_rise_cpu.h"
+#include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
@@ -21,6 +22,7 @@ namespace socpuppet {
 static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
+static_assert(MachineTimerSlot<MachineTimer>);
 static_assert(CpuSlot<ScriptedBusMaster>);
 static_assert(CpuSlot<DbtRiseCpu>);
 
@@ -35,6 +37,13 @@ inline Registry BuiltinComponents() {
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("machine_timer", [](const char* name, const Config& config) {
+    auto module = std::make_unique<MachineTimer>(
+        name, Required(config, "frequency_hz", "machine_timer"));
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            WireSourcePort("irq", module->irq)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("memory", [](const char* name, const Config& config) {
