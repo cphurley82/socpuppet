@@ -35,6 +35,11 @@ struct Ns16550::Model {
                        sc_core::sc_time&) {
     if (transaction.is_write()) {
       output_ += static_cast<char>(*transaction.get_data_ptr());
+    } else {
+      // The model asks for a received byte whenever its receive register is
+      // read, into a byte it has not set. Nothing is ever received, so the
+      // answer is zero.
+      *transaction.get_data_ptr() = 0;
     }
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }
