@@ -3,6 +3,7 @@
 #include <memory>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -167,4 +168,36 @@ TEST(WhenAMemoryWithdrawsDirectAccess, TheCpuGoesBackToTheBus) {
 
   // A millisecond is 10,000 instructions, each now fetched over the bus.
   EXPECT_GE(probe.Transactions() - before, 10'000U);
+}
+
+TEST(WhenA64BitAndA32BitCpuShareASimulation, EachComputesInItsOwnWordSize) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  const riscv::Program program = riscv::StoreAllOnesShiftedRightThenSleep(28);
+  for (const auto& [name, xlen] :
+       {std::pair{"wide", 64}, std::pair{"narrow", 32}}) {
+    const std::string cpu = std::string(name) + ".cpu";
+    const std::string ram = std::string(name) + ".ram";
+    platform.Add(
+        cpu, "dbt_rise_cpu",
+        {{"xlen", static_cast<std::uint64_t>(xlen)}, {"reset_vector", 0}});
+    platform.Add(ram, "memory", {{"size", 0x1000}});
+    platform.Bind(cpu + ".socket", ram + ".socket");
+  }
+  platform.Elaborate();
+  for (const char* cpu : {"wide.cpu.socket", "narrow.cpu.socket"}) {
+    platform.DebugWrite(cpu, 0, std::as_bytes(std::span{program}));
+  }
+
+  // Six instructions each.
+  platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  std::byte wide{};
+  std::byte narrow{};
+  platform.DebugRead("wide.cpu.socket", riscv::kResultOffset,
+                     std::span{&wide, 1});
+  platform.DebugRead("narrow.cpu.socket", riscv::kResultOffset,
+                     std::span{&narrow, 1});
+  // What is left of 64 ones, and of 32, after a shift right by 28.
+  EXPECT_EQ(std::to_integer<int>(wide), 0b1111'1111);
+  EXPECT_EQ(std::to_integer<int>(narrow), 0b0000'1111);
 }

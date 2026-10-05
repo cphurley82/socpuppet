@@ -12,6 +12,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <systemc>
+#include <tlm>
 
 #include "socpuppet/bindings/python_executor.h"
 #include "socpuppet/bindings/python_script.h"
@@ -97,6 +98,13 @@ PYBIND11_MODULE(_core, m) {
     return py::make_tuple(image.xlen, image.entry, segments);
   });
 
+  // The quantum SystemC is running with, which is one for the whole
+  // process. For checking that a described quantum arrived.
+  m.def("global_quantum_in_picoseconds", [] {
+    return socpuppet::ToPicoseconds(tlm::tlm_global_quantum::instance().get())
+        .count();
+  });
+
   // implementations() and Platform.ports() exist so the Python catalogue can
   // be checked against the registry (tests/python/test_catalogue.py).
   m.def("implementations",
@@ -152,6 +160,11 @@ PYBIND11_MODULE(_core, m) {
       .def("run",
            [](NativePlatform& self) {
              self.WithoutGil([&] { self.platform.Run(); });
+           })
+      .def("set_quantum",
+           [](NativePlatform& self, std::uint64_t picoseconds) {
+             self.platform.SetQuantum(
+                 socpuppet::ToScTime(socpuppet::Picoseconds{picoseconds}));
            })
       .def("run_for",
            [](NativePlatform& self, std::uint64_t picoseconds) {

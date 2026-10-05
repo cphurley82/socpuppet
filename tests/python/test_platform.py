@@ -187,3 +187,38 @@ class TestWhenALinkIsPlacedBetweenTwoGroups:
         )
 
         assert (link.a.path, link.b.path) == ("compute.d2d", "io.d2d")
+
+
+@pytest.mark.platform
+class TestWhenAQuantumIsDescribed:
+    def test_the_built_simulation_runs_with_that_quantum(self):
+        from socpuppet import _core
+
+        platform = thin_platform(writes=[])
+        platform.quantum = sp.us(7)
+
+        platform.build()
+
+        assert _core.global_quantum_in_picoseconds() == sp.us(7)
+
+
+@pytest.mark.platform
+class TestWhenNoQuantumIsDescribed:
+    def test_the_simulation_runs_with_a_hundred_microseconds(self):
+        from socpuppet import _core
+
+        platform = thin_platform(writes=[])
+
+        platform.build()
+
+        assert _core.global_quantum_in_picoseconds() == sp.us(100)
+
+
+class TestWhenTheQuantumIsChangedAfterBuilding:
+    @pytest.mark.platform
+    def test_it_is_refused_and_the_error_says_why(self):
+        platform = thin_platform(writes=[])
+        platform.build()
+
+        with pytest.raises(RuntimeError, match="already built"):
+            platform.quantum = sp.us(7)
