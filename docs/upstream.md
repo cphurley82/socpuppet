@@ -282,6 +282,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The ACLINT's and the PLIC's registers are indeterminate until reset is pulsed
+
+- **Where**: `minres/gen/aclint_regs.h` and `rvi/gen/plic_regs.h`, the storage declarations (`uint64_t r_mtime;`, `std::array<uint32_t, ...> r_priority;` and the rest).
+- **What is wrong**: the storage has no initial value, and the registers get their reset values only when `rst_i` moves. That is how hardware behaves, so it is defensible. But a platform that ties `rst_i` low, as one with no reset controller does, starts with whatever was in memory. With an ordinary allocator that is usually zero, which looks like it works.
+- **How to see it**: build with AddressSanitizer, which fills new memory with a pattern, tie `rst_i` low and read `mtime` at time zero. In socpuppet, 15 tests failed in the sanitizer build and nowhere else.
+- **What we do**: no patch. The adapters (`machine_timer.cpp`, `plic.cpp`) call `reset_start()` and `reset_stop()` on the registers as the simulation starts.
+- **Upstream fix**: value-initialize the storage, or reset the registers in `start_of_simulation`.
+- **Kind**: a surprise more than a bug.
+- **When it lands**: the adapters can stop doing it.
+
 ### `pulpino/uart.h` does not include what it uses
 
 - **Where**: `pulpino/uart.h`, lines 80 to 82.

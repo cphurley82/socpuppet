@@ -4,11 +4,30 @@
 #include <memory>
 
 #include <minres/aclint.h>
+#include <minres/gen/aclint_regs.h>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_initiator_socket.h>
 
 namespace socpuppet {
+
+namespace {
+
+// The borrowed timer, with its power-on reset done. Its registers hold
+// whatever was in memory until they are reset, and it resets them only
+// when its reset line moves, which here it never does. So they are reset
+// as the simulation starts, once every port is bound.
+struct PoweredOnAclint : vpvper::minres::aclint {
+  explicit PoweredOnAclint(const sc_core::sc_module_name& name)
+      : aclint(name, /*num_cpus=*/1) {}
+
+  void start_of_simulation() override {
+    regs->reset_start();
+    regs->reset_stop();
+  }
+};
+
+}  // namespace
 
 // The borrowed timer and what it needs around it. It learns its tick from a
 // signal that carries the tick's period. It has one more interrupt output,
@@ -36,8 +55,7 @@ struct MachineTimer::Model {
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
   sc_core::sc_signal<bool> software_interrupt_unread_{
       "software_interrupt_unread"};
-  // One CPU.
-  vpvper::minres::aclint timer_{"timer", 1};
+  PoweredOnAclint timer_{"timer"};
   // The model's socket has a bus width of zero, SCC's mark for "loosely
   // timed", and only binds to its like.
   tlm_utils::simple_initiator_socket<Model, scc::LT> to_registers_{

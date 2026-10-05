@@ -11,6 +11,23 @@
 
 namespace socpuppet {
 
+namespace {
+
+// The borrowed PLIC, with one context and with its power-on reset done.
+// Its registers hold whatever was in memory until they are reset, and it
+// resets them only when its reset line moves, which here it never does. So
+// they are reset as the simulation starts, once every port is bound.
+struct PoweredOnPlic : vpvper::rvi::plic<Plic::kSources, 1> {
+  explicit PoweredOnPlic(const sc_core::sc_module_name& name) : plic(name) {}
+
+  void start_of_simulation() override {
+    regs->reset_start();
+    regs->reset_stop();
+  }
+};
+
+}  // namespace
+
 // The borrowed PLIC and what it needs around it. It has one "context", a
 // CPU and privilege mode that can be interrupted: ours is the one CPU in
 // machine mode. Its reset is never asserted, and its clock input only sets
@@ -34,7 +51,7 @@ struct Plic::Model {
  private:
   sc_core::sc_signal<sc_core::sc_time> access_time_{"access_time"};
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
-  vpvper::rvi::plic<kSources, 1> plic_{"plic"};
+  PoweredOnPlic plic_{"plic"};
   // The model's socket has a bus width of zero, SCC's mark for "loosely
   // timed", and only binds to its like.
   tlm_utils::simple_initiator_socket<Model, scc::LT> to_registers_{
