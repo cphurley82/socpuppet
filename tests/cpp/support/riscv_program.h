@@ -32,6 +32,11 @@ constexpr Word Addi(Word rd, Word rs1, std::int32_t immediate) {
 constexpr Word Li(Word rd, std::int32_t immediate) {
   return Addi(rd, kZero, immediate);
 }
+// rd = rs1 shifted right by `amount` bits, with zeros coming in at the top.
+// Only an amount below 32 is encoded the same for both word sizes.
+constexpr Word Srli(Word rd, Word rs1, Word amount) {
+  return (amount << 20) | (rs1 << 15) | (5 << 12) | (rd << 7) | 0x13;
+}
 // Store the low byte of rs2 at offset(rs1).
 constexpr Word Sb(Word rs2, Word rs1, std::int32_t offset) {
   const Word immediate = Field(offset, 12);
@@ -64,6 +69,19 @@ inline Program StoreByteThenSleep(std::uint8_t value) {
   Program program;
   program.push_back(Auipc(kT0, 0));
   program.push_back(Li(kT1, value));
+  program.push_back(Sb(kT1, kT0, kResultOffset));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that fills a register with ones, shifts it right by `amount`
+// bits (fewer than 32), stores the low byte of what is left as its result,
+// and sleeps.
+inline Program StoreAllOnesShiftedRightThenSleep(Word amount) {
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Li(kT1, -1));
+  program.push_back(Srli(kT1, kT1, amount));
   program.push_back(Sb(kT1, kT0, kResultOffset));
   AppendSleepForEver(program);
   return program;

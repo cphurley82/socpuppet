@@ -18,10 +18,11 @@ namespace socpuppet {
 //     how much simulated time one instruction takes.
 //   - Its reset and its 32 interrupt inputs are tied low.
 struct DbtRiseCpu::Core {
-  Core(DbtRiseCpu& cpu, std::uint64_t reset_vector) : cpu_(cpu) {
-    // RV64IMAC, machine mode only, with physical memory protection, which
-    // Zephyr's RISC-V boards switch on.
-    complex_.core_type.set_value("rv64imac_mp");
+  Core(DbtRiseCpu& cpu, std::uint64_t xlen, std::uint64_t reset_vector)
+      : cpu_(cpu) {
+    // Machine mode only, with physical memory protection, which Zephyr's
+    // RISC-V boards switch on.
+    complex_.core_type.set_value(xlen == 32 ? "rv32imac_mp" : "rv64imac_mp");
     complex_.reset_address.set_value(reset_vector);
 
     from_fetch_.register_b_transport(this, &Core::b_transport);
@@ -57,9 +58,10 @@ struct DbtRiseCpu::Core {
   sysc::riscv::core_complex<> complex_{"core"};
 };
 
-DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name,
+DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector)
-    : sc_module(name), core_(std::make_unique<Core>(*this, reset_vector)) {}
+    : sc_module(name),
+      core_(std::make_unique<Core>(*this, xlen, reset_vector)) {}
 
 DbtRiseCpu::~DbtRiseCpu() = default;
 

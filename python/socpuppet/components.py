@@ -64,18 +64,20 @@ class DbtRiseCpu(Component):
 
     The model is DBT-RISE-RISCV (Minres), an instruction-set simulator: it
     executes the firmware's instructions one after another, the way the
-    processor would. `reset_vector` is the address of the first one.
+    processor would. `xlen` is the width of its registers in bits, 32 or
+    64 (XLEN is the RISC-V specification's name for it), and `reset_vector`
+    is the address of the first instruction.
 
-    It is an RV64IMAC core in machine mode only: no floating point, and no
-    supervisor or user mode. Build firmware for it with
-    `-march=rv64imac_zicsr_zifencei`.
+    It is an RV32IMAC or RV64IMAC core in machine mode only: no floating
+    point, and no supervisor or user mode. Build firmware for it with
+    `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
     """
 
     implementation = "dbt_rise_cpu"
     ports = ("socket",)
 
-    def __init__(self, *, reset_vector: int) -> None:
-        super().__init__(reset_vector=reset_vector)
+    def __init__(self, *, xlen: int, reset_vector: int) -> None:
+        super().__init__(xlen=xlen, reset_vector=reset_vector)
 
 
 class Memory(Component):

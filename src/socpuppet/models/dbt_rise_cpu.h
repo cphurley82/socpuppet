@@ -12,8 +12,8 @@ namespace socpuppet {
 
 // A RISC-V CPU. The model is DBT-RISE-RISCV's (Minres): an instruction-set
 // simulator, which executes the firmware's instructions one after another
-// the way the real processor would. It is an RV64IMAC core in machine mode
-// only: no floating point, and no supervisor or user mode.
+// the way the real processor would. It is an RV32IMAC or RV64IMAC core in
+// machine mode only: no floating point, and no supervisor or user mode.
 //
 // This class is only the adapter that fits it into a socpuppet platform.
 // DBT-RISE's own headers stay out of this one, so that nothing else has to
@@ -23,8 +23,11 @@ class DbtRiseCpu : public sc_core::sc_module {
   // Every fetch, load and store leaves through here.
   tlm_utils::simple_initiator_socket<DbtRiseCpu> socket{"socket"};
 
-  // `reset_vector` is the address of the first instruction it executes.
-  DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t reset_vector);
+  // `xlen` is the width of its registers in bits, 32 or 64 (XLEN is the
+  // RISC-V specification's name for it). `reset_vector` is the address of
+  // the first instruction it executes.
+  DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
+             std::uint64_t reset_vector);
   ~DbtRiseCpu() override;
 
  private:
