@@ -17,6 +17,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/platform.h"
+#include "tests/cpp/support/line_driver.h"
 
 namespace socpuppet {
 
@@ -27,28 +28,6 @@ using ::testing::ThrowsMessage;
 namespace {
 
 sc_core::sc_time Nanoseconds(double count) { return {count, sc_core::SC_NS}; }
-
-// Drives one wire from a test: `body` runs in a simulation thread and can
-// set the line and wait.
-class LineDriver : public sc_core::sc_module {
- public:
-  sc_core::sc_out<bool> line{"line"};
-
-  LineDriver(const sc_core::sc_module_name& name,
-             std::function<void(LineDriver&)> body)
-      : sc_module(name), body_(std::move(body)) {
-    SC_THREAD(Run);
-  }
-
-  void Set(bool level) { line.write(level); }
-  void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
-
- private:
-  void Run() { body_(*this); }
-  std::function<void(LineDriver&)> body_;
-};
-
-using Drive = std::function<void(LineDriver&)>;
 
 // What drives a master's input lines in a test. A line with no driver is
 // left unconnected.
