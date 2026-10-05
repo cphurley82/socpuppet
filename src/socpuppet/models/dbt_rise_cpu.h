@@ -22,6 +22,9 @@ class DbtRiseCpu : public sc_core::sc_module {
  public:
   // Every fetch, load and store leaves through here.
   tlm_utils::simple_initiator_socket<DbtRiseCpu> socket{"socket"};
+  // While high, the CPU does nothing. When it goes low, the CPU starts from
+  // its reset vector. Left unconnected, it is tied low.
+  sc_core::sc_in<bool> reset{"reset"};
 
   // `xlen` is the width of its registers in bits, 32 or 64 (XLEN is the
   // RISC-V specification's name for it). `reset_vector` is the address of
@@ -29,6 +32,8 @@ class DbtRiseCpu : public sc_core::sc_module {
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
              std::uint64_t reset_vector);
   ~DbtRiseCpu() override;
+
+  void before_end_of_elaboration() override;
 
  private:
   struct Core;

@@ -22,6 +22,11 @@ constexpr Word Field(std::int32_t value, unsigned bits) {
   return static_cast<Word>(value) & ((Word{1} << bits) - 1);
 }
 
+// rd = upper20 << 12. (On a 64-bit core the result is sign-extended, so
+// this reaches addresses below 0x8000'0000 only.)
+constexpr Word Lui(Word rd, Word upper20) {
+  return (upper20 << 12) | (rd << 7) | 0x37;
+}
 // rd = the address of this instruction, plus upper20 << 12.
 constexpr Word Auipc(Word rd, Word upper20) {
   return (upper20 << 12) | (rd << 7) | 0x17;
@@ -42,6 +47,10 @@ constexpr Word Sb(Word rs2, Word rs1, std::int32_t offset) {
   const Word immediate = Field(offset, 12);
   return ((immediate >> 5) << 25) | (rs2 << 20) | (rs1 << 15) |
          ((immediate & 0x1F) << 7) | 0x23;
+}
+// Store the low 32 bits of rs2 at offset(rs1).
+constexpr Word Sw(Word rs2, Word rs1, std::int32_t offset) {
+  return Sb(rs2, rs1, offset) | (2 << 12);
 }
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
@@ -83,6 +92,16 @@ inline Program StoreAllOnesShiftedRightThenSleep(Word amount) {
   program.push_back(Li(kT1, -1));
   program.push_back(Srli(kT1, kT1, amount));
   program.push_back(Sb(kT1, kT0, kResultOffset));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that stores a word at `address` (a multiple of 4096 below
+// 0x8000'0000) and then sleeps.
+inline Program StoreWordThenSleep(std::uint64_t address) {
+  Program program;
+  program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
+  program.push_back(Sw(kZero, kT0, 0));
   AppendSleepForEver(program);
   return program;
 }

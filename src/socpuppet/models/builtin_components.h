@@ -29,7 +29,8 @@ inline Registry BuiltinComponents() {
     auto module = std::make_unique<DbtRiseCpu>(
         name, Required(config, "xlen", "dbt_rise_cpu"),
         Required(config, "reset_vector", "dbt_rise_cpu"));
-    std::vector<Port> ports{InitiatorPort("socket", module->socket)};
+    std::vector<Port> ports{InitiatorPort("socket", module->socket),
+                            WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("memory", [](const char* name, const Config& config) {

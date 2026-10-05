@@ -19,6 +19,7 @@ gtest_discover_tests(unit_tests PROPERTIES LABELS cpp)
 # runs each one in its own process.
 add_executable(kernel_tests
   kernel_test_main.cpp
+  contracts/bus_master_test.cpp
   contracts/link_test.cpp
   contracts/memory_test.cpp
   contracts/uart_test.cpp

@@ -94,7 +94,7 @@ class DbtRiseCpu(Component):
     """
 
     implementation = "dbt_rise_cpu"
-    ports = ("socket",)
+    ports = ("socket", "reset")
     is_bus_master = True
 
     def __init__(self, *, xlen: int, reset_vector: int) -> None:
