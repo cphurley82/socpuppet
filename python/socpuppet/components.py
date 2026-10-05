@@ -135,6 +135,10 @@ class DbtRiseCpu(Component):
     64 (XLEN is the RISC-V specification's name for it), and `reset_vector`
     is the address of the first instruction.
 
+    With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
+    waits for one to attach before it executes anything. ⚠️ Only one CPU
+    in a simulation can have one.
+
     It is an RV32IMAC or RV64IMAC core in machine mode only: no floating
     point, and no supervisor or user mode. Build firmware for it with
     `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
@@ -144,8 +148,12 @@ class DbtRiseCpu(Component):
     ports = ("socket", "irq", "timer_irq", "reset")
     is_bus_master = True
 
-    def __init__(self, *, xlen: int, reset_vector: int) -> None:
-        super().__init__(xlen=xlen, reset_vector=reset_vector)
+    def __init__(
+        self, *, xlen: int, reset_vector: int, gdb_port: int = 0
+    ) -> None:
+        super().__init__(
+            xlen=xlen, reset_vector=reset_vector, gdb_port=gdb_port
+        )
         self.xlen = xlen
         self.reset_vector = reset_vector
 

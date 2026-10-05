@@ -80,6 +80,30 @@ In pytest, mark each test that builds a platform with `@pytest.mark.platform`. A
 - `board.platform.time` is the simulated time, in picoseconds. `sp.ms(1)`, `sp.us(1)` and `sp.ns(1)` make durations.
 - `board.platform.devicetree()` is the devicetree the board was generated from.
 
+## Debugging with GDB
+
+Give the board a port, and the CPU waits for a debugger before it executes anything:
+
+```python
+board = host(gdb_port=1234)
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf")
+board.platform.run(sp.ms(1000))     # waits here until GDB attaches
+```
+
+In another terminal, with the GDB from the Zephyr SDK:
+
+```sh
+riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
+(gdb) target remote :1234
+(gdb) break main
+(gdb) continue
+```
+
+Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
+
+⚠️ One CPU per simulation can have a GDB port.
+
 ## When it does not boot
 
 - **`load_elf` refuses the image.** It says why: the image was built for another word size, or it does not start at the CPU's reset vector. The second usually means it was built for a different board.

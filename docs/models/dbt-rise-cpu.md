@@ -24,6 +24,7 @@ platform.run(sp.ms(100))
 - **Starts at its reset vector.** `load_elf` checks that the image starts there and was built for the same word size.
 - **Three inputs.** `irq` is the machine external interrupt, for the interrupt controller. `timer_irq` is the machine timer interrupt. `reset` holds the core while it is high and restarts it from the reset vector when it drops.
 - **Takes one clock period per instruction.** The clock is 10 MHz, so an instruction is 100 ns of simulated time, whatever it is.
+- **Can be debugged.** With `gdb_port=1234` the CPU listens for GDB on that port and waits for it to attach before the first instruction. See [boot-your-firmware.md](../boot-your-firmware.md).
 - **Sleeps properly.** In `wfi` (wait for interrupt) the core does nothing at all until an interrupt arrives, so an idle system costs almost nothing to simulate.
 
 ## What makes it fast
@@ -39,7 +40,7 @@ platform.run(sp.ms(100))
 - **Floating point**, supervisor and user modes, and virtual memory. None of the firmware here needs them. DBT-RISE has cores with all of them, and socpuppet does not offer them yet.
 - **Cycle accuracy.** Every instruction takes the same time. Use it to find out what firmware does, not how many nanoseconds it takes.
 - **Faster backends.** DBT-RISE can also translate blocks of RISC-V code into host code. socpuppet uses its interpreter.
-- 🚧 **A debugger.** DBT-RISE has a GDB server, and socpuppet does not switch it on yet.
+- **More than one debugger.** Only one CPU in a simulation can have a GDB port: DBT-RISE has one GDB server per process.
 
 ## Where it comes from
 

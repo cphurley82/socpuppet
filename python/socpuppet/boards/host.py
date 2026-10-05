@@ -58,13 +58,19 @@ class Host(NamedTuple):
     uart: PlacedUart
 
 
-def host() -> Host:
-    """Describe the host. Nothing is simulated until `platform.build()`."""
+def host(*, gdb_port: int = 0) -> Host:
+    """Describe the host. Nothing is simulated until `platform.build()`.
+
+    With a `gdb_port`, the CPU listens for a debugger on that TCP port and
+    waits for one to attach before it executes anything.
+    """
     platform = Platform()
     compute = platform.group("compute")
     io = platform.group("io")
 
-    cpu = compute.add("cpu", DbtRiseCpu(xlen=64, reset_vector=RAM_BASE))
+    cpu = compute.add(
+        "cpu", DbtRiseCpu(xlen=64, reset_vector=RAM_BASE, gdb_port=gdb_port)
+    )
     compute_bus = compute.add("bus", Router())
     ram = compute.add("ram", Memory(size=RAM_SIZE))
     plic = compute.add("plic", Plic())

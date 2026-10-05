@@ -35,8 +35,12 @@ class DbtRiseCpu : public sc_core::sc_module {
   // `xlen` is the width of its registers in bits, 32 or 64 (XLEN is the
   // RISC-V specification's name for it). `reset_vector` is the address of
   // the first instruction it executes.
+  //
+  // `gdb_port`, if not zero, is a TCP port on which a GDB server listens.
+  // The CPU then waits for a debugger to attach before it executes its
+  // first instruction.
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-             std::uint64_t reset_vector);
+             std::uint64_t reset_vector, std::uint16_t gdb_port = 0);
   ~DbtRiseCpu() override;
 
   // SystemC's last chance to bind a port. By now we know whether anyone

@@ -33,9 +33,14 @@ static_assert(CpuSlot<DbtRiseCpu>);
 inline Registry BuiltinComponents() {
   Registry registry;
   registry.Add("dbt_rise_cpu", [](const char* name, const Config& config) {
+    // The GDB port is the one parameter that may be left out.
+    const auto gdb_port = config.find("gdb_port");
     auto module = std::make_unique<DbtRiseCpu>(
         name, Required(config, "xlen", "dbt_rise_cpu"),
-        Required(config, "reset_vector", "dbt_rise_cpu"));
+        Required(config, "reset_vector", "dbt_rise_cpu"),
+        gdb_port == config.end()
+            ? std::uint16_t{0}
+            : static_cast<std::uint16_t>(gdb_port->second));
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
