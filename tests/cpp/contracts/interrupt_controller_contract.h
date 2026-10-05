@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <systemc>
+#include <tlm>
 
 #include "socpuppet/platform/slots.h"
 #include "tests/cpp/contracts/bus_driver.h"
@@ -259,6 +260,26 @@ TYPED_TEST_P(InterruptControllerContract,
   EXPECT_FALSE(this->interrupt_.read());
 }
 
+TYPED_TEST_P(InterruptControllerContract,
+             ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites) {
+  // The enable bits for sources 32 to 63, which a driver may clear without
+  // asking how many sources there are.
+  const std::uint64_t reserved = this->kEnable + 4;
+  tlm::tlm_response_status write_response = tlm::TLM_INCOMPLETE_RESPONSE;
+  std::array<std::uint8_t, 4> read{0xFF, 0xFF, 0xFF, 0xFF};
+  tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const std::array<std::uint8_t, 4> ones{0xFF, 0xFF, 0xFF, 0xFF};
+    write_response = bus.Write(reserved, ones);
+    read_response = bus.Read(reserved, read);
+  });
+
+  EXPECT_EQ(write_response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(read_response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(read, (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     InterruptControllerContract,
     AnEnabledSourceWithAPriorityInterruptsWhenItsLineRises,
@@ -271,6 +292,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     TheLastSourcesPriorityIsTheOneItWasGiven, AClaimWithNothingPendingReadsZero,
     AClaimedSourceDoesNotInterruptAgainUntilItIsCompleted,
     CompletingASourceWhoseLineIsStillHighInterruptsAgain,
-    CompletingASourceWhoseLineHasDroppedDoesNotInterruptAgain);
+    CompletingASourceWhoseLineHasDroppedDoesNotInterruptAgain,
+    ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites);
 
 #endif  // TESTS_CPP_CONTRACTS_INTERRUPT_CONTROLLER_CONTRACT_H_

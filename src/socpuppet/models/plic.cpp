@@ -1,5 +1,6 @@
 #include "socpuppet/models/plic.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 
@@ -56,6 +57,18 @@ void Plic::before_end_of_elaboration() {
 void Plic::b_transport(tlm::tlm_generic_payload& transaction,
                        sc_core::sc_time& delay) {
   model_->AccessRegister(transaction, delay);
+  // The PLIC's register map has room for 1,023 sources and thousands of
+  // contexts. The parts this PLIC has no use for are reserved: they read as
+  // zero and ignore writes. A driver may touch them without asking first,
+  // as Zephyr's does when it clears the enable bits, and the borrowed model
+  // answers such an access with an error.
+  if (transaction.get_response_status() == tlm::TLM_ADDRESS_ERROR_RESPONSE) {
+    if (transaction.is_read()) {
+      std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
+                  static_cast<unsigned char>(0));
+    }
+    transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+  }
 }
 
 }  // namespace socpuppet
