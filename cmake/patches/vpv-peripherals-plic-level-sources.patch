@@ -1,0 +1,20 @@
+diff --git a/rvi/plic.h b/rvi/plic.h
+index c5a44ac..f2dec23 100644
+--- a/rvi/plic.h
++++ b/rvi/plic.h
+@@ -349,6 +372,15 @@ void plic<NUM_SOURCES, NUM_CONTEXTS>::claim_complete_write_cb(uint32_t ctx, uint
+     // The source interrupt can now be triggered again.
+     SCCTRACE(this->name()) << "Context " << ctx << " claim complete for interrupt " << src_id;
+     src_irq_cleared[src_id - 1] = true;  // Source cleared array does not include an entry for unused source 0
++#ifdef SC_SIGNAL_IF
++    // A level-sensitive source whose line is still high at completion is pending again at once: its handler finished
++    // without the device going quiet, or the device has more to say. There is no new rising edge to wait for.
++    if (interrupts_i[src_id - 1].read()) {
++        get_pending(src_id) |= (0x1UL << bit_ofs);
++        src_irq_cleared[src_id - 1] = false;
++        for (uint32_t i = 0; i < NUM_CONTEXTS; ++i) handle_pending_irq(i);
++    }
++#endif
+ }
+ 
+ template <uint32_t NUM_SOURCES, uint32_t NUM_CONTEXTS>

@@ -70,6 +70,19 @@ target_link_libraries(socpuppet_machine_timer
   PRIVATE vpv_aclint)
 socpuppet_dev_checks(socpuppet_machine_timer)
 
+# The interrupt controller: VPV-Peripherals' PLIC, which is headers only.
+add_library(socpuppet_plic STATIC models/plic.cpp)
+target_sources(socpuppet_plic PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/plic.h)
+target_compile_definitions(socpuppet_plic PRIVATE SC_SIGNAL_IF)
+target_link_libraries(socpuppet_plic
+  PUBLIC SystemC::systemc
+  PRIVATE scc::components)
+target_include_directories(socpuppet_plic SYSTEM PRIVATE
+  ${vpv_peripherals_SOURCE_DIR})
+socpuppet_dev_checks(socpuppet_plic)
+
 # models/: the SystemC wrappers. platform/: composing them by name (ports,
 # the registry, the platform builder). Header-only, apart from the adapters
 # above.
@@ -90,10 +103,10 @@ target_sources(socpuppet_models INTERFACE
     platform/tracer.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_core socpuppet_dbt_rise_cpu socpuppet_machine_timer
-  socpuppet_ns16550 scc::components SystemC::systemc)
+  socpuppet_ns16550 socpuppet_plic scc::components SystemC::systemc)
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_models socpuppet_dbt_rise_cpu
-  socpuppet_machine_timer socpuppet_ns16550)
+  socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

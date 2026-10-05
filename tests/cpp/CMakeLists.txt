@@ -20,6 +20,7 @@ gtest_discover_tests(unit_tests PROPERTIES LABELS cpp)
 add_executable(kernel_tests
   kernel_test_main.cpp
   contracts/bus_master_test.cpp
+  contracts/interrupt_controller_test.cpp
   contracts/link_test.cpp
   contracts/machine_timer_test.cpp
   contracts/memory_test.cpp

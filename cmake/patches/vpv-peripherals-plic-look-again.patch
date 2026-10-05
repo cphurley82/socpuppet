@@ -1,0 +1,34 @@
+diff --git a/rvi/plic.h b/rvi/plic.h
+index c5a44ac..f2dec23 100644
+--- a/rvi/plic.h
++++ b/rvi/plic.h
+@@ -217,6 +217,29 @@ plic<NUM_SOURCES, NUM_CONTEXTS>::plic(sc_core::sc_module_name nm)
+             });
+     }
+ 
++    // A source may already be pending when the registers that decide whether it interrupts are written: when it is
++    // enabled, given a priority, or the threshold drops below it. Look again after each such write.
++    auto look_again = [this]() {
++        for (uint32_t ctx = 0; ctx < NUM_CONTEXTS; ++ctx) handle_pending_irq(ctx);
++    };
++    regs->priority.set_write_cb([look_again](size_t, scc::sc_register<uint32_t>& reg, const uint32_t& v) -> bool {
++        reg.put(v);
++        look_again();
++        return true;
++    });
++    for (uint32_t i = 0; i < NUM_CONTEXTS; ++i) {
++        regs->enabled[i]->set_write_cb([look_again](size_t, scc::sc_register<uint32_t>& reg, const uint32_t& v) -> bool {
++            reg.put(v);
++            look_again();
++            return true;
++        });
++        regs->threshold[i]->set_write_cb([look_again](scc::sc_register<uint32_t>& reg, const uint32_t& v) -> bool {
++            reg.put(v);
++            look_again();
++            return true;
++        });
++    }
++
+     // port callbacks
+ #ifdef SC_SIGNAL_IF
+     SC_METHOD(source_irq_cb);

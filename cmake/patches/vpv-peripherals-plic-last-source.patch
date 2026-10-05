@@ -1,0 +1,32 @@
+diff --git a/rvi/gen/plic_regs.h b/rvi/gen/plic_regs.h
+index 57c1073..5826cef 100644
+--- a/rvi/gen/plic_regs.h
++++ b/rvi/gen/plic_regs.h
+@@ -23,21 +23,24 @@ namespace rvi {
+ template <uint32_t NUM_SOURCES, uint32_t NUM_CONTEXTS>
+ class plic_regs : public sc_core::sc_module, public scc::resetable {
+    public:
+-    static constexpr uint32_t NUM_PENDING = (NUM_SOURCES + 31) / 32;
++    // Source IDs run from 1 to NUM_SOURCES, and ID 0 has a (reserved) priority register and pending bit of its own, so
++    // both are one longer than the number of sources.
++    static constexpr uint32_t NUM_IDS = NUM_SOURCES + 1;
++    static constexpr uint32_t NUM_PENDING = (NUM_IDS + 31) / 32;
+     static constexpr uint32_t NUM_ENABLED = NUM_PENDING;
+ 
+     using Reg32 = scc::sc_register<uint32_t>;
+     using EnReg = scc::sc_register_indexed<uint32_t, NUM_ENABLED>;
+ 
+     // storage declarations
+-    std::array<uint32_t, NUM_SOURCES> r_priority;
++    std::array<uint32_t, NUM_IDS> r_priority;
+     std::array<uint32_t, NUM_PENDING> r_pending;
+     std::array<std::array<uint32_t, NUM_ENABLED>, NUM_CONTEXTS> r_enabled;
+     std::array<uint32_t, NUM_CONTEXTS> r_threshold;
+     std::array<uint32_t, NUM_CONTEXTS> r_claim_complete;
+ 
+     // register declarations
+-    scc::sc_register_indexed<uint32_t, NUM_SOURCES> priority;
++    scc::sc_register_indexed<uint32_t, NUM_IDS> priority;
+     scc::sc_register_indexed<uint32_t, NUM_PENDING> pending;
+     std::vector<std::unique_ptr<EnReg>> enabled;
+     std::vector<std::unique_ptr<Reg32>> threshold;

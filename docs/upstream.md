@@ -235,7 +235,7 @@ Each entry says:
 
 ## VPV-Peripherals
 
-[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`, and the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`.
+[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`, the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`, and the RISC-V PLIC, behind `src/socpuppet/models/plic.cpp`.
 
 ### The ACLINT ignores a compare value written at time zero
 
@@ -251,6 +251,36 @@ Two more things read in the same file and not acted on:
 
 - `const int lfclk_mutiplier = 10; // hardcoded for unit test` is declared and never used.
 - The write callbacks for `mtimecmp` and `msip` call `wait()` when the access arrives with a delay, so they only work when the write comes from a SystemC thread. A write from a method would be a SystemC error.
+
+### The PLIC reads its last source's priority from past the end of an array
+
+- **Where**: `rvi/gen/plic_regs.h`, `r_priority` and the `priority` register, both sized `NUM_SOURCES`, and `NUM_PENDING`.
+- **What is wrong**: source IDs run from 1 to `NUM_SOURCES`, and ID 0 is reserved but has a priority register and a pending bit of its own. So there are `NUM_SOURCES + 1` of each. With arrays of `NUM_SOURCES`, the last source has no priority register on the bus (a write to it is refused), and `get_source_irq` reads `r_priority[NUM_SOURCES]`, one past the end, on every evaluation. What it finds there is the pending word, so the last source behaves as if it had a very high priority.
+- **How to see it**: `plic<31, 1>`, source 3 with priority 2, source 31 with priority 1, both pending. A claim returns 31. In socpuppet that is `InterruptControllerContract.TheLastSourcesPriorityIsTheOneItWasGiven` in `tests/cpp/contracts/interrupt_controller_contract.h`, with the patch taken out.
+- **What we do**: `cmake/patches/vpv-peripherals-plic-last-source.patch` sizes both by `NUM_SOURCES + 1`.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### The PLIC does not look again when its registers are written
+
+- **Where**: `rvi/plic.h`, the constructor. Only the claim/complete register has callbacks.
+- **What is wrong**: the interrupt output is worked out when a source's line rises and when a claim is read, and at no other time. A source that is already pending when the firmware enables it, gives it a priority, or lowers the threshold below it does not interrupt until some other source's line happens to rise.
+- **How to see it**: raise a source's line, then set its priority and its enable bit. The output stays low. In socpuppet that is `InterruptControllerContract.ASourceEnabledWhileItsLineIsAlreadyHighInterrupts`, with the patch taken out.
+- **What we do**: `cmake/patches/vpv-peripherals-plic-look-again.patch` gives the priority, enable and threshold registers write callbacks that store the value and call `handle_pending_irq` for every context.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### The PLIC treats every source as edge-triggered
+
+- **Where**: `rvi/plic.h`, `source_irq_cb` (sensitive to rising edges only) and `claim_complete_write_cb`.
+- **What is wrong**: a source becomes pending on a rising edge of its line, and completion only marks it free to be triggered by the next edge. 🎓 The PLIC specification's sources are level-sensitive by default: if the line is still high when the handler completes, the source is pending again at once. That is how a device with more to say, such as a UART with more bytes waiting, gets its handler run again. Here such a device is never serviced a second time, because its line never rises again.
+- **How to see it**: raise a line, claim, and complete without lowering the line. The output stays low. In socpuppet that is `InterruptControllerContract.CompletingASourceWhoseLineIsStillHighInterruptsAgain`, with the patch taken out.
+- **What we do**: `cmake/patches/vpv-peripherals-plic-level-sources.patch`. On completion, a source whose line reads high is marked pending again and the outputs are worked out afresh.
+- **Upstream fix**: the patch covers the build with `SC_SIGNAL_IF`, where an input's level can be read. The build with TLM signal sockets needs to remember each source's last level to do the same. A per-source choice of edge or level, as VCML's PLIC has, would serve both kinds of device.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
 
 ### `pulpino/uart.h` does not include what it uses
 

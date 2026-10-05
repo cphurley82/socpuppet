@@ -69,6 +69,20 @@ concept MachineTimerSlot =
       { timer.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
     };
 
+// An interrupt controller: built from a name, reached through one TLM
+// target socket, with a vector of interrupt inputs called `sources` and
+// one interrupt output for the CPU.
+template <typename T>
+concept InterruptControllerSlot =
+    std::constructible_from<T, sc_core::sc_module_name> &&
+    requires(T controller) {
+      { controller.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      {
+        controller.sources
+      } -> std::convertible_to<sc_core::sc_vector<sc_core::sc_in<bool>>&>;
+      { controller.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
+    };
+
 // A UART: built from a name, reached through one TLM target socket, and
 // keeping what was transmitted through it as text.
 template <typename T>
