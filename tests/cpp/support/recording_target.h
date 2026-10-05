@@ -15,6 +15,9 @@ struct RecordedAccess {
   sc_core::sc_time delay;
   // The simulation's clock when the access arrived.
   sc_core::sc_time kernel_time;
+
+  // When the access happened, as the master sees time.
+  sc_core::sc_time Time() const { return kernel_time + delay; }
 };
 
 // A test's ears on the bus: a target that accepts every access and writes
@@ -24,9 +27,12 @@ class RecordingTarget : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<RecordingTarget> socket{"socket"};
 
+  // `latency` is how long the target says each access takes, by adding it
+  // to the access's delay as a slow device would.
   RecordingTarget(const sc_core::sc_module_name& name,
-                  std::vector<RecordedAccess>& record)
-      : sc_module(name), record_(record) {
+                  std::vector<RecordedAccess>& record,
+                  const sc_core::sc_time& latency)
+      : sc_module(name), record_(record), latency_(latency) {
     socket.register_b_transport(this, &RecordingTarget::b_transport);
   }
 
@@ -36,10 +42,12 @@ class RecordingTarget : public sc_core::sc_module {
     record_.push_back({.address = transaction.get_address(),
                        .delay = delay,
                        .kernel_time = sc_core::sc_time_stamp()});
+    delay += latency_;
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }
 
   std::vector<RecordedAccess>& record_;
+  sc_core::sc_time latency_;
 };
 
 #endif  // TESTS_CPP_SUPPORT_RECORDING_TARGET_H_

@@ -97,11 +97,13 @@ inline Program StoreAllOnesShiftedRightThenSleep(Word amount) {
 }
 
 // A program that stores a word at `address` (a multiple of 4096 below
-// 0x8000'0000) and then sleeps.
-inline Program StoreWordThenSleep(std::uint64_t address) {
+// 0x8000'0000), `times` times over, and then sleeps.
+inline Program StoreWordThenSleep(std::uint64_t address, int times = 1) {
   Program program;
   program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
-  program.push_back(Sw(kZero, kT0, 0));
+  for (int count = 0; count < times; ++count) {
+    program.push_back(Sw(kZero, kT0, 0));
+  }
   AppendSleepForEver(program);
   return program;
 }

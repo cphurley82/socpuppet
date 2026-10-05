@@ -189,6 +189,16 @@ Each entry says:
 - **Kind**: build.
 - **When it lands**: link the library in the ordinary way.
 
+### A core that goes to sleep does not let the clock catch up first
+
+- **Where**: `src/sysc/core2sc_adapter.h`, `wait_until`, which is where `wfi` ends up.
+- **What is wrong**: a core runs ahead of the simulation's clock by up to a quantum (temporal decoupling). When it executes `wfi` it waits for an event straight away, without first waiting out the time it is ahead by. So the simulation's clock stays behind what the core has done, by up to a quantum, for as long as the core sleeps. A platform that stops while its CPU sleeps reports a time that depends on the quantum. TLM-2.0's guidance for a temporally decoupled process is to synchronize before it waits for anything but time.
+- **How to see it**: one core, a quantum of 50 µs, a program that writes once to a target which adds 3 µs to the access and then executes `wfi`. `sc_start()` returns with `sc_time_stamp()` at 0, not at 3 µs or later. socpuppet's scripted master is held to this by `WhenAScriptEndsAheadOfTheClock.TheClockCatchesUpBeforeTheRunEnds` in `tests/cpp/contracts/bus_master_test.cpp`. The CPU is not.
+- **What we do**: nothing. The effect is bounded by the quantum.
+- **Upstream fix**: synchronize the quantum keeper at the top of `wait_until`'s wait, after accounting for the cycles executed since the last sync.
+- **Kind**: bug, or at least a surprise.
+- **When it lands**: the test above can move into the contract that both masters pass.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

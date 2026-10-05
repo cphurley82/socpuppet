@@ -33,10 +33,15 @@ class DbtRiseCpu : public sc_core::sc_module {
              std::uint64_t reset_vector);
   ~DbtRiseCpu() override;
 
+  // SystemC's last chance to bind a port. By now we know whether anyone
+  // connected the inputs.
   void before_end_of_elaboration() override;
 
  private:
   struct Core;
+
+  // What an input left unconnected is bound to.
+  sc_core::sc_signal<bool> tied_low_{"tied_low"};
   std::unique_ptr<Core> core_;
 };
 

@@ -99,6 +99,20 @@ class Platform {
     bound_.insert(to.object);
   }
 
+  // Sets the global quantum: how far a bus master may run ahead of the
+  // simulation's clock before it has to let the clock catch up. That
+  // running ahead is called temporal decoupling, and it is where a
+  // simulation's speed comes from: a CPU model executes thousands of
+  // instructions in one go, without handing control back after each. The
+  // price is that others see what it did up to a quantum late.
+  //
+  // Zero, the default, means no running ahead at all. SystemC keeps one
+  // quantum for the whole process. Call before Elaborate(); a change during
+  // a run takes effect at each master's next sync.
+  void SetQuantum(const sc_core::sc_time& quantum) {
+    tlm::tlm_global_quantum::instance().set(quantum);
+  }
+
   // Finishes construction: checks the wiring, then has SystemC complete its
   // elaboration (resolving every binding) and get ready to simulate, without
   // running any process yet. After this, debug accesses work and the

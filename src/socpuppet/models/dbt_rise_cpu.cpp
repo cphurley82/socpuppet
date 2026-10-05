@@ -54,11 +54,10 @@ struct DbtRiseCpu::Core {
 
     complex_.clk_i.bind(clock_period_);
     complex_.rst_i.bind(cpu_.reset);
-    for (auto& interrupt : complex_.clint_irq_i) interrupt.bind(tied_low_);
+    for (auto& interrupt : complex_.clint_irq_i) {
+      interrupt.bind(cpu_.tied_low_);
+    }
   }
-
-  // What an input left unconnected is bound to.
-  sc_core::sc_signal<bool>& TiedLow() { return tied_low_; }
 
  private:
   // The two sockets of core_complex have a bus width of zero, SCC's mark
@@ -75,7 +74,6 @@ struct DbtRiseCpu::Core {
   // the clock Zephyr's boards for QEMU are told they have.
   sc_core::sc_signal<sc_core::sc_time> clock_period_{
       "clock_period", sc_core::sc_time(100, sc_core::SC_NS)};
-  sc_core::sc_signal<bool> tied_low_{"tied_low"};
   FromCore from_fetch_{"from_fetch"};
   FromCore from_data_{"from_data"};
   // Its settings are CCI parameters, which need a broker to exist first.
@@ -91,7 +89,7 @@ DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
 DbtRiseCpu::~DbtRiseCpu() = default;
 
 void DbtRiseCpu::before_end_of_elaboration() {
-  if (reset.size() == 0) reset.bind(core_->TiedLow());
+  if (reset.size() == 0) reset.bind(tied_low_);
 }
 
 }  // namespace socpuppet

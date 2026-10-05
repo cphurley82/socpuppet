@@ -20,6 +20,10 @@
 enum class Behavior {
   // Write once to the probe, and then have nothing left to do.
   kWriteToTheProbe,
+  // The same, twice, with nothing in between.
+  kWriteToTheProbeTwice,
+  // And four times.
+  kWriteToTheProbeFourTimes,
 };
 
 // What every bus master must do, whether it is a CPU model running a
@@ -54,6 +58,11 @@ class BusMasterContract : public ::testing::Test {
     Behavior behavior;
     // What drives the master's reset input. Left unconnected if empty.
     Drive reset = nullptr;
+    // How long the probe says each access to it takes.
+    sc_core::sc_time probe_latency = sc_core::SC_ZERO_TIME;
+    // The global quantum: how far a master may run ahead of the
+    // simulation's clock before it must let the clock catch up.
+    sc_core::sc_time quantum = sc_core::SC_ZERO_TIME;
   };
 
   // Builds the platform: the master at "cpu", with a RAM and the probe
@@ -61,8 +70,9 @@ class BusMasterContract : public ::testing::Test {
   void Build(const Scenario& scenario) {
     const Drive& reset = scenario.reset;
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    registry.Add("probe", [this](const char* name, const socpuppet::Config&) {
-      auto module = std::make_unique<RecordingTarget>(name, probed_);
+    registry.Add("probe", [this, latency = scenario.probe_latency](
+                              const char* name, const socpuppet::Config&) {
+      auto module = std::make_unique<RecordingTarget>(name, probed_, latency);
       std::vector<socpuppet::Port> ports{
           socpuppet::TargetPort("socket", module->socket)};
       return socpuppet::Instance{.module = std::move(module),
@@ -77,6 +87,7 @@ class BusMasterContract : public ::testing::Test {
                                               .ports = std::move(ports)};
                  });
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
+    platform_->SetQuantum(scenario.quantum);
     platform_->Add("cpu", Rig::Implementation(), Rig::Config());
     platform_->Add("bus", "router",
                    {{"outputs", 2},
@@ -165,10 +176,81 @@ TYPED_TEST_P(BusMasterContract, AMasterWithNothingLeftToDoLetsTheRunEnd) {
   EXPECT_THAT(this->probed_, ::testing::SizeIs(1));
 }
 
-REGISTER_TYPED_TEST_SUITE_P(BusMasterContract,
-                            WhileResetIsHighTheMasterWaitsAndThenStarts,
-                            WhenResetIsRaisedAgainTheMasterStartsOver,
-                            WithNothingConnectedToItsInputsTheMasterRuns,
-                            AMasterWithNothingLeftToDoLetsTheRunEnd);
+TYPED_TEST_P(BusMasterContract, TimeATargetAddsDelaysTheMastersNextAccess) {
+  const sc_core::sc_time latency = this->Microseconds(3);
+  this->Build(
+      {.behavior = Behavior::kWriteToTheProbeTwice, .probe_latency = latency});
+
+  this->RunToTheEnd();
+
+  ASSERT_THAT(this->probed_, ::testing::SizeIs(2));
+  const RecordedAccess& first = this->probed_.front();
+  const RecordedAccess& second = this->probed_.back();
+  EXPECT_GE(second.Time(), first.Time() + latency);
+}
+
+TYPED_TEST_P(BusMasterContract, WithNoQuantumEveryAccessArrivesWithNoDelay) {
+  this->Build({.behavior = Behavior::kWriteToTheProbeFourTimes,
+               .probe_latency = this->Microseconds(3)});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_,
+              ::testing::Each(::testing::Field("delay", &RecordedAccess::delay,
+                                               sc_core::SC_ZERO_TIME)));
+}
+
+TYPED_TEST_P(BusMasterContract,
+             WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat) {
+  const sc_core::sc_time quantum = this->Microseconds(5);
+  this->Build({.behavior = Behavior::kWriteToTheProbeFourTimes,
+               .probe_latency = this->Microseconds(3),
+               .quantum = quantum});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_,
+              ::testing::Each(::testing::Field("delay", &RecordedAccess::delay,
+                                               ::testing::Le(quantum))));
+  EXPECT_THAT(this->probed_, ::testing::Contains(::testing::Field(
+                                 "delay", &RecordedAccess::delay,
+                                 ::testing::Gt(sc_core::SC_ZERO_TIME))));
+}
+
+TYPED_TEST_P(
+    BusMasterContract,
+    WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead) {
+  // Two accesses of 3 us each put the master 6 us ahead, inside a quantum
+  // of 50 us. Reset comes while the clock is still catching up.
+  const sc_core::sc_time raised_at = this->Microseconds(2);
+  const sc_core::sc_time released_at = this->Microseconds(4);
+  this->Build({.behavior = Behavior::kWriteToTheProbeTwice,
+               .reset =
+                   [&](LineDriver& reset) {
+                     reset.WaitFor(raised_at);
+                     reset.Set(true);
+                     reset.WaitFor(released_at - raised_at);
+                     reset.Set(false);
+                   },
+               .probe_latency = this->Microseconds(3),
+               .quantum = this->Microseconds(50)});
+
+  this->RunToTheEnd();
+
+  ASSERT_THAT(this->probed_, ::testing::SizeIs(4));
+  const RecordedAccess& first_after_reset = this->probed_[2];
+  EXPECT_GE(first_after_reset.kernel_time, released_at);
+  EXPECT_LT(first_after_reset.delay, this->Microseconds(3));
+}
+
+REGISTER_TYPED_TEST_SUITE_P(
+    BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts,
+    WhenResetIsRaisedAgainTheMasterStartsOver,
+    WithNothingConnectedToItsInputsTheMasterRuns,
+    AMasterWithNothingLeftToDoLetsTheRunEnd,
+    TimeATargetAddsDelaysTheMastersNextAccess,
+    WithNoQuantumEveryAccessArrivesWithNoDelay,
+    WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat,
+    WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead);
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_MASTER_CONTRACT_H_

@@ -12,6 +12,7 @@
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_initiator_socket.h>
+#include <tlm_utils/tlm_quantumkeeper.h>
 
 #include "socpuppet/core/script.h"
 #include "socpuppet/platform/failure.h"
@@ -65,6 +66,7 @@ class ScriptedBusMaster : public sc_core::sc_module {
     wait(sc_core::SC_ZERO_TIME);
     for (;;) {
       while (reset->read()) wait(reset->negedge_event());
+      lead_.reset();
       script_.emplace(start_script_());
       Outcome outcome = Outcome::kCarryOn;
       while (outcome == Outcome::kCarryOn) {
@@ -75,8 +77,10 @@ class ScriptedBusMaster : public sc_core::sc_module {
       }
       if (outcome == Outcome::kFailed) return;
       if (outcome == Outcome::kCarryOn) {
-        // The script ran to its end. Only a reset starts it again.
-        wait(reset->posedge_event());
+        // The script ran to its end. Only a reset starts it again, and one
+        // may have come while the clock was catching up.
+        CatchUp();
+        if (!reset->read()) wait(reset->posedge_event());
       }
     }
   }
@@ -104,11 +108,13 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Wait& op, Script&) {
-    wait(ToScTime(op.duration), reset->posedge_event());
+    CatchUp();
+    if (!reset->read()) wait(ToScTime(op.duration), reset->posedge_event());
     return AfterAnOp();
   }
 
   Outcome CarryOut(const WaitIrq&, Script&) {
+    CatchUp();
     while (!irq->read() && !reset->read()) {
       wait(irq->posedge_event() | reset->posedge_event());
     }
@@ -133,11 +139,30 @@ class ScriptedBusMaster : public sc_core::sc_module {
     transaction.set_data_ptr(reinterpret_cast<unsigned char*>(&value));
     transaction.set_data_length(sizeof value);
     transaction.set_streaming_width(sizeof value);
-    sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
+    // The access is stamped with how far ahead of the simulation's clock we
+    // are, and the target adds however long the access takes.
+    sc_core::sc_time delay = lead_.get_local_time();
     socket->b_transport(transaction, delay);
+    lead_.set(delay);
+    if (lead_.need_sync()) CatchUp();
+  }
+
+  // Lets the simulation's clock catch up with us, unless a reset comes
+  // first. Skipped when we are not ahead: with no quantum every access asks
+  // for a sync, and a wait of zero would still hand control to everyone
+  // else for a delta cycle.
+  void CatchUp() {
+    if (lead_.get_local_time() == sc_core::SC_ZERO_TIME) return;
+    wait(lead_.get_local_time(), reset->posedge_event());
+    lead_.reset();
   }
 
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
+  // How far ahead of the simulation's clock the master has run. Time that
+  // targets add to its accesses collects here, and the master only stops
+  // to let the clock catch up once it is a whole quantum ahead (temporal
+  // decoupling), or before it waits for something.
+  tlm_utils::tlm_quantumkeeper lead_;
   std::function<Script()> start_script_;
   // The script being played. It is kept here, and not as a local of Run(),
   // because SystemC never unwinds a thread's stack: when a simulation ends

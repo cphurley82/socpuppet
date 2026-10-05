@@ -2,9 +2,12 @@
 #include <cstdint>
 #include <span>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <systemc>
 
 #include "socpuppet/core/script.h"
+#include "socpuppet/core/time.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
@@ -28,6 +31,19 @@ struct ScriptedRig {
           co_await socpuppet::Write32(Contract::kProbeBase, 0);
         });
         break;
+      case Behavior::kWriteToTheProbeTwice:
+        master.SetScript([]() -> socpuppet::Script {
+          co_await socpuppet::Write32(Contract::kProbeBase, 0);
+          co_await socpuppet::Write32(Contract::kProbeBase, 0);
+        });
+        break;
+      case Behavior::kWriteToTheProbeFourTimes:
+        master.SetScript([]() -> socpuppet::Script {
+          for (int count = 0; count < 4; ++count) {
+            co_await socpuppet::Write32(Contract::kProbeBase, 0);
+          }
+        });
+        break;
     }
   }
 };
@@ -47,6 +63,12 @@ struct DbtRiseRig {
       case Behavior::kWriteToTheProbe:
         program = riscv::StoreWordThenSleep(Contract::kProbeBase);
         break;
+      case Behavior::kWriteToTheProbeTwice:
+        program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/2);
+        break;
+      case Behavior::kWriteToTheProbeFourTimes:
+        program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/4);
+        break;
     }
     platform.DebugWrite("cpu.socket", Contract::kProgramBase,
                         std::as_bytes(std::span{program}));
@@ -59,3 +81,41 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Scripted, BusMasterContract,
                                ::testing::Types<ScriptedRig>);
 INSTANTIATE_TYPED_TEST_SUITE_P(DbtRise, BusMasterContract,
                                ::testing::Types<DbtRiseRig>);
+
+// What follows is the scripted master's alone. A CPU model keeps its own
+// time, and DBT-RISE's goes to sleep without letting the clock catch up
+// (see docs/upstream.md).
+class WhenAScriptEndsAheadOfTheClock : public BusMasterContract<ScriptedRig> {};
+
+TEST_F(WhenAScriptEndsAheadOfTheClock, TheClockCatchesUpBeforeTheRunEnds) {
+  const sc_core::sc_time latency = Microseconds(3);
+  Build({.behavior = Behavior::kWriteToTheProbe,
+         .probe_latency = latency,
+         .quantum = Microseconds(50)});
+
+  platform_->Run();
+
+  EXPECT_EQ(platform_->Time(), latency);
+}
+
+class WhenAScriptWaitsWhileAheadOfTheClock
+    : public BusMasterContract<ScriptedRig> {};
+
+TEST_F(WhenAScriptWaitsWhileAheadOfTheClock,
+       TheWaitStartsFromWhereTheScriptHadGotTo) {
+  const sc_core::sc_time latency = Microseconds(3);
+  Build({.behavior = Behavior::kWriteToTheProbe,
+         .probe_latency = latency,
+         .quantum = Microseconds(50)});
+  platform_->ModuleAt<socpuppet::ScriptedBusMaster>("cpu").SetScript(
+      []() -> socpuppet::Script {
+        co_await socpuppet::Write32(kProbeBase, 0);
+        co_await socpuppet::Wait{socpuppet::Picoseconds{7'000'000}};
+        co_await socpuppet::Write32(kProbeBase, 0);
+      });
+
+  RunToTheEnd();
+
+  ASSERT_THAT(probed_, ::testing::SizeIs(2));
+  EXPECT_EQ(probed_.back().Time(), latency + Microseconds(7));
+}
