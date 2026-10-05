@@ -1,6 +1,7 @@
 #ifndef TESTS_CPP_SUPPORT_RISCV_PROGRAM_H_
 #define TESTS_CPP_SUPPORT_RISCV_PROGRAM_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -76,10 +77,22 @@ constexpr Word Jal(Word rd, std::int32_t offset) {
 constexpr Word Csrs(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (2 << 12) | 0x73;
 }
+// Write rs1 to a control and status register.
+constexpr Word Csrw(Word csr, Word rs1) {
+  return (csr << 20) | (rs1 << 15) | (1 << 12) | 0x73;
+}
 // The control and status register that says which interrupts are enabled,
-// and its bit for the machine external interrupt.
+// and its bits for the machine timer and machine external interrupts.
 inline constexpr Word kMie = 0x304;
+inline constexpr Word kMachineTimerInterrupt = 7;
 inline constexpr Word kMachineExternalInterrupt = 11;
+// The status register, and its bit that switches interrupts on as a whole.
+inline constexpr Word kMstatus = 0x300;
+inline constexpr Word kInterruptsOn = 3;
+// The register that holds the address a trap jumps to.
+inline constexpr Word kMtvec = 0x305;
+// Return from a trap handler to where the trap was taken.
+inline constexpr Word kMret = 0x3020'0073;
 // Wait for an interrupt.
 inline constexpr Word kWfi = 0x1050'0073;
 
@@ -158,6 +171,36 @@ inline Program CountDownThenSleep(Word iterations) {
   program.push_back(Addi(kT2, kT2, -1));
   program.push_back(Bne(kT2, kZero, -4));
   AppendSleepForEver(program);
+  return program;
+}
+
+// A program that takes interrupts. It enables the one numbered
+// `interrupt` (a bit of the mie register), switches interrupts on, and
+// sleeps. Its handler quiets the device at `device` (an address as for
+// StoreWordThenSleep) by writing to it, and returns to sleep.
+inline Program HandleInterruptsByWritingTo(std::uint64_t device,
+                                           Word interrupt) {
+  Program program;
+  // t2 = the address of the handler, worked out from where we are now.
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, interrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Lui(kT0, static_cast<Word>(device >> 12)));
+  program.push_back(Sw(kZero, kT0, 0));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
   return program;
 }
 

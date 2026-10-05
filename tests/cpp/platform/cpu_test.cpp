@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <stdexcept>
@@ -16,6 +17,7 @@
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
 #include "tests/cpp/support/counting_probe.h"
+#include "tests/cpp/support/interrupt_source.h"
 #include "tests/cpp/support/riscv_program.h"
 
 using ::testing::AllOf;
@@ -200,4 +202,74 @@ TEST(WhenA64BitAndA32BitCpuShareASimulation, EachComputesInItsOwnWordSize) {
   // What is left of 64 ones, and of 32, after a shift right by 28.
   EXPECT_EQ(std::to_integer<int>(wide), 0b1111'1111);
   EXPECT_EQ(std::to_integer<int>(narrow), 0b0000'1111);
+}
+
+// A platform with a CPU, a RAM for its program, and a device that
+// interrupts it on the line `cpu_input` ("irq" or "timer_irq").
+struct CpuPlatformWithAnInterruptSource {
+  static constexpr std::uint64_t kRamBase = 0x8000'0000;
+  static constexpr std::uint64_t kDeviceBase = 0x1000'0000;
+
+  CpuPlatformWithAnInterruptSource(
+      const std::string& cpu_input,
+      const std::function<void(InterruptSource&)>& interrupts)
+      : platform{WithAnInterruptSource(interrupts)} {
+    platform.Add("cpu", "dbt_rise_cpu",
+                 {{"xlen", 64}, {"reset_vector", kRamBase}});
+    platform.Add("bus", "router",
+                 {{"outputs", 2},
+                  {"out0.base", kRamBase},
+                  {"out0.size", 0x1000},
+                  {"out1.base", kDeviceBase},
+                  {"out1.size", 0x100}});
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    platform.Add("device", "interrupt_source");
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("bus.out1", "device.socket");
+    platform.Bind("device.line", "cpu." + cpu_input);
+    platform.Elaborate();
+  }
+
+  void Load(const riscv::Program& program) {
+    platform.DebugWrite("cpu.socket", kRamBase,
+                        std::as_bytes(std::span{program}));
+  }
+
+  int TimesTheHandlerRan() {
+    return platform.ModuleAt<InterruptSource>("device").TimesQuieted();
+  }
+
+  static socpuppet::Registry WithAnInterruptSource(
+      const std::function<void(InterruptSource&)>& interrupts) {
+    socpuppet::Registry registry = socpuppet::BuiltinComponents();
+    registry.Add("interrupt_source", [interrupts](const char* name,
+                                                  const socpuppet::Config&) {
+      auto module = std::make_unique<InterruptSource>(name, interrupts);
+      std::vector<socpuppet::Port> ports{
+          socpuppet::TargetPort("socket", module->socket),
+          socpuppet::WireSourcePort("line", module->line)};
+      return socpuppet::Instance{.module = std::move(module),
+                                 .ports = std::move(ports)};
+    });
+    return registry;
+  }
+
+  socpuppet::Platform platform;
+};
+
+TEST(WhenTheExternalInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
+  CpuPlatformWithAnInterruptSource with_device{
+      "irq", [](InterruptSource& device) {
+        device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+        device.Raise();
+      }};
+  with_device.Load(riscv::HandleInterruptsByWritingTo(
+      CpuPlatformWithAnInterruptSource::kDeviceBase,
+      riscv::kMachineExternalInterrupt));
+
+  // A dozen instructions before the interrupt and three after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
 }

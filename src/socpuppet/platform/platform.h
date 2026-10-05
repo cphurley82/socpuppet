@@ -193,6 +193,12 @@ class Platform {
   }
 
  private:
+  // A wire: one boolean line. A device may drive its line from more than
+  // one of its processes (when it is written to, say, and when its own
+  // timer runs out), which SystemC only allows of a signal that is told
+  // to expect it.
+  using Wire = sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS>;
+
   // A level of naming with no behavior of its own.
   struct Group : sc_core::sc_module {
     explicit Group(const sc_core::sc_module_name& name) : sc_module(name) {}
@@ -311,11 +317,10 @@ class Platform {
   // The signal a wire source drives, created the first time it is bound.
   // It is named after its driver: "reset_driver.line" drives
   // "reset_driver_line".
-  sc_core::sc_signal<bool>& WireDrivenBy(const Port& source,
-                                         const std::string& path) {
+  Wire& WireDrivenBy(const Port& source, const std::string& path) {
     auto& wire = wires_[source.object];
     if (!wire) {
-      wire = std::make_unique<sc_core::sc_signal<bool>>(FlatName(path).c_str());
+      wire = std::make_unique<Wire>(FlatName(path).c_str());
       dynamic_cast<sc_core::sc_out<bool>&>(*source.object).bind(*wire);
     }
     return *wire;
@@ -362,8 +367,7 @@ class Platform {
   // built inside them.
   std::map<std::string, std::unique_ptr<Group>> groups_;
   std::map<std::string, Instance> instances_;
-  std::map<const sc_core::sc_object*, std::unique_ptr<sc_core::sc_signal<bool>>>
-      wires_;
+  std::map<const sc_core::sc_object*, std::unique_ptr<Wire>> wires_;
   std::vector<std::unique_ptr<sc_core::sc_module>> tie_offs_;
   std::set<const sc_core::sc_object*> bound_;
   Trace trace_;
