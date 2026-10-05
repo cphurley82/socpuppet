@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Builds the firmware the ISS spike boots: Zephyr's hello_world sample for
-# the stock qemu_riscv64 and qemu_riscv32 boards.
+# Builds the firmware the tests boot: Zephyr's hello_world sample for the
+# stock qemu_riscv64 and qemu_riscv32 boards.
 #
-#   spikes/iss/firmware/build.sh [output directory]    (default: build/firmware)
+#   firmware/build.sh [output directory]    (default: build/firmware)
 #
 # For each board it leaves, in the output directory:
 #   hello_world_<board>.elf          the image, with symbols
@@ -67,7 +67,7 @@ if [[ ! -d ${toolchain} ]]; then
   )
 fi
 
-# Zephyr itself, at the release the spike is pinned to. hello_world on these
+# Zephyr itself, at the release socpuppet is pinned to. hello_world on these
 # boards needs none of Zephyr's external modules, so only the one
 # repository is fetched.
 zephyr=${out}/zephyr

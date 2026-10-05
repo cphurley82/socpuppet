@@ -44,7 +44,7 @@ inline void Load(socpuppet::Platform& platform, const std::string& board,
   Load(platform, board, std::as_bytes(std::span{program}));
 }
 
-// Where spikes/iss/firmware/build.sh leaves the image called `name`.
+// Where firmware/build.sh leaves the image called `name`.
 inline std::string FirmwarePath(const std::string& name) {
   return std::string(SPIKE_FIRMWARE_DIR) + "/" + name;
 }

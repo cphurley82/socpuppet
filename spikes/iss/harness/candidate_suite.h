@@ -123,7 +123,7 @@ inline void ZephyrHelloWorldPrintsItsGreeting(std::uint64_t xlen,
       FAIL() << image << " is missing.";
     }
     GTEST_SKIP() << image << " is missing. Build it with "
-                 << "spikes/iss/firmware/build.sh.";
+                 << "firmware/build.sh.";
   }
   SetQuantum(Milliseconds(1));
   socpuppet::Platform platform{Candidate::Components()};

@@ -21,8 +21,39 @@ jobs:
       - run: uv sync
       - run: uv run python tools/lint.py
 
+  firmware:
+    # The firmware images the tests boot: Zephyr samples, built once here
+    # with the Zephyr SDK and handed to the jobs that need them. An ELF image
+    # is the same file whatever machine the simulator runs on.
+    name: Firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache the images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/*.bin
+            build/firmware/*.elf
+            build/firmware/*.opcodes.txt
+          key: firmware-${{ hashFiles('firmware/**') }}
+      - name: Build the images
+        if: steps.images.outputs.cache-hit != 'true'
+        run: firmware/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware
+          path: |
+            build/firmware/*.bin
+            build/firmware/*.elf
+            build/firmware/*.opcodes.txt
+          if-no-files-found: error
+
   test:
     name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
+    needs: firmware
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -50,10 +81,18 @@ jobs:
         with:
           path: build/dev/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: build/firmware
       - run: uv sync
       - run: uv run cmake --preset dev
       - run: uv run cmake --build --preset dev
       - run: uv run ctest --preset dev
+        env:
+          # A missing firmware image fails its boot test instead of
+          # skipping it.
+          SOCPUPPET_REQUIRE_FIRMWARE: "1"
 
   tidy:
     # clang-tidy over our own C++, and each of our headers compiled on its
@@ -85,24 +124,17 @@ jobs:
     # draft CPU slot. See docs/iss-spike.md. QBox is built on its own, with
     # its own build system, and is not run here.
     name: ISS spike
+    needs: firmware
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
       - uses: astral-sh/setup-uv@v7
-      - name: Cache the firmware
-        id: firmware
-        uses: actions/cache@v6
+      - uses: actions/download-artifact@v8
         with:
-          path: |
-            build/firmware/*.bin
-            build/firmware/*.elf
-            build/firmware/*.opcodes.txt
-          key: firmware-${{ hashFiles('spikes/iss/firmware/**') }}
-      - name: Build the firmware
-        if: steps.firmware.outputs.cache-hit != 'true'
-        run: spikes/iss/firmware/build.sh
+          name: firmware
+          path: build/firmware
       - name: Cache fetched dependencies
         uses: actions/cache@v6
         with:
@@ -180,6 +212,7 @@ jobs:
     # into a fresh environment and runs the Python tests against it.
     # Nothing is published from here.
     name: Portable wheels (${{ matrix.os }})
+    needs: firmware
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -197,8 +230,19 @@ jobs:
       # cibuildwheel installed the wheels with pip, inside its own
       # environments. Install one the way a user would, with uv and with
       # pip, on this machine.
+      # This is also where an installed wheel boots real firmware.
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: build/firmware
       - run: tools/test_wheel.sh uv wheelhouse/*-cp313-*.whl
+        env:
+          SOCPUPPET_FIRMWARE_DIR: ${{ github.workspace }}/build/firmware
+          SOCPUPPET_REQUIRE_FIRMWARE: "1"
       - run: tools/test_wheel.sh pip wheelhouse/*-cp313-*.whl
+        env:
+          SOCPUPPET_FIRMWARE_DIR: ${{ github.workspace }}/build/firmware
+          SOCPUPPET_REQUIRE_FIRMWARE: "1"
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}

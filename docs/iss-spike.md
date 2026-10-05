@@ -308,7 +308,7 @@ What the spike adds to that picture is practical, not legal: QBox cannot be buil
 **Recommendation: 4.4.2 with SDK 1.0.1, which is what the spike used, moving to the next LTS when it lands.**
 
 - 4.4 is the current stable release. The current LTS is 3.7, and the next is planned for 4.6. M3b's question about MSI-X on RISC-V depends on recent interrupt-controller support, which argues against pinning the old LTS.
-- The minimal SDK with only the RISC-V toolchain is about 225 MB to download, and one toolchain builds for both word sizes. `spikes/iss/firmware/build.sh` fetches it and builds both images in about two minutes from nothing, and in seconds after that.
+- The minimal SDK with only the RISC-V toolchain is about 225 MB to download, and one toolchain builds for both word sizes. `firmware/build.sh` fetches it and builds both images in about two minutes from nothing, and in seconds after that.
 - ⚠️ Zephyr 4.4.2 does not configure outside a west workspace. (🎓 west is Zephyr's tool for managing the set of repositories it is built from.) Building with plain CMake fails on a file that only the west path generates. The script works around it by making its directory a workspace with Zephyr as the only repository.
 - The stock QEMU boards compile `hello_world` as `rv64imac_zicsr_zifencei` and `rv32imac_zicsr_zifencei`, with PMP on.
 

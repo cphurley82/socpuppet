@@ -33,7 +33,6 @@ The report, with what each candidate did and what is recommended, is [docs/iss-s
 | `harness/virt_board.h` | A board for a candidate to run on: router, RAM and a UART at the addresses of QEMU's RISC-V `virt` machine, so a stock Zephyr image runs without a board of our own. |
 | `harness/standin_uart.h` | 🎭 A stand-in for the NS16550 UART. It is always ready to transmit and keeps every byte for the test to read. |
 | `harness/rv_asm.h` | Just enough of an assembler to write the bare-metal test programs by hand. |
-| `firmware/build.sh` | Builds the firmware the candidates boot: Zephyr's `hello_world` for the stock `qemu_riscv64` and `qemu_riscv32` boards. |
 | `dbt_rise/`, `riscv_vp/`, `inhouse/` | One candidate each: its wrapper for the slot, and the test program that runs the suite on it. |
 | `qbox/` | QBox, which is built on its own in a container: the recipe, a standalone platform, and the integration behind the slot. |
 | `patches/` | The source patches each candidate needed, with the reason for each. |
@@ -41,7 +40,7 @@ The report, with what each candidate did and what is recommended, is [docs/iss-s
 ## The firmware
 
 ```sh
-spikes/iss/firmware/build.sh             # into build/firmware
+firmware/build.sh             # into build/firmware
 ```
 
 The first run downloads the Zephyr SDK's RISC-V toolchain (about 225 MB) and Zephyr itself into `build/firmware`, and nothing is installed anywhere else. Later runs take seconds. Besides each image it writes a count of the instructions the image uses, which says how much of the instruction set a CPU model needs before this firmware runs on it.

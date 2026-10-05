@@ -87,6 +87,18 @@ uv run ctest --preset spike              # only the tests labelled `spike`
 
 The `spike` preset is the `dev` build plus `spikes/`, in the same build tree. The everyday presets leave it out, and so do coverage and the wheel. What each spike is for is in its own README, for example [spikes/iss](../spikes/iss/README.md).
 
+## Firmware
+
+Some tests boot real firmware: Zephyr samples, built with the Zephyr SDK.
+
+```sh
+firmware/build.sh        # into build/firmware
+```
+
+- The script downloads the SDK's RISC-V toolchain (about 225 MB) and Zephyr 4.4.2 into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
+- `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
+
 ## The package
 
 ```sh
