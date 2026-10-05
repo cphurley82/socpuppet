@@ -51,9 +51,13 @@ socpuppet::Script Boot() {
 There is no CPU behind the curtain:
 
 - **No instructions, registers or program counter.** Nothing is fetched or executed.
-- **No timing of its own.** Operations take no time unless the script waits.
+- **No timing of its own.** An operation takes as long as the device it reaches says it takes, and no longer. Most devices here say "no time at all", so time only passes when the script waits.
 - **One interrupt line**, level-sensitive, with no controller, priorities or vectors.
 - **32-bit accesses only**, little-endian.
 - **No DMI.** It makes a transaction for every access, where a CPU model would take a fast path.
 
-🚧 A real CPU (an instruction-set simulator) arrives in milestone M3.
+## What it shares with a real CPU
+
+The stand-in fills the same slot as the real CPU, `sp.DbtRiseCpu`, and is held to the same contract (`tests/cpp/contracts/bus_master_contract.h`): how reset holds and restarts it, how it waits for its interrupt, and how it keeps time.
+
+🎓 That last one is temporal decoupling. A master may run ahead of simulated time by up to the platform's `quantum`, and only then lets everything else catch up. When a device says an access took 3 µs, the stand-in adds that to how far ahead it is, and stops to let the clock catch up once it is a whole quantum ahead, before it waits for something, and when its script ends.
