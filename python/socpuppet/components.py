@@ -379,7 +379,7 @@ class ScriptedBusMaster(Component):
     """
 
     implementation = "scripted_bus_master"
-    ports = ("socket", "irq", "reset")
+    ports = ("socket", "irq", "timer_irq", "reset")
     is_bus_master = True
 
     def __init__(self, script: Script | None = None) -> None:

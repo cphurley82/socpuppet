@@ -37,6 +37,10 @@ class ScriptedBusMaster : public sc_core::sc_module {
  public:
   tlm_utils::simple_initiator_socket<ScriptedBusMaster> socket{"socket"};
   sc_core::sc_in<bool> irq{"irq"};
+  // Where a CPU has its timer interrupt. A script has no use for one, and
+  // takes no notice of it. The input is here so that the stand-in fits
+  // wherever a CPU does.
+  sc_core::sc_in<bool> timer_irq{"timer_irq"};
   sc_core::sc_in<bool> reset{"reset"};
 
   explicit ScriptedBusMaster(const sc_core::sc_module_name& name)
@@ -53,6 +57,7 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   void before_end_of_elaboration() override {
     if (irq.size() == 0) irq.bind(tied_low_);
+    if (timer_irq.size() == 0) timer_irq.bind(tied_low_);
     if (reset.size() == 0) reset.bind(tied_low_);
   }
 

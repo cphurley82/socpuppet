@@ -48,14 +48,16 @@ concept LinkEndpointSlot =
     };
 
 // A CPU, or whatever stands in for one: something that starts bus accesses
-// through one TLM initiator socket, and has an interrupt input and a reset
-// input. How it is built is its own business: a CPU model needs to know
-// its word size, a scripted stand-in does not. How it must behave is the
-// bus-master contract (tests/cpp/contracts/bus_master_contract.h).
+// through one TLM initiator socket, and has inputs for the external
+// interrupt, the timer interrupt and reset. How it is built is its own
+// business: a CPU model needs to know its word size, a scripted stand-in does
+// not. How it must behave is the bus-master contract
+// (tests/cpp/contracts/bus_master_contract.h).
 template <typename T>
 concept CpuSlot = requires(T cpu) {
   { cpu.socket } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
   { cpu.irq } -> std::convertible_to<sc_core::sc_in<bool>&>;
+  { cpu.timer_irq } -> std::convertible_to<sc_core::sc_in<bool>&>;
   { cpu.reset } -> std::convertible_to<sc_core::sc_in<bool>&>;
 };
 

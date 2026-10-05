@@ -37,7 +37,7 @@ enum class Behavior {
 // A rig says how to make the master do things:
 //   static const char* Implementation();   its name in the registry. The
 //       master must have a bus port called "socket" and a wire input
-//       inputs called "reset" and "irq".
+//       inputs called "reset", "irq" and "timer_irq".
 //   static socpuppet::Config Config();     what it is created with
 //   static void Load(socpuppet::Platform&, Behavior);
 //       gives the master at "cpu" something to run. Programs go at
@@ -62,6 +62,8 @@ class BusMasterContract : public ::testing::Test {
     Drive reset = nullptr;
     // What drives its interrupt input, likewise.
     Drive irq = nullptr;
+    // And its timer interrupt input.
+    Drive timer_irq = nullptr;
     // How long the probe says each access to it takes.
     sc_core::sc_time probe_latency = sc_core::SC_ZERO_TIME;
     // The global quantum: how far a master may run ahead of the
@@ -83,7 +85,8 @@ class BusMasterContract : public ::testing::Test {
     });
     for (const auto& [implementation, body] :
          {std::pair{"reset_driver", scenario.reset},
-          std::pair{"irq_driver", scenario.irq}}) {
+          std::pair{"irq_driver", scenario.irq},
+          std::pair{"timer_irq_driver", scenario.timer_irq}}) {
       registry.Add(implementation,
                    [body](const char* name, const socpuppet::Config&) {
                      auto module = std::make_unique<LineDriver>(name, body);
@@ -114,6 +117,10 @@ class BusMasterContract : public ::testing::Test {
     if (scenario.irq) {
       platform_->Add("irq_driver", "irq_driver");
       platform_->Bind("irq_driver.line", "cpu.irq");
+    }
+    if (scenario.timer_irq) {
+      platform_->Add("timer_irq_driver", "timer_irq_driver");
+      platform_->Bind("timer_irq_driver.line", "cpu.timer_irq");
     }
     platform_->Elaborate();
     Rig::Load(*platform_, scenario.behavior);
@@ -270,6 +277,21 @@ TYPED_TEST_P(BusMasterContract,
                                  ::testing::Ge(raised_at))));
 }
 
+TYPED_TEST_P(BusMasterContract,
+             WithATimerConnectedToItsTimerInterruptInputTheMasterRuns) {
+  // A master that takes no notice of the timer still has the input, so
+  // that it fits wherever a CPU does.
+  this->Build({.behavior = Behavior::kWriteToTheProbe,
+               .timer_irq = [&](LineDriver& timer) {
+                 timer.WaitFor(this->Microseconds(5));
+                 timer.Set(true);
+               }});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_, ::testing::SizeIs(1));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts,
     WhenResetIsRaisedAgainTheMasterStartsOver,
@@ -279,6 +301,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     WithNoQuantumEveryAccessArrivesWithNoDelay,
     WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat,
     WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead,
-    AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises);
+    AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises,
+    WithATimerConnectedToItsTimerInterruptInputTheMasterRuns);
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_MASTER_CONTRACT_H_

@@ -88,6 +88,7 @@ inline Registry BuiltinComponents() {
     auto module = std::make_unique<ScriptedBusMaster>(name);
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
                             WireSinkPort("irq", module->irq),
+                            WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
