@@ -48,6 +48,28 @@ build-dir = "build/wheel-{wheel_tag}"
 [tool.scikit-build.cmake.define]
 SOCPUPPET_BUILD_TESTS = false
 
+[tool.cibuildwheel]
+# The portable wheels, one per Python version and platform: what
+# `uv add socpuppet` will fetch once they are published. CI builds them
+# (see .github/workflows/ci.yml). Each is installed into a fresh environment
+# and tested there, away from the source tree.
+build = ["cp312-*", "cp313-*", "cp314-*"]
+# manylinux covers the glibc distributions. musl (Alpine) is not built yet.
+skip = ["*-musllinux_*"]
+test-sources = ["tests/python"]
+test-requires = ["pytest"]
+test-command = "pytest tests/python"
+
+[tool.cibuildwheel.linux]
+# SCC's trace writer needs zlib's headers. The library itself is part of
+# the manylinux baseline, so the wheel may depend on it.
+before-all = "dnf install -y zlib-devel"
+
+[tool.cibuildwheel.macos]
+# The oldest macOS the wheel runs on. C++20's std::format for floating-point
+# numbers, which the code uses, arrived in the system's C++ library with 13.3.
+environment = { MACOSX_DEPLOYMENT_TARGET = "13.3" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 # The dev build drops the native extension into python/socpuppet/, so the

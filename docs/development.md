@@ -98,6 +98,16 @@ tools/test_wheel.sh pip dist/*.whl
 
 The wheel is self-contained: SystemC, SCC and their dependencies are linked statically into the one extension module.
 
+That wheel is for your own machine. The ones a user will install are built in CI by [cibuildwheel](https://cibuildwheel.pypa.io), as configured under `[tool.cibuildwheel]` in `pyproject.toml`: one per Python version, for Linux on Intel and Arm and for macOS on Apple silicon. 🎓 A Linux wheel has to run on many distributions, so it is built inside a deliberately old one (a "manylinux" container) and then checked to depend on nothing a distribution might lack. To try the Linux build locally you need Docker:
+
+```sh
+uvx cibuildwheel --only cp313-manylinux_aarch64   # or cp313-manylinux_x86_64
+```
+
+- ⚠️ cibuildwheel copies the whole directory into its container, `build/` included. Run it from a clean checkout, or expect a long wait.
+- The macOS wheels need macOS 13.3 or newer. The code uses C++20's `std::format` for floating-point numbers, which the system's C++ library has had since that release.
+- 🚧 Nothing is published yet. CI keeps the wheels as artifacts of each run.
+
 ## How changes are made
 
 Test-first, following `.claude/skills/tdd`: state the behavior as "in scenario X, Y happens", write one test for it, watch it fail, then write just enough code. Tests are named for the scenario and the outcome, and drive real blocks through their public interfaces.

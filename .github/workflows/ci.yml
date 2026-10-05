@@ -174,22 +174,35 @@ jobs:
       - run: uv run ctest --preset asan
 
   wheel:
-    name: Wheel, installed with uv and pip (${{ matrix.os }})
+    # The wheels a user will install, built by cibuildwheel as configured in
+    # pyproject.toml: one per Python version, for Linux on Intel and Arm
+    # (manylinux) and for macOS on Apple silicon. cibuildwheel installs each
+    # into a fresh environment and runs the Python tests against it.
+    # Nothing is published from here.
+    name: Portable wheels (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
     steps:
       - uses: actions/checkout@v7
-      - name: Install system packages
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
       - uses: astral-sh/setup-uv@v7
-      - run: uv build --wheel
-      - run: uv run --no-project python tools/check_wheel.py dist/*.whl
-      - run: tools/test_wheel.sh uv dist/*.whl
-      - run: tools/test_wheel.sh pip dist/*.whl
+      - uses: pypa/cibuildwheel@v4.2.1
+      - name: Check what each wheel holds
+        run: |
+          for wheel in wheelhouse/*.whl; do
+            uv run --no-project python tools/check_wheel.py "$wheel"
+          done
+      # cibuildwheel installed the wheels with pip, inside its own
+      # environments. Install one the way a user would, with uv and with
+      # pip, on this machine.
+      - run: tools/test_wheel.sh uv wheelhouse/*-cp313-*.whl
+      - run: tools/test_wheel.sh pip wheelhouse/*-cp313-*.whl
+      - uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
 
   devcontainer:
     name: Build and test (devcontainer)
