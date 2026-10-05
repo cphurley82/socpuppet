@@ -15,6 +15,7 @@
 
 #include "socpuppet/bindings/python_executor.h"
 #include "socpuppet/bindings/python_script.h"
+#include "socpuppet/core/elf_image.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/scripted_bus_master.h"
@@ -80,6 +81,20 @@ PYBIND11_MODULE(_core, m) {
           py::module_::import("socpuppet.errors").attr("ExpectationFailed");
       PyErr_SetString(type.ptr(), expectation.what());
     }
+  });
+
+  // An ELF image as (word size in bits, entry point, segments), where each
+  // segment is (physical address, bytes).
+  m.def("read_elf", [](const std::string& path) {
+    const socpuppet::ElfImage image = socpuppet::ReadElfImage(path);
+    py::list segments;
+    for (const socpuppet::ElfImage::Segment& each : image.segments) {
+      segments.append(py::make_tuple(
+          each.address,
+          py::bytes(reinterpret_cast<const char*>(each.bytes.data()),
+                    each.bytes.size())));
+    }
+    return py::make_tuple(image.xlen, image.entry, segments);
   });
 
   // implementations() and Platform.ports() exist so the Python catalogue can

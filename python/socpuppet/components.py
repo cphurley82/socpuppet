@@ -58,6 +58,17 @@ class Component(ABC):
         """
         return
 
+    def refuse_image(
+        self, *, image: str, xlen: int, entry: int, path: str
+    ) -> None:
+        """Raise if a program image loaded through this component cannot run.
+
+        `image` is the file, built for a word size of `xlen` bits and
+        starting at `entry`. `path` is where this component is placed. Most
+        components run no program and have no objection.
+        """
+        return
+
     def routes(self, port: str) -> Iterable[tuple[str, int]]:
         """Where an access arriving at `port` can go next.
 
@@ -88,6 +99,26 @@ class DbtRiseCpu(Component):
 
     def __init__(self, *, xlen: int, reset_vector: int) -> None:
         super().__init__(xlen=xlen, reset_vector=reset_vector)
+        self.xlen = xlen
+        self.reset_vector = reset_vector
+
+    @override
+    def refuse_image(
+        self, *, image: str, xlen: int, entry: int, path: str
+    ) -> None:
+        if xlen != self.xlen:
+            raise ValueError(
+                f"{image} is a {xlen}-bit image, and {path} is a "
+                f"{self.xlen}-bit CPU. Build the firmware for a "
+                f"{self.xlen}-bit core, or describe the CPU with xlen={xlen}."
+            )
+        if entry != self.reset_vector:
+            raise ValueError(
+                f"{image} starts at {entry:#x}, and {path} starts executing "
+                f"at its reset vector, {self.reset_vector:#x}. Link the "
+                "firmware to start there, or describe the CPU with "
+                f"reset_vector={entry:#x}."
+            )
 
 
 class Memory(Component):

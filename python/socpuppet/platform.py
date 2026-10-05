@@ -308,6 +308,47 @@ class Platform:
         if not self.native().debug_write(view.path, address, data):
             raise self._nothing_at(address, len(data), view)
 
+    def load_elf(
+        self, path: str | os.PathLike[str], via: Port | None = None
+    ) -> None:
+        """Put the program in the ELF file at `path` into memory.
+
+        🎓 An ELF file is what a linker produces: the program's bytes in
+        segments, each with the address it belongs at. Loading writes each
+        segment to its address, as `poke` would. `via` works as in `peek32`.
+
+        The CPU the image is loaded through may refuse it. A CPU runs only
+        programs built for its own word size, and it starts executing at a
+        fixed address, its reset vector, so an image that starts anywhere
+        else would never run.
+        """
+        view = self._view(via)
+        self.native()  # refuse if there is no memory to load into yet
+        file = os.fspath(path)
+        # The reader cannot tell a missing file from one that is not ELF.
+        if not os.path.exists(file):
+            raise FileNotFoundError(
+                f"There is no file at {file}. Build the firmware first, or "
+                "check the path."
+            )
+        from socpuppet import _core  # the simulator is loaded by now
+
+        xlen, entry, segments = _core.read_elf(file)
+        view.placed.component.refuse_image(
+            image=file, xlen=xlen, entry=entry, path=view.placed.path
+        )
+        for address, data in segments:
+            try:
+                self.poke(address, data, view)
+            except LookupError as nothing_there:
+                raise LookupError(
+                    f"{file} has {len(data)} bytes to load at {address:#x}, "
+                    f"and no memory takes all of them, as seen from "
+                    f"{view.path}. Check the firmware's memory layout "
+                    "against the platform's: where the RAM starts and how "
+                    "big it is."
+                ) from nothing_there
+
     def devicetree(self, via: Port | None = None) -> str:
         """The devicetree source for what a bus master can reach.
 

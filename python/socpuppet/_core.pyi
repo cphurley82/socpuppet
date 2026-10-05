@@ -8,6 +8,9 @@ from socpuppet.components import Script
 
 def implementations() -> list[str]: ...
 
+# (word size in bits, entry point, [(physical address, bytes), ...])
+def read_elf(path: str) -> tuple[int, int, list[tuple[int, bytes]]]: ...
+
 class Platform:
     def __init__(self, color_log: bool) -> None: ...
     def add(
