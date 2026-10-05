@@ -12,6 +12,7 @@ from socpuppet import devicetree
 from socpuppet.components import (
     Component,
     LinkModel,
+    Ns16550,
     Router,
 )
 from socpuppet.trace import TraceRecord, wants_color
@@ -61,7 +62,7 @@ class PlacedRouter(Placed):
         target sees addresses as offsets from `base`.
         """
         self._platform.refuse_if_built("map a range")
-        size = target.placed.component.parameters.get("size")
+        size = target.placed.component.mapped_size
         if size is None:
             raise ValueError(
                 f"Cannot map {target.path}: only a component with a size of "
@@ -69,6 +70,19 @@ class PlacedRouter(Placed):
             )
         output = self.component.add_output(base, size, label=target.path)
         self._platform.connect(Port(self, output), target)
+
+
+class PlacedUart(Placed):
+    """A UART at its place in a platform."""
+
+    @property
+    def output(self) -> str:
+        """Everything the firmware has printed through the UART so far.
+
+        A byte that is not text comes out as the replacement character, �.
+        """
+        native = self._platform.native()
+        return native.uart_output(self.path).decode(errors="replace")
 
 
 class Link:
@@ -107,6 +121,8 @@ class Group:
     @overload
     def add(self, name: str, component: Router) -> PlacedRouter: ...
     @overload
+    def add(self, name: str, component: Ns16550) -> PlacedUart: ...
+    @overload
     def add(self, name: str, component: Component) -> Placed: ...
     def add(self, name: str, component: Component) -> Placed:
         """Place `component` inside this group and return it with its ports."""
@@ -132,6 +148,8 @@ class Platform:
     @overload
     def add(self, path: str, component: Router) -> PlacedRouter: ...
     @overload
+    def add(self, path: str, component: Ns16550) -> PlacedUart: ...
+    @overload
     def add(self, path: str, component: Component) -> Placed: ...
     def add(self, path: str, component: Component) -> Placed:
         """Place `component` at `path` and return it with its ports."""
@@ -141,8 +159,13 @@ class Platform:
                 f'There is already a component called "{path}". '
                 "Each component needs its own name."
             )
-        placed_type = PlacedRouter if isinstance(component, Router) else Placed
-        placed = placed_type(self, path, component)
+        placed: Placed
+        if isinstance(component, Router):
+            placed = PlacedRouter(self, path, component)
+        elif isinstance(component, Ns16550):
+            placed = PlacedUart(self, path, component)
+        else:
+            placed = Placed(self, path, component)
         self._placed[path] = placed
         return placed
 
@@ -208,16 +231,16 @@ class Platform:
         For durations, see `ns` and `us`.
         """
         if duration is None:
-            self._built().run()
+            self.native().run()
         else:
-            self._built().run_for(duration)
+            self.native().run_for(duration)
 
     def step(self) -> bool:
         """Move to the next moment anything is scheduled for, and let it happen.
 
         Returns False if nothing was left to do.
         """
-        return self._built().step()
+        return self.native().step()
 
     def run_until(
         self, condition: Callable[[], bool], timeout: int | None = None
@@ -228,7 +251,7 @@ class Platform:
         on. The run also ends when nothing is left to do, or when `timeout`
         (see `ns`, `us`) has passed.
         """
-        native = self._built()
+        native = self.native()
         deadline = None if timeout is None else self.time + timeout
         while not condition():
             ahead = native.picoseconds_to_next_activity()
@@ -245,13 +268,13 @@ class Platform:
         """Every transaction recorded on traced connections, oldest first."""
         return [
             TraceRecord.from_native(native)
-            for native in self._built().trace_records()
+            for native in self.native().trace_records()
         ]
 
     @property
     def time(self) -> int:
         """The simulated time now, in the unit `ns` and `us` return."""
-        return self._built().time_in_picoseconds()
+        return self.native().time_in_picoseconds()
 
     def peek32(self, address: int, via: Port | None = None) -> int:
         """Read a 32-bit little-endian value, as a bus master sees memory.
@@ -263,7 +286,7 @@ class Platform:
         it, the way a debugger reads memory.
         """
         view = self._view(via)
-        data = self._built().debug_read(view.path, address, 4)
+        data = self.native().debug_read(view.path, address, 4)
         if data is None:
             raise self._nothing_at(address, 4, view)
         return int.from_bytes(data, "little")
@@ -282,7 +305,7 @@ class Platform:
         a peek, a poke takes no simulated time. `via` works as in `peek32`.
         """
         view = self._view(via)
-        if not self._built().debug_write(view.path, address, data):
+        if not self.native().debug_write(view.path, address, data):
             raise self._nothing_at(address, len(data), view)
 
     def devicetree(self, via: Port | None = None) -> str:
@@ -350,7 +373,12 @@ class Platform:
                 "describe everything before calling build()."
             )
 
-    def _built(self) -> _core.Platform:
+    def native(self) -> _core.Platform:
+        """The simulator underneath, once `build()` has created it.
+
+        For placed components such as `PlacedUart`. A platform's users have
+        `run`, `peek32` and the rest.
+        """
         if self._native is None:
             raise RuntimeError(
                 "This platform is only described so far. Call build() first "

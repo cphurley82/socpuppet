@@ -16,6 +16,7 @@
 #include "socpuppet/bindings/python_executor.h"
 #include "socpuppet/bindings/python_script.h"
 #include "socpuppet/models/builtin_components.h"
+#include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
@@ -120,6 +121,13 @@ PYBIND11_MODULE(_core, m) {
                  std::move(generator_function), self.python_executor);
              self.platform.ModuleAt<socpuppet::ScriptedBusMaster>(path)
                  .SetScript([&script] { return script.Play(); });
+           })
+      // What the UART at `path` has transmitted so far. As bytes, because
+      // firmware may send anything.
+      .def("uart_output",
+           [](NativePlatform& self, const std::string& path) {
+             return py::bytes(
+                 self.platform.ModuleAt<socpuppet::Ns16550>(path).Output());
            })
       .def("ports",
            [](NativePlatform& self, const std::string& path) {

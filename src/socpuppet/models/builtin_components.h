@@ -10,6 +10,7 @@
 
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/memory.h"
+#include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/registry.h"
@@ -19,6 +20,7 @@ namespace socpuppet {
 
 static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
+static_assert(UartSlot<Ns16550>);
 
 // The registry of every component that ships with socpuppet.
 inline Registry BuiltinComponents() {
@@ -33,6 +35,11 @@ inline Registry BuiltinComponents() {
   registry.Add("memory", [](const char* name, const Config& config) {
     auto module =
         std::make_unique<Memory>(name, Required(config, "size", "memory"));
+    std::vector<Port> ports{TargetPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("ns16550", [](const char* name, const Config&) {
+    auto module = std::make_unique<Ns16550>(name);
     std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });

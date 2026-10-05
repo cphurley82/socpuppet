@@ -33,6 +33,10 @@ class Component(ABC):
     #: starts accesses for DMA is not one.
     is_bus_master: bool = False
 
+    #: How many bytes of address space the component answers to, or None
+    #: for a component that cannot be mapped onto a router.
+    mapped_size: int | None = None
+
     def __init__(self, **parameters: int) -> None:
         self._parameters = parameters
 
@@ -94,6 +98,21 @@ class Memory(Component):
 
     def __init__(self, *, size: int) -> None:
         super().__init__(size=size)
+        self.mapped_size = size
+
+
+class Ns16550(Component):
+    """A 16550-style UART: the serial port a firmware's console prints through.
+
+    What the firmware transmits is kept, and the placed UART's `output`
+    reads it. The model is borrowed from VPV-Peripherals (the PULPino UART).
+    Nothing is ever received yet, and the interrupt is not connected.
+    """
+
+    implementation = "ns16550"
+    ports = ("socket",)
+    #: The 16550's eight registers, one byte each.
+    mapped_size = 8
 
 
 class PassThroughLinkEndpoint(Component):

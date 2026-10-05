@@ -3,6 +3,7 @@
 from socpuppet.components import (
     DbtRiseCpu,
     Memory,
+    Ns16550,
     PassThroughLink,
     Router,
     ScriptedBusMaster,
@@ -18,6 +19,7 @@ __all__ = [
     "DbtRiseCpu",
     "ExpectationFailed",
     "Memory",
+    "Ns16550",
     "PassThroughLink",
     "Platform",
     "Router",

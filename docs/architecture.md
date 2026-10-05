@@ -161,6 +161,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 
 - [Memory](models/memory.md)
 - [Router](models/router.md)
+- [UART (16550)](models/ns16550.md)
 - 🎭 [Pass-through link](models/pass-through-link.md)
 - 🎭 [Scripted bus master](models/scripted-bus-master.md)
 - [Tracer](models/tracer.md)
