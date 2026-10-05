@@ -1,0 +1,4 @@
+family:
+  - name: socpuppet
+    socs:
+      - name: socpuppet_rv64

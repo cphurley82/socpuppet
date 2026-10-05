@@ -1,0 +1,7 @@
+config SOC_FAMILY_SOCPUPPET
+	bool
+
+config SOC_FAMILY
+	default "socpuppet" if SOC_FAMILY_SOCPUPPET
+
+rsource "*/Kconfig.soc"

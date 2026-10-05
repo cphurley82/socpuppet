@@ -1,0 +1,5 @@
+board:
+  name: socpuppet_host
+  full_name: socpuppet host
+  socs:
+    - name: socpuppet_rv64

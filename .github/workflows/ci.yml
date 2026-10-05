@@ -38,7 +38,8 @@ jobs:
             build/firmware/*.bin
             build/firmware/*.elf
             build/firmware/*.opcodes.txt
-          key: firmware-${{ hashFiles('firmware/**') }}
+          # The board the images are built for is part of what they are.
+          key: firmware-${{ hashFiles('firmware/**', 'python/socpuppet/zephyr_module/**') }}
       - name: Build the images
         if: steps.images.outputs.cache-hit != 'true'
         run: firmware/build.sh

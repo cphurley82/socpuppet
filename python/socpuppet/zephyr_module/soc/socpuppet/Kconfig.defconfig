@@ -1,0 +1,28 @@
+if SOC_FAMILY_SOCPUPPET
+
+# How many times a second the machine timer counts. The timer in the
+# platform description counts at the same rate, and a test keeps the two
+# from drifting apart (tests/python/test_host_board.py).
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 10000000
+
+config RISCV_SOC_INTERRUPT_INIT
+	default y
+
+# Zephyr numbers interrupts in two levels. The first level is the CPU's
+# own, of which number 11 is the external interrupt that the PLIC drives.
+# The PLIC's sources are the second level, and get the numbers from 12 up.
+config 2ND_LVL_ISR_TBL_OFFSET
+	default 12
+
+config 2ND_LVL_INTR_00_OFFSET
+	default 11
+
+# The PLIC has 31 sources, and source 0, which means "none".
+config MAX_IRQ_PER_AGGREGATOR
+	default 32
+
+config NUM_IRQS
+	default 44
+
+endif # SOC_FAMILY_SOCPUPPET

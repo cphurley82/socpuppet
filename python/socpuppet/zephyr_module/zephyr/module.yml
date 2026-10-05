@@ -1,0 +1,7 @@
+# Makes this directory a Zephyr module: Zephyr's build looks here for
+# boards and for the SoC definitions they name.
+name: socpuppet
+build:
+  settings:
+    board_root: .
+    soc_root: .

@@ -273,6 +273,10 @@ class Ns16550(Component):
                 'compatible = "ns16550";',
                 # The registers are one byte apart.
                 "reg-shift = <0>;",
+                # The clock a real 16550 divides down to get its baud rate.
+                # A driver wants to know it. The model sends each byte the
+                # instant it is written, so the number changes nothing.
+                "clock-frequency = <3686400>;",
             ),
             chosen=("zephyr,console", "zephyr,shell-uart"),
         )

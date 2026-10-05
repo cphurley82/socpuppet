@@ -1,6 +1,7 @@
 """The `socpuppet` command line."""
 
 import argparse
+import pathlib
 import runpy
 import sys
 from collections.abc import Sequence
@@ -30,9 +31,21 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "`platform`"
         ),
     )
+    commands.add_parser(
+        "zephyr-module",
+        help="print where socpuppet's Zephyr boards are",
+        description=(
+            "Print the directory of the Zephyr module that holds "
+            "socpuppet's boards. Hand it to a Zephyr build with "
+            "-DZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)."
+        ),
+    )
     options = parser.parse_args(arguments)
 
-    sys.stdout.write(_load(options.description).devicetree())
+    if options.command == "zephyr-module":
+        print(pathlib.Path(__file__).parent / "zephyr_module")
+    else:
+        sys.stdout.write(_load(options.description).devicetree())
 
 
 def _load(path: str) -> Platform:

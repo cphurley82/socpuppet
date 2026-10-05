@@ -1,0 +1,3 @@
+# The host board is built around socpuppet's 64-bit SoC.
+config BOARD_SOCPUPPET_HOST
+	select SOC_SOCPUPPET_RV64

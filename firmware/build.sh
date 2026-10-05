@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Builds the firmware the tests boot: Zephyr's hello_world sample for the
-# stock qemu_riscv64 and qemu_riscv32 boards.
+# Builds the firmware the tests boot. All of it is Zephyr's own samples:
+#   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
+#   hello_world       for socpuppet_host, socpuppet's own board
+#   synchronization   for socpuppet_host
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
-# For each board it leaves, in the output directory:
-#   hello_world_<board>.elf          the image, with symbols
-#   hello_world_<board>.bin          the same as flat bytes, loaded at the start of RAM
-#   hello_world_<board>.opcodes.txt  how often each instruction appears in it
+# For each it leaves, in the output directory:
+#   <sample>_<board>.elf          the image, with symbols
+#   <sample>_<board>.bin          the same as flat bytes, loaded at the start of RAM
+#   <sample>_<board>.opcodes.txt  how often each instruction appears in it
 #
 # Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself
 # and the Python packages Zephyr's build needs) stays in the output
@@ -16,7 +18,17 @@ set -euo pipefail
 
 zephyr_version=v4.4.2
 sdk_version=1.0.1
-boards=(qemu_riscv64 qemu_riscv32)
+# Each image to build, as "sample board".
+images=(
+  "hello_world qemu_riscv64"
+  "hello_world qemu_riscv32"
+  "hello_world socpuppet_host"
+  "synchronization socpuppet_host"
+)
+# socpuppet's boards are in a Zephyr module that ships inside the Python
+# package (`socpuppet zephyr-module` prints where). Here it is used
+# straight from the repository.
+module=$(cd "$(dirname "$0")/../python/socpuppet/zephyr_module" && pwd)
 
 mkdir -p "${1:-build/firmware}"
 out=$(cd "${1:-build/firmware}" && pwd)
@@ -101,17 +113,19 @@ export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ZEPHYR_SDK_INSTALL_DIR=${sdk}
 export PATH=${venv}/bin:${PATH}
 
-for board in "${boards[@]}"; do
-  echo "Building hello_world for ${board}"
-  build=${out}/build_${board}
-  cmake -S "${zephyr}/samples/hello_world" -B "${build}" -G Ninja \
+for each in "${images[@]}"; do
+  read -r sample board <<< "${each}"
+  echo "Building ${sample} for ${board}"
+  build=${out}/build_${sample}_${board}
+  cmake -S "${zephyr}/samples/${sample}" -B "${build}" -G Ninja \
     -DBOARD="${board}" -DCONFIG_BUILD_OUTPUT_BIN=y \
+    -DZEPHYR_EXTRA_MODULES="${module}" \
     -DUSER_CACHE_DIR="${out}/cache" > "${build}.log" 2>&1 ||
     { tail -n 40 "${build}.log" >&2; exit 1; }
   cmake --build "${build}" >> "${build}.log" 2>&1 ||
     { tail -n 40 "${build}.log" >&2; exit 1; }
 
-  image=${out}/hello_world_${board}
+  image=${out}/${sample}_${board}
   cp "${build}/zephyr/zephyr.elf" "${image}.elf"
   cp "${build}/zephyr/zephyr.bin" "${image}.bin"
   # A disassembly line is "<address>:", then the instruction's name, then

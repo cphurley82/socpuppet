@@ -226,6 +226,7 @@ class TestWhenAPlatformHasACpuWithItsPeripherals:
             \t\t\tcompatible = "ns16550";
             \t\t\treg = <0x0 0x10000000 0x0 0x8>;
             \t\t\treg-shift = <0>;
+            \t\t\tclock-frequency = <3686400>;
             \t\t};
             \t};
             };
