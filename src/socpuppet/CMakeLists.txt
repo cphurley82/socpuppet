@@ -12,8 +12,10 @@ target_sources(socpuppet_core INTERFACE
     core/time.h
     core/trace.h)
 
-# The CPU model is the one part of models/ that is compiled on its own. Its
-# source file is the only one that sees DBT-RISE's headers.
+# An adapter around a borrowed model is compiled on its own, so that its
+# source file is the only one that sees the borrowed headers.
+#
+# The CPU: DBT-RISE-RISCV.
 add_library(socpuppet_dbt_rise_cpu STATIC models/dbt_rise_cpu.cpp)
 target_sources(socpuppet_dbt_rise_cpu PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
@@ -26,8 +28,21 @@ target_link_libraries(socpuppet_dbt_rise_cpu
   PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,dbt-rise-riscv_sc_sig>)
 socpuppet_dev_checks(socpuppet_dbt_rise_cpu)
 
+# The UART: VPV-Peripherals' PULPino UART.
+add_library(socpuppet_ns16550 STATIC models/ns16550.cpp)
+target_sources(socpuppet_ns16550 PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/ns16550.h)
+target_link_libraries(socpuppet_ns16550
+  PUBLIC SystemC::systemc
+  PRIVATE scc::components)
+target_include_directories(socpuppet_ns16550 SYSTEM PRIVATE
+  ${vpv_peripherals_SOURCE_DIR})
+socpuppet_dev_checks(socpuppet_ns16550)
+
 # models/: the SystemC wrappers. platform/: composing them by name (ports,
-# the registry, the platform builder). Header-only, apart from the CPU.
+# the registry, the platform builder). Header-only, apart from the adapters
+# above.
 add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
@@ -44,9 +59,10 @@ target_sources(socpuppet_models INTERFACE
     platform/time_conversion.h
     platform/tracer.h)
 target_link_libraries(socpuppet_models INTERFACE
-  socpuppet_core socpuppet_dbt_rise_cpu scc::components SystemC::systemc)
+  socpuppet_core socpuppet_dbt_rise_cpu socpuppet_ns16550 scc::components
+  SystemC::systemc)
 socpuppet_check_headers(
-  socpuppet_core socpuppet_models socpuppet_dbt_rise_cpu)
+  socpuppet_core socpuppet_models socpuppet_dbt_rise_cpu socpuppet_ns16550)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

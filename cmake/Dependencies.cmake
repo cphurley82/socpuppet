@@ -196,3 +196,19 @@ target_compile_options(softvector PRIVATE
 # generators ignore the pool.)
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS dbt_rise=4)
 set_target_properties(dbt-rise-riscv PROPERTIES JOB_POOL_COMPILE dbt_rise)
+
+# --- VPV-Peripherals (VP-Vibes, Apache-2.0): borrowed peripheral models -----
+# SystemC models of peripherals, built on SCC. Minres's own reference
+# platform takes its peripherals from here.
+#
+# Only its sources are fetched. Its own CMake targets link all of SCC,
+# including SCC's AXI and CHI protocol library, which needs a Boost library
+# we do not fetch and does not compile here as C++20 (see docs/upstream.md).
+# The models we borrow need SCC's register classes and nothing more, so
+# each adapter names the files it uses.
+FetchContent_Declare(vpv_peripherals
+  GIT_REPOSITORY https://github.com/VP-Vibes/VPV-Peripherals.git
+  GIT_TAG 8c70afcc74b7ac03ca822d8fbad0752ae6176a81 # 2026-09-23
+  # A directory with no CMakeLists.txt, so that nothing of its build runs.
+  SOURCE_SUBDIR .github)
+FetchContent_MakeAvailable(vpv_peripherals)

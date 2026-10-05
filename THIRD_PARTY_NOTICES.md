@@ -22,5 +22,6 @@ Each is used unmodified except where noted.
 | softvector, with DBT-RISE-RISCV | BSD-3-Clause | <https://github.com/Minres/softvector> |
 | Berkeley SoftFloat 3e, with softvector | BSD-3-Clause | <https://github.com/ucb-bar/berkeley-softfloat-3> |
 | ELFIO 3.12 | MIT | <https://github.com/serge1/ELFIO> |
+| VPV-Peripherals (the PULPino UART model) | Apache-2.0 | <https://github.com/VP-Vibes/VPV-Peripherals> |
 
 The full license texts are available at the links above.

@@ -64,6 +64,16 @@ Each entry says:
 - **Kind**: build, missing feature.
 - **When it lands**: delete the `install` override and the `SOCPUPPET_SUPPRESS_INSTALL` lines around SCC. DBT-RISE is added under the same override, so check that first.
 
+### LWTR4SC's `record` is ambiguous for `unsigned long` with Clang
+
+- **Where**: `third_party/lwtr4sc/src/lwtr/lwtr.h` line 98, reached from `third_party/axi_chi/chi/lwtr/chi_lwtr.cpp` line 25. LWTR4SC is [Minres/LWTR4SC](https://github.com/Minres/LWTR4SC), bundled with SCC.
+- **What is wrong**: recording a field of type `unsigned long` fails with "call to 'record' is ambiguous". On macOS `uint64_t` is `unsigned long long`, so `unsigned long` is a different type with no overload of its own.
+- **How to see it**: build SCC's `tlm-interfaces` target (its AXI and CHI library) with Apple clang 21 as C++20. socpuppet met it by accident, when a dependency linked all of SCC. It was not looked into further.
+- **What we do**: nothing. socpuppet does not build that library.
+- **Upstream fix**: an overload or a conversion for `unsigned long`.
+- **Kind**: portability.
+- **When it lands**: nothing to delete here.
+
 ## SystemC CCI
 
 [accellera-official/cci](https://github.com/accellera-official/cci). socpuppet gets it as the copy SCC bundles in `third_party/cci-1.0.1`, so the fix belongs to Accellera, and SCC would pick it up from there.
@@ -192,6 +202,30 @@ Each entry says:
 - **Upstream fix**: a trait of its own, in its own namespace, in place of the specializations.
 - **Kind**: portability.
 - **When it lands**: delete the compile option.
+
+## VPV-Peripherals
+
+[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: so far the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`.
+
+### `pulpino/uart.h` does not include what it uses
+
+- **Where**: `pulpino/uart.h`, lines 80 to 82.
+- **What is wrong**: it uses `tlm_utils::simple_initiator_socket` and `tlm_utils::simple_target_socket` and includes neither header. It compiles only if whoever includes it has included them first.
+- **How to see it**: a source file whose first include is `pulpino/uart.h`.
+- **What we do**: no patch. `ns16550.cpp` includes the two socket headers first, and switches clang-format off around the include so that sorting does not move it.
+- **Upstream fix**: add the two `#include` lines to the header.
+- **Kind**: bug.
+- **When it lands**: sort the include with the others.
+
+### Every library links all of SCC
+
+- **Where**: the `CMakeLists.txt` of each family, for example `target_link_libraries(${PROJECT_NAME}_pulpino INTERFACE scc)`.
+- **What is wrong**: `scc` is SCC's umbrella target, and it includes SCC's AXI and CHI protocol library. That library needs Boost.Statechart, and with Apple clang it does not compile (see the LWTR4SC entry under SCC above). The register-based models here use SCC's register and target classes only, which is the `scc::components` target.
+- **How to see it**: link `vpvper_pulpino` from a project that fetches Boost library by library, without `statechart`.
+- **What we do**: no patch. `cmake/Dependencies.cmake` fetches the sources without running the project's CMake, and each adapter adds the include directory and links `scc::components` itself.
+- **Upstream fix**: link the SCC components each family uses in place of the umbrella.
+- **Kind**: build.
+- **When it lands**: use the project's own targets.
 
 ## VCML
 

@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <cstddef>
+#include <string>
 
 #include <systemc>
 #include <tlm>
@@ -43,6 +44,15 @@ concept LinkEndpointSlot =
       {
         endpoint.peer_initiator
       } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
+    };
+
+// A UART: built from a name, reached through one TLM target socket, and
+// keeping what was transmitted through it as text.
+template <typename T>
+concept UartSlot =
+    std::constructible_from<T, sc_core::sc_module_name> && requires(T uart) {
+      { uart.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { uart.Output() } -> std::convertible_to<std::string>;
     };
 
 }  // namespace socpuppet
