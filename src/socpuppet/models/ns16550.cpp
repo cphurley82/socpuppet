@@ -1,5 +1,6 @@
 #include "socpuppet/models/ns16550.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -31,6 +32,17 @@ struct Ns16550::Model {
     uart_.bindIRQ(0, &interrupt_unread_);
   }
 
+  const std::string& Output() const { return output_; }
+
+  // Passes on an access to register N, which is at offset N for us and at
+  // 4 * N in the borrowed model.
+  void AccessRegister(tlm::tlm_generic_payload& transaction,
+                      sc_core::sc_time& delay) {
+    transaction.set_address(transaction.get_address() * kRegisterSpacing);
+    to_registers_->b_transport(transaction, delay);
+  }
+
+ private:
   void OnTheSerialLine(tlm::tlm_generic_payload& transaction,
                        sc_core::sc_time&) {
     if (transaction.is_write()) {
@@ -45,8 +57,8 @@ struct Ns16550::Model {
   }
 
   // The borrowed model spaces its registers four bytes apart.
-  static constexpr unsigned kRegisterSpacing = 4;
-  static constexpr unsigned kRegisters = 8;
+  static constexpr std::size_t kRegisterSpacing = 4;
+  static constexpr std::size_t kRegisters = 8;
 
   std::string output_;
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
@@ -72,13 +84,11 @@ Ns16550::Ns16550(const sc_core::sc_module_name& name)
 
 Ns16550::~Ns16550() = default;
 
-const std::string& Ns16550::Output() const { return model_->output_; }
+const std::string& Ns16550::Output() const { return model_->Output(); }
 
 void Ns16550::b_transport(tlm::tlm_generic_payload& transaction,
                           sc_core::sc_time& delay) {
-  // Register N is at offset N for us, and at 4 * N in the borrowed model.
-  transaction.set_address(transaction.get_address() * Model::kRegisterSpacing);
-  model_->to_registers_->b_transport(transaction, delay);
+  model_->AccessRegister(transaction, delay);
 }
 
 }  // namespace socpuppet
