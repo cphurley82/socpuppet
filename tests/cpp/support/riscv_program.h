@@ -16,6 +16,7 @@ using Program = std::vector<Word>;
 inline constexpr Word kZero = 0;
 inline constexpr Word kT0 = 5;
 inline constexpr Word kT1 = 6;
+inline constexpr Word kT2 = 7;
 
 // A signed immediate, cut down to the low `bits` bits of its encoding.
 constexpr Word Field(std::int32_t value, unsigned bits) {
@@ -55,6 +56,14 @@ constexpr Word Sb(Word rs2, Word rs1, std::int32_t offset) {
 // Store the low 32 bits of rs2 at offset(rs1).
 constexpr Word Sw(Word rs2, Word rs1, std::int32_t offset) {
   return Sb(rs2, rs1, offset) | (2 << 12);
+}
+// Branch to pc + offset if rs1 and rs2 differ.
+constexpr Word Bne(Word rs1, Word rs2, std::int32_t offset) {
+  const Word immediate = Field(offset, 13);
+  return ((immediate >> 12) << 31) | (((immediate >> 5) & 0x3F) << 25) |
+         (rs2 << 20) | (rs1 << 15) | (1 << 12) |
+         (((immediate >> 1) & 0xF) << 8) | (((immediate >> 11) & 1) << 7) |
+         0x63;
 }
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
@@ -136,6 +145,18 @@ inline Program SleepUntilTheExternalInterruptThenStoreWord(
   program.push_back(kWfi);
   program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
   program.push_back(Sw(kZero, kT0, 0));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that counts down from `iterations` (a multiple of 4096) and
+// then sleeps. Each time round the loop is two instructions, and all it
+// asks of the bus is to fetch them.
+inline Program CountDownThenSleep(Word iterations) {
+  Program program;
+  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Addi(kT2, kT2, -1));
+  program.push_back(Bne(kT2, kZero, -4));
   AppendSleepForEver(program);
   return program;
 }

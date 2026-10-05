@@ -1,0 +1,42 @@
+diff --git a/src/sysc/core_complex.cpp b/src/sysc/core_complex.cpp
+index 9932c53..ccae386 100644
+--- a/src/sysc/core_complex.cpp
++++ b/src/sysc/core_complex.cpp
+@@ -193,24 +193,24 @@ core_complex<BUSWIDTH, QK>::core_complex(sc_module_name const& name, size_t clin
+ 
+ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::init(size_t clint_irq_size) {
+     core_complex_if::exec_on_sysc = util::delegate<void(std::function<void(void)>&)>::from<this_class, &this_class::exec_on_sysc<QK>>(this);
+-    ibus.register_invalidate_direct_mem_ptr([this](uint64_t start, uint64_t end) -> void {
+-        auto lut_entry = fetch_lut.getEntry(start);
++    // An invalidated range may be wider than one granted region, or cover several ("invalidate everything" is
++    // common). A range that fits inside the region holding its start address drops that region; any other range
++    // drops them all, and each is asked for again when it is next needed.
++    auto drop_dmi = [](util::range_lut<tlm_dmi_ext>& lut, uint64_t start, uint64_t end) {
++        auto lut_entry = lut.getEntry(start);
+         if(lut_entry.get_granted_access() != tlm::tlm_dmi::DMI_ACCESS_NONE && is_in_end_range(end, lut_entry.get_end_address())) {
+-            fetch_lut.removeEntry(lut_entry);
++            lut.removeEntry(lut_entry);
++        } else {
++            lut.clear();
+         }
+-    });
+-    dbus.register_invalidate_direct_mem_ptr([this](uint64_t start, uint64_t end) -> void {
++    };
++    ibus.register_invalidate_direct_mem_ptr([this, drop_dmi](uint64_t start, uint64_t end) -> void { drop_dmi(fetch_lut, start, end); });
++    dbus.register_invalidate_direct_mem_ptr([this, drop_dmi](uint64_t start, uint64_t end) -> void {
+         for(auto& read_lut : dmi_read_luts) {
+-            auto lut_entry = read_lut.getEntry(start);
+-            if(lut_entry.get_granted_access() != tlm::tlm_dmi::DMI_ACCESS_NONE && is_in_end_range(end, lut_entry.get_end_address())) {
+-                read_lut.removeEntry(lut_entry);
+-            }
++            drop_dmi(read_lut, start, end);
+         }
+         for(auto& write_lut : dmi_write_luts) {
+-            auto lut_entry = write_lut.getEntry(start);
+-            if(lut_entry.get_granted_access() != tlm::tlm_dmi::DMI_ACCESS_NONE && is_in_end_range(end, lut_entry.get_end_address())) {
+-                write_lut.removeEntry(lut_entry);
+-            }
++            drop_dmi(write_lut, start, end);
+         }
+     });
+ 

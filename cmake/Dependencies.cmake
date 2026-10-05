@@ -149,11 +149,13 @@ FetchContent_Declare(dbt_rise_riscv
   # register tables. reset-restart: raising reset on a running core stopped
   # the simulation instead of restarting the core. static-library: the
   # library was SHARED whatever the build asked for, and one binary must
-  # hold the one SystemC kernel.
+  # hold the one SystemC kernel. dmi-invalidate: a memory taking back direct
+  # access to more than the one region it had granted was ignored.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-static-library.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-dmi-invalidate.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

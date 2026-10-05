@@ -1,7 +1,10 @@
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -9,6 +12,9 @@
 
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
+#include "socpuppet/platform/port.h"
+#include "socpuppet/platform/registry.h"
+#include "tests/cpp/support/counting_probe.h"
 #include "tests/cpp/support/riscv_program.h"
 
 using ::testing::AllOf;
@@ -93,4 +99,72 @@ TEST(WhenXlenIsNeither32Nor64, TheCpuIsRefusedAndTheErrorNamesItAndTheChoices) {
       },
       ThrowsMessage<std::invalid_argument>(
           AllOf(HasSubstr("16"), HasSubstr("32"), HasSubstr("64"))));
+}
+
+// A platform whose CPU reaches its RAM through a probe that counts the
+// transactions.
+struct CpuPlatformWithAProbe {
+  static constexpr std::uint64_t kResetVector = 0;
+
+  CpuPlatformWithAProbe() : platform{WithAProbe()} {
+    platform.Add("cpu", "dbt_rise_cpu",
+                 {{"xlen", 64}, {"reset_vector", kResetVector}});
+    platform.Add("probe", "counting_probe");
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    platform.Bind("cpu.socket", "probe.target");
+    platform.Bind("probe.initiator", "ram.socket");
+    platform.Elaborate();
+  }
+
+  static socpuppet::Registry WithAProbe() {
+    socpuppet::Registry registry = socpuppet::BuiltinComponents();
+    registry.Add(
+        "counting_probe", [](const char* name, const socpuppet::Config&) {
+          auto module = std::make_unique<CountingProbe>(name);
+          std::vector<socpuppet::Port> ports{
+              socpuppet::TargetPort("target", module->target),
+              socpuppet::InitiatorPort("initiator", module->initiator)};
+          return socpuppet::Instance{.module = std::move(module),
+                                     .ports = std::move(ports)};
+        });
+    return registry;
+  }
+
+  socpuppet::Platform platform;
+};
+
+TEST(WhenAMemoryOffersDirectAccess, TheCpuStopsUsingTheBusForIt) {
+  CpuPlatformWithAProbe with_probe;
+  const riscv::Word iterations = 4096;
+  const riscv::Program program = riscv::CountDownThenSleep(iterations);
+  with_probe.platform.DebugWrite("cpu.socket",
+                                 CpuPlatformWithAProbe::kResetVector,
+                                 std::as_bytes(std::span{program}));
+
+  // Two instructions each time round, at 100 ns an instruction: under a
+  // millisecond for the loop.
+  with_probe.platform.Run(sc_core::sc_time{2, sc_core::SC_MS});
+
+  // Without direct access, every instruction fetched is a transaction, so
+  // there would be more than two per iteration.
+  EXPECT_LT(with_probe.platform.ModuleAt<CountingProbe>("probe").Transactions(),
+            iterations);
+}
+
+TEST(WhenAMemoryWithdrawsDirectAccess, TheCpuGoesBackToTheBus) {
+  CpuPlatformWithAProbe with_probe;
+  auto& probe = with_probe.platform.ModuleAt<CountingProbe>("probe");
+  // A loop long enough to still be running at the end of the test: 13 ms.
+  const riscv::Program program = riscv::CountDownThenSleep(65536);
+  with_probe.platform.DebugWrite("cpu.socket",
+                                 CpuPlatformWithAProbe::kResetVector,
+                                 std::as_bytes(std::span{program}));
+  with_probe.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+  const std::uint64_t before = probe.Transactions();
+
+  probe.WithdrawDirectAccess();
+  with_probe.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  // A millisecond is 10,000 instructions, each now fetched over the bus.
+  EXPECT_GE(probe.Transactions() - before, 10'000U);
 }

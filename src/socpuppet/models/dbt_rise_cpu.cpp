@@ -49,8 +49,10 @@ struct DbtRiseCpu::Core {
     complex_.core_type.set_value(core_type);
     complex_.reset_address.set_value(reset_vector);
 
-    from_fetch_.register_b_transport(this, &Core::b_transport);
-    from_data_.register_b_transport(this, &Core::b_transport);
+    for (auto* from_core : {&from_fetch_, &from_data_}) {
+      from_core->register_b_transport(this, &Core::b_transport);
+      from_core->register_get_direct_mem_ptr(this, &Core::get_direct_mem_ptr);
+    }
     complex_.ibus.bind(from_fetch_);
     complex_.dbus.bind(from_data_);
 
@@ -65,6 +67,11 @@ struct DbtRiseCpu::Core {
     }
   }
 
+  void InvalidateDirectMemory(sc_dt::uint64 start, sc_dt::uint64 end) {
+    from_fetch_->invalidate_direct_mem_ptr(start, end);
+    from_data_->invalidate_direct_mem_ptr(start, end);
+  }
+
  private:
   // The two sockets of core_complex have a bus width of zero, SCC's mark
   // for "loosely timed", and only bind to their like.
@@ -73,6 +80,14 @@ struct DbtRiseCpu::Core {
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {
     cpu_.socket->b_transport(transaction, delay);
+  }
+  // Direct memory access (DMI): the core asks a memory for a pointer to
+  // its bytes, and from then on reads and writes them without a
+  // transaction each time. This is where most of a CPU model's speed
+  // comes from.
+  bool get_direct_mem_ptr(tlm::tlm_generic_payload& transaction,
+                          tlm::tlm_dmi& dmi) {
+    return cpu_.socket->get_direct_mem_ptr(transaction, dmi);
   }
 
   DbtRiseCpu& cpu_;
@@ -90,9 +105,17 @@ struct DbtRiseCpu::Core {
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector)
     : sc_module(name),
-      core_(std::make_unique<Core>(*this, CoreType(xlen), reset_vector)) {}
+      core_(std::make_unique<Core>(*this, CoreType(xlen), reset_vector)) {
+  socket.register_invalidate_direct_mem_ptr(
+      this, &DbtRiseCpu::invalidate_direct_mem_ptr);
+}
 
 DbtRiseCpu::~DbtRiseCpu() = default;
+
+void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
+                                           sc_dt::uint64 end) {
+  core_->InvalidateDirectMemory(start, end);
+}
 
 void DbtRiseCpu::before_end_of_elaboration() {
   if (reset.size() == 0) reset.bind(tied_low_);

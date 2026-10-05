@@ -43,6 +43,9 @@ class DbtRiseCpu : public sc_core::sc_module {
  private:
   struct Core;
 
+  // A target taking back direct memory access it granted earlier.
+  void invalidate_direct_mem_ptr(sc_dt::uint64 start, sc_dt::uint64 end);
+
   // What an input left unconnected is bound to.
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
   std::unique_ptr<Core> core_;
