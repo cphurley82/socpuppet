@@ -12,6 +12,16 @@ target_sources(socpuppet_core INTERFACE
     core/time.h
     core/trace.h)
 
+# Reading ELF files is ELFIO's work. Like the adapters below, the one source
+# file that uses the borrowed library is compiled on its own.
+add_library(socpuppet_elf_image STATIC core/elf_image.cpp)
+target_sources(socpuppet_elf_image PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/elf_image.h)
+target_link_libraries(socpuppet_elf_image PRIVATE elfio::elfio)
+socpuppet_dev_checks(socpuppet_elf_image)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_elf_image)
+
 # An adapter around a borrowed model is compiled on its own, so that its
 # source file is the only one that sees the borrowed headers.
 #
@@ -62,7 +72,8 @@ target_link_libraries(socpuppet_models INTERFACE
   socpuppet_core socpuppet_dbt_rise_cpu socpuppet_ns16550 scc::components
   SystemC::systemc)
 socpuppet_check_headers(
-  socpuppet_core socpuppet_models socpuppet_dbt_rise_cpu socpuppet_ns16550)
+  socpuppet_core socpuppet_elf_image socpuppet_models socpuppet_dbt_rise_cpu
+  socpuppet_ns16550)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

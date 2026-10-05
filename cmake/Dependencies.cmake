@@ -126,6 +126,8 @@ target_link_libraries(scc-sysc PUBLIC Boost::filesystem)
 # CMakeLists as an interpreter only. Its three translating backends stay
 # off: TinyCC is LGPL, and asmjit and LLVM would each be one more dependency.
 # Every patch and accommodation below is written up in docs/upstream.md.
+# ELFIO reads ELF files. DBT-RISE asks for it, and socpuppet's own image
+# loader (core/elf_image.cpp) uses it directly.
 FetchContent_Declare(elfio
   URL https://github.com/serge1/ELFIO/archive/refs/tags/Release_3.12.tar.gz
   URL_HASH SHA256=e4ebc9ce3d6916461bc3e7765bb45e6210f0a9b93978bf91e59b05388c024489

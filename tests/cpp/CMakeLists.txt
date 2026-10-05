@@ -2,9 +2,14 @@ include(GoogleTest)
 
 # Tests of plain C++ logic. No kernel, so they can share one process.
 add_executable(unit_tests
+  unit/elf_image_test.cpp
   unit/memory_store_test.cpp
   unit/script_test.cpp)
-target_link_libraries(unit_tests PRIVATE socpuppet_core GTest::gtest_main)
+# The tests write their own ELF images, with the library that reads them.
+target_link_libraries(unit_tests PRIVATE
+  socpuppet_core elfio::elfio GTest::gmock_main)
+# As for the kernel tests below: "tests/cpp/support/elf_file.h".
+target_include_directories(unit_tests PRIVATE ${PROJECT_SOURCE_DIR})
 socpuppet_dev_checks(unit_tests)
 # The label lets a test run pick out the C++ tests (the asan preset does).
 gtest_discover_tests(unit_tests PROPERTIES LABELS cpp)
