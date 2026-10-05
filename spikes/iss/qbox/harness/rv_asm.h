@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_RV_ASM_H_
-#define SPIKES_ISS_HARNESS_RV_ASM_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_RV_ASM_H_
+#define SPIKES_ISS_QBOX_HARNESS_RV_ASM_H_
 
 #include <cstdint>
 #include <vector>
@@ -136,4 +136,4 @@ inline Program CountdownProgram(std::uint64_t uart_base, Word iterations) {
 
 }  // namespace spike::rv
 
-#endif  // SPIKES_ISS_HARNESS_RV_ASM_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_RV_ASM_H_

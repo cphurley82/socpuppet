@@ -8,9 +8,9 @@
 
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
-#include "spikes/iss/cpu_slot.h"
-#include "spikes/iss/harness/candidate_suite.h"
-#include "spikes/iss/harness/virt_board.h"
+#include "spikes/iss/qbox/cpu_slot.h"
+#include "spikes/iss/qbox/harness/candidate_suite.h"
+#include "spikes/iss/qbox/harness/virt_board.h"
 #include "spikes/iss/qbox/integration/qbox_cpu.h"
 
 namespace spike {

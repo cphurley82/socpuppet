@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_CPU_SLOT_H_
-#define SPIKES_ISS_CPU_SLOT_H_
+#ifndef SPIKES_ISS_QBOX_CPU_SLOT_H_
+#define SPIKES_ISS_QBOX_CPU_SLOT_H_
 
 #include <concepts>
 
@@ -35,4 +35,4 @@ concept CpuSlot = std::derived_from<T, sc_core::sc_module> && requires(T cpu) {
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_CPU_SLOT_H_
+#endif  // SPIKES_ISS_QBOX_CPU_SLOT_H_

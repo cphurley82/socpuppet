@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_BOOT_H_
-#define SPIKES_ISS_HARNESS_BOOT_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_BOOT_H_
+#define SPIKES_ISS_QBOX_HARNESS_BOOT_H_
 
 #include <cstddef>
 #include <fstream>
@@ -13,8 +13,8 @@
 #include <tlm>
 
 #include "socpuppet/platform/platform.h"
-#include "spikes/iss/harness/rv_asm.h"
-#include "spikes/iss/harness/virt_board.h"
+#include "spikes/iss/qbox/harness/rv_asm.h"
+#include "spikes/iss/qbox/harness/virt_board.h"
 
 namespace spike {
 
@@ -91,4 +91,4 @@ inline bool RunUntilPrinted(socpuppet::Platform& platform,
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_BOOT_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_BOOT_H_

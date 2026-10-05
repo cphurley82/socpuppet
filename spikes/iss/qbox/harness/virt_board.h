@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_VIRT_BOARD_H_
-#define SPIKES_ISS_HARNESS_VIRT_BOARD_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_VIRT_BOARD_H_
+#define SPIKES_ISS_QBOX_HARNESS_VIRT_BOARD_H_
 
 #include <cstdint>
 #include <memory>
@@ -9,15 +9,15 @@
 
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
-#include "spikes/iss/harness/probes.h"
-#include "spikes/iss/harness/standin_uart.h"
+#include "spikes/iss/qbox/harness/probes.h"
+#include "spikes/iss/qbox/harness/standin_uart.h"
 
 // socpuppet's built-in components include SCC's router. A candidate that
 // cannot share a program with SCC is built with SPIKE_WITHOUT_SCC, and
 // gets socpuppet's memory with the spike's own router instead.
 #ifdef SPIKE_WITHOUT_SCC
 #include "socpuppet/models/memory.h"
-#include "spikes/iss/harness/simple_router.h"
+#include "spikes/iss/qbox/harness/simple_router.h"
 #else
 #include "socpuppet/models/builtin_components.h"
 #endif
@@ -163,4 +163,4 @@ inline const CountingProbe& RamProbe(socpuppet::Platform& platform,
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_VIRT_BOARD_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_VIRT_BOARD_H_

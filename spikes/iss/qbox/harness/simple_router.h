@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_SIMPLE_ROUTER_H_
-#define SPIKES_ISS_HARNESS_SIMPLE_ROUTER_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_SIMPLE_ROUTER_H_
+#define SPIKES_ISS_QBOX_HARNESS_SIMPLE_ROUTER_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -109,4 +109,4 @@ class SimpleRouter : public sc_core::sc_module {
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_SIMPLE_ROUTER_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_SIMPLE_ROUTER_H_

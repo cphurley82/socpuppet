@@ -45,4 +45,7 @@ fi
 cmake --preset gcc -DLIBQEMU_TARGETS="riscv64;riscv32" \
   -DCMAKE_CXX_STANDARD="${standard}"
 time cmake --build build --parallel "${jobs}"
+# The integration next to this script finds QBox as an installed package.
+# The preset installs into build/install.
+cmake --install build > /qbox/install.log
 du -sh build | sed 's/^/build tree: /'

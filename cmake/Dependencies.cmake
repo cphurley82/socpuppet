@@ -42,10 +42,9 @@ set(_dbt_rise_boost
   asio bind coroutine2 foreach fusion lexical_cast optional phoenix
   serialization smart_ptr spirit thread tokenizer tuple variant)
 # SCC needs the first two. DBT-RISE needs its list, and looks three more up
-# with find_package. A spike may ask for more still (see spikes/).
+# with find_package.
 set(BOOST_INCLUDE_LIBRARIES date_time filesystem
-  ${_dbt_rise_boost} context coroutine program_options
-  ${SOCPUPPET_SPIKE_BOOST_LIBRARIES})
+  ${_dbt_rise_boost} context coroutine program_options)
 FetchContent_Declare(Boost
   URL https://github.com/boostorg/boost/releases/download/boost-1.89.0/boost-1.89.0-cmake.tar.xz
   URL_HASH SHA256=67acec02d0d118b5de9eb441f5fb707b3a1cdd884be00ca24b9a73c995511f74

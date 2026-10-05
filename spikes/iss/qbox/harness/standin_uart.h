@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_STANDIN_UART_H_
-#define SPIKES_ISS_HARNESS_STANDIN_UART_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_STANDIN_UART_H_
+#define SPIKES_ISS_QBOX_HARNESS_STANDIN_UART_H_
 
 #include <array>
 #include <cstdint>
@@ -64,4 +64,4 @@ class StandinUart : public sc_core::sc_module {
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_STANDIN_UART_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_STANDIN_UART_H_

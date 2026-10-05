@@ -371,9 +371,10 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 
 What the first decision takes on, from the findings above: eighteen more Boost libraries in the build, four patches to carry or send upstream, a static build of the core for the wheel, and a core that is generated code. The last one matters most for a teaching tool: where a learner cannot read the source, socpuppet's own docs have to explain what the CPU is doing. What it gets in return is a GDB server that works today, the complete instruction set with the privilege modes, and faster backends to turn on, which is the other new item on the to-do list.
 
-What happens to `spikes/iss/`:
+What happened to `spikes/iss/`:
 
-- DBT-RISE-RISCV's wrapper and patches stay until M3a has rebuilt them test-first and passed the same boot.
-- QBox's recipe and wrapper stay, as the starting point for the optional CPU. They are all that is left of the directory when M3a finishes.
-- riscv-vp and the in-house prototype go with the rest of the spike at the end of M3a. Until then they still build and run in CI.
+- QBox's recipe and wrapper stay, as the starting point for the optional CPU, with the parts of the harness they need. They are all that is left of the directory, and what is there and how to run it is in [its README](../spikes/iss/README.md). No preset or CI job builds it any more.
+- 🦜 DBT-RISE-RISCV's spike wrapper, riscv-vp and the in-house prototype went when M3a finished, with the `spike` preset and the `ISS spike` CI job. M3a rebuilt the DBT-RISE-RISCV wrapper test-first as `src/socpuppet/models/dbt_rise_cpu.h`, and its patches are in `cmake/patches/`. The last commit that holds the three candidates, the harness's own tests and the build rules is `7c7c8c0`. To run them again: check that commit out, then `cmake --preset spike`.
 - 🦜 The VCML probe went first. Its clone of mwr failed whenever CI restored the fetched dependencies from its cache, which kept the spike job red. The last commit that holds `spikes/iss/vcml_probe/` and its build rules is `23a0f1b`.
+
+💡 The paths in this report are the ones the spike had when it ran. `spikes/iss/cpu_slot.h` and `spikes/iss/harness/` are now under `spikes/iss/qbox/`, and `spikes/iss/dbt_rise/`, `riscv_vp/`, `inhouse/` and `patches/` exist only at the commit above.

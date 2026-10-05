@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_PROBES_H_
-#define SPIKES_ISS_HARNESS_PROBES_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_PROBES_H_
+#define SPIKES_ISS_QBOX_HARNESS_PROBES_H_
 
 #include <cstdint>
 #include <utility>
@@ -98,4 +98,4 @@ class LineDriver : public sc_core::sc_module {
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_PROBES_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_PROBES_H_

@@ -1,5 +1,5 @@
-#ifndef SPIKES_ISS_HARNESS_CANDIDATE_SUITE_H_
-#define SPIKES_ISS_HARNESS_CANDIDATE_SUITE_H_
+#ifndef SPIKES_ISS_QBOX_HARNESS_CANDIDATE_SUITE_H_
+#define SPIKES_ISS_QBOX_HARNESS_CANDIDATE_SUITE_H_
 
 #include <chrono>
 #include <cstdint>
@@ -13,9 +13,9 @@
 
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
-#include "spikes/iss/harness/boot.h"
-#include "spikes/iss/harness/rv_asm.h"
-#include "spikes/iss/harness/virt_board.h"
+#include "spikes/iss/qbox/harness/boot.h"
+#include "spikes/iss/qbox/harness/rv_asm.h"
+#include "spikes/iss/qbox/harness/virt_board.h"
 
 // The steps of the spike's protocol that can be run, as tests. Every
 // candidate is held to the same ones: its test program defines the three
@@ -207,4 +207,4 @@ TEST(Speed, On32BitsWithoutDmi) { MeasureSpeed(32, Dmi::kOff, 1U << 20); }
 
 }  // namespace spike
 
-#endif  // SPIKES_ISS_HARNESS_CANDIDATE_SUITE_H_
+#endif  // SPIKES_ISS_QBOX_HARNESS_CANDIDATE_SUITE_H_
