@@ -289,3 +289,23 @@ TEST(WhenTheTimerInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
 
   EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
 }
+
+TEST(WhenAHandlerQuietsTheDeviceThatInterrupted, ItRunsOncePerInterrupt) {
+  CpuPlatformWithAnInterruptSource with_device{
+      "irq", [](InterruptSource& device) {
+        device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+        device.Raise();
+        device.WaitFor(sc_core::sc_time{300, sc_core::SC_US});
+        device.Raise();
+      }};
+  // With a quantum, the handler quiets the device and returns without the
+  // rest of the platform getting a turn in between.
+  with_device.platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
+  with_device.Load(riscv::HandleInterruptsByWritingTo(
+      CpuPlatformWithAnInterruptSource::kDeviceBase,
+      riscv::kMachineExternalInterrupt));
+
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.TimesTheHandlerRan(), 2);
+}

@@ -17,7 +17,7 @@ Each is used unmodified except where noted.
 | spdlog 1.16.0 | MIT | <https://github.com/gabime/spdlog> |
 | yaml-cpp 0.8.0 | MIT | <https://github.com/jbeder/yaml-cpp> |
 | pybind11 3.1.0 | BSD-3-Clause | <https://github.com/pybind/pybind11> |
-| DBT-RISE-RISCV 2.1.0, with four patches (`cmake/patches/`) | BSD-3-Clause | <https://github.com/Minres/DBT-RISE-RISCV> |
+| DBT-RISE-RISCV 2.1.0, with five patches (`cmake/patches/`) | BSD-3-Clause | <https://github.com/Minres/DBT-RISE-RISCV> |
 | DBT-RISE-Core, with two patches (`cmake/patches/`) | BSD-3-Clause | <https://github.com/Minres/DBT-RISE-Core> |
 | softvector, with DBT-RISE-RISCV | BSD-3-Clause | <https://github.com/Minres/softvector> |
 | Berkeley SoftFloat 3e, with softvector | BSD-3-Clause | <https://github.com/ucb-bar/berkeley-softfloat-3> |

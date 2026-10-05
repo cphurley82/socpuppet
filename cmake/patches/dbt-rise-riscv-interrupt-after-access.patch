@@ -1,0 +1,18 @@
+diff --git a/src/sysc/core_complex.h b/src/sysc/core_complex.h
+index f76b44a..155e4ff 100644
+--- a/src/sysc/core_complex.h
++++ b/src/sysc/core_complex.h
+@@ -292,6 +292,13 @@ protected:
+         auto& sckt = is_fetch ? ibus : dbus;
+         gp.set_extension(trc.get_recording_extension(is_fetch));
+         sckt->b_transport(gp, delay);
++        // The access may have changed an interrupt line: a handler quiets a device by writing to it. The core hears
++        // of a line through clint_irq_cb, a method, which cannot run until this thread yields. Without a yield here
++        // the core returns from the handler still seeing the interrupt pending, and takes it again, for the rest of
++        // the quantum. One delta cycle updates the signal and runs the method. Two is the count that does not rely
++        // on the kernel's evaluation order.
++        for(auto delta = 0; delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta)
++            sc_core::wait(sc_core::SC_ZERO_TIME);
+     }
+     template <typename U = QK>
+     typename std::enable_if<std::is_same<U, tlm::scc::quantumkeeper_st>::value, bool>::type
