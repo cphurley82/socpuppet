@@ -186,8 +186,10 @@ list(REMOVE_ITEM _dbt_rise_core_sources src/iss/vm_jit_funcs.cpp)
 set_target_properties(dbt-rise-core PROPERTIES
   SOURCES "${_dbt_rise_core_sources}")
 # The vector helpers specialize std::make_signed for 128-bit integers, which
-# the standard forbids and Clang treats as an error.
-target_compile_options(softvector PUBLIC
+# the standard forbids and newer Clangs treat as an error. PRIVATE, because
+# an older Clang does not know the option, and it must not reach a target
+# of ours, where an unknown option is an error itself.
+target_compile_options(softvector PRIVATE
   $<$<CXX_COMPILER_ID:AppleClang,Clang>:-Wno-invalid-specialization>)
 # Some of the interpreter's sources need over a gigabyte of memory each to
 # compile, so only a few are compiled at once. (Ninja only; other
