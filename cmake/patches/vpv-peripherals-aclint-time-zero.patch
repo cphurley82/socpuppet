@@ -1,0 +1,13 @@
+diff --git a/minres/aclint.cpp b/minres/aclint.cpp
+index 5fa9616..6cd7a1b 100644
+--- a/minres/aclint.cpp
++++ b/minres/aclint.cpp
+@@ -92,7 +92,7 @@ void aclint::write_irq() {
+ }
+ 
+ void aclint::update_mtime() {
+-    if(sc_core::sc_time_stamp() > SC_ZERO_TIME && mtime_clk_period > SC_ZERO_TIME) {
++    if(mtime_clk_period > SC_ZERO_TIME) {
+         // update mtime register
+         uint64_t elapsed_clks = (sc_time_stamp() - last_updt) / mtime_clk_period;
+         last_updt += elapsed_clks * mtime_clk_period;

@@ -1,0 +1,198 @@
+#ifndef TESTS_CPP_CONTRACTS_MACHINE_TIMER_CONTRACT_H_
+#define TESTS_CPP_CONTRACTS_MACHINE_TIMER_CONTRACT_H_
+
+#include <array>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <utility>
+
+#include <gtest/gtest.h>
+#include <systemc>
+
+#include "socpuppet/platform/slots.h"
+#include "tests/cpp/contracts/bus_driver.h"
+
+// What every RISC-V machine timer must do, whatever is behind it. This is
+// what an operating system's tick relies on.
+//
+// To hold an implementation to this contract:
+//   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, MachineTimerContract,
+//                                  ::testing::Types<MyTimer>);
+// MyTimer must fit the machine timer slot (see socpuppet/platform/slots.h).
+template <socpuppet::MachineTimerSlot TimerType>
+class MachineTimerContract : public ::testing::Test {
+ protected:
+  // The timer counts ten times a microsecond.
+  static constexpr std::uint64_t kFrequency = 10'000'000;
+  static constexpr std::uint64_t kTicksPerMicrosecond = 10;
+  // Where the registers are, as on SiFive's CLINT. Each is 64 bits wide.
+  static constexpr std::uint64_t kMtimecmp = 0x4000;
+  static constexpr std::uint64_t kMtime = 0xBFF8;
+
+  MachineTimerContract() { timer_.irq.bind(interrupt_); }
+
+  static sc_core::sc_time Microseconds(double count) {
+    return {count, sc_core::SC_US};
+  }
+
+  // Runs `body` in a simulation thread wired to the timer, and then lets
+  // the simulation run on until `end`.
+  void OnTheBus(std::function<void(BusDriver&)> body,
+                const sc_core::sc_time& end) {
+    BusDriver driver{"driver", std::move(body)};
+    driver.socket.bind(timer_.socket);
+    sc_core::sc_start(end);
+  }
+
+  static std::uint64_t Read64(BusDriver& bus, std::uint64_t address,
+                              const sc_core::sc_time& lead = {}) {
+    std::array<std::uint8_t, 8> bytes{};
+    bus.ReadAhead(address, bytes, lead);
+    std::uint64_t value = 0;
+    std::memcpy(&value, bytes.data(), sizeof value);
+    return value;
+  }
+
+  static void Write64(BusDriver& bus, std::uint64_t address,
+                      std::uint64_t value) {
+    std::array<std::uint8_t, 8> bytes{};
+    std::memcpy(bytes.data(), &value, sizeof value);
+    bus.Write(address, bytes);
+  }
+
+  static void Write32(BusDriver& bus, std::uint64_t address,
+                      std::uint32_t value) {
+    std::array<std::uint8_t, 4> bytes{};
+    std::memcpy(bytes.data(), &value, sizeof value);
+    bus.Write(address, bytes);
+  }
+
+  TimerType timer_{"timer", kFrequency};
+  // A timer drives its line from more than one process: when its count
+  // reaches the compare value, and when it is written to.
+  sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS> interrupt_{"interrupt"};
+};
+
+TYPED_TEST_SUITE_P(MachineTimerContract);
+
+TYPED_TEST_P(MachineTimerContract, LeftAloneItNeverInterrupts) {
+  this->OnTheBus([](BusDriver&) {}, this->Microseconds(1000));
+
+  EXPECT_FALSE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(MachineTimerContract, MtimeCountsSimulatedTimeInTicks) {
+  std::uint64_t mtime = 0;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(5));
+        mtime = this->Read64(bus, this->kMtime);
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(mtime, 5 * this->kTicksPerMicrosecond);
+}
+
+TYPED_TEST_P(MachineTimerContract, MtimeCountsTheTimeAReaderIsAheadByAsWell) {
+  std::uint64_t mtime = 0;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(5));
+        mtime = this->Read64(bus, this->kMtime, this->Microseconds(2));
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(mtime, 7 * this->kTicksPerMicrosecond);
+}
+
+TYPED_TEST_P(MachineTimerContract,
+             TheInterruptRisesWhenMtimeReachesTheCompareValue) {
+  bool just_before = true;
+  bool just_after = false;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(1));
+        this->Write64(bus, this->kMtimecmp, 10 * this->kTicksPerMicrosecond);
+        bus.WaitFor(this->Microseconds(8.9));
+        just_before = this->interrupt_.read();
+        bus.WaitFor(this->Microseconds(0.2));
+        just_after = this->interrupt_.read();
+      },
+      this->Microseconds(20));
+
+  EXPECT_FALSE(just_before);
+  EXPECT_TRUE(just_after);
+}
+
+TYPED_TEST_P(MachineTimerContract, ACompareValueSetAtTheVeryStartIsHonoured) {
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        this->Write64(bus, this->kMtimecmp, 10 * this->kTicksPerMicrosecond);
+      },
+      this->Microseconds(20));
+
+  EXPECT_TRUE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(MachineTimerContract, MovingTheCompareValueAheadEndsTheInterrupt) {
+  bool after_the_move = true;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(1));
+        this->Write64(bus, this->kMtimecmp, 10 * this->kTicksPerMicrosecond);
+        bus.WaitFor(this->Microseconds(14));
+        // The interrupt is on by now. A tick handler does this next.
+        this->Write64(bus, this->kMtimecmp, 100 * this->kTicksPerMicrosecond);
+        bus.WaitFor(this->Microseconds(1));
+        after_the_move = this->interrupt_.read();
+      },
+      this->Microseconds(20));
+
+  EXPECT_FALSE(after_the_move);
+}
+
+TYPED_TEST_P(MachineTimerContract, TheCompareValueCanBeWrittenInTwoHalves) {
+  std::uint64_t compare = 0;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(1));
+        // A 32-bit CPU has to. It writes the high half as all ones first, so
+        // that no value in between is one the timer would act on.
+        this->Write32(bus, this->kMtimecmp + 4, 0xFFFF'FFFF);
+        this->Write32(bus, this->kMtimecmp, 0x89AB'CDEF);
+        this->Write32(bus, this->kMtimecmp + 4, 0x0123'4567);
+        compare = this->Read64(bus, this->kMtimecmp);
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(compare, 0x0123'4567'89AB'CDEFU);
+}
+
+TYPED_TEST_P(MachineTimerContract, ACompareValueTooFarOffToEverComeIsAccepted) {
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(1));
+        // Thousands of years ahead: more than simulated time can count to.
+        this->Write64(bus, this->kMtimecmp, std::uint64_t{1} << 62);
+      },
+      this->Microseconds(1000));
+
+  EXPECT_FALSE(this->interrupt_.read());
+}
+
+REGISTER_TYPED_TEST_SUITE_P(MachineTimerContract, LeftAloneItNeverInterrupts,
+                            MtimeCountsSimulatedTimeInTicks,
+                            MtimeCountsTheTimeAReaderIsAheadByAsWell,
+                            TheInterruptRisesWhenMtimeReachesTheCompareValue,
+                            ACompareValueSetAtTheVeryStartIsHonoured,
+                            MovingTheCompareValueAheadEndsTheInterrupt,
+                            TheCompareValueCanBeWrittenInTwoHalves,
+                            ACompareValueTooFarOffToEverComeIsAccepted);
+
+#endif  // TESTS_CPP_CONTRACTS_MACHINE_TIMER_CONTRACT_H_

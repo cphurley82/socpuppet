@@ -59,6 +59,17 @@ class BusDriver : public sc_core::sc_module {
     return Transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
   }
 
+  // A read from a master that is running `lead` ahead of the simulation's
+  // clock, as a CPU model does (temporal decoupling).
+  tlm::tlm_response_status ReadAhead(std::uint64_t address,
+                                     std::span<std::uint8_t> data,
+                                     const sc_core::sc_time& lead) {
+    return Transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size(),
+                     lead);
+  }
+
+  void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
+
   // Debug transport: an access that takes no simulated time and has no side
   // effects, the way a debugger looks at memory.
   void DebugWrite(std::uint64_t address, std::span<const std::uint8_t> data) {
@@ -94,12 +105,11 @@ class BusDriver : public sc_core::sc_module {
     socket->transport_dbg(transaction);
   }
 
-  tlm::tlm_response_status Transport(tlm::tlm_command command,
-                                     std::uint64_t address, std::uint8_t* data,
-                                     std::size_t length) {
+  tlm::tlm_response_status Transport(
+      tlm::tlm_command command, std::uint64_t address, std::uint8_t* data,
+      std::size_t length, sc_core::sc_time delay = sc_core::SC_ZERO_TIME) {
     tlm::tlm_generic_payload transaction;
     Fill(transaction, command, address, data, length);
-    sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
     socket->b_transport(transaction, delay);
     direct_memory_was_offered_ = transaction.is_dmi_allowed();
     return transaction.get_response_status();

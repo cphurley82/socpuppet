@@ -50,6 +50,26 @@ target_include_directories(socpuppet_ns16550 SYSTEM PRIVATE
   ${vpv_peripherals_SOURCE_DIR})
 socpuppet_dev_checks(socpuppet_ns16550)
 
+# The machine timer: VPV-Peripherals' ACLINT. The model has a source file of
+# its own, which is built as a library apart from ours so that our warnings
+# and clang-tidy leave it alone. SC_SIGNAL_IF asks the model for plain
+# SystemC signals as its interrupt outputs.
+add_library(vpv_aclint STATIC ${vpv_peripherals_SOURCE_DIR}/minres/aclint.cpp)
+target_compile_definitions(vpv_aclint PUBLIC SC_SIGNAL_IF)
+target_compile_options(vpv_aclint PRIVATE -w)
+target_include_directories(vpv_aclint SYSTEM PUBLIC
+  ${vpv_peripherals_SOURCE_DIR})
+target_link_libraries(vpv_aclint PUBLIC scc::components SystemC::systemc)
+
+add_library(socpuppet_machine_timer STATIC models/machine_timer.cpp)
+target_sources(socpuppet_machine_timer PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/machine_timer.h)
+target_link_libraries(socpuppet_machine_timer
+  PUBLIC SystemC::systemc
+  PRIVATE vpv_aclint)
+socpuppet_dev_checks(socpuppet_machine_timer)
+
 # models/: the SystemC wrappers. platform/: composing them by name (ports,
 # the registry, the platform builder). Header-only, apart from the adapters
 # above.
@@ -69,11 +89,11 @@ target_sources(socpuppet_models INTERFACE
     platform/time_conversion.h
     platform/tracer.h)
 target_link_libraries(socpuppet_models INTERFACE
-  socpuppet_core socpuppet_dbt_rise_cpu socpuppet_ns16550 scc::components
-  SystemC::systemc)
+  socpuppet_core socpuppet_dbt_rise_cpu socpuppet_machine_timer
+  socpuppet_ns16550 scc::components SystemC::systemc)
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_models socpuppet_dbt_rise_cpu
-  socpuppet_ns16550)
+  socpuppet_machine_timer socpuppet_ns16550)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.

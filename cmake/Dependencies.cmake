@@ -216,6 +216,11 @@ set_target_properties(dbt-rise-riscv PROPERTIES JOB_POOL_COMPILE dbt_rise)
 FetchContent_Declare(vpv_peripherals
   GIT_REPOSITORY https://github.com/VP-Vibes/VPV-Peripherals.git
   GIT_TAG 8c70afcc74b7ac03ca822d8fbad0752ae6176a81 # 2026-09-23
+  # aclint-time-zero: a timer compare value written at time zero was never
+  # acted on.
+  PATCH_COMMAND git apply
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
+  UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)
 FetchContent_MakeAvailable(vpv_peripherals)
