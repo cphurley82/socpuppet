@@ -41,8 +41,8 @@ const char* CoreType(std::uint64_t xlen) {
 //   - It is clocked by a signal that carries the clock period, which says
 //     how much simulated time one instruction takes.
 //   - It has 32 interrupt inputs, numbered as RISC-V numbers the bits of
-//     its interrupt-pending register. The machine external interrupt is
-//     ours to connect, and the rest are tied low.
+//     its interrupt-pending register. The machine external and machine
+//     timer interrupts are ours to connect, and the rest are tied low.
 struct DbtRiseCpu::Core {
   Core(DbtRiseCpu& cpu, const char* core_type, std::uint64_t reset_vector)
       : cpu_(cpu) {
@@ -61,6 +61,8 @@ struct DbtRiseCpu::Core {
     for (unsigned line = 0; line < complex_.clint_irq_i.size(); ++line) {
       if (line == sysc::riscv::EXT_IRQ) {
         complex_.clint_irq_i[line].bind(cpu_.irq);
+      } else if (line == sysc::riscv::TIMER_IRQ) {
+        complex_.clint_irq_i[line].bind(cpu_.timer_irq);
       } else {
         complex_.clint_irq_i[line].bind(cpu_.tied_low_);
       }
@@ -120,6 +122,7 @@ void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
 void DbtRiseCpu::before_end_of_elaboration() {
   if (reset.size() == 0) reset.bind(tied_low_);
   if (irq.size() == 0) irq.bind(tied_low_);
+  if (timer_irq.size() == 0) timer_irq.bind(tied_low_);
 }
 
 }  // namespace socpuppet

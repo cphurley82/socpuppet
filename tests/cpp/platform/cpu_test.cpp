@@ -273,3 +273,19 @@ TEST(WhenTheExternalInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
 
   EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
 }
+
+TEST(WhenTheTimerInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
+  CpuPlatformWithAnInterruptSource with_device{
+      "timer_irq", [](InterruptSource& device) {
+        device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+        device.Raise();
+      }};
+  with_device.Load(riscv::HandleInterruptsByWritingTo(
+      CpuPlatformWithAnInterruptSource::kDeviceBase,
+      riscv::kMachineTimerInterrupt));
+
+  // A dozen instructions before the interrupt and three after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
+}

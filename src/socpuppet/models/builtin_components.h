@@ -33,6 +33,7 @@ inline Registry BuiltinComponents() {
         Required(config, "reset_vector", "dbt_rise_cpu"));
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
                             WireSinkPort("irq", module->irq),
+                            WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
