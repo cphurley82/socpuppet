@@ -85,7 +85,13 @@ def check_wheel():
 
     def run(wheel):
         return subprocess.run(
-            [sys.executable, str(REPO / "tools" / "check_wheel.py"), str(wheel)]
+            [
+                sys.executable,
+                str(REPO / "tools" / "check_wheel.py"),
+                str(wheel),
+            ],
+            capture_output=True,
+            text=True,
         )
 
     return run

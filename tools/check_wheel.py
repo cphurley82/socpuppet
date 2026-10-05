@@ -25,6 +25,16 @@ def problems_with(names):
             "THIRD_PARTY_NOTICES.md is missing "
             "(the wheel embeds third-party code)"
         )
+    # The Zephyr boards are plain files inside the package. A firmware
+    # developer who installed the wheel builds against them.
+    if (
+        not any(n.startswith("socpuppet/zephyr_module/boards/") for n in names)
+        or "socpuppet/zephyr_module/zephyr/module.yml" not in names
+    ):
+        yield (
+            "socpuppet/zephyr_module is missing or incomplete "
+            "(the Zephyr boards ship inside the package)"
+        )
     # SystemC, SCC and friends are linked statically into _core. Their own
     # headers, libraries and CMake files must not ride along.
     allowed = ("socpuppet/", "socpuppet-")

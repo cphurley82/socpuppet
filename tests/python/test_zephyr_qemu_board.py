@@ -56,3 +56,19 @@ class TestWhenZephyrsHelloWorldBootsOnA64BitCpu:
         )
 
         assert "Hello World! qemu_riscv64" in uart.output
+
+
+@pytest.mark.platform
+class TestWhenZephyrsHelloWorldBootsOnA32BitCpu:
+    def test_it_prints_its_greeting(self, firmware):
+        platform, uart = virt_machine(xlen=32)
+        platform.build()
+        platform.load_elf(firmware("hello_world_qemu_riscv32.elf"))
+
+        # As for 64 bits: a few milliseconds, with room to spare.
+        platform.run_until(
+            lambda: "Hello World! qemu_riscv32" in uart.output,
+            timeout=sp.ms(50),
+        )
+
+        assert "Hello World! qemu_riscv32" in uart.output
