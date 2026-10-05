@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. The stage is built and the first stand-ins are on it, but there are no CPUs yet, so no firmware runs. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. The first act is up: a RISC-V host that boots Zephyr. The SSD, the real die-to-die link and the storage path between them are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -15,7 +15,32 @@ A chiplet host and an NVMe SSD, each booting its own [Zephyr](https://zephyrproj
 
 ## A first show
 
-No CPU and no firmware yet, so a script plays the CPU's part: a 🎭 stand-in that carries out bus operations one at a time.
+The host boots [Zephyr](https://zephyrproject.org). It is a 64-bit RISC-V CPU with RAM and an interrupt controller on one die, and a UART and a timer on another.
+
+```python
+import socpuppet as sp
+from socpuppet.boards.host import host
+
+board = host()                                  # 🧵 describe the platform
+board.platform.build()                          # create the simulation
+board.platform.load_elf("zephyr.elf")           # firmware built for the board socpuppet_host
+
+board.platform.run_until(
+    lambda: "Hello World!" in board.uart.output, timeout=sp.ms(50)
+)
+print(board.uart.output)
+```
+
+```text
+*** Booting Zephyr OS build v4.4.2 ***
+Hello World! socpuppet_host/socpuppet_rv64
+```
+
+The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your own firmware](docs/boot-your-firmware.md) has the steps.
+
+## A smaller show
+
+A platform does not need a CPU. Here a script plays the CPU's part: a 🎭 stand-in that carries out bus operations one at a time.
 
 ```python
 import socpuppet as sp
@@ -50,7 +75,7 @@ print(sp.render_trace(platform.trace))
         0 ns  read  0x80000000  ee ff c0 00  ✅  compute.cpu.socket → compute.d2d.target
 ```
 
-And now for something completely different: the same description also gives the devicetree that firmware will later be built against, with nothing simulated.
+And now for something completely different: the same description also gives the devicetree that firmware is built against, with nothing simulated.
 
 ```sh
 socpuppet devicetree examples/m0_passthrough.py
@@ -69,6 +94,7 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
+- 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🔧 [Building and testing](docs/development.md).
 - 🎨 [Style, and the tools that hold us to it](docs/style.md).

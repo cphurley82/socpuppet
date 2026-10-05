@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M0 there are no CPUs yet. What exists is the stage and the first stand-ins: enough to describe a small platform, run it and watch what crosses its buses.
+As of milestone M3a there is a real CPU on stage, with a UART, a timer and an interrupt controller around it: enough to boot Zephyr on one board, the host. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -18,21 +18,31 @@ flowchart LR
         exec["PythonExecutor"]
     end
     subgraph sim["One SystemC kernel"]
-        cpu["🎭 scripted bus master"]
-        link["🎭 pass-through link"]
+        cpu["CPU"]
         bus["router"]
         ram["memory"]
-        cpu --> link --> bus --> ram
+        plic["PLIC"]
+        link["🎭 pass-through link"]
+        iobus["router"]
+        uart["UART"]
+        timer["timer"]
+        cpu --> bus
+        bus --> ram
+        bus --> plic
+        bus --> link --> iobus
+        iobus --> uart
+        iobus --> timer
     end
     desc -- "build()" --> plat
     plat --> reg
     reg --> sim
-    script <-. "one op at a time" .-> exec
-    exec <-.-> cpu
+    script <-. "drives a 🎭 stand-in CPU,<br/>one op at a time" .-> exec
 
     classDef standin fill:#fde68a,stroke:#b45309,color:#000
-    class cpu,link standin
+    class link standin
 ```
+
+This is the host board. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
 
@@ -44,9 +54,12 @@ The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage 
 | **Initiator / target** | The block that starts a transaction (a CPU) and the block that answers it (a memory). Their connection points are *sockets*. |
 | **Loosely timed (LT)** | The TLM style socpuppet uses: one function call per transaction, with timing noted as an annotation instead of simulated cycle by cycle. |
 | **DMI** | Direct memory interface. A memory can hand an initiator a raw pointer to its bytes, so later accesses skip the bus altogether. It is the main reason a CPU model can run fast. |
+| **ISS** | Instruction-set simulator: a model of a processor that executes the firmware's instructions one after another. socpuppet's is DBT-RISE-RISCV. |
+| **Temporal decoupling, quantum** | A CPU model runs many instructions in one go, ahead of simulated time, and only then lets the rest of the platform catch up. The quantum is how far ahead it may get. Longer is faster, and shorter means an interrupt is seen sooner. |
 | **Debug transport** | A way to read or write through the bus that takes no simulated time and that nothing in the platform notices, the way a debugger reads memory. `peek` and `poke` use it. |
 | **Elaboration** | SystemC's construction phase: modules are created and bound, then the structure is frozen. Nothing can be added once simulation starts. |
 | **Delta cycle** | One round of "run everything that is ready, then apply updates" at a single moment of simulated time. Many deltas can happen without time moving. |
+| **ELF** | The file format a linker produces: the program's bytes in segments, each with the address it belongs at. `load_elf` puts one into memory. |
 | **Devicetree** | A description of hardware (what exists, at which address) that firmware such as Zephyr is built against. |
 
 ## Layers
@@ -148,17 +161,26 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 - **Slot concepts** (`src/socpuppet/platform/slots.h`) say what shape an implementation must have, checked by the compiler.
 - **Contract suites** (`tests/cpp/contracts/`) say how it must behave. Each is one set of tests that every implementation of the slot has to pass.
 
-| Slot | Contract | Implementations in M0 |
+| Slot | Contract | Implementations |
 |---|---|---|
 | memory | `MemoryContract` | `Memory` |
 | link endpoint | `LinkContract` | 🎭 `PassThroughLinkEndpoint` |
+| CPU | `BusMasterContract` | `DbtRiseCpu`, 🎭 `ScriptedBusMaster` |
+| UART | `UartContract` | `Ns16550` |
+| machine timer | `MachineTimerContract` | `MachineTimer` |
+| interrupt controller | `InterruptControllerContract` | `Plic` |
 
 When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
+
+### Borrowed models
+
+💡 socpuppet borrows before it builds. The CPU, the UART, the timer and the interrupt controller are other projects' models, each behind a small adapter of ours. A contract suite does a second job for a borrowed model: it is written first, it says what socpuppet relies on, and it found real bugs in every model it was pointed at. Those are fixed with small patches, and each patch is written up in [upstream.md](upstream.md), ready to send back.
 
 ## The models
 
 Each has a page saying what real hardware it stands for and what it leaves out.
 
+- [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
@@ -174,9 +196,14 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 |---|---|
 | Simulation kernel, TLM-2.0 | [SystemC 3.0](https://github.com/accellera-official/systemc) (Accellera) |
 | Router, logging | [SystemC-Components](https://github.com/Minres/SystemC-Components) (SCC, Minres) |
+| CPU | [DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV) (Minres) |
+| UART, machine timer, interrupt controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
+| Reading ELF files | [ELFIO](https://github.com/serge1/ELFIO) |
 | Python bindings | [pybind11](https://github.com/pybind/pybind11) |
 | Everything else | this repo |
 
 All of it is built from source as static libraries and linked into the one Python extension, so installing the package needs nothing else. See [development.md](development.md) for building it yourself.
 
-🚧 Not built yet: CPUs, PCIe, NVMe, the real die-to-die link, Zephyr boards. See [plan.md](plan.md).
+To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
+
+🚧 Not built yet: PCIe, NVMe, the SSD and its firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).
