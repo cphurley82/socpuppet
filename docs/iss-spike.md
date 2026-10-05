@@ -99,7 +99,7 @@ What it took to build (S1):
 - Its main library is declared `SHARED`. The SystemC part is static, so the kernel stays in one place, but a wheel would need the core static too.
 - Four adjustments from our side, none of them to its source: naming each Boost library whose headers it includes (it assumes a system-wide Boost with one include directory); leaving one file out on macOS, where a helper for the translating backends declares a C function called `wait()` and collides with POSIX; one compiler flag for Clang; and linking the whole SystemC library, because the cores register themselves from a static initializer nothing refers to.
 
-The four source patches (`spikes/iss/patches/`):
+The four source patches (in `spikes/iss/patches/` during the spike, and in `cmake/patches/` since M3a moved the CPU into the main build):
 
 | Patch | Lines | Needed on | Why |
 |---|---|---|---|
@@ -349,7 +349,7 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 - **What a real boot will need that `hello_world` did not**: a timer that fires and an interrupt controller that delivers. Zephyr's `synchronization` sample, M3a's second exit test, depends on both.
 - **Devicetree.** The generator knows only `Memory`. CPU nodes need an `riscv,isa-extensions` property for Zephyr 4.4.
 - **Sleep and `Platform.run()`.** With the three interpreters, a platform whose CPU is asleep in `wfi` has nothing left to do, and `run()` returns. The suite checks that, and it belongs in the contract. QBox is the exception.
-- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list in `spikes/iss/boost_libraries.cmake`; the four patches in `spikes/iss/patches/`, to carry until they are sent upstream (each is written up in [upstream.md](upstream.md)); a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
+- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list and the four patches, which M3a has since moved to `cmake/Dependencies.cmake` and `cmake/patches/`, to carry until they are sent upstream (each is written up in [upstream.md](upstream.md)); a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
 
 ## Not exercised
 
