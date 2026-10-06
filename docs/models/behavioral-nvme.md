@@ -34,7 +34,7 @@ platform.connect(nvme.dma, bus.add_input())     # its way into host memory
 platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 ```
 
-🧵 A script can then talk to it through `sp.NvmeHost`, the stand-in for the host's driver: `yield from nvme.enable()`, then `read_blocks` and `write_blocks`.
+🧵 A script can then talk to it through [`sp.NvmeHost`](nvme-host.md), the stand-in for the host's driver: `yield from nvme.enable()`, then `read_blocks` and `write_blocks`.
 
 | Port | What it is |
 |---|---|

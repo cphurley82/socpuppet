@@ -8,7 +8,9 @@ master carries it out; a read sends its value back into the generator:
         value = yield sp.read32(0x1000)
 """
 
+from collections.abc import Generator
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,11 @@ class Operation:
 
     kind: str
     operands: tuple[int | bytes, ...] = ()
+
+
+#: A piece of a script that can be handed over to with `yield from`: a
+#: generator of operations, which returns a `Result` when it is done.
+type Steps[Result] = Generator[Operation, Any, Result]
 
 
 def read32(address: int) -> Operation:

@@ -14,8 +14,10 @@ from socpuppet.components import (
     Router,
     ScriptedBusMaster,
 )
-from socpuppet.errors import ExpectationFailed
+from socpuppet.errors import ExpectationFailed, NvmeError
+from socpuppet.nvme_host import NvmeHost, NvmeNamespace
 from socpuppet.ops import (
+    Steps,
     expect32,
     read,
     read32,
@@ -37,6 +39,9 @@ __all__ = [
     "Memory",
     "MsiReceiver",
     "Ns16550",
+    "NvmeError",
+    "NvmeHost",
+    "NvmeNamespace",
     "PassThroughLink",
     "PcieEndpoint",
     "PcieRootComplex",
@@ -44,6 +49,7 @@ __all__ = [
     "Plic",
     "Router",
     "ScriptedBusMaster",
+    "Steps",
     "TraceRecord",
     "expect32",
     "ms",
