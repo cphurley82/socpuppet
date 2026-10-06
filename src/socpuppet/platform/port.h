@@ -56,11 +56,15 @@ inline Port TargetPort(std::string name, tlm::tlm_target_socket<>& socket,
           .required = required};
 }
 
-inline Port WireSourcePort(std::string name, sc_core::sc_out<bool>& out) {
+// A wire output that is not required may be left unconnected. It then
+// drives a wire that nobody reads.
+inline Port WireSourcePort(std::string name, sc_core::sc_out<bool>& out,
+                           bool required = true) {
   return {.name = std::move(name),
           .kind = Port::Kind::kWire,
           .role = Port::Role::kSource,
-          .object = &out};
+          .object = &out,
+          .required = required};
 }
 
 // A wire input may be left unconnected; the component then sees it as low.

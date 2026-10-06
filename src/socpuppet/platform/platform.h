@@ -119,7 +119,7 @@ class Platform {
   // topology is fixed.
   void Elaborate() {
     CheckWiring();
-    TieOffUnconnectedBusPorts();
+    TieOffUnconnectedPorts();
     // sc_start() does exactly this as its first step. Calling it here is not
     // part of the SystemC standard, but the reference kernel exposes it.
     sc_core::sc_get_curr_simcontext()->initialize(true);
@@ -239,25 +239,33 @@ class Platform {
         : sc_module(name) {}
   };
 
-  void TieOffUnconnectedBusPorts() {
+  void TieOffUnconnectedPorts() {
     for (auto& [path, instance] : instances_) {
       for (const Port& each : instance.ports) {
-        if (each.kind != Port::Kind::kBus || bound_.contains(each.object)) {
-          continue;
-        }
-        const char* name = sc_core::sc_gen_unique_name("unconnected");
-        if (each.role == Port::Role::kSource) {
-          auto tie_off = std::make_unique<NothingThere>(name);
-          dynamic_cast<tlm::tlm_initiator_socket<>&>(*each.object)
-              .bind(tie_off->socket);
-          tie_offs_.push_back(std::move(tie_off));
-        } else {
-          auto tie_off = std::make_unique<NobodyThere>(name);
-          tie_off->socket.bind(
-              dynamic_cast<tlm::tlm_target_socket<>&>(*each.object));
-          tie_offs_.push_back(std::move(tie_off));
+        if (bound_.contains(each.object)) continue;
+        if (each.kind == Port::Kind::kBus) {
+          TieOffBusPort(each);
+        } else if (each.role == Port::Role::kSource) {
+          // A wire output gets a wire that nobody reads. A wire input needs
+          // nothing here: its component ties itself low (see WireSinkPort).
+          WireDrivenBy(each, path + "." + each.name);
         }
       }
+    }
+  }
+
+  void TieOffBusPort(const Port& port) {
+    const char* name = sc_core::sc_gen_unique_name("unconnected");
+    if (port.role == Port::Role::kSource) {
+      auto tie_off = std::make_unique<NothingThere>(name);
+      dynamic_cast<tlm::tlm_initiator_socket<>&>(*port.object)
+          .bind(tie_off->socket);
+      tie_offs_.push_back(std::move(tie_off));
+    } else {
+      auto tie_off = std::make_unique<NobodyThere>(name);
+      tie_off->socket.bind(
+          dynamic_cast<tlm::tlm_target_socket<>&>(*port.object));
+      tie_offs_.push_back(std::move(tie_off));
     }
   }
 

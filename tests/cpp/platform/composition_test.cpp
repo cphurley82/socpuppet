@@ -1,8 +1,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -12,12 +15,14 @@
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/platform.h"
+#include "tests/cpp/support/line_driver.h"
 
 using ::testing::AllOf;
 using ::testing::HasSubstr;
 using ::testing::ThrowsMessage;
 
 socpuppet::Factory UnusedFactory();
+socpuppet::Registry WithSpamThatHasAnOptionalWireOutput();
 
 TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
@@ -104,6 +109,13 @@ TEST(WhenAPortIsLeftUnbound, ElaborationIsRefusedAndTheErrorNamesThePort) {
       ThrowsMessage<std::runtime_error>(HasSubstr("link.peer_initiator")));
 }
 
+TEST(WhenAnOptionalWireOutputIsLeftUnconnected, ThePlatformStillElaborates) {
+  socpuppet::Platform platform{WithSpamThatHasAnOptionalWireOutput()};
+  platform.Add("spam", "spam");
+
+  EXPECT_NO_THROW(platform.Elaborate());
+}
+
 TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
 
@@ -167,4 +179,18 @@ socpuppet::Factory UnusedFactory() {
   return [](const char*, const socpuppet::Config&) {
     return socpuppet::Instance{};
   };
+}
+
+// "spam" is a component with one wire output, `line`, that need not be
+// connected.
+socpuppet::Registry WithSpamThatHasAnOptionalWireOutput() {
+  socpuppet::Registry registry;
+  registry.Add("spam", [](const char* name, const socpuppet::Config&) {
+    auto module = std::make_unique<LineDriver>(name, [](LineDriver&) {});
+    std::vector<socpuppet::Port> ports{
+        socpuppet::WireSourcePort("line", module->line, /*required=*/false)};
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  return registry;
 }
