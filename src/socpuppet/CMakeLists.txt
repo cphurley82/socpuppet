@@ -103,6 +103,7 @@ target_sources(socpuppet_models INTERFACE
     models/behavioral_nvme.h
     models/builtin_components.h
     models/memory.h
+    models/msi_receiver.h
     models/pass_through_link.h
     models/scripted_bus_master.h
     platform/failure.h

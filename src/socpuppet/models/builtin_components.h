@@ -13,6 +13,7 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
+#include "socpuppet/models/msi_receiver.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/plic.h"
@@ -72,6 +73,12 @@ inline Registry BuiltinComponents() {
     auto module =
         std::make_unique<Memory>(name, Required(config, "size", "memory"));
     std::vector<Port> ports{TargetPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("msi_receiver", [](const char* name, const Config&) {
+    auto module = std::make_unique<MsiReceiver>(name);
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            WireSourcePort("irq", module->irq)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("ns16550", [](const char* name, const Config&) {

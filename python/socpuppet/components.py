@@ -292,6 +292,22 @@ class Memory(Component):
         )
 
 
+class MsiReceiver(Component):
+    """🎭 Stand-in for what takes a host's message-signalled interrupts.
+
+    A PCIe device interrupts by writing a message to an address the host
+    chose. Map this where the host has those messages sent, and connect
+    `irq` to the host. A message's data is the number of a vector, 0 to
+    31. `irq` is high while any vector is waiting, and reading the
+    register returns the waiting vectors, one bit each, and clears them.
+    """
+
+    implementation = "msi_receiver"
+    ports = ("socket", "irq")
+    #: One 32-bit register.
+    mapped_size = 4
+
+
 class Ns16550(Component):
     """A 16550-style UART: the serial port a firmware's console prints through.
 

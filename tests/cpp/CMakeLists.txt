@@ -31,6 +31,7 @@ add_executable(kernel_tests
   platform/composition_test.cpp
   platform/cpu_test.cpp
   platform/kernel_smoke_test.cpp
+  platform/msi_receiver_test.cpp
   platform/router_test.cpp
   platform/scc_router_smoke_test.cpp
   platform/scripted_master_test.cpp
