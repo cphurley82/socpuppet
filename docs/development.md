@@ -5,6 +5,7 @@
 - A C++20 compiler: GCC 13 or newer, or a recent Clang (Apple clang works).
 - [uv](https://docs.astral.sh/uv/). It supplies Python, CMake and Ninja, so none of those need installing.
 - git, and zlib's headers (`zlib1g-dev` on Ubuntu; already there on macOS).
+- `dtc`, the devicetree compiler (`device-tree-compiler` on Ubuntu, `brew install dtc` on macOS). Two Python tests that check generated devicetrees skip without it.
 
 Ubuntu 24.04 and macOS are both supported and both run in CI. If you would rather not set anything up, open the repo in the devcontainer (`.devcontainer/`), which is the CI environment.
 
@@ -92,6 +93,13 @@ firmware/build.sh        # into build/firmware
 ```
 
 - The script downloads the SDK's RISC-V toolchain (about 225 MB) and Zephyr 4.4.2 into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- ⚠️ The Zephyr SDK ships no macOS x86-64 toolchain, so on an Intel Mac the script stops and says so. Build the images in the devcontainer's image instead, which is Linux and has a toolchain. The images are plain RISC-V ELF files, so the tests on the Mac boot them as they are:
+
+  ```sh
+  docker build -t socpuppet-dev -f .devcontainer/Dockerfile .devcontainer
+  docker run --rm -v "$PWD":/workspace -w /workspace socpuppet-dev firmware/build.sh
+  ```
+
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
 
