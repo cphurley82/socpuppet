@@ -158,7 +158,9 @@ bool NvmeController::CarryOutOne() {
   completion.sqhd = submissions.head;
   completion.sqid = queue_id;
   completion.cid = command.cid;
-  completion.status.sct = outcome.status_type;
+  // The status code type is three bits wide. The mask is for GCC, which
+  // cannot tell that an 8-bit value of 0 or 1 fits.
+  completion.status.sct = outcome.status_type & 0x7;
   completion.status.sc = outcome.status;
   completion.status.p = completions.phase ? 1 : 0;
   host_memory_.Write(completions.base + (completions.tail * sizeof completion),
