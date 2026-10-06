@@ -79,6 +79,20 @@ class Component(ABC):
         """
         return
 
+    def located_parameters(
+        self, path: str, address_of: Callable[[str], int | None]
+    ) -> dict[str, int]:
+        """The parameters that depend on where the component ended up.
+
+        They are worked out from the description, and added to
+        `parameters`. `path` is where the component is placed, and
+        `address_of(port)` is the address at which a bus master finds one
+        of its ports, or None if none can reach it. Most components have
+        none, and an override raises if the description does not yet say
+        enough.
+        """
+        return {}
+
     def refuse_image(
         self, *, image: str, xlen: int, entry: int, path: str
     ) -> None:
@@ -378,6 +392,91 @@ class PassThroughLink:
     def endpoint(self) -> Component:
         """A new endpoint, for one end of the link."""
         return PassThroughLinkEndpoint()
+
+
+class PcieEndpoint(Component):
+    """What stands between a PCIe link and a function that knows no PCIe.
+
+    The function, such as `BehavioralNvme`, has a register block, a DMA
+    port and interrupt lines. The endpoint puts PCIe around them: it says
+    what the device is, lets the host place the register block in its
+    address map, and passes the function's DMA up the link.
+
+    `vendor_id` and `device_id` say who made the device and which device it
+    is, and `class_code` what kind of device it is, as three bytes: class,
+    subclass and programming interface (0x010802 for an NVMe drive).
+    `function_size` is how many bytes the function's register block takes,
+    and `vectors` how many interrupt lines it has.
+    """
+
+    implementation = "pcie_endpoint"
+
+    def __init__(
+        self,
+        *,
+        vendor_id: int,
+        device_id: int,
+        class_code: int,
+        function_size: int,
+        vectors: int,
+    ) -> None:
+        if not 1 <= vectors <= 2048:
+            raise ValueError(
+                f"A PCIe endpoint has 1 to 2048 interrupt vectors, which is "
+                f"what an MSI-X table can hold, and {vectors} were asked for."
+            )
+        super().__init__(
+            vendor_id=vendor_id,
+            device_id=device_id,
+            class_code=class_code,
+            function_size=function_size,
+            vectors=vectors,
+        )
+
+    @property
+    def ports(self) -> tuple[str, ...]:
+        """The link, the function's three kinds of port, one line per vector."""
+        return (
+            "from_host",
+            "to_host",
+            "bar0",
+            "dma",
+            *(f"irq{vector}" for vector in range(self.parameters["vectors"])),
+        )
+
+
+class PcieRootComplex(Component):
+    """Where a host's bus meets a PCIe link.
+
+    The host reaches the device on the link through two windows that are
+    mapped onto its bus: `ecam`, the configuration window, and `mmio`, the
+    memory window. Whatever the device sends up the link (DMA, and
+    interrupts as messages) comes out of `dma`.
+
+    💡 The root complex has to know the address at which the host sees the
+    start of the memory window, because a bus hands a target offsets into
+    its window, and the device compares addresses on the host's bus. It
+    works that out from where the window is mapped, so there is nothing to
+    tell it.
+    """
+
+    implementation = "pcie_root_complex"
+    ports = ("ecam", "mmio", "dma", "to_device", "from_device")
+
+    @override
+    def located_parameters(
+        self, path: str, address_of: Callable[[str], int | None]
+    ) -> dict[str, int]:
+        mmio_base = address_of("mmio")
+        if mmio_base is None:
+            raise ValueError(
+                f"The PCIe root complex at {path} needs to know where the "
+                f"host sees its memory window, and no bus master can reach "
+                f"{path}.mmio. Map it onto the host's bus with map(<the "
+                "root complex>.mmio, base=..., size=...), and connect a "
+                "bus master to that bus."
+            )
+        return {"mmio_base": mmio_base}
 
 
 class Plic(Component):

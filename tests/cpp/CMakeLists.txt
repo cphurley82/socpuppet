@@ -5,6 +5,7 @@ add_executable(unit_tests
   unit/elf_image_test.cpp
   unit/memory_store_test.cpp
   unit/nvme_controller_test.cpp
+  unit/pcie_endpoint_registers_test.cpp
   unit/prp_test.cpp
   unit/script_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
@@ -32,6 +33,7 @@ add_executable(kernel_tests
   platform/cpu_test.cpp
   platform/kernel_smoke_test.cpp
   platform/msi_receiver_test.cpp
+  platform/pcie_test.cpp
   platform/router_test.cpp
   platform/scc_router_smoke_test.cpp
   platform/scripted_master_test.cpp

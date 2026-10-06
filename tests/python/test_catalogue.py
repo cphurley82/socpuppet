@@ -34,6 +34,14 @@ EXAMPLES = [
     sp.MsiReceiver(),
     sp.Ns16550(),
     PassThroughLinkEndpoint(),
+    sp.PcieEndpoint(
+        vendor_id=0x5350,
+        device_id=0xC0DE,
+        class_code=0x010802,
+        function_size=0x2000,
+        vectors=3,
+    ),
+    sp.PcieRootComplex(),
     sp.Plic(),
     router_with_one_output(),
     router_with_two_inputs(),
@@ -45,6 +53,19 @@ class TestAComponentThatDoesNotNameItsPorts:
     def test_cannot_be_created(self):
         with pytest.raises(TypeError, match="ports"):
             Component()
+
+
+class TestAPcieEndpointWithANumberOfVectorsMsixCannotHave:
+    @pytest.mark.parametrize("vectors", [0, 2049])
+    def test_is_refused_and_the_error_gives_the_range(self, vectors):
+        with pytest.raises(ValueError, match="1 to 2048"):
+            sp.PcieEndpoint(
+                vendor_id=0x5350,
+                device_id=0xC0DE,
+                class_code=0x010802,
+                function_size=0x2000,
+                vectors=vectors,
+            )
 
 
 class TestTheCatalogue:
@@ -63,12 +84,19 @@ class TestTheCatalogue:
 
     @pytest.mark.platform
     @pytest.mark.parametrize(
-        "example", EXAMPLES, ids=lambda example: example.implementation
+        "example",
+        EXAMPLES,
+        ids=lambda example: f"{example.implementation}({len(example.ports)})",
     )
     def test_declares_the_ports_the_simulator_creates(self, example):
         from socpuppet import _core
 
         native = _core.Platform(color_log=False)
-        native.add("example", example.implementation, example.parameters)
+        # As a platform does: what the component is told outright, and what
+        # it works out from where it is. Here every port is at address 0.
+        parameters = example.parameters | example.located_parameters(
+            "example", lambda port: 0
+        )
+        native.add("example", example.implementation, parameters)
 
         assert set(example.ports) == set(native.ports("example"))

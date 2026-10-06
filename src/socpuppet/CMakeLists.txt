@@ -8,6 +8,7 @@ add_library(socpuppet_core INTERFACE)
 target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/memory_store.h
+    core/pcie_endpoint_registers.h
     core/script.h
     core/time.h
     core/trace.h)
@@ -105,6 +106,9 @@ target_sources(socpuppet_models INTERFACE
     models/memory.h
     models/msi_receiver.h
     models/pass_through_link.h
+    models/pcie_endpoint.h
+    models/pcie_link.h
+    models/pcie_root_complex.h
     models/scripted_bus_master.h
     platform/failure.h
     platform/logging.h

@@ -16,6 +16,8 @@
 #include "socpuppet/models/msi_receiver.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
+#include "socpuppet/models/pcie_endpoint.h"
+#include "socpuppet/models/pcie_root_complex.h"
 #include "socpuppet/models/plic.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/registry.h"
@@ -98,6 +100,39 @@ inline Registry BuiltinComponents() {
             TargetPort("peer_target", module->peer_target)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
+  registry.Add("pcie_endpoint", [](const char* name, const Config& config) {
+    const std::uint64_t vectors = Required(config, "vectors", "pcie_endpoint");
+    auto module = std::make_unique<PcieEndpoint>(
+        name,
+        PcieEndpointRegisters::Identity{
+            .vendor_id = static_cast<std::uint16_t>(
+                Required(config, "vendor_id", "pcie_endpoint")),
+            .device_id = static_cast<std::uint16_t>(
+                Required(config, "device_id", "pcie_endpoint")),
+            .class_code = static_cast<std::uint32_t>(
+                Required(config, "class_code", "pcie_endpoint"))},
+        Required(config, "function_size", "pcie_endpoint"), vectors);
+    std::vector<Port> ports{TargetPort("from_host", module->from_host),
+                            InitiatorPort("to_host", module->to_host),
+                            InitiatorPort("bar0", module->bar0),
+                            TargetPort("dma", module->dma)};
+    ports.reserve(ports.size() + vectors);
+    for (std::uint64_t vector = 0; vector < vectors; ++vector) {
+      ports.push_back(
+          WireSinkPort("irq" + std::to_string(vector), module->irq[vector]));
+    }
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("pcie_root_complex", [](const char* name, const Config& config) {
+    auto module = std::make_unique<PcieRootComplex>(
+        name, Required(config, "mmio_base", "pcie_root_complex"));
+    std::vector<Port> ports{TargetPort("ecam", module->ecam),
+                            TargetPort("mmio", module->mmio),
+                            InitiatorPort("dma", module->dma),
+                            InitiatorPort("to_device", module->to_device),
+                            TargetPort("from_device", module->from_device)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   // Its sources are ports "source1" to "source31", numbered as the PLIC
   // numbers them.
   registry.Add("plic", [](const char* name, const Config&) {

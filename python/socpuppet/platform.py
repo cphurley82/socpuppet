@@ -9,6 +9,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, NamedTuple, overload
 
 from socpuppet import devicetree
+from socpuppet.address_map import reachable_ports
 from socpuppet.components import (
     Component,
     LinkModel,
@@ -249,6 +250,12 @@ class Platform:
     def build(self) -> None:
         """Create the simulation from the description."""
         self.refuse_if_built("build it again")
+        # Anything wrong with the description comes out here, before the
+        # simulator is created, because a process gets only one of those.
+        parameters = {
+            path: self._parameters_of(placed)
+            for path, placed in self._placed.items()
+        }
         from socpuppet import _core  # the simulator loads here, not on import
 
         native = _core.Platform(
@@ -256,11 +263,7 @@ class Platform:
         )
         native.set_quantum(self._quantum)
         for path, placed in self._placed.items():
-            native.add(
-                path,
-                placed.component.implementation,
-                placed.component.parameters,
-            )
+            native.add(path, placed.component.implementation, parameters[path])
             placed.component.configure(native, path)
         for source, sink, trace in self._connections:
             native.bind(source.path, sink.path, trace)
@@ -410,14 +413,16 @@ class Platform:
         """The description as JSON: every component and every connection.
 
         A scripted bus master's script is behavior, not structure, and is
-        left out.
+        left out. A component's parameters include what it works out from
+        the description, so a description that does not yet say enough for
+        that is refused, as it would be by `build()`.
         """
         return json.dumps(
             {
                 "components": {
                     path: {
                         "implementation": placed.component.implementation,
-                        "parameters": placed.component.parameters,
+                        "parameters": self._parameters_of(placed),
                     }
                     for path, placed in self._placed.items()
                 },
@@ -436,6 +441,47 @@ class Platform:
             "one entry of the memory map: check the address, and that the "
             "access does not run past the end of what is there."
         )
+
+    def _parameters_of(self, placed: Placed) -> dict[str, int]:
+        """What a component is configured with.
+
+        That is what it was told, and what it works out from where it is in
+        the description.
+        """
+
+        def address_of(port: str) -> int | None:
+            return self._address_of(Port(placed, port))
+
+        return placed.component.parameters | (
+            placed.component.located_parameters(placed.path, address_of)
+        )
+
+    def _address_of(self, port: Port) -> int | None:
+        """Where the bus masters find `port`, or None if none can reach it.
+
+        Raises if two of them find it at different addresses, since there
+        is then no one answer.
+        """
+        views = {
+            placed.socket.path: address
+            for placed in self._placed.values()
+            if placed.component.is_bus_master
+            for address, reached in reachable_ports(
+                self._connections, placed.socket
+            )
+            if reached.path == port.path
+        }
+        if len(set(views.values())) > 1:
+            seen = ", ".join(
+                f"{address:#x} from {master}"
+                for master, address in views.items()
+            )
+            raise ValueError(
+                f"The bus masters of this platform find {port.path} at "
+                f"different addresses: {seen}. Its component needs one "
+                "address to go by, so only one master's view can lead to it."
+            )
+        return next(iter(views.values()), None)
 
     def _view(self, via: Port | None) -> Port:
         """The port a peek or poke looks through."""

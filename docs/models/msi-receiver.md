@@ -4,7 +4,7 @@
 
 ## What it stands in for
 
-The part of a host's interrupt controller that takes message-signalled interrupts. A PCIe device interrupts by writing a message to an address the host chose (see the endpoint), and something at that address has to turn the write back into an interrupt for the CPU. On a RISC-V host that is an IMSIC (incoming message-signalled interrupt controller), and on a PC it is the local APIC.
+The part of a host's interrupt controller that takes message-signalled interrupts. A PCIe device interrupts by writing a message to an address the host chose (see the [endpoint](pcie-endpoint.md)), and something at that address has to turn the write back into an interrupt for the CPU. On a RISC-V host that is an IMSIC (incoming message-signalled interrupt controller), and on a PC it is the local APIC.
 
 🚧 The real host's interrupt path for PCIe is a later milestone ([plan.md](../plan.md), M3b). This holds its place, so that a host with no CPU can be interrupted by a PCIe device today.
 

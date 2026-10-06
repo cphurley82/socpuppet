@@ -38,7 +38,7 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 
 | Port | What it is |
 |---|---|
-| `bar0` | The register block: controller registers in the first 4 KiB, doorbells after them. 🎓 "BAR0" is the first base address register of a PCIe device, which is where a host finds these registers on real hardware. Map it straight onto a bus, as here, or connect it to a PCIe endpoint. |
+| `bar0` | The register block: controller registers in the first 4 KiB, doorbells after them. 🎓 "BAR0" is the first base address register of a PCIe device, which is where a host finds these registers on real hardware. Map it straight onto a bus, as here, or connect it to a [PCIe endpoint](pcie-endpoint.md). |
 | `dma` | How the controller reads and writes the host's memory. Connect it to an input of the bus the host's memory is on. |
 | `irq0`, `irq1`, ... | One interrupt line per vector. The admin queue uses `irq0`, and the host names a vector for each I/O queue when it creates it. A line may be left unconnected. |
 
@@ -58,7 +58,7 @@ A line is high while a completion queue on its vector holds a completion the hos
 
 ## What it leaves out
 
-- **PCIe.** No configuration space, no base address registers, no MSI-X table. That is the PCIe endpoint's job, and the two are connected port for port: `bar0`, `dma`, and each `irq`.
+- **PCIe.** No configuration space, no base address registers, no MSI-X table. That is the [PCIe endpoint](pcie-endpoint.md)'s job, and the two are connected port for port: `bar0`, `dma`, and each `irq`.
 - **Everything behind the registers of a real SSD**: a CPU, firmware, a flash translation layer, NAND flash, wear, garbage collection.
 - **Time.** Nothing takes any. There is no latency, and the controller never falls behind or pushes back.
 - **Most of the command set.** No deleting queues, no Get Features or log pages, no asynchronous events, no Dataset Management (TRIM), no namespaces beyond the first, and block size is fixed at 512.
