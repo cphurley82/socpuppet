@@ -19,6 +19,7 @@
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/interrupt_source.h"
 #include "tests/cpp/support/line_driver.h"
+#include "tests/cpp/support/recording_target.h"
 
 namespace socpuppet {
 
@@ -117,7 +118,58 @@ struct MasterWithAnInterruptSource {
   Platform platform;
 };
 
+// A scripted bus master wired straight to a target that writes down every
+// access it gets.
+struct MasterWithAProbe {
+  explicit MasterWithAProbe(std::function<Script()> script)
+      : platform{WithAProbe(accesses)} {
+    platform.Add("cpu", "scripted_bus_master");
+    platform.Add("probe", "probe");
+    platform.Bind("cpu.socket", "probe.socket");
+    platform.ModuleAt<ScriptedBusMaster>("cpu").SetScript(std::move(script));
+    platform.Elaborate();
+  }
+
+  static Registry WithAProbe(std::vector<RecordedAccess>& accesses) {
+    Registry registry = BuiltinComponents();
+    registry.Add("probe", [&accesses](const char* name, const Config&) {
+      auto module = std::make_unique<RecordingTarget>(name, accesses,
+                                                      sc_core::SC_ZERO_TIME);
+      std::vector<Port> ports{TargetPort("socket", module->socket)};
+      return Instance{.module = std::move(module), .ports = std::move(ports)};
+    });
+    return registry;
+  }
+
+  // Declared before the platform, which holds a reference to it.
+  std::vector<RecordedAccess> accesses;
+  Platform platform;
+};
+
 }  // namespace
+
+TEST(WhenAScriptReadsBackSixBytesItWrote, ItGetsTheSameBytes) {
+  std::vector<std::uint8_t> read_back;
+  MasterWithRam fixture{[&]() -> Script {
+    co_await Write(0x10, {0x11, 0x22, 0x33, 0x44, 0x55, 0x66});
+    read_back = co_await Read(0x10, 6);
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(read_back,
+            (std::vector<std::uint8_t>{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}));
+}
+
+TEST(WhenAScriptWritesSixBytes, TheTargetSeesOneAccess) {
+  MasterWithAProbe fixture{[]() -> Script {
+    co_await Write(0x10, {0x11, 0x22, 0x33, 0x44, 0x55, 0x66});
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.accesses.size(), 1U);
+}
 
 TEST(WhenAScriptReadsAnAddressItWroteEarlier, TheReadReturnsTheWrittenValue) {
   MasterWithRam fixture{[]() -> Script {

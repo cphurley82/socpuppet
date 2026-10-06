@@ -5,9 +5,11 @@
 #include <format>
 #include <functional>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <systemc>
 #include <tlm>
@@ -91,18 +93,33 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Read32& op, Script& script) {
-    script.GiveBack(Read(op.address));
+    script.GiveBack(Read32At(op.address));
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Write32& op, Script&) {
     std::uint32_t value = op.value;
-    Transport(tlm::TLM_WRITE_COMMAND, op.address, value);
+    Transport(tlm::TLM_WRITE_COMMAND, op.address, BytesOf(value));
+    return AfterAnOp();
+  }
+
+  Outcome CarryOut(const Read& op, Script& script) {
+    std::vector<std::uint8_t> bytes(op.length);
+    Transport(tlm::TLM_READ_COMMAND, op.address, bytes);
+    script.GiveBack(std::move(bytes));
+    return AfterAnOp();
+  }
+
+  Outcome CarryOut(const Write& op, Script&) {
+    // The payload's pointer is not const, but TLM forbids a target to
+    // change the data of a write.
+    Transport(tlm::TLM_WRITE_COMMAND, op.address,
+              {const_cast<std::uint8_t*>(op.data.data()), op.data.size()});
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Expect32& op, Script&) {
-    const std::uint32_t actual = Read(op.address);
+    const std::uint32_t actual = Read32At(op.address);
     if (actual != op.value) {
       FailSimulation(ExpectationFailed(
           std::format("{} expected {:#x} at address {:#x}, but read {:#x}.",
@@ -133,20 +150,24 @@ class ScriptedBusMaster : public sc_core::sc_module {
     return reset->read() ? Outcome::kInterruptedByReset : Outcome::kCarryOn;
   }
 
-  std::uint32_t Read(std::uint64_t address) {
+  std::uint32_t Read32At(std::uint64_t address) {
     std::uint32_t value = 0;
-    Transport(tlm::TLM_READ_COMMAND, address, value);
+    Transport(tlm::TLM_READ_COMMAND, address, BytesOf(value));
     return value;
   }
 
+  static std::span<std::uint8_t> BytesOf(std::uint32_t& value) {
+    return {reinterpret_cast<std::uint8_t*>(&value), sizeof value};
+  }
+
   void Transport(tlm::tlm_command command, std::uint64_t address,
-                 std::uint32_t& value) {
+                 std::span<std::uint8_t> data) {
     tlm::tlm_generic_payload transaction;
     transaction.set_command(command);
     transaction.set_address(address);
-    transaction.set_data_ptr(reinterpret_cast<unsigned char*>(&value));
-    transaction.set_data_length(sizeof value);
-    transaction.set_streaming_width(sizeof value);
+    transaction.set_data_ptr(data.data());
+    transaction.set_data_length(static_cast<unsigned>(data.size()));
+    transaction.set_streaming_width(static_cast<unsigned>(data.size()));
     // The access is stamped with how far ahead of the simulation's clock we
     // are, and the target adds however long the access takes.
     sc_core::sc_time delay = lead_.get_local_time();

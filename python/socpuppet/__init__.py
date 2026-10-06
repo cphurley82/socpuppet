@@ -11,7 +11,15 @@ from socpuppet.components import (
     ScriptedBusMaster,
 )
 from socpuppet.errors import ExpectationFailed
-from socpuppet.ops import expect32, read32, wait, wait_irq, write32
+from socpuppet.ops import (
+    expect32,
+    read,
+    read32,
+    wait,
+    wait_irq,
+    write,
+    write32,
+)
 from socpuppet.platform import Platform
 from socpuppet.time import ms, ns, us
 from socpuppet.trace import TraceRecord
@@ -32,10 +40,12 @@ __all__ = [
     "expect32",
     "ms",
     "ns",
+    "read",
     "read32",
     "render_trace",
     "us",
     "wait",
     "wait_irq",
+    "write",
     "write32",
 ]

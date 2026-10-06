@@ -327,11 +327,18 @@ class Platform:
         A peek takes no simulated time and nothing in the platform notices
         it, the way a debugger reads memory.
         """
+        return int.from_bytes(self.peek(address, 4, via), "little")
+
+    def peek(self, address: int, length: int, via: Port | None = None) -> bytes:
+        """Read `length` bytes from `address` on, as a bus master sees memory.
+
+        Like `peek32`, it takes no simulated time, and `via` works the same.
+        """
         view = self._view(via)
-        data = self.native().debug_read(view.path, address, 4)
+        data = self.native().debug_read(view.path, address, length)
         if data is None:
-            raise self._nothing_at(address, 4, view)
-        return int.from_bytes(data, "little")
+            raise self._nothing_at(address, length, view)
+        return data
 
     def poke32(self, address: int, value: int, via: Port | None = None) -> None:
         """Write a 32-bit little-endian value, as a bus master sees memory.

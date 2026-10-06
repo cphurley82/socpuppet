@@ -131,6 +131,29 @@ class TestWhenBytesOfAnyLengthArePoked:
 
 
 @pytest.mark.platform
+class TestWhenBytesOfAnyLengthArePeeked:
+    def test_they_are_the_bytes_that_were_poked_there(self):
+        platform = thin_platform(writes=[])
+        platform.build()
+        platform.poke(0x20, bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]))
+
+        assert platform.peek(0x21, 4) == bytes([0x22, 0x33, 0x44, 0x55])
+
+
+@pytest.mark.platform
+class TestWhenAPeekOfBytesMissesEveryMemory:
+    def test_the_error_names_the_address_and_how_many_bytes(self):
+        platform = thin_platform(writes=[])
+        platform.build()
+
+        with pytest.raises(LookupError) as error:
+            platform.peek(0x1000, 6)
+
+        assert "0x1000" in str(error.value)
+        assert "6-byte" in str(error.value)
+
+
+@pytest.mark.platform
 class TestWhenAPeekMissesEveryMemory:
     def test_the_error_names_the_address(self):
         platform = thin_platform(writes=[])

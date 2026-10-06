@@ -16,7 +16,7 @@ class Operation:
     """One thing for a bus master to do. Make these with the functions below."""
 
     kind: str
-    operands: tuple[int, ...] = ()
+    operands: tuple[int | bytes, ...] = ()
 
 
 def read32(address: int) -> Operation:
@@ -27,6 +27,24 @@ def read32(address: int) -> Operation:
 def write32(address: int, value: int) -> Operation:
     """Write a 32-bit value."""
     return Operation("write32", (address, _fits_32_bits(value)))
+
+
+def read(address: int, length: int) -> Operation:
+    """Read `length` bytes in one access. They are sent back into the script."""
+    if length < 0:
+        raise ValueError(f"Cannot read {length} bytes: a length is 0 or more.")
+    return Operation("read", (address, length))
+
+
+def write(address: int, data: bytes) -> Operation:
+    """Write the bytes of `data` in one access."""
+    if not isinstance(data, bytes | bytearray | memoryview):
+        raise TypeError(
+            f"sp.write() writes bytes, and was given {data!r}. To write a "
+            "number, use sp.write32(address, value), or turn it into bytes "
+            'first with value.to_bytes(length, "little").'
+        )
+    return Operation("write", (address, bytes(data)))
 
 
 def expect32(address: int, value: int) -> Operation:
@@ -47,7 +65,7 @@ def wait_irq() -> Operation:
     return Operation("wait_irq")
 
 
-def to_native(yielded: object) -> tuple[str | int, ...]:
+def to_native(yielded: object) -> tuple[str | int | bytes, ...]:
     """What the simulator needs to carry out something a script yielded.
 
     That is (kind, *operands).
@@ -56,7 +74,7 @@ def to_native(yielded: object) -> tuple[str | int, ...]:
         raise TypeError(
             f"A script yielded {yielded!r}, which is not a bus operation. "
             "Yield operations such as sp.write32(address, value), "
-            "sp.read32(address) or sp.wait(sp.ns(10))."
+            "sp.read(address, length) or sp.wait(sp.ns(10))."
         )
     return (yielded.kind, *yielded.operands)
 

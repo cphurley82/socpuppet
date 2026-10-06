@@ -15,6 +15,8 @@ struct RecordedAccess {
   sc_core::sc_time delay;
   // The simulation's clock when the access arrived.
   sc_core::sc_time kernel_time;
+  // What a write carried. Empty for a read.
+  std::vector<std::uint8_t> written;
 
   // When the access happened, as the master sees time.
   sc_core::sc_time Time() const { return kernel_time + delay; }
@@ -39,9 +41,15 @@ class RecordingTarget : public sc_core::sc_module {
  private:
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {
-    record_.push_back({.address = transaction.get_address(),
-                       .delay = delay,
-                       .kernel_time = sc_core::sc_time_stamp()});
+    const std::uint8_t* data = transaction.get_data_ptr();
+    record_.push_back(
+        {.address = transaction.get_address(),
+         .delay = delay,
+         .kernel_time = sc_core::sc_time_stamp(),
+         .written = transaction.is_write()
+                        ? std::vector<std::uint8_t>(
+                              data, data + transaction.get_data_length())
+                        : std::vector<std::uint8_t>{}});
     delay += latency_;
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }

@@ -1,6 +1,7 @@
 #include "socpuppet/core/script.h"
 
 #include <cstdint>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -21,7 +22,38 @@ Script ReadThenWriteBack(std::uint64_t from, std::uint64_t to) {
   co_await Write32(to, value);
 }
 
+Script WriteBytes(std::vector<std::uint8_t> bytes) {
+  co_await Write(0x10, std::move(bytes));
+}
+
+Script ReadThreeBytesThenWriteThemBack() {
+  std::vector<std::uint8_t> bytes = co_await Read(0x10, 3);
+  co_await Write(0x20, std::move(bytes));
+}
+
 }  // namespace
+
+TEST(WhenAScriptAwaitsAWriteOfBytes, TheOpCarriesTheBytes) {
+  Script script = WriteBytes({0x11, 0x22, 0x33});
+
+  const Op* write = script.Next();
+
+  ASSERT_NE(write, nullptr);
+  EXPECT_EQ(std::get<Write>(*write).data,
+            (std::vector<std::uint8_t>{0x11, 0x22, 0x33}));
+}
+
+TEST(WhenAScriptAwaitsAReadOfBytes, ItGetsTheBytesTheBusGaveBack) {
+  Script script = ReadThreeBytesThenWriteThemBack();
+  script.Next();  // the read
+
+  script.GiveBack(std::vector<std::uint8_t>{0xAA, 0xBB, 0xCC});
+  const Op* write = script.Next();
+
+  ASSERT_NE(write, nullptr);
+  EXPECT_EQ(std::get<Write>(*write).data,
+            (std::vector<std::uint8_t>{0xAA, 0xBB, 0xCC}));
+}
 
 TEST(WhenAScriptAwaitsSeveralOps, TheyComeOutInTheOrderItAwaitedThem) {
   Script script = TwoWritesThenAWait();
@@ -39,7 +71,7 @@ TEST(WhenAScriptAwaitsARead, ItGetsTheValueTheBusGaveBack) {
   Script script = ReadThenWriteBack(0x10, 0x20);
   script.Next();  // the read
 
-  script.GiveBack(0xC0FFEE);
+  script.GiveBack(std::uint32_t{0xC0FFEE});
   const Op* write = script.Next();
 
   ASSERT_NE(write, nullptr);

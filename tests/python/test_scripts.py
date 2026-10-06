@@ -21,6 +21,49 @@ def master_with_ram(script):
 
 
 @pytest.mark.platform
+class TestWhenAScriptYieldsAWriteOfBytes:
+    def test_the_bytes_are_in_memory_from_that_address_on(self):
+        def script():
+            yield sp.write(0x10, bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]))
+
+        platform = master_with_ram(script)
+
+        platform.run()
+
+        assert platform.peek(0x10, 6) == bytes(
+            [0x11, 0x22, 0x33, 0x44, 0x55, 0x66]
+        )
+
+
+class TestWhenAWriteOfBytesIsGivenANumber:
+    def test_it_is_refused_and_the_error_points_at_write32(self):
+        with pytest.raises(TypeError, match="write32"):
+            sp.write(0x10, 0xC0FFEE)
+
+
+class TestWhenAReadOfBytesIsGivenANegativeLength:
+    def test_it_is_refused_and_the_error_names_the_length(self):
+        with pytest.raises(ValueError, match="-1"):
+            sp.read(0x10, -1)
+
+
+@pytest.mark.platform
+class TestWhenAScriptYieldsAReadOfBytes:
+    def test_the_bytes_sent_back_are_what_memory_holds(self):
+        read_back = []
+
+        def script():
+            read_back.append((yield sp.read(0x10, 6)))
+
+        platform = master_with_ram(script)
+        platform.poke(0x10, bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]))
+
+        platform.run()
+
+        assert read_back == [bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66])]
+
+
+@pytest.mark.platform
 class TestWhenAScriptYieldsARead:
     def test_the_value_sent_back_is_what_the_bus_returned(self):
         def script():

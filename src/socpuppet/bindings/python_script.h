@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <pybind11/pybind11.h>
 
@@ -34,32 +36,41 @@ class PythonScript {
     if (!executor_.Run([this] { generator_ = generator_function_(); })) {
       co_return;
     }
-    std::optional<std::uint32_t> read_value;
-    while (std::optional<Op> op = Next(read_value)) {
-      const std::uint32_t given_back = co_await *op;
-      read_value = std::holds_alternative<Read32>(*op)
-                       ? std::optional{given_back}
-                       : std::nullopt;
+    Result given_back;
+    while (std::optional<Op> op = Next(given_back)) {
+      given_back = co_await *op;
     }
   }
 
  private:
-  // Advances the generator, sending it the last read's value if there was
-  // one, and returns the op it yields. Returns nothing when the script has
-  // finished or has failed.
-  std::optional<Op> Next(std::optional<std::uint32_t> read_value) {
+  // Advances the generator, sending it what the last read gave back, and
+  // returns the op it yields. Returns nothing when the script has finished
+  // or has failed.
+  std::optional<Op> Next(const Result& given_back) {
     std::optional<Op> op;
     executor_.Run([&] {
       namespace py = pybind11;
       try {
-        py::object yielded = read_value ? generator_.attr("send")(*read_value)
-                                        : generator_.attr("send")(py::none());
-        op = ToOp(to_native_(yielded));
+        op = ToOp(to_native_(generator_.attr("send")(ToPython(given_back))));
       } catch (py::error_already_set& error) {
         if (!error.matches(PyExc_StopIteration)) throw;
       }
     });
     return op;
+  }
+
+  // What the script is sent: a number, bytes, or None.
+  static pybind11::object ToPython(const Result& given_back) {
+    namespace py = pybind11;
+    if (const auto* value = std::get_if<std::uint32_t>(&given_back)) {
+      return py::int_(*value);
+    }
+    if (const auto* bytes =
+            std::get_if<std::vector<std::uint8_t>>(&given_back)) {
+      return py::bytes(reinterpret_cast<const char*>(bytes->data()),
+                       bytes->size());
+    }
+    return py::none();
   }
 
   static Op ToOp(const pybind11::tuple& native) {
@@ -71,6 +82,13 @@ class PythonScript {
     if (kind == "write32") {
       return Write32{.address = number(1),
                      .value = static_cast<std::uint32_t>(number(2))};
+    }
+    if (kind == "read") {
+      return Read{.address = number(1), .length = number(2)};
+    }
+    if (kind == "write") {
+      const auto data = native[2].cast<std::string>();
+      return Write{.address = number(1), .data = {data.begin(), data.end()}};
     }
     if (kind == "expect32") {
       return Expect32{.address = number(1),

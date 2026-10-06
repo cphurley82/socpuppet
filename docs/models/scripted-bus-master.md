@@ -27,6 +27,8 @@ A script is a Python generator function. Each `yield` hands one operation to the
 |---|---|
 | `sp.read32(address)` | Reads 32 bits; the value comes back as the result of the `yield`. |
 | `sp.write32(address, value)` | Writes 32 bits. |
+| `sp.read(address, length)` | Reads `length` bytes in one access; they come back as `bytes`. |
+| `sp.write(address, data)` | Writes the bytes of `data` in one access. |
 | `sp.expect32(address, value)` | Reads, and stops the run with `sp.ExpectationFailed` if the value differs. |
 | `sp.wait(duration)` | Lets simulated time pass (`sp.ns(10)`, `sp.us(1)`). |
 | `sp.wait_irq()` | Waits until the `irq` input is high. |
@@ -54,7 +56,7 @@ There is no CPU behind the curtain:
 - **No timing of its own.** An operation takes as long as the device it reaches says it takes, and no longer. Most devices here say "no time at all", so time only passes when the script waits.
 - **One interrupt line**, level-sensitive, with no controller, priorities or vectors.
 - ⚠️ **Quieting a device works when it is wired straight to `irq`.** After a write that lowers the line, `sp.wait_irq()` waits for the next rise. Behind an interrupt controller it does not: the script's accesses follow each other with nothing else getting a turn, so the controller still sees the device asking when the script completes the interrupt, and reports it again. The real CPU gives the platform a turn after every access, and the stand-in does not yet.
-- **32-bit accesses only**, little-endian.
+- **Beats.** `read32` and `write32` are little-endian 32-bit accesses. `read` and `write` move any number of bytes in one transaction. A real CPU would need several accesses or a burst for anything wider than its bus. The stand-in sends it whole, which is how a loosely-timed model writes a burst, with no beat-by-beat timing. There are no byte enables.
 - **No DMI.** It makes a transaction for every access, where a CPU model would take a fast path.
 
 ## What it shares with a real CPU
