@@ -17,6 +17,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/platform.h"
+#include "tests/cpp/support/interrupt_source.h"
 #include "tests/cpp/support/line_driver.h"
 
 namespace socpuppet {
@@ -75,6 +76,41 @@ struct MasterWithRam {
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
     }
+    return registry;
+  }
+
+  Platform platform;
+};
+
+// A scripted bus master wired straight to a device that interrupts it. Any
+// write the script makes quiets the device.
+struct MasterWithAnInterruptSource {
+  MasterWithAnInterruptSource(
+      std::function<Script()> script,
+      const std::function<void(InterruptSource&)>& interrupts)
+      : platform{WithAnInterruptSource(interrupts)} {
+    platform.Add("cpu", "scripted_bus_master");
+    platform.Add("device", "interrupt_source");
+    platform.Bind("cpu.socket", "device.socket");
+    platform.Bind("device.line", "cpu.irq");
+    platform.ModuleAt<ScriptedBusMaster>("cpu").SetScript(std::move(script));
+    platform.Elaborate();
+  }
+
+  int TimesQuieted() {
+    return platform.ModuleAt<InterruptSource>("device").TimesQuieted();
+  }
+
+  static Registry WithAnInterruptSource(
+      const std::function<void(InterruptSource&)>& interrupts) {
+    Registry registry = BuiltinComponents();
+    registry.Add("interrupt_source", [interrupts](const char* name,
+                                                  const Config&) {
+      auto module = std::make_unique<InterruptSource>(name, interrupts);
+      std::vector<Port> ports{TargetPort("socket", module->socket),
+                              WireSourcePort("line", module->line)};
+      return Instance{.module = std::move(module), .ports = std::move(ports)};
+    });
     return registry;
   }
 
@@ -151,6 +187,30 @@ TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
 
   EXPECT_EQ(before, 0U);
   EXPECT_EQ(after, 0xC0FFEEU);
+}
+
+TEST(WhenAScriptQuietsTheDeviceThatInterruptedAndWaitsAgain,
+     ItCarriesOnOncePerInterrupt) {
+  // The script is ready to quiet the device three times, and the device
+  // interrupts twice.
+  MasterWithAnInterruptSource fixture{[]() -> Script {
+                                        for (int times = 0; times < 3;
+                                             ++times) {
+                                          co_await WaitIrq();
+                                          co_await Write32(0, 0);
+                                        }
+                                      },
+                                      [](InterruptSource& device) {
+                                        device.Raise();
+                                        // Later, so that the script has quieted
+                                        // the first interrupt.
+                                        device.WaitFor(Nanoseconds(10));
+                                        device.Raise();
+                                      }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.TimesQuieted(), 2);
 }
 
 TEST(WhenResetIsHeldFromTimeZero, TheScriptStartsOnlyOnceItIsReleased) {

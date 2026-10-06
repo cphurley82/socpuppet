@@ -53,6 +53,7 @@ There is no CPU behind the curtain:
 - **No instructions, registers or program counter.** Nothing is fetched or executed.
 - **No timing of its own.** An operation takes as long as the device it reaches says it takes, and no longer. Most devices here say "no time at all", so time only passes when the script waits.
 - **One interrupt line**, level-sensitive, with no controller, priorities or vectors.
+- ⚠️ **Quieting a device works when it is wired straight to `irq`.** After a write that lowers the line, `sp.wait_irq()` waits for the next rise. Behind an interrupt controller it does not: the script's accesses follow each other with nothing else getting a turn, so the controller still sees the device asking when the script completes the interrupt, and reports it again. The real CPU gives the platform a turn after every access, and the stand-in does not yet.
 - **32-bit accesses only**, little-endian.
 - **No DMI.** It makes a transaction for every access, where a CPU model would take a fast path.
 

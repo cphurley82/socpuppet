@@ -120,6 +120,9 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   Outcome CarryOut(const WaitIrq&, Script&) {
     CatchUp();
+    // A line takes its new level a delta cycle after it is written. Let one
+    // pass, so that a line our last access lowered is seen low.
+    wait(sc_core::SC_ZERO_TIME);
     while (!irq->read() && !reset->read()) {
       wait(irq->posedge_event() | reset->posedge_event());
     }
