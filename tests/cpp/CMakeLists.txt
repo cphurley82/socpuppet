@@ -26,6 +26,7 @@ add_executable(kernel_tests
   contracts/link_test.cpp
   contracts/machine_timer_test.cpp
   contracts/memory_test.cpp
+  contracts/nvme_test.cpp
   contracts/uart_test.cpp
   platform/composition_test.cpp
   platform/cpu_test.cpp

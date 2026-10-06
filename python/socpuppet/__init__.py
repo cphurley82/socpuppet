@@ -1,6 +1,7 @@
 """socpuppet: a whole SoC in SystemC, with Python pulling the strings."""
 
 from socpuppet.components import (
+    BehavioralNvme,
     DbtRiseCpu,
     MachineTimer,
     Memory,
@@ -26,6 +27,7 @@ from socpuppet.trace import TraceRecord
 from socpuppet.trace import render as render_trace
 
 __all__ = [
+    "BehavioralNvme",
     "DbtRiseCpu",
     "ExpectationFailed",
     "MachineTimer",

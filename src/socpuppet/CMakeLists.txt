@@ -100,6 +100,7 @@ socpuppet_dev_checks(socpuppet_plic)
 add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/behavioral_nvme.h
     models/builtin_components.h
     models/memory.h
     models/pass_through_link.h

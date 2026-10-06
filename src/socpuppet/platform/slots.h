@@ -16,7 +16,7 @@ namespace socpuppet {
 // A slot is a place in a platform that different implementations can fill:
 // a stand-in today, the full model later. A concept states the shape an
 // implementation must have to fit the slot. The contract test suites in
-// tests/cpp/contracts state how it must behave, and are constrained by
+// tests/cpp/contracts state how it must behave. Most are constrained by
 // these concepts, so a type that does not fit fails to compile with a
 // message naming the slot.
 
@@ -93,6 +93,24 @@ concept UartSlot =
       { uart.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
       { uart.Output() } -> std::convertible_to<std::string>;
     };
+
+// An NVMe function: an NVMe controller as the PCIe endpoint around it sees
+// it, with no PCIe of its own. It has a register block to be put behind
+// the endpoint's first base address register (`bar0`), a port for reading
+// and writing the host's memory (`dma`), and one interrupt line per
+// vector. How it is built is its own business, and it need not be one
+// component: the full SSD will be several. So the NVMe contract
+// (tests/cpp/contracts/nvme_contract.h), which says how it must behave,
+// finds these three by port name, and this concept is for a function that
+// is one component.
+template <typename T>
+concept NvmeFunctionSlot = requires(T function) {
+  { function.bar0 } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+  { function.dma } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
+  {
+    function.irq
+  } -> std::convertible_to<sc_core::sc_vector<sc_core::sc_out<bool>>&>;
+};
 
 }  // namespace socpuppet
 

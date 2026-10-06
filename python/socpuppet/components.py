@@ -126,6 +126,39 @@ class Component(ABC):
         return ()
 
 
+class BehavioralNvme(Component):
+    """🎭 Stand-in for an NVMe SSD.
+
+    It answers the host itself: queues, Identify, reads and writes, kept in
+    RAM. There is no CPU or firmware behind the curtain, and no PCIe around
+    it either: `bar0` is the register block a PCIe endpoint would put
+    behind its first base address register, `dma` is how it reads and
+    writes the host's memory, and `irq0`, `irq1` and so on are its
+    interrupt lines, one per vector.
+
+    `blocks` is how many 512-byte blocks the drive holds. `vectors` is how
+    many interrupt lines it has: the admin queue uses the first, and a host
+    may give each I/O queue one of the others.
+    """
+
+    implementation = "behavioral_nvme"
+    #: The controller registers take the first 4 KiB, and the doorbells
+    #: come after them.
+    mapped_size = 0x2000
+
+    def __init__(self, *, blocks: int, vectors: int = 2) -> None:
+        super().__init__(blocks=blocks, vectors=vectors)
+
+    @property
+    def ports(self) -> tuple[str, ...]:
+        """The register block, the DMA port, and one port per interrupt line."""
+        return (
+            "bar0",
+            "dma",
+            *(f"irq{vector}" for vector in range(self.parameters["vectors"])),
+        )
+
+
 class DbtRiseCpu(Component):
     """A RISC-V CPU that runs real firmware.
 

@@ -9,6 +9,7 @@
 
 #include <scc/router.h>
 
+#include "socpuppet/models/behavioral_nvme.h"
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
@@ -26,12 +27,29 @@ static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
 static_assert(MachineTimerSlot<MachineTimer>);
 static_assert(InterruptControllerSlot<Plic>);
+static_assert(NvmeFunctionSlot<BehavioralNvme>);
 static_assert(CpuSlot<ScriptedBusMaster>);
 static_assert(CpuSlot<DbtRiseCpu>);
 
 // The registry of every component that ships with socpuppet.
 inline Registry BuiltinComponents() {
   Registry registry;
+  registry.Add("behavioral_nvme", [](const char* name, const Config& config) {
+    const std::uint64_t vectors =
+        Required(config, "vectors", "behavioral_nvme");
+    auto module = std::make_unique<BehavioralNvme>(
+        name, Required(config, "blocks", "behavioral_nvme"), vectors);
+    std::vector<Port> ports{TargetPort("bar0", module->bar0),
+                            InitiatorPort("dma", module->dma)};
+    ports.reserve(ports.size() + vectors);
+    for (std::uint64_t vector = 0; vector < vectors; ++vector) {
+      // A host need not use every vector, so a line may be left
+      // unconnected.
+      ports.push_back(WireSourcePort("irq" + std::to_string(vector),
+                                     module->irq[vector], /*required=*/false));
+    }
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("dbt_rise_cpu", [](const char* name, const Config& config) {
     auto module = std::make_unique<DbtRiseCpu>(
         name, Required(config, "xlen", "dbt_rise_cpu"),

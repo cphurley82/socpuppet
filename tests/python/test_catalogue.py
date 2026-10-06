@@ -27,6 +27,7 @@ def router_with_two_inputs():
 # it needs. Where a count decides how many ports there are, it is not
 # the default, so that the ports are seen to follow it.
 EXAMPLES = [
+    sp.BehavioralNvme(blocks=64, vectors=3),
     sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000),
     sp.MachineTimer(),
     sp.Memory(size=0x100),
