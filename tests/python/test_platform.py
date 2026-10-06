@@ -63,6 +63,18 @@ class TestWhenThePlatformIsAlreadyBuilt:
 
         assert "already built" in str(error.value)
 
+    def test_adding_a_router_input_is_refused_and_the_error_says_why(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        bus = platform.add("bus", sp.Router())
+        platform.connect(cpu.socket, bus.target)
+        platform.build()
+
+        with pytest.raises(RuntimeError) as error:
+            bus.add_input()
+
+        assert "already built" in str(error.value)
+
     def test_building_it_again_is_refused_and_the_error_says_why(self):
         platform = thin_platform(writes=[])
         platform.build()
@@ -187,6 +199,40 @@ class TestWhenALinkIsPlacedBetweenTwoGroups:
         )
 
         assert (link.a.path, link.b.path) == ("compute.d2d", "io.d2d")
+
+
+@pytest.mark.platform
+class TestWhenADeviceOnTheFarDieWritesBackAcrossALink:
+    """The path a device's DMA takes into the host's memory.
+
+    compute die                                     IO die
+    cpu ─▶ bus ─▶ ram
+            ▲
+            └── link endpoint ◀══ link endpoint ◀── device
+    """
+
+    def test_the_near_dies_master_finds_the_write_in_its_memory(self):
+        ram_base = 0x8000_0000
+        platform = sp.Platform()
+        compute = platform.group("compute")
+        io = platform.group("io")
+        cpu = compute.add("cpu", sp.ScriptedBusMaster())
+        bus = compute.add("bus", sp.Router())
+        ram = compute.add("ram", sp.Memory(size=0x100))
+        d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
+        device = io.add(
+            "device",
+            sp.ScriptedBusMaster(writing([(ram_base + 0x10, 0xC0FFEE)])),
+        )
+        platform.connect(cpu.socket, bus.target)
+        bus.map(ram.socket, base=ram_base)
+        platform.connect(device.socket, d2d.b.target)
+        platform.connect(d2d.a.initiator, bus.add_input())
+        platform.build()
+
+        platform.run()
+
+        assert platform.peek32(ram_base + 0x10, via=cpu.socket) == 0xC0FFEE
 
 
 @pytest.mark.platform

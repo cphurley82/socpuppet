@@ -38,6 +38,14 @@ inline std::uint64_t Required(const Config& config,
   return found->second;
 }
 
+// The value of a parameter that may be left out.
+inline std::uint64_t Optional(const Config& config,
+                              const std::string& parameter,
+                              std::uint64_t otherwise) {
+  const auto found = config.find(parameter);
+  return found == config.end() ? otherwise : found->second;
+}
+
 // Creates a component with the given instance name and parameters.
 using Factory = std::function<Instance(const char* name, const Config& config)>;
 

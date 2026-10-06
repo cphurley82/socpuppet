@@ -419,20 +419,27 @@ class Router(Component):
 
     It sends each access to the target mapped at its address. The model is
     `scc::router` from SystemC-Components. Map targets onto it with `map()`
-    on the placed router.
+    and give a second source of accesses an input of its own with
+    `add_input()`, both on the placed router.
     """
 
     implementation = "router"
 
     def __init__(self) -> None:
+        self._inputs = 1
         # (base, size, label), one per output
         self._ranges: list[tuple[int, int, str]] = []
 
     @property
     def ports(self) -> tuple[str, ...]:
-        """The target port, then one output port per mapped range."""
+        """One port per input, then one output port per mapped range.
+
+        The first input is `target`, and the ones added after it are `in1`,
+        `in2` and so on.
+        """
         return (
             "target",
+            *(f"in{index}" for index in range(1, self._inputs)),
             *(f"out{index}" for index in range(len(self._ranges))),
         )
 
@@ -440,10 +447,10 @@ class Router(Component):
     def parameters(self) -> dict[str, int]:
         """The address map, flattened to the form the simulator takes.
 
-        That form is name -> number: "outputs", then "out<N>.base" and
-        "out<N>.size" per output.
+        That form is name -> number: "inputs" and "outputs", then
+        "out<N>.base" and "out<N>.size" per output.
         """
-        flat = {"outputs": len(self._ranges)}
+        flat = {"inputs": self._inputs, "outputs": len(self._ranges)}
         for index, (base, size, _) in enumerate(self._ranges):
             flat[f"out{index}.base"] = base
             flat[f"out{index}.size"] = size
@@ -453,6 +460,14 @@ class Router(Component):
     def routes(self, port: str) -> Iterator[tuple[str, int]]:
         for index, (base, _, _) in enumerate(self._ranges):
             yield f"out{index}", base
+
+    def add_input(self) -> str:
+        """Add an input for one more source of accesses.
+
+        Returns the input's port name.
+        """
+        self._inputs += 1
+        return f"in{self._inputs - 1}"
 
     def add_output(self, base: int, size: int, label: str) -> str:
         """Add an output for the range [base, base + size).

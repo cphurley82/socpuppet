@@ -31,6 +31,27 @@ class TestWhenAMasterWritesToAMappedAddress:
 
 
 @pytest.mark.platform
+class TestWhenAMasterOnAnotherInputOfTheRouterWritesToAMappedAddress:
+    def test_the_first_master_finds_the_write_at_that_address(self):
+        platform = sp.Platform()
+        first = platform.add("first", sp.ScriptedBusMaster())
+        second = platform.add(
+            "second",
+            sp.ScriptedBusMaster(writing([(RAM_BASE + 0x10, 0xC0FFEE)])),
+        )
+        bus = platform.add("bus", sp.Router())
+        ram = platform.add("ram", sp.Memory(size=0x100))
+        platform.connect(first.socket, bus.target)
+        platform.connect(second.socket, bus.add_input())
+        bus.map(ram.socket, base=RAM_BASE)
+        platform.build()
+
+        platform.run()
+
+        assert platform.peek32(RAM_BASE + 0x10, via=first.socket) == 0xC0FFEE
+
+
+@pytest.mark.platform
 class TestWhenAMasterWritesToAnAddressNothingIsMappedAt:
     def test_a_warning_naming_the_address_is_logged(self, capfd):
         platform = routed_platform(writes=[(UNMAPPED, 1)])

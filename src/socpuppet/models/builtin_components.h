@@ -33,14 +33,10 @@ static_assert(CpuSlot<DbtRiseCpu>);
 inline Registry BuiltinComponents() {
   Registry registry;
   registry.Add("dbt_rise_cpu", [](const char* name, const Config& config) {
-    // The GDB port is the one parameter that may be left out.
-    const auto gdb_port = config.find("gdb_port");
     auto module = std::make_unique<DbtRiseCpu>(
         name, Required(config, "xlen", "dbt_rise_cpu"),
         Required(config, "reset_vector", "dbt_rise_cpu"),
-        gdb_port == config.end()
-            ? std::uint16_t{0}
-            : static_cast<std::uint16_t>(gdb_port->second));
+        static_cast<std::uint16_t>(Optional(config, "gdb_port", 0)));
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
@@ -99,14 +95,24 @@ inline Registry BuiltinComponents() {
   });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter
   // sizes it and loads its address map from the parameters:
+  //   inputs               how many masters it takes; one if left out
   //   outputs              how many targets it routes to
   //   out<N>.base, .size   the address range routed to output N
-  // An access inside a range reaches that target at its offset from the base.
+  // An access inside a range reaches that target at its offset from the base,
+  // whichever input it came in by. The first input is the port `target`, and
+  // the others are `in1`, `in2` and so on.
   registry.Add("router", [](const char* name, const Config& config) {
+    const std::uint64_t inputs = Optional(config, "inputs", 1);
     const std::uint64_t outputs = Required(config, "outputs", "router");
-    auto module = std::make_unique<scc::router<32>>(name, outputs, 1);
+    auto module = std::make_unique<scc::router<32>>(name, outputs, inputs);
     module->set_warn_on_address_error(true);
-    std::vector<Port> ports{TargetPort("target", module->target[0])};
+    std::vector<Port> ports;
+    ports.reserve(inputs + outputs);
+    for (std::uint64_t index = 0; index < inputs; ++index) {
+      ports.push_back(TargetPort(
+          index == 0 ? std::string{"target"} : "in" + std::to_string(index),
+          module->target[index]));
+    }
     for (std::uint64_t index = 0; index < outputs; ++index) {
       const std::string output = "out" + std::to_string(index);
       module->set_target_range(index,

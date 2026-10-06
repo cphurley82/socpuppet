@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <utility>
 #include <vector>
 
@@ -17,17 +18,21 @@
 namespace {
 
 // A platform with one router in front of two 0x100-byte RAMs, and a test's
-// BusDriver as the bus master. `body` is what the driver does.
+// BusDriver as the bus master. `body` is what the driver does. With a
+// `second_body`, a second BusDriver is on the router's second input.
 struct RoutedPlatform {
   static constexpr std::uint64_t kLowRamBase = 0x1000;
   static constexpr std::uint64_t kHighRamBase = 0x8000'0000;
   static constexpr std::uint64_t kUnmapped = 0x4000;
 
-  explicit RoutedPlatform(const std::function<void(BusDriver&)>& body)
-      : platform{WithBusDriver(body)} {
+  explicit RoutedPlatform(
+      const std::function<void(BusDriver&)>& body,
+      const std::function<void(BusDriver&)>& second_body = nullptr)
+      : platform{WithBusDrivers(body, second_body)} {
     platform.Add("cpu", "bus_driver");
     platform.Add("bus", "router",
-                 {{"outputs", 2},
+                 {{"inputs", second_body ? 2 : 1},
+                  {"outputs", 2},
                   {"out0.base", kLowRamBase},
                   {"out0.size", 0x100},
                   {"out1.base", kHighRamBase},
@@ -35,22 +40,39 @@ struct RoutedPlatform {
     platform.Add("low_ram", "memory", {{"size", 0x100}});
     platform.Add("high_ram", "memory", {{"size", 0x100}});
     platform.Bind("cpu.socket", "bus.target");
+    if (second_body) {
+      platform.Add("second_cpu", "second_bus_driver");
+      platform.Bind("second_cpu.socket", "bus.in1");
+    }
     platform.Bind("bus.out0", "low_ram.socket");
     platform.Bind("bus.out1", "high_ram.socket");
     platform.Elaborate();
   }
 
-  static socpuppet::Registry WithBusDriver(
-      const std::function<void(BusDriver&)>& body) {
+  // What the first master finds at `address`, without simulating.
+  std::array<std::uint8_t, 4> Peek(std::uint64_t address) {
+    std::array<std::uint8_t, 4> seen{};
+    platform.DebugRead("cpu.socket", address,
+                       std::as_writable_bytes(std::span{seen}));
+    return seen;
+  }
+
+  static socpuppet::Registry WithBusDrivers(
+      const std::function<void(BusDriver&)>& body,
+      const std::function<void(BusDriver&)>& second_body) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    registry.Add("bus_driver",
-                 [body](const char* name, const socpuppet::Config&) {
-                   auto module = std::make_unique<BusDriver>(name, body);
-                   std::vector<socpuppet::Port> ports{
-                       socpuppet::InitiatorPort("socket", module->socket)};
-                   return socpuppet::Instance{.module = std::move(module),
-                                              .ports = std::move(ports)};
-                 });
+    for (const auto& [implementation, each] :
+         {std::pair{"bus_driver", body},
+          std::pair{"second_bus_driver", second_body}}) {
+      registry.Add(implementation,
+                   [each](const char* name, const socpuppet::Config&) {
+                     auto module = std::make_unique<BusDriver>(name, each);
+                     std::vector<socpuppet::Port> ports{
+                         socpuppet::InitiatorPort("socket", module->socket)};
+                     return socpuppet::Instance{.module = std::move(module),
+                                                .ports = std::move(ports)};
+                   });
+    }
     return registry;
   }
 
@@ -98,4 +120,18 @@ TEST(WhenAnAccessHitsNoMappedRange, ItGetsAnAddressErrorResponse) {
   routed.platform.Run();
 
   EXPECT_EQ(response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+}
+
+TEST(WhenAMasterOnARoutersSecondInputWritesToAMappedAddress,
+     TheFirstMasterFindsTheWriteAtThatAddress) {
+  const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
+  RoutedPlatform routed{[](BusDriver&) {},
+                        [&](BusDriver& second_bus) {
+                          second_bus.Write(RoutedPlatform::kHighRamBase + 0x10,
+                                           written);
+                        }};
+
+  routed.platform.Run();
+
+  EXPECT_EQ(routed.Peek(RoutedPlatform::kHighRamBase + 0x10), written);
 }

@@ -17,7 +17,15 @@ def router_with_one_output():
     return router
 
 
-# One instance of every catalogue class, with whatever parameters it needs.
+def router_with_two_inputs():
+    router = router_with_one_output()
+    router.add_input()
+    return router
+
+
+# At least one instance of every catalogue class, with whatever parameters
+# it needs. Where a count decides how many ports there are, it is not
+# the default, so that the ports are seen to follow it.
 EXAMPLES = [
     sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000),
     sp.MachineTimer(),
@@ -26,6 +34,7 @@ EXAMPLES = [
     PassThroughLinkEndpoint(),
     sp.Plic(),
     router_with_one_output(),
+    router_with_two_inputs(),
     sp.ScriptedBusMaster(),
 ]
 

@@ -78,6 +78,17 @@ class PlacedRouter(Placed):
         output = self.component.add_output(base, size, label=target.path)
         self._platform.connect(Port(self, output), target)
 
+    def add_input(self) -> Port:
+        """Add an input, for one more source of accesses.
+
+        The first source connects to `target`. Each one after that needs an
+        input of its own: `platform.connect(device.dma, bus.add_input())`.
+        Every input sees the same address map, and every input added must
+        be connected.
+        """
+        self._platform.refuse_if_built("add an input")
+        return Port(self, self.component.add_input())
+
 
 class PlacedUart(Placed):
     """A UART at its place in a platform."""
