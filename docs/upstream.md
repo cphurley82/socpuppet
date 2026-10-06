@@ -338,24 +338,84 @@ Two more things read in the same file and not acted on:
 
 ## VCML
 
-[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike. 💡 socpuppet does not use VCML today. These two are written down because they are what stood in the way of leaning on it more, and they would matter again if one of its models were borrowed.
+[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike (its UART) and in the PCIe spike (its PCI endpoint, [pcie-spike.md](pcie-spike.md)). 💡 socpuppet does not use VCML today. These are written down because they are what a project meets when it borrows one of VCML's models, and each has a test in `spikes/pcie/` that shows it.
 
 ### Its support library is fetched without a pin
 
 - **Where**: `CMakeLists.txt` line 32, `find_github_repo(mwr "machineware-gmbh/mwr")`.
-- **What is wrong**: it clones the head of mwr's default branch while CMake configures. There is nothing to set from outside, so two builds of the same VCML release a week apart can differ.
-- **How to see it**: configure the same VCML tag on two different days and compare the mwr commits. A second symptom: the clone goes into VCML's build directory, and it fails with "destination path already exists" when that directory is there but CMake's cache is new. That is exactly what a CI job gets when it restores its fetched dependencies from a cache, and it kept socpuppet's spike job red until the probe was removed.
-- **What we do**: nothing. It is one reason VCML stayed out of the default build.
-- **Upstream fix**: record the mwr commit in each VCML release, or accept a variable that names one.
+- **What is wrong**: it clones the head of mwr's default branch while CMake configures, so two builds of the same VCML release a week apart can differ. Three days after release `v2026.10.02`, an unpinned build already took a different mwr commit from the release's.
+- **How to see it**: configure the same VCML tag on two different days and compare the mwr commits. A second symptom: the clone goes into VCML's build directory, and it fails with "destination path already exists" when that directory is there but CMake's cache is new. That is exactly what a CI job gets when it restores its fetched dependencies from a cache. `spikes/pcie/pin_probe/` shows each case.
+- **What we do**: `spikes/pcie/Vcml.cmake` declares `mwr` itself with `FetchContent`, at a commit, before VCML is added. VCML then finds the target and skips its clone, and a restored cache still configures. Setting `MWR_HOME` works too. `MWR_TAG` does not help: it takes a tag name, and fails on a restored cache like no pin at all.
+- **Upstream fix**: record the mwr commit in each VCML release, and do not clone into a directory that is already there.
 - **Kind**: build.
-- **When it lands**: VCML becomes reproducible enough to pin.
+- **When it lands**: the pre-declaration in `Vcml.cmake` can go.
 
 ### It switches off SystemC's version check for everything that links it
 
 - **Where**: `CMakeLists.txt` line 259, `target_compile_definitions(vcml PUBLIC SC_DISABLE_API_VERSION_CHECK)`.
 - **What is wrong**: the definition is `PUBLIC`, so it reaches every target that links VCML. 🎓 That check is how SystemC catches two parts of a program built with different C++ standards, and a project that links VCML loses it without asking.
 - **How to see it**: read the compile commands of any target that links `vcml`.
-- **What we do**: nothing.
+- **What we do**: the spike's adapter links VCML `PRIVATE`, which keeps the definition inside the adapter's one source file.
 - **Upstream fix**: make it `PRIVATE`, or an option.
 - **Kind**: build.
+- **When it lands**: nothing to delete here.
+
+### A PCI endpoint hides its own MSI-X table
+
+- **Where**: `src/vcml/models/pci/endpoint.cpp`, `endpoint::receive`.
+- **What is wrong**: `pci::device` keeps the MSI-X table and its pending bits inside a BAR, and `pci::endpoint` forwards every access to a BAR out through `bar_out`, to the function. So the host can never read or program the table of an endpoint that puts it in a BAR it shares with the function's registers.
+- **How to see it**: `VcmlAsIs.TheMsixTableInBar0BelongsToTheFunction` in `spikes/pcie/as_is_test.cpp`.
+- **What we do**: the spike's adapter overrides `receive()` and sends the table's range back to the device.
+- **Upstream fix**: in `endpoint::receive`, give `device::receive` the addresses that overlap the MSI-X table and pending bits first.
+- **Kind**: bug.
+- **When it lands**: the override in `spikes/pcie/vcml_parts.h` can go.
+
+### A BAR does not say what kind it is until the first reset
+
+- **Where**: `src/vcml/models/pci/device.cpp`, `pci_declare_bar()`.
+- **What is wrong**: declaring a BAR does not update its register, and with the reset input stubbed no reset ever comes. Until something is written to it, a 64-bit BAR reads 0, where a host expects the type bits (4 for 64-bit). 💡 The borrowed timer and PLIC have the same trouble with registers before a reset.
+- **How to see it**: `VcmlAsIs.Bar0DoesNotSayItIs64BitUntilSomethingIsWritten`.
+- **What we do**: the spike's adapter calls `reset()` at the end of elaboration.
+- **Upstream fix**: update the BAR register when it is declared, or reset at the start of simulation.
+- **Kind**: bug.
+- **When it lands**: the call can go.
+
+### A debug access that the target leaves unanswered ends the process
+
+- **Where**: `src/vcml/models/pci/endpoint.cpp` (`bar_out[n].send()`), and `tlm_host.cpp` line 43.
+- **What is wrong**: 🎓 a debug access is one that takes no time and that a target may decline. A target that declines need not set a response status. VCML's `send()` then stops with "invalid out-bound transaction response status".
+- **How to see it**: `VcmlAsIs.AbortsOnADebugReadTheFunctionDoesNotAnswer`.
+- **What we do**: the spike's adapter answers such an access itself.
+- **Upstream fix**: for a debug send, take the status from how many bytes were transferred, as `access()` already does.
+- **Kind**: bug.
+- **When it lands**: the adapter's check can go.
+
+### The thread that loads the library is taken for the kernel's
+
+- **Where**: `src/vcml/core/systemc.cpp`, `thread::id sysc_thread = std::this_thread::get_id()`.
+- **What is wrong**: the thread is recorded when the library is loaded, and a transaction from any other thread stops the process. A program that loads the library on one thread and runs the simulation on another, which a Python program may, cannot run.
+- **How to see it**: `VcmlAsIs.AbortsWhenTheKernelIsNotOnTheThreadThatLoadedIt`.
+- **What we do**: the spike's adapter calls `vcml::set_sysc_thread()` at the start of simulation.
+- **Upstream fix**: do that in VCML itself, at the start of simulation.
+- **Kind**: limitation.
+- **When it lands**: the call can go.
+
+### An error is `abort()`
+
+- **Where**: mwr, `include/mwr/core/report.h`, `MWR_ERROR`, which `VCML_ERROR` is.
+- **What is wrong**: a failed check prints a backtrace to stderr and calls `abort()`. There is no switch. A model built on VCML cannot report an error as an exception, so inside a Python extension a neighbour's mistake (reusing a payload with a response status left on it, for one) ends the interpreter. There are about a hundred such checks in the files the PCI endpoint runs through.
+- **How to see it**: the `VcmlDeathTest` tests in `spikes/pcie/endpoint_test.cpp`.
+- **What we do**: nothing. It is the main reason the PCIe spike recommends against borrowing the endpoint.
+- **Upstream fix**: an option to throw `mwr::report`, as `MWR_REPORT` does.
+- **Kind**: missing feature.
+- **When it lands**: VCML's models become usable from a host that must survive an error.
+
+### Messages are held back by the wrong bit, and DMA by none
+
+- **Where**: `src/vcml/models/pci/device.cpp`, `msix_interrupt` and `msi_interrupt`, which test `PCI_COMMAND_MMIO`.
+- **What is wrong**: an endpoint may not start any access of its own until the host sets the bus-master bit in its command register. VCML sends MSI and MSI-X messages whenever memory decoding is on, and forwards DMA always.
+- **How to see it**: `Msix.IsGatedByMemoryEnableAndNotByBusMasterEnable` and `Dma.IsNotHeldBackByBusMasterEnable` in `spikes/pcie/endpoint_test.cpp`.
+- **What we do**: nothing.
+- **Upstream fix**: test `PCI_COMMAND_BUS_MASTER`, for messages and for DMA.
+- **Kind**: bug.
 - **When it lands**: nothing to delete here.
