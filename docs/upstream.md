@@ -312,6 +312,30 @@ Two more things read in the same file and not acted on:
 - **Kind**: build.
 - **When it lands**: use the project's own targets.
 
+## SPDK
+
+[spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.
+
+### The NVMe definitions cannot be included without the rest of SPDK's environment
+
+- **Where**: `include/spdk/nvme_spec.h`, lines 14 and 20: `#include "spdk/stdinc.h"` and `#include "spdk/assert.h"`.
+- **What is wrong**: the header is pure definitions, and all it uses from outside is the fixed-width integer types, `bool` and a static assertion. `spdk/stdinc.h` gives it those by including some seventy system headers: sockets, `pthread`, `epoll`, `aio` and more. A project that wants only the NVMe structures has to take all of that, on a platform that has all of it.
+- **How to see it**: compile a file that includes only `spdk/nvme_spec.h` with SPDK's `include` directory on the path, and count the headers the preprocessor opens.
+- **What we do**: no patch. `cmake/shims/spdk/` holds stand-ins for the two headers: a `stdinc.h` with four standard includes, and an `assert.h` that defines `SPDK_STATIC_ASSERT` as `static_assert`. Only `nvme_spec.h` itself is fetched.
+- **Upstream fix**: have `nvme_spec.h` include `<stdint.h>`, `<stdbool.h>` and `<stddef.h>` itself, so that it stands alone. Other projects copy this file for the same reason.
+- **Kind**: portability.
+- **When it lands**: delete `cmake/shims/spdk/stdinc.h`.
+
+### The structure size checks do nothing in C++
+
+- **Where**: `include/spdk/assert.h`, lines 19 to 31.
+- **What is wrong**: `SPDK_STATIC_ASSERT` becomes `static_assert` only `#ifdef static_assert`, and otherwise expands to nothing. 🎓 In C, `static_assert` is a macro from `<assert.h>`. In C++ it is a keyword, which `#ifdef` cannot see. So every C++ file that includes `nvme_spec.h` loses the checks that each structure has the size the specification gives it, and nothing says so.
+- **How to see it**: in a C++ file, after including `spdk/assert.h`, write `SPDK_STATIC_ASSERT(false, "never seen");`. It compiles.
+- **What we do**: no patch. `cmake/shims/spdk/assert.h` stands in for the header and defines the macro as `static_assert` outright.
+- **Upstream fix**: `#if defined(__cplusplus) || defined(static_assert)`.
+- **Kind**: bug.
+- **When it lands**: fetch SPDK's `assert.h` alongside `nvme_spec.h` and delete the stand-in.
+
 ## VCML
 
 [machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike. 💡 socpuppet does not use VCML today. These two are written down because they are what stood in the way of leaning on it more, and they would matter again if one of its models were borrowed.

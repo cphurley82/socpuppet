@@ -4,6 +4,8 @@ include(GoogleTest)
 add_executable(unit_tests
   unit/elf_image_test.cpp
   unit/memory_store_test.cpp
+  unit/nvme_controller_test.cpp
+  unit/prp_test.cpp
   unit/script_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
 target_link_libraries(unit_tests PRIVATE

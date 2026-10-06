@@ -22,6 +22,17 @@ target_link_libraries(socpuppet_elf_image PRIVATE elfio::elfio)
 socpuppet_dev_checks(socpuppet_elf_image)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_elf_image)
 
+# The NVMe controller's logic is ours, and the layout of every register,
+# command and data structure it handles is SPDK's.
+add_library(socpuppet_nvme_controller STATIC core/nvme_controller.cpp)
+target_sources(socpuppet_nvme_controller PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/nvme_controller.h
+    core/prp.h)
+target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
+socpuppet_dev_checks(socpuppet_nvme_controller)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
+
 # An adapter around a borrowed model is compiled on its own, so that its
 # source file is the only one that sees the borrowed headers.
 #
@@ -105,7 +116,8 @@ target_link_libraries(socpuppet_models INTERFACE
   socpuppet_core socpuppet_dbt_rise_cpu socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic scc::components SystemC::systemc)
 socpuppet_check_headers(
-  socpuppet_core socpuppet_elf_image socpuppet_models socpuppet_dbt_rise_cpu
+  socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
+  socpuppet_models socpuppet_dbt_rise_cpu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic)
 
 # The Python extension. It is the one binary in a Python process that embeds

@@ -203,6 +203,27 @@ target_compile_options(softvector PRIVATE
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS dbt_rise=4)
 set_target_properties(dbt-rise-riscv PROPERTIES JOB_POOL_COMPILE dbt_rise)
 
+# --- SPDK's NVMe definitions (Intel and others, BSD-3-Clause) ----------------
+# One header from the Storage Performance Development Kit: the registers,
+# commands and data structures of the NVMe specification, as C structs whose
+# sizes are checked against the specification at compile time. Only that
+# file is fetched, into a directory called spdk so that it can be included
+# as "spdk/nvme_spec.h".
+#
+# It includes two more SPDK headers, one of which pulls in most of POSIX.
+# cmake/shims/spdk has small stand-ins for both (see docs/upstream.md).
+FetchContent_Declare(spdk_nvme_spec
+  # SPDK v26.09
+  URL https://raw.githubusercontent.com/spdk/spdk/0bbb7fe4dccfb31e8d446da8822360704949d1e9/include/spdk/nvme_spec.h
+  URL_HASH SHA256=cb5c830fdbc7e8ed702f9e22125b8d70ad7979ef5972cbbcbed04c2374678ffe
+  DOWNLOAD_NO_EXTRACT TRUE
+  SOURCE_DIR ${FETCHCONTENT_BASE_DIR}/spdk_nvme_spec-src/spdk)
+FetchContent_MakeAvailable(spdk_nvme_spec)
+add_library(spdk_nvme_spec INTERFACE)
+target_include_directories(spdk_nvme_spec SYSTEM INTERFACE
+  ${spdk_nvme_spec_SOURCE_DIR}/..
+  ${CMAKE_CURRENT_LIST_DIR}/shims)
+
 # --- VPV-Peripherals (VP-Vibes, Apache-2.0): borrowed peripheral models -----
 # SystemC models of peripherals, built on SCC. Minres's own reference
 # platform takes its peripherals from here.
