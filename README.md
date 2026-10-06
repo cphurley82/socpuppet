@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. The first act is up: a RISC-V host that boots Zephyr. The SSD, the real die-to-die link and the storage path between them are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. The two have not met yet. The real SSD with its own firmware and the real die-to-die link are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -81,6 +81,26 @@ And now for something completely different: the same description also gives the 
 socpuppet devicetree examples/m0_passthrough.py
 ```
 
+## A show with a drive in it
+
+A script can also play the host's driver. Here it finds an NVMe drive over PCIe and uses it. 🎭 The drive is a stand-in that answers for itself, but the PCIe in between is real enough to matter: nothing can be read until the script has found the drive, given its registers a place in memory and said where its interrupts go.
+
+```python
+def script():
+    pci = sp.PcieHost(ecam=ECAM_BASE)
+    msi = sp.MsiHost(receiver=MSI_BASE)
+    (drive,) = yield from pci.scan()                    # find it
+    yield from pci.place(drive, WINDOW_BASE)            # place its registers
+    yield from pci.route_interrupts(drive, to=msi)      # route its interrupts
+
+    nvme = sp.NvmeHost(registers=WINDOW_BASE, memory=RAM_BASE, interrupt=msi.wait)
+    yield from nvme.enable()
+    yield from nvme.write_blocks(first=7, data=block)
+    read_back = yield from nvme.read_blocks(first=7, count=1)
+```
+
+The platform around it, split over two dies, is in `examples/nvme_hello.py`.
+
 ## Try it
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.
@@ -90,6 +110,7 @@ git clone https://github.com/cphurley82/socpuppet && cd socpuppet
 uv sync
 uv run cmake --preset dev && uv run cmake --build --preset dev
 PYTHONPATH=python uv run python examples/m0_passthrough.py
+PYTHONPATH=python uv run python examples/nvme_hello.py
 ```
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.

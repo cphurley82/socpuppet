@@ -114,7 +114,7 @@ A component offers named ports, and `connect` joins a *source* to a *sink*:
 | bus | TLM initiator socket | TLM target socket | memory-mapped transactions |
 | wire | driver | reader | one boolean line: an interrupt, a reset |
 
-Mixing kinds, or connecting two sources, is refused with a message naming both ports. A wire input left unconnected is tied low. A link direction nobody uses is tied off.
+Mixing kinds, or connecting two sources, is refused with a message naming both ports. A wire input left unconnected is tied low. A wire output that a component marks as optional may be left unconnected too: an interrupt line of the NVMe stand-in that the host does not use, for example. A link direction nobody uses is tied off.
 
 ## ⚠️ One platform per process
 
@@ -169,6 +169,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | UART | `UartContract` | `Ns16550` |
 | machine timer | `MachineTimerContract` | `MachineTimer` |
 | interrupt controller | `InterruptControllerContract` | `Plic` |
+| NVMe function | `NvmeContract` | 🎭 `BehavioralNvme` |
 
 When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
 
@@ -184,8 +185,14 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
+- [PCIe endpoint](models/pcie-endpoint.md)
+- [PCIe root complex](models/pcie-root-complex.md)
 - [Router](models/router.md)
 - [UART (16550)](models/ns16550.md)
+- 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
+- 🎭 [MSI receiver](models/msi-receiver.md)
+- 🎭 [NVMe host driver](models/nvme-host.md)
+- 🎭 [PCIe host](models/pcie-host.md)
 - 🎭 [Pass-through link](models/pass-through-link.md)
 - 🎭 [Scripted bus master](models/scripted-bus-master.md)
 - [Tracer](models/tracer.md)
@@ -199,6 +206,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 | CPU | [DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV) (Minres) |
 | UART, machine timer, interrupt controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
 | Reading ELF files | [ELFIO](https://github.com/serge1/ELFIO) |
+| The layouts of NVMe's registers and commands | [SPDK](https://github.com/spdk/spdk) (one header) |
 | Python bindings | [pybind11](https://github.com/pybind/pybind11) |
 | Everything else | this repo |
 
@@ -206,4 +214,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: PCIe, NVMe, the SSD and its firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).
+🚧 Not built yet: the SSD and its firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).

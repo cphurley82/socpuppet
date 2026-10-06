@@ -78,7 +78,7 @@ Each step names the stand-in it replaces.
 ## Open questions
 
 - ISS choice (outcome of step 2). Decided 2026-10-04: DBT-RISE-RISCV is the default CPU, with QBox as an optional one built from source. See [iss-spike.md](iss-spike.md).
-- Build on VCML vs. a thin in-house layer on raw SystemC/TLM: VCML saves effort, raw SystemC is more transparent for learners. Default since 2026-10-04: borrow an existing open model where one fits and fix it where it falls short, and write our own where none does. Settled for good at M2. See [plan.md](plan.md).
+- Build on VCML vs. a thin in-house layer on raw SystemC/TLM: VCML saves effort, raw SystemC is more transparent for learners. Default since 2026-10-04: borrow an existing open model where one fits and fix it where it falls short, and write our own where none does. Settled on 2026-10-05, at M2: no second framework. SCC supplies the router and logging, borrowed models sit behind adapters where they fit, and the PCIe endpoint is our own ([pcie-spike.md](pcie-spike.md)). See [plan.md](plan.md).
 - Host MSI-X on RISC-V: verify Zephyr mainline support. If missing, either add RISC-V PCIe MSI hooks to Zephyr (a possible upstream contribution) backed by an IMSIC-like or simple MSI-to-PLIC bridge model, or write a minimal host NVMe driver in this repo. After step 8, MSI writes also cross the D2D link.
 - An extra firmware fidelity tier: Zephyr built for `native_sim` with its MMIO accesses routed into the VP, for fast firmware iteration without an ISS.
 - D2D mainband protocol: raw memory-mapped transactions vs. a PCIe/CXL-like protocol layer over the link.
