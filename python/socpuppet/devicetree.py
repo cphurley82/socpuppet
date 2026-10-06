@@ -7,9 +7,10 @@ the two from drifting apart. No simulation is needed to do it.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterator
+from collections.abc import Collection
 from typing import TYPE_CHECKING
 
+from socpuppet.address_map import reachable_ports
 from socpuppet.components import DeviceNode
 
 if TYPE_CHECKING:
@@ -29,11 +30,11 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     """
     master = view.placed
     nodes = [
-        (placed, node)
-        for base, placed in sorted(
-            _endpoints(connections, view), key=lambda found: found[0]
+        (port.placed, node)
+        for base, port in sorted(
+            reachable_ports(connections, view), key=lambda found: found[0]
         )
-        if (node := placed.component.device_node(base)) is not None
+        if (node := port.placed.component.device_node(base)) is not None
     ]
     lines = [
         "/dts-v1/;",
@@ -126,28 +127,6 @@ def _chosen(nodes: list[tuple[Placed, DeviceNode]]) -> list[str]:
         *(f"\t\t{role} = &{label};" for role, label in sorted(filled.items())),
         "\t};",
     ]
-
-
-def _endpoints(
-    connections: Collection[Connection], view: Port, base: int = 0
-) -> Iterator[tuple[int, Placed]]:
-    """Yield each component that answers accesses made from `view`.
-
-    Each comes as (address, placed component).
-    """
-    sink = next(
-        (each.sink for each in connections if each.source.path == view.path),
-        None,
-    )
-    if sink is None:
-        return
-    routes = list(sink.placed.component.routes(sink.name))
-    if not routes:
-        yield base, sink.placed
-    for output, offset in routes:
-        yield from _endpoints(
-            connections, getattr(sink.placed, output), base + offset
-        )
 
 
 def _label(path: str) -> str:
