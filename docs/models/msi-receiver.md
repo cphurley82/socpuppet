@@ -24,7 +24,7 @@ It is one 32-bit register and one wire.
 | **`irq`** | is high while any vector is waiting. |
 | **A read** | returns the waiting vectors, one bit each, and none is waiting afterwards, so `irq` falls. |
 
-So the host tells a device to send every interrupt to this register's address, with the vector's own number as the data. 🧵 In a script, `sp.MsiHost` is the host's side of this: it says what a device is to be told, and it waits for the line and reads the register.
+So the host tells a device to send every interrupt to this register's address, with the vector's own number as the data. 🧵 In a script, [`sp.MsiHost`](pcie-host.md) is the host's side of this: it says what a device is to be told, and it waits for the line and reads the register.
 
 ## What it leaves out
 

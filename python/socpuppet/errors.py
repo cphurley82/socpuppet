@@ -7,3 +7,7 @@ class ExpectationFailed(AssertionError):
 
 class NvmeError(RuntimeError):
     """An NVMe controller did not do what the host's driver asked."""
+
+
+class PcieError(RuntimeError):
+    """A PCIe device does not have what the host's PCI code needs of it."""

@@ -14,7 +14,8 @@ from socpuppet.components import (
     Router,
     ScriptedBusMaster,
 )
-from socpuppet.errors import ExpectationFailed, NvmeError
+from socpuppet.errors import ExpectationFailed, NvmeError, PcieError
+from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost, NvmeNamespace
 from socpuppet.ops import (
     Steps,
@@ -26,6 +27,7 @@ from socpuppet.ops import (
     write,
     write32,
 )
+from socpuppet.pcie_host import PcieFunction, PcieHost
 from socpuppet.platform import Platform
 from socpuppet.time import ms, ns, us
 from socpuppet.trace import TraceRecord
@@ -37,6 +39,7 @@ __all__ = [
     "ExpectationFailed",
     "MachineTimer",
     "Memory",
+    "MsiHost",
     "MsiReceiver",
     "Ns16550",
     "NvmeError",
@@ -44,6 +47,9 @@ __all__ = [
     "NvmeNamespace",
     "PassThroughLink",
     "PcieEndpoint",
+    "PcieError",
+    "PcieFunction",
+    "PcieHost",
     "PcieRootComplex",
     "Platform",
     "Plic",

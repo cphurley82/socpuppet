@@ -43,12 +43,12 @@ platform.connect(nvme.irq0, cpu.irq)
 - **`enable()`** resets the controller, tells it where the admin queues are, enables it, and creates one pair of I/O queues. Calling it again starts over, and what is on the drive stays.
 - **`identify_namespace()`** asks the drive how many blocks it has and how big they are.
 - **`read_blocks()` and `write_blocks()`** move whole blocks, up to 513 pages of memory (a little over 2 MiB) in one command. The driver spreads the data over pages that need not be next to each other and tells the controller where each one is.
-- **`interrupt=`** is how the driver waits for the controller's interrupt. Left out, it waits with `sp.wait_irq()`, which is right when the controller's first interrupt line is wired to the master that runs the script, as above. Behind PCIe the interrupt arrives as a message, and the thing to pass is `sp.MsiHost(...).wait` (see the PCIe host).
+- **`interrupt=`** is how the driver waits for the controller's interrupt. Left out, it waits with `sp.wait_irq()`, which is right when the controller's first interrupt line is wired to the master that runs the script, as above. Behind PCIe the interrupt arrives as a message, and the thing to pass is `sp.MsiHost(...).wait` (see the [PCIe host](pcie-host.md)).
 - **Errors.** A command the controller fails raises `sp.NvmeError` with the status's name, and so does a controller that does not become ready in the time it says it needs. Like any exception in a script, it comes out of `platform.run()`.
 
 ## What it leaves out
 
-- **Finding the drive.** It is told where the registers are. Behind PCIe, finding them is the PCIe host's job.
+- **Finding the drive.** It is told where the registers are. Behind PCIe, finding them is the [PCIe host](pcie-host.md)'s job.
 - **A vector per queue.** Every queue interrupts on vector 0, and the driver waits for one interrupt at a time.
 - **Doing two things at once.** One command at a time: it sends one and waits for it. A real driver keeps many in flight and matches completions to commands by their identifiers.
 - **Patience with a silent controller.** A command that never completes is never given up on: the script is still waiting when the run ends.
