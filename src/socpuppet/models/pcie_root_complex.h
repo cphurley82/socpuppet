@@ -100,18 +100,15 @@ class PcieRootComplex : public sc_core::sc_module {
                     sc_core::sc_time& delay) {
     // The device compares addresses on the host's bus, and the bus handed
     // over an offset into the window.
-    const std::uint64_t offset = transaction.get_address();
-    transaction.set_address(mmio_base_ + offset);
+    const AtAddress on_the_hosts_bus{transaction,
+                                     mmio_base_ + transaction.get_address()};
     to_device->b_transport(transaction, delay);
-    transaction.set_address(offset);
   }
 
   unsigned AccessMemoryDebug(tlm::tlm_generic_payload& transaction) {
-    const std::uint64_t offset = transaction.get_address();
-    transaction.set_address(mmio_base_ + offset);
-    const unsigned transferred = to_device->transport_dbg(transaction);
-    transaction.set_address(offset);
-    return transferred;
+    const AtAddress on_the_hosts_bus{transaction,
+                                     mmio_base_ + transaction.get_address()};
+    return to_device->transport_dbg(transaction);
   }
 
   void PassUp(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {

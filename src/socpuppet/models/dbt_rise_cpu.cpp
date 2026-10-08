@@ -10,6 +10,8 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/models/tie_low.h"
+
 namespace socpuppet {
 
 namespace {
@@ -150,9 +152,9 @@ void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
 }
 
 void DbtRiseCpu::before_end_of_elaboration() {
-  if (reset.size() == 0) reset.bind(tied_low_);
-  if (irq.size() == 0) irq.bind(tied_low_);
-  if (timer_irq.size() == 0) timer_irq.bind(tied_low_);
+  TieLowIfUnconnected(reset, tied_low_);
+  TieLowIfUnconnected(irq, tied_low_);
+  TieLowIfUnconnected(timer_irq, tied_low_);
 }
 
 }  // namespace socpuppet

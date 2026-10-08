@@ -19,6 +19,7 @@
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/script.h"
+#include "socpuppet/models/tie_low.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/time_conversion.h"
@@ -56,9 +57,9 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   void before_end_of_elaboration() override {
-    if (irq.size() == 0) irq.bind(tied_low_);
-    if (timer_irq.size() == 0) timer_irq.bind(tied_low_);
-    if (reset.size() == 0) reset.bind(tied_low_);
+    TieLowIfUnconnected(irq, tied_low_);
+    TieLowIfUnconnected(timer_irq, tied_low_);
+    TieLowIfUnconnected(reset, tied_low_);
   }
 
  private:

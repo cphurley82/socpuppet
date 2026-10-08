@@ -31,6 +31,26 @@ inline std::span<std::uint8_t> WriteData(std::span<const std::uint8_t> data) {
   return {const_cast<std::uint8_t*>(data.data()), data.size()};
 }
 
+// Gives a transaction another address for as long as this is alive, and its
+// own address back afterwards. A model that passes a transaction on to
+// where the address means something else (an offset where it was a bus
+// address, say) holds one of these across the call, so that whoever sent
+// the transaction finds it as they left it.
+class AtAddress {
+ public:
+  AtAddress(tlm::tlm_generic_payload& transaction, std::uint64_t address)
+      : transaction_(transaction), address_before_(transaction.get_address()) {
+    transaction_.set_address(address);
+  }
+  ~AtAddress() { transaction_.set_address(address_before_); }
+  AtAddress(const AtAddress&) = delete;
+  AtAddress& operator=(const AtAddress&) = delete;
+
+ private:
+  tlm::tlm_generic_payload& transaction_;
+  std::uint64_t address_before_;
+};
+
 // A blocking access through an initiator socket: sets a payload up, sends
 // it and returns the target's response. `delay` goes in as how far ahead of
 // the simulation's clock the initiator is running, and comes back with

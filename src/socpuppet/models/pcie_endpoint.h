@@ -15,6 +15,7 @@
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/pcie_endpoint_registers.h"
 #include "socpuppet/models/pcie_link.h"
+#include "socpuppet/models/tie_low.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
@@ -58,9 +59,7 @@ class PcieEndpoint : public sc_core::sc_module {
 
   // An interrupt line that nothing is connected to is tied low.
   void before_end_of_elaboration() override {
-    for (sc_core::sc_in<bool>& line : irq) {
-      if (line.size() == 0) line.bind(tied_low_);
-    }
+    TieLowIfUnconnected(irq, tied_low_);
   }
 
  private:
@@ -87,10 +86,8 @@ class PcieEndpoint : public sc_core::sc_module {
         transaction.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
         return;
       case PcieEndpointRegisters::Owner::kFunction: {
-        const std::uint64_t address_on_the_bus = transaction.get_address();
-        transaction.set_address(landing.offset);
+        const AtAddress in_the_function{transaction, landing.offset};
         bar0->b_transport(transaction, delay);
-        transaction.set_address(address_on_the_bus);
         return;
       }
       case PcieEndpointRegisters::Owner::kTable:
@@ -127,11 +124,8 @@ class PcieEndpoint : public sc_core::sc_module {
       case PcieEndpointRegisters::Owner::kNobody:
         return 0;
       case PcieEndpointRegisters::Owner::kFunction: {
-        const std::uint64_t address_on_the_bus = transaction.get_address();
-        transaction.set_address(landing.offset);
-        const unsigned transferred = bar0->transport_dbg(transaction);
-        transaction.set_address(address_on_the_bus);
-        return transferred;
+        const AtAddress in_the_function{transaction, landing.offset};
+        return bar0->transport_dbg(transaction);
       }
       case PcieEndpointRegisters::Owner::kTable:
       case PcieEndpointRegisters::Owner::kPendingBits:

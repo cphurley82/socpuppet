@@ -84,6 +84,8 @@ target_link_libraries(socpuppet_machine_timer
 socpuppet_dev_checks(socpuppet_machine_timer)
 
 # The interrupt controller: VPV-Peripherals' PLIC, which is headers only.
+# SC_SIGNAL_IF is private here where the timer's is public: plic.cpp is the
+# only file that sees the borrowed header, so nothing else has to agree.
 add_library(socpuppet_plic STATIC models/plic.cpp)
 target_sources(socpuppet_plic PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
@@ -126,7 +128,8 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_endpoint.h
     models/pcie_link.h
     models/pcie_root_complex.h
-    models/scripted_bus_master.h)
+    models/scripted_bus_master.h
+    models/tie_low.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_dbt_rise_cpu socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic)

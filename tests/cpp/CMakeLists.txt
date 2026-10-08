@@ -36,7 +36,8 @@ add_executable(kernel_tests
   platform/pcie_test.cpp
   platform/router_test.cpp
   platform/scripted_master_test.cpp
-  platform/tracer_test.cpp)
+  platform/tracer_test.cpp
+  platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE
   socpuppet_builtin_components socpuppet_models scc::components GTest::gmock)
 # The tests' own headers are included by their path from the top of the

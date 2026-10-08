@@ -18,6 +18,7 @@
 #include <pulpino/uart.h>
 // clang-format on
 
+#include "socpuppet/models/borrowed_model.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
@@ -28,7 +29,6 @@ namespace socpuppet {
 // never asserted, and its interrupt goes to a signal that nobody reads yet.
 struct Ns16550::Model {
   Model() {
-    to_registers_.bind(*uart_.sock_t_.get());
     uart_.sock_i_->bind(serial_line_);
     serial_line_.register_b_transport(this, &Model::OnTheSerialLine);
     nothing_received_.bind(*uart_.sock_t_ext_);
@@ -42,8 +42,9 @@ struct Ns16550::Model {
   // 4 * N in the borrowed model.
   void AccessRegister(tlm::tlm_generic_payload& transaction,
                       sc_core::sc_time& delay) {
-    transaction.set_address(transaction.get_address() * kRegisterSpacing);
-    to_registers_->b_transport(transaction, delay);
+    const AtAddress in_the_model{transaction,
+                                 transaction.get_address() * kRegisterSpacing};
+    registers_.Access(transaction, delay);
   }
   // A debugger's look at register N: one byte, in no simulated time.
   // Returns the bytes transferred. The borrowed model answers a debug
@@ -54,11 +55,10 @@ struct Ns16550::Model {
   unsigned LookAtRegister(tlm::tlm_generic_payload& transaction) {
     if (!transaction.is_read() || transaction.get_data_length() != 1) return 0;
     std::array<std::uint8_t, kRegisterSpacing> whole{};
-    if (DebugTransport(to_registers_, tlm::TLM_READ_COMMAND,
-                       transaction.get_address() * kRegisterSpacing,
-                       whole) != whole.size()) {
-      return 0;
-    }
+    tlm::tlm_generic_payload look;
+    SetUpAccess(look, tlm::TLM_READ_COMMAND,
+                transaction.get_address() * kRegisterSpacing, whole);
+    if (registers_.DebugAccess(look) != whole.size()) return 0;
     *transaction.get_data_ptr() = whole[0];
     return 1;
   }
@@ -89,10 +89,7 @@ struct Ns16550::Model {
       // base address, size in bytes, interrupts, registers
       scc::tlm_target_bfs_params{0, kRegisters * kRegisterSpacing, 1,
                                  kRegisters}};
-  // The model's sockets have a bus width of zero, SCC's mark for "loosely
-  // timed", and only bind to their like.
-  tlm_utils::simple_initiator_socket<Model, scc::LT> to_registers_{
-      "to_registers"};
+  RegistersOf registers_{*uart_.sock_t_.get()};
   tlm_utils::simple_target_socket<Model> serial_line_{"serial_line"};
   tlm_utils::simple_initiator_socket<Model> nothing_received_{
       "nothing_received"};

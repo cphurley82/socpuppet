@@ -6,6 +6,8 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/platform/transport.h"
+
 namespace socpuppet {
 
 // A PCIe link is modelled as a pair of ordinary TLM sockets, one for each
@@ -37,20 +39,16 @@ class AsConfigurationAccess {
  public:
   AsConfigurationAccess(tlm::tlm_generic_payload& transaction,
                         std::uint64_t offset)
-      : transaction_(transaction), address_before_(transaction.get_address()) {
-    transaction_.set_address(offset);
+      : transaction_(transaction), at_the_register_(transaction, offset) {
     transaction_.set_extension(&marker_);
   }
-  ~AsConfigurationAccess() {
-    transaction_.clear_extension(&marker_);
-    transaction_.set_address(address_before_);
-  }
+  ~AsConfigurationAccess() { transaction_.clear_extension(&marker_); }
   AsConfigurationAccess(const AsConfigurationAccess&) = delete;
   AsConfigurationAccess& operator=(const AsConfigurationAccess&) = delete;
 
  private:
   tlm::tlm_generic_payload& transaction_;
-  std::uint64_t address_before_;
+  AtAddress at_the_register_;
   PcieConfigurationAccess marker_;
 };
 
