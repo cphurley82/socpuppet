@@ -363,14 +363,12 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
 
 
 class TestWhenAnMsiBridgesLinesGoToPlicSources:
-    def test_its_node_names_the_sources_in_the_order_of_its_vectors(self):
+    def test_its_node_is_exactly_this(self):
         platform, bus, plic = cpu_with_its_peripherals()
         msi = platform.add("msi", sp.MsiPlicBridge(vectors=2))
         bus.map(msi.socket, base=0x0300_0000)
-        # Firmware finds a vector's interrupt by its place in the list, so
-        # the list is in the order of the vectors and not of the wiring.
-        platform.connect(msi.irq1, plic.source9)
         platform.connect(msi.irq0, plic.source4)
+        platform.connect(msi.irq1, plic.source9)
 
         node = textwrap.dedent(
             """\
@@ -384,6 +382,20 @@ class TestWhenAnMsiBridgesLinesGoToPlicSources:
         )
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
+    def test_its_node_names_the_sources_in_the_order_of_its_vectors(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        msi = platform.add("msi", sp.MsiPlicBridge(vectors=2))
+        bus.map(msi.socket, base=0x0300_0000)
+        # Firmware finds a vector's interrupt by its place in the list, so
+        # the list is in the order of the vectors and not of the wiring.
+        platform.connect(msi.irq1, plic.source9)
+        platform.connect(msi.irq0, plic.source4)
+
+        assert (
+            "interrupts-extended = <&plic 4 1 &plic 9 1>;"
+            in platform.devicetree()
+        )
+
 
 def cpu_with_a_pcie_root_complex():
     """The CPU and its peripherals, with a PCIe root complex's two windows."""
@@ -395,7 +407,7 @@ def cpu_with_a_pcie_root_complex():
 
 
 class TestWhenAPlatformHasAPcieRootComplex:
-    def test_its_node_gives_both_windows(self):
+    def test_its_node_is_exactly_this(self):
         platform, _ = cpu_with_a_pcie_root_complex()
 
         # `reg` is the configuration window, which has room for one bus in
@@ -419,18 +431,42 @@ class TestWhenAPlatformHasAPcieRootComplex:
     def test_firmware_is_pointed_at_it_as_the_pcie_controller(self):
         platform, _ = cpu_with_a_pcie_root_complex()
 
-        assert "\t\tzephyr,pcie-controller = &rc;\n" in platform.devicetree()
+        assert "zephyr,pcie-controller = &rc;" in platform.devicetree()
 
 
 class TestWhenOnlyOneWindowOfAPcieRootComplexCanBeReached:
-    def test_it_has_no_node(self):
+    @pytest.mark.parametrize("window", ["ecam", "mmio"])
+    def test_the_devicetree_is_the_one_without_the_root_complex(self, window):
         platform, bus, _ = cpu_with_its_peripherals()
         root_complex = platform.add("rc", sp.PcieRootComplex())
-        bus.map(root_complex.ecam, base=0x3000_0000, size=0x10_0000)
+        bus.map(getattr(root_complex, window), base=0x3000_0000, size=0x10_0000)
 
-        # Firmware can find a device through the one window, and can do
-        # nothing with it without the other.
-        assert "pcie@" not in platform.devicetree()
+        # Firmware can do nothing with one window and not the other.
+        without_it, _, _ = cpu_with_its_peripherals()
+        assert platform.devicetree() == without_it.devicetree()
+
+
+class TestWhenAPcieConfigurationWindowHasRoomForTwoBuses:
+    def test_the_root_complexs_node_says_it_holds_two(self):
+        platform, bus, _ = cpu_with_its_peripherals()
+        root_complex = platform.add("rc", sp.PcieRootComplex())
+        bus.map(root_complex.ecam, base=0x3000_0000, size=0x20_0000)
+        bus.map(root_complex.mmio, base=0x4000_0000, size=0x20_0000)
+
+        assert "bus-range = <0 1>;" in platform.devicetree()
+
+
+class TestWhenAPcieConfigurationWindowHasNoRoomForOneBus:
+    def test_the_devicetree_is_refused_and_the_error_says_how_big_a_bus_is(
+        self,
+    ):
+        platform, bus, _ = cpu_with_its_peripherals()
+        root_complex = platform.add("rc", sp.PcieRootComplex())
+        bus.map(root_complex.ecam, base=0x3000_0000, size=0x8_0000)
+        bus.map(root_complex.mmio, base=0x4000_0000, size=0x20_0000)
+
+        with pytest.raises(ValueError, match=r"rc\.ecam.*1 MiB"):
+            platform.devicetree()
 
 
 class TestADevicetreeOverlayForOneOfAPlatformsComponents:
@@ -460,3 +496,13 @@ class TestADevicetreeOverlayForOneOfAPlatformsComponents:
             };
             """
         )
+
+
+class TestADevicetreeOverlayForAComponentThatFillsNoRole:
+    def test_says_nothing_of_what_is_chosen(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        msi = platform.add("msi", sp.MsiPlicBridge(vectors=1))
+        bus.map(msi.socket, base=0x0300_0000)
+        platform.connect(msi.irq0, plic.source4)
+
+        assert "chosen" not in platform.devicetree_overlay([msi])

@@ -74,12 +74,16 @@ def overlay(
     roles = {
         role: placed for role, placed in _roles(nodes).items() if placed in only
     }
-    lines = ["/ {", *_chosen(roles)]
-    for each in _devices(
+    blocks = _devices(
         [(placed, node) for placed, node in nodes if placed in only],
         connections,
-    ):
-        lines += ["", *each]
+    )
+    if roles:
+        blocks.insert(0, _chosen(roles))
+    lines = ["/ {"]
+    for block in blocks:
+        # A blank line between one block and the next.
+        lines += [*([""] if len(lines) > 1 else []), *block]
     lines += ["};", ""]
     return "\n".join(lines)
 

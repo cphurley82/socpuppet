@@ -653,18 +653,23 @@ class PcieRootComplex(Component):
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
         ecam = reached.get("ecam")
         mmio = reached.get("mmio")
-        # Firmware can do nothing with one window and not the other, and
-        # has to know where each ends.
-        if (
-            ecam is None
-            or mmio is None
-            or ecam.window is None
-            or mmio.window is None
-        ):
+        # Firmware can do nothing with one window and not the other.
+        if ecam is None or mmio is None:
             return None
+        # With both in reach there is a router on the way to each, and a
+        # router's range has a size.
+        assert ecam.window is not None
+        assert mmio.window is not None
         # Each bus has 1 MiB of the configuration window: 32 devices of 8
         # functions, with 4 KiB of registers each.
-        last_bus = (ecam.window >> 20) - 1
+        buses = ecam.window >> 20
+        if buses == 0:
+            raise ValueError(
+                f"The configuration window at {ecam.port.path} is "
+                f"{ecam.window:#x} bytes, and a devicetree can only describe "
+                "whole buses, which take 1 MiB each (0x100000). Map it with "
+                "size=0x100000 or more."
+            )
         return DeviceNode(
             "pcie",
             ((ecam.address, ecam.window),),
@@ -675,7 +680,7 @@ class PcieRootComplex(Component):
                 # space it is in, then the address, high half first.
                 "#address-cells = <3>;",
                 "#size-cells = <2>;",
-                f"bus-range = <0 {last_bus}>;",
+                f"bus-range = <0 {buses - 1}>;",
                 # The memory window. 0x2000000 says 32-bit memory space,
                 # and a device's address there is the CPU's address for
                 # it: the root complex does not translate.
