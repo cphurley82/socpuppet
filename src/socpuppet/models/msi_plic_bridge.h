@@ -43,6 +43,7 @@ class MsiPlicBridge : public sc_core::sc_module {
   MsiPlicBridge(const sc_core::sc_module_name& name, std::size_t vectors)
       : sc_module(name), irq("irq", vectors), waiting_(vectors) {
     socket.register_b_transport(this, &MsiPlicBridge::b_transport);
+    socket.register_transport_dbg(this, &MsiPlicBridge::transport_dbg);
     SC_METHOD(DriveTheLines);
     sensitive << changed_;
     dont_initialize();
@@ -65,6 +66,14 @@ class MsiPlicBridge : public sc_core::sc_module {
     ++waiting_[vector];
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
     changed_.notify(sc_core::SC_ZERO_TIME);
+  }
+
+  // Debug transport: a debugger looking at the register, which reads as
+  // zero for it too. Returns the bytes transferred.
+  unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
+    std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
+                static_cast<unsigned char>(0));
+    return transaction.get_data_length();
   }
 
   // The only process that writes the lines. A message arrives in the

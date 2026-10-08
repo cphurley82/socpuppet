@@ -1,6 +1,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -126,6 +127,18 @@ TEST(WhenAnMsiPlicBridgesRegisterIsRead, NoLineRises) {
 
   EXPECT_EQ(fixture.Rises(0), 0);
   EXPECT_EQ(fixture.Rises(1), 0);
+}
+
+// A debugger that walks the address map looks at every register, and one
+// that got no answer here would stop the walk.
+TEST(WhenAnMsiPlicBridgesRegisterIsLookedAtByDebugAccess, ItIsSeenAsZero) {
+  std::array<std::uint8_t, 4> seen{0xFF, 0xFF, 0xFF, 0xFF};
+  MasterWithAnMsiPlicBridge fixture{[](BusDriver&) {}};
+
+  fixture.platform.DebugRead("driver.socket", 0,
+                             std::as_writable_bytes(std::span{seen}));
+
+  EXPECT_EQ(seen, (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
 }
 
 }  // namespace socpuppet
