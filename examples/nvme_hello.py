@@ -20,6 +20,7 @@ Run it:                    python examples/nvme_hello.py
 """
 
 import socpuppet as sp
+from socpuppet.boards.ssd import add_ssd
 
 RAM_BASE = 0x8000_0000
 MSI_BASE = 0x2000_0000
@@ -74,17 +75,9 @@ msi_receiver = compute.add("msi", sp.MsiReceiver())
 d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
 io_bus = io.add("bus", sp.Router())
 rc = io.add("rc", sp.PcieRootComplex())
-nvme_drive = ssd.add("nvme", sp.BehavioralNvme(blocks=2048))
-endpoint = ssd.add(
-    "endpoint",
-    sp.PcieEndpoint(
-        vendor_id=0x5350,
-        device_id=0xC0DE,
-        class_code=0x01_08_02,  # mass storage, non-volatile memory, NVMe
-        function_size=sp.BehavioralNvme.mapped_size,
-        vectors=2,
-    ),
-)
+# The SSD: 🎭 a stand-in NVMe drive, and the PCIe endpoint that fronts for
+# it, connected to the root complex (see socpuppet/boards/ssd.py).
+add_ssd(platform, rc, blocks=2048, group=ssd)
 
 # The host's view: its own memory, the MSI receiver, and the IO die
 # through the link.
@@ -101,13 +94,6 @@ io_bus.map(rc.mmio, base=WINDOW_OFFSET, size=0x10_0000)
 # the other way and comes onto the compute die's bus. trace=True: watch it.
 platform.connect(rc.dma, d2d.b.target)
 platform.connect(d2d.a.initiator, compute_bus.add_input(), trace=True)
-# The PCIe link, and the function behind the endpoint.
-platform.connect(rc.to_device, endpoint.from_host)
-platform.connect(endpoint.to_host, rc.from_device)
-platform.connect(endpoint.bar0, nvme_drive.bar0)
-platform.connect(nvme_drive.dma, endpoint.dma)
-platform.connect(nvme_drive.irq0, endpoint.irq0)
-platform.connect(nvme_drive.irq1, endpoint.irq1)
 
 if __name__ == "__main__":
     platform.build()

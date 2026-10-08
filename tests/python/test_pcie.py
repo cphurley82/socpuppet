@@ -15,6 +15,7 @@ import pytest
 
 import socpuppet as sp
 from scripts import play
+from socpuppet.boards.ssd import DEVICE_ID, NVME_CLASS, VENDOR_ID, add_ssd
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
@@ -23,7 +24,6 @@ ECAM_BASE = 0x3000_0000
 ECAM_SIZE = 0x10_0000
 WINDOW_BASE = 0x4000_0000
 WINDOW_SIZE = 0x10_0000
-NVME_CLASS = 0x01_08_02
 
 
 def host_with_a_drive(script, blocks=64):
@@ -37,17 +37,7 @@ def host_with_a_drive(script, blocks=64):
     ram = platform.add("ram", sp.Memory(size=RAM_SIZE))
     msi = platform.add("msi", sp.MsiReceiver())
     rc = platform.add("rc", sp.PcieRootComplex())
-    nvme = platform.add("nvme", sp.BehavioralNvme(blocks=blocks))
-    endpoint = platform.add(
-        "endpoint",
-        sp.PcieEndpoint(
-            vendor_id=0x5350,
-            device_id=0xC0DE,
-            class_code=NVME_CLASS,
-            function_size=sp.BehavioralNvme.mapped_size,
-            vectors=2,
-        ),
-    )
+    add_ssd(platform, rc, blocks=blocks)
     platform.connect(cpu.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
     bus.map(msi.socket, base=MSI_BASE)
@@ -55,12 +45,6 @@ def host_with_a_drive(script, blocks=64):
     bus.map(rc.mmio, base=WINDOW_BASE, size=WINDOW_SIZE)
     platform.connect(rc.dma, bus.add_input())
     platform.connect(msi.irq, cpu.irq)
-    platform.connect(rc.to_device, endpoint.from_host)
-    platform.connect(endpoint.to_host, rc.from_device)
-    platform.connect(endpoint.bar0, nvme.bar0)
-    platform.connect(nvme.dma, endpoint.dma)
-    platform.connect(nvme.irq0, endpoint.irq0)
-    platform.connect(nvme.irq1, endpoint.irq1)
     return platform
 
 
@@ -83,8 +67,8 @@ class TestWhenTheHostScansTheBus:
                 bus=0,
                 device=0,
                 function=0,
-                vendor_id=0x5350,
-                device_id=0xC0DE,
+                vendor_id=VENDOR_ID,
+                device_id=DEVICE_ID,
                 class_code=NVME_CLASS,
             )
         ]
@@ -269,8 +253,8 @@ SOME_FUNCTION = sp.PcieFunction(
     bus=0,
     device=3,
     function=0,
-    vendor_id=0x5350,
-    device_id=0xC0DE,
+    vendor_id=VENDOR_ID,
+    device_id=DEVICE_ID,
     class_code=NVME_CLASS,
 )
 

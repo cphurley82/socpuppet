@@ -14,6 +14,7 @@ answers for itself.
 import pytest
 
 import socpuppet as sp
+from socpuppet.boards.ssd import add_ssd
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
@@ -44,17 +45,7 @@ def host_and_ssd(script):
     d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
     io_bus = io.add("bus", sp.Router())
     rc = io.add("rc", sp.PcieRootComplex())
-    nvme = ssd.add("nvme", sp.BehavioralNvme(blocks=BLOCKS))
-    endpoint = ssd.add(
-        "endpoint",
-        sp.PcieEndpoint(
-            vendor_id=0x5350,
-            device_id=0xC0DE,
-            class_code=0x01_08_02,
-            function_size=sp.BehavioralNvme.mapped_size,
-            vectors=2,
-        ),
-    )
+    add_ssd(platform, rc, blocks=BLOCKS, group=ssd)
 
     # The host's view: its own memory, the MSI receiver, and the IO die
     # through the link.
@@ -71,13 +62,6 @@ def host_and_ssd(script):
     # the other way and comes onto the compute die's bus.
     platform.connect(rc.dma, d2d.b.target)
     platform.connect(d2d.a.initiator, compute_bus.add_input(), trace=True)
-    # The PCIe link, and the function behind the endpoint.
-    platform.connect(rc.to_device, endpoint.from_host)
-    platform.connect(endpoint.to_host, rc.from_device)
-    platform.connect(endpoint.bar0, nvme.bar0)
-    platform.connect(nvme.dma, endpoint.dma)
-    platform.connect(nvme.irq0, endpoint.irq0)
-    platform.connect(nvme.irq1, endpoint.irq1)
     platform.build()
     return platform
 
