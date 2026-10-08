@@ -15,7 +15,7 @@ Ubuntu 24.04 and macOS are both supported and both run in CI. If you would rathe
 uv sync                                  # tools: Python, cmake, ninja, pytest, the linters
 uv run cmake --preset dev                # configure (fetches the dependencies the first time)
 uv run cmake --build --preset dev        # format, then build
-uv run ctest --preset dev                # every test: C++, Python, lint
+uv run ctest --preset dev                # every test: C++, Python, lint (eight at a time)
 ```
 
 ⚠️ The first build takes several minutes: SystemC, SCC and the parts of Boost that SCC needs are compiled from source. After that, builds are incremental.

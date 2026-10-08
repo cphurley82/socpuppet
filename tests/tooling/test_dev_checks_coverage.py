@@ -234,3 +234,31 @@ def reported_files(output):
         line for line in lines[first + 1 : last] if not line.startswith("-")
     ]
     return [row.split()[0] for row in rows]
+
+
+def test_a_source_taken_out_of_the_build_since_the_last_run_does_not_stop_the_next(
+    cmake_project,
+):
+    # The compiler leaves a file of notes beside each object it makes,
+    # and nothing takes that away when its source goes.
+    with_two_sources = CMAKE_LISTS.replace(
+        "tests/widget_test.cpp", "tests/widget_test.cpp tests/soon_gone.cpp"
+    )
+    project = cmake_project(
+        {
+            "src/widgets/widget.h": WIDGET_HEADER,
+            "vendor/vendor.h": VENDOR_HEADER,
+            "tests/widget_test.cpp": WIDGET_TEST,
+            "tests/soon_gone.cpp": "int SoonGone() { return 0; }\n",
+        },
+        with_two_sources,
+    )
+    project.configure("SOCPUPPET_COVERAGE=ON")
+    project.build("coverage")
+    lists = project.source / "CMakeLists.txt"
+    lists.write_text(lists.read_text().replace(" tests/soon_gone.cpp", ""))
+    (project.source / "tests/soon_gone.cpp").unlink()
+
+    result = project.build("coverage")
+
+    assert result.returncode == 0, result.stdout

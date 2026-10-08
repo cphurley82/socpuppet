@@ -60,15 +60,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, macos-15]
+        # The Python the tools are pinned to (.python-version). The oldest
+        # and the newest we support are tested by the wheel job, which
+        # builds a wheel for each and runs the Python tests against it.
+        # That matters for 3.14, which changed how CPython guards against
+        # stack overflow: the PythonExecutor exists to stay clear of that.
         python: ["3.13"]
-        include:
-          # The oldest Python we support, and the newest. 3.14 changed how
-          # CPython guards against stack overflow, which is what the
-          # PythonExecutor exists to stay clear of.
-          - os: ubuntu-24.04
-            python: "3.12"
-          - os: ubuntu-24.04
-            python: "3.14"
     env:
       UV_PYTHON: ${{ matrix.python }}
     steps:
@@ -204,11 +201,13 @@ jobs:
         with:
           name: firmware
           path: build/firmware
-      - run: tools/test_wheel.sh uv wheelhouse/*-cp313-*.whl
-        env:
-          SOCPUPPET_FIRMWARE_DIR: ${{ github.workspace }}/build/firmware
-          SOCPUPPET_REQUIRE_FIRMWARE: "1"
-      - run: tools/test_wheel.sh pip wheelhouse/*-cp313-*.whl
+      # The wheel for the Python that test_wheel.sh installs it under,
+      # which is the one in .python-version: 3.13 is tagged cp313.
+      - name: Install a wheel with uv and with pip, and boot firmware
+        run: |
+          tag="cp$(tr -d . < .python-version)"
+          tools/test_wheel.sh uv wheelhouse/*-"$tag"-*.whl
+          tools/test_wheel.sh pip wheelhouse/*-"$tag"-*.whl
         env:
           SOCPUPPET_FIRMWARE_DIR: ${{ github.workspace }}/build/firmware
           SOCPUPPET_REQUIRE_FIRMWARE: "1"

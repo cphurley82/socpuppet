@@ -226,6 +226,23 @@ Things later milestones should know:
 - **The interpreter is the only DBT-RISE backend in the build.** Every core upstream generates is compiled along with the two socpuppet uses, because the library is built by upstream's own CMake.
 - `Platform` is one class for both the description and the built simulation (`platform.build()`, then `platform.run()`). Splitting off a separate simulation object was considered and turned down: a process can only ever hold one simulation, so the two objects would always travel as a pair, and one object is easier to learn. The cost is a few "built yet?" checks, which are tested.
 
+Between M3a and M3b: a cleanup pass, so that M3b builds on what the first three milestones learned and not on their first drafts. It fixed the two known bugs below, made errors that were swallowed come out (a refused bus access, a failed DMA, an interrupt message nobody answers, a parameter nobody asked for), gave the debugger a way to the drive's registers, and took apart what had grown too large to change safely: the platform builder, the builtin registry, the endpoint's registers, the NVMe controller's drive, the Python catalogue and the tests' support code. `host(drive_blocks=...)` is the board M3b starts from.
+
+Left out of that pass on purpose. Each belongs to the milestone named:
+
+| Left out | Where it goes | Why |
+|---|---|---|
+| Devicetree nodes for the root complex, the MSI receiver and the drive | M3b | What they say depends on which Zephyr drivers M3b settles on. |
+| More NVMe admin commands (Get Features, the two Delete Queue commands, Get Log Page), the capability fields nobody reads yet, shutdown | M3b | Driven by what Zephyr's driver sends, which is not known until it runs. |
+| The UART's interrupt | M3b, if Zephyr's console wants it | A polled console needs none. |
+| Who sent a packet on the PCIe link, and trace records that name the sender | M5 and M7 | One device on the link so far. |
+| `cpu@N` from the CPU's index in a devicetree | M6 | A devicetree is one master's view, and there is one CPU in it until two firmware images run together. |
+| The CPU's clock as a parameter (it is 10 MHz) | when a second CPU needs another | Nothing reads it but the CPU. |
+| Typed results from script steps (a step may send back anything) | when an operation needs it | It would make every operation a class of its own. |
+| Checking which vector woke `NvmeHost`, and how many queues it was granted | when a stand-in host uses more than vector 0 | The interrupt hook does not say which vector, and one queue pair is always granted. |
+| mypy over the tests, the tools and the examples | not planned | The package is typed. The examples are run as tests, and annotating them would make a newcomer's first script harder to read. |
+| Giving the kernel back after a failed `build()` | cannot be done | SystemC keeps the processes of destroyed modules (see the list above). |
+
 ## To do
 
 Small things that are nobody's milestone. Tick them off or delete them.

@@ -108,7 +108,11 @@ if(SOCPUPPET_COVERAGE)
   set(_socpuppet_gcovr
     ${Python_EXECUTABLE} -m gcovr
     --root ${PROJECT_SOURCE_DIR}
-    --filter ${PROJECT_SOURCE_DIR}/src/)
+    --filter ${PROJECT_SOURCE_DIR}/src/
+    # The compiler leaves a file of notes beside each object, and it stays
+    # when its source is taken out of the build. Such notes cannot be read
+    # any more, and what they were about is not there to be measured.
+    --gcov-ignore-errors=no_working_dir_found)
   set(_socpuppet_reports ${CMAKE_BINARY_DIR}/coverage)
 
   # The Python half. A project with no python/ directory has no Python to

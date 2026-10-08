@@ -165,11 +165,22 @@ socpuppet_check_headers(
   socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
   socpuppet_plic)
 
+# What the extension below is made of, besides its one source file. Listed
+# as a library of their own so that `check_headers` compiles each alone.
+add_library(socpuppet_bindings INTERFACE)
+target_sources(socpuppet_bindings INTERFACE
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    bindings/python_executor.h
+    bindings/python_script.h)
+target_link_libraries(socpuppet_bindings INTERFACE
+  socpuppet_models pybind11::module)
+socpuppet_check_headers(socpuppet_bindings)
+
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.
 pybind11_add_module(_core bindings/core.cpp)
 target_link_libraries(_core PRIVATE
-  socpuppet_builtin_components socpuppet_models)
+  socpuppet_bindings socpuppet_builtin_components socpuppet_models)
 socpuppet_dev_checks(_core)
 if(SKBUILD)
   # Building a wheel: the extension goes inside the installed package.

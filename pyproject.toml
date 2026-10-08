@@ -10,6 +10,27 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12"
+authors = [{ name = "Chris Hurley" }]
+keywords = ["systemc", "tlm", "virtual platform", "risc-v", "simulation"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+    "Topic :: System :: Emulators",
+]
+
+[project.urls]
+Repository = "https://github.com/cphurley82/socpuppet"
+Documentation = "https://github.com/cphurley82/socpuppet/tree/main/docs"
+Issues = "https://github.com/cphurley82/socpuppet/issues"
 
 [project.scripts]
 socpuppet = "socpuppet.cli:main"
@@ -48,6 +69,9 @@ package = false
 minimum-version = "build-system.requires"
 cmake.version = ">=3.28"
 wheel.packages = ["python/socpuppet"]
+# What a source distribution leaves behind: build trees, the write-ups,
+# and experiments that nothing in the package depends on.
+sdist.exclude = ["build", "dist", "docs", "spikes", "wheelhouse"]
 # Keep the build tree between runs so SystemC and SCC are not rebuilt.
 build-dir = "build/wheel-{wheel_tag}"
 

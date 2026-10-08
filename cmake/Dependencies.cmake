@@ -70,6 +70,9 @@ FetchContent_Declare(yaml-cpp
   EXCLUDE_FROM_ALL SYSTEM OVERRIDE_FIND_PACKAGE)
 
 FetchContent_MakeAvailable(Boost fmt spdlog yaml-cpp)
+# Only yaml-cpp needed that. Whatever comes after says for itself which
+# CMake it was written for.
+unset(CMAKE_POLICY_VERSION_MINIMUM)
 
 # SCC probes for SystemC by compiling against an installed copy. Ours is
 # built in this same tree, so tell SCC it is already found.
@@ -162,6 +165,11 @@ FetchContent_Declare(dbt_rise_riscv
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
 # this commit. Declaring it here first is how the patches get applied.
+# ⚠️ The commit has to be the one DBT-RISE-RISCV's own CMakeLists.txt names
+# (its FetchContent_Declare of dbt_rise_core_git): this declaration wins,
+# so a newer DBT-RISE-RISCV would be built against an old core without a
+# word. Checked against the pin above on 2026-10-07. Check again when
+# that pin moves.
 FetchContent_Declare(dbt_rise_core_git
   GIT_REPOSITORY https://github.com/Minres/DBT-RISE-Core.git
   GIT_TAG 29e97c021c988370f5c5af5b5076afe8043402b6
