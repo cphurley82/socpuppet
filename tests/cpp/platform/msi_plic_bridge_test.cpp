@@ -164,4 +164,15 @@ TEST(WhenAnAccessToAnMsiPlicBridgeIsNot32BitsWide, ItGetsAnAddressError) {
   EXPECT_EQ(response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 
+TEST(WhenAnAccessIsBesideAnMsiPlicBridgesRegister, ItGetsAnAddressError) {
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  MasterWithAnMsiPlicBridge fixture{[&](BusDriver& bus) {
+    response = bus.Write(4, std::array<std::uint8_t, 4>{1, 0, 0, 0});
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+}
+
 }  // namespace socpuppet

@@ -53,7 +53,8 @@ class MsiPlicBridge : public sc_core::sc_module {
   static constexpr unsigned kRegisterSize = 4;
 
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
-    if (transaction.get_data_length() != kRegisterSize) {
+    if (transaction.get_address() != 0 ||
+        transaction.get_data_length() != kRegisterSize) {
       transaction.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
       return;
     }
