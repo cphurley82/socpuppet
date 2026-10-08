@@ -151,7 +151,10 @@ class PcieEndpoint : public sc_core::sc_module {
         for (std::size_t index = 0; index < data.size(); ++index) {
           data[index] = static_cast<std::uint8_t>(message.data >> (8 * index));
         }
-        Transport(to_host, tlm::TLM_WRITE_COMMAND, message.address, data);
+        if (Transport(to_host, tlm::TLM_WRITE_COMMAND, message.address, data) !=
+            tlm::TLM_OK_RESPONSE) {
+          registers_.NoteMasterAbort();
+        }
       }
     }
   }

@@ -222,6 +222,15 @@ class PcieEndpointRegisters {
     return MessageOf(vector);
   }
 
+  // An access the endpoint started was answered by nobody, which the bus
+  // calls a master abort. The status register says so from then on: a
+  // real device lets the host clear the bit by writing a one to it, and
+  // this one does not yet.
+  void NoteMasterAbort() {
+    Store(kStatus, static_cast<std::uint16_t>(Load<std::uint16_t>(kStatus) |
+                                              kReceivedMasterAbort));
+  }
+
   // The messages of pending vectors that can be sent now, which are then
   // no longer pending. Worth asking after any write from the host, since
   // that is what unmasks a vector.
@@ -248,6 +257,7 @@ class PcieEndpointRegisters {
   static constexpr std::uint16_t kBusMastering = 1U << 2;
   static constexpr std::size_t kStatus = 0x06;
   static constexpr std::uint16_t kHasCapabilities = 1U << 4;
+  static constexpr std::uint16_t kReceivedMasterAbort = 1U << 13;
   static constexpr std::size_t kRevisionAndClass = 0x08;
   static constexpr std::size_t kBar0 = 0x10;
   static constexpr std::uint64_t kBarKindBits = 0xF;

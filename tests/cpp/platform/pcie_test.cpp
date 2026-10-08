@@ -184,18 +184,23 @@ constexpr std::uint32_t kVector = 1;
 // late enough for the host to have set the endpoint up first.
 sc_core::sc_time LineRisesAt() { return {10, sc_core::SC_NS}; }
 
+// What a test varies in setting vector 1 up: which bits of the command
+// register the host switches on, and where the vector's messages go.
+struct VectorOne {
+  std::uint32_t command = PciHost::kMemoryDecoding | PciHost::kBusMastering;
+  std::uint64_t address = kMessageAddress;
+};
+
 // What a driver does to a function before it uses its interrupts: place
 // its registers, switch on what `command` says (decoding memory and
 // starting accesses of its own, unless a test leaves one out), and say
 // where vector 1's messages go. The vector is left masked and MSI-X off,
 // for the test to switch on.
-PciHost::Msix SetUpVectorOne(PciHost& host,
-                             std::uint32_t command = PciHost::kMemoryDecoding |
-                                                     PciHost::kBusMastering) {
+PciHost::Msix SetUpVectorOne(PciHost& host, VectorOne options = {}) {
   host.PlaceBar0(kEndpoint, kPlace);
-  host.Command(kEndpoint, command);
+  host.Command(kEndpoint, options.command);
   const PciHost::Msix msix = host.FindMsix(kEndpoint).value_or(PciHost::Msix{});
-  host.SetUpVector(msix, kVector, kMessageAddress, kMessageData);
+  host.SetUpVector(msix, kVector, options.address, kMessageData);
   return msix;
 }
 
@@ -398,6 +403,29 @@ TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
   EXPECT_EQ(Received(fixture.messages), Messages(1));
 }
 
+TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
+     TheStatusRegisterSaysAMasterAbortWasReceived) {
+  // Outside everything on the host's bus.
+  constexpr std::uint64_t kNowhere = 0x5000'0000;
+  std::uint16_t status = 0;
+  HostWithAnEndpoint fixture{
+      {.host =
+           [&](PciHost& host) {
+             const PciHost::Msix msix =
+                 SetUpVectorOne(host, {.address = kNowhere});
+             host.MaskVector(msix, kVector, false);
+             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             // Until after the line has risen.
+             host.WaitFor(2 * LineRisesAt());
+             status = host.StatusOf(kEndpoint);
+           },
+       .line = RaiseTheLineOnce}};
+
+  fixture.platform.Run();
+
+  EXPECT_TRUE(status & PciHost::kReceivedMasterAbort);
+}
+
 TEST(WhenAnInterruptLineRisesASecondTime, ASecondMessageIsSent) {
   HostWithAnEndpoint fixture{
       {.host =
@@ -439,7 +467,7 @@ TEST(WhenTheDeviceIsNotABusMaster, ARisingInterruptLineSendsNothing) {
       {.host =
            [](PciHost& host) {
              const PciHost::Msix msix =
-                 SetUpVectorOne(host, PciHost::kMemoryDecoding);
+                 SetUpVectorOne(host, {.command = PciHost::kMemoryDecoding});
              host.MaskVector(msix, kVector, false);
              host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
            },
@@ -555,7 +583,7 @@ TEST(WhenTheDeviceBecomesABusMaster, AVectorThatRoseBeforeIsSent) {
       {.host =
            [](PciHost& host) {
              const PciHost::Msix msix =
-                 SetUpVectorOne(host, PciHost::kMemoryDecoding);
+                 SetUpVectorOne(host, {.command = PciHost::kMemoryDecoding});
              host.MaskVector(msix, kVector, false);
              host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
              // Until after the line has risen.

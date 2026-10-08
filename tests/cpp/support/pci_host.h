@@ -67,6 +67,15 @@ class PciHost {
     return Write(Config(function, offset), value);
   }
 
+  // The status register: the upper half of the word whose lower half is
+  // the command register. This bit of it says that an access the function
+  // started was answered by nobody (a master abort).
+  static constexpr std::uint16_t kReceivedMasterAbort = 1U << 13;
+  std::uint16_t StatusOf(PciAddress function) {
+    return static_cast<std::uint16_t>(ReadConfig(function, kCommand).value >>
+                                      16);
+  }
+
   // The first base address register (BAR0), as a host uses it. A BAR is
   // how a function asks for a piece of the host's address map for its
   // registers, and how the host says where it has put them. This one is
@@ -131,7 +140,7 @@ class PciHost {
   // Each capability starts with its identifier and the offset of the next.
   // BAR0 must have been placed already.
   std::optional<Msix> FindMsix(PciAddress function) {
-    if ((ReadConfig(function, kCommand).value & kHasCapabilities) == 0) {
+    if ((StatusOf(function) & kHasCapabilities) == 0) {
       return std::nullopt;
     }
     std::uint64_t capability = ReadConfig(function, kCapabilities).value & 0xFC;
@@ -209,10 +218,9 @@ class PciHost {
  private:
   // Offsets in configuration space.
   static constexpr std::uint64_t kCommand = 0x04;
-  // The status register is the upper half of the word the command
-  // register is the lower half of, and this bit of it says the function
-  // has a list of capabilities.
-  static constexpr std::uint32_t kHasCapabilities = 1U << 20;
+  // The bit of the status register that says the function has a list of
+  // capabilities.
+  static constexpr std::uint16_t kHasCapabilities = 1U << 4;
   static constexpr std::uint64_t kBar0 = 0x10;
   static constexpr std::uint64_t kCapabilities = 0x34;
   static constexpr std::uint32_t kMsixCapability = 0x11;
