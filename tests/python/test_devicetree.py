@@ -57,6 +57,30 @@ class TestWhenAPlatformHasARamBehindALinkAndARouter:
         assert dtc_errors(platform.devicetree(), tmp_path) == ""
 
 
+class TestWhenAMemoryIsMappedThroughAWindowSmallerThanItself:
+    def test_its_node_gives_the_size_of_the_window(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        bus = platform.add("bus", sp.Router())
+        ram = platform.add("ram", sp.Memory(size=0x10000))
+        platform.connect(cpu.socket, bus.target)
+        bus.map(ram.socket, base=0x8000_0000, size=0x4000)
+
+        assert "reg = <0x0 0x80000000 0x0 0x4000>;" in platform.devicetree()
+
+
+class TestWhenTheAddressMapLeadsBackToWhereItHasBeen:
+    def test_the_devicetree_is_refused_and_the_error_says_where_it_loops(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        bus = platform.add("bus", sp.Router())
+        platform.connect(cpu.socket, bus.target)
+        bus.map(bus.add_input(), base=0x1000, size=0x100)
+
+        with pytest.raises(ValueError, match=r"loops.*bus\.in1"):
+            platform.devicetree()
+
+
 class TestWhenAPlatformHasTwoBusMasters:
     def test_the_devicetree_is_the_view_from_the_named_one(self):
         platform, cpu = ram_behind_a_link_and_a_router()

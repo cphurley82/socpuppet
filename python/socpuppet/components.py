@@ -200,11 +200,12 @@ class Component(ABC):
         """
         return
 
-    def device_node(self, base: int) -> DeviceNode | None:
+    def device_node(self, base: int, window: int | None) -> DeviceNode | None:
         """The devicetree node for this component mapped at `base`.
 
-        None for a component that firmware has no driver for and need not
-        know about.
+        `window` is how many bytes of it the bus master can reach there, or
+        None if nothing on the way limits that. None is returned for a
+        component that firmware has no driver for and need not know about.
         """
         return None
 
@@ -226,12 +227,13 @@ class Component(ABC):
         """
         return None
 
-    def routes(self, port: str) -> Iterable[tuple[str, int]]:
+    def routes(self, port: str) -> Iterable[tuple[str, int, int | None]]:
         """Where an access arriving at `port` can go next.
 
-        Yields (output port, base): an access at `base` comes out of that
-        port as address 0. A component that answers accesses itself, like a
-        memory, yields nothing.
+        Yields (output port, base, size): an access at `base` comes out of
+        that port as address 0, and `size` is how many bytes from there on
+        go the same way, or None if all do. A component that answers
+        accesses itself, like a memory, yields nothing.
         """
         return ()
 
@@ -376,7 +378,7 @@ class MachineTimer(Component):
     frequency_hz: int = 10_000_000
 
     @override
-    def device_node(self, base: int) -> DeviceNode:
+    def device_node(self, base: int, window: int | None) -> DeviceNode:
         mtime = base + 0xBFF8
         mtimecmp = base + 0x4000
         return DeviceNode(
@@ -401,10 +403,12 @@ class Memory(Component):
         self.mapped_size = self.size
 
     @override
-    def device_node(self, base: int) -> DeviceNode:
+    def device_node(self, base: int, window: int | None) -> DeviceNode:
         return DeviceNode(
             "memory",
-            ((base, self.size),),
+            # A memory mapped through a smaller range is, to the firmware, a
+            # memory of that size.
+            ((base, self.size if window is None else min(self.size, window)),),
             ('device_type = "memory";',),
             on_bus=False,
             chosen=("zephyr,sram",),
@@ -445,7 +449,7 @@ class Ns16550(Component):
         return PlacedUart(platform, path, self)
 
     @override
-    def device_node(self, base: int) -> DeviceNode:
+    def device_node(self, base: int, window: int | None) -> DeviceNode:
         return DeviceNode(
             "uart",
             ((base, self.mapped_size),),
@@ -479,12 +483,12 @@ class PassThroughLinkEndpoint(Component):
     )
 
     @override
-    def routes(self, port: str) -> Iterable[tuple[str, int]]:
+    def routes(self, port: str) -> Iterable[tuple[str, int, int | None]]:
         # Out to the other endpoint, or in from it.
         return (
-            (("peer_initiator", 0),)
+            (("peer_initiator", 0, None),)
             if port == "target"
-            else (("initiator", 0),)
+            else (("initiator", 0, None),)
         )
 
 
@@ -614,7 +618,7 @@ class Plic(Component):
     mapped_size = 0x400_0000
 
     @override
-    def device_node(self, base: int) -> DeviceNode:
+    def device_node(self, base: int, window: int | None) -> DeviceNode:
         return DeviceNode(
             "interrupt-controller",
             ((base, self.mapped_size),),
@@ -725,9 +729,9 @@ class Router(Component):
         return flat
 
     @override
-    def routes(self, port: str) -> Iterator[tuple[str, int]]:
-        for index, (base, _, _) in enumerate(self._ranges):
-            yield f"out{index}", base
+    def routes(self, port: str) -> Iterator[tuple[str, int, int | None]]:
+        for index, (base, size, _) in enumerate(self._ranges):
+            yield f"out{index}", base, size
 
     def add_input(self) -> str:
         """Add an input for one more source of accesses.

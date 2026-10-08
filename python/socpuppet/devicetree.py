@@ -31,11 +31,16 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     """
     master = view.placed
     nodes = [
-        (port.placed, node)
-        for base, port in sorted(
-            reachable_ports(connections, view), key=lambda found: found[0]
+        (found.port.placed, node)
+        for found in sorted(
+            reachable_ports(connections, view), key=lambda found: found.address
         )
-        if (node := port.placed.component.device_node(base)) is not None
+        if (
+            node := found.port.placed.component.device_node(
+                found.address, found.window
+            )
+        )
+        is not None
     ]
     lines = [
         "/dts-v1/;",

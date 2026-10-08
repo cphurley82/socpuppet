@@ -70,7 +70,7 @@ class Group:
 
     def group(self, name: str) -> Group:
         """A group nested inside this one."""
-        return Group(self._platform, f"{self.path}.{name}")
+        return self._platform.group(f"{self.path}.{name}")
 
 
 class Platform:
@@ -83,6 +83,10 @@ class Platform:
     def __init__(self) -> None:
         self._placed: dict[str, Placed] = {}
         self._connections: list[Connection] = []
+        # The groups by path, and each link as (name, endpoint a, endpoint
+        # b), both in the order they were described.
+        self._groups: list[str] = []
+        self._links: list[tuple[str, str, str]] = []
         self._quantum = us(100)
         self._native: _core.Platform | None = None
 
@@ -122,6 +126,8 @@ class Platform:
 
     def group(self, name: str) -> Group:
         """A named group of components, such as a die."""
+        if name not in self._groups:
+            self._groups.append(name)
         return Group(self, name)
 
     def link(
@@ -143,6 +149,7 @@ class Platform:
         end_b = self.add(path_b, model.endpoint())
         self.connect(end_a.peer_initiator, end_b.peer_target)
         self.connect(end_b.peer_initiator, end_a.peer_target)
+        self._links.append((name, path_a, path_b))
         return Link(end_a, end_b)
 
     def connect(self, source: Port, sink: Port, trace: bool = False) -> None:
@@ -155,6 +162,7 @@ class Platform:
         """
         self.refuse_if_built("connect ports")
         _refuse_a_mismatch(source, sink, trace)
+        _refuse_a_second_connection(self._connections, source, sink)
         self._connections.append(Connection(source, sink, trace))
 
     def build(self) -> None:
@@ -320,7 +328,11 @@ class Platform:
         return devicetree.generate(self._connections, self._view(via))
 
     def to_json(self) -> str:
-        """The description as JSON: every component and every connection.
+        """The description as JSON.
+
+        Every component and every connection, the groups, which two
+        endpoints make each link, and the quantum (in the unit `ns` and
+        `us` return).
 
         A scripted bus master's script is behavior, not structure, and is
         left out. A component's parameters include what it works out from
@@ -340,6 +352,11 @@ class Platform:
                     {"source": source.path, "sink": sink.path, "trace": trace}
                     for source, sink, trace in self._connections
                 ],
+                "groups": self._groups,
+                "links": [
+                    {"name": name, "a": a, "b": b} for name, a, b in self._links
+                ],
+                "quantum": self._quantum,
             },
             indent=2,
         )
@@ -376,7 +393,7 @@ class Platform:
             placed.socket.path: address
             for placed in self._placed.values()
             if placed.component.is_bus_master
-            for address, reached in reachable_ports(
+            for address, reached, _ in reachable_ports(
                 self._connections, placed.socket
             )
             if reached.path == port.path
@@ -459,3 +476,31 @@ def _refuse_a_mismatch(source: Port, sink: Port, trace: bool) -> None:
             f"{sink.path}: only a bus connection can be traced, and this is "
             "a wire."
         )
+
+
+def _refuse_a_second_connection(
+    connections: list[Connection], source: Port, sink: Port
+) -> None:
+    """Raise if either port has the one connection it can take.
+
+    The exception is the port that drives a wire, which any number of
+    inputs may read.
+    """
+    for each in connections:
+        if each.sink.path == sink.path:
+            raise ValueError(
+                f"{sink.path} is already connected to {each.source.path}. "
+                + (
+                    "A socket takes accesses from one place: give each "
+                    "further source an input of a router, with add_input()."
+                    if sink.spec.kind == "bus"
+                    else "A wire input has one driver."
+                )
+            )
+        if source.spec.kind == "bus" and each.source.path == source.path:
+            raise ValueError(
+                f"{source.path} is already connected to {each.sink.path}. "
+                "A socket's accesses go to one place: to reach several "
+                "targets, connect it to a router (sp.Router) and map each "
+                "target onto that."
+            )
