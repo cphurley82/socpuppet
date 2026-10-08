@@ -1,6 +1,6 @@
 # The PCIe spike: borrow VCML's endpoint, or write our own?
 
-This is the report of a time-boxed spike for milestone M2 in [plan.md](plan.md). It ends with a recommendation. Nothing has been decided, and nothing outside `spikes/pcie/` has been built on the answer.
+This is the report of a time-boxed spike for milestone M2 in [plan.md](plan.md). It ends with a recommendation, and the decision that followed is at the end. 🦜 The spike's code has since been deleted: the last commit that holds `spikes/pcie/` is `e10359f`, and the paths in this report are from there.
 
 **In one paragraph.** VCML's PCI model can be socpuppet's PCIe endpoint. It builds here with no patches, links statically into the Python extension for 1.1 MB, and behind an adapter it passes everything on the checklist, up to an NVMe Identify whose interrupt arrives as an MSI-X message, driven from Python. The recommendation is still to write our own. The half of VCML's model that socpuppet's design can use is small, the adapter that fits it in is at least two thirds the size of a hand-written endpoint, and VCML stops the whole process with `abort()` when a neighbour does something it does not expect.
 
@@ -12,7 +12,7 @@ This is the report of a time-boxed spike for milestone M2 in [plan.md](plan.md).
 
 ## What was tried
 
-Everything is in [spikes/pcie/](../spikes/pcie/README.md), on macOS (x86-64, Apple clang 21), against VCML and mwr release `v2026.10.02`.
+Everything was in `spikes/pcie/`, on macOS (x86-64, Apple clang 21), against VCML and mwr release `v2026.10.02`.
 
 - **Two adapters.** `VcmlEndpoint` puts VCML's host and endpoint together in one module. `VcmlBareEndpoint` borrows the endpoint alone and plays the host's part towards it. The second is the shape the M2 design needs: the root complex is a socpuppet component of its own, on the far side of a link made of plain TLM sockets, which leaves VCML's host nowhere to stand.
 - **One set of 26 tests for both**, and two more for the first adapter alone, built on `Platform` with the behavioral NVMe function or 🎭 a stand-in function behind the endpoint, and a spy on everything the endpoint sends towards host memory.
@@ -102,4 +102,4 @@ What the spike leaves behind is worth keeping whichever way the decision goes. `
 
 ## Decisions
 
-Decided on 2026-10-05: **socpuppet writes its own PCIe endpoint.** It is a plain C++ core with a thin SystemC wrapper, like the NVMe controller, and it is built test-first in the main tree. The spike's code stays in `spikes/pcie/` as the record of what VCML does, and nothing builds it.
+Decided on 2026-10-05: **socpuppet writes its own PCIe endpoint.** It is a plain C++ core with a thin SystemC wrapper, like the NVMe controller, and it is built test-first in the main tree. The spike's code stayed in `spikes/pcie/` for a while as the record of what VCML does, and went in the cleanup before M3b: nothing built it, and it included the main tree's test headers, so a change there could break it without anything saying so. The last commit that holds it is `e10359f`. To run it again, check that commit out; its `spikes/pcie/README.md` has the commands.

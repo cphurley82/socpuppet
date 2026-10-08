@@ -338,7 +338,7 @@ Two more things read in the same file and not acted on:
 
 ## VCML
 
-[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike (its UART) and in the PCIe spike (its PCI endpoint, [pcie-spike.md](pcie-spike.md)). 💡 socpuppet does not use VCML today. These are written down because they are what a project meets when it borrows one of VCML's models, and each has a test in `spikes/pcie/` that shows it.
+[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike (its UART) and in the PCIe spike (its PCI endpoint, [pcie-spike.md](pcie-spike.md)). 💡 socpuppet does not use VCML today. These are written down because they are what a project meets when it borrows one of VCML's models, and each has a test in the PCIe spike that shows it. 🦜 The spike has been deleted; the last commit that holds `spikes/pcie/` is `e10359f`, and the paths below are from there.
 
 ### Its support library is fetched without a pin
 

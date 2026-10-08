@@ -80,7 +80,7 @@ Configuring prints a note when the tree is in one of the two special modes.
 
 Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted.
 
-There is no spike in the build today. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job.
+There is no spike in the build today. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it.
 
 💡 The next spike gets a CMake option that is off by default and a preset that turns it on, so that the everyday build, coverage and the wheel never see it. The ISS spike's, at commit `7c7c8c0`, are the pattern to copy.
 
