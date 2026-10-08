@@ -38,8 +38,9 @@ static_assert(CpuSlot<DbtRiseCpu>);
 
 namespace {
 
-// How many interrupt vectors a PCIe function may have. MSI-X, the
-// capability that tells the host about them, has room for 2048.
+// How many interrupt vectors a PCIe function may have, and so how many
+// anything that takes its interrupt messages may. MSI-X, the capability
+// that tells the host about them, has room for 2048.
 constexpr Within kInterruptVectors{.least = 1, .most = 2048};
 
 // Adds a port for each of a component's numbered lines: `prefix` and a
@@ -97,8 +98,8 @@ Registry BuiltinComponents() {
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("msi_plic_bridge", [](const char* name, Parameters& parameters) {
-    auto module =
-        std::make_unique<MsiPlicBridge>(name, parameters.Required("vectors"));
+    auto module = std::make_unique<MsiPlicBridge>(
+        name, parameters.Required("vectors", kInterruptVectors));
     std::vector<Port> ports{TargetPort("socket", module->socket)};
     AddNumberedPorts(ports, "irq", 0, module->irq,
                      [](std::string port, sc_core::sc_out<bool>& line) {

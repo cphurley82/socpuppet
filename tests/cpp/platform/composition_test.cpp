@@ -240,6 +240,8 @@ INSTANTIATE_TEST_SUITE_P(
                    {{"blocks", 16}, {"vectors", 2049}},
                    "vectors",
                    "2049"},
+        OutOfRange{"msi_plic_bridge", {{"vectors", 0}}, "vectors", "0"},
+        OutOfRange{"msi_plic_bridge", {{"vectors", 2049}}, "vectors", "2049"},
         OutOfRange{"pcie_endpoint", PcieEndpointWith("vendor_id", 0x1'0000),
                    "vendor_id", "65536"},
         OutOfRange{"pcie_endpoint", PcieEndpointWith("device_id", 0x1'0000),

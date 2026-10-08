@@ -24,6 +24,13 @@ namespace socpuppet {
 // something at that address to turn the write back into a wire, and this
 // is that something.
 //
+// RISC-V has no standard block of this kind. The nearest real one is the
+// MSI frame of Arm's GICv2m, which does the same for a GIC that has only
+// lines: a write of an interrupt's number to one register pulses that
+// interrupt. A real frame is told which range of the controller's
+// interrupts it may raise. Here vector N is simply line N, and the
+// platform wires each line to a source.
+//
 // It is one 32-bit register, which reads as zero. A write is a message,
 // and its data is the number of a vector, counted from 0. That vector's
 // line rises, and falls again a delta cycle later. (A delta cycle is one round
