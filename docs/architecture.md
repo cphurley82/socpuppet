@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3a there is a real CPU on stage, with a UART, a timer and an interrupt controller around it: enough to boot Zephyr on one board, the host. The rest of the cast is still stand-ins or not yet written.
+As of milestones M2 and M3a there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it that a Python host can read and write. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -26,12 +26,16 @@ flowchart LR
         iobus["router"]
         uart["UART"]
         timer["timer"]
+        rc["PCIe root complex"]
+        ep["PCIe endpoint"]
+        nvme["🎭 behavioral NVMe"]
         cpu --> bus
         bus --> ram
         bus --> plic
         bus --> link --> iobus
         iobus --> uart
         iobus --> timer
+        iobus --> rc --> ep --> nvme
     end
     desc -- "build()" --> plat
     plat --> reg
@@ -39,10 +43,10 @@ flowchart LR
     script <-. "drives a 🎭 stand-in CPU,<br/>one op at a time" .-> exec
 
     classDef standin fill:#fde68a,stroke:#b45309,color:#000
-    class link standin
+    class link,nvme standin
 ```
 
-This is the host board. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
+This is the host board, with the drive that M2's tests plug into its IO die. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
 

@@ -57,7 +57,7 @@ Includes come in groups, each sorted: the header a file implements or tests, the
   - SystemC's callbacks, such as `before_end_of_elaboration`.
   - The functions the compiler calls on a coroutine (`await_transform`, `promise_type` and the rest, in `core/script.h`).
 - **No copyright line in each file.** The `LICENSE` file covers the repository.
-- **Most code is in headers.** The models are header-only for now, so function bodies sit in class definitions where Google would move the longer ones to a `.cpp` file.
+- **Most code is in headers.** Our own models are header-only, so function bodies sit in class definitions where Google would move the longer ones to a `.cpp` file. The exceptions have a reason: a borrowed model's adapter (`models/plic.cpp` and its siblings) keeps the third-party headers out of everything else, and a core with a borrowed header (`core/nvme_controller.cpp`, `core/elf_image.cpp`) does the same.
 
 ### The C++ tools
 
