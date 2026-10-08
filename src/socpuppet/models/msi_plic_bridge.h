@@ -70,8 +70,12 @@ class MsiPlicBridge : public sc_core::sc_module {
       transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
       return;
     }
-    ++waiting_[vector];
+    waiting_[vector] = true;
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+    // In the next delta cycle and not in this one: DriveTheLines reads its
+    // own lines, and a line shows what was written to it a delta cycle
+    // later. Run twice in one, it would raise a line it had just lowered,
+    // and the fall would never be seen.
     changed_.notify(sc_core::SC_ZERO_TIME);
   }
 
@@ -89,24 +93,26 @@ class MsiPlicBridge : public sc_core::sc_module {
   // The only process that writes the lines. A message arrives in the
   // sending device's process, and a SystemC signal takes one writer.
   //
-  // Each message gets a rise of its own, and a rise needs a fall before
-  // it. So a line that is high falls, and only a line that is low rises
-  // for the next message waiting.
+  // A message needs a rise that comes after it, and a rise needs a fall
+  // before it. So a line that is high falls, and only a line that is low
+  // rises for a message that is waiting.
   void DriveTheLines() {
     bool more_to_do = false;
     for (std::size_t vector = 0; vector < irq.size(); ++vector) {
-      const bool rise = !irq[vector].read() && waiting_[vector] > 0;
-      if (rise) --waiting_[vector];
+      const bool rise = !irq[vector].read() && waiting_[vector];
+      if (rise) waiting_[vector] = false;
       irq[vector].write(rise);
-      // What rose now falls a delta cycle on, and what fell may have
-      // another message to rise for.
-      more_to_do = more_to_do || rise || waiting_[vector] > 0;
+      // What rose now falls a delta cycle on, and what fell may have a
+      // message to rise for.
+      more_to_do = more_to_do || rise || waiting_[vector];
     }
     if (more_to_do) changed_.notify(sc_core::SC_ZERO_TIME);
   }
 
-  // How many messages each vector has had that are not yet on its line.
-  std::vector<std::uint32_t> waiting_;
+  // Which vectors have had a message that is not yet on its line. It is a
+  // flag and not a count, as the pending bit of a vector is: messages that
+  // arrive before the line can rise are one interrupt.
+  std::vector<bool> waiting_;
   sc_core::sc_event changed_;
 };
 

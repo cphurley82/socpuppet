@@ -93,10 +93,11 @@ TEST(WhenAnMsiPlicBridgeHasRaisedALine, TheLineFallsByItself) {
   EXPECT_FALSE(fixture.LineIsHigh(1));
 }
 
-// The second message arrives before the first has been put on the line,
-// and the same holds for one that arrives while the line is still high. A
-// PLIC hears a rise, so each message needs a fall before it.
-TEST(WhenTwoMessagesForOneVectorArriveBackToBack, ItsLineRisesTwice) {
+// Neither message has been put on the line yet, so the one rise comes
+// after both and speaks for both. A PLIC would make one interrupt of two
+// rises this close together anyway.
+TEST(WhenTwoMessagesForOneVectorReachAnMsiPlicBridgeInTheSameInstant,
+     ItsLineRisesOnce) {
   MasterWithAnMsiPlicBridge fixture{[](BusDriver& bus) {
     SendMessage(bus, 1);
     SendMessage(bus, 1);
@@ -104,7 +105,7 @@ TEST(WhenTwoMessagesForOneVectorArriveBackToBack, ItsLineRisesTwice) {
 
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.Rises(1), 2);
+  EXPECT_EQ(fixture.Rises(1), 1);
 }
 
 // The rise that is on the line came before this message, so it does not
