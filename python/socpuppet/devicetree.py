@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from typing import TYPE_CHECKING
 
-from socpuppet.address_map import reachable_ports
+from socpuppet.address_map import Reached, reachable_ports
 from socpuppet.components import DeviceNode
 
 if TYPE_CHECKING:
@@ -30,17 +30,20 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     points at.
     """
     master = view.placed
+    # Each component's reachable ports, lowest address first. A component
+    # with several, such as a PCIe root complex with its two windows, is
+    # one device and gets one node.
+    reached: dict[Placed, dict[str, Reached]] = {}
+    for found in sorted(
+        reachable_ports(connections, view), key=lambda found: found.address
+    ):
+        reached.setdefault(found.port.placed, {}).setdefault(
+            found.port.name, found
+        )
     nodes = [
-        (found.port.placed, node)
-        for found in sorted(
-            reachable_ports(connections, view), key=lambda found: found.address
-        )
-        if (
-            node := found.port.placed.component.device_node(
-                found.address, found.window
-            )
-        )
-        is not None
+        (placed, node)
+        for placed, ports in reached.items()
+        if (node := placed.component.device_node(ports)) is not None
     ]
     lines = [
         "/dts-v1/;",

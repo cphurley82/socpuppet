@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -35,6 +35,7 @@ from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 
 if TYPE_CHECKING:
     from socpuppet import _core
+    from socpuppet.address_map import Reached
     from socpuppet.ops import Operation
     from socpuppet.platform import Platform
 
@@ -200,12 +201,13 @@ class Component(ABC):
         """
         return
 
-    def device_node(self, base: int, window: int | None) -> DeviceNode | None:
-        """The devicetree node for this component mapped at `base`.
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+        """The devicetree node for this component, where a bus master finds it.
 
-        `window` is how many bytes of it the bus master can reach there, or
-        None if nothing on the way limits that. None is returned for a
-        component that firmware has no driver for and need not know about.
+        `reached` has each of the component's ports that the bus master can
+        reach, by name: the address it finds the port at, and how many
+        bytes of it can be reached there. None is returned for a component
+        that firmware has no driver for and need not know about.
         """
         return None
 
@@ -378,7 +380,8 @@ class MachineTimer(Component):
     frequency_hz: int = 10_000_000
 
     @override
-    def device_node(self, base: int, window: int | None) -> DeviceNode:
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        base = reached["socket"].address
         mtime = base + 0xBFF8
         mtimecmp = base + 0x4000
         return DeviceNode(
@@ -403,7 +406,8 @@ class Memory(Component):
         self.mapped_size = self.size
 
     @override
-    def device_node(self, base: int, window: int | None) -> DeviceNode:
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        base, _, window = reached["socket"]
         return DeviceNode(
             "memory",
             # A memory mapped through a smaller range is, to the firmware, a
@@ -475,10 +479,10 @@ class Ns16550(Component):
         return PlacedUart(platform, path, self)
 
     @override
-    def device_node(self, base: int, window: int | None) -> DeviceNode:
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
         return DeviceNode(
             "uart",
-            ((base, self.mapped_size),),
+            ((reached["socket"].address, self.mapped_size),),
             (
                 'compatible = "ns16550";',
                 # The registers are one byte apart.
@@ -644,10 +648,10 @@ class Plic(Component):
     mapped_size = 0x400_0000
 
     @override
-    def device_node(self, base: int, window: int | None) -> DeviceNode:
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
         return DeviceNode(
             "interrupt-controller",
-            ((base, self.mapped_size),),
+            ((reached["socket"].address, self.mapped_size),),
             (
                 'compatible = "sifive,plic-1.0.0";',
                 "#address-cells = <0>;",
