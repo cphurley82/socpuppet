@@ -119,7 +119,6 @@ add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     models/behavioral_nvme.h
-    models/builtin_components.h
     models/memory.h
     models/msi_receiver.h
     models/pass_through_link.h
@@ -130,15 +129,29 @@ target_sources(socpuppet_models INTERFACE
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_dbt_rise_cpu socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic)
+
+# The registry of everything above, by name. Compiled on its own, so that a
+# file that only wants the registry does not compile every model to get it.
+add_library(socpuppet_builtin_components STATIC models/builtin_components.cpp)
+target_sources(socpuppet_builtin_components PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/builtin_components.h)
+target_link_libraries(socpuppet_builtin_components
+  PUBLIC socpuppet_platform
+  PRIVATE socpuppet_models)
+socpuppet_dev_checks(socpuppet_builtin_components)
+
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
-  socpuppet_platform socpuppet_models socpuppet_dbt_rise_cpu
-  socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic)
+  socpuppet_platform socpuppet_models socpuppet_builtin_components
+  socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
+  socpuppet_plic)
 
 # The Python extension. It is the one binary in a Python process that embeds
 # the SystemC kernel.
 pybind11_add_module(_core bindings/core.cpp)
-target_link_libraries(_core PRIVATE socpuppet_models)
+target_link_libraries(_core PRIVATE
+  socpuppet_builtin_components socpuppet_models)
 socpuppet_dev_checks(_core)
 if(SKBUILD)
   # Building a wheel: the extension goes inside the installed package.
