@@ -1,8 +1,10 @@
+import importlib.metadata
 from pathlib import Path
 
 import pytest
 
 import socpuppet
+from socpuppet import pytest_plugin
 
 
 @pytest.fixture
@@ -168,3 +170,59 @@ class TestWhenAPlatformTestIsTheLastOneInItsClass:
         result = session_with_socpuppet.runpytest_subprocess()
 
         result.assert_outcomes(passed=3)
+
+
+class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
+    @pytest.fixture
+    def result(self, session_with_socpuppet):
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 1\n"
+        )
+        session_with_socpuppet.makepyfile(
+            """
+            import time
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_never_ends():
+                time.sleep(60)
+
+            def test_after_it():
+                pass
+            """
+        )
+        return session_with_socpuppet.runpytest_subprocess()
+
+    def test_it_is_stopped_and_reported_as_failed(self, result):
+        result.assert_outcomes(failed=1, passed=1)
+
+    def test_the_failure_names_the_setting_that_raises_the_limit(self, result):
+        result.stdout.fnmatch_lines(
+            ["*longer than 1 second*socpuppet_platform_timeout*"]
+        )
+
+    def test_the_failure_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+class TestWhenAPlatformTestsProcessDiesOfASignalPythonHasNoNameFor:
+    def test_the_status_is_reported_as_the_bare_number(self):
+        # Linux's real-time signals are the case: only the first and the
+        # last of them have names.
+        assert pytest_plugin.describe_exit_status(-1000) == "-1000"
+
+
+class TestWhenSocpuppetIsInstalledAndNoConftestNamesThePlugin:
+    def test_the_platform_marker_is_there_all_the_same(self, pytester):
+        try:
+            importlib.metadata.distribution("socpuppet")
+        except importlib.metadata.PackageNotFoundError:
+            pytest.skip(
+                "socpuppet is imported from the source tree here. pytest "
+                "finds the plugin by itself only when the package is "
+                "installed, so the tests of the wheel are where this runs."
+            )
+
+        result = pytester.runpytest_subprocess("--markers")
+
+        result.stdout.fnmatch_lines(["@pytest.mark.platform:*"])
