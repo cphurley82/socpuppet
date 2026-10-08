@@ -29,9 +29,9 @@ into a pulse on a line of the interrupt controller, one line for each of
 the drive's interrupt vectors.
 
 The Zephyr board is the host with no drive. Firmware for the host with
-one is built with the board's shield, `socpuppet_ssd`, which is Zephyr's
-word for hardware plugged into a board: `drive_overlay()` writes the
-devicetree it adds.
+one is built with a shield as well, `socpuppet_host_drive`. A shield is
+Zephyr's word for hardware plugged into a board, and `drive_overlay()`
+writes the devicetree this one adds.
 
 Run it:                 python -m socpuppet.boards.host path/to/zephyr.elf
 See its devicetree:     socpuppet devicetree <this file>
@@ -169,12 +169,18 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
 def drive_overlay() -> str:
     """The devicetree that the host with a drive has more than the board.
 
-    It is the overlay of the Zephyr shield `socpuppet_ssd`: the MSI bridge
-    and the PCIe root complex, and inside the root complex a node for the
-    drive. 🎓 A device on a PCIe link is found by scanning, so a
-    devicetree need not list it. Zephyr wants a node all the same, to
-    attach its driver to, and matches it to what the scan finds by the
-    vendor and device numbers.
+    It is the overlay of the Zephyr shield `socpuppet_host_drive`: the MSI
+    bridge and the PCIe root complex, and in the root complex's node what
+    only this board can say of it.
+
+    - Where a device's interrupt messages go: `msi-parent`, the bridge.
+    - A node for the drive. 🎓 A device on a PCIe link is found by
+      scanning, so a devicetree need not list it. Zephyr wants a node all
+      the same, to attach its driver to, and matches it to what the scan
+      finds by the vendor and device numbers.
+
+    The shield's copy is checked in, and a test holds it to this. To write
+    the file again, print what this returns into it, with no newline added.
     """
     # The devicetree does not say how big the drive is, so any size will do.
     board = host(drive_blocks=1)
@@ -182,11 +188,14 @@ def drive_overlay() -> str:
     assert drive is not None
     endpoint = drive.ssd.endpoint.component
     root_complex = devicetree.label(drive.root_complex.path)
+    msi = devicetree.label(drive.msi.path)
     return board.platform.devicetree_overlay(
         [drive.msi, drive.root_complex]
     ) + textwrap.dedent(
         f"""
         &{root_complex} {{
+        \tmsi-parent = <&{msi}>;
+
         \tnvme0: nvme0 {{
         \t\tcompatible = "nvme-controller";
         \t\tvendor-id = <{endpoint.parameters["vendor_id"]:#x}>;

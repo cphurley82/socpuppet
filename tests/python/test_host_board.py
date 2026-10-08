@@ -44,9 +44,12 @@ class TestTheZephyrBoardForTheHost:
 class TestTheZephyrShieldForTheHostsDrive:
     def test_its_overlay_is_what_the_host_description_generates(self):
         checked_in = (
-            ZEPHYR_MODULE / "boards/shields/socpuppet_ssd/socpuppet_ssd.overlay"
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_drive/socpuppet_host_drive.overlay"
         )
 
+        # When this fails, the docstring of `drive_overlay` has the command
+        # that writes the file again.
         assert checked_in.read_text() == drive_overlay()
 
     def test_its_overlay_names_the_drive_as_the_drive_names_itself(self):
@@ -54,6 +57,22 @@ class TestTheZephyrShieldForTheHostsDrive:
 
         assert f"vendor-id = <{VENDOR_ID:#x}>;" in overlay
         assert f"device-id = <{DEVICE_ID:#x}>;" in overlay
+
+    def test_its_overlay_sends_the_root_complexs_messages_to_the_bridge(self):
+        assert "msi-parent = <&compute_msi>;" in drive_overlay()
+
+    def test_its_overlay_has_every_device_the_drive_adds_to_the_host(self):
+        added = labels(host(drive_blocks=64).platform.devicetree()) - labels(
+            host().platform.devicetree()
+        )
+
+        assert added
+        assert added <= labels(drive_overlay())
+
+
+def labels(devicetree):
+    """The labels of the nodes in devicetree source: `io_uart` and so on."""
+    return set(re.findall(r"^\s*(\w+): ", devicetree, re.MULTILINE))
 
 
 class TestTheHostWithADrive:

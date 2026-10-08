@@ -24,6 +24,8 @@
 };
 
 &io_rc {
+	msi-parent = <&compute_msi>;
+
 	nvme0: nvme0 {
 		compatible = "nvme-controller";
 		vendor-id = <0x5350>;

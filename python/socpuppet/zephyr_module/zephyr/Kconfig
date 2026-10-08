@@ -1,0 +1,22 @@
+# The driver for a socpuppet platform's PCIe root complex. It is built
+# whenever the devicetree has one and the application wants PCIe.
+config SOCPUPPET_PCIE
+	bool "socpuppet PCIe root complex"
+	default y
+	depends on DT_HAS_SOCPUPPET_PCIE_ENABLED
+	depends on PCIE_CONTROLLER
+	# A device's interrupt handler is connected when its driver starts,
+	# not when the image is built.
+	select DYNAMIC_INTERRUPTS if PCIE_MSI
+	help
+	  The root complex of a socpuppet platform: its configuration
+	  window, its memory window, and interrupt messages that an
+	  MSI-to-PLIC bridge puts on sources of the PLIC.
+
+# Zephyr's MSI-X code maps a device's table with a kernel function that
+# only a kernel with an MMU has (see docs/upstream.md in socpuppet). A
+# socpuppet SoC has none, and there an address is already the address.
+config SOCPUPPET_MAP_WITHOUT_MMU
+	bool
+	default y
+	depends on SOC_FAMILY_SOCPUPPET && PCIE_MSI_X && !MMU

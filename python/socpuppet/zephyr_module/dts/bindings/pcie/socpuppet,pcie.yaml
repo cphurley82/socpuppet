@@ -1,0 +1,31 @@
+description: |
+  The PCIe root complex of a socpuppet platform. It has a configuration
+  window (ECAM) and one memory window, in which an address on the PCIe bus
+  is the CPU's address.
+
+compatible: "socpuppet,pcie"
+
+include: pcie-controller.yaml
+
+properties:
+  reg:
+    required: true
+    description: The configuration window. Each bus has 1 MiB of it.
+
+  ranges:
+    type: array
+    required: true
+    description: |
+      The memory window, as one range of 32-bit memory space that is not
+      prefetchable.
+
+  bus-range:
+    type: array
+    description: The first and the last bus the configuration window holds.
+
+  msi-parent:
+    type: phandle
+    required: true
+    description: |
+      Where a device on the link sends its interrupt messages: the
+      platform's MSI-to-PLIC bridge (socpuppet,msi-plic-bridge).

@@ -1,7 +1,10 @@
-# Makes this directory a Zephyr module: Zephyr's build looks here for
-# boards and for the SoC definitions they name.
+# Makes this directory a Zephyr module. Zephyr's build takes the drivers
+# for socpuppet's own devices from the CMakeLists.txt and the Kconfig file
+# beside this one, and looks in the directory above for boards (and their
+# shields), for the SoC definitions they name, and for devicetree bindings.
 name: socpuppet
 build:
   settings:
     board_root: .
     soc_root: .
+    dts_root: .

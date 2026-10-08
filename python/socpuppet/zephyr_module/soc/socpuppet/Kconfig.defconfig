@@ -25,4 +25,11 @@ config MAX_IRQ_PER_AGGREGATOR
 config NUM_IRQS
 	default 44
 
+# Zephyr's PCIe bus scan keeps its place in an array of 3 KB on the stack,
+# and it runs before the kernel has threads, on the stack that interrupts
+# use. With the usual 2 KB of that it runs off the end, into whatever the
+# linker put next, and says nothing (see docs/upstream.md in socpuppet).
+config ISR_STACK_SIZE
+	default 8192 if PCIE_CONTROLLER
+
 endif # SOC_FAMILY_SOCPUPPET

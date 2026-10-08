@@ -345,6 +345,60 @@ Two more things read in the same file and not acted on:
 - **Kind**: build.
 - **When it lands**: use the project's own targets.
 
+## Zephyr
+
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 They all come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground.
+
+### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
+
+- **Where**: `drivers/pcie/host/pcie_ecam.c`, `pcie_ecam_msi_device_setup`.
+- **What is wrong**: the generic ECAM driver does everything a simple root complex needs (configuration access, and placing BARs in the windows that `ranges` gives) except interrupts. Its `msi_device_setup` is written against the GICv3 ITS and returns "no vectors" without `CONFIG_GIC_V3_ITS`. Outside x86, which has its own path, that is the only way Zephyr has to deliver a message-signalled interrupt. A board with any other MSI controller cannot use the driver, and Zephyr's NVMe driver cannot work without MSI-X: it has no polled mode.
+- **How to see it**: give a RISC-V board a `pci-host-ecam-generic` node and an `nvme-controller`. The NVMe driver logs `Could not allocate 2 MSI-X vectors`.
+- **What we do**: a controller driver of our own, `drivers/pcie/socpuppet_pcie.c`, for the compatible `socpuppet,pcie`. It repeats the ECAM driver's configuration and BAR handling for one memory window, and its `msi_device_setup` sends each vector to the MSI-to-PLIC bridge that the node's `msi-parent` names.
+- **Upstream fix**: let the ECAM driver hand MSI setup to the device its `msi-parent` property names, through a small driver API for "something that takes interrupt messages": give me an address, a data value and an interrupt for each of N vectors. The ITS code would be one implementation of it. A RISC-V IMSIC would be another, and so would our bridge.
+- **Kind**: missing feature.
+- **When it lands**: `socpuppet_pcie.c` shrinks to an MSI controller driver for the bridge, and the root complex's node becomes a `pci-host-ecam-generic`. It has the `msi-parent` already.
+
+### MSI-X does not link in a kernel with no MMU
+
+- **Where**: `drivers/pcie/host/msi.c`, `map_msix_table_entries`.
+- **What is wrong**: it reaches a device's MSI-X table with `k_mem_map_phys_bare()`, which `kernel/mmu.c` defines only with `CONFIG_MMU`. The wrapper made for drivers, `device_map()` in `include/zephyr/sys/device_mmio.h`, already does the right thing without an MMU: the address is the physical address. The NVMe driver uses that wrapper for its own registers, in the same call chain.
+- **How to see it**: build anything with `CONFIG_PCIE_MSI_X=y` for a board with no MMU. The link fails with an undefined reference to `k_mem_map_phys_bare`.
+- **What we do**: `drivers/pcie/map_without_mmu.c` defines the function for a kernel with no MMU, as "the address you came with".
+- **Upstream fix**: call `device_map()` in `map_msix_table_entries`.
+- **Kind**: build.
+- **When it lands**: delete the file and `CONFIG_SOCPUPPET_MAP_WITHOUT_MMU`.
+
+### Nothing switches on memory decoding for an NVMe drive
+
+- **Where**: `drivers/disk/nvme/nvme_controller.c`, `nvme_controller_pcie_configure`, and `drivers/pcie/host/controller.c`, `pcie_generic_ctrl_enumerate_type0`.
+- **What is wrong**: 🎓 a PCIe function answers at the addresses in its BARs only once the *memory space* bit of its command register is set. On a PC the firmware sets it. Where Zephyr does the bus scan itself (`CONFIG_PCIE_CONTROLLER`), the scan gives each BAR an address and sets the bit for bridges only, and the NVMe driver goes straight on to read the drive's registers. Zephyr's other PCIe drivers set the bit themselves (`eth_e1000.c`, `uart_ns16550.c` and more, with `pcie_set_cmd(bdf, PCIE_CONF_CMDSTAT_MEM, true)`).
+- **How to see it**: with the bit left clear, the driver's first read of the drive's registers gets a bus error on socpuppet's endpoint, and all ones on a real bus.
+- **What we do**: after the scan, `socpuppet_pcie.c` sets the bit in every function on the bus, as the firmware of a PC would have.
+- **Upstream fix**: one line in `nvme_controller_pcie_configure`, as the other drivers have. Setting it in the scan, for every function whose BARs were placed, would cover drivers yet to be written.
+- **Kind**: bug.
+- **When it lands**: delete `socpuppet_pcie_enable_memory_decoding`.
+
+### The PCIe bus scan needs 3 KB of the interrupt stack, and runs off the end of it
+
+- **Where**: `drivers/pcie/host/controller.c`, `pcie_generic_ctrl_enumerate`, the local `stack[MAX_TRAVERSE_STACK]`.
+- **What is wrong**: the scan keeps its place in an array of 256 entries of 12 bytes on the stack. A controller driver runs it from its init function, before the kernel has threads, when the stack is the one interrupts use: `CONFIG_ISR_STACK_SIZE`, 2048 bytes unless the architecture says otherwise. Arm64 says otherwise, and RISC-V does not. The frame reaches past the end of the stack into whatever the linker put next. In our image that is a thread's stack that is not yet in use, so nothing shows.
+- **How to see it**: disassemble the function in an image built with the default (its frame is over 3 KB), and look at what symbol comes before `z_interrupt_stacks`.
+- **What we do**: the SoC's `Kconfig.defconfig` makes the default 8192 with `PCIE_CONTROLLER`.
+- **Upstream fix**: make the array static, or size it with a Kconfig option that a board with one bus can set to 1.
+- **Kind**: bug.
+- **When it lands**: drop the default.
+
+### The NVMe driver includes `soc.h` and uses nothing from it
+
+- **Where**: `drivers/disk/nvme/nvme_controller.c`, `#include <soc.h>`.
+- **What is wrong**: not every SoC has a `soc.h`. One with nothing to put in it, as ours is, cannot build the driver.
+- **How to see it**: `fatal error: soc.h: No such file or directory`.
+- **What we do**: an empty `soc/socpuppet/soc.h`.
+- **Upstream fix**: drop the include.
+- **Kind**: build.
+- **When it lands**: delete the file, and the include directory in the SoC's `CMakeLists.txt`.
+
 ## SPDK
 
 [spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.

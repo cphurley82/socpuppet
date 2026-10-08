@@ -1,0 +1,20 @@
+description: |
+  What turns message-signalled interrupts (MSI) into interrupts of a PLIC,
+  which only has lines. It is one 32-bit register. A device interrupts by
+  writing the number of a vector to it, and the bridge pulses that
+  vector's line.
+
+  `interrupts-extended` names the PLIC source of each vector's line, in
+  the order of the vectors.
+
+compatible: "socpuppet,msi-plic-bridge"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  msi-controller:
+    type: boolean
+    description: Marks what takes interrupt messages, as devicetrees do.
