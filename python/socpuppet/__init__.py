@@ -22,10 +22,12 @@ from socpuppet.ops import (
     expect32,
     read,
     read32,
+    read64,
     wait,
     wait_irq,
     write,
     write32,
+    write64,
 )
 from socpuppet.pcie_host import PcieFunction, PcieHost
 from socpuppet.platform import Platform
@@ -63,10 +65,12 @@ __all__ = [
     "ns",
     "read",
     "read32",
+    "read64",
     "render_trace",
     "us",
     "wait",
     "wait_irq",
     "write",
     "write32",
+    "write64",
 ]

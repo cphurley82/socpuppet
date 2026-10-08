@@ -39,6 +39,29 @@ def write32(address: int, value: int) -> Operation:
     return Operation("write32", (address, _fits_32_bits(value)))
 
 
+def read64(address: int) -> Steps[int]:
+    """Read a 64-bit value, as two 32-bit reads with the low half first.
+
+    These are steps, not one operation: hand over with `yield from`, and
+    the value is what comes back.
+    """
+    low: int = yield read32(address)
+    high: int = yield read32(address + 4)
+    return high << 32 | low
+
+
+def write64(address: int, value: int) -> Steps[None]:
+    """Write a 64-bit value, as two 32-bit writes with the low half first.
+
+    These are steps, like `read64`: hand over with `yield from`.
+    """
+    if not 0 <= value < 2**64:
+        shown = f"{value:#x}" if value >= 0 else str(value)
+        raise ValueError(f"{shown} does not fit in 64 bits.")
+    yield write32(address, value & 0xFFFF_FFFF)
+    yield write32(address + 4, value >> 32)
+
+
 def read(address: int, length: int) -> Operation:
     """Read `length` bytes in one access. They are sent back into the script."""
     if length < 0:

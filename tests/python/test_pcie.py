@@ -330,6 +330,29 @@ class TestWhenMsixIsNotTheFirstOfAFunctionsCapabilities:
         ] == [MSI_BASE, 0, 0, 0, MSI_BASE, 0, 1, 0]
 
 
+class TestWhenAFunctionsCapabilityListLeadsBackToItself:
+    def test_the_search_stops_and_the_error_says_the_list_loops(self):
+        # One capability, power management, whose next is itself.
+        function = FakeFunction(
+            SOME_FUNCTION, {0x04: 1 << 20, 0x34: 0x40, 0x40: 0x40 << 8 | 0x01}
+        )
+        pci = sp.PcieHost(ecam=ECAM_BASE)
+        msi = sp.MsiHost(receiver=MSI_BASE)
+
+        with pytest.raises(sp.PcieError, match="loops"):
+            play(pci.route_interrupts(SOME_FUNCTION, to=msi), function)
+
+
+class TestWhenAFunctionsFirstBarIsNotA64BitMemoryBar:
+    def test_placing_it_is_refused_and_the_error_says_what_the_bar_is(self):
+        # A 32-bit memory BAR: its low four bits read as zero.
+        function = FakeFunction(SOME_FUNCTION, {}, bar0_kind=0x0)
+        pci = sp.PcieHost(ecam=ECAM_BASE)
+
+        with pytest.raises(sp.PcieError, match="64-bit memory"):
+            play(pci.place(SOME_FUNCTION, 0x4000_0000), function)
+
+
 class TestWhenTheHostSwitchesAFunctionOn:
     # The command register is the lower half of the word at 0x04, and the
     # status register the upper half. This function has bit 10 of the
@@ -369,14 +392,17 @@ class FakeFunction:
 
     It plays `function`. `registers` is what its configuration space
     holds, by offset: every other register reads as zero, and the base
-    address register keeps what is written to it. Writes are kept, those
-    to configuration space by offset and the rest by address.
+    address register keeps the address written to it above the four bits
+    that say what kind it is (`bar0_kind`: a 64-bit memory BAR unless
+    told otherwise). Writes are kept, those to configuration space by
+    offset and the rest by address.
     """
 
-    def __init__(self, function, registers):
+    def __init__(self, function, registers, bar0_kind=0x4):
         # The configuration window gives each function 4 KiB, by device.
         self.base = ECAM_BASE + (function.device << 15)
-        self.registers = dict(registers)
+        self.registers = {0x10: bar0_kind, **registers}
+        self.bar0_kind = bar0_kind
         self.configuration_written = {}
         self.memory_written = {}
 
@@ -387,7 +413,11 @@ class FakeFunction:
             return self.registers.get(offset, 0)
         if 0 <= offset < 0x1000:
             self.configuration_written[offset] = operation.operands[1]
-            if offset in (0x10, 0x14):
+            if offset == 0x10:
+                self.registers[offset] = (
+                    operation.operands[1] & ~0xF | self.bar0_kind
+                )
+            if offset == 0x14:
                 self.registers[offset] = operation.operands[1]
         else:
             self.memory_written[address] = operation.operands[1]

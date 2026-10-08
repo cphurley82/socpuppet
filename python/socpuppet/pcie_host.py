@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from socpuppet.errors import PcieError
-from socpuppet.ops import Steps, read32, write32
+from socpuppet.ops import Steps, read32, read64, write32, write64
 
 if TYPE_CHECKING:
     from socpuppet.msi_host import MsiHost
@@ -36,6 +36,8 @@ _BUS_MASTERING = 1 << 2
 _HAS_CAPABILITIES = 1 << 20
 _REVISION_AND_CLASS = 0x08
 _BAR0 = 0x10
+# The low three bits of a BAR that is memory, with a 64-bit address.
+_MEMORY_64_BIT = 0x4
 _FIRST_CAPABILITY = 0x34
 
 # The MSI-X capability: its identifier, the enable bit in its first word,
@@ -118,8 +120,17 @@ class PcieHost:
         may not start accesses of its own (DMA, interrupts) until it is
         made a bus master there.
         """
-        yield write32(self._at(function, _BAR0), address & 0xFFFF_FFFF)
-        yield write32(self._at(function, _BAR0 + 4), address >> 32)
+        # The BAR's low four bits say what kind it is, and the host cannot
+        # change them: bit 0 clear for memory, and bits 2 and 1 saying
+        # how wide the address is. This host places the 64-bit kind only.
+        kind = (yield read32(self._at(function, _BAR0))) & 0xF
+        if kind & 0x7 != _MEMORY_64_BIT:
+            raise PcieError(
+                f"The first base address register of the function at "
+                f"{function} is not a 64-bit memory BAR, the one kind this "
+                f"host places: its low four bits read {kind:#x}."
+            )
+        yield from write64(self._at(function, _BAR0), address)
         # The address bits below the BAR's size cannot be set, so an
         # address that is not a multiple of the size does not stick.
         now_at = yield from self._where_bar0_is(function)
@@ -169,8 +180,7 @@ class PcieHost:
         table += yield from self._where_bar0_is(function)
         for vector in range(vectors):
             entry = table + vector * _MSIX_ENTRY_SIZE
-            yield write32(entry, to.address & 0xFFFF_FFFF)
-            yield write32(entry + 4, to.address >> 32)
+            yield from write64(entry, to.address)
             yield write32(entry + 8, to.data_for(vector))
             # The fourth word's lowest bit masks the vector, and it starts
             # out set.
@@ -192,7 +202,16 @@ class PcieHost:
             return None
         first: int = yield read32(self._at(function, _FIRST_CAPABILITY))
         offset = first & 0xFC
+        been: set[int] = set()
         while offset:
+            # A list that comes back to where it has been would be walked
+            # for ever.
+            if offset in been:
+                raise PcieError(
+                    f"The capability list of the function at {function} "
+                    f"loops: it comes back to offset {offset:#x}."
+                )
+            been.add(offset)
             header: int = yield read32(self._at(function, offset))
             if header & 0xFF == wanted:
                 return offset
@@ -200,10 +219,9 @@ class PcieHost:
         return None
 
     def _where_bar0_is(self, function: PcieFunction) -> Steps[int]:
-        low: int = yield read32(self._at(function, _BAR0))
-        high: int = yield read32(self._at(function, _BAR0 + 4))
+        bar0 = yield from read64(self._at(function, _BAR0))
         # The low four bits say what kind of BAR it is, not where.
-        return (high << 32 | low) & ~0xF
+        return bar0 & ~0xF
 
     def _at(self, function: PcieFunction, offset: int) -> int:
         return self._configuration(

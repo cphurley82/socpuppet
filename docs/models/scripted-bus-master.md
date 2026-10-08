@@ -33,6 +33,8 @@ A script is a Python generator function. Each `yield` hands one operation to the
 | `sp.wait(duration)` | Lets simulated time pass (`sp.ns(10)`, `sp.us(1)`). |
 | `sp.wait_irq()` | Waits until the `irq` input is high. |
 
+`sp.read64(address)` and `sp.write64(address, value)` are two 32-bit operations each, low half first, so they are handed over to with `yield from`: `value = yield from sp.read64(address)`.
+
 It has three ports: `socket` (the bus), and the inputs `irq` and `reset`.
 
 - **Reset.** While `reset` is high the master does nothing. When it is released, the script starts again from the top, as firmware would after a reset.

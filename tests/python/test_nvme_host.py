@@ -253,7 +253,9 @@ class TestWhenTheControllerNeverBecomesReady:
     def test_enabling_gives_up_after_the_time_the_controller_allows(self):
         # CAP.TO, in bits 31 to 24 of the capabilities register, counts in
         # units of 500 ms. This controller allows one.
-        bus = FakeController(capabilities=1 << 24, becomes_ready=False)
+        bus = FakeController(
+            capabilities=1 << 24 | MOST_ENTRIES, becomes_ready=False
+        )
         nvme = sp.NvmeHost(registers=0, memory=0x1000)
 
         with pytest.raises(sp.NvmeError, match="500 ms"):
@@ -280,33 +282,115 @@ class TestWhenTheControllerFailsACommandWithAStatusTheDriverCannotName:
             play(nvme.enable(), bus)
 
 
+class TestWhenTheControllersDoorbellsAreFurtherApartThanFourBytes:
+    def test_the_driver_rings_them_where_the_controller_says_they_are(self):
+        # CAP.DSTRD, in bits 35 to 32, is the doorbell stride: the
+        # doorbells are 4 << DSTRD bytes apart. Here that is 8, so the
+        # admin completion queue's doorbell, the second, is at 0x1008.
+        bus = FakeController(capabilities=1 << 32 | MOST_ENTRIES)
+        nvme = sp.NvmeHost(registers=0, memory=0x1000)
+
+        play(nvme.enable(), bus)
+
+        assert 0x1008 in bus.doorbells_rung
+        assert 0x1004 not in bus.doorbells_rung
+
+
+class TestWhenTheDriversQueuesAreLongerThanTheControllerTakes:
+    def test_enabling_is_refused_and_the_error_gives_both_lengths(self):
+        # CAP.MQES, in bits 15 to 0, is the longest queue the controller
+        # takes, counted from zero: here 8 entries.
+        bus = FakeController(capabilities=7)
+        nvme = sp.NvmeHost(registers=0, memory=0x1000, queue_entries=16)
+
+        with pytest.raises(sp.NvmeError, match=r"16 entries.*at most 8"):
+            play(nvme.enable(), bus)
+
+
+class TestWhenTheControllerReportsAFatalError:
+    def test_enabling_stops_and_the_error_says_so(self):
+        bus = FakeController(fatal=True)
+        nvme = sp.NvmeHost(registers=0, memory=0x1000)
+
+        with pytest.raises(sp.NvmeError, match="fatal"):
+            play(nvme.enable(), bus)
+
+
+class TestWhenACompletionCarriesNoCommandIdentifier:
+    def test_it_is_not_taken_for_the_first_commands(self):
+        # A slot that says it is new and whose identifier is zero: what a
+        # controller that never filled the identifier in would leave.
+        bus = FakeController(identifies_completions=False)
+        nvme = sp.NvmeHost(registers=0, memory=0x1000)
+
+        with pytest.raises(sp.NvmeError, match="no completion"):
+            play(nvme.enable(), bus)
+
+
+class TestWhenTheHostIsGivenLessMemoryThanItsQueuesTake:
+    def test_it_is_refused_and_the_error_says_how_much_they_take(self):
+        with pytest.raises(ValueError, match="4 pages"):
+            sp.NvmeHost(
+                registers=NVME_BASE, memory=RAM_BASE, memory_size=3 * 4096
+            )
+
+
+@pytest.mark.platform
+class TestWhenATransferNeedsMoreMemoryThanTheHostWasGiven:
+    def test_the_error_comes_out_of_the_run_and_says_what_was_given(self):
+        def script():
+            # Four pages for the queues, and one for data.
+            nvme = sp.NvmeHost(
+                registers=NVME_BASE, memory=RAM_BASE, memory_size=5 * 4096
+            )
+            yield from nvme.enable()
+            # Sixteen blocks are two pages.
+            yield from nvme.read_blocks(first=0, count=16)
+
+        platform = host_with_nvme(script)
+
+        with pytest.raises(sp.NvmeError, match="5 pages"):
+            platform.run()
+
+
+# The longest queue a controller can say it takes (CAP.MQES, from zero).
+MOST_ENTRIES = 0xFFFF
+
+
 class FakeController:
     """Just enough of a controller to enable against, with no simulator.
 
     It is ready when it is enabled, unless told never to be, and every
     other register reads as zero. It completes each command it is sent
     with `status_code`, unless told not to complete any. It adds up how
-    long the driver waited.
+    long the driver waited, and notes which doorbells were rung.
     """
 
     def __init__(
         self,
         *,
-        capabilities=0,
+        capabilities=MOST_ENTRIES,
         becomes_ready=True,
+        fatal=False,
         completes=True,
+        identifies_completions=True,
         status_code=0,
     ):
         self.capabilities = capabilities
         self.becomes_ready = becomes_ready
+        self.fatal = fatal
         self.completes = completes
+        self.identifies_completions = identifies_completions
         self.status_code = status_code
         self.enabled = False
         self.waited = 0
         self.last_command = bytes(64)
+        self.doorbells_rung = []
 
     def __call__(self, operation):
         configuration, status = 0x14, 0x1C
+        if operation.kind == "write32" and operation.operands[0] >= 0x1000:
+            self.doorbells_rung.append(operation.operands[0])
         if (
             operation.kind == "write32"
             and operation.operands[0] == configuration
@@ -315,10 +399,15 @@ class FakeController:
         if operation.kind == "write" and len(operation.operands[1]) == 64:
             self.last_command = operation.operands[1]
         if operation.kind == "read32":
+            # The capabilities register is 64 bits, in two halves.
             if operation.operands[0] == 0x00:
-                return self.capabilities
+                return self.capabilities & 0xFFFF_FFFF
+            if operation.operands[0] == 0x04:
+                return self.capabilities >> 32
             if operation.operands[0] == status:
-                return int(self.enabled and self.becomes_ready)
+                return int(self.enabled and self.becomes_ready) | (
+                    2 if self.fatal else 0
+                )
             return 0
         if operation.kind == "read":
             return self._completion()
@@ -334,4 +423,7 @@ class FakeController:
         # bit, which is 1 the first time round, and above it the status
         # code.
         status = (self.status_code << 1 | 1).to_bytes(2, "little")
-        return bytes(12) + self.last_command[2:4] + status
+        identifier = (
+            self.last_command[2:4] if self.identifies_completions else bytes(2)
+        )
+        return bytes(12) + identifier + status

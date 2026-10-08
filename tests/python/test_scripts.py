@@ -7,7 +7,7 @@ import textwrap
 import pytest
 
 import socpuppet as sp
-from scripts import writing
+from scripts import play, writing
 
 
 def master_with_ram(script):
@@ -367,3 +367,30 @@ class TestWhenThePlatformRunsUntilACondition:
 
         assert not held
         assert platform.time == sp.ns(100)
+
+
+class TestWhenStepsRead64Bits:
+    def test_the_two_halves_are_joined_with_the_lower_address_as_the_low_half(
+        self,
+    ):
+        halves = {0x100: 0x89AB_CDEF, 0x104: 0x0123_4567}
+
+        value = play(sp.read64(0x100), lambda read: halves[read.operands[0]])
+
+        assert value == 0x0123_4567_89AB_CDEF
+
+
+class TestWhenStepsWrite64Bits:
+    def test_the_low_half_is_written_first_at_the_lower_address(self):
+        written = []
+
+        play(
+            sp.write64(0x100, 0x0123_4567_89AB_CDEF),
+            lambda write: written.append(write.operands),
+        )
+
+        assert written == [(0x100, 0x89AB_CDEF), (0x104, 0x0123_4567)]
+
+    def test_a_value_that_does_not_fit_is_refused(self):
+        with pytest.raises(ValueError, match="64 bits"):
+            play(sp.write64(0x100, 2**64), lambda write: None)

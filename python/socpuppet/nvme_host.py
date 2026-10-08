@@ -24,7 +24,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from socpuppet.errors import NvmeError
-from socpuppet.ops import Steps, read, read32, wait, wait_irq, write, write32
+from socpuppet.ops import (
+    Steps,
+    read,
+    read32,
+    read64,
+    wait,
+    wait_irq,
+    write,
+    write32,
+    write64,
+)
 from socpuppet.time import ms
 
 # Controller registers: their offsets, and the bits used in them.
@@ -35,6 +45,8 @@ _ENABLE = 1 << 0
 _ENTRY_SIZES = 6 << 16 | 4 << 20
 _STATUS = 0x1C
 _READY = 1 << 0
+# CSTS.CFS: the controller has hit an error it cannot recover from.
+_FATAL = 1 << 1
 _ADMIN_QUEUE_SIZES = 0x24
 _ADMIN_SUBMISSION_QUEUE = 0x28
 _ADMIN_COMPLETION_QUEUE = 0x30
@@ -82,6 +94,12 @@ _NAMESPACE = 1
 # How many pages of data one command can point at: the first directly, and
 # the rest through a list that is itself one page of 8-byte entries.
 _MOST_PAGES = 1 + _PAGE // 8
+# The pages at the start of the driver's memory that hold its queues: two
+# rings for each of its two queue pairs.
+_QUEUE_PAGES = 4
+# The identifier of a queue pair's first command. Not zero, so that a
+# completion slot nobody filled in is not taken for the first command's.
+_FIRST_COMMAND_ID = 0x100
 
 
 def _wait_for_the_wire() -> Steps[None]:
@@ -112,6 +130,11 @@ class _QueuePair:
         # Where the two rings are in the host's memory.
         self.submissions = submissions
         self.completions = completions
+        self.next_command_id = _FIRST_COMMAND_ID
+        self.start_over()
+
+    def start_over(self) -> None:
+        """Empty both rings, as a controller reset does on its side."""
         # Where the host puts its next command, and looks for the next
         # completion.
         self.tail = 0
@@ -119,7 +142,6 @@ class _QueuePair:
         # The phase bit a new completion carries. It starts at 1 and
         # inverts each time the completion queue wraps around.
         self.phase = 1
-        self.next_command_id = 0
 
 
 class NvmeHost:
@@ -129,10 +151,13 @@ class NvmeHost:
     address map. `memory` is the start of an area of the host's memory that
     the driver may use: four pages for its queues, then as many pages as
     its largest transfer needs, and one more for a list of them. It has to
-    start on a page boundary (a multiple of 4096). `queue_entries` is how
-    long the driver makes its queues. A real driver asks the controller
-    how long they may be and how far apart its doorbells are. This one
-    takes the answers the behavioral drive gives for granted.
+    start on a page boundary (a multiple of 4096). `memory_size` is how
+    many bytes the area has. Given one, the driver says so when a transfer
+    needs more, where it would otherwise write past the end of whatever
+    you meant it to have. `queue_entries` is how long the driver makes its
+    queues, which has to be no longer than the controller takes. Like a
+    real driver, it asks the controller that, and how far apart its
+    doorbells are.
 
     `interrupt` is how the driver waits for the controller's interrupt:
     steps that return once it has come. Left out, the driver waits with
@@ -147,6 +172,7 @@ class NvmeHost:
         *,
         registers: int,
         memory: int,
+        memory_size: int | None = None,
         queue_entries: int = 16,
         interrupt: Callable[[], Steps[object]] | None = None,
     ) -> None:
@@ -162,15 +188,31 @@ class NvmeHost:
                 f"multiple of {_PAGE}), because its queues and its data are "
                 f"whole pages, and {memory:#x} does not."
             )
+        if memory_size is not None and memory_size < _QUEUE_PAGES * _PAGE:
+            raise ValueError(
+                f"The driver's queues take {_QUEUE_PAGES} pages of its "
+                f"memory ({_QUEUE_PAGES * _PAGE} bytes) before any data, "
+                f"and it was given {memory_size} bytes."
+            )
         self._queue_entries = queue_entries
         self._registers = registers
         self._interrupt = interrupt or _wait_for_the_wire
-        self._queue_memory = memory
-        self._free_memory = memory + 4 * _PAGE
+        self._free_memory = memory + _QUEUE_PAGES * _PAGE
+        # Where the driver's memory ends, if it was told.
+        self._memory_end = None if memory_size is None else memory + memory_size
         # Pages that held a command's data and can hold the next one's.
         self._spare_pages: list[int] = []
-        self._admin = self._new_queue_pair(0)
-        self._io = self._new_queue_pair(1)
+        # Queue pair 0's two rings are the first two pages of the driver's
+        # memory, and queue pair 1's the next two.
+        self._admin = _QueuePair(0, memory, memory + _PAGE, queue_entries)
+        self._io = _QueuePair(
+            1, memory + 2 * _PAGE, memory + 3 * _PAGE, queue_entries
+        )
+        # What the controller says about itself, read when it is enabled:
+        # how far apart its doorbells are, and how long it may take to
+        # become ready. Until then, what the specification starts from.
+        self._doorbell_stride = 4
+        self._ready_timeout = 0
         # What the namespace said about itself, once it has been asked.
         self._namespace: NvmeNamespace | None = None
 
@@ -180,19 +222,20 @@ class NvmeHost:
         # starts with a reset: clear CC.EN, and wait for CSTS.RDY to clear.
         # The reset does away with every queue the controller had, so the
         # host starts its own over too.
+        yield from self._ask_what_the_controller_takes()
         yield write32(self._registers + _CONFIGURATION, 0)
         yield from self._wait_until_ready_is(False)
-        self._admin = self._new_queue_pair(0)
-        self._io = self._new_queue_pair(1)
+        self._admin.start_over()
+        self._io.start_over()
         entries = self._queue_entries - 1  # sizes are counted from zero
         yield write32(
             self._registers + _ADMIN_QUEUE_SIZES, entries << 16 | entries
         )
-        yield from self._write64(
-            _ADMIN_SUBMISSION_QUEUE, self._admin.submissions
+        yield from write64(
+            self._registers + _ADMIN_SUBMISSION_QUEUE, self._admin.submissions
         )
-        yield from self._write64(
-            _ADMIN_COMPLETION_QUEUE, self._admin.completions
+        yield from write64(
+            self._registers + _ADMIN_COMPLETION_QUEUE, self._admin.completions
         )
         yield write32(self._registers + _CONFIGURATION, _ENTRY_SIZES | _ENABLE)
         yield from self._wait_until_ready_is(True)
@@ -250,6 +293,25 @@ class NvmeHost:
             _WRITE, "Write", first, len(data) // block_size, pages
         )
         self._spare_pages += pages
+
+    def _ask_what_the_controller_takes(self) -> Steps[None]:
+        """Read the capabilities register, and go by what it says."""
+        capabilities = yield from read64(self._registers + _CAPABILITIES)
+        # CAP.MQES, bits 15 to 0: the longest queue, counted from zero.
+        most_entries = (capabilities & 0xFFFF) + 1
+        if self._queue_entries > most_entries:
+            raise NvmeError(
+                "This driver was told to make its queues "
+                f"{self._queue_entries} entries long, and the controller "
+                f"takes at most {most_entries}. Create the driver with "
+                f"queue_entries={most_entries} or fewer."
+            )
+        # CAP.TO, bits 31 to 24: how long the controller may take to
+        # become ready or idle, in units of 500 ms.
+        self._ready_timeout = ((capabilities >> 24) & 0xFF) * ms(500)
+        # CAP.DSTRD, bits 35 to 32: the doorbells are 4 << DSTRD bytes
+        # apart.
+        self._doorbell_stride = 4 << ((capabilities >> 32) & 0xF)
 
     def _create_io_queues(self) -> Steps[None]:
         # One pair of I/O queues is all this driver uses. It asks for it
@@ -414,21 +476,27 @@ class NvmeHost:
             )
 
     def _doorbell(self, queue: _QueuePair, *, completion: bool) -> int:
-        # Two doorbells per queue pair, 4 bytes each: the submission queue's
-        # tail, then the completion queue's head.
+        # Two doorbells per queue pair: the submission queue's tail, then
+        # the completion queue's head. Each is 4 bytes, and the controller
+        # says how far apart they are.
         return (
             self._registers
             + _DOORBELLS
-            + (2 * queue.identifier + (1 if completion else 0)) * 4
+            + (2 * queue.identifier + (1 if completion else 0))
+            * self._doorbell_stride
         )
 
     def _wait_until_ready_is(self, wanted: bool) -> Steps[None]:
-        # CAP.TO says how long the controller may take, in units of 500 ms.
-        capabilities = yield read32(self._registers + _CAPABILITIES)
-        limit = ((capabilities >> 24) & 0xFF) * ms(500)
+        limit = self._ready_timeout
         waited = 0
         while True:
             status = yield read32(self._registers + _STATUS)
+            if status & _FATAL:
+                raise NvmeError(
+                    "The controller reports a fatal error (CSTS.CFS is "
+                    "set), so there is no use in waiting for it to become "
+                    f"{'ready' if wanted else 'idle'}."
+                )
             if bool(status & _READY) == wanted:
                 return
             if waited >= limit:
@@ -440,17 +508,6 @@ class NvmeHost:
             yield wait(ms(1))
             waited += ms(1)
 
-    def _write64(self, offset: int, value: int) -> Steps[None]:
-        # A 64-bit register may be written as two halves, low half first.
-        yield write32(self._registers + offset, value & 0xFFFF_FFFF)
-        yield write32(self._registers + offset + 4, value >> 32)
-
-    def _new_queue_pair(self, identifier: int) -> _QueuePair:
-        # Queue pair 0's two rings are the first two pages of the driver's
-        # memory, and queue pair 1's the next two.
-        base = self._queue_memory + identifier * 2 * _PAGE
-        return _QueuePair(identifier, base, base + _PAGE, self._queue_entries)
-
     def _take_pages(self, count: int) -> list[int]:
         """`count` pages of the driver's memory.
 
@@ -461,7 +518,17 @@ class NvmeHost:
         for _ in range(count):
             if self._spare_pages:
                 pages.append(self._spare_pages.pop())
-            else:
-                pages.append(self._free_memory)
-                self._free_memory += _PAGE
+                continue
+            if self._memory_end is not None and (
+                self._free_memory + _PAGE > self._memory_end
+            ):
+                given = (self._memory_end - self._admin.submissions) // _PAGE
+                raise NvmeError(
+                    f"The driver needs more memory than the {given} pages "
+                    f"it was given: {_QUEUE_PAGES} of them hold its queues, "
+                    "and this transfer wants more than the rest. Give it a "
+                    "larger memory_size, or split the transfer."
+                )
+            pages.append(self._free_memory)
+            self._free_memory += _PAGE
         return pages

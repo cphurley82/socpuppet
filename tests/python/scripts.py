@@ -17,11 +17,11 @@ def play(steps, bus):
     """Plays a driver's steps against `bus`, with no simulator.
 
     `bus` is a function that is handed each operation and returns what the
-    operation gives back.
+    operation gives back. Returns what the steps return.
     """
     try:
         operation = next(steps)
         while True:
             operation = steps.send(bus(operation))
-    except StopIteration:
-        return
+    except StopIteration as done:
+        return done.value

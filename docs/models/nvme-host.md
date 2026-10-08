@@ -40,11 +40,12 @@ platform.connect(nvme.irq0, cpu.irq)
 
 - **`registers`** is where the controller's register block is in the host's address map.
 - **`memory`** is the start of an area of the host's memory the driver may use: four pages for its queues, then as many pages as its largest transfer needs, and one more for a list of them. 💡 Nothing here is a special kind of memory. A driver's queues and buffers are ordinary RAM that it tells the controller about.
-- **`enable()`** resets the controller, tells it where the admin queues are, enables it, and creates one pair of I/O queues. Calling it again starts over, and what is on the drive stays.
+- **`memory_size`** is how big that area is. Give it, and the driver says so when a transfer needs more. Leave it out, and the driver takes pages for as long as it is asked to, past the end of whatever you meant it to have.
+- **`enable()`** asks the controller how long its queues may be and how far apart its doorbells are, resets it, tells it where the admin queues are, enables it, and creates one pair of I/O queues. Calling it again starts over, and what is on the drive stays.
 - **`identify_namespace()`** asks the drive how many blocks it has and how big they are.
 - **`read_blocks()` and `write_blocks()`** move whole blocks, up to 513 pages of memory (a little over 2 MiB) in one command. The driver spreads the data over pages that need not be next to each other and tells the controller where each one is.
 - **`interrupt=`** is how the driver waits for the controller's interrupt. Left out, it waits with `sp.wait_irq()`, which is right when the controller's first interrupt line is wired to the master that runs the script, as above. Behind PCIe the interrupt arrives as a message, and the thing to pass is `sp.MsiHost(...).wait` (see the [PCIe host](pcie-host.md)).
-- **Errors.** A command the controller fails raises `sp.NvmeError` with the status's name, and so does a controller that does not become ready in the time it says it needs. Like any exception in a script, it comes out of `platform.run()`.
+- **Errors.** A command the controller fails raises `sp.NvmeError` with the status's name. So does a controller that does not become ready in the time it says it needs, one that reports a fatal error, and one that takes shorter queues than the driver was told to make. Like any exception in a script, it comes out of `platform.run()`.
 
 ## What it leaves out
 
