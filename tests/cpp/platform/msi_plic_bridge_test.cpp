@@ -119,4 +119,13 @@ TEST(WhenAnMsiPlicBridgesRegisterIsRead, ItReadsZero) {
   EXPECT_EQ(read, (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
 }
 
+TEST(WhenAnMsiPlicBridgesRegisterIsRead, NoLineRises) {
+  MasterWithAnMsiPlicBridge fixture{[](BusDriver& bus) { bus.Read32(0); }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.Rises(0), 0);
+  EXPECT_EQ(fixture.Rises(1), 0);
+}
+
 }  // namespace socpuppet

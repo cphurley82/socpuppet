@@ -53,6 +53,8 @@ class MsiPlicBridge : public sc_core::sc_module {
     if (transaction.is_read()) {
       std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
                   static_cast<unsigned char>(0));
+      transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+      return;
     }
     const auto vector = LoadLittleEndian<std::uint32_t>(
         {transaction.get_data_ptr(), transaction.get_data_length()});
