@@ -53,6 +53,14 @@ struct MasterWithAnMsiPlicBridge {
         .line->read();
   }
 
+  // Waits, in the calling simulation thread, for the line of `vector` to
+  // rise, and returns while it is high.
+  void WaitForARise(unsigned vector) {
+    sc_core::wait(
+        platform.ModuleAt<LineWatcher>("watcher" + std::to_string(vector))
+            .line.posedge_event());
+  }
+
   Platform platform;
 };
 
@@ -93,6 +101,23 @@ TEST(WhenTwoMessagesForOneVectorArriveBackToBack, ItsLineRisesTwice) {
     SendMessage(bus, 1);
     SendMessage(bus, 1);
   }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.Rises(1), 2);
+}
+
+// The rise that is on the line came before this message, so it does not
+// speak for it. A PLIC hears a rise, and a rise needs a fall before it.
+TEST(WhenAMessageReachesAnMsiPlicBridgeWhoseLineIsStillHigh,
+     TheLineFallsAndRisesAgain) {
+  MasterWithAnMsiPlicBridge* wired = nullptr;
+  MasterWithAnMsiPlicBridge fixture{[&](BusDriver& bus) {
+    SendMessage(bus, 1);
+    wired->WaitForARise(1);
+    SendMessage(bus, 1);
+  }};
+  wired = &fixture;
 
   fixture.platform.Run();
 
@@ -166,9 +191,8 @@ TEST(WhenAnAccessToAnMsiPlicBridgeIsNot32BitsWide, ItGetsAnAddressError) {
 
 TEST(WhenAnAccessIsBesideAnMsiPlicBridgesRegister, ItGetsAnAddressError) {
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
-  MasterWithAnMsiPlicBridge fixture{[&](BusDriver& bus) {
-    response = bus.Write(4, std::array<std::uint8_t, 4>{1, 0, 0, 0});
-  }};
+  MasterWithAnMsiPlicBridge fixture{
+      [&](BusDriver& bus) { response = bus.Write32(4, 1); }};
 
   fixture.platform.Run();
 
