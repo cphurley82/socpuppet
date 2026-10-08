@@ -177,6 +177,13 @@ jobs:
     # (manylinux) and for macOS on Apple silicon. cibuildwheel installs each
     # into a fresh environment and runs the Python tests against it.
     # Nothing is published from here.
+    #
+    # Nearly all of a wheel is the dependencies, which are the same for
+    # every Python version. A compiler cache (ccache, set up in
+    # pyproject.toml) lets the second and third wheel take them from the
+    # first, and keeping the cache from one run to the next lets the first
+    # take them from last time. On Linux the build runs in a container,
+    # which sees the runner's files under /host.
     name: Portable wheels (${{ matrix.os }})
     needs: firmware
     runs-on: ${{ matrix.os }}
@@ -184,9 +191,20 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+    env:
+      CCACHE_DIR: ${{ startsWith(matrix.os, 'ubuntu') && '/host/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
+      CCACHE_COMPRESS: "1"
+      CIBW_ENVIRONMENT_PASS_LINUX: CCACHE_DIR CCACHE_COMPRESS
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
+      - name: Cache compiled dependencies
+        uses: actions/cache@v6
+        with:
+          path: ${{ startsWith(matrix.os, 'ubuntu') && '/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
+          # Saved once for each set of dependencies. Our own few files are
+          # compiled every time, which is what a change to them needs.
+          key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
       - uses: pypa/cibuildwheel@v4.2.1
       - name: Check what each wheel holds
         run: |

@@ -72,8 +72,13 @@ wheel.packages = ["python/socpuppet"]
 # What a source distribution leaves behind: build trees, the write-ups,
 # and experiments that nothing in the package depends on.
 sdist.exclude = ["build", "dist", "docs", "spikes", "wheelhouse"]
-# Keep the build tree between runs so SystemC and SCC are not rebuilt.
-build-dir = "build/wheel-{wheel_tag}"
+# One build tree, whichever Python the wheel is for. It is not what saves
+# compiling SystemC and the rest again: scikit-build-core starts every
+# isolated build with a fresh CMake cache, the dependencies are unpacked
+# anew, and everything is rebuilt. What saves it is a compiler cache
+# (ccache, as CI's wheel job has), and that needs each file to be compiled
+# by the same command from one wheel to the next, which one tree gives.
+build-dir = "build/wheel"
 
 [tool.scikit-build.cmake.define]
 SOCPUPPET_BUILD_TESTS = false
@@ -93,12 +98,27 @@ test-command = "pytest tests/python"
 [tool.cibuildwheel.linux]
 # SCC's trace writer needs zlib's headers. The library itself is part of
 # the manylinux baseline, so the wheel may depend on it.
-before-all = "dnf install -y zlib-devel"
+#
+# ccache is what lets the second and third wheel reuse what the first
+# compiled: nearly everything in a wheel is SystemC, SCC, Boost and the
+# CPU, which do not care which Python it is for. It is a convenience, so
+# a machine that cannot install it builds without.
+before-all = "dnf install -y zlib-devel && (dnf install -y epel-release && dnf install -y ccache || true)"
+
+[tool.cibuildwheel.linux.environment]
+# Empty where there is no ccache, and CMake then uses none.
+CMAKE_C_COMPILER_LAUNCHER = "$(command -v ccache || true)"
+CMAKE_CXX_COMPILER_LAUNCHER = "$(command -v ccache || true)"
 
 [tool.cibuildwheel.macos]
+before-all = "HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache || true"
+
+[tool.cibuildwheel.macos.environment]
 # The oldest macOS the wheel runs on. C++20's std::format for floating-point
 # numbers, which the code uses, arrived in the system's C++ library with 13.3.
-environment = { MACOSX_DEPLOYMENT_TARGET = "13.3" }
+MACOSX_DEPLOYMENT_TARGET = "13.3"
+CMAKE_C_COMPILER_LAUNCHER = "$(command -v ccache || true)"
+CMAKE_CXX_COMPILER_LAUNCHER = "$(command -v ccache || true)"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
