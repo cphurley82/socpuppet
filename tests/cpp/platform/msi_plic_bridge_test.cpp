@@ -1,3 +1,4 @@
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -105,6 +106,17 @@ TEST(WhenAMessageNamesAVectorAnMsiPlicBridgeHasNoLineFor, ItIsRefused) {
   fixture.platform.Run();
 
   EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
+}
+
+// A message is something sent, not something kept: there is nothing in
+// the register to read back.
+TEST(WhenAnMsiPlicBridgesRegisterIsRead, ItReadsZero) {
+  std::array<std::uint8_t, 4> read{0xFF, 0xFF, 0xFF, 0xFF};
+  MasterWithAnMsiPlicBridge fixture{[&](BusDriver& bus) { bus.Read(0, read); }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(read, (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
 }
 
 }  // namespace socpuppet

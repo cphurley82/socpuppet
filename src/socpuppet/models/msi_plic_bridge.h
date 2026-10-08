@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_MODELS_MSI_PLIC_BRIDGE_H_
 #define SOCPUPPET_MODELS_MSI_PLIC_BRIDGE_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -23,10 +24,11 @@ namespace socpuppet {
 // something at that address to turn the write back into a wire, and this
 // is that something.
 //
-// It is one 32-bit register. A write is a message, and its data is the
-// number of a vector, counted from 0. That vector's line rises, and falls
-// again a delta cycle later. (A delta cycle is one round of the simulator
-// letting every process that is ready run, with no time passing.)
+// It is one 32-bit register, which reads as zero. A write is a message,
+// and its data is the number of a vector, counted from 0. That vector's
+// line rises, and falls again a delta cycle later. (A delta cycle is one round
+// of the simulator letting every process that is ready run, with no time
+// passing.)
 //
 // The line cannot stay high until the interrupt is handled, because
 // nothing tells the bridge that it was: the handler talks to the device
@@ -48,6 +50,10 @@ class MsiPlicBridge : public sc_core::sc_module {
 
  private:
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
+    if (transaction.is_read()) {
+      std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
+                  static_cast<unsigned char>(0));
+    }
     const auto vector = LoadLittleEndian<std::uint32_t>(
         {transaction.get_data_ptr(), transaction.get_data_length()});
     if (vector >= waiting_.size()) {
