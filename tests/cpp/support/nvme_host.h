@@ -15,7 +15,9 @@
 #include <systemc>
 #include <tlm>
 
-#include "tests/cpp/contracts/bus_driver.h"
+#include "socpuppet/core/block_store.h"
+#include "socpuppet/core/little_endian.h"
+#include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
 
 // A small NVMe host for tests: just enough of a driver to bring a
@@ -163,7 +165,7 @@ class NvmeHost {
   bool IsReadyByDebugAccess() {
     std::array<std::uint8_t, 4> bytes{};
     bus_.DebugRead(registers_ + kStatus, bytes);
-    return (LittleEndian<std::uint32_t>(bytes) & kReady) != 0;
+    return (socpuppet::LoadLittleEndian<std::uint32_t>(bytes) & kReady) != 0;
   }
 
   // The admin queues, which exist once the controller is enabled.
@@ -216,13 +218,20 @@ class NvmeHost {
     const std::uint16_t command_id = queue.next_command_id_++;
     std::array<std::uint8_t, kCommandSize> entry{};
     entry[0] = command.opcode;
-    Store<std::uint16_t>(command_id, std::span{entry}.subspan(2));
-    Store<std::uint32_t>(command.namespace_id, std::span{entry}.subspan(4));
-    Store<std::uint64_t>(command.data, std::span{entry}.subspan(24));
-    Store<std::uint64_t>(command.more_data, std::span{entry}.subspan(32));
-    Store<std::uint32_t>(command.dword10, std::span{entry}.subspan(40));
-    Store<std::uint32_t>(command.dword11, std::span{entry}.subspan(44));
-    Store<std::uint32_t>(command.dword12, std::span{entry}.subspan(48));
+    socpuppet::StoreLittleEndian<std::uint16_t>(command_id,
+                                                std::span{entry}.subspan(2));
+    socpuppet::StoreLittleEndian<std::uint32_t>(command.namespace_id,
+                                                std::span{entry}.subspan(4));
+    socpuppet::StoreLittleEndian<std::uint64_t>(command.data,
+                                                std::span{entry}.subspan(24));
+    socpuppet::StoreLittleEndian<std::uint64_t>(command.more_data,
+                                                std::span{entry}.subspan(32));
+    socpuppet::StoreLittleEndian<std::uint32_t>(command.dword10,
+                                                std::span{entry}.subspan(40));
+    socpuppet::StoreLittleEndian<std::uint32_t>(command.dword11,
+                                                std::span{entry}.subspan(44));
+    socpuppet::StoreLittleEndian<std::uint32_t>(command.dword12,
+                                                std::span{entry}.subspan(48));
     WriteMemory(queue.submissions_ + (queue.tail_ * kCommandSize), entry);
     queue.tail_ =
         static_cast<std::uint16_t>((queue.tail_ + 1) % queue.entries_);
@@ -237,8 +246,8 @@ class NvmeHost {
     for (sc_core::sc_time waited = sc_core::SC_ZERO_TIME;; waited += Pause()) {
       std::array<std::uint8_t, kCompletionSize> entry{};
       ReadMemory(queue.completions_ + (queue.head_ * kCompletionSize), entry);
-      const auto status =
-          LittleEndian<std::uint16_t>(std::span{entry}.subspan(14));
+      const auto status = socpuppet::LoadLittleEndian<std::uint16_t>(
+          std::span{entry}.subspan(14));
       // A new entry is one whose phase bit is the one expected.
       if ((status & 1) == (queue.phase_ ? 1 : 0)) {
         queue.head_ = static_cast<std::uint16_t>(queue.head_ + 1);
@@ -247,12 +256,12 @@ class NvmeHost {
           queue.phase_ = !queue.phase_;
         }
         return Completion{
-            .command_id =
-                LittleEndian<std::uint16_t>(std::span{entry}.subspan(12)),
+            .command_id = socpuppet::LoadLittleEndian<std::uint16_t>(
+                std::span{entry}.subspan(12)),
             .status = static_cast<std::uint16_t>((status >> 1) & 0x7FF),
-            .submission_queue_head =
-                LittleEndian<std::uint16_t>(std::span{entry}.subspan(8)),
-            .result = LittleEndian<std::uint32_t>(entry)};
+            .submission_queue_head = socpuppet::LoadLittleEndian<std::uint16_t>(
+                std::span{entry}.subspan(8)),
+            .result = socpuppet::LoadLittleEndian<std::uint32_t>(entry)};
       }
       if (waited >= Patience()) return std::nullopt;
       bus_.WaitFor(Pause());
@@ -338,8 +347,8 @@ class NvmeHost {
     bus_.WaitFor(Pause());
     std::array<std::uint8_t, kCompletionSize> entry{};
     ReadMemory(queue.completions_ + (queue.head_ * kCompletionSize), entry);
-    const auto status =
-        LittleEndian<std::uint16_t>(std::span{entry}.subspan(14));
+    const auto status = socpuppet::LoadLittleEndian<std::uint16_t>(
+        std::span{entry}.subspan(14));
     return (status & 1) == (queue.phase_ ? 1 : 0);
   }
 
@@ -352,7 +361,8 @@ class NvmeHost {
     const auto page = Identify(kDescribeController, 0);
     if (!page) return std::nullopt;
     // NN, 32 bits at byte 516.
-    return LittleEndian<std::uint32_t>(std::span{*page}.subspan(516));
+    return socpuppet::LoadLittleEndian<std::uint32_t>(
+        std::span{*page}.subspan(516));
   }
 
   // Sends the Identify for a namespace, and returns what the controller
@@ -373,11 +383,13 @@ class NvmeHost {
     // four bits). A format gives the block size as a power of two, in its
     // bits 23 to 16 (LBADS). NSZE, the size in blocks, is 64 bits at byte 0.
     const std::size_t format = bytes[26] & 0xF;
-    const auto block_size_shift =
-        (LittleEndian<std::uint32_t>(bytes.subspan(128 + (4 * format))) >> 16) &
-        0xFF;
-    return Namespace{.blocks = LittleEndian<std::uint64_t>(bytes),
-                     .block_size = std::uint32_t{1} << block_size_shift};
+    const auto block_size_shift = (socpuppet::LoadLittleEndian<std::uint32_t>(
+                                       bytes.subspan(128 + (4 * format))) >>
+                                   16) &
+                                  0xFF;
+    return Namespace{
+        .blocks = socpuppet::LoadLittleEndian<std::uint64_t>(bytes),
+        .block_size = std::uint32_t{1} << block_size_shift};
   }
 
   // The identifiers of the namespaces in use, in the order given.
@@ -387,8 +399,8 @@ class NvmeHost {
     // 32-bit identifiers, and a zero ends the list.
     std::vector<std::uint32_t> active;
     for (std::size_t offset = 0; offset < page->size(); offset += 4) {
-      const auto id =
-          LittleEndian<std::uint32_t>(std::span{*page}.subspan(offset));
+      const auto id = socpuppet::LoadLittleEndian<std::uint32_t>(
+          std::span{*page}.subspan(offset));
       if (id == 0) break;
       active.push_back(id);
     }
@@ -472,7 +484,7 @@ class NvmeHost {
   static constexpr std::uint8_t kWrite = 0x01;
   static constexpr std::uint8_t kRead = 0x02;
   // The block size the contract asks of a namespace.
-  static constexpr std::size_t kBlockSize = 512;
+  static constexpr std::size_t kBlockSize = socpuppet::BlockStore::kBlockSize;
   // Bits of dword 11 in the two commands that create a queue.
   static constexpr std::uint32_t kContiguous = 1U << 0;
   static constexpr std::uint32_t kInterruptsEnabled = 1U << 1;
@@ -554,7 +566,7 @@ class NvmeHost {
       more_data = Allocate(1);
       for (std::size_t page = 1; page < pages.size(); ++page) {
         std::array<std::uint8_t, 8> entry{};
-        Store<std::uint64_t>(pages[page], entry);
+        socpuppet::StoreLittleEndian<std::uint64_t>(pages[page], entry);
         WriteMemory(more_data + ((page - 1) * entry.size()), entry);
       }
     }
@@ -617,13 +629,11 @@ class NvmeHost {
       ADD_FAILURE() << "Nothing answered a read of the register at offset 0x"
                     << std::hex << offset << ".";
     }
-    return LittleEndian<std::uint32_t>(bytes);
+    return socpuppet::LoadLittleEndian<std::uint32_t>(bytes);
   }
 
   void Write32(std::uint64_t offset, std::uint32_t value) {
-    std::array<std::uint8_t, 4> bytes{};
-    Store(value, bytes);
-    if (bus_.Write(registers_ + offset, bytes) != tlm::TLM_OK_RESPONSE) {
+    if (bus_.Write32(registers_ + offset, value) != tlm::TLM_OK_RESPONSE) {
       ADD_FAILURE() << "Nothing took a write to the register at offset 0x"
                     << std::hex << offset << ".";
     }
@@ -654,22 +664,6 @@ class NvmeHost {
     const std::uint64_t address = free_memory_;
     free_memory_ += pages * kPageSize;
     return address;
-  }
-
-  template <typename Value>
-  static Value LittleEndian(std::span<const std::uint8_t> bytes) {
-    Value value = 0;
-    for (std::size_t index = 0; index < sizeof(Value); ++index) {
-      value |= static_cast<Value>(Value{bytes[index]} << (8 * index));
-    }
-    return value;
-  }
-
-  template <typename Value>
-  static void Store(Value value, std::span<std::uint8_t> bytes) {
-    for (std::size_t index = 0; index < sizeof(Value); ++index) {
-      bytes[index] = static_cast<std::uint8_t>(value >> (8 * index));
-    }
   }
 
   BusDriver& bus_;

@@ -15,7 +15,7 @@
 
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/pci_host.h"
 #include "tests/cpp/support/recording_target.h"

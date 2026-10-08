@@ -4,7 +4,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <utility>
 
@@ -12,8 +11,9 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/platform/slots.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 
 // What every RISC-V platform-level interrupt controller (PLIC) must do,
 // whatever is behind it. This is what an operating system's interrupt
@@ -66,35 +66,18 @@ class InterruptControllerContract : public ::testing::Test {
     bus.WaitFor(sc_core::sc_time{1, sc_core::SC_NS});
   }
 
-  static std::uint32_t Read(BusDriver& bus, std::uint64_t address) {
-    std::array<std::uint8_t, 4> bytes{};
-    bus.Read(address, bytes);
-    std::uint32_t value = 0;
-    std::memcpy(&value, bytes.data(), sizeof value);
-    return value;
-  }
-
-  static void Write(BusDriver& bus, std::uint64_t address,
-                    std::uint32_t value) {
-    std::array<std::uint8_t, 4> bytes{};
-    std::memcpy(bytes.data(), &value, sizeof value);
-    bus.Write(address, bytes);
-  }
-
-  // The same as Read, the way a debugger looks: in no simulated time, and
+  // Reads a register the way a debugger looks: in no simulated time, and
   // without the look counting as a claim.
   static std::uint32_t LookAt(BusDriver& bus, std::uint64_t address) {
     std::array<std::uint8_t, 4> bytes{};
     bus.DebugRead(address, bytes);
-    std::uint32_t value = 0;
-    std::memcpy(&value, bytes.data(), sizeof value);
-    return value;
+    return socpuppet::LoadLittleEndian<std::uint32_t>(bytes);
   }
 
   // Gives `source` a priority and lets it interrupt the CPU.
   void Enable(BusDriver& bus, unsigned source, std::uint32_t priority) {
-    Write(bus, Priority(source), priority);
-    Write(bus, kEnable, Read(bus, kEnable) | (std::uint32_t{1} << source));
+    bus.Write32(Priority(source), priority);
+    bus.Write32(kEnable, bus.Read32(kEnable) | (std::uint32_t{1} << source));
   }
 
   void Raise(BusDriver& bus, unsigned source) {
@@ -136,7 +119,7 @@ TYPED_TEST_P(InterruptControllerContract,
 
 TYPED_TEST_P(InterruptControllerContract, ASourceThatIsNotEnabledDoesNot) {
   this->OnTheBus([&](BusDriver& bus) {
-    this->Write(bus, this->Priority(3), 1);
+    bus.Write32(this->Priority(3), 1);
     this->Raise(bus, 3);
   });
 
@@ -146,7 +129,7 @@ TYPED_TEST_P(InterruptControllerContract, ASourceThatIsNotEnabledDoesNot) {
 TYPED_TEST_P(InterruptControllerContract,
              ASourceWhosePriorityIsNotAboveTheThresholdDoesNot) {
   this->OnTheBus([&](BusDriver& bus) {
-    this->Write(bus, this->kThreshold, 2);
+    bus.Write32(this->kThreshold, 2);
     this->Enable(bus, 3, /*priority=*/2);
     this->Raise(bus, 3);
   });
@@ -171,7 +154,7 @@ TYPED_TEST_P(InterruptControllerContract,
   this->OnTheBus([&](BusDriver& bus) {
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 3);
-    claimed = this->Read(bus, this->kClaimComplete);
+    claimed = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(claimed, 3U);
@@ -188,8 +171,8 @@ TYPED_TEST_P(InterruptControllerContract,
     this->Enable(bus, 5, /*priority=*/2);
     this->Raise(bus, 3);
     this->Raise(bus, 5);
-    first = this->Read(bus, this->kClaimComplete);
-    second = this->Read(bus, this->kClaimComplete);
+    first = bus.Read32(this->kClaimComplete);
+    second = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(first, 5U);
@@ -205,7 +188,7 @@ TYPED_TEST_P(InterruptControllerContract,
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 5);
     this->Raise(bus, 3);
-    first = this->Read(bus, this->kClaimComplete);
+    first = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(first, 3U);
@@ -220,7 +203,7 @@ TYPED_TEST_P(InterruptControllerContract,
     this->Enable(bus, this->kLastSource, /*priority=*/1);
     this->Raise(bus, 3);
     this->Raise(bus, this->kLastSource);
-    first = this->Read(bus, this->kClaimComplete);
+    first = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(first, 3U);
@@ -231,7 +214,7 @@ TYPED_TEST_P(InterruptControllerContract, AClaimWithNothingPendingReadsZero) {
 
   this->OnTheBus([&](BusDriver& bus) {
     this->Enable(bus, 3, /*priority=*/1);
-    claimed = this->Read(bus, this->kClaimComplete);
+    claimed = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(claimed, 0U);
@@ -242,7 +225,7 @@ TYPED_TEST_P(InterruptControllerContract,
   this->OnTheBus([&](BusDriver& bus) {
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 3);
-    this->Read(bus, this->kClaimComplete);
+    bus.Read32(this->kClaimComplete);
     // The device interrupts again while its handler is still running.
     this->Lower(bus, 3);
     this->Raise(bus, 3);
@@ -256,9 +239,9 @@ TYPED_TEST_P(InterruptControllerContract,
   this->OnTheBus([&](BusDriver& bus) {
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 3);
-    const std::uint32_t claimed = this->Read(bus, this->kClaimComplete);
+    const std::uint32_t claimed = bus.Read32(this->kClaimComplete);
     // The handler finishes without the device having gone quiet.
-    this->Write(bus, this->kClaimComplete, claimed);
+    bus.Write32(this->kClaimComplete, claimed);
   });
 
   EXPECT_TRUE(this->interrupt_.read());
@@ -269,9 +252,9 @@ TYPED_TEST_P(InterruptControllerContract,
   this->OnTheBus([&](BusDriver& bus) {
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 3);
-    const std::uint32_t claimed = this->Read(bus, this->kClaimComplete);
+    const std::uint32_t claimed = bus.Read32(this->kClaimComplete);
     this->Lower(bus, 3);
-    this->Write(bus, this->kClaimComplete, claimed);
+    bus.Write32(this->kClaimComplete, claimed);
   });
 
   EXPECT_FALSE(this->interrupt_.read());
@@ -280,9 +263,9 @@ TYPED_TEST_P(InterruptControllerContract,
 TYPED_TEST_P(InterruptControllerContract,
              ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts) {
   this->OnTheBus([&](BusDriver& bus) {
-    this->Write(bus, this->Priority(3), 1);
+    bus.Write32(this->Priority(3), 1);
     this->RaiseWithoutSettling(bus, 3);
-    this->Write(bus, this->kEnable, std::uint32_t{1} << 3);
+    bus.Write32(this->kEnable, std::uint32_t{1} << 3);
   });
 
   EXPECT_TRUE(this->interrupt_.read());
@@ -292,7 +275,7 @@ TYPED_TEST_P(InterruptControllerContract, APriorityIsSeenByADebugAccess) {
   std::uint32_t seen = 0;
 
   this->OnTheBus([&](BusDriver& bus) {
-    this->Write(bus, this->Priority(3), 2);
+    bus.Write32(this->Priority(3), 2);
     seen = this->LookAt(bus, this->Priority(3));
   });
 
@@ -307,7 +290,7 @@ TYPED_TEST_P(InterruptControllerContract,
     this->Enable(bus, 3, /*priority=*/1);
     this->Raise(bus, 3);
     this->LookAt(bus, this->kClaimComplete);
-    claimed = this->Read(bus, this->kClaimComplete);
+    claimed = bus.Read32(this->kClaimComplete);
   });
 
   EXPECT_EQ(claimed, 3U);

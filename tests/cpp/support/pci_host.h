@@ -10,7 +10,8 @@
 #include <systemc>
 #include <tlm>
 
-#include "tests/cpp/contracts/bus_driver.h"
+#include "socpuppet/core/little_endian.h"
+#include "tests/cpp/support/bus_driver.h"
 
 // Where a function is on a PCI bus: its bus, device and function numbers.
 struct PciAddress {
@@ -199,20 +200,13 @@ class PciHost {
   // 32-bit accesses to the host's bus, for what is behind a BAR.
   PciAccess Read(std::uint64_t address) {
     std::array<std::uint8_t, 4> bytes{};
-    PciAccess access;
-    access.response = bus_.Read(address, bytes);
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-      access.value |= std::uint32_t{bytes[index]} << (8 * index);
-    }
-    return access;
+    const tlm::tlm_response_status response = bus_.Read(address, bytes);
+    return {.response = response,
+            .value = socpuppet::LoadLittleEndian<std::uint32_t>(bytes)};
   }
 
   PciAccess Write(std::uint64_t address, std::uint32_t value) {
-    std::array<std::uint8_t, 4> bytes{};
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-      bytes[index] = static_cast<std::uint8_t>(value >> (8 * index));
-    }
-    return {.response = bus_.Write(address, bytes), .value = value};
+    return {.response = bus_.Write32(address, value), .value = value};
   }
 
  private:

@@ -11,7 +11,7 @@
 #include <tlm>
 
 #include "socpuppet/platform/slots.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 
 // What every memory implementation must do, whatever is behind it.
 //

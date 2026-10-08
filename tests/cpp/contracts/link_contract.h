@@ -13,7 +13,7 @@
 
 #include "socpuppet/models/memory.h"
 #include "socpuppet/platform/slots.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 
 // What every die-to-die link must do, whatever happens in between.
 //

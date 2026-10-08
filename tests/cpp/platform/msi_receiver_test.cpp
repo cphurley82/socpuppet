@@ -9,9 +9,10 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
 
 namespace socpuppet {
@@ -56,30 +57,18 @@ struct MasterWithAnMsiReceiver {
 
 // An interrupt message: a 32-bit write whose data is the vector's number.
 tlm::tlm_response_status SendMessage(BusDriver& bus, std::uint32_t vector) {
-  return bus.Write(0, std::array<std::uint8_t, 4>{
-                          static_cast<std::uint8_t>(vector),
-                          static_cast<std::uint8_t>(vector >> 8), 0, 0});
-}
-
-// The register's four bytes as the word they spell, lowest first.
-std::uint32_t AsWord(const std::array<std::uint8_t, 4>& bytes) {
-  return bytes[0] | std::uint32_t{bytes[1]} << 8 |
-         std::uint32_t{bytes[2]} << 16 | std::uint32_t{bytes[3]} << 24;
+  return bus.Write32(0, vector);
 }
 
 // Reads which vectors are waiting: one bit for each, lowest first.
-std::uint32_t ReadWaiting(BusDriver& bus) {
-  std::array<std::uint8_t, 4> bytes{};
-  bus.Read(0, bytes);
-  return AsWord(bytes);
-}
+std::uint32_t ReadWaiting(BusDriver& bus) { return bus.Read32(0); }
 
 // The same, by debug access: the way a debugger looks, without the read
 // counting as the host taking the vectors.
 std::uint32_t LookAtWaiting(BusDriver& bus) {
   std::array<std::uint8_t, 4> bytes{};
   bus.DebugRead(0, bytes);
-  return AsWord(bytes);
+  return socpuppet::LoadLittleEndian<std::uint32_t>(bytes);
 }
 
 }  // namespace

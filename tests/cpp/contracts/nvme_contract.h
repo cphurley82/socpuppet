@@ -13,10 +13,11 @@
 #include <gtest/gtest.h>
 #include <systemc>
 
+#include "socpuppet/core/block_store.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
 #include "tests/cpp/support/nvme_host.h"
 
@@ -157,7 +158,7 @@ inline std::optional<std::uint16_t> StatusOf(
 }
 
 // The size of a block, as the contract asks it of a namespace.
-constexpr std::size_t kBlockSize = 512;
+constexpr std::size_t kBlockSize = socpuppet::BlockStore::kBlockSize;
 
 // Opcode 3 is one the admin command set does not assign. A command with it
 // is the simplest there is: it moves no data and changes nothing.

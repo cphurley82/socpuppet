@@ -10,7 +10,7 @@
 #include <systemc>
 
 #include "socpuppet/platform/slots.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 
 // What every 16550-style UART must do, whatever is behind it. This is the
 // part of the 16550 that a driver's polled console relies on.

@@ -13,7 +13,7 @@
 
 #include "socpuppet/core/trace.h"
 #include "socpuppet/models/memory.h"
-#include "tests/cpp/contracts/bus_driver.h"
+#include "tests/cpp/support/bus_driver.h"
 
 namespace socpuppet {
 
