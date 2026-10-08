@@ -28,6 +28,11 @@ link onto the compute die's bus. There the MSI bridge turns each message
 into a pulse on a line of the interrupt controller, one line for each of
 the drive's interrupt vectors.
 
+The Zephyr board is the host with no drive. Firmware for the host with
+one is built with the board's shield, `socpuppet_ssd`, which is Zephyr's
+word for hardware plugged into a board: `drive_overlay()` writes the
+devicetree it adds.
+
 Run it:                 python -m socpuppet.boards.host path/to/zephyr.elf
 See its devicetree:     socpuppet devicetree <this file>
 """
@@ -35,8 +40,10 @@ See its devicetree:     socpuppet devicetree <this file>
 from __future__ import annotations
 
 import sys
+import textwrap
 from typing import NamedTuple
 
+from socpuppet import devicetree
 from socpuppet.boards.ssd import VECTORS, Ssd, add_ssd
 from socpuppet.components import (
     DbtRiseCpu,
@@ -89,6 +96,10 @@ class Host(NamedTuple):
     uart: PlacedUart
     #: The SSD, if the host was described with one.
     drive: Ssd | None = None
+    #: What the host has for the SSD's sake, and only with one: the bridge
+    #: that takes its interrupt messages, and the PCIe root complex.
+    msi: Placed | None = None
+    root_complex: Placed | None = None
 
 
 def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
@@ -146,7 +157,38 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
     drive = add_ssd(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
-    return Host(platform, cpu, uart, drive)
+    return Host(platform, cpu, uart, drive, msi, root_complex)
+
+
+def drive_overlay() -> str:
+    """The devicetree that the host with a drive has more than the board.
+
+    It is the overlay of the Zephyr shield `socpuppet_ssd`: the MSI bridge
+    and the PCIe root complex, and inside the root complex a node for the
+    drive. 🎓 A device on a PCIe link is found by scanning, so a
+    devicetree need not list it. Zephyr wants a node all the same, to
+    attach its driver to, and matches it to what the scan finds by the
+    vendor and device numbers.
+    """
+    board = host(drive_blocks=1)
+    assert board.drive is not None
+    assert board.msi is not None
+    assert board.root_complex is not None
+    endpoint = board.drive.endpoint.component
+    root_complex = devicetree.label(board.root_complex.path)
+    return board.platform.devicetree_overlay(
+        [board.msi, board.root_complex]
+    ) + textwrap.dedent(
+        f"""
+        &{root_complex} {{
+        \tnvme0: nvme0 {{
+        \t\tcompatible = "nvme-controller";
+        \t\tvendor-id = <{endpoint.parameters["vendor_id"]:#x}>;
+        \t\tdevice-id = <{endpoint.parameters["device_id"]:#x}>;
+        \t}};
+        }};
+        """
+    )
 
 
 #: What `socpuppet devicetree` looks for in a description file.

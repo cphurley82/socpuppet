@@ -1,0 +1,32 @@
+/ {
+	chosen {
+		zephyr,pcie-controller = &io_rc;
+	};
+
+	soc {
+		compute_msi: msi-controller@2000000 {
+			compatible = "socpuppet,msi-plic-bridge";
+			reg = <0x0 0x2000000 0x0 0x4>;
+			msi-controller;
+			interrupts-extended = <&compute_plic 1 1 &compute_plic 2 1>;
+		};
+
+		io_rc: pcie@10100000 {
+			compatible = "socpuppet,pcie";
+			reg = <0x0 0x10100000 0x0 0x100000>;
+			device_type = "pci";
+			#address-cells = <3>;
+			#size-cells = <2>;
+			bus-range = <0 0>;
+			ranges = <0x2000000 0x0 0x10800000 0x0 0x10800000 0x0 0x100000>;
+		};
+	};
+};
+
+&io_rc {
+	nvme0: nvme0 {
+		compatible = "nvme-controller";
+		vendor-id = <0x5350>;
+		device-id = <0xc0de>;
+	};
+};

@@ -12,6 +12,7 @@ from socpuppet.boards.host import (
     IO_BASE,
     MSI_SOURCE,
     TIMER_HZ,
+    drive_overlay,
     host,
 )
 from socpuppet.boards.ssd import DEVICE_ID, VENDOR_ID
@@ -38,6 +39,21 @@ class TestTheZephyrBoardForTheHost:
 
         assert rate is not None
         assert int(rate.group(1)) == TIMER_HZ
+
+
+class TestTheZephyrShieldForTheHostsDrive:
+    def test_its_overlay_is_what_the_host_description_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE / "boards/shields/socpuppet_ssd/socpuppet_ssd.overlay"
+        )
+
+        assert checked_in.read_text() == drive_overlay()
+
+    def test_its_overlay_names_the_drive_as_the_drive_names_itself(self):
+        overlay = drive_overlay()
+
+        assert f"vendor-id = <{VENDOR_ID:#x}>;" in overlay
+        assert f"device-id = <{DEVICE_ID:#x}>;" in overlay
 
 
 class TestTheHostWithADrive:
