@@ -50,6 +50,10 @@ class MsiPlicBridge : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     const auto vector = LoadLittleEndian<std::uint32_t>(
         {transaction.get_data_ptr(), transaction.get_data_length()});
+    if (vector >= waiting_.size()) {
+      transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+      return;
+    }
     ++waiting_[vector];
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
     changed_.notify(sc_core::SC_ZERO_TIME);

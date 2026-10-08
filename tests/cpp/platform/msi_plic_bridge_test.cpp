@@ -97,4 +97,14 @@ TEST(WhenTwoMessagesForOneVectorArriveBackToBack, ItsLineRisesTwice) {
   EXPECT_EQ(fixture.Rises(1), 2);
 }
 
+TEST(WhenAMessageNamesAVectorAnMsiPlicBridgeHasNoLineFor, ItIsRefused) {
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  MasterWithAnMsiPlicBridge fixture{
+      [&](BusDriver& bus) { response = SendMessage(bus, 2); }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
+}
+
 }  // namespace socpuppet
