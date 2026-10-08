@@ -9,6 +9,7 @@
 #include <span>
 
 #include "socpuppet/core/block_store.h"
+#include "socpuppet/core/interrupt_requests.h"
 
 // The layouts of the controller registers and of a command. They are
 // SPDK's (nvme_spec.h), and only nvme_controller.cpp includes it.
@@ -29,7 +30,7 @@ namespace socpuppet {
 //
 // It follows the NVMe base specification, which is public. The layouts of
 // the registers, commands and completions come from SPDK's nvme_spec.h.
-class NvmeController {
+class NvmeController : public InterruptRequests {
  public:
   // The host's memory, which the controller reads and writes on its own
   // initiative (direct memory access, DMA). Each returns false if the host
@@ -68,27 +69,16 @@ class NvmeController {
   // completion there. Returns false if there was nothing to do.
   bool CarryOutOne();
 
-  // Whether the controller is asking for the host's attention on one of
-  // its interrupt vectors: a completion queue that uses the vector holds a
-  // completion the host has not yet acknowledged.
-  //
-  // When the host acknowledges completions (by writing the queue's head
-  // doorbell), the queue stops asking, even if more completions are
-  // waiting, and starts again at the next Rearm(). The host is told about
-  // an interrupt when the line rises, so a line that just stayed high for
-  // the completions still waiting would tell it nothing.
+  // InterruptRequests. The controller is asking on a vector while a
+  // completion queue that uses the vector holds a completion the host has
+  // not yet acknowledged, and the host acknowledges by writing the queue's
+  // head doorbell.
   //
   // Each completion queue is expected to have a vector to itself. Two
   // queues on one vector would hold the line up for each other.
-  bool Interrupting(std::size_t vector) const;
-
-  // Whether an acknowledgement has quieted a queue since the last Rearm().
-  bool Quieted() const;
-
-  // Lets queues that were quieted by an acknowledgement ask again. Call it
-  // only once the host has had the chance to see the line low: rearming in
-  // the same step as the acknowledgement would hide the fall.
-  void Rearm();
+  bool Interrupting(std::size_t vector) const override;
+  bool Quieted() const override;
+  void Rearm() override;
 
  private:
   // How many I/O queue pairs the host may create. A real controller has a

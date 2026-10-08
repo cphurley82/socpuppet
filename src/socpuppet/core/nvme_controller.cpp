@@ -356,8 +356,9 @@ NvmeController::Outcome NvmeController::Write(const spdk_nvme_cmd& command) {
   std::vector<std::uint8_t> data(blocks->count << kBlockSizeShift);
   const Outcome fetched = FetchFromHost(command, data);
   // A write whose data did not all arrive changes nothing on the drive.
-  if (fetched.status == SPDK_NVME_SC_SUCCESS)
+  if (fetched.status == SPDK_NVME_SC_SUCCESS) {
     drive_->Write(blocks->first, data);
+  }
   return fetched;
 }
 

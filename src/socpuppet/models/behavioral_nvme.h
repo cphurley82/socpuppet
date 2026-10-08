@@ -11,6 +11,7 @@
 #include <tlm_utils/simple_target_socket.h>
 
 #include "socpuppet/core/nvme_controller.h"
+#include "socpuppet/models/interrupt_lines.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
@@ -52,16 +53,11 @@ class BehavioralNvme : public sc_core::sc_module,
                  std::size_t vectors)
       : sc_module(name),
         irq("irq", vectors),
-        controller_(*this, blocks, vectors) {
+        controller_(*this, blocks, vectors),
+        interrupt_lines_("interrupt_lines", irq, controller_) {
     bar0.register_b_transport(this, &BehavioralNvme::b_transport);
     bar0.register_transport_dbg(this, &BehavioralNvme::transport_dbg);
     SC_THREAD(Work);
-    SC_METHOD(DriveInterruptLines);
-    sensitive << lines_;
-    dont_initialize();
-    SC_METHOD(Rearm);
-    sensitive << rearm_;
-    dont_initialize();
   }
 
  private:
@@ -75,10 +71,9 @@ class BehavioralNvme : public sc_core::sc_module,
     transaction.set_response_status(ok ? tlm::TLM_OK_RESPONSE
                                        : tlm::TLM_ADDRESS_ERROR_RESPONSE);
     if (transaction.is_write()) {
-      // Immediate, so the lines are driven in this delta cycle and a fall
-      // is visible in the next one, before the controller can have done
-      // anything about the write.
-      lines_.notify();
+      // The lines first, so that a fall is visible before the controller
+      // can have done anything about the write.
+      interrupt_lines_.Update();
       work_.notify(sc_core::SC_ZERO_TIME);
     }
   }
@@ -102,28 +97,8 @@ class BehavioralNvme : public sc_core::sc_module,
       wait(work_);
       // A loop, because the host may have rung the doorbell more than once
       // before this process got its turn.
-      while (controller_.CarryOutOne()) lines_.notify();
+      while (controller_.CarryOutOne()) interrupt_lines_.Update();
     }
-  }
-
-  // The only process that writes the lines. A SystemC signal takes one
-  // writer per delta cycle, and both the host's access and the controller's
-  // own work change what the lines should say.
-  void DriveInterruptLines() {
-    for (std::size_t line = 0; line < irq.size(); ++line) {
-      irq[line].write(controller_.Interrupting(line));
-    }
-    // The lines now show the fall. One delta cycle on, they may rise again.
-    if (controller_.Quieted()) rearm_.notify(sc_core::SC_ZERO_TIME);
-  }
-
-  // Rearming lets every quieted queue ask again, which is right only if
-  // each has already been seen low. It has: this runs a delta cycle after
-  // DriveInterruptLines wrote the fall, and the kernel runs it before the
-  // host's next access in that delta, which could quiet another queue.
-  void Rearm() {
-    controller_.Rearm();
-    lines_.notify();
   }
 
   // NvmeController::HostMemory: the controller's DMA.
@@ -137,13 +112,11 @@ class BehavioralNvme : public sc_core::sc_module,
   }
 
   NvmeController controller_;
+  // Writes `irq` from what the controller asks for.
+  InterruptLines interrupt_lines_;
   // Notified when the host has written to a register, which may have given
   // the controller something to do.
   sc_core::sc_event work_;
-  // Notified when what the interrupt lines should say may have changed.
-  sc_core::sc_event lines_;
-  // Notified a delta cycle after the lines fell for an acknowledgement.
-  sc_core::sc_event rearm_;
 };
 
 }  // namespace socpuppet

@@ -8,6 +8,7 @@ add_library(socpuppet_core INTERFACE)
 target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/block_store.h
+    core/interrupt_requests.h
     core/memory_store.h
     core/script.h
     core/time.h
@@ -134,6 +135,7 @@ add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     models/behavioral_nvme.h
+    models/interrupt_lines.h
     models/memory.h
     models/msi_receiver.h
     models/pass_through_link.h
