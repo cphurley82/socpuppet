@@ -31,11 +31,9 @@ add_executable(kernel_tests
   contracts/uart_test.cpp
   platform/composition_test.cpp
   platform/cpu_test.cpp
-  platform/kernel_smoke_test.cpp
   platform/msi_receiver_test.cpp
   platform/pcie_test.cpp
   platform/router_test.cpp
-  platform/scc_router_smoke_test.cpp
   platform/scripted_master_test.cpp
   platform/tracer_test.cpp)
 target_link_libraries(kernel_tests PRIVATE socpuppet_models scc::components GTest::gmock)

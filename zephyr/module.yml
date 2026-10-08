@@ -1,8 +1,0 @@
-# Lets a west workspace use this repository as a Zephyr module. The boards
-# themselves live inside the Python package, so that an installed socpuppet
-# has them too: `socpuppet zephyr-module` prints where.
-name: socpuppet
-build:
-  settings:
-    board_root: python/socpuppet/zephyr_module
-    soc_root: python/socpuppet/zephyr_module
