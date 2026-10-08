@@ -49,7 +49,7 @@ Includes come in groups, each sorted: the header a file implements or tests, the
 ### Where we differ from Google, and why
 
 - **Exceptions are used.** pybind11 turns a C++ exception into a Python one, which is how an error in a model reaches your script, and SystemC reports its own errors by throwing.
-- **`dynamic_cast` is used.** The platform is wired up by name at run time, so it holds ports with their type erased and casts back to bind them. SystemC does the same internally.
+- **`dynamic_cast` is used, in one place.** The platform is wired up by name at run time. A port says which of the four things it is (a `std::variant`), so binding needs no cast. A component is held as a plain `sc_module`, and `Platform::ModuleAt<T>` casts it back for a C++ caller that knows the type, with an error that names both types if it is another.
 - **Source files end in `.cpp`,** not `.cc`.
 - **SystemC modules have public data members:** their sockets and ports. Binding is done from outside the module, and this is how every SystemC model is written.
 - **Some names are not ours to choose,** and keep the spelling their owner gave them:
@@ -57,7 +57,7 @@ Includes come in groups, each sorted: the header a file implements or tests, the
   - SystemC's callbacks, such as `before_end_of_elaboration`.
   - The functions the compiler calls on a coroutine (`await_transform`, `promise_type` and the rest, in `core/script.h`).
 - **No copyright line in each file.** The `LICENSE` file covers the repository.
-- **Most code is in headers.** Our own models are header-only, so function bodies sit in class definitions where Google would move the longer ones to a `.cpp` file. The exceptions have a reason: a borrowed model's adapter (`models/plic.cpp` and its siblings) keeps the third-party headers out of everything else, and a core with a borrowed header (`core/nvme_controller.cpp`, `core/elf_image.cpp`) does the same.
+- **Most code is in headers.** Our own models are header-only, so function bodies sit in class definitions where Google would move the longer ones to a `.cpp` file. The exceptions have a reason: a borrowed model's adapter (`models/plic.cpp` and its siblings) keeps the third-party headers out of everything else, a core with a borrowed header (`core/nvme_controller.cpp`, `core/elf_image.cpp`) does the same, and the platform builder (`platform/platform.cpp`) is included by everything that composes a platform and has no reason to be compiled each time.
 
 ### The C++ tools
 

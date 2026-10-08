@@ -95,9 +95,26 @@ target_include_directories(socpuppet_plic SYSTEM PRIVATE
   ${vpv_peripherals_SOURCE_DIR})
 socpuppet_dev_checks(socpuppet_plic)
 
-# models/: the SystemC wrappers. platform/: composing them by name (ports,
-# the registry, the platform builder). Header-only, apart from the adapters
-# above.
+# platform/: composing components by name (ports, the registry, the
+# platform builder), and what a model needs from the platform to take part.
+add_library(socpuppet_platform STATIC platform/platform.cpp)
+target_sources(socpuppet_platform PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    platform/errors.h
+    platform/failure.h
+    platform/logging.h
+    platform/platform.h
+    platform/port.h
+    platform/registry.h
+    platform/slots.h
+    platform/time_conversion.h
+    platform/tracer.h
+    platform/transport.h)
+target_link_libraries(socpuppet_platform PUBLIC
+  socpuppet_core scc::components SystemC::systemc)
+socpuppet_dev_checks(socpuppet_platform)
+
+# models/: the SystemC wrappers. Header-only, apart from the adapters above.
 add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
@@ -109,23 +126,13 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_endpoint.h
     models/pcie_link.h
     models/pcie_root_complex.h
-    models/scripted_bus_master.h
-    platform/errors.h
-    platform/failure.h
-    platform/logging.h
-    platform/platform.h
-    platform/port.h
-    platform/registry.h
-    platform/slots.h
-    platform/time_conversion.h
-    platform/tracer.h
-    platform/transport.h)
+    models/scripted_bus_master.h)
 target_link_libraries(socpuppet_models INTERFACE
-  socpuppet_core socpuppet_dbt_rise_cpu socpuppet_machine_timer
-  socpuppet_ns16550 socpuppet_plic scc::components SystemC::systemc)
+  socpuppet_platform socpuppet_dbt_rise_cpu socpuppet_machine_timer
+  socpuppet_ns16550 socpuppet_plic)
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
-  socpuppet_models socpuppet_dbt_rise_cpu
+  socpuppet_platform socpuppet_models socpuppet_dbt_rise_cpu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic)
 
 # The Python extension. It is the one binary in a Python process that embeds

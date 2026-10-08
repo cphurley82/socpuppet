@@ -272,6 +272,90 @@ TEST(WhenADebugAccessIsAskedForThroughATargetPort, TheErrorNamesThePort) {
               ThrowsMessage<std::invalid_argument>(HasSubstr("ram.socket")));
 }
 
+// Gives a platform a master and a memory, bound, and leaves it to the
+// caller to elaborate.
+void AddAMasterAndAMemory(socpuppet::Platform& platform) {
+  platform.Add("cpu", "scripted_bus_master");
+  platform.Add("ram", "memory", {{"size", 0x100}});
+  platform.Bind("cpu.socket", "ram.socket");
+}
+
+TEST(WhenAPlatformIsRunBeforeItIsElaborated, TheErrorSaysToElaborateFirst) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+
+  EXPECT_THAT([&] { platform.Run(); },
+              ThrowsMessage<std::logic_error>(HasSubstr("Elaborate() first")));
+}
+
+TEST(WhenAPlatformIsSteppedBeforeItIsElaborated, TheErrorSaysToElaborateFirst) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+
+  EXPECT_THAT([&] { platform.Step(); },
+              ThrowsMessage<std::logic_error>(HasSubstr("Elaborate() first")));
+}
+
+TEST(WhenADebugAccessIsMadeBeforeThePlatformIsElaborated,
+     TheErrorSaysToElaborateFirst) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+  std::array<std::byte, 4> data{};
+
+  EXPECT_THAT([&] { platform.DebugRead("cpu.socket", 0x10, data); },
+              ThrowsMessage<std::logic_error>(HasSubstr("Elaborate() first")));
+}
+
+TEST(WhenAPlatformIsElaboratedASecondTime, ItIsRefusedAndTheErrorSaysWhy) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+  platform.Elaborate();
+
+  EXPECT_THAT([&] { platform.Elaborate(); },
+              ThrowsMessage<std::logic_error>(HasSubstr("is elaborated")));
+}
+
+TEST(WhenAComponentIsAddedToAnElaboratedPlatform,
+     ItIsRefusedAndTheErrorSaysWhy) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+  platform.Elaborate();
+
+  EXPECT_THAT([&] { platform.Add("more_ram", "memory", {{"size", 0x100}}); },
+              ThrowsMessage<std::logic_error>(AllOf(
+                  HasSubstr("add a component"), HasSubstr("is elaborated"))));
+}
+
+TEST(WhenPortsAreBoundInAnElaboratedPlatform, ItIsRefusedAndTheErrorSaysWhy) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+  platform.Elaborate();
+
+  EXPECT_THAT([&] { platform.Bind("cpu.irq", "cpu.reset"); },
+              ThrowsMessage<std::logic_error>(
+                  AllOf(HasSubstr("bind ports"), HasSubstr("is elaborated"))));
+}
+
+TEST(WhenAPortIsNamedWithoutItsComponent, TheErrorSaysHowAPortIsNamed) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+
+  EXPECT_THAT([&] { platform.Bind("socket", "ram.socket"); },
+              ThrowsMessage<std::invalid_argument>(
+                  AllOf(HasSubstr("\"socket\" does not name a port"),
+                        HasSubstr("\"cpu.socket\""))));
+}
+
+TEST(WhenAComponentIsAskedForAsATypeItIsNot, TheErrorNamesBothTypes) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  AddAMasterAndAMemory(platform);
+
+  EXPECT_THAT([&] { platform.ModuleAt<socpuppet::Memory>("cpu"); },
+              ThrowsMessage<std::invalid_argument>(
+                  AllOf(HasSubstr("\"cpu\""), HasSubstr("ScriptedBusMaster"),
+                        HasSubstr("socpuppet::Memory"))));
+}
+
 socpuppet::Factory UnusedFactory() {
   return
       [](const char*, socpuppet::Parameters&) { return socpuppet::Instance{}; };
