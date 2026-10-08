@@ -101,24 +101,23 @@ test-command = "pytest tests/python"
 #
 # ccache is what lets the second and third wheel reuse what the first
 # compiled: nearly everything in a wheel is SystemC, SCC, Boost and the
-# CPU, which do not care which Python it is for. It is a convenience, so
-# a machine that cannot install it builds without.
-before-all = "dnf install -y zlib-devel && (dnf install -y epel-release && dnf install -y ccache || true)"
+# CPU, which do not care which Python it is for. It comes from EPEL, the
+# extra packages for the manylinux image's distribution.
+before-all = "dnf install -y zlib-devel epel-release && dnf install -y ccache"
 
 [tool.cibuildwheel.linux.environment]
-# Empty where there is no ccache, and CMake then uses none.
-CMAKE_C_COMPILER_LAUNCHER = "$(command -v ccache || true)"
-CMAKE_CXX_COMPILER_LAUNCHER = "$(command -v ccache || true)"
+CMAKE_C_COMPILER_LAUNCHER = "ccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "ccache"
 
 [tool.cibuildwheel.macos]
-before-all = "HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache || true"
+before-all = "HOMEBREW_NO_AUTO_UPDATE=1 brew install ccache"
 
 [tool.cibuildwheel.macos.environment]
 # The oldest macOS the wheel runs on. C++20's std::format for floating-point
 # numbers, which the code uses, arrived in the system's C++ library with 13.3.
 MACOSX_DEPLOYMENT_TARGET = "13.3"
-CMAKE_C_COMPILER_LAUNCHER = "$(command -v ccache || true)"
-CMAKE_CXX_COMPILER_LAUNCHER = "$(command -v ccache || true)"
+CMAKE_C_COMPILER_LAUNCHER = "ccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "ccache"
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
