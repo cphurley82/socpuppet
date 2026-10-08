@@ -444,6 +444,19 @@ class MsiPlicBridge(Component):
             *(wire_out(f"irq{vector}") for vector in range(self.vectors)),
         )
 
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "msi-controller",
+            ((reached["socket"].address, self.mapped_size),),
+            (
+                'compatible = "socpuppet,msi-plic-bridge";',
+                # What a devicetree marks anything that takes interrupt
+                # messages with.
+                "msi-controller;",
+            ),
+        )
+
 
 class MsiReceiver(Component):
     """🎭 Stand-in for what takes a host's message-signalled interrupts.

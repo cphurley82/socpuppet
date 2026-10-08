@@ -360,3 +360,26 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
         platform.connect(device.irq, plic.source5)
 
         assert "interrupts-extended = <&plic 5 1>;" in platform.devicetree()
+
+
+class TestWhenAnMsiBridgesLinesGoToPlicSources:
+    def test_its_node_names_the_sources_in_the_order_of_its_vectors(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        msi = platform.add("msi", sp.MsiPlicBridge(vectors=2))
+        bus.map(msi.socket, base=0x0300_0000)
+        # Firmware finds a vector's interrupt by its place in the list, so
+        # the list is in the order of the vectors and not of the wiring.
+        platform.connect(msi.irq1, plic.source9)
+        platform.connect(msi.irq0, plic.source4)
+
+        node = textwrap.dedent(
+            """\
+            msi: msi-controller@3000000 {
+            \tcompatible = "socpuppet,msi-plic-bridge";
+            \treg = <0x0 0x3000000 0x0 0x4>;
+            \tmsi-controller;
+            \tinterrupts-extended = <&plic 4 1 &plic 9 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()

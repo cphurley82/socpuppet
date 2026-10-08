@@ -96,9 +96,13 @@ def _node(
         *(f"{indent}\t{each}" for each in rest),
     ]
     interrupts = []
-    for each in connections:
-        if each.source.placed is not placed:
-            continue
+    # In the order of the device's own ports, not of the wiring: firmware
+    # finds an interrupt by its place in the list.
+    ports = placed.component.ports
+    for each in sorted(
+        (each for each in connections if each.source.placed is placed),
+        key=lambda each: ports.index(each.source.name),
+    ):
         sink = each.sink.placed
         found = sink.component.interrupt_input(
             each.sink.name, _label(sink.path)
