@@ -122,7 +122,7 @@ Mixing kinds, or connecting two sources, is refused with a message naming both p
 
 ## ⚠️ One platform per process
 
-The SystemC kernel is a process-wide singleton and cannot be restarted. After a run it is not resting, it is an ex-kernel. So a process can build exactly one `Platform`, and a second attempt is refused with an explanation.
+The SystemC kernel is a process-wide singleton and cannot be restarted. After a run it is not resting, it is an ex-kernel. So a process can build exactly one `Platform`, and a second attempt is refused with an explanation. ⚠️ A `build()` that fails part-way counts: SystemC keeps the processes of the modules it had created, and they cannot be taken out again. So a description is checked in Python as far as it can be before the simulator is created, and after a failed `build()` the fix is run in a new process.
 
 For tests, each one that builds a platform gets its own process:
 

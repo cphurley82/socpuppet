@@ -301,3 +301,18 @@ class TestWhenAComponentIsGivenAParameterItDoesNotTake:
 
         with pytest.raises(ValueError, match='"plic" has no "sources"'):
             platform.build()
+
+
+@pytest.mark.platform
+class TestWhenAnEarlierBuildFailedPartWay:
+    def test_the_next_build_says_the_process_is_spent_and_why(self):
+        misspelled = sp.Platform()
+        misspelled.add("plic", sp.Plic(sources=8))
+        with pytest.raises(ValueError, match="sources"):
+            misspelled.build()
+
+        with pytest.raises(RuntimeError) as error:
+            thin_platform(writes=[]).build()
+
+        assert "earlier build() failed part-way" in str(error.value)
+        assert "new process" in str(error.value)

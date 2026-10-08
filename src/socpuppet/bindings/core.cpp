@@ -31,20 +31,42 @@ namespace {
 
 // The SystemC kernel is a process-wide singleton that cannot be restarted,
 // so the first Platform built in a process is the only one it can have.
-struct KernelClaim {
+//
+// That holds for a build that fails part-way too. The modules it had
+// created are destroyed, but the kernel keeps their processes, and would
+// run them on modules that are gone.
+class KernelClaim {
+ public:
   KernelClaim() {
-    static bool claimed = false;
-    if (claimed) {
-      throw std::runtime_error(
-          "A process can build only one Platform, because the SystemC kernel "
-          "underneath it "
-          "cannot be restarted. Build each Platform in its own process. In "
-          "pytest, mark the "
-          "test with @pytest.mark.platform, which does that for you (enable it "
-          "with "
-          "pytest_plugins = [\"socpuppet.pytest_plugin\"] in conftest.py).");
+    switch (State()) {
+      case Kernel::kFree:
+        break;
+      case Kernel::kBuilding:
+        throw std::runtime_error(
+            "An earlier build() failed part-way, and what it had created "
+            "cannot be taken out of the SystemC kernel again. So this "
+            "process cannot build a Platform any more: fix the description "
+            "and run it in a new process.");
+      case Kernel::kBuilt:
+        throw std::runtime_error(
+            "A process can build only one Platform, because the SystemC "
+            "kernel underneath it cannot be restarted. Build each Platform "
+            "in its own process. In pytest, mark the test with "
+            "@pytest.mark.platform, which does that for you (enable it with "
+            "pytest_plugins = [\"socpuppet.pytest_plugin\"] in "
+            "conftest.py).");
     }
-    claimed = true;
+    State() = Kernel::kBuilding;
+  }
+
+  // The platform this claim was taken for is complete.
+  void Built() { State() = Kernel::kBuilt; }
+
+ private:
+  enum class Kernel { kFree, kBuilding, kBuilt };
+  static Kernel& State() {
+    static Kernel state = Kernel::kFree;
+    return state;
   }
 };
 
@@ -161,7 +183,11 @@ PYBIND11_MODULE(_core, m) {
            [](NativePlatform& self, const std::string& path) {
              return self.platform.Ports(path);
            })
-      .def("elaborate", [](NativePlatform& self) { self.platform.Elaborate(); })
+      .def("elaborate",
+           [](NativePlatform& self) {
+             self.platform.Elaborate();
+             self.kernel_claim.Built();
+           })
       .def("run",
            [](NativePlatform& self) {
              self.WithoutGil([&] { self.platform.Run(); });
