@@ -159,3 +159,27 @@ class TestWhenTwoComponentsAreGivenTheSamePath:
 
         with pytest.raises(ValueError, match=r"io\.ram"):
             platform.group("io").add("ram", sp.Memory(size=0x200))
+
+
+class TestWhenAPortIsAskedForByItsPath:
+    def test_it_is_the_port_of_the_component_at_that_path(self):
+        platform = sp.Platform()
+        ram = platform.group("io").add("ram", sp.Memory(size=0x100))
+
+        assert platform.port("io.ram.socket").path == ram.socket.path
+
+    def test_a_component_that_is_not_there_is_refused_with_the_ones_that_are(
+        self,
+    ):
+        platform = sp.Platform()
+        platform.add("ram", sp.Memory(size=0x100))
+
+        with pytest.raises(ValueError, match=r"rom\.socket.*ram"):
+            platform.port("rom.socket")
+
+    def test_a_port_the_component_lacks_is_refused_with_the_ones_it_has(self):
+        platform = sp.Platform()
+        platform.add("ram", sp.Memory(size=0x100))
+
+        with pytest.raises(ValueError, match=r"ram\.sockit.*socket"):
+            platform.port("ram.sockit")

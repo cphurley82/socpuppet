@@ -112,4 +112,4 @@ Breakpoints, stepping, backtraces and reading memory all work as on hardware. Si
 
 ## Changing the board
 
-The board is a Python description: `python/socpuppet/boards/host.py`. To try a different memory map or another device, copy it, change it, and print its devicetree with `socpuppet devicetree my_board.py`. For Zephyr to build against it you also need a board directory of your own. Copy `socpuppet_host`'s from the module and replace its `.dts` with what you printed.
+The board is a Python description: `python/socpuppet/boards/host.py`. To try a different memory map or another device, copy it, change it, and print its devicetree with `socpuppet devicetree my_board.py`. For Zephyr to build against it you also need a board directory of your own. Copy `socpuppet_host`'s from the module and replace its `.dts` with what you printed. If your platform has more than one CPU, say whose devicetree you want: `socpuppet devicetree my_board.py --via compute.cpu.socket`.

@@ -391,8 +391,7 @@ class Platform:
         """
         views = {
             placed.socket.path: address
-            for placed in self._placed.values()
-            if placed.component.is_bus_master
+            for placed in self.bus_masters
             for address, reached, _ in reachable_ports(
                 self._connections, placed.socket
             )
@@ -414,11 +413,7 @@ class Platform:
         """The port a peek or poke looks through."""
         if via is not None:
             return via
-        masters = [
-            placed
-            for placed in self._placed.values()
-            if placed.component.is_bus_master
-        ]
+        masters = self.bus_masters
         if len(masters) != 1:
             raise ValueError(
                 f"This platform has {len(masters)} bus masters, so say whose "
@@ -426,6 +421,42 @@ class Platform:
                 "via=cpu.socket."
             )
         return masters[0].socket
+
+    @property
+    def bus_masters(self) -> list[Placed]:
+        """The components whose view of memory a peek or a devicetree takes.
+
+        They are the CPUs and their stand-ins, in the order they were added.
+        """
+        return [
+            placed
+            for placed in self._placed.values()
+            if placed.component.is_bus_master
+        ]
+
+    def port(self, path: str) -> Port:
+        """The port at a path, such as `"io.ram.socket"`.
+
+        The path is the component's own, a dot, and the port's name. This
+        is for a caller that has only names to go by, such as a command
+        line. With the placed component in hand, `ram.socket` is the same
+        port.
+        """
+        component, _, name = path.rpartition(".")
+        placed = self._placed.get(component)
+        if placed is None:
+            raise ValueError(
+                f'"{path}" names no port: there is no component called '
+                f'"{component}". The components are: '
+                f"{', '.join(self._placed)}."
+            )
+        if name not in placed.component.ports:
+            raise ValueError(
+                f'"{path}" names no port: "{component}" has no port called '
+                f'"{name}". Its ports are: '
+                f"{', '.join(placed.component.ports)}."
+            )
+        return Port(placed, name)
 
     def refuse_if_built(self, change: str) -> None:
         """Raise if the platform is built, since its topology is then fixed."""

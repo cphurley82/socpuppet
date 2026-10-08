@@ -130,6 +130,105 @@ class TestWhenTheDevicetreeCommandIsGivenAFileWithNoPlatformInIt:
         assert "`platform`" in result.stderr
 
 
+TWO_MASTERS = """
+import socpuppet as sp
+
+platform = sp.Platform()
+cpu = platform.add("cpu", sp.ScriptedBusMaster())
+ram = platform.add("ram", sp.Memory(size=0x100))
+platform.connect(cpu.socket, ram.socket)
+other_cpu = platform.add("other_cpu", sp.ScriptedBusMaster())
+other_ram = platform.add("other_ram", sp.Memory(size=0x200))
+platform.connect(other_cpu.socket, other_ram.socket)
+"""
+
+
+def description_file(directory, source):
+    """A description file holding `source`, as the command is given one."""
+    description = directory / "my_platform.py"
+    description.write_text(textwrap.dedent(source))
+    return str(description)
+
+
+class TestWhenTheDevicetreeCommandIsGivenAPlatformWithTwoBusMasters:
+    def test_via_says_whose_view_to_print(self, tmp_path):
+        description = description_file(tmp_path, TWO_MASTERS)
+
+        printed = run_socpuppet(
+            "devicetree", description, "--via", "other_cpu.socket"
+        ).stdout
+
+        assert "other_ram: memory@0 {" in printed
+        assert "\tram: memory" not in printed
+
+    def test_without_via_it_fails_in_one_line_that_asks_for_it(self, tmp_path):
+        description = description_file(tmp_path, TWO_MASTERS)
+
+        result = run_socpuppet("devicetree", description, check=False)
+
+        assert result.returncode != 0
+        assert "--via" in result.stderr
+        assert "Traceback" not in result.stderr
+
+    def test_a_via_that_names_no_port_fails_in_one_line_that_lists_them(
+        self, tmp_path
+    ):
+        description = description_file(tmp_path, TWO_MASTERS)
+
+        result = run_socpuppet(
+            "devicetree", description, "--via", "cpu.sockit", check=False
+        )
+
+        assert result.returncode != 0
+        assert "cpu.sockit" in result.stderr
+        assert "socket" in result.stderr
+        assert "Traceback" not in result.stderr
+
+
+class TestWhenTheDevicetreeCommandIsGivenAFileWhosePlatformIsSomethingElse:
+    def test_it_fails_in_one_line_that_says_what_it_found(self, tmp_path):
+        description = description_file(tmp_path, "platform = 'spam'")
+
+        result = run_socpuppet("devicetree", description, check=False)
+
+        assert result.returncode != 0
+        assert "str" in result.stderr
+        assert "Traceback" not in result.stderr
+
+
+class TestWhenTheDevicetreeCommandIsGivenAFileThatFailsPartWay:
+    def test_it_fails_in_one_line_that_gives_the_line_of_the_file(
+        self, tmp_path
+    ):
+        description = description_file(
+            tmp_path,
+            """
+            import socpuppet as sp
+
+            platform = sp.Platform()
+            platform.add("plic", sp.Plic(sources=8))
+            """,
+        )
+
+        result = run_socpuppet("devicetree", description, check=False)
+
+        assert result.returncode != 0
+        assert "my_platform.py, line 5" in result.stderr
+        assert "sources" in result.stderr
+        assert "Traceback" not in result.stderr
+
+
+class TestWhenTheDevicetreeCommandIsGivenAFileThatIsNotThere:
+    def test_it_fails_in_one_line_that_names_the_file(self, tmp_path):
+        result = run_socpuppet(
+            "devicetree", str(tmp_path / "nowhere.py"), check=False
+        )
+
+        assert result.returncode != 0
+        assert "nowhere.py" in result.stderr
+        assert "Traceback" not in result.stderr
+
+
 def dtc_errors(source_text, scratch):
     """Compile devicetree source with dtc and return what it complained about."""
     source = scratch / "platform.dts"
