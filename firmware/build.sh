@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Builds the firmware the tests boot. All of it is Zephyr's own samples:
+# Builds the firmware the tests boot. All of it is Zephyr's own, two
+# samples and one of its tests:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
 #   hello_world       for socpuppet_host, socpuppet's own board
 #   synchronization   for socpuppet_host
+#   disk_access       for socpuppet_host with its SSD: Zephyr's test of its
+#                     disk interface, which here drives its NVMe driver
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
 # For each it leaves, in the output directory:
-#   <sample>_<board>.elf          the image, with symbols
-#   <sample>_<board>.bin          the same as flat bytes, loaded at the start of RAM
-#   <sample>_<board>.opcodes.txt  how often each instruction appears in it
+#   <name>_<board>.elf          the image, with symbols
+#   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
+#   <name>_<board>.opcodes.txt  how often each instruction appears in it
 #
 # Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself
 # and the Python packages Zephyr's build needs) stays in the output
@@ -18,16 +21,20 @@ set -euo pipefail
 
 zephyr_version=v4.4.2
 sdk_version=1.0.1
-# Each image to build, as "sample board".
+# Each image to build, as "application board [shield]". The application is
+# a directory of Zephyr's, and the image is named after the last part of
+# it. A shield is Zephyr's word for hardware plugged into a board:
+# `socpuppet_host_drive` is the host's SSD and the PCIe link it is on.
 images=(
-  "hello_world qemu_riscv64"
-  "hello_world qemu_riscv32"
-  "hello_world socpuppet_host"
-  "synchronization socpuppet_host"
+  "samples/hello_world qemu_riscv64"
+  "samples/hello_world qemu_riscv32"
+  "samples/hello_world socpuppet_host"
+  "samples/synchronization socpuppet_host"
+  "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
 )
-# socpuppet's boards are in a Zephyr module that ships inside the Python
-# package (`socpuppet zephyr-module` prints where). Here it is used
-# straight from the repository.
+# socpuppet's boards, shields and drivers are in a Zephyr module that ships
+# inside the Python package (`socpuppet zephyr-module` prints where). Here
+# it is used straight from the repository.
 module=$(cd "$(dirname "$0")/../python/socpuppet/zephyr_module" && pwd)
 
 mkdir -p "${1:-build/firmware}"
@@ -79,9 +86,9 @@ if [[ ! -d ${toolchain} ]]; then
   )
 fi
 
-# Zephyr itself, at the release socpuppet is pinned to. hello_world on these
-# boards needs none of Zephyr's external modules, so only the one
-# repository is fetched.
+# Zephyr itself, at the release socpuppet is pinned to. Nothing built here
+# needs any of Zephyr's external modules, so only the one repository is
+# fetched.
 zephyr=${out}/zephyr
 if [[ ! -d ${zephyr} ]]; then
   echo "Fetching Zephyr ${zephyr_version}"
@@ -114,18 +121,20 @@ export ZEPHYR_SDK_INSTALL_DIR=${sdk}
 export PATH=${venv}/bin:${PATH}
 
 for each in "${images[@]}"; do
-  read -r sample board <<< "${each}"
-  echo "Building ${sample} for ${board}"
-  build=${out}/build_${sample}_${board}
-  cmake -S "${zephyr}/samples/${sample}" -B "${build}" -G Ninja \
-    -DBOARD="${board}" -DCONFIG_BUILD_OUTPUT_BIN=y \
+  read -r application board shield <<< "${each}"
+  name=$(basename "${application}")
+  echo "Building ${name} for ${board}${shield:+ with ${shield}}"
+  build=${out}/build_${name}_${board}
+  cmake -S "${zephyr}/${application}" -B "${build}" -G Ninja \
+    -DBOARD="${board}" ${shield:+-DSHIELD="${shield}"} \
+    -DCONFIG_BUILD_OUTPUT_BIN=y \
     -DZEPHYR_EXTRA_MODULES="${module}" \
     -DUSER_CACHE_DIR="${out}/cache" > "${build}.log" 2>&1 ||
     { tail -n 40 "${build}.log" >&2; exit 1; }
   cmake --build "${build}" >> "${build}.log" 2>&1 ||
     { tail -n 40 "${build}.log" >&2; exit 1; }
 
-  image=${out}/${sample}_${board}
+  image=${out}/${name}_${board}
   cp "${build}/zephyr/zephyr.elf" "${image}.elf"
   cp "${build}/zephyr/zephyr.bin" "${image}.bin"
   # A disassembly line is "<address>:", then the instruction's name, then
