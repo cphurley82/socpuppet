@@ -186,6 +186,17 @@ TYPED_TEST_P(NvmeContract, WhenTheHostEnablesTheControllerItBecomesReady) {
   EXPECT_TRUE(ready);
 }
 
+TYPED_TEST_P(NvmeContract, AnEnabledControllerSaysReadyToADebugAccessToo) {
+  bool ready = false;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    ready = host.IsReadyByDebugAccess();
+  });
+
+  EXPECT_TRUE(ready);
+}
+
 TYPED_TEST_P(NvmeContract, WhenTheHostDisablesTheControllerItStopsBeingReady) {
   bool ready = true;
 
@@ -800,6 +811,7 @@ TYPED_TEST_P(NvmeContract,
 REGISTER_TYPED_TEST_SUITE_P(
     NvmeContract, AFreshControllerOffersIoQueuesOfAtLeast256Entries,
     WhenTheHostEnablesTheControllerItBecomesReady,
+    AnEnabledControllerSaysReadyToADebugAccessToo,
     WhenTheHostDisablesTheControllerItStopsBeingReady,
     AnAdminCommandWithAnUnknownOpcodeCompletesAsAnInvalidOpcode,
     WhenAnAdminCommandCompletesTheAdminLineRises,

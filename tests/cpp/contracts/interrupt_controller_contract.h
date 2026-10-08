@@ -81,6 +81,16 @@ class InterruptControllerContract : public ::testing::Test {
     bus.Write(address, bytes);
   }
 
+  // The same as Read, the way a debugger looks: in no simulated time, and
+  // without the look counting as a claim.
+  static std::uint32_t LookAt(BusDriver& bus, std::uint64_t address) {
+    std::array<std::uint8_t, 4> bytes{};
+    bus.DebugRead(address, bytes);
+    std::uint32_t value = 0;
+    std::memcpy(&value, bytes.data(), sizeof value);
+    return value;
+  }
+
   // Gives `source` a priority and lets it interrupt the CPU.
   void Enable(BusDriver& bus, unsigned source, std::uint32_t priority) {
     Write(bus, Priority(source), priority);
@@ -278,6 +288,31 @@ TYPED_TEST_P(InterruptControllerContract,
   EXPECT_TRUE(this->interrupt_.read());
 }
 
+TYPED_TEST_P(InterruptControllerContract, APriorityIsSeenByADebugAccess) {
+  std::uint32_t seen = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Write(bus, this->Priority(3), 2);
+    seen = this->LookAt(bus, this->Priority(3));
+  });
+
+  EXPECT_EQ(seen, 2U);
+}
+
+TYPED_TEST_P(InterruptControllerContract,
+             ADebugAccessToTheClaimRegisterDoesNotClaim) {
+  std::uint32_t claimed = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Raise(bus, 3);
+    this->LookAt(bus, this->kClaimComplete);
+    claimed = this->Read(bus, this->kClaimComplete);
+  });
+
+  EXPECT_EQ(claimed, 3U);
+}
+
 TYPED_TEST_P(InterruptControllerContract,
              ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites) {
   // The enable bits for sources 32 to 63, which a driver may clear without
@@ -312,6 +347,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     CompletingASourceWhoseLineIsStillHighInterruptsAgain,
     CompletingASourceWhoseLineHasDroppedDoesNotInterruptAgain,
     ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts,
+    APriorityIsSeenByADebugAccess, ADebugAccessToTheClaimRegisterDoesNotClaim,
     ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites);
 
 #endif  // TESTS_CPP_CONTRACTS_INTERRUPT_CONTROLLER_CONTRACT_H_

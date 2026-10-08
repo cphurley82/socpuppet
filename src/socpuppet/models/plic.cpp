@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include <rvi/plic.h>
@@ -47,6 +48,9 @@ struct Plic::Model {
                       sc_core::sc_time& delay) {
     to_registers_->b_transport(transaction, delay);
   }
+  unsigned DebugAccessRegister(tlm::tlm_generic_payload& transaction) {
+    return to_registers_->transport_dbg(transaction);
+  }
 
   // What the borrowed model says its interrupt output is.
   const sc_core::sc_signal_in_if<bool>& Interrupt() const { return interrupt_; }
@@ -72,11 +76,23 @@ struct Plic::Model {
 Plic::Plic(const sc_core::sc_module_name& name)
     : sc_module(name), model_(std::make_unique<Model>(*this)) {
   socket.register_b_transport(this, &Plic::b_transport);
+  socket.register_transport_dbg(this, &Plic::transport_dbg);
   SC_METHOD(DriveTheLine);
   sensitive << model_->Interrupt();
 }
 
 void Plic::DriveTheLine() { irq.write(model_->Interrupt().read()); }
+
+unsigned Plic::transport_dbg(tlm::tlm_generic_payload& transaction) {
+  // Reading the claim register claims, and the borrowed model does that
+  // for a debug access as well (see docs/upstream.md), so a debugger is
+  // not allowed to look. The register is context 0's, 4 bytes past the
+  // context's threshold, as the PLIC lays it out.
+  constexpr std::uint64_t kClaimComplete = 0x20'0000 + 4;
+  constexpr std::uint64_t kRegisterSize = 4;
+  if (transaction.get_address() - kClaimComplete < kRegisterSize) return 0;
+  return model_->DebugAccessRegister(transaction);
+}
 
 Plic::~Plic() = default;
 

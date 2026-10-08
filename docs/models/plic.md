@@ -31,6 +31,7 @@ platform.connect(plic.irq, cpu.irq)
 
 - **More than one context.** 🎓 A context is one CPU in one privilege mode that can be interrupted. Here there is one: the one CPU, in machine mode. A real PLIC has one per CPU and mode, each with its own enable bits and threshold.
 - **Edge-triggered sources.** Every source is level-sensitive.
+- **A debugger's look at the claim register.** It is declined, because the borrowed model would count it as a claim. Every other register answers a debug access.
 - **Timing.** The CPU's line changes in the same instant as the line or register that caused it, give or take a delta cycle: the adapter copies the borrowed model's output through one process of its own, so that the line has exactly one driver however the model reaches it.
 
 ## Where it comes from

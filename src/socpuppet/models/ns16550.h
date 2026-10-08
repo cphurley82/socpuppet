@@ -35,6 +35,9 @@ class Ns16550 : public sc_core::sc_module {
 
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay);
+  // Debug transport: a register as a debugger sees it, in no simulated
+  // time. Returns the bytes transferred.
+  unsigned transport_dbg(tlm::tlm_generic_payload& transaction);
 
   std::unique_ptr<Model> model_;
 };

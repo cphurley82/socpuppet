@@ -61,15 +61,44 @@ tlm::tlm_response_status SendMessage(BusDriver& bus, std::uint32_t vector) {
                           static_cast<std::uint8_t>(vector >> 8), 0, 0});
 }
 
-// Reads which vectors are waiting: one bit for each, lowest first.
-std::uint32_t ReadWaiting(BusDriver& bus) {
-  std::array<std::uint8_t, 4> bytes{};
-  bus.Read(0, bytes);
+// The register's four bytes as the word they spell, lowest first.
+std::uint32_t AsWord(const std::array<std::uint8_t, 4>& bytes) {
   return bytes[0] | std::uint32_t{bytes[1]} << 8 |
          std::uint32_t{bytes[2]} << 16 | std::uint32_t{bytes[3]} << 24;
 }
 
+// Reads which vectors are waiting: one bit for each, lowest first.
+std::uint32_t ReadWaiting(BusDriver& bus) {
+  std::array<std::uint8_t, 4> bytes{};
+  bus.Read(0, bytes);
+  return AsWord(bytes);
+}
+
+// The same, by debug access: the way a debugger looks, without the read
+// counting as the host taking the vectors.
+std::uint32_t LookAtWaiting(BusDriver& bus) {
+  std::array<std::uint8_t, 4> bytes{};
+  bus.DebugRead(0, bytes);
+  return AsWord(bytes);
+}
+
 }  // namespace
+
+TEST(WhenTheWaitingVectorsAreLookedAtByDebugAccess,
+     TheyAreSeenAndStillWaiting) {
+  std::uint32_t looked_at = 0;
+  std::uint32_t read = 0;
+  MasterWithAnMsiReceiver fixture{[&](BusDriver& bus) {
+    SendMessage(bus, 1);
+    looked_at = LookAtWaiting(bus);
+    read = ReadWaiting(bus);
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(looked_at, 0b10U);
+  EXPECT_EQ(read, 0b10U);
+}
 
 TEST(WhenAMessageArrivesAtAnMsiReceiver, ItsInterruptLineRises) {
   MasterWithAnMsiReceiver fixture{[](BusDriver& bus) { SendMessage(bus, 1); }};

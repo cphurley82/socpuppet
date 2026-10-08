@@ -44,32 +44,56 @@ class PcieRootComplex : public sc_core::sc_module {
   PcieRootComplex(const sc_core::sc_module_name& name, std::uint64_t mmio_base)
       : sc_module(name), mmio_base_(mmio_base) {
     ecam.register_b_transport(this, &PcieRootComplex::Configure);
+    ecam.register_transport_dbg(this, &PcieRootComplex::ConfigureDebug);
     mmio.register_b_transport(this, &PcieRootComplex::AccessMemory);
+    mmio.register_transport_dbg(this, &PcieRootComplex::AccessMemoryDebug);
     from_device.register_b_transport(this, &PcieRootComplex::PassUp);
+    from_device.register_transport_dbg(this, &PcieRootComplex::PassUpDebug);
   }
 
  private:
   // The configuration window gives each function 4 KiB.
   static constexpr std::uint64_t kFunctionConfigurationSize = 0x1000;
 
+  // Which function a configuration access is for, or nobody, and which of
+  // its registers.
+  static std::uint64_t FunctionOf(const tlm::tlm_generic_payload& transaction) {
+    return transaction.get_address() / kFunctionConfigurationSize;
+  }
+  static std::uint64_t OffsetOf(const tlm::tlm_generic_payload& transaction) {
+    return transaction.get_address() % kFunctionConfigurationSize;
+  }
+
+  // Nobody is there. A real bus answers a read of an empty slot with all
+  // ones and lets a write fall on the floor, and that is how a host finds
+  // out which slots are taken.
+  static void AnswerForAnEmptySlot(tlm::tlm_generic_payload& transaction) {
+    if (transaction.is_read()) {
+      std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
+                  0xFF);
+    }
+    transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+  }
+
   void Configure(tlm::tlm_generic_payload& transaction,
                  sc_core::sc_time& delay) {
-    const std::uint64_t function =
-        transaction.get_address() / kFunctionConfigurationSize;
-    if (function != 0) {
-      // Nobody is there. A real bus answers a read of an empty slot with
-      // all ones and lets a write fall on the floor, and that is how a
-      // host finds out which slots are taken.
-      if (transaction.is_read()) {
-        std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
-                    0xFF);
-      }
-      transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+    if (FunctionOf(transaction) != 0) {
+      AnswerForAnEmptySlot(transaction);
       return;
     }
-    SendConfigurationAccess(
-        to_device, transaction, delay,
-        transaction.get_address() % kFunctionConfigurationSize);
+    AsConfigurationAccess access{transaction, OffsetOf(transaction)};
+    to_device->b_transport(transaction, delay);
+  }
+
+  // Debug transport: the same, in no simulated time and with no side
+  // effects, the way a debugger looks. Returns the bytes transferred.
+  unsigned ConfigureDebug(tlm::tlm_generic_payload& transaction) {
+    if (FunctionOf(transaction) != 0) {
+      AnswerForAnEmptySlot(transaction);
+      return transaction.get_data_length();
+    }
+    AsConfigurationAccess access{transaction, OffsetOf(transaction)};
+    return to_device->transport_dbg(transaction);
   }
 
   void AccessMemory(tlm::tlm_generic_payload& transaction,
@@ -82,8 +106,20 @@ class PcieRootComplex : public sc_core::sc_module {
     transaction.set_address(offset);
   }
 
+  unsigned AccessMemoryDebug(tlm::tlm_generic_payload& transaction) {
+    const std::uint64_t offset = transaction.get_address();
+    transaction.set_address(mmio_base_ + offset);
+    const unsigned transferred = to_device->transport_dbg(transaction);
+    transaction.set_address(offset);
+    return transferred;
+  }
+
   void PassUp(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
     dma->b_transport(transaction, delay);
+  }
+
+  unsigned PassUpDebug(tlm::tlm_generic_payload& transaction) {
+    return dma->transport_dbg(transaction);
   }
 
   std::uint64_t mmio_base_;

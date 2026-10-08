@@ -1,6 +1,8 @@
 #include "socpuppet/models/ns16550.h"
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -15,6 +17,8 @@
 // clang-format off
 #include <pulpino/uart.h>
 // clang-format on
+
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -40,6 +44,23 @@ struct Ns16550::Model {
                       sc_core::sc_time& delay) {
     transaction.set_address(transaction.get_address() * kRegisterSpacing);
     to_registers_->b_transport(transaction, delay);
+  }
+  // A debugger's look at register N: one byte, in no simulated time.
+  // Returns the bytes transferred. The borrowed model answers a debug
+  // access only if it is as wide as its own registers, which are four bytes
+  // each, so the whole register is fetched and its low byte handed back.
+  // A debug write is declined: it would land in the borrowed register's
+  // storage, where an ordinary read does not look (see docs/upstream.md).
+  unsigned LookAtRegister(tlm::tlm_generic_payload& transaction) {
+    if (!transaction.is_read() || transaction.get_data_length() != 1) return 0;
+    std::array<std::uint8_t, kRegisterSpacing> whole{};
+    if (DebugTransport(to_registers_, tlm::TLM_READ_COMMAND,
+                       transaction.get_address() * kRegisterSpacing,
+                       whole) != whole.size()) {
+      return 0;
+    }
+    *transaction.get_data_ptr() = whole[0];
+    return 1;
   }
 
  private:
@@ -80,6 +101,7 @@ struct Ns16550::Model {
 Ns16550::Ns16550(const sc_core::sc_module_name& name)
     : sc_module(name), model_(std::make_unique<Model>()) {
   socket.register_b_transport(this, &Ns16550::b_transport);
+  socket.register_transport_dbg(this, &Ns16550::transport_dbg);
 }
 
 Ns16550::~Ns16550() = default;
@@ -89,6 +111,10 @@ const std::string& Ns16550::Output() const { return model_->Output(); }
 void Ns16550::b_transport(tlm::tlm_generic_payload& transaction,
                           sc_core::sc_time& delay) {
   model_->AccessRegister(transaction, delay);
+}
+
+unsigned Ns16550::transport_dbg(tlm::tlm_generic_payload& transaction) {
+  return model_->LookAtRegister(transaction);
 }
 
 }  // namespace socpuppet

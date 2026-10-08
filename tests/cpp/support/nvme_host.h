@@ -157,6 +157,14 @@ class NvmeHost {
   // CSTS.RDY: whether the controller is ready to take commands.
   bool IsReady() { return (Read32(kStatus) & kReady) != 0; }
 
+  // The same, looked at by debug access: the way a debugger reads a
+  // register, in no simulated time and with no side effects.
+  bool IsReadyByDebugAccess() {
+    std::array<std::uint8_t, 4> bytes{};
+    bus_.DebugRead(registers_ + kStatus, bytes);
+    return (LittleEndian<std::uint32_t>(bytes) & kReady) != 0;
+  }
+
   // The admin queues, which exist once the controller is enabled.
   QueuePair& Admin() { return admin_; }
 

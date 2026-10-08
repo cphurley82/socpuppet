@@ -46,7 +46,9 @@ class PcieEndpoint : public sc_core::sc_module {
         irq("irq", vectors),
         registers_(identity, function_size, vectors) {
     from_host.register_b_transport(this, &PcieEndpoint::FromHost);
+    from_host.register_transport_dbg(this, &PcieEndpoint::FromHostDebug);
     dma.register_b_transport(this, &PcieEndpoint::FromFunction);
+    dma.register_transport_dbg(this, &PcieEndpoint::FromFunctionDebug);
     SC_METHOD(NoticeRisingLines);
     for (sc_core::sc_in<bool>& line : irq) sensitive << line.pos();
     dont_initialize();
@@ -103,6 +105,45 @@ class PcieEndpoint : public sc_core::sc_module {
     }
   }
 
+  // Debug transport from the host: the same access in no simulated time,
+  // the way a debugger looks. A write lands, and nothing is sent for it
+  // until the host's next real write. Returns the bytes transferred, which
+  // is none for an address nothing here answers.
+  unsigned FromHostDebug(tlm::tlm_generic_payload& transaction) {
+    const std::span data{transaction.get_data_ptr(),
+                         transaction.get_data_length()};
+    if (IsConfigurationAccess(transaction)) {
+      if (transaction.is_read()) {
+        registers_.ReadConfiguration(transaction.get_address(), data);
+      } else {
+        registers_.WriteConfiguration(transaction.get_address(), data);
+      }
+      return transaction.get_data_length();
+    }
+    const PcieEndpointRegisters::Landing landing =
+        registers_.Decode(transaction.get_address(), data.size());
+    switch (landing.owner) {
+      case PcieEndpointRegisters::Owner::kNobody:
+        return 0;
+      case PcieEndpointRegisters::Owner::kFunction: {
+        const std::uint64_t address_on_the_bus = transaction.get_address();
+        transaction.set_address(landing.offset);
+        const unsigned transferred = bar0->transport_dbg(transaction);
+        transaction.set_address(address_on_the_bus);
+        return transferred;
+      }
+      case PcieEndpointRegisters::Owner::kTable:
+      case PcieEndpointRegisters::Owner::kPendingBits:
+        if (transaction.is_read()) {
+          registers_.ReadOwn(landing, data);
+        } else {
+          registers_.WriteOwn(landing, data);
+        }
+        return transaction.get_data_length();
+    }
+    return 0;
+  }
+
   // The function's DMA goes up the link as it is, once the host has let
   // the device be a bus master.
   void FromFunction(tlm::tlm_generic_payload& transaction,
@@ -112,6 +153,12 @@ class PcieEndpoint : public sc_core::sc_module {
       return;
     }
     to_host->b_transport(transaction, delay);
+  }
+
+  // A debugger looking through the function's DMA port is not the device
+  // being a bus master, so it is not held back by the command register.
+  unsigned FromFunctionDebug(tlm::tlm_generic_payload& transaction) {
+    return to_host->transport_dbg(transaction);
   }
 
   // An interrupt is the rise of one of the function's lines. Each rise

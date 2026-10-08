@@ -49,6 +49,9 @@ struct MachineTimer::Model {
                       sc_core::sc_time& delay) {
     to_registers_->b_transport(transaction, delay);
   }
+  unsigned DebugAccessRegister(tlm::tlm_generic_payload& transaction) {
+    return to_registers_->transport_dbg(transaction);
+  }
 
   // What the borrowed model says its interrupt output is.
   const sc_core::sc_signal_in_if<bool>& Interrupt() const { return interrupt_; }
@@ -77,11 +80,16 @@ MachineTimer::MachineTimer(const sc_core::sc_module_name& name,
                            std::uint64_t frequency_hz)
     : sc_module(name), model_(std::make_unique<Model>(frequency_hz)) {
   socket.register_b_transport(this, &MachineTimer::b_transport);
+  socket.register_transport_dbg(this, &MachineTimer::transport_dbg);
   SC_METHOD(DriveTheLine);
   sensitive << model_->Interrupt();
 }
 
 void MachineTimer::DriveTheLine() { irq.write(model_->Interrupt().read()); }
+
+unsigned MachineTimer::transport_dbg(tlm::tlm_generic_payload& transaction) {
+  return model_->DebugAccessRegister(transaction);
+}
 
 MachineTimer::~MachineTimer() = default;
 

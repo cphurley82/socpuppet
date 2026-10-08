@@ -165,6 +165,30 @@ struct HostWithAnEndpoint {
     return bytes;
   }
 
+  // Puts a word in the host's memory, behind the host's back.
+  void PlantInHostMemory(std::uint64_t address, std::uint32_t value) {
+    platform.DebugWrite("host.driver.socket", address,
+                        std::as_bytes(std::span{&value, 1}));
+  }
+
+  // What the host sees at `address` when it looks the debugger's way: in
+  // no simulated time, and with nothing noticing.
+  std::uint32_t HostLooksAt(std::uint64_t address) {
+    return LooksAt("host.driver.socket", address);
+  }
+
+  // And what the function sees, looking the same way through its DMA port.
+  std::uint32_t FunctionLooksAt(std::uint64_t address) {
+    return LooksAt("device.function.socket", address);
+  }
+
+  std::uint32_t LooksAt(const char* via, std::uint64_t address) {
+    std::uint32_t value = 0;
+    platform.DebugRead(via, address,
+                       std::as_writable_bytes(std::span{&value, 1}));
+    return value;
+  }
+
   // Every access `host.messages` has received. Declared before the
   // platform, which holds a reference to it.
   std::vector<RecordedAccess> messages;
@@ -371,6 +395,36 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsNotABusMaster,
   EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
   EXPECT_EQ(fixture.HostMemory(kSomewhere),
             (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
+}
+
+TEST(WhenTheHostLooksAtTheFunctionsRegistersByDebugAccess,
+     ItSeesThemWhereBar0WasPlaced) {
+  HostWithAnEndpoint fixture{{.host = [](PciHost& host) {
+    host.PlaceBar0(kEndpoint, kPlace);
+    host.Command(kEndpoint, PciHost::kMemoryDecoding);
+    host.Write(kPlace + 0x10, 0xC0FFEE);
+  }}};
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.HostLooksAt(kPlace + 0x10), 0xC0FFEEU);
+}
+
+TEST(WhenTheHostLooksAtConfigurationSpaceByDebugAccess, ItSeesTheIds) {
+  HostWithAnEndpoint fixture{{}};
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.HostLooksAt(HostWithAnEndpoint::kEcamBase + kIds),
+            (std::uint32_t{HostWithAnEndpoint::kDeviceId} << 16) |
+                HostWithAnEndpoint::kVendorId);
+}
+
+TEST(WhenTheFunctionLooksAtHostMemoryByDebugAccess, ItSeesIt) {
+  HostWithAnEndpoint fixture{{}};
+  fixture.platform.Run();
+  fixture.PlantInHostMemory(HostWithAnEndpoint::kMemoryBase + 0x10, 0xC0FFEE);
+
+  EXPECT_EQ(fixture.FunctionLooksAt(HostWithAnEndpoint::kMemoryBase + 0x10),
+            0xC0FFEEU);
 }
 
 TEST(WhenTheHostWalksTheCapabilityList,

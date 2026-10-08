@@ -68,6 +68,15 @@ class MachineTimerContract : public ::testing::Test {
     bus.Write(address, bytes);
   }
 
+  // Reads `mtime` the way a debugger looks: in no simulated time.
+  static std::uint64_t LookAtMtime(BusDriver& bus) {
+    std::array<std::uint8_t, 8> bytes{};
+    bus.DebugRead(kMtime, bytes);
+    std::uint64_t value = 0;
+    std::memcpy(&value, bytes.data(), sizeof value);
+    return value;
+  }
+
   // Waits to an absolute simulated time, for a write that must land in the
   // same delta cycle as something the timer does then.
   static void WaitUntil(BusDriver& bus, const sc_core::sc_time& when) {
@@ -96,6 +105,19 @@ TYPED_TEST_P(MachineTimerContract, MtimeCountsSimulatedTimeInTicks) {
       [&](BusDriver& bus) {
         bus.WaitFor(this->Microseconds(5));
         mtime = this->Read64(bus, this->kMtime);
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(mtime, 5 * this->kTicksPerMicrosecond);
+}
+
+TYPED_TEST_P(MachineTimerContract, MtimeIsSeenByADebugAccess) {
+  std::uint64_t mtime = 0;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(5));
+        mtime = this->LookAtMtime(bus);
       },
       this->Microseconds(10));
 
@@ -218,7 +240,8 @@ TYPED_TEST_P(MachineTimerContract, ACompareValueTooFarOffToEverComeIsAccepted) {
 
 REGISTER_TYPED_TEST_SUITE_P(
     MachineTimerContract, LeftAloneItNeverInterrupts,
-    MtimeCountsSimulatedTimeInTicks, MtimeCountsTheTimeAReaderIsAheadByAsWell,
+    MtimeCountsSimulatedTimeInTicks, MtimeIsSeenByADebugAccess,
+    MtimeCountsTheTimeAReaderIsAheadByAsWell,
     TheInterruptRisesWhenMtimeReachesTheCompareValue,
     ACompareValueSetAtTheVeryStartIsHonoured,
     MovingTheCompareValueAheadEndsTheInterrupt,

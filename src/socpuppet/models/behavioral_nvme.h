@@ -54,6 +54,7 @@ class BehavioralNvme : public sc_core::sc_module,
         irq("irq", vectors),
         controller_(*this, blocks, vectors) {
     bar0.register_b_transport(this, &BehavioralNvme::b_transport);
+    bar0.register_transport_dbg(this, &BehavioralNvme::transport_dbg);
     SC_THREAD(Work);
     SC_METHOD(DriveInterruptLines);
     sensitive << lines_;
@@ -80,6 +81,20 @@ class BehavioralNvme : public sc_core::sc_module,
       lines_.notify();
       work_.notify(sc_core::SC_ZERO_TIME);
     }
+  }
+
+  // Debug transport: the register block as a debugger sees it, in no
+  // simulated time. A write lands in the register and sets no work going:
+  // a doorbell rung this way is answered at the host's next real write.
+  // Returns the bytes transferred, which is none if nothing is there.
+  unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
+    const std::span data{transaction.get_data_ptr(),
+                         transaction.get_data_length()};
+    const bool ok =
+        transaction.is_read()
+            ? controller_.ReadRegister(transaction.get_address(), data)
+            : controller_.WriteRegister(transaction.get_address(), data);
+    return ok ? transaction.get_data_length() : 0;
   }
 
   void Work() {

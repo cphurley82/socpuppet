@@ -220,6 +220,24 @@ def enable_the_controller_at(registers):
 
 
 @pytest.mark.platform
+class TestWhenThePlatformPeeksAtTheDrivesRegistersThroughTheWindow:
+    def test_it_sees_the_controllers_status(self):
+        # A peek takes the debugger's path, through the root complex and
+        # the endpoint to the drive, and so can GDB.
+        def script():
+            pci = sp.PcieHost(ecam=ECAM_BASE)
+            (drive,) = yield from pci.scan()
+            yield from pci.place(drive, WINDOW_BASE)
+            yield from enable_the_controller_at(WINDOW_BASE)
+
+        platform = host_with_a_drive(script)
+        platform.build()
+        platform.run()
+
+        assert platform.peek32(WINDOW_BASE + 0x1C) & 1
+
+
+@pytest.mark.platform
 class TestWhenTheHostRoutesTheDrivesInterruptsToAnMsiReceiver:
     def test_the_nvme_driver_is_woken_by_them(self):
         # The driver waits for an interrupt after every command, so that

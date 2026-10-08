@@ -30,21 +30,29 @@ struct PcieConfigurationAccess : tlm::tlm_extension<PcieConfigurationAccess> {
   void copy_from(const tlm::tlm_extension_base&) override {}
 };
 
-// Sends a transaction down a link as a configuration access to the
-// register at `offset`. The transaction is the caller's again afterwards,
-// with its own address back.
-inline void SendConfigurationAccess(tlm::tlm_initiator_socket<>& socket,
-                                    tlm::tlm_generic_payload& transaction,
-                                    sc_core::sc_time& delay,
-                                    std::uint64_t offset) {
-  PcieConfigurationAccess marker;
-  const std::uint64_t address_before = transaction.get_address();
-  transaction.set_address(offset);
-  transaction.set_extension(&marker);
-  socket->b_transport(transaction, delay);
-  transaction.clear_extension(&marker);
-  transaction.set_address(address_before);
-}
+// Makes a transaction a configuration access to the register at `offset`
+// for as long as this is alive: send it down a link meanwhile. The
+// transaction is the caller's again afterwards, with its own address back.
+class AsConfigurationAccess {
+ public:
+  AsConfigurationAccess(tlm::tlm_generic_payload& transaction,
+                        std::uint64_t offset)
+      : transaction_(transaction), address_before_(transaction.get_address()) {
+    transaction_.set_address(offset);
+    transaction_.set_extension(&marker_);
+  }
+  ~AsConfigurationAccess() {
+    transaction_.clear_extension(&marker_);
+    transaction_.set_address(address_before_);
+  }
+  AsConfigurationAccess(const AsConfigurationAccess&) = delete;
+  AsConfigurationAccess& operator=(const AsConfigurationAccess&) = delete;
+
+ private:
+  tlm::tlm_generic_payload& transaction_;
+  std::uint64_t address_before_;
+  PcieConfigurationAccess marker_;
+};
 
 // Whether a transaction that came down a link is a configuration access.
 // Anything else is a memory access.

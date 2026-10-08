@@ -74,6 +74,19 @@ Each entry says:
 - **Kind**: portability.
 - **When it lands**: nothing to delete here.
 
+### A debug access is all or nothing, and what it does depends on the kind of register
+
+- **Where**: `src/components/scc/tlm_target.h`, `tranport_dbg_cb`; `src/components/scc/register.h`, `sc_register::read_dbg` and `write_dbg`; and `src/components/scc/tlm_target_bfs_register_base.h`, `bitfield_register::read_dbg` and `write_dbg`.
+- **What is wrong**: 🎓 a debug access is a debugger's look at a register: no simulated time, no side effects. Three things get in its way here.
+  - `tranport_dbg_cb` declines an access that is not exactly as wide as the register, where an ordinary access may be narrower. A debugger that reads one byte of a four-byte register gets nothing.
+  - An `sc_register` answers a debug access by doing the ordinary read or write, callbacks and all, unless its CCI parameter `<name>.enableSideEffect` is turned off. It is on by default. So a debug read of the PLIC's claim register claims the interrupt.
+  - A `bitfield_register` does the opposite, with no parameter: a debug access reads and writes the stored word and skips the bit fields and their callbacks. So a debug read of a register that a callback computes, like the UART's line status, shows a stale word, and a debug write lands where an ordinary read does not look.
+- **How to see it**: `InterruptControllerContract.ADebugAccessToTheClaimRegisterDoesNotClaim` in `tests/cpp/contracts/interrupt_controller_contract.h` with the PLIC adapter forwarding every debug access, and `UartContract.TheScratchRegisterIsSeenByADebugAccess` in `tests/cpp/contracts/uart_contract.h` with the UART adapter forwarding a one-byte debug read as it is.
+- **What we do**: no patch. The PLIC adapter declines a debug access to the claim register. The UART adapter fetches the whole four-byte register and hands back its low byte, and declines a debug write.
+- **Upstream fix**: let a debug access be narrower than the register, as an ordinary one may be. Make side effects off the default for a debug access, and give `bitfield_register` the same choice, with a read callback told that the access is a debug one so that a computed register can answer without acting.
+- **Kind**: limitation.
+- **When it lands**: both adapters can forward every debug access.
+
 ## SystemC CCI
 
 [accellera-official/cci](https://github.com/accellera-official/cci). socpuppet gets it as the copy SCC bundles in `third_party/cci-1.0.1`, so the fix belongs to Accellera, and SCC would pick it up from there.

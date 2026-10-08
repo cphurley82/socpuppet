@@ -65,6 +65,13 @@ class UartContract : public ::testing::Test {
     return value[0];
   }
 
+  // The same, the way a debugger looks: in no simulated time.
+  static std::uint8_t LookAtRegister(BusDriver& bus, std::uint64_t offset) {
+    std::array<std::uint8_t, 1> value{kUnanswered};
+    bus.DebugRead(offset, value);
+    return value[0];
+  }
+
   UartType uart_{"uart"};
 };
 
@@ -137,6 +144,17 @@ TYPED_TEST_P(UartContract,
   EXPECT_EQ(scratch, 0x5A);
 }
 
+TYPED_TEST_P(UartContract, TheScratchRegisterIsSeenByADebugAccess) {
+  std::uint8_t seen = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kScratch, 0x5A);
+    seen = this->LookAtRegister(bus, this->kScratch);
+  });
+
+  EXPECT_EQ(seen, 0x5A);
+}
+
 TYPED_TEST_P(UartContract, WithNothingReceivedTheLineStatusShowsNoDataReady) {
   std::uint8_t status = this->kDataReady;
 
@@ -153,6 +171,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     WithTheDivisorLatchOpenTheFirstTwoRegistersHoldTheDivisor,
     WithTheDivisorLatchOpenNothingIsTransmitted,
     TheControlAndScratchRegistersReadBackWhatWasWritten,
+    TheScratchRegisterIsSeenByADebugAccess,
     WithNothingReceivedTheLineStatusShowsNoDataReady);
 
 #endif  // TESTS_CPP_CONTRACTS_UART_CONTRACT_H_
