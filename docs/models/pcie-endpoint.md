@@ -59,7 +59,7 @@ It has three jobs.
 - **Everything about the link** that the [root complex](pcie-root-complex.md) leaves out too: packets, training, errors, and who sent what.
 - **More than one of anything.** One function, one BAR. No expansion ROM, no I/O ports.
 - **Other interrupts.** No interrupt pin and no plain MSI, only MSI-X. With MSI-X off, a rising line is not an interrupt at all.
-- **Other capabilities.** The list holds MSI-X and nothing else: no power management and no PCI Express capability, which real devices also have and some drivers look for.
+- **Other capabilities.** The list holds MSI-X and nothing else: no power management and no PCI Express capability, which real devices also have and some drivers look for. The registers underneath can take more (`PcieEndpointRegisters::AddCapability`), read-only for now, so adding one is a few lines when a driver asks.
 - **Forgetting.** A pending interrupt stays pending even if the function's line has fallen again by the time the mask comes off. Real hardware would forget it.
 - **Timing.** A message goes out a delta cycle after its line rises, at the same simulated time.
 - ⚠️ An access the endpoint does not claim (outside BAR0, or with memory decoding off) gets a bus error. A real bus answers a stray read with all ones.

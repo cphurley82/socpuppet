@@ -7,9 +7,7 @@
 add_library(socpuppet_core INTERFACE)
 target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    core/little_endian.h
     core/memory_store.h
-    core/pcie_endpoint_registers.h
     core/script.h
     core/time.h
     core/trace.h)
@@ -34,6 +32,19 @@ target_sources(socpuppet_nvme_controller PUBLIC
 target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
+
+# What a PCIe endpoint's registers do. Ours, and long enough to be worth
+# compiling once.
+add_library(socpuppet_pcie_registers STATIC
+  core/msix_table.cpp
+  core/pcie_endpoint_registers.cpp)
+target_sources(socpuppet_pcie_registers PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/little_endian.h
+    core/msix_table.h
+    core/pcie_endpoint_registers.h)
+socpuppet_dev_checks(socpuppet_pcie_registers)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_pcie_registers)
 
 # An adapter around a borrowed model is compiled on its own, so that its
 # source file is the only one that sees the borrowed headers.
@@ -147,7 +158,7 @@ socpuppet_dev_checks(socpuppet_builtin_components)
 
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
-  socpuppet_platform socpuppet_models socpuppet_builtin_components
+  socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
   socpuppet_plic)
 
