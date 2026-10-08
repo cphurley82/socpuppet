@@ -15,8 +15,10 @@ constexpr std::uint64_t kAdminSubmissionDoorbell = 0x1000;
 
 // A host with no memory, for tests in which the controller never looks.
 class NoHostMemory : public NvmeController::HostMemory {
-  void Read(std::uint64_t, std::span<std::uint8_t>) override {}
-  void Write(std::uint64_t, std::span<const std::uint8_t>) override {}
+  bool Read(std::uint64_t, std::span<std::uint8_t>) override { return true; }
+  bool Write(std::uint64_t, std::span<const std::uint8_t>) override {
+    return true;
+  }
 };
 
 // An enabled controller whose admin queues have four entries each.

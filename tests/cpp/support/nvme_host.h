@@ -73,6 +73,8 @@ class NvmeHost {
   static constexpr std::uint16_t kCompletionQueueInvalid = 0x100;
   static constexpr std::uint16_t kInvalidQueueIdentifier = 0x101;
   static constexpr std::uint16_t kInvalidInterruptVector = 0x108;
+  // The controller could not move the command's data to or from the host.
+  static constexpr std::uint16_t kDataTransferError = 0x004;
 
   // Admin opcodes.
   static constexpr std::uint8_t kCreateIoSubmissionQueue = 0x01;
@@ -268,7 +270,13 @@ class NvmeHost {
   // in place of the data.
   std::optional<Completion> TryToRead(std::uint64_t first,
                                       std::uint32_t blocks) {
-    return Transfer(kRead, first, blocks, ScatteredPages(blocks * kBlockSize));
+    return TryToRead(first, blocks, ScatteredPages(blocks * kBlockSize));
+  }
+
+  // The same read, with the data pages where the caller says they are.
+  std::optional<Completion> TryToRead(std::uint64_t first, std::uint32_t blocks,
+                                      const std::vector<std::uint64_t>& pages) {
+    return Transfer(kRead, first, blocks, pages);
   }
 
   // Writes whole blocks to namespace 1, from block `first` on. Returns

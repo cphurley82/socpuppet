@@ -29,12 +29,13 @@ namespace socpuppet {
 class NvmeController {
  public:
   // The host's memory, which the controller reads and writes on its own
-  // initiative (direct memory access, DMA).
+  // initiative (direct memory access, DMA). Each returns false if the host
+  // did not take the access: nothing is at the address, say.
   class HostMemory {
    public:
     virtual ~HostMemory() = default;
-    virtual void Read(std::uint64_t address, std::span<std::uint8_t> out) = 0;
-    virtual void Write(std::uint64_t address,
+    virtual bool Read(std::uint64_t address, std::span<std::uint8_t> out) = 0;
+    virtual bool Write(std::uint64_t address,
                        std::span<const std::uint8_t> in) = 0;
   };
 
@@ -142,6 +143,14 @@ class NvmeController {
   // A failure with a status from the list that belongs to the command,
   // and not from the generic one.
   static Outcome CommandSpecific(std::uint8_t status);
+
+  // Moves a command's data to the host's memory, where the command says it
+  // goes, or fetches it from there. The outcome is success, or a data
+  // transfer error if the host did not take some of it.
+  Outcome SendToHost(const spdk_nvme_cmd& command,
+                     std::span<const std::uint8_t> data);
+  Outcome FetchFromHost(const spdk_nvme_cmd& command,
+                        std::span<std::uint8_t> data);
 
   // The registers as the host would read them now.
   spdk_nvme_registers Registers() const;

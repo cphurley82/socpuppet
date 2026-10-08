@@ -588,6 +588,21 @@ TYPED_TEST_P(NvmeContract, AReadPastTheEndOfTheNamespaceIsOutOfRange) {
 }
 
 TYPED_TEST_P(NvmeContract,
+             AReadWhoseDataPageIsWhereNothingAnswersIsADataTransferError) {
+  // Just past the host's memory, where the bus has nothing mapped.
+  const std::uint64_t nowhere = this->kMemoryBase + this->kMemorySize;
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    completion = host.TryToRead(/*first=*/0, /*blocks=*/1, /*pages=*/{nowhere});
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kDataTransferError);
+}
+
+TYPED_TEST_P(NvmeContract,
              AWritePastTheEndOfTheNamespaceIsOutOfRangeAndWritesNothing) {
   std::optional<NvmeHost::Completion> completion;
   std::optional<std::vector<std::uint8_t>> last_block;
@@ -795,6 +810,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     ABlockReadsBackAsItWasWritten, ATransferOfTwoPagesReadsBackAsItWasWritten,
     ATransferOfThreePagesReadsBackAsItWasWritten,
     AReadPastTheEndOfTheNamespaceIsOutOfRange,
+    AReadWhoseDataPageIsWhereNothingAnswersIsADataTransferError,
     AWritePastTheEndOfTheNamespaceIsOutOfRangeAndWritesNothing,
     WhatWasWrittenIsStillThereAfterAControllerReset,
     AControllerResetDoesAwayWithTheIoQueues,

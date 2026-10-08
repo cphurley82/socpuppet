@@ -112,11 +112,13 @@ class BehavioralNvme : public sc_core::sc_module,
   }
 
   // NvmeController::HostMemory: the controller's DMA.
-  void Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    Transport(dma, tlm::TLM_READ_COMMAND, address, out);
+  bool Read(std::uint64_t address, std::span<std::uint8_t> out) override {
+    return Transport(dma, tlm::TLM_READ_COMMAND, address, out) ==
+           tlm::TLM_OK_RESPONSE;
   }
-  void Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    Transport(dma, tlm::TLM_WRITE_COMMAND, address, WriteData(in));
+  bool Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
+    return Transport(dma, tlm::TLM_WRITE_COMMAND, address, WriteData(in)) ==
+           tlm::TLM_OK_RESPONSE;
   }
 
   NvmeController controller_;

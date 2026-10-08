@@ -47,7 +47,7 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 - **Admin commands**: Identify (the controller, a namespace, the list of namespaces), Set Features for the number of queues, and the two commands that create an I/O queue pair. Up to 8 pairs.
 - **I/O commands**: Read, Write and Flush.
 - **Data pages.** A command says where its data is page by page (🎓 PRPs, physical region pages), and the pages need not be next to each other. Transfers of any length are followed through, lists and all.
-- **Errors a driver can cause** come back as the status the specification gives them: an unknown opcode, a block past the end of the drive, a queue identifier or an interrupt vector it does not have, a submission queue made before its completion queue.
+- **Errors a driver can cause** come back as the status the specification gives them: an unknown opcode, a block past the end of the drive, a queue identifier or an interrupt vector it does not have, a submission queue made before its completion queue, a data page at an address nothing answers (a data transfer error).
 - **Timing.** A doorbell write returns at once, and the controller does the work a delta cycle later, at the same simulated time. So a command takes no time, but its completion is never there yet when the doorbell write returns, which is how a real controller looks to a driver too.
 
 ### Interrupt lines
@@ -66,7 +66,7 @@ A line is high while a completion queue on its vector holds a completion the hos
 - **Checks a real controller makes** on the host's good behaviour. A full completion queue is written over. The page size and entry sizes in `CC` are taken as read. Creating a queue that already exists replaces it. Read, Write and Flush do not look at the namespace number.
 - **Switching interrupts off.** A queue always interrupts: its interrupt-enable bit and the mask registers (`INTMS`, `INTMC`) are ignored.
 - **A name.** Identify says how many namespaces there are and how big, and nothing else: no model, no serial number, no version.
-- **DMA failures.** An access to host memory that goes nowhere is not noticed.
+- **DMA failures** are noticed only for a command's data pages. A submission queue, a completion queue or a PRP list at an address nothing answers is not.
 - ⚠️ A doorbell write the controller cannot make sense of (a queue that does not exist, a slot past the end of the queue) gets a bus error. A real controller accepts the write and reports the mistake later, as an asynchronous event.
 
 ## Under the hood
