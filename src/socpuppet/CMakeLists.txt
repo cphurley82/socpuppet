@@ -137,6 +137,7 @@ target_sources(socpuppet_models INTERFACE
     models/behavioral_nvme.h
     models/interrupt_lines.h
     models/memory.h
+    models/msi_plic_bridge.h
     models/msi_receiver.h
     models/pass_through_link.h
     models/pcie_endpoint.h

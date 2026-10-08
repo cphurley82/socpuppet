@@ -13,6 +13,7 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
+#include "socpuppet/models/msi_plic_bridge.h"
 #include "socpuppet/models/msi_receiver.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/pass_through_link.h"
@@ -93,6 +94,16 @@ Registry BuiltinComponents() {
   registry.Add("memory", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<Memory>(name, parameters.Required("size"));
     std::vector<Port> ports{TargetPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("msi_plic_bridge", [](const char* name, Parameters& parameters) {
+    auto module =
+        std::make_unique<MsiPlicBridge>(name, parameters.Required("vectors"));
+    std::vector<Port> ports{TargetPort("socket", module->socket)};
+    AddNumberedPorts(ports, "irq", 0, module->irq,
+                     [](std::string port, sc_core::sc_out<bool>& line) {
+                       return WireSourcePort(std::move(port), line);
+                     });
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("msi_receiver", [](const char* name, Parameters&) {
