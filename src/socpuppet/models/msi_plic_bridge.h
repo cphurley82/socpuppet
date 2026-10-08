@@ -69,8 +69,11 @@ class MsiPlicBridge : public sc_core::sc_module {
   }
 
   // Debug transport: a debugger looking at the register, which reads as
-  // zero for it too. Returns the bytes transferred.
+  // zero for it too. A debug write is declined: a message is a bus access
+  // by a device, not a register a debugger pokes. Returns the bytes
+  // transferred.
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
+    if (!transaction.is_read()) return 0;
     std::fill_n(transaction.get_data_ptr(), transaction.get_data_length(),
                 static_cast<unsigned char>(0));
     return transaction.get_data_length();

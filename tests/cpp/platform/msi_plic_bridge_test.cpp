@@ -141,4 +141,16 @@ TEST(WhenAnMsiPlicBridgesRegisterIsLookedAtByDebugAccess, ItIsSeenAsZero) {
   EXPECT_EQ(seen, (std::array<std::uint8_t, 4>{0, 0, 0, 0}));
 }
 
+// A message is a bus access by a device. A debugger that could send one
+// would interrupt the CPU it is there to look at.
+TEST(WhenADebugAccessWritesToAnMsiPlicBridge, ItIsDeclined) {
+  const std::array<std::uint8_t, 4> message{1, 0, 0, 0};
+  MasterWithAnMsiPlicBridge fixture{[](BusDriver&) {}};
+
+  const bool answered = fixture.platform.DebugWrite(
+      "driver.socket", 0, std::as_bytes(std::span{message}));
+
+  EXPECT_FALSE(answered);
+}
+
 }  // namespace socpuppet
