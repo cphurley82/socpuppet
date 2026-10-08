@@ -34,14 +34,14 @@ struct PoweredOnAclint : vpvper::minres::aclint {
 // the software interrupt, which a CPU raises on another CPU and which
 // nobody reads here. Its reset is never asserted.
 struct MachineTimer::Model {
-  Model(MachineTimer& owner, std::uint64_t frequency_hz)
+  explicit Model(std::uint64_t frequency_hz)
       : tick_period_("tick_period",
                      sc_core::sc_time(1.0 / static_cast<double>(frequency_hz),
                                       sc_core::SC_SEC)) {
     to_registers_.bind(timer_.socket);
     timer_.mtime_clk_i.bind(tick_period_);
     timer_.rst_i.bind(reset_tied_low_);
-    timer_.mtime_int_o[0].bind(owner.irq);
+    timer_.mtime_int_o[0].bind(interrupt_);
     timer_.msip_int_o[0].bind(software_interrupt_unread_);
   }
 
@@ -50,9 +50,20 @@ struct MachineTimer::Model {
     to_registers_->b_transport(transaction, delay);
   }
 
+  // What the borrowed model says its interrupt output is.
+  const sc_core::sc_signal_in_if<bool>& Interrupt() const { return interrupt_; }
+
  private:
   sc_core::sc_signal<sc_core::sc_time> tick_period_;
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
+  // The borrowed model writes its output from whichever process is running:
+  // its own method when the count reaches the compare value, and the
+  // caller's thread when a register is written. SystemC lets one process
+  // write a signal in a delta cycle (SC_MANY_WRITERS only lifts that across
+  // delta cycles), so this signal is told not to check, and the adapter
+  // copies it to `irq` from one process of its own.
+  sc_core::sc_signal<bool, sc_core::SC_UNCHECKED_WRITERS> interrupt_{
+      "interrupt"};
   sc_core::sc_signal<bool> software_interrupt_unread_{
       "software_interrupt_unread"};
   PoweredOnAclint timer_{"timer"};
@@ -64,9 +75,13 @@ struct MachineTimer::Model {
 
 MachineTimer::MachineTimer(const sc_core::sc_module_name& name,
                            std::uint64_t frequency_hz)
-    : sc_module(name), model_(std::make_unique<Model>(*this, frequency_hz)) {
+    : sc_module(name), model_(std::make_unique<Model>(frequency_hz)) {
   socket.register_b_transport(this, &MachineTimer::b_transport);
+  SC_METHOD(DriveTheLine);
+  sensitive << model_->Interrupt();
 }
+
+void MachineTimer::DriveTheLine() { irq.write(model_->Interrupt().read()); }
 
 MachineTimer::~MachineTimer() = default;
 

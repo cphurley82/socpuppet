@@ -37,4 +37,4 @@ platform.connect(plic.irq, cpu.irq)
 
 💡 This one is borrowed. The model is the RISC-V PLIC from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), written by Minres. socpuppet's adapter (`src/socpuppet/models/plic.cpp`) fixes it at 31 sources and one context and ties off what is not connected.
 
-What socpuppet relies on is written down as tests, in `tests/cpp/contracts/interrupt_controller_contract.h`. They found four bugs in the borrowed model, written up in [upstream.md](../upstream.md): the last source's priority, a source enabled while already pending, and a line still high at completion, each patched; and an output written from two processes at once, which the adapter works around.
+What socpuppet relies on is written down as tests, in `tests/cpp/contracts/interrupt_controller_contract.h`. They found four bugs in the borrowed model, written up in [upstream.md](../upstream.md): the last source's priority, a source enabled while already pending, and a line still high at completion, each patched; and an output written from two processes at once, which the adapter works around (the timer's adapter does the same).

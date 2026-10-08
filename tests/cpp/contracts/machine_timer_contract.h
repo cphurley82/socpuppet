@@ -68,10 +68,17 @@ class MachineTimerContract : public ::testing::Test {
     bus.Write(address, bytes);
   }
 
+  // Waits to an absolute simulated time, for a write that must land in the
+  // same delta cycle as something the timer does then.
+  static void WaitUntil(BusDriver& bus, const sc_core::sc_time& when) {
+    bus.WaitFor(when - sc_core::sc_time_stamp());
+  }
+
   TimerType timer_{"timer", kFrequency};
-  // A timer drives its line from more than one process: when its count
-  // reaches the compare value, and when it is written to.
-  sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS> interrupt_{"interrupt"};
+  // A wire takes one driver, so a timer drives its line from one process
+  // of its own, whether its count reached the compare value or it was
+  // written to.
+  sc_core::sc_signal<bool> interrupt_{"interrupt"};
 };
 
 TYPED_TEST_SUITE_P(MachineTimerContract);
@@ -156,6 +163,29 @@ TYPED_TEST_P(MachineTimerContract, MovingTheCompareValueAheadEndsTheInterrupt) {
   EXPECT_FALSE(after_the_move);
 }
 
+TYPED_TEST_P(
+    MachineTimerContract,
+    MovingTheCompareValueAheadInTheInstantTheCountReachesItEndsTheInterrupt) {
+  const sc_core::sc_time count_reaches_compare = this->Microseconds(10);
+  bool after_the_move = true;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(1));
+        this->Write64(bus, this->kMtimecmp, 10 * this->kTicksPerMicrosecond);
+        this->WaitUntil(bus, count_reaches_compare);
+        // The timer raises its line in this very delta cycle. A tick handler
+        // that runs the instant the interrupt rises writes the compare
+        // register now.
+        this->Write64(bus, this->kMtimecmp, 100 * this->kTicksPerMicrosecond);
+        bus.WaitFor(this->Microseconds(1));
+        after_the_move = this->interrupt_.read();
+      },
+      this->Microseconds(20));
+
+  EXPECT_FALSE(after_the_move);
+}
+
 TYPED_TEST_P(MachineTimerContract, TheCompareValueCanBeWrittenInTwoHalves) {
   std::uint64_t compare = 0;
 
@@ -186,13 +216,14 @@ TYPED_TEST_P(MachineTimerContract, ACompareValueTooFarOffToEverComeIsAccepted) {
   EXPECT_FALSE(this->interrupt_.read());
 }
 
-REGISTER_TYPED_TEST_SUITE_P(MachineTimerContract, LeftAloneItNeverInterrupts,
-                            MtimeCountsSimulatedTimeInTicks,
-                            MtimeCountsTheTimeAReaderIsAheadByAsWell,
-                            TheInterruptRisesWhenMtimeReachesTheCompareValue,
-                            ACompareValueSetAtTheVeryStartIsHonoured,
-                            MovingTheCompareValueAheadEndsTheInterrupt,
-                            TheCompareValueCanBeWrittenInTwoHalves,
-                            ACompareValueTooFarOffToEverComeIsAccepted);
+REGISTER_TYPED_TEST_SUITE_P(
+    MachineTimerContract, LeftAloneItNeverInterrupts,
+    MtimeCountsSimulatedTimeInTicks, MtimeCountsTheTimeAReaderIsAheadByAsWell,
+    TheInterruptRisesWhenMtimeReachesTheCompareValue,
+    ACompareValueSetAtTheVeryStartIsHonoured,
+    MovingTheCompareValueAheadEndsTheInterrupt,
+    MovingTheCompareValueAheadInTheInstantTheCountReachesItEndsTheInterrupt,
+    TheCompareValueCanBeWrittenInTwoHalves,
+    ACompareValueTooFarOffToEverComeIsAccepted);
 
 #endif  // TESTS_CPP_CONTRACTS_MACHINE_TIMER_CONTRACT_H_

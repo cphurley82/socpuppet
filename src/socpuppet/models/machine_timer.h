@@ -33,6 +33,8 @@ class MachineTimer : public sc_core::sc_module {
 
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay);
+  // The only process that writes `irq`.
+  void DriveTheLine();
 
   std::unique_ptr<Model> model_;
 };

@@ -31,6 +31,6 @@ platform.connect(timer.irq, cpu.timer_irq)
 
 💡 This one is borrowed. The model is the ACLINT from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), written by Minres, who use it with the same CPU model in their own reference platform. socpuppet's adapter (`src/socpuppet/models/machine_timer.cpp`) gives it its tick rate and exposes the timer interrupt.
 
-What socpuppet relies on is written down as tests, in `tests/cpp/contracts/machine_timer_contract.h`. They found one bug in the borrowed model, a compare value written at time zero that was never acted on, which socpuppet patches (see [upstream.md](../upstream.md)).
+What socpuppet relies on is written down as tests, in `tests/cpp/contracts/machine_timer_contract.h`. They found two bugs in the borrowed model, written up in [upstream.md](../upstream.md): a compare value written at time zero that was never acted on, which socpuppet patches, and an interrupt line written from two processes at once, which the adapter works around by copying the line through one process of its own.
 
 ⚠️ A CPU sees the interrupt up to one quantum late, because that is how far ahead of simulated time it may be when the interrupt arrives. With the default quantum of 100 µs that is 1% of a 10 ms tick.
