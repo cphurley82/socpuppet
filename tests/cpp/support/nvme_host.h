@@ -72,6 +72,7 @@ class NvmeHost {
   // These two are specific to the commands that create queues (type 1).
   static constexpr std::uint16_t kCompletionQueueInvalid = 0x100;
   static constexpr std::uint16_t kInvalidQueueIdentifier = 0x101;
+  static constexpr std::uint16_t kInvalidQueueSize = 0x102;
   static constexpr std::uint16_t kInvalidInterruptVector = 0x108;
   // The controller could not move the command's data to or from the host.
   static constexpr std::uint16_t kDataTransferError = 0x004;
@@ -181,28 +182,29 @@ class NvmeHost {
   }
 
   // The two commands on their own. `memory` is where the host has set the
-  // queue's ring aside, and each returns what the controller said.
-  std::optional<Completion> CreateIoCompletionQueue(std::uint16_t id,
-                                                    std::uint64_t memory,
-                                                    std::uint16_t vector) {
-    // Physically contiguous, with interrupts enabled, on `vector`.
-    return Complete(
-        admin_, {.opcode = kCreateIoCompletionQueue,
-                 .data = memory,
-                 .dword10 = std::uint32_t{kQueueEntries - 1} << 16 | id,
-                 .dword11 = std::uint32_t{vector} << 16 | kInterruptsEnabled |
-                            kContiguous});
+  // queue's ring aside, `entries` is how many entries it has, and each
+  // returns what the controller said.
+  std::optional<Completion> CreateIoCompletionQueue(
+      std::uint16_t id, std::uint64_t memory, std::uint16_t vector,
+      std::uint16_t entries = kQueueEntries) {
+    // Physically contiguous, with interrupts enabled, on `vector`. The
+    // size is counted from zero.
+    return Complete(admin_, {.opcode = kCreateIoCompletionQueue,
+                             .data = memory,
+                             .dword10 = (std::uint32_t{entries} - 1) << 16 | id,
+                             .dword11 = std::uint32_t{vector} << 16 |
+                                        kInterruptsEnabled | kContiguous});
   }
 
   std::optional<Completion> CreateIoSubmissionQueue(
-      std::uint16_t id, std::uint64_t memory, std::uint16_t completion_queue) {
+      std::uint16_t id, std::uint64_t memory, std::uint16_t completion_queue,
+      std::uint16_t entries = kQueueEntries) {
     // Physically contiguous, completing into `completion_queue`.
-    return Complete(
-        admin_,
-        {.opcode = kCreateIoSubmissionQueue,
-         .data = memory,
-         .dword10 = std::uint32_t{kQueueEntries - 1} << 16 | id,
-         .dword11 = std::uint32_t{completion_queue} << 16 | kContiguous});
+    return Complete(admin_, {.opcode = kCreateIoSubmissionQueue,
+                             .data = memory,
+                             .dword10 = (std::uint32_t{entries} - 1) << 16 | id,
+                             .dword11 = std::uint32_t{completion_queue} << 16 |
+                                        kContiguous});
   }
 
   // The I/O queues, which exist once CreateIoQueues() has made them.
@@ -287,6 +289,17 @@ class NvmeHost {
     return Transfer(kRead, first, blocks, pages);
   }
 
+  // Sends a read of the first block of the namespace with this number,
+  // and returns what the controller said.
+  std::optional<Completion> TryToReadNamespace(std::uint32_t namespace_id) {
+    return Transfer(kRead, 0, 1, ScatteredPages(kBlockSize), namespace_id);
+  }
+
+  // The same for a write.
+  std::optional<Completion> TryToWriteNamespace(std::uint32_t namespace_id) {
+    return Transfer(kWrite, 0, 1, ScatteredPages(kBlockSize), namespace_id);
+  }
+
   // Writes whole blocks to namespace 1, from block `first` on. Returns
   // what the controller said.
   std::optional<Completion> WriteBlocks(std::uint64_t first,
@@ -310,6 +323,24 @@ class NvmeHost {
   // Returns what it said.
   std::optional<Completion> Flush() {
     return Complete(io_, {.opcode = kFlush, .namespace_id = 1});
+  }
+
+  // Sends the same flush and does not wait: the caller takes the
+  // completion, and acknowledges it, when it chooses. Returns the command
+  // identifier the completion will carry.
+  std::uint16_t SubmitFlush() {
+    return Submit(io_, {.opcode = kFlush, .namespace_id = 1});
+  }
+
+  // Whether a completion the host has not taken is on the queue, once the
+  // controller has had a moment to post one.
+  bool HasACompletion(const QueuePair& queue) {
+    bus_.WaitFor(Pause());
+    std::array<std::uint8_t, kCompletionSize> entry{};
+    ReadMemory(queue.completions_ + (queue.head_ * kCompletionSize), entry);
+    const auto status =
+        LittleEndian<std::uint16_t>(std::span{entry}.subspan(14));
+    return (status & 1) == (queue.phase_ ? 1 : 0);
   }
 
   // The Identify command asks the controller to describe itself or what it
@@ -510,7 +541,8 @@ class NvmeHost {
   // data in `pages`, and returns its completion, acknowledged.
   std::optional<Completion> Transfer(std::uint8_t opcode, std::uint64_t first,
                                      std::uint32_t blocks,
-                                     const std::vector<std::uint64_t>& pages) {
+                                     const std::vector<std::uint64_t>& pages,
+                                     std::uint32_t namespace_id = 1) {
     // A command says where its data is page by page. The first page's
     // address goes in the command. The second entry is the second page if
     // there are two pages, and otherwise the address of a page that lists
@@ -527,7 +559,7 @@ class NvmeHost {
       }
     }
     return Complete(io_, {.opcode = opcode,
-                          .namespace_id = 1,
+                          .namespace_id = namespace_id,
                           .data = pages[0],
                           .more_data = more_data,
                           // The starting block in dwords 10 and 11, and the

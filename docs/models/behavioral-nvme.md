@@ -47,7 +47,8 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 - **Admin commands**: Identify (the controller, a namespace, the list of namespaces), Set Features for the number of queues, and the two commands that create an I/O queue pair. Up to 8 pairs.
 - **I/O commands**: Read, Write and Flush.
 - **Data pages.** A command says where its data is page by page (🎓 PRPs, physical region pages), and the pages need not be next to each other. Transfers of any length are followed through, lists and all.
-- **Errors a driver can cause** come back as the status the specification gives them: an unknown opcode, a block past the end of the drive, a queue identifier or an interrupt vector it does not have, a submission queue made before its completion queue, a data page at an address nothing answers (a data transfer error).
+- **Errors a driver can cause** come back as the status the specification gives them: an unknown opcode, a block past the end of the drive, a namespace other than number 1, a queue identifier or an interrupt vector it does not have, a queue that already exists, a queue of one entry, a submission queue made before its completion queue, a data page at an address nothing answers (a data transfer error).
+- **A full completion queue is left alone.** 🎓 A queue is a ring with one slot always kept empty, so that full and empty do not look alike. When a completion queue has no room, the commands that complete into it wait, and they are carried out once the host has acknowledged a completion.
 - **Timing.** A doorbell write returns at once, and the controller does the work a delta cycle later, at the same simulated time. So a command takes no time, but its completion is never there yet when the doorbell write returns, which is how a real controller looks to a driver too.
 
 ### Interrupt lines

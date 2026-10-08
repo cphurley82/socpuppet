@@ -13,6 +13,9 @@ namespace socpuppet {
 
 namespace {
 
+// There is one namespace, and namespaces are numbered from 1.
+constexpr std::uint32_t kTheNamespace = 1;
+
 // A block is 512 bytes, the size a disk has had since the floppy.
 constexpr std::uint32_t kBlockSizeShift = 9;
 
@@ -33,6 +36,13 @@ std::uint16_t After(std::uint16_t pointer, std::uint16_t last) {
   return pointer == last ? std::uint16_t{0}
                          : static_cast<std::uint16_t>(pointer + 1);
 }
+
+// Whether an I/O queue may have this size, which the host gives counted
+// from zero. A queue always keeps one slot empty, so that full and empty
+// do not look alike, and a queue of one entry could hold nothing. There
+// is no upper limit to check: the field's largest value is the largest
+// size the controller says it takes (CAP.MQES).
+bool IsAQueueSize(std::uint32_t size_from_zero) { return size_from_zero != 0; }
 
 bool Fits(std::uint64_t offset, std::size_t length) {
   return offset <= kControllerRegistersSize &&
@@ -109,10 +119,15 @@ void NvmeController::Reset() {
 }
 
 bool NvmeController::CarryOutOne() {
-  // The lowest-numbered queue with something in it, so an admin command
-  // is carried out before any I/O command that is waiting.
-  const auto has_work = [](const SubmissionQueue& queue) {
-    return queue.exists && queue.head != queue.tail;
+  // The lowest-numbered queue with a command that can be carried out, so
+  // an admin command goes before any I/O command that is waiting. A
+  // command whose completion queue is full has to wait: its completion
+  // would land in the slot the host uses to tell full from empty, and the
+  // one after it on a completion the host has not acknowledged.
+  const auto has_work = [this](const SubmissionQueue& queue) {
+    if (!queue.exists || queue.head == queue.tail) return false;
+    const CompletionQueue& completions = completions_[queue.completion_queue];
+    return After(completions.tail, completions.last) != completions.head;
   };
   std::uint16_t queue_id = 0;
   while (queue_id < kQueues && !has_work(submissions_[queue_id])) ++queue_id;
@@ -199,9 +214,13 @@ NvmeController::Outcome NvmeController::CarryOutAdmin(
 NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
     const spdk_nvme_cmd& command) {
   const std::size_t queue_id = command.cdw10_bits.create_io_q.qid;
-  // Queue 0 is the admin queue, which the host does not create.
-  if (queue_id == 0 || queue_id >= kQueues) {
+  // Queue 0 is the admin queue, which the host does not create, and a
+  // queue that exists is not created again: the host deletes it first.
+  if (queue_id == 0 || queue_id >= kQueues || completions_[queue_id].exists) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER);
+  }
+  if (!IsAQueueSize(command.cdw10_bits.create_io_q.qsize)) {
+    return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_SIZE);
   }
   // The host is told about this queue's completions on the vector it
   // names, which has to be one the function has a line for.
@@ -222,8 +241,11 @@ NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
 NvmeController::Outcome NvmeController::CreateIoSubmissionQueue(
     const spdk_nvme_cmd& command) {
   const std::size_t queue_id = command.cdw10_bits.create_io_q.qid;
-  if (queue_id == 0 || queue_id >= kQueues) {
+  if (queue_id == 0 || queue_id >= kQueues || submissions_[queue_id].exists) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER);
+  }
+  if (!IsAQueueSize(command.cdw10_bits.create_io_q.qsize)) {
+    return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_SIZE);
   }
   const std::size_t completion_queue = command.cdw11_bits.create_io_sq.cqid;
   if (completion_queue >= kQueues || !completions_[completion_queue].exists) {
@@ -247,8 +269,7 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
       return SendToHost(command, BytesOf(controller));
     }
     case SPDK_NVME_IDENTIFY_NS: {
-      // There is one namespace, and namespaces are numbered from 1.
-      if (command.nsid != 1) {
+      if (command.nsid != kTheNamespace) {
         return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
       }
       spdk_nvme_ns_data name_space{};
@@ -306,6 +327,9 @@ NvmeController::Outcome NvmeController::CarryOutIo(
 // Read: the host asks for blocks, and the controller writes them into the
 // host's memory.
 NvmeController::Outcome NvmeController::Read(const spdk_nvme_cmd& command) {
+  if (command.nsid != kTheNamespace) {
+    return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
+  }
   const std::span<std::uint8_t> blocks = Blocks(command);
   if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
   return SendToHost(command, blocks);
@@ -314,6 +338,9 @@ NvmeController::Outcome NvmeController::Read(const spdk_nvme_cmd& command) {
 // Write: the other way. The controller reads the blocks out of the host's
 // memory and keeps them.
 NvmeController::Outcome NvmeController::Write(const spdk_nvme_cmd& command) {
+  if (command.nsid != kTheNamespace) {
+    return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
+  }
   const std::span<std::uint8_t> blocks = Blocks(command);
   if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
   return FetchFromHost(command, blocks);

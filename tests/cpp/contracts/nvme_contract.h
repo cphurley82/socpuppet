@@ -501,6 +501,129 @@ TYPED_TEST_P(
   EXPECT_EQ(StatusOf(completion), NvmeHost::kCompletionQueueInvalid);
 }
 
+TYPED_TEST_P(NvmeContract,
+             CreatingACompletionQueueThatExistsIsAnInvalidQueueIdentifier) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoCompletionQueue(1, host.NewPage(), kIoVector);
+    completion = host.CreateIoCompletionQueue(1, host.NewPage(), kIoVector);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidQueueIdentifier);
+}
+
+TYPED_TEST_P(NvmeContract,
+             CreatingASubmissionQueueThatExistsIsAnInvalidQueueIdentifier) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    completion = host.CreateIoSubmissionQueue(1, host.NewPage(),
+                                              /*completion_queue=*/1);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidQueueIdentifier);
+}
+
+// A queue is a ring with one slot always left empty, so that a full queue
+// and an empty one do not look alike. A ring of one entry could hold
+// nothing.
+TYPED_TEST_P(NvmeContract, ACompletionQueueOfOneEntryIsAnInvalidQueueSize) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    completion = host.CreateIoCompletionQueue(1, host.NewPage(), kIoVector,
+                                              /*entries=*/1);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidQueueSize);
+}
+
+TYPED_TEST_P(NvmeContract, ASubmissionQueueOfOneEntryIsAnInvalidQueueSize) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoCompletionQueue(1, host.NewPage(), kIoVector);
+    completion = host.CreateIoSubmissionQueue(
+        1, host.NewPage(), /*completion_queue=*/1, /*entries=*/1);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidQueueSize);
+}
+
+TYPED_TEST_P(NvmeContract, AReadOfANamespaceThatDoesNotExistIsRefused) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    completion = host.TryToReadNamespace(2);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidNamespace);
+}
+
+TYPED_TEST_P(NvmeContract, AWriteToANamespaceThatDoesNotExistIsRefused) {
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    completion = host.TryToWriteNamespace(2);
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kInvalidNamespace);
+}
+
+// Fills the I/O completion queue: sends flushes and takes their
+// completions without acknowledging any, until the queue has no room. A
+// queue is full with one slot to spare.
+inline void FillTheIoCompletionQueue(NvmeHost& host) {
+  const int room = host.Io().Entries() - 1;
+  for (int taken = 0; taken < room; ++taken) {
+    host.SubmitFlush();
+    host.WaitForCompletion(host.Io());
+  }
+}
+
+TYPED_TEST_P(NvmeContract,
+             ACommandIsNotCompletedWhileItsCompletionQueueIsFull) {
+  bool completed = true;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    FillTheIoCompletionQueue(host);
+    host.SubmitFlush();
+    completed = host.HasACompletion(host.Io());
+  });
+
+  EXPECT_FALSE(completed);
+}
+
+TYPED_TEST_P(NvmeContract,
+             ACommandThatWaitedForRoomCompletesOnceTheHostAcknowledges) {
+  std::uint16_t waiting = 0;
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    FillTheIoCompletionQueue(host);
+    waiting = host.SubmitFlush();
+    host.Acknowledge(host.Io());
+    completion = host.WaitForCompletion(host.Io());
+  });
+
+  ASSERT_TRUE(completion);
+  EXPECT_EQ(completion->command_id, waiting);
+}
+
 TYPED_TEST_P(NvmeContract, ABlockThatWasNeverWrittenReadsAsZeros) {
   std::optional<std::vector<std::uint8_t>> block;
 
@@ -847,6 +970,14 @@ REGISTER_TYPED_TEST_SUITE_P(
     CreatingCompletionQueueZeroIsAnInvalidQueueIdentifier,
     ASubmissionQueueTheControllerHasNoRoomForIsAnInvalidQueueIdentifier,
     CreatingSubmissionQueueZeroIsAnInvalidQueueIdentifier,
-    ACompletionQueueOnAVectorTheFunctionLacksIsAnInvalidVector);
+    ACompletionQueueOnAVectorTheFunctionLacksIsAnInvalidVector,
+    CreatingACompletionQueueThatExistsIsAnInvalidQueueIdentifier,
+    CreatingASubmissionQueueThatExistsIsAnInvalidQueueIdentifier,
+    ACompletionQueueOfOneEntryIsAnInvalidQueueSize,
+    ASubmissionQueueOfOneEntryIsAnInvalidQueueSize,
+    AReadOfANamespaceThatDoesNotExistIsRefused,
+    AWriteToANamespaceThatDoesNotExistIsRefused,
+    ACommandIsNotCompletedWhileItsCompletionQueueIsFull,
+    ACommandThatWaitedForRoomCompletesOnceTheHostAcknowledges);
 
 #endif  // TESTS_CPP_CONTRACTS_NVME_CONTRACT_H_
