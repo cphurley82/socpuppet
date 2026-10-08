@@ -7,6 +7,7 @@ import re
 import pytest
 
 import socpuppet
+from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
@@ -68,6 +69,16 @@ class TestTheZephyrShieldForTheHostsDrive:
 
         assert added
         assert added <= labels(drive_overlay())
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_the_board_with_its_overlay(
+        self, tmp_path
+    ):
+        board = (
+            ZEPHYR_MODULE / "boards/socpuppet/socpuppet_host/socpuppet_host.dts"
+        ).read_text()
+
+        assert dtc_errors(board + drive_overlay(), tmp_path) == ""
 
 
 def labels(devicetree):

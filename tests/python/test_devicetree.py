@@ -1,11 +1,9 @@
-import os
-import shutil
-import subprocess
 import textwrap
 
 import pytest
 
 import socpuppet as sp
+from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 
 
@@ -22,12 +20,6 @@ def ram_behind_a_link_and_a_router():
     platform.connect(link.b.initiator, bus.target)
     bus.map(ram.socket, base=0x8000_0000)
     return platform, cpu
-
-
-needs_dtc = pytest.mark.skipif(
-    shutil.which("dtc") is None,
-    reason="dtc (the devicetree compiler) is not installed",
-)
 
 
 class TestWhenAPlatformHasARamBehindALinkAndARouter:
@@ -227,18 +219,6 @@ class TestWhenTheDevicetreeCommandIsGivenAFileThatIsNotThere:
         assert result.returncode != 0
         assert "nowhere.py" in result.stderr
         assert "Traceback" not in result.stderr
-
-
-def dtc_errors(source_text, scratch):
-    """Compile devicetree source with dtc and return what it complained about."""
-    source = scratch / "platform.dts"
-    source.write_text(source_text)
-    compiled = subprocess.run(
-        ["dtc", "-I", "dts", "-O", "dtb", "-o", os.devnull, str(source)],
-        capture_output=True,
-        text=True,
-    )
-    return compiled.stderr
 
 
 def cpu_with_its_peripherals(*, xlen=64):
