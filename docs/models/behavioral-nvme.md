@@ -42,7 +42,7 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 | `dma` | How the controller reads and writes the host's memory. Connect it to an input of the bus the host's memory is on. |
 | `irq0`, `irq1`, ... | One interrupt line per vector. The admin queue uses `irq0`, and the host names a vector for each I/O queue when it creates it. A line may be left unconnected. |
 
-- **The drive** is `blocks` blocks of 512 bytes, kept in RAM, all zeros until written. It has one namespace, number 1. 🎓 A namespace is NVMe's word for a drive's worth of blocks, and a controller can have several.
+- **The drive** is `blocks` blocks of 512 bytes, kept in RAM, all zeros until written. Only what has been written takes memory, so a drive can be far larger than the machine you run on. It has one namespace, number 1. 🎓 A namespace is NVMe's word for a drive's worth of blocks, and a controller can have several.
 - **Enable and reset.** Setting `CC.EN` makes it ready at once. Clearing it resets the controller: every queue is gone, and what is on the drive stays.
 - **Admin commands**: Identify (the controller, a namespace, the list of namespaces), Set Features for the number of queues, and the two commands that create an I/O queue pair. Up to 8 pairs.
 - **I/O commands**: Read, Write and Flush.

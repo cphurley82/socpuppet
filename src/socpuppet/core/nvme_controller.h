@@ -4,8 +4,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <span>
-#include <vector>
+
+#include "socpuppet/core/block_store.h"
 
 // The layouts of the controller registers and of a command. They are
 // SPDK's (nvme_spec.h), and only nvme_controller.cpp includes it.
@@ -40,8 +43,12 @@ class NvmeController {
   };
 
   // `blocks` is how many blocks its one namespace holds, and `vectors`
-  // how many interrupt vectors it has.
+  // how many interrupt vectors it has. The drive is kept in RAM, zeros
+  // until written.
   NvmeController(HostMemory& host_memory, std::uint64_t blocks,
+                 std::size_t vectors);
+  // The same, with the drive the caller gives it.
+  NvmeController(HostMemory& host_memory, std::unique_ptr<BlockStore> drive,
                  std::size_t vectors);
 
   // Reads from the register block, the way a host reads the memory behind
@@ -173,15 +180,19 @@ class NvmeController {
   Outcome Read(const spdk_nvme_cmd& command);
   Outcome Write(const spdk_nvme_cmd& command);
 
-  // The part of the drive a read or a write covers, or nothing if any of
-  // it is past the end.
-  std::span<std::uint8_t> Blocks(const spdk_nvme_cmd& command);
+  // The blocks a read or a write is for.
+  struct BlockRange {
+    std::uint64_t first = 0;
+    std::uint64_t count = 0;
+  };
+  // The blocks the command names, or nothing if any of them is past the
+  // end of the drive.
+  std::optional<BlockRange> BlocksOf(const spdk_nvme_cmd& command) const;
 
   HostMemory& host_memory_;
-  std::uint64_t blocks_;
   std::size_t vectors_;
-  // What the drive holds: every block, in RAM, zeros until written.
-  std::vector<std::uint8_t> drive_;
+  // What the drive holds.
+  std::unique_ptr<BlockStore> drive_;
 
   // Registers, as the host last wrote them: CC (the configuration), AQA
   // (how long the admin queues are), and ASQ and ACQ (where they are).

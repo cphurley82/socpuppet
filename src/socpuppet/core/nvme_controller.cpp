@@ -3,9 +3,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
+#include "socpuppet/core/block_store.h"
 #include "socpuppet/core/prp.h"
 #include "spdk/nvme_spec.h"
 
@@ -16,8 +20,9 @@ namespace {
 // There is one namespace, and namespaces are numbered from 1.
 constexpr std::uint32_t kTheNamespace = 1;
 
-// A block is 512 bytes, the size a disk has had since the floppy.
+// The block size as NVMe gives it, a power of two: 2 to the 9th is 512.
 constexpr std::uint32_t kBlockSizeShift = 9;
+static_assert(std::size_t{1} << kBlockSizeShift == BlockStore::kBlockSize);
 
 // The controller registers end where the doorbells begin.
 constexpr std::size_t kControllerRegistersSize =
@@ -65,10 +70,13 @@ std::vector<HostExtent> Extents(NvmeController::HostMemory& host_memory,
 
 NvmeController::NvmeController(HostMemory& host_memory, std::uint64_t blocks,
                                std::size_t vectors)
-    : host_memory_(host_memory),
-      blocks_(blocks),
-      vectors_(vectors),
-      drive_(blocks << kBlockSizeShift) {}
+    : NvmeController(host_memory, std::make_unique<RamBlockStore>(blocks),
+                     vectors) {}
+
+NvmeController::NvmeController(HostMemory& host_memory,
+                               std::unique_ptr<BlockStore> drive,
+                               std::size_t vectors)
+    : host_memory_(host_memory), vectors_(vectors), drive_(std::move(drive)) {}
 
 bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
@@ -273,7 +281,7 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
         return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
       }
       spdk_nvme_ns_data name_space{};
-      name_space.nsze = blocks_;
+      name_space.nsze = drive_->Blocks();
       // One block format, which is therefore the one in use.
       name_space.lbaf[0].lbads = kBlockSizeShift;
       return SendToHost(command, BytesOf(name_space));
@@ -330,9 +338,11 @@ NvmeController::Outcome NvmeController::Read(const spdk_nvme_cmd& command) {
   if (command.nsid != kTheNamespace) {
     return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
   }
-  const std::span<std::uint8_t> blocks = Blocks(command);
-  if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
-  return SendToHost(command, blocks);
+  const std::optional<BlockRange> blocks = BlocksOf(command);
+  if (!blocks) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
+  std::vector<std::uint8_t> data(blocks->count << kBlockSizeShift);
+  drive_->Read(blocks->first, data);
+  return SendToHost(command, data);
 }
 
 // Write: the other way. The controller reads the blocks out of the host's
@@ -341,12 +351,18 @@ NvmeController::Outcome NvmeController::Write(const spdk_nvme_cmd& command) {
   if (command.nsid != kTheNamespace) {
     return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
   }
-  const std::span<std::uint8_t> blocks = Blocks(command);
-  if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
-  return FetchFromHost(command, blocks);
+  const std::optional<BlockRange> blocks = BlocksOf(command);
+  if (!blocks) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
+  std::vector<std::uint8_t> data(blocks->count << kBlockSizeShift);
+  const Outcome fetched = FetchFromHost(command, data);
+  // A write whose data did not all arrive changes nothing on the drive.
+  if (fetched.status == SPDK_NVME_SC_SUCCESS)
+    drive_->Write(blocks->first, data);
+  return fetched;
 }
 
-std::span<std::uint8_t> NvmeController::Blocks(const spdk_nvme_cmd& command) {
+std::optional<NvmeController::BlockRange> NvmeController::BlocksOf(
+    const spdk_nvme_cmd& command) const {
   // The starting block (the LBA, logical block address) is 64 bits in
   // dwords 10 and 11. The number of blocks is the low half of dword 12,
   // counted from zero.
@@ -355,9 +371,9 @@ std::span<std::uint8_t> NvmeController::Blocks(const spdk_nvme_cmd& command) {
   const std::uint64_t count = (command.cdw12 & 0xFFFF) + std::uint64_t{1};
   // Checked in blocks, before anything is turned into bytes: a block
   // number can be large enough to wrap around as a byte offset.
-  if (first > blocks_ || count > blocks_ - first) return {};
-  return std::span{drive_}.subspan(first << kBlockSizeShift,
-                                   count << kBlockSizeShift);
+  const std::uint64_t blocks = drive_->Blocks();
+  if (first > blocks || count > blocks - first) return {};
+  return BlockRange{.first = first, .count = count};
 }
 
 bool NvmeController::Interrupting(std::size_t vector) const {

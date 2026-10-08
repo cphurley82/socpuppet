@@ -29,6 +29,14 @@ void EnableWithFourEntryAdminQueues(NvmeController& controller) {
   controller.WriteRegister(0x14, std::array<std::uint8_t, 4>{1, 0, 0, 0});
 }
 
+// 512 TiB of drive: the controller keeps only what has been written.
+TEST(WhenADriveIsFarLargerThanTheMachinesMemory, AControllerForItIsStillMade) {
+  NoHostMemory memory;
+
+  EXPECT_NO_THROW((NvmeController{memory, /*blocks=*/std::uint64_t{1} << 40,
+                                  /*vectors=*/1}));
+}
+
 TEST(WhenTheHostReadsADoorbell, TheReadIsRefused) {
   NoHostMemory memory;
   const NvmeController controller{memory, /*blocks=*/0, /*vectors=*/1};
