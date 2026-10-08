@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestones M2 and M3a there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it that a Python host can read and write. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -189,6 +189,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
+- [MSI-to-PLIC bridge](models/msi-plic-bridge.md)
 - [PCIe endpoint](models/pcie-endpoint.md)
 - [PCIe root complex](models/pcie-root-complex.md)
 - [Router](models/router.md)

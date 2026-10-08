@@ -6,7 +6,7 @@
 
 The part of a host's interrupt controller that takes message-signalled interrupts. A PCIe device interrupts by writing a message to an address the host chose (see the [endpoint](pcie-endpoint.md)), and something at that address has to turn the write back into an interrupt for the CPU. On a RISC-V host that is an IMSIC (incoming message-signalled interrupt controller), and on a PC it is the local APIC.
 
-🚧 The real host's interrupt path for PCIe is a later milestone ([plan.md](../plan.md), M3b). This holds its place, so that a host with no CPU can be interrupted by a PCIe device today.
+💡 This is for a host with no CPU and no interrupt controller: a script reads the register to learn which vector woke it. The host board, which runs real firmware, has an [MSI-to-PLIC bridge](msi-plic-bridge.md) in this place, with a line for each vector.
 
 ## What it does
 

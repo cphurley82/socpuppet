@@ -58,6 +58,38 @@ Hello World! socpuppet_host/socpuppet_rv64
 
 Or, for a first look, `python -m socpuppet.boards.host build/zephyr/zephyr.elf` does the same.
 
+## With a drive
+
+The host can have an SSD on a PCIe link: 🎭 the [behavioral NVMe](models/behavioral-nvme.md) behind a [PCIe endpoint](models/pcie-endpoint.md). Zephyr finds it by scanning the bus and uses it through its own NVMe driver and its disk API (`disk_access_read` and friends, on the disk `nvme0n0`).
+
+| What | Where | Zephyr driver |
+|---|---|---|
+| PCIe root complex, configuration window | `0x1010_0000`, one bus | `socpuppet,pcie`, from socpuppet's module |
+| PCIe root complex, memory window | `0x1080_0000`, 1 MB | |
+| MSI-to-PLIC bridge | `0x0200_0000`, to PLIC sources 1 and 2 | (the root complex's driver uses it) |
+| NVMe drive | found by the scan | `nvme-controller` |
+
+🎓 Zephyr calls hardware that is plugged into a board a *shield*. The drive, and the host's side of its link, are the shield `socpuppet_host_drive`. Name it when you build:
+
+```sh
+west build -b socpuppet_host --shield socpuppet_host_drive my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+The shield adds the devices to the devicetree and switches on PCIe and the NVMe driver. Your application adds `CONFIG_DISK_ACCESS=y`. Then describe the host with a drive, of as many 512-byte blocks as you like:
+
+```python
+board = host(drive_blocks=4096)     # 2 MB
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf")
+```
+
+`tests/python/test_m3b_exit.py` is a complete example. It runs Zephyr's own test of its disk interface, unchanged.
+
+⚠️ Firmware built with the shield needs the drive. On a host described without one it stops before it prints anything: the first place it looks for the drive is an address where nothing answers.
+
+💡 A PCIe device interrupts with a message, and the board's interrupt controller only has wires. [The bridge's page](models/msi-plic-bridge.md) says how the two meet.
+
 ## Waiting for something to happen
 
 A test usually wants to run until the firmware says something, with a limit in case it never does:
@@ -107,7 +139,7 @@ Breakpoints, stepping, backtraces and reading memory all work as on hardware. Si
 ## When it does not boot
 
 - **`load_elf` refuses the image.** It says why: the image was built for another word size, or it does not start at the CPU's reset vector. The second usually means it was built for a different board.
-- **Nothing is printed.** The firmware has most likely faulted before its console was up. Check that the image was built for `socpuppet_host`. A build for another board will touch devices that are not there.
+- **Nothing is printed.** The firmware has most likely faulted before its console was up. Check that the image was built for `socpuppet_host`. A build for another board will touch devices that are not there. So will a build with the drive's shield on a host described with no drive.
 - **"Nothing took an access at address ..."** in the log. The firmware reached for a device the board does not have. The address says which.
 
 ## Changing the board

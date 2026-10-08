@@ -26,7 +26,7 @@ platform.connect(plic.irq, cpu.irq)
 - **The standard register map**, as in the PLIC specification and as Zephyr's `sifive,plic-1.0.0` driver and QEMU use it: priorities from offset 0, pending bits at `0x1000`, enable bits at `0x2000`, the threshold at `0x20_0000` and claim/complete at `0x20_0004`.
 - **Priorities and ties.** The highest priority is claimed first, and of two equal ones the lower source number.
 - **Level-sensitive sources.** A source whose line is still high when its handler completes is pending again at once.
-- **A request made while the handler runs is remembered.** A source whose line rose after it was claimed is pending again at completion, even if the line has dropped since. 💡 This is for a device whose line only pulses, as a message-signalled interrupt does once it has been turned into a wire: the handler may already have looked, and there is no level left to say so. Two pulses before the claim are one interrupt, and so are any number of them while the handler runs.
+- **A request made while the handler runs is remembered.** A source whose line rose after it was claimed is pending again at completion, even if the line has dropped since. 💡 This is for a device whose line only pulses, as a message-signalled interrupt does once the [MSI-to-PLIC bridge](msi-plic-bridge.md) has turned it into a wire: the handler may already have looked, and there is no level left to say so. Two pulses before the claim are one interrupt, and so are any number of them while the handler runs.
 
 ## What it leaves out
 

@@ -64,7 +64,7 @@ A line is high while a completion queue on its vector holds a completion the hos
 - **Time.** Nothing takes any. There is no latency, and the controller never falls behind or pushes back.
 - **Most of the command set.** No deleting queues, no Get Features or log pages, no asynchronous events, no Dataset Management (TRIM), no namespaces beyond the first, and block size is fixed at 512.
 - **Sharing a vector.** Each completion queue is expected to have a vector to itself.
-- **Checks a real controller makes** on the host's good behaviour. A full completion queue is written over. The page size and entry sizes in `CC` are taken as read. Creating a queue that already exists replaces it. Read, Write and Flush do not look at the namespace number.
+- **Some checks a real controller makes** on the host's good behaviour. The page size and entry sizes in `CC` are taken as read, and Flush does not look at the namespace number.
 - **Switching interrupts off.** A queue always interrupts: its interrupt-enable bit and the mask registers (`INTMS`, `INTMC`) are ignored.
 - **A name.** Identify says how many namespaces there are and how big, and nothing else: no model, no serial number, no version.
 - **DMA failures** are noticed only for a command's data pages. A submission queue, a completion queue or a PRP list at an address nothing answers is not.
