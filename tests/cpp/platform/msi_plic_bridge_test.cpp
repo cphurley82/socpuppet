@@ -83,4 +83,18 @@ TEST(WhenAnMsiPlicBridgeHasRaisedALine, TheLineFallsByItself) {
   EXPECT_FALSE(fixture.LineIsHigh(1));
 }
 
+// The second message arrives before the first has been put on the line,
+// and the same holds for one that arrives while the line is still high. A
+// PLIC hears a rise, so each message needs a fall before it.
+TEST(WhenTwoMessagesForOneVectorArriveBackToBack, ItsLineRisesTwice) {
+  MasterWithAnMsiPlicBridge fixture{[](BusDriver& bus) {
+    SendMessage(bus, 1);
+    SendMessage(bus, 1);
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.Rises(1), 2);
+}
+
 }  // namespace socpuppet

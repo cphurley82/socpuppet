@@ -50,26 +50,32 @@ class MsiPlicBridge : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     const auto vector = LoadLittleEndian<std::uint32_t>(
         {transaction.get_data_ptr(), transaction.get_data_length()});
-    waiting_[vector] = true;
+    ++waiting_[vector];
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
     changed_.notify(sc_core::SC_ZERO_TIME);
   }
 
   // The only process that writes the lines. A message arrives in the
   // sending device's process, and a SystemC signal takes one writer.
+  //
+  // Each message gets a rise of its own, and a rise needs a fall before
+  // it. So a line that is high falls, and only a line that is low rises
+  // for the next message waiting.
   void DriveTheLines() {
-    bool raised = false;
+    bool more_to_do = false;
     for (std::size_t vector = 0; vector < irq.size(); ++vector) {
-      irq[vector].write(waiting_[vector]);
-      raised = raised || waiting_[vector];
-      waiting_[vector] = false;
+      const bool rise = !irq[vector].read() && waiting_[vector] > 0;
+      if (rise) --waiting_[vector];
+      irq[vector].write(rise);
+      // What rose now falls a delta cycle on, and what fell may have
+      // another message to rise for.
+      more_to_do = more_to_do || rise || waiting_[vector] > 0;
     }
-    // What rose now falls a delta cycle on.
-    if (raised) changed_.notify(sc_core::SC_ZERO_TIME);
+    if (more_to_do) changed_.notify(sc_core::SC_ZERO_TIME);
   }
 
-  // Which vectors have had a message that is not yet on its line.
-  std::vector<bool> waiting_;
+  // How many messages each vector has had that are not yet on its line.
+  std::vector<std::uint32_t> waiting_;
   sc_core::sc_event changed_;
 };
 
