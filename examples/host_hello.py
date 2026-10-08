@@ -7,22 +7,34 @@ and prints what the firmware printed.
 
 Build the firmware first:      firmware/build.sh
 Run it:                        python examples/host_hello.py
+
+The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
+that is set. With no image there the example says so and counts as not
+run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
+missing image is a failure.
 """
 
+import os
 import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import host
 
-IMAGE = pathlib.Path("build/firmware/hello_world_socpuppet_host.elf")
+IMAGE = (
+    pathlib.Path(os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware"))
+    / "hello_world_socpuppet_host.elf"
+)
 
 if __name__ == "__main__":
     if not IMAGE.exists():
-        print(
+        missing = (
             f"There is no {IMAGE} yet. Build the firmware with "
             "`firmware/build.sh`, which takes a few minutes the first time."
         )
+        if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
+            sys.exit(missing)
+        print(missing)
         # ctest's code for "could not be run here", which is not a failure.
         sys.exit(77)
 

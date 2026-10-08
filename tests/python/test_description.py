@@ -1,12 +1,9 @@
 import json
-import os
-import subprocess
-import sys
-import textwrap
 
 import pytest
 
 import socpuppet as sp
+from processes import run_python
 
 
 class TestWhenAPlatformIsOnlyDescribed:
@@ -32,18 +29,6 @@ class TestWhenAPlatformIsOnlyDescribed:
         )
 
         assert loaded == "[]"
-
-
-def run_python(code):
-    """Run a snippet in a fresh interpreter and return what it printed."""
-    result = subprocess.run(
-        [sys.executable, "-c", textwrap.dedent(code)],
-        env={"PYTHONPATH": os.pathsep.join(sys.path)},
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.strip()
 
 
 class TestWhenAPortThatDoesNotExistIsNamed:

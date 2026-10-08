@@ -1,12 +1,12 @@
 import os
 import shutil
 import subprocess
-import sys
 import textwrap
 
 import pytest
 
 import socpuppet as sp
+from processes import run_socpuppet
 
 
 def ram_behind_a_link_and_a_router():
@@ -114,7 +114,7 @@ class TestWhenTheDevicetreeCommandIsGivenAPlatformFile:
             )
         )
 
-        printed = run_socpuppet("devicetree", str(description))
+        printed = run_socpuppet("devicetree", str(description)).stdout
 
         assert "ram: memory@2000 {" in printed
 
@@ -124,7 +124,7 @@ class TestWhenTheDevicetreeCommandIsGivenAFileWithNoPlatformInIt:
         empty = tmp_path / "empty.py"
         empty.write_text("")
 
-        result = run_socpuppet_unchecked("devicetree", str(empty))
+        result = run_socpuppet("devicetree", str(empty), check=False)
 
         assert result.returncode != 0
         assert "`platform`" in result.stderr
@@ -140,22 +140,6 @@ def dtc_errors(source_text, scratch):
         text=True,
     )
     return compiled.stderr
-
-
-def run_socpuppet_unchecked(*arguments):
-    return subprocess.run(
-        [sys.executable, "-m", "socpuppet", *arguments],
-        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
-        capture_output=True,
-        text=True,
-    )
-
-
-def run_socpuppet(*arguments):
-    """Run the socpuppet command line and return what it printed."""
-    result = run_socpuppet_unchecked(*arguments)
-    assert result.returncode == 0, result.stderr
-    return result.stdout
 
 
 def cpu_with_its_peripherals(*, xlen=64):

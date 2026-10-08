@@ -1,12 +1,10 @@
-import os
 import signal
 import subprocess
-import sys
-import textwrap
 
 import pytest
 
 import socpuppet as sp
+from processes import start_python
 from scripts import play, writing
 
 
@@ -291,17 +289,6 @@ def interrupt_and_collect_errors(process):
         process.kill()
         raise
     return errors
-
-
-def start_python(code):
-    """Start a snippet in a fresh interpreter, with its output piped back."""
-    return subprocess.Popen(
-        [sys.executable, "-c", textwrap.dedent(code)],
-        env={"PYTHONPATH": os.pathsep.join(sys.path)},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
 
 
 def two_writes_ten_and_fifteen_nanoseconds_in():
