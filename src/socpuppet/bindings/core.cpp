@@ -179,9 +179,18 @@ PYBIND11_MODULE(_core, m) {
              return py::bytes(
                  self.platform.ModuleAt<socpuppet::Ns16550>(path).Output());
            })
+      // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",
            [](NativePlatform& self, const std::string& path) {
-             return self.platform.Ports(path);
+             py::list ports;
+             for (const socpuppet::Port& each : self.platform.Ports(path)) {
+               const bool is_source =
+                   RoleOf(each) == socpuppet::Port::Role::kSource;
+               ports.append(py::make_tuple(each.name, ToString(KindOf(each)),
+                                           is_source ? "source" : "sink",
+                                           each.required));
+             }
+             return ports;
            })
       .def("elaborate",
            [](NativePlatform& self) {

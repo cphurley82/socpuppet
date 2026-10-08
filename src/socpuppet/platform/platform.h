@@ -99,8 +99,8 @@ class Platform {
   bool DebugWrite(const std::string& via, std::uint64_t address,
                   std::span<const std::byte> data);
 
-  // The names of the ports of the component at `path`.
-  std::vector<std::string> Ports(const std::string& path);
+  // The ports of the component at `path`.
+  const std::vector<Port>& Ports(const std::string& path);
 
   // The component at `path`, as its concrete C++ type. An escape hatch for
   // C++ callers that need more than composing by name offers.

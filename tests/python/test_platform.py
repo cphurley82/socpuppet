@@ -294,22 +294,56 @@ class TestWhenTheQuantumIsChangedAfterBuilding:
 
 
 @pytest.mark.platform
-class TestWhenAComponentIsGivenAParameterItDoesNotTake:
+class TestWhenAParameterIsOutOfTheRangeTheSimulatorTakes:
     def test_building_is_refused_and_the_error_names_the_parameter(self):
         platform = sp.Platform()
-        platform.add("plic", sp.Plic(sources=8))
+        platform.add("timer", sp.MachineTimer(frequency_hz=0))
 
-        with pytest.raises(ValueError, match='"plic" has no "sources"'):
+        with pytest.raises(ValueError, match='"frequency_hz"'):
             platform.build()
+
+
+class TestWhenABusPortIsConnectedToAWire:
+    def test_it_is_refused_and_the_error_says_which_is_which(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+
+        with pytest.raises(
+            ValueError,
+            match=r"cpu\.socket to cpu\.timer_irq.*a bus port.*a wire port",
+        ):
+            platform.connect(cpu.socket, cpu.timer_irq)
+
+
+class TestWhenASinkIsConnectedToASource:
+    def test_it_is_refused_and_the_error_says_which_way_round_it_goes(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        ram = platform.add("ram", sp.Memory(size=0x100))
+
+        with pytest.raises(
+            ValueError, match=r"ram\.socket to cpu\.socket.*must be a source"
+        ):
+            platform.connect(ram.socket, cpu.socket)
+
+
+class TestWhenAWireIsConnectedWithATrace:
+    def test_it_is_refused_and_the_error_says_only_a_bus_can_be_traced(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        timer = platform.add("timer", sp.MachineTimer())
+
+        with pytest.raises(ValueError, match="only a bus connection"):
+            platform.connect(timer.irq, cpu.timer_irq, trace=True)
 
 
 @pytest.mark.platform
 class TestWhenAnEarlierBuildFailedPartWay:
     def test_the_next_build_says_the_process_is_spent_and_why(self):
-        misspelled = sp.Platform()
-        misspelled.add("plic", sp.Plic(sources=8))
-        with pytest.raises(ValueError, match="sources"):
-            misspelled.build()
+        refused = sp.Platform()
+        refused.add("timer", sp.MachineTimer(frequency_hz=0))
+        with pytest.raises(ValueError, match="frequency_hz"):
+            refused.build()
 
         with pytest.raises(RuntimeError) as error:
             thin_platform(writes=[]).build()

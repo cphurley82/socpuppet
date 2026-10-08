@@ -3,18 +3,40 @@
 Each class here describes one implementation in the C++ registry: its name
 there, its parameters and its ports. Describing a platform uses only these
 classes, so it works without loading the simulator.
+
+A component's parameters are its fields, written as a dataclass's are, and
+its ports are a tuple of `PortSpec`:
+
+    class MachineTimer(Component):
+        implementation = "machine_timer"
+        port_specs = (target("socket"), wire_out("irq"))
+
+        frequency_hz: int = 10_000_000
 """
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Iterator
-from typing import TYPE_CHECKING, NamedTuple, Protocol, override
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Literal,
+    NamedTuple,
+    Protocol,
+    dataclass_transform,
+    override,
+)
+
+from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 
 if TYPE_CHECKING:
     from socpuppet import _core
     from socpuppet.ops import Operation
+    from socpuppet.platform import Platform
 
 #: A script: a generator function that yields operations. What a read
 #: returned is sent back into the generator. The type asks only for the
@@ -43,33 +65,107 @@ class DeviceNode(NamedTuple):
     chosen: tuple[str, ...] = ()
 
 
+class PortSpec(NamedTuple):
+    """One port of a component: its name, and what it connects to."""
+
+    name: str
+    #: "bus" for a memory-mapped socket, and "wire" for a single line, such
+    #: as an interrupt or a reset.
+    kind: Literal["bus", "wire"]
+    #: "source" for where a connection is driven from (a bus master's
+    #: socket, or the port driving a wire), and "sink" for where it arrives.
+    role: Literal["source", "sink"]
+    #: Whether the port must be connected before the platform is built.
+    required: bool = True
+
+
+def initiator(name: str, required: bool = True) -> PortSpec:
+    """A socket that accesses go out of.
+
+    🎓 "Initiator" is TLM's word for whoever starts a transaction.
+    """
+    return PortSpec(name, "bus", "source", required)
+
+
+def target(name: str, required: bool = True) -> PortSpec:
+    """A socket that accesses arrive at."""
+    return PortSpec(name, "bus", "sink", required)
+
+
+def wire_out(name: str, required: bool = True) -> PortSpec:
+    """A line the component drives."""
+    return PortSpec(name, "wire", "source", required)
+
+
+def wire_in(name: str) -> PortSpec:
+    """A line the component reads. Left unconnected, it reads as low."""
+    return PortSpec(name, "wire", "sink", required=False)
+
+
+def not_a_parameter(default: Any) -> Any:
+    """A field the simulator is not configured with, and its default.
+
+    For what a component is handed that is not a number, such as a script.
+    """
+    return dataclasses.field(
+        default=default, kw_only=False, metadata={"parameter": False}
+    )
+
+
+@dataclass_transform(
+    kw_only_default=True,
+    eq_default=False,
+    field_specifiers=(dataclasses.field, not_a_parameter),
+)
 class Component(ABC):
-    """One block of a platform, as described (not yet built)."""
+    """One block of a platform, as described (not yet built).
+
+    A subclass is a dataclass without saying so: each annotated attribute
+    is a parameter, given by keyword, and one with a value has a default.
+    A keyword the class does not have is refused when the component is
+    created.
+    """
 
     #: The name of the implementation in the C++ registry.
-    implementation: str
+    implementation: ClassVar[str]
 
     #: Whether the component is one whose view of memory a peek, a poke or
     #: the devicetree takes: a CPU or its stand-in. A device that only
     #: starts accesses for DMA is not one.
-    is_bus_master: bool = False
+    is_bus_master: ClassVar[bool] = False
 
     #: How many bytes of address space the component answers to, or None
     #: for a component that cannot be mapped onto a router.
     mapped_size: int | None = None
 
-    def __init__(self, **parameters: int) -> None:
-        self._parameters = parameters
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Two components are the same only if they are one object, so that
+        # two memories of one size can be told apart.
+        dataclasses.dataclass(kw_only=True, eq=False)(cls)
 
     @property
     @abstractmethod
+    def port_specs(self) -> tuple[PortSpec, ...]:
+        """The component's ports."""
+
+    @property
     def ports(self) -> tuple[str, ...]:
         """The names of the component's ports."""
+        return tuple(spec.name for spec in self.port_specs)
 
     @property
     def parameters(self) -> dict[str, int]:
         """What the implementation is configured with, by name."""
-        return self._parameters
+        return {
+            each.name: getattr(self, each.name)
+            for each in dataclasses.fields(self)  # type: ignore[arg-type]
+            if each.metadata.get("parameter", True)
+        }
+
+    def place(self, platform: Platform, path: str) -> Placed:
+        """This component at `path` in `platform`, with its ports."""
+        return Placed(platform, path, self)
 
     def configure(self, native: _core.Platform, path: str) -> None:
         """Hand the built component anything its parameters cannot carry.
@@ -160,17 +256,31 @@ class BehavioralNvme(Component):
     #: come after them.
     mapped_size = 0x2000
 
-    def __init__(self, *, blocks: int, vectors: int = 2) -> None:
-        super().__init__(blocks=blocks, vectors=vectors)
+    blocks: int
+    vectors: int = 2
 
     @property
-    def ports(self) -> tuple[str, ...]:
+    def port_specs(self) -> tuple[PortSpec, ...]:
         """The register block, the DMA port, and one port per interrupt line."""
         return (
-            "bar0",
-            "dma",
-            *(f"irq{vector}" for vector in range(self.parameters["vectors"])),
+            target("bar0"),
+            initiator("dma"),
+            # A host need not use every vector.
+            *(
+                wire_out(f"irq{vector}", required=False)
+                for vector in range(self.vectors)
+            ),
         )
+
+
+#: What a CPU and its stand-in both have: the socket their accesses go out
+#: of, and their three inputs.
+_CPU_PORTS = (
+    initiator("socket"),
+    wire_in("irq"),
+    wire_in("timer_irq"),
+    wire_in("reset"),
+)
 
 
 class DbtRiseCpu(Component):
@@ -192,17 +302,12 @@ class DbtRiseCpu(Component):
     """
 
     implementation = "dbt_rise_cpu"
-    ports = ("socket", "irq", "timer_irq", "reset")
+    port_specs = _CPU_PORTS
     is_bus_master = True
 
-    def __init__(
-        self, *, xlen: int, reset_vector: int, gdb_port: int = 0
-    ) -> None:
-        super().__init__(
-            xlen=xlen, reset_vector=reset_vector, gdb_port=gdb_port
-        )
-        self.xlen = xlen
-        self.reset_vector = reset_vector
+    xlen: int
+    reset_vector: int
+    gdb_port: int = 0
 
     @override
     def cpu_node(self, label: str) -> tuple[str, ...]:
@@ -264,12 +369,11 @@ class MachineTimer(Component):
     """
 
     implementation = "machine_timer"
-    ports = ("socket", "irq")
+    port_specs = (target("socket"), wire_out("irq"))
     #: As on the CLINT: `mtimecmp` at 0x4000 and `mtime` at 0xBFF8.
     mapped_size = 0x1_0000
 
-    def __init__(self, *, frequency_hz: int = 10_000_000) -> None:
-        super().__init__(frequency_hz=frequency_hz)
+    frequency_hz: int = 10_000_000
 
     @override
     def device_node(self, base: int) -> DeviceNode:
@@ -289,17 +393,18 @@ class Memory(Component):
     """A flat RAM of `size` bytes."""
 
     implementation = "memory"
-    ports = ("socket",)
+    port_specs = (target("socket"),)
 
-    def __init__(self, *, size: int) -> None:
-        super().__init__(size=size)
-        self.mapped_size = size
+    size: int
+
+    def __post_init__(self) -> None:
+        self.mapped_size = self.size
 
     @override
     def device_node(self, base: int) -> DeviceNode:
         return DeviceNode(
             "memory",
-            ((base, self.parameters["size"]),),
+            ((base, self.size),),
             ('device_type = "memory";',),
             on_bus=False,
             chosen=("zephyr,sram",),
@@ -317,7 +422,7 @@ class MsiReceiver(Component):
     """
 
     implementation = "msi_receiver"
-    ports = ("socket", "irq")
+    port_specs = (target("socket"), wire_out("irq"))
     #: One 32-bit register.
     mapped_size = 4
 
@@ -331,9 +436,13 @@ class Ns16550(Component):
     """
 
     implementation = "ns16550"
-    ports = ("socket",)
+    port_specs = (target("socket"),)
     #: The 16550's eight registers, one byte each.
     mapped_size = 8
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedUart:
+        return PlacedUart(platform, path, self)
 
     @override
     def device_node(self, base: int) -> DeviceNode:
@@ -360,7 +469,14 @@ class PassThroughLinkEndpoint(Component):
     """
 
     implementation = "pass_through_link_endpoint"
-    ports = ("target", "initiator", "peer_initiator", "peer_target")
+    # The die's side may be left unconnected in either direction. The other
+    # side is the other endpoint.
+    port_specs = (
+        target("target", required=False),
+        initiator("initiator", required=False),
+        initiator("peer_initiator"),
+        target("peer_target"),
+    )
 
     @override
     def routes(self, port: str) -> Iterable[tuple[str, int]]:
@@ -411,37 +527,29 @@ class PcieEndpoint(Component):
 
     implementation = "pcie_endpoint"
 
-    def __init__(
-        self,
-        *,
-        vendor_id: int,
-        device_id: int,
-        class_code: int,
-        function_size: int,
-        vectors: int,
-    ) -> None:
-        if not 1 <= vectors <= 2048:
+    vendor_id: int
+    device_id: int
+    class_code: int
+    function_size: int
+    vectors: int
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.vectors <= 2048:
             raise ValueError(
                 f"A PCIe endpoint has 1 to 2048 interrupt vectors, which is "
-                f"what an MSI-X table can hold, and {vectors} were asked for."
+                f"what an MSI-X table can hold, and {self.vectors} were "
+                "asked for."
             )
-        super().__init__(
-            vendor_id=vendor_id,
-            device_id=device_id,
-            class_code=class_code,
-            function_size=function_size,
-            vectors=vectors,
-        )
 
     @property
-    def ports(self) -> tuple[str, ...]:
+    def port_specs(self) -> tuple[PortSpec, ...]:
         """The link, the function's three kinds of port, one line per vector."""
         return (
-            "from_host",
-            "to_host",
-            "bar0",
-            "dma",
-            *(f"irq{vector}" for vector in range(self.parameters["vectors"])),
+            target("from_host"),
+            initiator("to_host"),
+            initiator("bar0"),
+            target("dma"),
+            *(wire_in(f"irq{vector}") for vector in range(self.vectors)),
         )
 
 
@@ -461,7 +569,13 @@ class PcieRootComplex(Component):
     """
 
     implementation = "pcie_root_complex"
-    ports = ("ecam", "mmio", "dma", "to_device", "from_device")
+    port_specs = (
+        target("ecam"),
+        target("mmio"),
+        initiator("dma"),
+        initiator("to_device"),
+        target("from_device"),
+    )
 
     @override
     def located_parameters(
@@ -491,10 +605,10 @@ class Plic(Component):
     implementation = "plic"
     #: The PLIC numbers its sources from 1. 0 means "no interrupt".
     SOURCES = 31
-    ports = (
-        "socket",
-        "irq",
-        *(f"source{number}" for number in range(1, SOURCES + 1)),
+    port_specs = (
+        target("socket"),
+        wire_out("irq"),
+        *(wire_in(f"source{number}") for number in range(1, SOURCES + 1)),
     )
     #: The PLIC's registers are spread over 64 MB of address space.
     mapped_size = 0x400_0000
@@ -535,11 +649,13 @@ class ScriptedBusMaster(Component):
     """
 
     implementation = "scripted_bus_master"
-    ports = ("socket", "irq", "timer_irq", "reset")
+    port_specs = _CPU_PORTS
     is_bus_master = True
 
-    def __init__(self, script: Script | None = None) -> None:
-        super().__init__()
+    script: Script | None = not_a_parameter(None)
+
+    def __post_init__(self) -> None:
+        script = self.script
         if script is not None and not inspect.isgeneratorfunction(script):
             if inspect.isgenerator(script):
                 raise TypeError(
@@ -554,7 +670,6 @@ class ScriptedBusMaster(Component):
                 "never yields. Write it as a function that yields operations, "
                 "such as `yield sp.write32(address, value)`."
             )
-        self.script = script
 
     @override
     def configure(self, native: _core.Platform, path: str) -> None:
@@ -573,25 +688,30 @@ class Router(Component):
 
     implementation = "router"
 
-    def __init__(self) -> None:
+    def __post_init__(self) -> None:
         self._inputs = 1
         # (base, size, label), one per output
         self._ranges: list[tuple[int, int, str]] = []
 
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedRouter:
+        return PlacedRouter(platform, path, self)
+
     @property
-    def ports(self) -> tuple[str, ...]:
+    def port_specs(self) -> tuple[PortSpec, ...]:
         """One port per input, then one output port per mapped range.
 
         The first input is `target`, and the ones added after it are `in1`,
         `in2` and so on.
         """
         return (
-            "target",
-            *(f"in{index}" for index in range(1, self._inputs)),
-            *(f"out{index}" for index in range(len(self._ranges))),
+            target("target"),
+            *(target(f"in{index}") for index in range(1, self._inputs)),
+            *(initiator(f"out{index}") for index in range(len(self._ranges))),
         )
 
     @property
+    @override
     def parameters(self) -> dict[str, int]:
         """The address map, flattened to the form the simulator takes.
 

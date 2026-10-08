@@ -32,7 +32,8 @@ from socpuppet.components import (
     Plic,
     Router,
 )
-from socpuppet.platform import Placed, PlacedUart, Platform
+from socpuppet.placed import Placed, PlacedUart
+from socpuppet.platform import Platform
 from socpuppet.time import ms
 
 #: Where the RAM starts, and where the CPU starts executing.

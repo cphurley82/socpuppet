@@ -14,7 +14,8 @@ from socpuppet.address_map import reachable_ports
 from socpuppet.components import DeviceNode
 
 if TYPE_CHECKING:
-    from socpuppet.platform import Connection, Placed, Port
+    from socpuppet.placed import Placed, Port
+    from socpuppet.platform import Connection
 
 
 def generate(connections: Collection[Connection], view: Port) -> str:

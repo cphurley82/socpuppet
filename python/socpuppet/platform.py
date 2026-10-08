@@ -6,16 +6,12 @@ import json
 import os
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import devicetree
 from socpuppet.address_map import reachable_ports
-from socpuppet.components import (
-    Component,
-    LinkModel,
-    Ns16550,
-    Router,
-)
+from socpuppet.components import LinkModel
+from socpuppet.placed import Placed, Port
 from socpuppet.time import us
 from socpuppet.trace import TraceRecord, wants_color
 
@@ -23,85 +19,16 @@ if TYPE_CHECKING:
     from socpuppet import _core
 
 
-class Port:
-    """One port of a described component, such as `cpu.socket`."""
+class Placeable[P: Placed](Protocol):
+    """What can be added to a platform: anything that can take its place.
 
-    def __init__(self, placed: Placed, name: str) -> None:
-        self.placed = placed
-        self.name = name
-        self.path = f"{placed.path}.{name}"
+    Every `Component` can. What `place` returns is what `add` hands back,
+    so a router's `add` gives a `PlacedRouter`, with `map` on it.
+    """
 
-
-class Placed:
-    """A component at its place in a platform. Its ports are attributes."""
-
-    def __init__(
-        self, platform: Platform, path: str, component: Component
-    ) -> None:
-        self._platform = platform
-        self.path = path
-        self.component = component
-
-    def __getattr__(self, name: str) -> Port:
-        # Reached only for names that are not ordinary attributes: the ports.
-        if name in self.component.ports:
-            return Port(self, name)
-        raise AttributeError(
-            f'"{self.path}" has no port called "{name}". '
-            f"Its ports are: {', '.join(self.component.ports)}."
-        )
-
-
-class PlacedRouter(Placed):
-    """A router at its place in a platform."""
-
-    component: Router
-
-    def map(self, target: Port, base: int, size: int | None = None) -> None:
-        """Route accesses starting at `base` to the port `target`.
-
-        The range is as long as the target component's own size, and the
-        target sees addresses as offsets from `base`.
-
-        Something with no size of its own, such as a link to another die,
-        needs to be told one: `size` is then how much address space lies
-        behind it.
-        """
-        self._platform.refuse_if_built("map a range")
-        if size is None:
-            size = target.placed.component.mapped_size
-        if size is None:
-            raise ValueError(
-                f"Cannot map {target.path}: it has no size of its own, as a "
-                "Memory has. Say how much address space lies behind it with "
-                "size=<bytes>."
-            )
-        output = self.component.add_output(base, size, label=target.path)
-        self._platform.connect(Port(self, output), target)
-
-    def add_input(self) -> Port:
-        """Add an input, for one more source of accesses.
-
-        The first source connects to `target`. Each one after that needs an
-        input of its own: `platform.connect(device.dma, bus.add_input())`.
-        Every input sees the same address map, and every input added must
-        be connected.
-        """
-        self._platform.refuse_if_built("add an input")
-        return Port(self, self.component.add_input())
-
-
-class PlacedUart(Placed):
-    """A UART at its place in a platform."""
-
-    @property
-    def output(self) -> str:
-        """Everything the firmware has printed through the UART so far.
-
-        A byte that is not text comes out as the replacement character, �.
-        """
-        native = self._platform.native()
-        return native.uart_output(self.path).decode(errors="replace")
+    def place(self, platform: Platform, path: str) -> P:
+        """The component at `path` in `platform`."""
+        ...
 
 
 class Link:
@@ -137,13 +64,7 @@ class Group:
         self._platform = platform
         self.path = path
 
-    @overload
-    def add(self, name: str, component: Router) -> PlacedRouter: ...
-    @overload
-    def add(self, name: str, component: Ns16550) -> PlacedUart: ...
-    @overload
-    def add(self, name: str, component: Component) -> Placed: ...
-    def add(self, name: str, component: Component) -> Placed:
+    def add[P: Placed](self, name: str, component: Placeable[P]) -> P:
         """Place `component` inside this group and return it with its ports."""
         return self._platform.add(f"{self.path}.{name}", component)
 
@@ -187,13 +108,7 @@ class Platform:
         self.refuse_if_built("change the quantum")
         self._quantum = picoseconds
 
-    @overload
-    def add(self, path: str, component: Router) -> PlacedRouter: ...
-    @overload
-    def add(self, path: str, component: Ns16550) -> PlacedUart: ...
-    @overload
-    def add(self, path: str, component: Component) -> Placed: ...
-    def add(self, path: str, component: Component) -> Placed:
+    def add[P: Placed](self, path: str, component: Placeable[P]) -> P:
         """Place `component` at `path` and return it with its ports."""
         self.refuse_if_built("add a component")
         if path in self._placed:
@@ -201,13 +116,7 @@ class Platform:
                 f'There is already a component called "{path}". '
                 "Each component needs its own name."
             )
-        placed: Placed
-        if isinstance(component, Router):
-            placed = PlacedRouter(self, path, component)
-        elif isinstance(component, Ns16550):
-            placed = PlacedUart(self, path, component)
-        else:
-            placed = Placed(self, path, component)
+        placed = component.place(self, path)
         self._placed[path] = placed
         return placed
 
@@ -245,6 +154,7 @@ class Platform:
         trace as well.
         """
         self.refuse_if_built("connect ports")
+        _refuse_a_mismatch(source, sink, trace)
         self._connections.append(Connection(source, sink, trace))
 
     def build(self) -> None:
@@ -521,3 +431,31 @@ class Platform:
                 "to create the simulation."
             )
         return self._native
+
+
+def _refuse_a_mismatch(source: Port, sink: Port, trace: bool) -> None:
+    """Raise if the two ports cannot be connected, or not with a trace.
+
+    The simulator would refuse the same at `build()`. Refusing here means
+    that everything made from a description (a devicetree, the JSON) is
+    made from one that can be built.
+    """
+    first, second = source.spec, sink.spec
+    if first.kind != second.kind:
+        raise ValueError(
+            f"Cannot connect {source.path} to {sink.path}: the first is a "
+            f"{first.kind} port and the second is a {second.kind} port."
+        )
+    if first.role != "source" or second.role != "sink":
+        raise ValueError(
+            f"Cannot connect {source.path} to {sink.path}: the first must be "
+            "a source (a bus master's socket, or the port driving a wire) "
+            "and the second a sink (a target's socket, or a port reading a "
+            "wire)."
+        )
+    if trace and first.kind != "bus":
+        raise ValueError(
+            f"Cannot trace the connection from {source.path} to "
+            f"{sink.path}: only a bus connection can be traced, and this is "
+            "a wire."
+        )

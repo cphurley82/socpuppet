@@ -12,7 +12,8 @@ from collections.abc import Collection, Iterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from socpuppet.platform import Connection, Port
+    from socpuppet.placed import Port
+    from socpuppet.platform import Connection
 
 
 def reachable_ports(

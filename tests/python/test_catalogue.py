@@ -8,7 +8,11 @@ why they look inside socpuppet._core.
 import pytest
 
 import socpuppet as sp
-from socpuppet.components import Component, PassThroughLinkEndpoint
+from socpuppet.components import (
+    Component,
+    PassThroughLinkEndpoint,
+    PortSpec,
+)
 
 
 def router_with_one_output():
@@ -49,10 +53,29 @@ EXAMPLES = [
 ]
 
 
-class TestAComponentThatDoesNotNameItsPorts:
+class TestAComponentThatDoesNotDeclareItsPorts:
     def test_cannot_be_created(self):
-        with pytest.raises(TypeError, match="ports"):
+        with pytest.raises(TypeError, match="port_specs"):
             Component()
+
+
+class TestAComponentGivenAParameterItDoesNotTake:
+    def test_is_refused_and_the_error_names_the_parameter(self):
+        with pytest.raises(TypeError, match="sources"):
+            sp.Plic(sources=8)
+
+
+class TestAComponentsParameters:
+    def test_are_what_it_was_created_with_and_its_defaults(self):
+        nvme = sp.BehavioralNvme(blocks=64)
+
+        assert nvme.parameters == {"blocks": 64, "vectors": 2}
+
+    def test_leave_out_what_the_simulator_is_not_configured_with(self):
+        def script():
+            yield sp.wait(sp.ns(1))
+
+        assert sp.ScriptedBusMaster(script).parameters == {}
 
 
 class TestAPcieEndpointWithANumberOfVectorsMsixCannotHave:
@@ -88,7 +111,9 @@ class TestTheCatalogue:
         EXAMPLES,
         ids=lambda example: f"{example.implementation}({len(example.ports)})",
     )
-    def test_declares_the_ports_the_simulator_creates(self, example):
+    def test_declares_the_ports_the_simulator_creates_and_their_kinds(
+        self, example
+    ):
         from socpuppet import _core
 
         native = _core.Platform(color_log=False)
@@ -99,4 +124,6 @@ class TestTheCatalogue:
         )
         native.add("example", example.implementation, parameters)
 
-        assert set(example.ports) == set(native.ports("example"))
+        assert set(example.port_specs) == {
+            PortSpec(*port) for port in native.ports("example")
+        }

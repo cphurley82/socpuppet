@@ -103,7 +103,7 @@ There are three phases, and the order matters.
 2. **Build.** `build()` loads the simulator, creates each component through the C++ registry, binds the ports and completes SystemC's elaboration. From here on the topology is fixed, and memory can already be peeked and poked.
 3. **Run.** `run()`, `run(duration)`, `step()` and `run_until(condition)` advance simulated time.
 
-💡 The Python classes (`sp.Memory`, `sp.Router`, ...) are a catalogue that mirrors the C++ registry. They exist separately so that describing works without the simulator. A test keeps the two in step.
+💡 The Python classes (`sp.Memory`, `sp.Router`, ...) are a catalogue that mirrors the C++ registry. They exist separately so that describing works without the simulator. A catalogue class declares its parameters as annotated attributes and its ports with their kind and direction, so a misspelled keyword is refused when the component is created and a wire connected to a bus when `connect()` is called, both before there is a simulator. A test keeps the two in step: every class's ports, kinds and parameters against what the registry creates.
 
 ### Names
 

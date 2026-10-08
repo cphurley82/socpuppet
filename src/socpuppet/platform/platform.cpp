@@ -210,10 +210,8 @@ bool Platform::DebugWrite(const std::string& via, std::uint64_t address,
                           data.size()}));
 }
 
-std::vector<std::string> Platform::Ports(const std::string& path) {
-  std::vector<std::string> names;
-  for (const Port& each : InstanceAt(path).ports) names.push_back(each.name);
-  return names;
+const std::vector<Port>& Platform::Ports(const std::string& path) {
+  return InstanceAt(path).ports;
 }
 
 void Platform::RefuseOnceElaborated(const char* attempt) const {
