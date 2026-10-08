@@ -123,7 +123,7 @@ struct CpuPlatformWithAProbe {
   static socpuppet::Registry WithAProbe() {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     registry.Add(
-        "counting_probe", [](const char* name, const socpuppet::Config&) {
+        "counting_probe", [](const char* name, socpuppet::Parameters&) {
           auto module = std::make_unique<CountingProbe>(name);
           std::vector<socpuppet::Port> ports{
               socpuppet::TargetPort("target", module->target),
@@ -245,7 +245,7 @@ struct CpuPlatformWithAnInterruptSource {
       const std::function<void(InterruptSource&)>& interrupts) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     registry.Add("interrupt_source", [interrupts](const char* name,
-                                                  const socpuppet::Config&) {
+                                                  socpuppet::Parameters&) {
       auto module = std::make_unique<InterruptSource>(name, interrupts);
       std::vector<socpuppet::Port> ports{
           socpuppet::TargetPort("socket", module->socket),
@@ -317,7 +317,7 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   constexpr std::uint64_t kProbeBase = 0x1000'0000;
   std::vector<RecordedAccess> probed;
   socpuppet::Registry registry = socpuppet::BuiltinComponents();
-  registry.Add("probe", [&](const char* name, const socpuppet::Config&) {
+  registry.Add("probe", [&](const char* name, socpuppet::Parameters&) {
     auto module =
         std::make_unique<RecordingTarget>(name, probed, sc_core::SC_ZERO_TIME);
     std::vector<socpuppet::Port> ports{

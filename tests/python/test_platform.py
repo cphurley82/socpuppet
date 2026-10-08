@@ -291,3 +291,13 @@ class TestWhenTheQuantumIsChangedAfterBuilding:
 
         with pytest.raises(RuntimeError, match="already built"):
             platform.quantum = sp.us(7)
+
+
+@pytest.mark.platform
+class TestWhenAComponentIsGivenAParameterItDoesNotTake:
+    def test_building_is_refused_and_the_error_names_the_parameter(self):
+        platform = sp.Platform()
+        platform.add("plic", sp.Plic(sources=8))
+
+        with pytest.raises(ValueError, match='"plic" has no "sources"'):
+            platform.build()

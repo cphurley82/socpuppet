@@ -2,8 +2,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -167,6 +169,88 @@ TEST(WhenARequiredParameterIsMissing,
                   AllOf(HasSubstr("size"), HasSubstr("memory"))));
 }
 
+TEST(WhenAParameterTheImplementationDoesNotTakeIsGiven,
+     TheErrorNamesItAndTheOnesTheImplementationTakes) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("ram", "memory", {{"size", 0x100}, {"sise", 0x200}});
+      },
+      ThrowsMessage<std::invalid_argument>(AllOf(HasSubstr("\"memory\""),
+                                                 HasSubstr("\"sise\""),
+                                                 HasSubstr("\"size\""))));
+}
+
+// A parameter value its implementation cannot use: too wide for the
+// register field it goes in, or a count or a rate of zero.
+struct OutOfRange {
+  std::string implementation;
+  socpuppet::Config config;
+  std::string parameter;
+  std::string given;
+};
+
+void PrintTo(const OutOfRange& out_of_range, std::ostream* out) {
+  *out << out_of_range.implementation << " with " << out_of_range.parameter
+       << " = " << out_of_range.given;
+}
+
+socpuppet::Config PcieEndpointWith(const std::string& parameter,
+                                   std::uint64_t value) {
+  socpuppet::Config config{{"vendor_id", 0x1B36},
+                           {"device_id", 0x0010},
+                           {"class_code", 0x01'08'02},
+                           {"function_size", 0x4000},
+                           {"vectors", 2}};
+  config[parameter] = value;
+  return config;
+}
+
+class WhenAParameterIsOutOfRange : public ::testing::TestWithParam<OutOfRange> {
+};
+
+TEST_P(WhenAParameterIsOutOfRange,
+       TheErrorNamesTheImplementationTheParameterAndWhatWasGiven) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("spam", GetParam().implementation, GetParam().config);
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("\"" + GetParam().implementation + "\""),
+                HasSubstr("\"" + GetParam().parameter + "\""),
+                HasSubstr(GetParam().given + " was given"))));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    BuiltinComponents, WhenAParameterIsOutOfRange,
+    ::testing::Values(
+        OutOfRange{"machine_timer", {{"frequency_hz", 0}}, "frequency_hz", "0"},
+        OutOfRange{"dbt_rise_cpu",
+                   {{"xlen", 32}, {"reset_vector", 0}, {"gdb_port", 65536}},
+                   "gdb_port",
+                   "65536"},
+        OutOfRange{"behavioral_nvme",
+                   {{"blocks", 16}, {"vectors", 0}},
+                   "vectors",
+                   "0"},
+        OutOfRange{"behavioral_nvme",
+                   {{"blocks", 16}, {"vectors", 2049}},
+                   "vectors",
+                   "2049"},
+        OutOfRange{"pcie_endpoint", PcieEndpointWith("vendor_id", 0x1'0000),
+                   "vendor_id", "65536"},
+        OutOfRange{"pcie_endpoint", PcieEndpointWith("device_id", 0x1'0000),
+                   "device_id", "65536"},
+        OutOfRange{"pcie_endpoint", PcieEndpointWith("class_code", 0x100'0000),
+                   "class_code", "16777216"},
+        OutOfRange{"pcie_endpoint", PcieEndpointWith("vectors", 0), "vectors",
+                   "0"},
+        OutOfRange{"pcie_endpoint", PcieEndpointWith("vectors", 2049),
+                   "vectors", "2049"}));
+
 TEST(WhenTwoComponentsAreGivenTheSameName,
      TheSecondIsRefusedAndTheErrorNamesIt) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
@@ -189,9 +273,8 @@ TEST(WhenADebugAccessIsAskedForThroughATargetPort, TheErrorNamesThePort) {
 }
 
 socpuppet::Factory UnusedFactory() {
-  return [](const char*, const socpuppet::Config&) {
-    return socpuppet::Instance{};
-  };
+  return
+      [](const char*, socpuppet::Parameters&) { return socpuppet::Instance{}; };
 }
 
 // A component that drives its one wire output from two processes of its
@@ -215,7 +298,7 @@ struct TwoHanded : sc_core::sc_module {
 
 socpuppet::Registry WithSpamThatDrivesItsLineFromTwoProcesses() {
   socpuppet::Registry registry;
-  registry.Add("spam", [](const char* name, const socpuppet::Config&) {
+  registry.Add("spam", [](const char* name, socpuppet::Parameters&) {
     auto module = std::make_unique<TwoHanded>(name);
     std::vector<socpuppet::Port> ports{
         socpuppet::WireSourcePort("line", module->line, /*required=*/false)};
@@ -229,7 +312,7 @@ socpuppet::Registry WithSpamThatDrivesItsLineFromTwoProcesses() {
 // connected.
 socpuppet::Registry WithSpamThatHasAnOptionalWireOutput() {
   socpuppet::Registry registry;
-  registry.Add("spam", [](const char* name, const socpuppet::Config&) {
+  registry.Add("spam", [](const char* name, socpuppet::Parameters&) {
     auto module = std::make_unique<LineDriver>(name, [](LineDriver&) {});
     std::vector<socpuppet::Port> ports{
         socpuppet::WireSourcePort("line", module->line, /*required=*/false)};

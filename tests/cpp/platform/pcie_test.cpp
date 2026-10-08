@@ -119,7 +119,7 @@ struct HostWithAnEndpoint {
                              std::vector<RecordedAccess>& messages) {
     Registry registry = BuiltinComponents();
     registry.Add("host_driver", [host = actors.host](const char* name,
-                                                     const Config&) {
+                                                     Parameters&) {
       auto module = std::make_unique<BusDriver>(name, [host](BusDriver& bus) {
         PciHost pci{bus, kEcamBase};
         host(pci);
@@ -128,18 +128,18 @@ struct HostWithAnEndpoint {
       return Instance{.module = std::move(module), .ports = std::move(ports)};
     });
     registry.Add("function_driver", [function = actors.function](
-                                        const char* name, const Config&) {
+                                        const char* name, Parameters&) {
       auto module = std::make_unique<BusDriver>(name, function);
       std::vector<Port> ports{InitiatorPort("socket", module->socket)};
       return Instance{.module = std::move(module), .ports = std::move(ports)};
     });
     registry.Add("line_driver", [line = actors.line](const char* name,
-                                                     const Config&) {
+                                                     Parameters&) {
       auto module = std::make_unique<LineDriver>(name, line);
       std::vector<Port> ports{WireSourcePort("line", module->line)};
       return Instance{.module = std::move(module), .ports = std::move(ports)};
     });
-    registry.Add("recorder", [&messages](const char* name, const Config&) {
+    registry.Add("recorder", [&messages](const char* name, Parameters&) {
       auto module = std::make_unique<RecordingTarget>(name, messages,
                                                       sc_core::SC_ZERO_TIME);
       std::vector<Port> ports{TargetPort("socket", module->socket)};

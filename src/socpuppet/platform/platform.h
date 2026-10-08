@@ -39,14 +39,13 @@ class Platform {
 
   void Add(const std::string& path, const std::string& implementation,
            const Config& config = {}) {
-    const Factory& create = registry_.Find(implementation);
     if (instances_.contains(path)) {
       throw std::invalid_argument("There is already a component called \"" +
                                   path +
                                   "\". Each component needs its own name.");
     }
     instances_.emplace(path, InsideParent(path, [&](const char* name) {
-                         return create(name, config);
+                         return registry_.Create(implementation, name, config);
                        }));
   }
 

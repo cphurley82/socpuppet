@@ -65,7 +65,7 @@ struct RoutedPlatform {
          {std::pair{"bus_driver", body},
           std::pair{"second_bus_driver", second_body}}) {
       registry.Add(implementation,
-                   [each](const char* name, const socpuppet::Config&) {
+                   [each](const char* name, socpuppet::Parameters&) {
                      auto module = std::make_unique<BusDriver>(name, each);
                      std::vector<socpuppet::Port> ports{
                          socpuppet::InitiatorPort("socket", module->socket)};

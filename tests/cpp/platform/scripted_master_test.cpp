@@ -71,7 +71,7 @@ struct MasterWithRam {
     Registry registry = BuiltinComponents();
     for (const auto& [implementation, body] :
          {std::pair{"irq_driver", irq}, std::pair{"reset_driver", reset}}) {
-      registry.Add(implementation, [body](const char* name, const Config&) {
+      registry.Add(implementation, [body](const char* name, Parameters&) {
         auto module = std::make_unique<LineDriver>(name, body);
         std::vector<Port> ports{WireSourcePort("line", module->line)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
@@ -106,7 +106,7 @@ struct MasterWithAnInterruptSource {
       const std::function<void(InterruptSource&)>& interrupts) {
     Registry registry = BuiltinComponents();
     registry.Add("interrupt_source", [interrupts](const char* name,
-                                                  const Config&) {
+                                                  Parameters&) {
       auto module = std::make_unique<InterruptSource>(name, interrupts);
       std::vector<Port> ports{TargetPort("socket", module->socket),
                               WireSourcePort("line", module->line)};
@@ -132,7 +132,7 @@ struct MasterWithAProbe {
 
   static Registry WithAProbe(std::vector<RecordedAccess>& accesses) {
     Registry registry = BuiltinComponents();
-    registry.Add("probe", [&accesses](const char* name, const Config&) {
+    registry.Add("probe", [&accesses](const char* name, Parameters&) {
       auto module = std::make_unique<RecordingTarget>(name, accesses,
                                                       sc_core::SC_ZERO_TIME);
       std::vector<Port> ports{TargetPort("socket", module->socket)};

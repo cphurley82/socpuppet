@@ -88,7 +88,7 @@ class BusMasterContract : public ::testing::Test {
   void Build(const Scenario& scenario) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     registry.Add("probe", [this, latency = scenario.probe_latency](
-                              const char* name, const socpuppet::Config&) {
+                              const char* name, socpuppet::Parameters&) {
       auto module = std::make_unique<RecordingTarget>(name, probed_, latency);
       std::vector<socpuppet::Port> ports{
           socpuppet::TargetPort("socket", module->socket)};
@@ -100,7 +100,7 @@ class BusMasterContract : public ::testing::Test {
           std::pair{"irq_driver", scenario.irq},
           std::pair{"timer_irq_driver", scenario.timer_irq}}) {
       registry.Add(implementation,
-                   [body](const char* name, const socpuppet::Config&) {
+                   [body](const char* name, socpuppet::Parameters&) {
                      auto module = std::make_unique<LineDriver>(name, body);
                      std::vector<socpuppet::Port> ports{
                          socpuppet::WireSourcePort("line", module->line)};
@@ -110,7 +110,7 @@ class BusMasterContract : public ::testing::Test {
     }
     registry.Add(
         "interrupt_source",
-        [body = scenario.device](const char* name, const socpuppet::Config&) {
+        [body = scenario.device](const char* name, socpuppet::Parameters&) {
           auto module = std::make_unique<InterruptSource>(name, body);
           std::vector<socpuppet::Port> ports{
               socpuppet::TargetPort("socket", module->socket),

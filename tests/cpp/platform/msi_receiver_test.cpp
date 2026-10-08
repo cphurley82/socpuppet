@@ -34,12 +34,12 @@ struct MasterWithAnMsiReceiver {
   static Registry WithADriverAndAWatcher(
       const std::function<void(BusDriver&)>& body) {
     Registry registry = BuiltinComponents();
-    registry.Add("bus_driver", [body](const char* name, const Config&) {
+    registry.Add("bus_driver", [body](const char* name, Parameters&) {
       auto module = std::make_unique<BusDriver>(name, body);
       std::vector<Port> ports{InitiatorPort("socket", module->socket)};
       return Instance{.module = std::move(module), .ports = std::move(ports)};
     });
-    registry.Add("line_watcher", [](const char* name, const Config&) {
+    registry.Add("line_watcher", [](const char* name, Parameters&) {
       auto module = std::make_unique<LineWatcher>(name);
       std::vector<Port> ports{WireSinkPort("line", module->line)};
       return Instance{.module = std::move(module), .ports = std::move(ports)};

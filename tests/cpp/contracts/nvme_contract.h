@@ -77,7 +77,7 @@ class NvmeContract : public ::testing::Test {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     Rig::Register(registry);
     registry.Add("driver", [this, body](const char* name,
-                                        const socpuppet::Config&) {
+                                        socpuppet::Parameters&) {
       auto module =
           std::make_unique<BusDriver>(name, [this, body](BusDriver& bus) {
             NvmeHost host{bus, kRegistersBase, kMemoryBase, InterruptLines()};
@@ -89,14 +89,13 @@ class NvmeContract : public ::testing::Test {
       return socpuppet::Instance{.module = std::move(module),
                                  .ports = std::move(ports)};
     });
-    registry.Add("line_watcher",
-                 [](const char* name, const socpuppet::Config&) {
-                   auto module = std::make_unique<LineWatcher>(name);
-                   std::vector<socpuppet::Port> ports{
-                       socpuppet::WireSinkPort("line", module->line)};
-                   return socpuppet::Instance{.module = std::move(module),
-                                              .ports = std::move(ports)};
-                 });
+    registry.Add("line_watcher", [](const char* name, socpuppet::Parameters&) {
+      auto module = std::make_unique<LineWatcher>(name);
+      std::vector<socpuppet::Port> ports{
+          socpuppet::WireSinkPort("line", module->line)};
+      return socpuppet::Instance{.module = std::move(module),
+                                 .ports = std::move(ports)};
+    });
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->Add("host.driver", "driver");
     platform_->Add("host.bus", "router",
