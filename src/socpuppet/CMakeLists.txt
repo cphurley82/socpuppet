@@ -110,6 +110,7 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_link.h
     models/pcie_root_complex.h
     models/scripted_bus_master.h
+    platform/errors.h
     platform/failure.h
     platform/logging.h
     platform/platform.h

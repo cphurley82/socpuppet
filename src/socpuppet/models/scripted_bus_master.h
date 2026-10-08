@@ -17,17 +17,12 @@
 #include <tlm_utils/tlm_quantumkeeper.h>
 
 #include "socpuppet/core/script.h"
+#include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/time_conversion.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
-
-// A script expected one value and read another.
-class ExpectationFailed : public std::runtime_error {
- public:
-  using std::runtime_error::runtime_error;
-};
 
 // Stand-in for a CPU: a bus master that carries out a script of operations
 // instead of running firmware.
@@ -94,30 +89,43 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Read32& op, Script& script) {
-    script.GiveBack(Read32At(op.address));
+    std::uint32_t value = 0;
+    if (!Transport(tlm::TLM_READ_COMMAND, op.address, BytesOf(value))) {
+      return Outcome::kFailed;
+    }
+    script.GiveBack(value);
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Write32& op, Script&) {
     std::uint32_t value = op.value;
-    Transport(tlm::TLM_WRITE_COMMAND, op.address, BytesOf(value));
+    if (!Transport(tlm::TLM_WRITE_COMMAND, op.address, BytesOf(value))) {
+      return Outcome::kFailed;
+    }
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Read& op, Script& script) {
     std::vector<std::uint8_t> bytes(op.length);
-    Transport(tlm::TLM_READ_COMMAND, op.address, bytes);
+    if (!Transport(tlm::TLM_READ_COMMAND, op.address, bytes)) {
+      return Outcome::kFailed;
+    }
     script.GiveBack(std::move(bytes));
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Write& op, Script&) {
-    Transport(tlm::TLM_WRITE_COMMAND, op.address, WriteData(op.data));
+    if (!Transport(tlm::TLM_WRITE_COMMAND, op.address, WriteData(op.data))) {
+      return Outcome::kFailed;
+    }
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Expect32& op, Script&) {
-    const std::uint32_t actual = Read32At(op.address);
+    std::uint32_t actual = 0;
+    if (!Transport(tlm::TLM_READ_COMMAND, op.address, BytesOf(actual))) {
+      return Outcome::kFailed;
+    }
     if (actual != op.value) {
       FailSimulation(ExpectationFailed(
           std::format("{} expected {:#x} at address {:#x}, but read {:#x}.",
@@ -145,25 +153,32 @@ class ScriptedBusMaster : public sc_core::sc_module {
     return reset->read() ? Outcome::kInterruptedByReset : Outcome::kCarryOn;
   }
 
-  std::uint32_t Read32At(std::uint64_t address) {
-    std::uint32_t value = 0;
-    Transport(tlm::TLM_READ_COMMAND, address, BytesOf(value));
-    return value;
-  }
-
   static std::span<std::uint8_t> BytesOf(std::uint32_t& value) {
     return {reinterpret_cast<std::uint8_t*>(&value), sizeof value};
   }
 
-  void Transport(tlm::tlm_command command, std::uint64_t address,
+  // Returns false, having stopped the simulation, if the target refused
+  // the access. A script does not get to read zeros from nowhere. The
+  // clock is kept and the access allowed to take effect first, so that
+  // what the platform shows afterwards is as of the refused access.
+  bool Transport(tlm::tlm_command command, std::uint64_t address,
                  std::span<std::uint8_t> data) {
     // The access is stamped with how far ahead of the simulation's clock we
     // are, and the target adds however long the access takes.
     sc_core::sc_time delay = lead_.get_local_time();
-    socpuppet::Transport(socket, command, address, data, delay);
+    const tlm::tlm_response_status status =
+        socpuppet::Transport(socket, command, address, data, delay);
     lead_.set(delay);
     if (lead_.need_sync()) CatchUp();
     LetTheAccessTakeEffect();
+    if (status == tlm::TLM_OK_RESPONSE) return true;
+    FailSimulation(BusError(std::format(
+        "{}: a {} of {} bytes at address {:#x} was refused by the bus ({}). "
+        "Check that something is mapped there, and that it takes an access "
+        "of that size.",
+        name(), command == tlm::TLM_READ_COMMAND ? "read" : "write",
+        data.size(), address, ResponseString(status))));
+    return false;
   }
 
   // The access may have changed a line: a handler quiets a device by

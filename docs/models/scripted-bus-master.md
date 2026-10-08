@@ -37,6 +37,7 @@ It has three ports: `socket` (the bus), and the inputs `irq` and `reset`.
 
 - **Reset.** While `reset` is high the master does nothing. When it is released, the script starts again from the top, as firmware would after a reset.
 - **Unconnected inputs** are tied low: no interrupt ever arrives, and the master is never in reset.
+- **A refused access stops the run.** A read or write that nothing answers, or that the target will not take, comes out of `platform.run()` as `sp.BusError`, naming the address and the bus's response. ⚠️ A real CPU would take a bus fault or read garbage; the stand-in is stricter, because a script that reads zeros from nowhere is a bug waiting to be found.
 - **Errors.** An exception raised in the script comes out of `platform.run()` unchanged.
 
 In C++ the same thing is a C++20 coroutine, which keeps the C++ tests free of Python:

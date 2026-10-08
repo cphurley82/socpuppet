@@ -20,6 +20,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/time_conversion.h"
@@ -81,6 +82,10 @@ PYBIND11_MODULE(_core, m) {
       py::object type =
           py::module_::import("socpuppet.errors").attr("ExpectationFailed");
       PyErr_SetString(type.ptr(), expectation.what());
+    } catch (const socpuppet::BusError& refusal) {
+      py::object type =
+          py::module_::import("socpuppet.errors").attr("BusError");
+      PyErr_SetString(type.ptr(), refusal.what());
     }
   });
 

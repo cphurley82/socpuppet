@@ -222,6 +222,14 @@ TEST(WhenAnExpectedValueIsNotTheOneInMemory, TheScriptDoesNotCarryOn) {
   EXPECT_EQ(fixture.Peek32(0x20), 0U);
 }
 
+TEST(WhenAScriptReadsAnAddressNothingAnswers, TheRunFailsNamingTheAddress) {
+  // The RAM is 0x100 bytes, so there is nothing at 0x1000.
+  MasterWithRam fixture{[]() -> Script { co_await Read32(0x1000); }};
+
+  EXPECT_THAT([&] { fixture.platform.Run(); },
+              ThrowsMessage<BusError>(HasSubstr("0x1000")));
+}
+
 TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
   MasterWithRam fixture{[]() -> Script {
                           co_await WaitIrq();

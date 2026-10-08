@@ -121,6 +121,19 @@ class TestWhenAScriptExpectsAValueThatIsNotInMemory:
 
 
 @pytest.mark.platform
+class TestWhenAScriptReadsAnAddressNothingAnswers:
+    def test_the_run_raises_bus_error_naming_the_address(self):
+        # The RAM is 0x100 bytes, so there is nothing at 0x1000.
+        def script():
+            yield sp.read32(0x1000)
+
+        platform = master_with_ram(script)
+
+        with pytest.raises(sp.BusError, match="0x1000"):
+            platform.run()
+
+
+@pytest.mark.platform
 class TestWhenAScriptRaises:
     def test_run_raises_the_same_exception(self):
         class ScriptBroke(Exception):

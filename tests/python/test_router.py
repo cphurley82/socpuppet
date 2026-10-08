@@ -1,3 +1,5 @@
+import contextlib
+
 import pytest
 
 import socpuppet as sp
@@ -53,11 +55,13 @@ class TestWhenAMasterOnAnotherInputOfTheRouterWritesToAMappedAddress:
 
 @pytest.mark.platform
 class TestWhenAMasterWritesToAnAddressNothingIsMappedAt:
+    # The router logs the miss, and the master then stops the run.
     def test_a_warning_naming_the_address_is_logged(self, capfd):
         platform = routed_platform(writes=[(UNMAPPED, 1)])
         platform.build()
 
-        platform.run()
+        with contextlib.suppress(sp.BusError):
+            platform.run()
 
         assert f"{UNMAPPED:#x}" in capfd.readouterr().out
 
@@ -67,7 +71,8 @@ class TestWhenAMasterWritesToAnAddressNothingIsMappedAt:
         platform = routed_platform(writes=[(UNMAPPED, 1)])
         platform.build()
 
-        platform.run()
+        with contextlib.suppress(sp.BusError):
+            platform.run()
 
         assert "\x1b[" not in capfd.readouterr().out
 

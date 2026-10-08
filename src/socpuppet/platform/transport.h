@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 
 #include <systemc>
 #include <tlm>
@@ -53,6 +54,13 @@ tlm::tlm_response_status Transport(Socket& socket, tlm::tlm_command command,
                                    std::span<std::uint8_t> data) {
   sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
   return Transport(socket, command, address, data, delay);
+}
+
+// A response status as TLM names it, for an error message.
+inline std::string ResponseString(tlm::tlm_response_status status) {
+  tlm::tlm_generic_payload transaction;
+  transaction.set_response_status(status);
+  return transaction.get_response_string();
 }
 
 // A debug access through an initiator socket: the same access with no

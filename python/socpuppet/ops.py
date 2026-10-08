@@ -6,6 +6,9 @@ master carries it out; a read sends its value back into the generator:
     def script():
         yield sp.write32(0x1000, 0xC0FFEE)
         value = yield sp.read32(0x1000)
+
+A read or write that the bus refuses, because nothing is mapped at the
+address or the target would not take it, stops the run with BusError.
 """
 
 from collections.abc import Generator

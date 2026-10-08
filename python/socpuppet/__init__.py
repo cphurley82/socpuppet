@@ -14,7 +14,7 @@ from socpuppet.components import (
     Router,
     ScriptedBusMaster,
 )
-from socpuppet.errors import ExpectationFailed, NvmeError, PcieError
+from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
 from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost, NvmeNamespace
 from socpuppet.ops import (
@@ -35,6 +35,7 @@ from socpuppet.trace import render as render_trace
 
 __all__ = [
     "BehavioralNvme",
+    "BusError",
     "DbtRiseCpu",
     "ExpectationFailed",
     "MachineTimer",
