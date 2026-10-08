@@ -603,6 +603,21 @@ TYPED_TEST_P(NvmeContract,
 }
 
 TYPED_TEST_P(NvmeContract,
+             AWriteWhoseDataPageIsWhereNothingAnswersIsADataTransferError) {
+  const std::uint64_t nowhere = this->kMemoryBase + this->kMemorySize;
+  std::optional<NvmeHost::Completion> completion;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    completion =
+        host.TryToWrite(/*first=*/0, /*blocks=*/1, /*pages=*/{nowhere});
+  });
+
+  EXPECT_EQ(StatusOf(completion), NvmeHost::kDataTransferError);
+}
+
+TYPED_TEST_P(NvmeContract,
              AWritePastTheEndOfTheNamespaceIsOutOfRangeAndWritesNothing) {
   std::optional<NvmeHost::Completion> completion;
   std::optional<std::vector<std::uint8_t>> last_block;
@@ -811,6 +826,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     ATransferOfThreePagesReadsBackAsItWasWritten,
     AReadPastTheEndOfTheNamespaceIsOutOfRange,
     AReadWhoseDataPageIsWhereNothingAnswersIsADataTransferError,
+    AWriteWhoseDataPageIsWhereNothingAnswersIsADataTransferError,
     AWritePastTheEndOfTheNamespaceIsOutOfRangeAndWritesNothing,
     WhatWasWrittenIsStillThereAfterAControllerReset,
     AControllerResetDoesAwayWithTheIoQueues,

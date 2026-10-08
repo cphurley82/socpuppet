@@ -290,6 +290,14 @@ class NvmeHost {
                     pages);
   }
 
+  // Sends a write of `blocks` blocks from the data pages the caller names,
+  // and returns what the controller said.
+  std::optional<Completion> TryToWrite(
+      std::uint64_t first, std::uint32_t blocks,
+      const std::vector<std::uint64_t>& pages) {
+    return Transfer(kWrite, first, blocks, pages);
+  }
+
   // Asks the controller to make everything written to namespace 1 safe.
   // Returns what it said.
   std::optional<Completion> Flush() {

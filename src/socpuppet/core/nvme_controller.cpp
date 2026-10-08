@@ -51,35 +51,6 @@ std::vector<HostExtent> Extents(NvmeController::HostMemory& host_memory,
                     });
 }
 
-// Writes a command's data into the host's memory, where the command says
-// it should go. Returns false if the host did not take some of it.
-bool SendToHost(NvmeController::HostMemory& host_memory,
-                const spdk_nvme_cmd& command,
-                std::span<const std::uint8_t> data) {
-  std::size_t sent = 0;
-  for (const HostExtent& extent : Extents(host_memory, command, data.size())) {
-    if (!host_memory.Write(extent.address, data.subspan(sent, extent.length))) {
-      return false;
-    }
-    sent += extent.length;
-  }
-  return true;
-}
-
-// And reads it from there.
-bool FetchFromHost(NvmeController::HostMemory& host_memory,
-                   const spdk_nvme_cmd& command, std::span<std::uint8_t> data) {
-  std::size_t fetched = 0;
-  for (const HostExtent& extent : Extents(host_memory, command, data.size())) {
-    if (!host_memory.Read(extent.address,
-                          data.subspan(fetched, extent.length))) {
-      return false;
-    }
-    fetched += extent.length;
-  }
-  return true;
-}
-
 }  // namespace
 
 NvmeController::NvmeController(HostMemory& host_memory, std::uint64_t blocks,
@@ -181,8 +152,30 @@ NvmeController::Outcome NvmeController::CommandSpecific(std::uint8_t status) {
   return {.status = status, .status_type = SPDK_NVME_SCT_COMMAND_SPECIFIC};
 }
 
-NvmeController::Outcome NvmeController::DataTransferError() {
-  return {.status = SPDK_NVME_SC_DATA_TRANSFER_ERROR};
+NvmeController::Outcome NvmeController::SendToHost(
+    const spdk_nvme_cmd& command, std::span<const std::uint8_t> data) {
+  std::size_t sent = 0;
+  for (const HostExtent& extent : Extents(host_memory_, command, data.size())) {
+    if (!host_memory_.Write(extent.address,
+                            data.subspan(sent, extent.length))) {
+      return {.status = SPDK_NVME_SC_DATA_TRANSFER_ERROR};
+    }
+    sent += extent.length;
+  }
+  return {};
+}
+
+NvmeController::Outcome NvmeController::FetchFromHost(
+    const spdk_nvme_cmd& command, std::span<std::uint8_t> data) {
+  std::size_t fetched = 0;
+  for (const HostExtent& extent : Extents(host_memory_, command, data.size())) {
+    if (!host_memory_.Read(extent.address,
+                           data.subspan(fetched, extent.length))) {
+      return {.status = SPDK_NVME_SC_DATA_TRANSFER_ERROR};
+    }
+    fetched += extent.length;
+  }
+  return {};
 }
 
 NvmeController::Outcome NvmeController::CarryOutAdmin(
@@ -251,10 +244,7 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
     case SPDK_NVME_IDENTIFY_CTRLR: {
       spdk_nvme_ctrlr_data controller{};
       controller.nn = 1;
-      if (!SendToHost(host_memory_, command, BytesOf(controller))) {
-        return DataTransferError();
-      }
-      return {};
+      return SendToHost(command, BytesOf(controller));
     }
     case SPDK_NVME_IDENTIFY_NS: {
       // There is one namespace, and namespaces are numbered from 1.
@@ -265,19 +255,13 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
       name_space.nsze = blocks_;
       // One block format, which is therefore the one in use.
       name_space.lbaf[0].lbads = kBlockSizeShift;
-      if (!SendToHost(host_memory_, command, BytesOf(name_space))) {
-        return DataTransferError();
-      }
-      return {};
+      return SendToHost(command, BytesOf(name_space));
     }
     case SPDK_NVME_IDENTIFY_ACTIVE_NS_LIST: {
       // The namespaces in use, in rising order, with a zero after the last.
       spdk_nvme_ns_list list{};
       list.ns_list[0] = 1;
-      if (!SendToHost(host_memory_, command, BytesOf(list))) {
-        return DataTransferError();
-      }
-      return {};
+      return SendToHost(command, BytesOf(list));
     }
     default:
       return {.status = SPDK_NVME_SC_INVALID_FIELD};
@@ -324,8 +308,7 @@ NvmeController::Outcome NvmeController::CarryOutIo(
 NvmeController::Outcome NvmeController::Read(const spdk_nvme_cmd& command) {
   const std::span<std::uint8_t> blocks = Blocks(command);
   if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
-  if (!SendToHost(host_memory_, command, blocks)) return DataTransferError();
-  return {};
+  return SendToHost(command, blocks);
 }
 
 // Write: the other way. The controller reads the blocks out of the host's
@@ -333,10 +316,7 @@ NvmeController::Outcome NvmeController::Read(const spdk_nvme_cmd& command) {
 NvmeController::Outcome NvmeController::Write(const spdk_nvme_cmd& command) {
   const std::span<std::uint8_t> blocks = Blocks(command);
   if (blocks.empty()) return {.status = SPDK_NVME_SC_LBA_OUT_OF_RANGE};
-  if (!FetchFromHost(host_memory_, command, blocks)) {
-    return DataTransferError();
-  }
-  return {};
+  return FetchFromHost(command, blocks);
 }
 
 std::span<std::uint8_t> NvmeController::Blocks(const spdk_nvme_cmd& command) {
