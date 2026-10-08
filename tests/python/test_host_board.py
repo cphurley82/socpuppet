@@ -47,16 +47,19 @@ class TestTheHostWithADrive:
         assert board.drive is not None
         assert board.drive.nvme.component.parameters["blocks"] == 4096
 
-    def test_sends_the_drives_interrupt_messages_to_a_plic_source(self):
+    def test_gives_each_of_the_drives_vectors_a_plic_source_of_its_own(self):
         board = host(drive_blocks=64)
 
         connections = json.loads(board.platform.to_json())["connections"]
 
         assert {
-            "source": "compute.msi.irq",
-            "sink": f"compute.plic.source{MSI_SOURCE}",
-            "trace": False,
-        } in connections
+            each["source"]: each["sink"]
+            for each in connections
+            if each["source"].startswith("compute.msi.irq")
+        } == {
+            "compute.msi.irq0": f"compute.plic.source{MSI_SOURCE}",
+            "compute.msi.irq1": f"compute.plic.source{MSI_SOURCE + 1}",
+        }
 
     @pytest.mark.platform
     def test_shows_the_drive_in_the_configuration_window(self):

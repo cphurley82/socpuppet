@@ -20,12 +20,13 @@ With `drive_blocks`, the host also has an SSD on a PCIe link:
        bus ─▶ link ════ link ─▶ bus ─▶ root complex ═══ endpoint ─▶ nvme
        ▲                 │                  │
        └──── link ◀══════╧══════════════════╛    DMA and interrupt messages
-       └─▶ msi receiver ─▶ plic
+       └─▶ msi bridge ═▶ plic                    (a line for each vector)
 
 The root complex's two windows are on the IO die. What the drive sends up
 (DMA, and its interrupts, as messages) comes back across the die-to-die
-link onto the compute die's bus, where the MSI receiver turns a message
-into a line for the interrupt controller.
+link onto the compute die's bus. There the MSI bridge turns each message
+into a pulse on a line of the interrupt controller, one line for each of
+the drive's interrupt vectors.
 
 Run it:                 python -m socpuppet.boards.host path/to/zephyr.elf
 See its devicetree:     socpuppet devicetree <this file>
@@ -36,12 +37,12 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
-from socpuppet.boards.ssd import Ssd, add_ssd
+from socpuppet.boards.ssd import VECTORS, Ssd, add_ssd
 from socpuppet.components import (
     DbtRiseCpu,
     MachineTimer,
     Memory,
-    MsiReceiver,
+    MsiPlicBridge,
     Ns16550,
     PassThroughLink,
     PcieRootComplex,
@@ -71,7 +72,8 @@ ECAM_SIZE = 0x10_0000
 PCIE_WINDOW_OFFSET = 0x80_0000
 PCIE_WINDOW_SIZE = 0x10_0000
 #: Where the drive's interrupt messages are sent, on the compute die, and
-#: the interrupt controller's source they come out on.
+#: the interrupt controller's source that the first vector comes out on.
+#: The vectors after it take the sources after it.
 MSI_BASE = 0x0200_0000
 MSI_SOURCE = 1
 #: How many times a second the timer counts. The firmware has to be told
@@ -125,7 +127,7 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
     if drive_blocks is None:
         return Host(platform, cpu, uart)
 
-    msi = compute.add("msi", MsiReceiver())
+    msi = compute.add("msi", MsiPlicBridge(vectors=VECTORS))
     root_complex = io.add("rc", PcieRootComplex())
     io_bus.map(root_complex.ecam, base=ECAM_OFFSET, size=ECAM_SIZE)
     io_bus.map(
@@ -136,7 +138,11 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
     platform.connect(root_complex.dma, d2d.b.target)
     platform.connect(d2d.a.initiator, compute_bus.add_input())
     compute_bus.map(msi.socket, base=MSI_BASE)
-    platform.connect(msi.irq, getattr(plic, f"source{MSI_SOURCE}"))
+    for vector in range(VECTORS):
+        platform.connect(
+            getattr(msi, f"irq{vector}"),
+            getattr(plic, f"source{MSI_SOURCE + vector}"),
+        )
     drive = add_ssd(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
