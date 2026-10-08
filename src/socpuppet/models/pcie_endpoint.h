@@ -14,6 +14,7 @@
 
 #include "socpuppet/core/pcie_endpoint_registers.h"
 #include "socpuppet/models/pcie_link.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -150,14 +151,7 @@ class PcieEndpoint : public sc_core::sc_module {
         for (std::size_t index = 0; index < data.size(); ++index) {
           data[index] = static_cast<std::uint8_t>(message.data >> (8 * index));
         }
-        tlm::tlm_generic_payload transaction;
-        transaction.set_command(tlm::TLM_WRITE_COMMAND);
-        transaction.set_address(message.address);
-        transaction.set_data_ptr(data.data());
-        transaction.set_data_length(static_cast<unsigned>(data.size()));
-        transaction.set_streaming_width(static_cast<unsigned>(data.size()));
-        sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
-        to_host->b_transport(transaction, delay);
+        Transport(to_host, tlm::TLM_WRITE_COMMAND, message.address, data);
       }
     }
   }

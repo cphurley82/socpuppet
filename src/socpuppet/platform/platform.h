@@ -23,6 +23,7 @@
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/tracer.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -298,12 +299,6 @@ class Platform {
 
   bool Debug(tlm::tlm_command command, const std::string& via,
              std::uint64_t address, std::byte* data, std::size_t length) {
-    tlm::tlm_generic_payload transaction;
-    transaction.set_command(command);
-    transaction.set_address(address);
-    transaction.set_data_ptr(reinterpret_cast<unsigned char*>(data));
-    transaction.set_data_length(static_cast<unsigned>(length));
-    transaction.set_streaming_width(static_cast<unsigned>(length));
     const Port& view = PortAt(via);
     if (view.kind != Port::Kind::kBus || view.role != Port::Role::kSource) {
       throw std::invalid_argument(
@@ -314,7 +309,9 @@ class Platform {
           (view.role == Port::Role::kSource ? " source." : " sink."));
     }
     auto& socket = dynamic_cast<tlm::tlm_initiator_socket<>&>(*view.object);
-    return socket->transport_dbg(transaction) == length;
+    return DebugTransport(socket, command, address,
+                          {reinterpret_cast<std::uint8_t*>(data), length}) ==
+           length;
   }
 
   // A dotted path as a single SystemC name: "io.ram" becomes "io_ram".

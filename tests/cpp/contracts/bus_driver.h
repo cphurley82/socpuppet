@@ -11,6 +11,8 @@
 #include <tlm>
 #include <tlm_utils/simple_initiator_socket.h>
 
+#include "socpuppet/platform/transport.h"
+
 // What a target handed back when asked for direct memory access (DMI): a
 // pointer to its bytes that works without a transaction per access.
 class DirectMemory {
@@ -51,12 +53,12 @@ class BusDriver : public sc_core::sc_module {
   tlm::tlm_response_status Write(std::uint64_t address,
                                  std::span<const std::uint8_t> data) {
     return Transport(tlm::TLM_WRITE_COMMAND, address,
-                     const_cast<std::uint8_t*>(data.data()), data.size());
+                     socpuppet::WriteData(data));
   }
 
   tlm::tlm_response_status Read(std::uint64_t address,
                                 std::span<std::uint8_t> data) {
-    return Transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+    return Transport(tlm::TLM_READ_COMMAND, address, data);
   }
 
   // A read from a master that is running `lead` ahead of the simulation's
@@ -64,8 +66,7 @@ class BusDriver : public sc_core::sc_module {
   tlm::tlm_response_status ReadAhead(std::uint64_t address,
                                      std::span<std::uint8_t> data,
                                      const sc_core::sc_time& lead) {
-    return Transport(tlm::TLM_READ_COMMAND, address, data.data(), data.size(),
-                     lead);
+    return Transport(tlm::TLM_READ_COMMAND, address, data, lead);
   }
 
   void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
@@ -73,12 +74,12 @@ class BusDriver : public sc_core::sc_module {
   // Debug transport: an access that takes no simulated time and has no side
   // effects, the way a debugger looks at memory.
   void DebugWrite(std::uint64_t address, std::span<const std::uint8_t> data) {
-    Debug(tlm::TLM_WRITE_COMMAND, address,
-          const_cast<std::uint8_t*>(data.data()), data.size());
+    socpuppet::DebugTransport(socket, tlm::TLM_WRITE_COMMAND, address,
+                              socpuppet::WriteData(data));
   }
 
   void DebugRead(std::uint64_t address, std::span<std::uint8_t> data) {
-    Debug(tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+    socpuppet::DebugTransport(socket, tlm::TLM_READ_COMMAND, address, data);
   }
 
   // Whether the last Read or Write came back with the target's hint that
@@ -98,31 +99,17 @@ class BusDriver : public sc_core::sc_module {
  private:
   void Run() { body_(*this); }
 
-  void Debug(tlm::tlm_command command, std::uint64_t address,
-             std::uint8_t* data, std::size_t length) {
-    tlm::tlm_generic_payload transaction;
-    Fill(transaction, command, address, data, length);
-    socket->transport_dbg(transaction);
-  }
-
+  // Not socpuppet::Transport, because a test wants the DMI hint as well as
+  // the response.
   tlm::tlm_response_status Transport(
-      tlm::tlm_command command, std::uint64_t address, std::uint8_t* data,
-      std::size_t length, sc_core::sc_time delay = sc_core::SC_ZERO_TIME) {
+      tlm::tlm_command command, std::uint64_t address,
+      std::span<std::uint8_t> data,
+      sc_core::sc_time delay = sc_core::SC_ZERO_TIME) {
     tlm::tlm_generic_payload transaction;
-    Fill(transaction, command, address, data, length);
+    socpuppet::SetUpAccess(transaction, command, address, data);
     socket->b_transport(transaction, delay);
     direct_memory_was_offered_ = transaction.is_dmi_allowed();
     return transaction.get_response_status();
-  }
-
-  static void Fill(tlm::tlm_generic_payload& transaction,
-                   tlm::tlm_command command, std::uint64_t address,
-                   std::uint8_t* data, std::size_t length) {
-    transaction.set_command(command);
-    transaction.set_address(address);
-    transaction.set_data_ptr(data);
-    transaction.set_data_length(static_cast<unsigned>(length));
-    transaction.set_streaming_width(static_cast<unsigned>(length));
   }
 
   std::function<void(BusDriver&)> body_;
@@ -134,28 +121,23 @@ class BusDriver : public sc_core::sc_module {
 // need to see or set what a memory holds.
 template <typename Target>
 void DebugAccess(Target& target, tlm::tlm_command command,
-                 std::uint64_t address, std::uint8_t* data,
-                 std::size_t length) {
+                 std::uint64_t address, std::span<std::uint8_t> data) {
   tlm::tlm_generic_payload transaction;
-  transaction.set_command(command);
-  transaction.set_address(address);
-  transaction.set_data_ptr(data);
-  transaction.set_data_length(static_cast<unsigned>(length));
-  transaction.set_streaming_width(static_cast<unsigned>(length));
+  socpuppet::SetUpAccess(transaction, command, address, data);
   target.socket.get_base_interface().transport_dbg(transaction);
 }
 
 template <typename Target>
 void DebugRead(Target& target, std::uint64_t address,
                std::span<std::uint8_t> data) {
-  DebugAccess(target, tlm::TLM_READ_COMMAND, address, data.data(), data.size());
+  DebugAccess(target, tlm::TLM_READ_COMMAND, address, data);
 }
 
 template <typename Target>
 void DebugWrite(Target& target, std::uint64_t address,
                 std::span<const std::uint8_t> data) {
   DebugAccess(target, tlm::TLM_WRITE_COMMAND, address,
-              const_cast<std::uint8_t*>(data.data()), data.size());
+              socpuppet::WriteData(data));
 }
 
 #endif  // TESTS_CPP_CONTRACTS_BUS_DRIVER_H_

@@ -19,6 +19,7 @@
 #include "socpuppet/core/script.h"
 #include "socpuppet/platform/failure.h"
 #include "socpuppet/platform/time_conversion.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -111,10 +112,7 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Write& op, Script&) {
-    // The payload's pointer is not const, but TLM forbids a target to
-    // change the data of a write.
-    Transport(tlm::TLM_WRITE_COMMAND, op.address,
-              {const_cast<std::uint8_t*>(op.data.data()), op.data.size()});
+    Transport(tlm::TLM_WRITE_COMMAND, op.address, WriteData(op.data));
     return AfterAnOp();
   }
 
@@ -159,16 +157,10 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   void Transport(tlm::tlm_command command, std::uint64_t address,
                  std::span<std::uint8_t> data) {
-    tlm::tlm_generic_payload transaction;
-    transaction.set_command(command);
-    transaction.set_address(address);
-    transaction.set_data_ptr(data.data());
-    transaction.set_data_length(static_cast<unsigned>(data.size()));
-    transaction.set_streaming_width(static_cast<unsigned>(data.size()));
     // The access is stamped with how far ahead of the simulation's clock we
     // are, and the target adds however long the access takes.
     sc_core::sc_time delay = lead_.get_local_time();
-    socket->b_transport(transaction, delay);
+    socpuppet::Transport(socket, command, address, data, delay);
     lead_.set(delay);
     if (lead_.need_sync()) CatchUp();
     LetTheAccessTakeEffect();

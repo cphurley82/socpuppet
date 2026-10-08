@@ -117,7 +117,8 @@ target_sources(socpuppet_models INTERFACE
     platform/registry.h
     platform/slots.h
     platform/time_conversion.h
-    platform/tracer.h)
+    platform/tracer.h
+    platform/transport.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_core socpuppet_dbt_rise_cpu socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic scc::components SystemC::systemc)

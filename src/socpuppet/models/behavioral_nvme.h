@@ -11,6 +11,7 @@
 #include <tlm_utils/simple_target_socket.h>
 
 #include "socpuppet/core/nvme_controller.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -112,23 +113,10 @@ class BehavioralNvme : public sc_core::sc_module,
 
   // NvmeController::HostMemory: the controller's DMA.
   void Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    Transport(tlm::TLM_READ_COMMAND, address, out.data(), out.size());
+    Transport(dma, tlm::TLM_READ_COMMAND, address, out);
   }
   void Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    Transport(tlm::TLM_WRITE_COMMAND, address,
-              const_cast<std::uint8_t*>(in.data()), in.size());
-  }
-
-  void Transport(tlm::tlm_command command, std::uint64_t address,
-                 std::uint8_t* data, std::size_t length) {
-    tlm::tlm_generic_payload transaction;
-    transaction.set_command(command);
-    transaction.set_address(address);
-    transaction.set_data_ptr(data);
-    transaction.set_data_length(static_cast<unsigned>(length));
-    transaction.set_streaming_width(static_cast<unsigned>(length));
-    sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
-    dma->b_transport(transaction, delay);
+    Transport(dma, tlm::TLM_WRITE_COMMAND, address, WriteData(in));
   }
 
   NvmeController controller_;
