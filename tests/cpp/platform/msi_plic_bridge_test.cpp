@@ -46,6 +46,11 @@ struct MasterWithAnMsiPlicBridge {
         .Rises();
   }
 
+  bool LineIsHigh(unsigned vector) {
+    return platform.ModuleAt<LineWatcher>("watcher" + std::to_string(vector))
+        .line->read();
+  }
+
   Platform platform;
 };
 
@@ -64,6 +69,18 @@ TEST(WhenAMessageArrivesAtAnMsiPlicBridge, TheLineOfItsVectorRisesAndNoOther) {
 
   EXPECT_EQ(fixture.Rises(1), 1);
   EXPECT_EQ(fixture.Rises(0), 0);
+}
+
+// Nothing ever tells the bridge that an interrupt was handled: the handler
+// talks to the device and to the PLIC. A line left high would be a
+// device that never stops asking.
+TEST(WhenAnMsiPlicBridgeHasRaisedALine, TheLineFallsByItself) {
+  MasterWithAnMsiPlicBridge fixture{
+      [](BusDriver& bus) { SendMessage(bus, 1); }};
+
+  fixture.platform.Run();
+
+  EXPECT_FALSE(fixture.LineIsHigh(1));
 }
 
 }  // namespace socpuppet
