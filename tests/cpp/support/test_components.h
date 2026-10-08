@@ -25,30 +25,31 @@
 // A bus driver that runs `body`. Port: "socket".
 inline void AddBusDriver(socpuppet::Registry& registry,
                          std::string implementation,
-                         std::function<void(BusDriver&)> body) {
-  registry.Add(
-      std::move(implementation),
-      [body = std::move(body)](const char* name, socpuppet::Parameters&) {
-        auto module = std::make_unique<BusDriver>(name, body);
-        std::vector<socpuppet::Port> ports{
-            socpuppet::InitiatorPort("socket", module->socket)};
-        return socpuppet::Instance{.module = std::move(module),
-                                   .ports = std::move(ports)};
-      });
+                         const std::function<void(BusDriver&)>& body) {
+  // clang-tidy's analyzer loses track of the body's storage on its way
+  // through two std::functions, and reports a leak there is not.
+  registry.Add(std::move(implementation),
+               // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+               [body](const char* name, socpuppet::Parameters&) {
+                 auto module = std::make_unique<BusDriver>(name, body);
+                 std::vector<socpuppet::Port> ports{
+                     socpuppet::InitiatorPort("socket", module->socket)};
+                 return socpuppet::Instance{.module = std::move(module),
+                                            .ports = std::move(ports)};
+               });
 }
 
 // A line driver that runs `body`. Port: "line".
 inline void AddLineDriver(socpuppet::Registry& registry,
-                          std::string implementation, Drive body) {
-  registry.Add(
-      std::move(implementation),
-      [body = std::move(body)](const char* name, socpuppet::Parameters&) {
-        auto module = std::make_unique<LineDriver>(name, body);
-        std::vector<socpuppet::Port> ports{
-            socpuppet::WireSourcePort("line", module->line)};
-        return socpuppet::Instance{.module = std::move(module),
-                                   .ports = std::move(ports)};
-      });
+                          std::string implementation, const Drive& body) {
+  registry.Add(std::move(implementation),
+               [body](const char* name, socpuppet::Parameters&) {
+                 auto module = std::make_unique<LineDriver>(name, body);
+                 std::vector<socpuppet::Port> ports{
+                     socpuppet::WireSourcePort("line", module->line)};
+                 return socpuppet::Instance{.module = std::move(module),
+                                            .ports = std::move(ports)};
+               });
 }
 
 // A line watcher. Port: "line".
@@ -66,19 +67,18 @@ inline void AddLineWatcher(socpuppet::Registry& registry,
 
 // A device with an interrupt line, which runs `body`. Ports: "socket" and
 // "line".
-inline void AddInterruptSource(socpuppet::Registry& registry,
-                               std::string implementation,
-                               std::function<void(InterruptSource&)> body) {
-  registry.Add(
-      std::move(implementation),
-      [body = std::move(body)](const char* name, socpuppet::Parameters&) {
-        auto module = std::make_unique<InterruptSource>(name, body);
-        std::vector<socpuppet::Port> ports{
-            socpuppet::TargetPort("socket", module->socket),
-            socpuppet::WireSourcePort("line", module->line)};
-        return socpuppet::Instance{.module = std::move(module),
-                                   .ports = std::move(ports)};
-      });
+inline void AddInterruptSource(
+    socpuppet::Registry& registry, std::string implementation,
+    const std::function<void(InterruptSource&)>& body) {
+  registry.Add(std::move(implementation),
+               [body](const char* name, socpuppet::Parameters&) {
+                 auto module = std::make_unique<InterruptSource>(name, body);
+                 std::vector<socpuppet::Port> ports{
+                     socpuppet::TargetPort("socket", module->socket),
+                     socpuppet::WireSourcePort("line", module->line)};
+                 return socpuppet::Instance{.module = std::move(module),
+                                            .ports = std::move(ports)};
+               });
 }
 
 // A target that records each access in `accesses`, which has to outlive
