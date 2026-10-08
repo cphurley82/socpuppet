@@ -66,6 +66,11 @@ class DeviceNode(NamedTuple):
     chosen: tuple[str, ...] = ()
 
 
+def cells(value: int) -> str:
+    """A 64-bit value as two 32-bit devicetree cells, high half first."""
+    return f"{value >> 32:#x} {value & 0xFFFF_FFFF:#x}"
+
+
 class PortSpec(NamedTuple):
     """One port of a component: its name, and what it connects to."""
 
@@ -638,6 +643,42 @@ class PcieRootComplex(Component):
                 "bus master to that bus."
             )
         return {"mmio_base": mmio_base}
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+        ecam = reached.get("ecam")
+        mmio = reached.get("mmio")
+        # Firmware can do nothing with one window and not the other, and
+        # has to know where each ends.
+        if (
+            ecam is None
+            or mmio is None
+            or ecam.window is None
+            or mmio.window is None
+        ):
+            return None
+        # Each bus has 1 MiB of the configuration window: 32 devices of 8
+        # functions, with 4 KiB of registers each.
+        last_bus = (ecam.window >> 20) - 1
+        return DeviceNode(
+            "pcie",
+            ((ecam.address, ecam.window),),
+            (
+                'compatible = "socpuppet,pcie";',
+                'device_type = "pci";',
+                # An address on a PCIe bus is three cells: what kind of
+                # space it is in, then the address, high half first.
+                "#address-cells = <3>;",
+                "#size-cells = <2>;",
+                f"bus-range = <0 {last_bus}>;",
+                # The memory window. 0x2000000 says 32-bit memory space,
+                # and a device's address there is the CPU's address for
+                # it: the root complex does not translate.
+                f"ranges = <0x2000000 {cells(mmio.address)} "
+                f"{cells(mmio.address)} {cells(mmio.window)}>;",
+            ),
+            chosen=("zephyr,pcie-controller",),
+        )
 
 
 class Plic(Component):

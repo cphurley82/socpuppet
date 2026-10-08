@@ -11,7 +11,7 @@ from collections.abc import Collection
 from typing import TYPE_CHECKING
 
 from socpuppet.address_map import Reached, reachable_ports
-from socpuppet.components import DeviceNode
+from socpuppet.components import DeviceNode, cells
 
 if TYPE_CHECKING:
     from socpuppet.placed import Placed, Port
@@ -86,7 +86,7 @@ def _node(
     """One device's node, with its interrupt read off the wire connections."""
     indent = "\t" * depth
     reg = ", ".join(
-        f"<{_cells(address)} {_cells(size)}>" for address, size in node.reg
+        f"<{cells(address)} {cells(size)}>" for address, size in node.reg
     )
     first, *rest = node.properties
     lines = [
@@ -145,8 +145,3 @@ def _chosen(nodes: list[tuple[Placed, DeviceNode]]) -> list[str]:
 def _label(path: str) -> str:
     """A devicetree label for a component path: `io.ram` becomes `io_ram`."""
     return path.replace(".", "_")
-
-
-def _cells(value: int) -> str:
-    """A 64-bit value as two 32-bit devicetree cells, high half first."""
-    return f"{value >> 32:#x} {value & 0xFFFF_FFFF:#x}"

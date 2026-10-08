@@ -383,3 +383,51 @@ class TestWhenAnMsiBridgesLinesGoToPlicSources:
             """
         )
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
+def cpu_with_a_pcie_root_complex():
+    """The CPU and its peripherals, with a PCIe root complex's two windows."""
+    platform, bus, _ = cpu_with_its_peripherals()
+    root_complex = platform.add("rc", sp.PcieRootComplex())
+    bus.map(root_complex.ecam, base=0x3000_0000, size=0x10_0000)
+    bus.map(root_complex.mmio, base=0x4000_0000, size=0x20_0000)
+    return platform
+
+
+class TestWhenAPlatformHasAPcieRootComplex:
+    def test_its_node_gives_both_windows(self):
+        platform = cpu_with_a_pcie_root_complex()
+
+        # `reg` is the configuration window, which has room for one bus in
+        # each MiB. `ranges` is the memory window: 32-bit memory space
+        # (0x2000000), at the same address on the PCIe bus as on the CPU's.
+        node = textwrap.dedent(
+            """\
+            rc: pcie@30000000 {
+            \tcompatible = "socpuppet,pcie";
+            \treg = <0x0 0x30000000 0x0 0x100000>;
+            \tdevice_type = "pci";
+            \t#address-cells = <3>;
+            \t#size-cells = <2>;
+            \tbus-range = <0 0>;
+            \tranges = <0x2000000 0x0 0x40000000 0x0 0x40000000 0x0 0x200000>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_firmware_is_pointed_at_it_as_the_pcie_controller(self):
+        platform = cpu_with_a_pcie_root_complex()
+
+        assert "\t\tzephyr,pcie-controller = &rc;\n" in platform.devicetree()
+
+
+class TestWhenOnlyOneWindowOfAPcieRootComplexCanBeReached:
+    def test_it_has_no_node(self):
+        platform, bus, _ = cpu_with_its_peripherals()
+        root_complex = platform.add("rc", sp.PcieRootComplex())
+        bus.map(root_complex.ecam, base=0x3000_0000, size=0x10_0000)
+
+        # Firmware can find a device through the one window, and can do
+        # nothing with it without the other.
+        assert "pcie@" not in platform.devicetree()
