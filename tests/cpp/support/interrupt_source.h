@@ -22,9 +22,15 @@ class InterruptSource : public sc_core::sc_module {
       : sc_module(name), body_(std::move(body)) {
     socket.register_b_transport(this, &InterruptSource::b_transport);
     SC_THREAD(Run);
+    SC_METHOD(DriveTheLine);
+    sensitive << asking_changed_;
+    dont_initialize();
   }
 
-  void Raise() { line.write(true); }
+  void Raise() {
+    asking_ = true;
+    asking_changed_.notify();
+  }
   void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
 
   // How many times the device has been quieted.
@@ -36,12 +42,22 @@ class InterruptSource : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     if (transaction.is_write()) {
       ++times_quieted_;
-      line.write(false);
+      asking_ = false;
+      asking_changed_.notify();
     }
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }
 
+  // The only process that writes the line. The device's own thread raises
+  // it and the master's process, writing a register, lowers it, and a wire
+  // takes one driver.
+  void DriveTheLine() { line.write(asking_); }
+
   std::function<void(InterruptSource&)> body_;
+  bool asking_ = false;
+  // Notified at once, so that the line is written in the same delta cycle
+  // as the raise or the quieting write.
+  sc_core::sc_event asking_changed_;
   int times_quieted_ = 0;
 };
 

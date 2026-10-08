@@ -106,11 +106,10 @@ class InterruptControllerContract : public ::testing::Test {
 
   ControllerType controller_{"controller"};
   // The lines of the sources, by source number. Entry 0 is unused.
-  sc_core::sc_vector<sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS>> lines_{
-      "line", kLastSource + 1};
-  // A controller drives its output from more than one process: when a line
-  // changes, and when it is read or written.
-  sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS> interrupt_{"interrupt"};
+  sc_core::sc_vector<sc_core::sc_signal<bool>> lines_{"line", kLastSource + 1};
+  // A wire takes one driver, so a controller drives its output from one
+  // process of its own, however many of its processes change its mind.
+  sc_core::sc_signal<bool> interrupt_{"interrupt"};
 };
 
 TYPED_TEST_SUITE_P(InterruptControllerContract);
