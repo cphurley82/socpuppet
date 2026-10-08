@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import devicetree
@@ -326,6 +326,17 @@ class Platform:
         nothing needs to be built.
         """
         return devicetree.generate(self._connections, self._view(via))
+
+    def devicetree_overlay(
+        self, only: Collection[Placed], via: Port | None = None
+    ) -> str:
+        """The devicetree source for some components, as an overlay.
+
+        An overlay adds to a devicetree that firmware already has. This one
+        has the nodes of the components `only`, for a devicetree that
+        describes the rest of what the master at `via` can reach.
+        """
+        return devicetree.overlay(self._connections, self._view(via), only)
 
     def to_json(self) -> str:
         """The description as JSON.

@@ -30,6 +30,64 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     points at.
     """
     master = view.placed
+    nodes = _nodes(connections, view)
+    lines = [
+        "/dts-v1/;",
+        "",
+        "/ {",
+        "\t#address-cells = <2>;",
+        "\t#size-cells = <2>;",
+    ]
+    # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
+    # nothing to choose devices for.
+    cpu = master.component.cpu_node(label(master.path))
+    if cpu is not None:
+        lines += ["", *_chosen(_roles(nodes)), "", *_cpus(cpu)]
+    for each in _devices(
+        nodes,
+        connections,
+        soc_properties=(
+            'compatible = "simple-bus";',
+            "#address-cells = <2>;",
+            "#size-cells = <2>;",
+            "ranges;",
+        ),
+    ):
+        lines += ["", *each]
+    lines += ["};", ""]
+    return "\n".join(lines)
+
+
+def overlay(
+    connections: Collection[Connection],
+    view: Port,
+    only: Collection[Placed],
+) -> str:
+    """The devicetree source for the components `only`, as an overlay.
+
+    🎓 An overlay is a piece of devicetree that is laid over another one
+    and adds to it. This one has the nodes of the components named, and
+    what `chosen` says of them, for a devicetree that already has the rest
+    of what `generate` describes.
+    """
+    nodes = _nodes(connections, view)
+    roles = {
+        role: placed for role, placed in _roles(nodes).items() if placed in only
+    }
+    lines = ["/ {", *_chosen(roles)]
+    for each in _devices(
+        [(placed, node) for placed, node in nodes if placed in only],
+        connections,
+    ):
+        lines += ["", *each]
+    lines += ["};", ""]
+    return "\n".join(lines)
+
+
+def _nodes(
+    connections: Collection[Connection], view: Port
+) -> list[tuple[Placed, DeviceNode]]:
+    """Each component reachable from `view` that has a node, and the node."""
     # Each component's reachable ports, lowest address first. A component
     # with several, such as a PCIe root complex with its two windows, is
     # one device and gets one node.
@@ -40,41 +98,38 @@ def generate(connections: Collection[Connection], view: Port) -> str:
         reached.setdefault(found.port.placed, {}).setdefault(
             found.port.name, found
         )
-    nodes = [
+    return [
         (placed, node)
         for placed, ports in reached.items()
         if (node := placed.component.device_node(ports)) is not None
     ]
-    lines = [
-        "/dts-v1/;",
-        "",
-        "/ {",
-        "\t#address-cells = <2>;",
-        "\t#size-cells = <2>;",
+
+
+def _devices(
+    nodes: list[tuple[Placed, DeviceNode]],
+    connections: Collection[Connection],
+    soc_properties: tuple[str, ...] = (),
+) -> list[list[str]]:
+    """The nodes where they go: memory at the top, the rest under `soc`.
+
+    Each entry is one node at the top of the tree, as its lines.
+    `soc_properties` are the `soc` node's own, for a tree that does not
+    have the node yet.
+    """
+    devices = [
+        _node(placed, node, connections, depth=1)
+        for placed, node in nodes
+        if not node.on_bus
     ]
-    # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
-    # nothing to choose devices for.
-    cpu = master.component.cpu_node(_label(master.path))
-    if cpu is not None:
-        lines += ["", *_chosen(nodes), "", *_cpus(cpu)]
-    for placed, node in nodes:
-        if not node.on_bus:
-            lines += ["", *_node(placed, node, connections, depth=1)]
     on_bus = [(placed, node) for placed, node in nodes if node.on_bus]
     if on_bus:
-        lines += [
-            "",
-            "\tsoc {",
-            '\t\tcompatible = "simple-bus";',
-            "\t\t#address-cells = <2>;",
-            "\t\t#size-cells = <2>;",
-            "\t\tranges;",
-        ]
+        soc = ["\tsoc {", *(f"\t\t{each}" for each in soc_properties)]
         for placed, node in on_bus:
-            lines += ["", *_node(placed, node, connections, depth=2)]
-        lines += ["\t};"]
-    lines += ["};", ""]
-    return "\n".join(lines)
+            if len(soc) > 1:
+                soc.append("")
+            soc += _node(placed, node, connections, depth=2)
+        devices.append([*soc, "\t};"])
+    return devices
 
 
 def _node(
@@ -90,7 +145,7 @@ def _node(
     )
     first, *rest = node.properties
     lines = [
-        f"{indent}{_label(placed.path)}: {node.name}@{node.reg[0][0]:x} {{",
+        f"{indent}{label(placed.path)}: {node.name}@{node.reg[0][0]:x} {{",
         f"{indent}\t{first}",
         f"{indent}\treg = {reg};",
         *(f"{indent}\t{each}" for each in rest),
@@ -104,9 +159,7 @@ def _node(
         key=lambda each: ports.index(each.source.name),
     ):
         sink = each.sink.placed
-        found = sink.component.interrupt_input(
-            each.sink.name, _label(sink.path)
-        )
+        found = sink.component.interrupt_input(each.sink.name, label(sink.path))
         if found is not None:
             interrupts.append(found)
     if interrupts:
@@ -126,22 +179,27 @@ def _cpus(cpu: tuple[str, ...]) -> list[str]:
     ]
 
 
-def _chosen(nodes: list[tuple[Placed, DeviceNode]]) -> list[str]:
-    """The `chosen` node: which devices the firmware should use for what.
-
-    The first device that can fill a role gets it.
-    """
-    filled: dict[str, str] = {}
+def _roles(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
+    """Which device fills each `chosen` role: the first that can."""
+    filled: dict[str, Placed] = {}
     for placed, node in nodes:
         for role in node.chosen:
-            filled.setdefault(role, _label(placed.path))
+            filled.setdefault(role, placed)
+    return filled
+
+
+def _chosen(roles: dict[str, Placed]) -> list[str]:
+    """The `chosen` node: which devices the firmware should use for what."""
     return [
         "\tchosen {",
-        *(f"\t\t{role} = &{label};" for role, label in sorted(filled.items())),
+        *(
+            f"\t\t{role} = &{label(placed.path)};"
+            for role, placed in sorted(roles.items())
+        ),
         "\t};",
     ]
 
 
-def _label(path: str) -> str:
+def label(path: str) -> str:
     """A devicetree label for a component path: `io.ram` becomes `io_ram`."""
     return path.replace(".", "_")

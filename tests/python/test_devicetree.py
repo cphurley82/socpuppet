@@ -391,12 +391,12 @@ def cpu_with_a_pcie_root_complex():
     root_complex = platform.add("rc", sp.PcieRootComplex())
     bus.map(root_complex.ecam, base=0x3000_0000, size=0x10_0000)
     bus.map(root_complex.mmio, base=0x4000_0000, size=0x20_0000)
-    return platform
+    return platform, root_complex
 
 
 class TestWhenAPlatformHasAPcieRootComplex:
     def test_its_node_gives_both_windows(self):
-        platform = cpu_with_a_pcie_root_complex()
+        platform, _ = cpu_with_a_pcie_root_complex()
 
         # `reg` is the configuration window, which has room for one bus in
         # each MiB. `ranges` is the memory window: 32-bit memory space
@@ -417,7 +417,7 @@ class TestWhenAPlatformHasAPcieRootComplex:
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
     def test_firmware_is_pointed_at_it_as_the_pcie_controller(self):
-        platform = cpu_with_a_pcie_root_complex()
+        platform, _ = cpu_with_a_pcie_root_complex()
 
         assert "\t\tzephyr,pcie-controller = &rc;\n" in platform.devicetree()
 
@@ -431,3 +431,32 @@ class TestWhenOnlyOneWindowOfAPcieRootComplexCanBeReached:
         # Firmware can find a device through the one window, and can do
         # nothing with it without the other.
         assert "pcie@" not in platform.devicetree()
+
+
+class TestADevicetreeOverlayForOneOfAPlatformsComponents:
+    def test_is_exactly_this_source(self):
+        platform, root_complex = cpu_with_a_pcie_root_complex()
+
+        # Only what the one component adds: its node, and what `chosen`
+        # says of it. The firmware's devicetree has the rest already.
+        assert platform.devicetree_overlay([root_complex]) == textwrap.dedent(
+            """\
+            / {
+            \tchosen {
+            \t\tzephyr,pcie-controller = &rc;
+            \t};
+
+            \tsoc {
+            \t\trc: pcie@30000000 {
+            \t\t\tcompatible = "socpuppet,pcie";
+            \t\t\treg = <0x0 0x30000000 0x0 0x100000>;
+            \t\t\tdevice_type = "pci";
+            \t\t\t#address-cells = <3>;
+            \t\t\t#size-cells = <2>;
+            \t\t\tbus-range = <0 0>;
+            \t\t\tranges = <0x2000000 0x0 0x40000000 0x0 0x40000000 0x0 0x200000>;
+            \t\t};
+            \t};
+            };
+            """
+        )
