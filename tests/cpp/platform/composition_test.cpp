@@ -23,6 +23,7 @@ using ::testing::ThrowsMessage;
 
 socpuppet::Factory UnusedFactory();
 socpuppet::Registry WithSpamThatHasAnOptionalWireOutput();
+socpuppet::Registry WithSpamThatDrivesItsLineFromTwoProcesses();
 
 TEST(WhenAPlatformIsComposedByName, AMastersWriteReachesTheMemory) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
@@ -116,6 +117,18 @@ TEST(WhenAnOptionalWireOutputIsLeftUnconnected, ThePlatformStillElaborates) {
   EXPECT_NO_THROW(platform.Elaborate());
 }
 
+TEST(WhenAComponentDrivesAWireFromTwoOfItsProcesses,
+     TheRunFailsNamingTheWireAndBothProcesses) {
+  socpuppet::Platform platform{WithSpamThatDrivesItsLineFromTwoProcesses()};
+  platform.Add("spam", "spam");
+  platform.Elaborate();
+
+  EXPECT_THAT([&] { platform.Run(); },
+              ThrowsMessage<sc_core::sc_report>(
+                  AllOf(HasSubstr("spam_line"), HasSubstr("spam.raise"),
+                        HasSubstr("spam.lower"))));
+}
+
 TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
 
@@ -179,6 +192,37 @@ socpuppet::Factory UnusedFactory() {
   return [](const char*, const socpuppet::Config&) {
     return socpuppet::Instance{};
   };
+}
+
+// A component that drives its one wire output from two processes of its
+// own. The second write comes a delta cycle after the first: a signal that
+// allows many writers only objects to two in one delta cycle, so only a
+// signal with one writer refuses this.
+struct TwoHanded : sc_core::sc_module {
+  sc_core::sc_out<bool> line{"line"};
+
+  explicit TwoHanded(const sc_core::sc_module_name& name) : sc_module(name) {
+    SC_THREAD(raise);
+    SC_THREAD(lower);
+  }
+
+  void raise() { line.write(true); }
+  void lower() {
+    wait(sc_core::SC_ZERO_TIME);
+    line.write(false);
+  }
+};
+
+socpuppet::Registry WithSpamThatDrivesItsLineFromTwoProcesses() {
+  socpuppet::Registry registry;
+  registry.Add("spam", [](const char* name, const socpuppet::Config&) {
+    auto module = std::make_unique<TwoHanded>(name);
+    std::vector<socpuppet::Port> ports{
+        socpuppet::WireSourcePort("line", module->line, /*required=*/false)};
+    return socpuppet::Instance{.module = std::move(module),
+                               .ports = std::move(ports)};
+  });
+  return registry;
 }
 
 // "spam" is a component with one wire output, `line`, that need not be

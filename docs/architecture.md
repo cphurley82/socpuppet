@@ -118,7 +118,7 @@ A component offers named ports, and `connect` joins a *source* to a *sink*:
 | bus | TLM initiator socket | TLM target socket | memory-mapped transactions |
 | wire | driver | reader | one boolean line: an interrupt, a reset |
 
-Mixing kinds, or connecting two sources, is refused with a message naming both ports. A wire input left unconnected is tied low. A wire output that a component marks as optional may be left unconnected too: an interrupt line of the NVMe stand-in that the host does not use, for example. A link direction nobody uses is tied off.
+Mixing kinds, or connecting two sources, is refused with a message naming both ports. A wire has one driver: a component whose line can change for more than one reason (a register write, its own timer) still writes it from one process of its own, and SystemC refuses a second one by name. A wire input left unconnected is tied low. A wire output that a component marks as optional may be left unconnected too: an interrupt line of the NVMe stand-in that the host does not use, for example. A link direction nobody uses is tied off.
 
 ## ⚠️ One platform per process
 

@@ -193,11 +193,12 @@ class Platform {
   }
 
  private:
-  // A wire: one boolean line. A device may drive its line from more than
-  // one of its processes (when it is written to, say, and when its own
-  // timer runs out), which SystemC only allows of a signal that is told
-  // to expect it.
-  using Wire = sc_core::sc_signal<bool, sc_core::SC_MANY_WRITERS>;
+  // A wire: one boolean line, with one driver. A device whose line can
+  // change for more than one reason (it is written to, say, and its own
+  // timer runs out) drives it from one process of its own even so, as
+  // hardware has one driver per wire. SystemC checks at the first write
+  // from a second process, and names the wire and both of them.
+  using Wire = sc_core::sc_signal<bool, sc_core::SC_ONE_WRITER>;
 
   // A level of naming with no behavior of its own.
   struct Group : sc_core::sc_module {
