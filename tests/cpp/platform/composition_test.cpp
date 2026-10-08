@@ -127,8 +127,8 @@ TEST(WhenAComponentDrivesAWireFromTwoOfItsProcesses,
 
   EXPECT_THAT([&] { platform.Run(); },
               ThrowsMessage<sc_core::sc_report>(
-                  AllOf(HasSubstr("spam_line"), HasSubstr("spam.raise"),
-                        HasSubstr("spam.lower"))));
+                  AllOf(HasSubstr("spam_line"), HasSubstr("spam.Raise"),
+                        HasSubstr("spam.Lower"))));
 }
 
 TEST(WhenAComponentIsAddedInsideAGroup, ItsSimulationNameCarriesTheGroup) {
@@ -285,12 +285,12 @@ struct TwoHanded : sc_core::sc_module {
   sc_core::sc_out<bool> line{"line"};
 
   explicit TwoHanded(const sc_core::sc_module_name& name) : sc_module(name) {
-    SC_THREAD(raise);
-    SC_THREAD(lower);
+    SC_THREAD(Raise);
+    SC_THREAD(Lower);
   }
 
-  void raise() { line.write(true); }
-  void lower() {
+  void Raise() { line.write(true); }
+  void Lower() {
     wait(sc_core::SC_ZERO_TIME);
     line.write(false);
   }

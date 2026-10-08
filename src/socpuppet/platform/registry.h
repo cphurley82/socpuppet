@@ -51,7 +51,7 @@ class Parameters {
     const auto found = Find(parameter);
     if (found == config_.end()) {
       throw std::invalid_argument(
-          std::format("A \"{}\" needs a \"{}\" parameter, and none was given.",
+          std::format(R"(A "{}" needs a "{}" parameter, and none was given.)",
                       implementation_, parameter));
     }
     return Checked(parameter, found->second, range);
@@ -74,7 +74,7 @@ class Parameters {
         takes += (takes.empty() ? "\"" : ", \"") + name + "\"";
       }
       throw std::invalid_argument(std::format(
-          "A \"{}\" has no \"{}\" parameter. {}", implementation_, parameter,
+          R"(A "{}" has no "{}" parameter. {})", implementation_, parameter,
           takes.empty() ? "It takes none."
                         : "The ones it takes are: " + takes + "."));
     }
@@ -90,7 +90,7 @@ class Parameters {
                         Within range) const {
     if (value < range.least || value > range.most) {
       throw std::invalid_argument(std::format(
-          "A \"{}\" takes a \"{}\" from {} to {}, and {} was given.",
+          R"(A "{}" takes a "{}" from {} to {}, and {} was given.)",
           implementation_, parameter, range.least, range.most, value));
     }
     return value;

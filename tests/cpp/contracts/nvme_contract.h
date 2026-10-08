@@ -609,7 +609,7 @@ TYPED_TEST_P(NvmeContract,
 TYPED_TEST_P(NvmeContract,
              ACommandThatWaitedForRoomCompletesOnceTheHostAcknowledges) {
   std::uint16_t waiting = 0;
-  std::optional<NvmeHost::Completion> completion;
+  std::optional<std::uint16_t> completed;
 
   this->OnTheHost([&](NvmeHost& host) {
     host.Enable();
@@ -617,11 +617,12 @@ TYPED_TEST_P(NvmeContract,
     FillTheIoCompletionQueue(host);
     waiting = host.SubmitFlush();
     host.Acknowledge(host.Io());
-    completion = host.WaitForCompletion(host.Io());
+    if (const auto completion = host.WaitForCompletion(host.Io())) {
+      completed = completion->command_id;
+    }
   });
 
-  ASSERT_TRUE(completion);
-  EXPECT_EQ(completion->command_id, waiting);
+  EXPECT_EQ(completed, waiting);
 }
 
 TYPED_TEST_P(NvmeContract, ABlockThatWasNeverWrittenReadsAsZeros) {
