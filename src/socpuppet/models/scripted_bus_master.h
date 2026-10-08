@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_MODELS_SCRIPTED_BUS_MASTER_H_
 #define SOCPUPPET_MODELS_SCRIPTED_BUS_MASTER_H_
 
+#include <array>
 #include <cstdint>
 #include <format>
 #include <functional>
@@ -16,6 +17,7 @@
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/tlm_quantumkeeper.h>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/script.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/failure.h"
@@ -89,17 +91,17 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Read32& op, Script& script) {
-    std::uint32_t value = 0;
-    if (!Transport(tlm::TLM_READ_COMMAND, op.address, BytesOf(value))) {
+    std::array<std::uint8_t, 4> bytes{};
+    if (!Transport(tlm::TLM_READ_COMMAND, op.address, bytes)) {
       return Outcome::kFailed;
     }
-    script.GiveBack(value);
+    script.GiveBack(LoadLittleEndian<std::uint32_t>(bytes));
     return AfterAnOp();
   }
 
   Outcome CarryOut(const Write32& op, Script&) {
-    std::uint32_t value = op.value;
-    if (!Transport(tlm::TLM_WRITE_COMMAND, op.address, BytesOf(value))) {
+    std::array bytes = LittleEndianBytes(op.value);
+    if (!Transport(tlm::TLM_WRITE_COMMAND, op.address, bytes)) {
       return Outcome::kFailed;
     }
     return AfterAnOp();
@@ -122,10 +124,11 @@ class ScriptedBusMaster : public sc_core::sc_module {
   }
 
   Outcome CarryOut(const Expect32& op, Script&) {
-    std::uint32_t actual = 0;
-    if (!Transport(tlm::TLM_READ_COMMAND, op.address, BytesOf(actual))) {
+    std::array<std::uint8_t, 4> bytes{};
+    if (!Transport(tlm::TLM_READ_COMMAND, op.address, bytes)) {
       return Outcome::kFailed;
     }
+    const auto actual = LoadLittleEndian<std::uint32_t>(bytes);
     if (actual != op.value) {
       FailSimulation(ExpectationFailed(
           std::format("{} expected {:#x} at address {:#x}, but read {:#x}.",
@@ -151,10 +154,6 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   Outcome AfterAnOp() {
     return reset->read() ? Outcome::kInterruptedByReset : Outcome::kCarryOn;
-  }
-
-  static std::span<std::uint8_t> BytesOf(std::uint32_t& value) {
-    return {reinterpret_cast<std::uint8_t*>(&value), sizeof value};
   }
 
   // Returns false, having stopped the simulation, if the target refused

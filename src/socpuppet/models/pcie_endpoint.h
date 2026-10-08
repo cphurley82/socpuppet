@@ -12,6 +12,7 @@
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/pcie_endpoint_registers.h"
 #include "socpuppet/models/pcie_link.h"
 #include "socpuppet/platform/transport.h"
@@ -194,10 +195,7 @@ class PcieEndpoint : public sc_core::sc_module {
         outbox_.pop_front();
         // An interrupt message is a 32-bit write of the vector's data to
         // its address, little-endian like everything on this bus.
-        std::array<std::uint8_t, 4> data{};
-        for (std::size_t index = 0; index < data.size(); ++index) {
-          data[index] = static_cast<std::uint8_t>(message.data >> (8 * index));
-        }
+        std::array data = LittleEndianBytes(message.data);
         // Nobody answering is what the bus calls a master abort.
         if (Transport(to_host, tlm::TLM_WRITE_COMMAND, message.address, data) ==
             tlm::TLM_ADDRESS_ERROR_RESPONSE) {

@@ -7,6 +7,7 @@
 add_library(socpuppet_core INTERFACE)
 target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/little_endian.h
     core/memory_store.h
     core/pcie_endpoint_registers.h
     core/script.h

@@ -2,11 +2,13 @@
 #define SOCPUPPET_MODELS_MSI_RECEIVER_H_
 
 #include <cstdint>
-#include <cstring>
+#include <span>
 
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
+
+#include "socpuppet/core/little_endian.h"
 
 namespace socpuppet {
 
@@ -47,12 +49,13 @@ class MsiReceiver : public sc_core::sc_module {
       transaction.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
       return;
     }
+    const std::span data{transaction.get_data_ptr(),
+                         transaction.get_data_length()};
     if (transaction.is_read()) {
-      std::memcpy(transaction.get_data_ptr(), &waiting_, sizeof waiting_);
+      StoreLittleEndian(waiting_, data);
       waiting_ = 0;
     } else {
-      std::uint32_t value = 0;
-      std::memcpy(&value, transaction.get_data_ptr(), sizeof value);
+      const auto value = LoadLittleEndian<std::uint32_t>(data);
       if (value >= kVectors) {
         transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
         return;
@@ -72,7 +75,8 @@ class MsiReceiver : public sc_core::sc_module {
         transaction.get_data_length() != sizeof waiting_) {
       return 0;
     }
-    std::memcpy(transaction.get_data_ptr(), &waiting_, sizeof waiting_);
+    StoreLittleEndian(
+        waiting_, {transaction.get_data_ptr(), transaction.get_data_length()});
     return sizeof waiting_;
   }
 

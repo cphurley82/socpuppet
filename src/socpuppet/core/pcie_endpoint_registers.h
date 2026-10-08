@@ -10,6 +10,8 @@
 #include <span>
 #include <vector>
 
+#include "socpuppet/core/little_endian.h"
+
 namespace socpuppet {
 
 // The registers of a PCIe endpoint, and the decisions that hang on them,
@@ -306,31 +308,19 @@ class PcieEndpointRegisters {
   Message MessageOf(std::size_t vector) const {
     const std::span entry =
         std::span{table_}.subspan(vector * kTableEntrySize, kTableEntrySize);
-    return {.address = LoadFrom<std::uint64_t>(entry),
-            .data = LoadFrom<std::uint32_t>(entry.subspan(kEntryData))};
+    return {.address = LoadLittleEndian<std::uint64_t>(entry),
+            .data = LoadLittleEndian<std::uint32_t>(entry.subspan(kEntryData))};
   }
 
   // Stores a little-endian value in configuration space.
   template <typename Value>
   void Store(std::size_t offset, Value value) {
-    for (std::size_t index = 0; index < sizeof(Value); ++index) {
-      configuration_[offset + index] =
-          static_cast<std::uint8_t>(value >> (8 * index));
-    }
+    StoreLittleEndian(value, std::span{configuration_}.subspan(offset));
   }
 
   template <typename Value>
   Value Load(std::size_t offset) const {
-    return LoadFrom<Value>(std::span{configuration_}.subspan(offset));
-  }
-
-  template <typename Value>
-  static Value LoadFrom(std::span<const std::uint8_t> bytes) {
-    Value value = 0;
-    for (std::size_t index = 0; index < sizeof(Value); ++index) {
-      value = static_cast<Value>(value | Value{bytes[index]} << (8 * index));
-    }
-    return value;
+    return LoadLittleEndian<Value>(std::span{configuration_}.subspan(offset));
   }
 
   // Marks the bits of a register that a write from the host changes.

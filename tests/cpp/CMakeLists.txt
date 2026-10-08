@@ -3,6 +3,7 @@ include(GoogleTest)
 # Tests of plain C++ logic. No kernel, so they can share one process.
 add_executable(unit_tests
   unit/elf_image_test.cpp
+  unit/little_endian_test.cpp
   unit/memory_store_test.cpp
   unit/nvme_controller_test.cpp
   unit/pcie_endpoint_registers_test.cpp
