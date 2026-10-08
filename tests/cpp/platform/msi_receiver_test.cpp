@@ -14,6 +14,7 @@
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
+#include "tests/cpp/support/test_components.h"
 
 namespace socpuppet {
 
@@ -35,16 +36,8 @@ struct MasterWithAnMsiReceiver {
   static Registry WithADriverAndAWatcher(
       const std::function<void(BusDriver&)>& body) {
     Registry registry = BuiltinComponents();
-    registry.Add("bus_driver", [body](const char* name, Parameters&) {
-      auto module = std::make_unique<BusDriver>(name, body);
-      std::vector<Port> ports{InitiatorPort("socket", module->socket)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
-    });
-    registry.Add("line_watcher", [](const char* name, Parameters&) {
-      auto module = std::make_unique<LineWatcher>(name);
-      std::vector<Port> ports{WireSinkPort("line", module->line)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
-    });
+    AddBusDriver(registry, "bus_driver", body);
+    AddLineWatcher(registry, "line_watcher");
     return registry;
   }
 

@@ -20,6 +20,7 @@
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
 #include "tests/cpp/support/nvme_host.h"
+#include "tests/cpp/support/test_components.h"
 
 // The admin completion queue always interrupts on vector 0. An I/O
 // completion queue uses whichever vector the host names when it creates
@@ -77,26 +78,12 @@ class NvmeContract : public ::testing::Test {
   void OnTheHost(const std::function<void(NvmeHost&)>& body) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     Rig::Register(registry);
-    registry.Add("driver", [this, body](const char* name,
-                                        socpuppet::Parameters&) {
-      auto module =
-          std::make_unique<BusDriver>(name, [this, body](BusDriver& bus) {
-            NvmeHost host{bus, kRegistersBase, kMemoryBase, InterruptLines()};
-            body(host);
-            sc_core::sc_pause();
-          });
-      std::vector<socpuppet::Port> ports{
-          socpuppet::InitiatorPort("socket", module->socket)};
-      return socpuppet::Instance{.module = std::move(module),
-                                 .ports = std::move(ports)};
+    AddBusDriver(registry, "driver", [this, body](BusDriver& bus) {
+      NvmeHost host{bus, kRegistersBase, kMemoryBase, InterruptLines()};
+      body(host);
+      sc_core::sc_pause();
     });
-    registry.Add("line_watcher", [](const char* name, socpuppet::Parameters&) {
-      auto module = std::make_unique<LineWatcher>(name);
-      std::vector<socpuppet::Port> ports{
-          socpuppet::WireSinkPort("line", module->line)};
-      return socpuppet::Instance{.module = std::move(module),
-                                 .ports = std::move(ports)};
-    });
+    AddLineWatcher(registry, "line_watcher");
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->Add("host.driver", "driver");
     platform_->Add("host.bus", "router",

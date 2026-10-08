@@ -14,6 +14,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/bus_driver.h"
+#include "tests/cpp/support/test_components.h"
 
 namespace {
 
@@ -64,14 +65,7 @@ struct RoutedPlatform {
     for (const auto& [implementation, each] :
          {std::pair{"bus_driver", body},
           std::pair{"second_bus_driver", second_body}}) {
-      registry.Add(implementation,
-                   [each](const char* name, socpuppet::Parameters&) {
-                     auto module = std::make_unique<BusDriver>(name, each);
-                     std::vector<socpuppet::Port> ports{
-                         socpuppet::InitiatorPort("socket", module->socket)};
-                     return socpuppet::Instance{.module = std::move(module),
-                                                .ports = std::move(ports)};
-                   });
+      AddBusDriver(registry, implementation, each);
     }
     return registry;
   }

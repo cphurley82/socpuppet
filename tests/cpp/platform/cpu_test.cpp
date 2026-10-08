@@ -20,6 +20,7 @@
 #include "tests/cpp/support/interrupt_source.h"
 #include "tests/cpp/support/recording_target.h"
 #include "tests/cpp/support/riscv_program.h"
+#include "tests/cpp/support/test_components.h"
 
 using ::testing::AllOf;
 using ::testing::HasSubstr;
@@ -244,15 +245,7 @@ struct CpuPlatformWithAnInterruptSource {
   static socpuppet::Registry WithAnInterruptSource(
       const std::function<void(InterruptSource&)>& interrupts) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    registry.Add("interrupt_source", [interrupts](const char* name,
-                                                  socpuppet::Parameters&) {
-      auto module = std::make_unique<InterruptSource>(name, interrupts);
-      std::vector<socpuppet::Port> ports{
-          socpuppet::TargetPort("socket", module->socket),
-          socpuppet::WireSourcePort("line", module->line)};
-      return socpuppet::Instance{.module = std::move(module),
-                                 .ports = std::move(ports)};
-    });
+    AddInterruptSource(registry, "interrupt_source", interrupts);
     return registry;
   }
 
@@ -317,14 +310,7 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   constexpr std::uint64_t kProbeBase = 0x1000'0000;
   std::vector<RecordedAccess> probed;
   socpuppet::Registry registry = socpuppet::BuiltinComponents();
-  registry.Add("probe", [&](const char* name, socpuppet::Parameters&) {
-    auto module =
-        std::make_unique<RecordingTarget>(name, probed, sc_core::SC_ZERO_TIME);
-    std::vector<socpuppet::Port> ports{
-        socpuppet::TargetPort("socket", module->socket)};
-    return socpuppet::Instance{.module = std::move(module),
-                               .ports = std::move(ports)};
-  });
+  AddRecordingTarget(registry, "probe", probed);
   socpuppet::Platform platform{std::move(registry)};
   // The CPU runs up to 100 us ahead of the clock that the timer counts by.
   const sc_core::sc_time quantum{100, sc_core::SC_US};

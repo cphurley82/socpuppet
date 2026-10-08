@@ -19,6 +19,7 @@
 #include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/pci_host.h"
 #include "tests/cpp/support/recording_target.h"
+#include "tests/cpp/support/test_components.h"
 
 namespace socpuppet {
 
@@ -118,33 +119,13 @@ struct HostWithAnEndpoint {
   static Registry WithActors(const Actors& actors,
                              std::vector<RecordedAccess>& messages) {
     Registry registry = BuiltinComponents();
-    registry.Add("host_driver", [host = actors.host](const char* name,
-                                                     Parameters&) {
-      auto module = std::make_unique<BusDriver>(name, [host](BusDriver& bus) {
-        PciHost pci{bus, kEcamBase};
-        host(pci);
-      });
-      std::vector<Port> ports{InitiatorPort("socket", module->socket)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
+    AddBusDriver(registry, "host_driver", [host = actors.host](BusDriver& bus) {
+      PciHost pci{bus, kEcamBase};
+      host(pci);
     });
-    registry.Add("function_driver", [function = actors.function](
-                                        const char* name, Parameters&) {
-      auto module = std::make_unique<BusDriver>(name, function);
-      std::vector<Port> ports{InitiatorPort("socket", module->socket)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
-    });
-    registry.Add("line_driver", [line = actors.line](const char* name,
-                                                     Parameters&) {
-      auto module = std::make_unique<LineDriver>(name, line);
-      std::vector<Port> ports{WireSourcePort("line", module->line)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
-    });
-    registry.Add("recorder", [&messages](const char* name, Parameters&) {
-      auto module = std::make_unique<RecordingTarget>(name, messages,
-                                                      sc_core::SC_ZERO_TIME);
-      std::vector<Port> ports{TargetPort("socket", module->socket)};
-      return Instance{.module = std::move(module), .ports = std::move(ports)};
-    });
+    AddBusDriver(registry, "function_driver", actors.function);
+    AddLineDriver(registry, "line_driver", actors.line);
+    AddRecordingTarget(registry, "recorder", messages);
     return registry;
   }
 

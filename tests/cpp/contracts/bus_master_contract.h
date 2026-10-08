@@ -15,6 +15,7 @@
 #include "tests/cpp/support/interrupt_source.h"
 #include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/recording_target.h"
+#include "tests/cpp/support/test_components.h"
 
 // What a test asks a bus master to do. Each kind of master has its own way
 // of being told: a script for the stand-in, a program for a CPU.
@@ -87,37 +88,14 @@ class BusMasterContract : public ::testing::Test {
   // behind a router.
   void Build(const Scenario& scenario) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    registry.Add("probe", [this, latency = scenario.probe_latency](
-                              const char* name, socpuppet::Parameters&) {
-      auto module = std::make_unique<RecordingTarget>(name, probed_, latency);
-      std::vector<socpuppet::Port> ports{
-          socpuppet::TargetPort("socket", module->socket)};
-      return socpuppet::Instance{.module = std::move(module),
-                                 .ports = std::move(ports)};
-    });
+    AddRecordingTarget(registry, "probe", probed_, scenario.probe_latency);
     for (const auto& [implementation, body] :
          {std::pair{"reset_driver", scenario.reset},
           std::pair{"irq_driver", scenario.irq},
           std::pair{"timer_irq_driver", scenario.timer_irq}}) {
-      registry.Add(implementation,
-                   [body](const char* name, socpuppet::Parameters&) {
-                     auto module = std::make_unique<LineDriver>(name, body);
-                     std::vector<socpuppet::Port> ports{
-                         socpuppet::WireSourcePort("line", module->line)};
-                     return socpuppet::Instance{.module = std::move(module),
-                                                .ports = std::move(ports)};
-                   });
+      AddLineDriver(registry, implementation, body);
     }
-    registry.Add(
-        "interrupt_source",
-        [body = scenario.device](const char* name, socpuppet::Parameters&) {
-          auto module = std::make_unique<InterruptSource>(name, body);
-          std::vector<socpuppet::Port> ports{
-              socpuppet::TargetPort("socket", module->socket),
-              socpuppet::WireSourcePort("line", module->line)};
-          return socpuppet::Instance{.module = std::move(module),
-                                     .ports = std::move(ports)};
-        });
+    AddInterruptSource(registry, "interrupt_source", scenario.device);
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->SetQuantum(scenario.quantum);
     platform_->Add("cpu", Rig::Implementation(), Rig::Config());
