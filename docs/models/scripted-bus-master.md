@@ -55,12 +55,12 @@ There is no CPU behind the curtain:
 - **No instructions, registers or program counter.** Nothing is fetched or executed.
 - **No timing of its own.** An operation takes as long as the device it reaches says it takes, and no longer. Most devices here say "no time at all", so time only passes when the script waits.
 - **One interrupt line**, level-sensitive, with no controller, priorities or vectors.
-- ⚠️ **Quieting a device works when it is wired straight to `irq`.** After a write that lowers the line, `sp.wait_irq()` waits for the next rise. Behind an interrupt controller it does not: the script's accesses follow each other with nothing else getting a turn, so the controller still sees the device asking when the script completes the interrupt, and reports it again. The real CPU gives the platform a turn after every access, and the stand-in does not yet.
+- **Every access gets a turn to take effect.** After each read or write the stand-in lets up to two delta cycles pass, as the real CPU does, so that a line the access lowered is seen low by whatever watches it before the script's next access. 💡 That is what lets a script claim an interrupt at a PLIC, quiet the device and complete the interrupt without being interrupted a second time: the PLIC sees the device go quiet before the completion arrives.
 - **Beats.** `read32` and `write32` are little-endian 32-bit accesses. `read` and `write` move any number of bytes in one transaction. A real CPU would need several accesses or a burst for anything wider than its bus. The stand-in sends it whole, which is how a loosely-timed model writes a burst, with no beat-by-beat timing. There are no byte enables.
 - **No DMI.** It makes a transaction for every access, where a CPU model would take a fast path.
 
 ## What it shares with a real CPU
 
-The stand-in fills the same slot as the real CPU, `sp.DbtRiseCpu`, and is held to the same contract (`tests/cpp/contracts/bus_master_contract.h`): how reset holds and restarts it, how it waits for its interrupt, and how it keeps time.
+The stand-in fills the same slot as the real CPU, `sp.DbtRiseCpu`, and is held to the same contract (`tests/cpp/contracts/bus_master_contract.h`): how reset holds and restarts it, how it waits for its interrupt, how it takes interrupts through a PLIC, and how it keeps time.
 
 🎓 That last one is temporal decoupling. A master may run ahead of simulated time by up to the platform's `quantum`, and only then lets everything else catch up. When a device says an access took 3 µs, the stand-in adds that to how far ahead it is, and stops to let the clock catch up once it is a whole quantum ahead, before it waits for something, and when its script ends.

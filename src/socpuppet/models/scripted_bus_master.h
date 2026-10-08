@@ -137,9 +137,6 @@ class ScriptedBusMaster : public sc_core::sc_module {
 
   Outcome CarryOut(const WaitIrq&, Script&) {
     CatchUp();
-    // A line takes its new level a delta cycle after it is written. Let one
-    // pass, so that a line our last access lowered is seen low.
-    wait(sc_core::SC_ZERO_TIME);
     while (!irq->read() && !reset->read()) {
       wait(irq->posedge_event() | reset->posedge_event());
     }
@@ -174,6 +171,23 @@ class ScriptedBusMaster : public sc_core::sc_module {
     socket->b_transport(transaction, delay);
     lead_.set(delay);
     if (lead_.need_sync()) CatchUp();
+    LetTheAccessTakeEffect();
+  }
+
+  // The access may have changed a line: a handler quiets a device by
+  // writing to it. A line takes its new level a delta cycle after it is
+  // written, and that is when whatever listens to it (an interrupt
+  // controller) runs; what the listener writes in turn takes one more.
+  // Without this, a script that quiets its device and then
+  // completes the interrupt at a PLIC does so while the PLIC still sees the
+  // device asking, and is interrupted again. Two delta cycles is the count
+  // that does not depend on the order the kernel runs processes in, and it
+  // is what the CPU does after each of its accesses.
+  void LetTheAccessTakeEffect() {
+    for (int delta = 0;
+         delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
+      wait(sc_core::SC_ZERO_TIME);
+    }
   }
 
   // Lets the simulation's clock catch up with us, unless a reset comes

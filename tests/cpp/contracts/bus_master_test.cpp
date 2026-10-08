@@ -50,6 +50,25 @@ struct ScriptedRig {
           co_await socpuppet::Write32(Contract::kProbeBase, 0);
         });
         break;
+      case Behavior::kTakeInterruptsThroughThePlic:
+        master.SetScript([]() -> socpuppet::Script {
+          // The PLIC's registers for source 1: its priority, the enable
+          // bits, and claim/complete.
+          constexpr std::uint64_t kPriority1 = Contract::kPlicBase + 4;
+          constexpr std::uint64_t kEnable = Contract::kPlicBase + 0x2000;
+          constexpr std::uint64_t kClaimComplete =
+              Contract::kPlicBase + 0x20'0004;
+          co_await socpuppet::Write32(kPriority1, 1);
+          co_await socpuppet::Write32(kEnable, 1 << 1);
+          for (;;) {
+            co_await socpuppet::WaitIrq{};
+            const std::uint32_t claimed =
+                co_await socpuppet::Read32(kClaimComplete);
+            co_await socpuppet::Write32(Contract::kDeviceBase, 0);
+            co_await socpuppet::Write32(kClaimComplete, claimed);
+          }
+        });
+        break;
     }
   }
 };
@@ -78,6 +97,10 @@ struct DbtRiseRig {
       case Behavior::kWaitForTheInterruptThenWriteToTheProbe:
         program = riscv::SleepUntilTheExternalInterruptThenStoreWord(
             Contract::kProbeBase);
+        break;
+      case Behavior::kTakeInterruptsThroughThePlic:
+        program = riscv::HandleInterruptsThroughAPlic(Contract::kPlicBase,
+                                                      Contract::kDeviceBase);
         break;
     }
     platform.DebugWrite("cpu.socket", Contract::kProgramBase,
