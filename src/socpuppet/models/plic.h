@@ -42,6 +42,8 @@ class Plic : public sc_core::sc_module {
 
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay);
+  // The only process that writes `irq`.
+  void DriveTheLine();
 
   // What a source left unconnected is bound to.
   sc_core::sc_signal<bool> tied_low_{"tied_low"};

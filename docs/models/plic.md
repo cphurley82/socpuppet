@@ -31,10 +31,10 @@ platform.connect(plic.irq, cpu.irq)
 
 - **More than one context.** 🎓 A context is one CPU in one privilege mode that can be interrupted. Here there is one: the one CPU, in machine mode. A real PLIC has one per CPU and mode, each with its own enable bits and threshold.
 - **Edge-triggered sources.** Every source is level-sensitive.
-- **Timing.** The CPU's line changes in the same instant as the line or register that caused it.
+- **Timing.** The CPU's line changes in the same instant as the line or register that caused it, give or take a delta cycle: the adapter copies the borrowed model's output through one process of its own, so that the line has exactly one driver however the model reaches it.
 
 ## Where it comes from
 
 💡 This one is borrowed. The model is the RISC-V PLIC from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), written by Minres. socpuppet's adapter (`src/socpuppet/models/plic.cpp`) fixes it at 31 sources and one context and ties off what is not connected.
 
-What socpuppet relies on is written down as tests, in `tests/cpp/contracts/interrupt_controller_contract.h`. They found three bugs in the borrowed model, each patched and written up in [upstream.md](../upstream.md): the last source's priority, a source enabled while already pending, and a line still high at completion.
+What socpuppet relies on is written down as tests, in `tests/cpp/contracts/interrupt_controller_contract.h`. They found four bugs in the borrowed model, written up in [upstream.md](../upstream.md): the last source's priority, a source enabled while already pending, and a line still high at completion, each patched; and an output written from two processes at once, which the adapter works around.

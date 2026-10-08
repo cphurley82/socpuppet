@@ -282,6 +282,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The PLIC writes its interrupt output from whichever process is running
+
+- **Where**: `rvi/plic.h`, `write_irq`, reached from `source_irq_cb` (the model's own method) and from the claim/complete callbacks, which run in the thread of whoever is accessing the register. With `cmake/patches/vpv-peripherals-plic-look-again.patch` the priority, enable and threshold writes reach it the same way.
+- **What is wrong**: 🎓 SystemC lets one process write a signal in a delta cycle, and reports `E115` ("cannot have more than one driver") when a second one changes it in the same delta. The PLIC's output is written by its method when a source's line rises, and by the caller's thread when a register is written, so a line that rises in the same delta cycle as a register write ends the simulation. A device that interrupts at time zero while the firmware is enabling it is enough.
+- **How to see it**: `InterruptControllerContract.ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts` in `tests/cpp/contracts/interrupt_controller_contract.h`, with the adapter binding `interrupts_o[0]` straight to a checked signal.
+- **What we do**: no patch. The adapter (`plic.cpp`) binds the output to a signal that does not check its writers, and copies it to `irq` from one method of its own. The CPU sees the line one delta cycle later than it would otherwise, which nothing notices.
+- **Upstream fix**: have `write_irq` only note the new level and notify an event, and one `SC_METHOD` write `interrupts_o`.
+- **Kind**: bug.
+- **When it lands**: the adapter can bind `interrupts_o[0]` to `irq` directly again.
+
 ### The ACLINT's and the PLIC's registers are indeterminate until reset is pulsed
 
 - **Where**: `minres/gen/aclint_regs.h` and `rvi/gen/plic_regs.h`, the storage declarations (`uint64_t r_mtime;`, `std::array<uint32_t, ...> r_priority;` and the rest).

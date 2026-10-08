@@ -40,7 +40,7 @@ struct Plic::Model {
     for (std::size_t source = 0; source < kSources; ++source) {
       plic_.interrupts_i[source].bind(owner.sources[source]);
     }
-    plic_.interrupts_o[0].bind(owner.irq);
+    plic_.interrupts_o[0].bind(interrupt_);
   }
 
   void AccessRegister(tlm::tlm_generic_payload& transaction,
@@ -48,9 +48,20 @@ struct Plic::Model {
     to_registers_->b_transport(transaction, delay);
   }
 
+  // What the borrowed model says its interrupt output is.
+  const sc_core::sc_signal_in_if<bool>& Interrupt() const { return interrupt_; }
+
  private:
   sc_core::sc_signal<sc_core::sc_time> access_time_{"access_time"};
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
+  // The borrowed model writes its output from whichever process is running:
+  // its own method when a source's line rises, and the caller's thread
+  // when a register is written. SystemC lets one process write a signal in
+  // a delta cycle (SC_MANY_WRITERS only lifts that across delta cycles),
+  // so this signal is told not to check, and the adapter copies it to `irq`
+  // from one process of its own.
+  sc_core::sc_signal<bool, sc_core::SC_UNCHECKED_WRITERS> interrupt_{
+      "interrupt"};
   PoweredOnPlic plic_{"plic"};
   // The model's socket has a bus width of zero, SCC's mark for "loosely
   // timed", and only binds to its like.
@@ -61,7 +72,11 @@ struct Plic::Model {
 Plic::Plic(const sc_core::sc_module_name& name)
     : sc_module(name), model_(std::make_unique<Model>(*this)) {
   socket.register_b_transport(this, &Plic::b_transport);
+  SC_METHOD(DriveTheLine);
+  sensitive << model_->Interrupt();
 }
+
+void Plic::DriveTheLine() { irq.write(model_->Interrupt().read()); }
 
 Plic::~Plic() = default;
 

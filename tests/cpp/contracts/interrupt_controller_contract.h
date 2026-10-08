@@ -95,6 +95,14 @@ class InterruptControllerContract : public ::testing::Test {
     lines_[source].write(false);
     Settle(bus);
   }
+  // Raises `source` and returns in the delta cycle in which the controller
+  // sees the new level, so that whatever the caller does next lands in
+  // that same delta cycle. A line takes its level a delta cycle after it is
+  // written; Raise, by contrast, lets time pass.
+  void RaiseWithoutSettling(BusDriver& bus, unsigned source) {
+    lines_[source].write(true);
+    bus.WaitFor(sc_core::SC_ZERO_TIME);
+  }
 
   ControllerType controller_{"controller"};
   // The lines of the sources, by source number. Entry 0 is unused.
@@ -261,6 +269,17 @@ TYPED_TEST_P(InterruptControllerContract,
 }
 
 TYPED_TEST_P(InterruptControllerContract,
+             ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts) {
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Write(bus, this->Priority(3), 1);
+    this->RaiseWithoutSettling(bus, 3);
+    this->Write(bus, this->kEnable, std::uint32_t{1} << 3);
+  });
+
+  EXPECT_TRUE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(InterruptControllerContract,
              ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites) {
   // The enable bits for sources 32 to 63, which a driver may clear without
   // asking how many sources there are.
@@ -293,6 +312,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     AClaimedSourceDoesNotInterruptAgainUntilItIsCompleted,
     CompletingASourceWhoseLineIsStillHighInterruptsAgain,
     CompletingASourceWhoseLineHasDroppedDoesNotInterruptAgain,
+    ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts,
     ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites);
 
 #endif  // TESTS_CPP_CONTRACTS_INTERRUPT_CONTROLLER_CONTRACT_H_
