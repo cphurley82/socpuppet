@@ -88,18 +88,24 @@ MSI_SOURCE = 1
 TIMER_HZ = 10_000_000
 
 
+class HostDrive(NamedTuple):
+    """The host's SSD, and what the host has for its sake."""
+
+    ssd: Ssd
+    #: The bridge that takes the SSD's interrupt messages.
+    msi: Placed
+    #: The host's end of the PCIe link the SSD is on.
+    root_complex: Placed
+
+
 class Host(NamedTuple):
     """The host platform, and the parts of it a test or a script wants."""
 
     platform: Platform
     cpu: Placed
     uart: PlacedUart
-    #: The SSD, if the host was described with one.
-    drive: Ssd | None = None
-    #: What the host has for the SSD's sake, and only with one: the bridge
-    #: that takes its interrupt messages, and the PCIe root complex.
-    msi: Placed | None = None
-    root_complex: Placed | None = None
+    #: The SSD and its way in, if the host was described with one.
+    drive: HostDrive | None = None
 
 
 def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
@@ -154,10 +160,10 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
             getattr(msi, f"irq{vector}"),
             getattr(plic, f"source{MSI_SOURCE + vector}"),
         )
-    drive = add_ssd(
+    ssd = add_ssd(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
-    return Host(platform, cpu, uart, drive, msi, root_complex)
+    return Host(platform, cpu, uart, HostDrive(ssd, msi, root_complex))
 
 
 def drive_overlay() -> str:
@@ -170,14 +176,14 @@ def drive_overlay() -> str:
     attach its driver to, and matches it to what the scan finds by the
     vendor and device numbers.
     """
+    # The devicetree does not say how big the drive is, so any size will do.
     board = host(drive_blocks=1)
-    assert board.drive is not None
-    assert board.msi is not None
-    assert board.root_complex is not None
-    endpoint = board.drive.endpoint.component
-    root_complex = devicetree.label(board.root_complex.path)
+    drive = board.drive
+    assert drive is not None
+    endpoint = drive.ssd.endpoint.component
+    root_complex = devicetree.label(drive.root_complex.path)
     return board.platform.devicetree_overlay(
-        [board.msi, board.root_complex]
+        [drive.msi, drive.root_complex]
     ) + textwrap.dedent(
         f"""
         &{root_complex} {{

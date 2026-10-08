@@ -61,7 +61,7 @@ class TestTheHostWithADrive:
         board = host(drive_blocks=4096)
 
         assert board.drive is not None
-        assert board.drive.nvme.component.parameters["blocks"] == 4096
+        assert board.drive.ssd.nvme.component.parameters["blocks"] == 4096
 
     def test_gives_each_of_the_drives_vectors_a_plic_source_of_its_own(self):
         board = host(drive_blocks=64)

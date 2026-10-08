@@ -412,12 +412,17 @@ class Memory(Component):
 
     @override
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
-        base, _, window = reached["socket"]
+        socket = reached["socket"]
+        size = (
+            self.size
+            if socket.window is None
+            else min(self.size, socket.window)
+        )
         return DeviceNode(
             "memory",
             # A memory mapped through a smaller range is, to the firmware, a
             # memory of that size.
-            ((base, self.size if window is None else min(self.size, window)),),
+            ((socket.address, size),),
             ('device_type = "memory";',),
             on_bus=False,
             chosen=("zephyr,sram",),
