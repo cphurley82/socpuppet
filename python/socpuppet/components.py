@@ -415,6 +415,32 @@ class Memory(Component):
         )
 
 
+class MsiPlicBridge(Component):
+    """Turns message-signalled interrupts into lines, for a PLIC.
+
+    A PCIe device interrupts by writing a message to an address the host
+    chose, and a PLIC only has lines. Map this where the host has those
+    messages sent, and connect `irq0`, `irq1` and so on to sources of the
+    PLIC. A message's data is the number of a vector, and that vector's
+    line pulses: it rises, and falls again by itself. `vectors` is how many
+    lines there are.
+    """
+
+    implementation = "msi_plic_bridge"
+    #: One 32-bit register.
+    mapped_size = 4
+
+    vectors: int
+
+    @property
+    def port_specs(self) -> tuple[PortSpec, ...]:
+        """The register, and one port per interrupt line."""
+        return (
+            target("socket"),
+            *(wire_out(f"irq{vector}") for vector in range(self.vectors)),
+        )
+
+
 class MsiReceiver(Component):
     """🎭 Stand-in for what takes a host's message-signalled interrupts.
 
