@@ -245,15 +245,17 @@ FetchContent_Declare(vpv_peripherals
   GIT_REPOSITORY https://github.com/VP-Vibes/VPV-Peripherals.git
   GIT_TAG 8c70afcc74b7ac03ca822d8fbad0752ae6176a81 # 2026-09-23
   # aclint-time-zero: a timer compare value written at time zero was never
-  # acted on. The three for the PLIC: its last source's priority was read
+  # acted on. The four for the PLIC: its last source's priority was read
   # from past the end of an array; a source that was already pending when
-  # it was enabled never interrupted; and one whose line was still high
-  # when its handler completed never interrupted again.
+  # it was enabled never interrupted; one whose line was still high when
+  # its handler completed never interrupted again; and one whose line
+  # pulsed while its handler was running was not heard.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-last-source.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-look-again.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-level-sources.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-edge-while-claimed.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

@@ -295,6 +295,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The PLIC forgets a request made while its source is claimed
+
+- **Where**: `rvi/plic.h`, `source_irq_cb` and `claim_complete_write_cb`.
+- **What is wrong**: a rising edge on a source that has been claimed and not yet completed is dropped. With `vpv-peripherals-plic-level-sources.patch` a line that is still high at completion is heard, but a line that only pulsed is not. 🎓 That is how a message-signalled interrupt (MSI) looks once something has turned it into a wire: an edge, with nothing to hold the line up until the handler has listened. A handler that had already looked at its device when the pulse came returns, and the device waits for ever. The PLIC specification leaves the choice open for an edge-triggered source (a gateway may ignore the further edges or count them), so this is a gap, not a defect.
+- **How to see it**: pulse a line, claim, pulse it again, complete. The output stays low. In socpuppet that is `InterruptControllerContract.ASourceThatPulsesWhileItIsClaimedInterruptsAgainWhenCompleted`, with the patch taken out.
+- **What we do**: `cmake/patches/vpv-peripherals-plic-edge-while-claimed.patch`. An edge on a claimed source is remembered, and at completion the source is pending again, once however many edges there were. An edge on a source that is still pending is not remembered: its handler has yet to look, so one interrupt covers both.
+- **Upstream fix**: the patch covers the build with `SC_SIGNAL_IF`. The build with TLM signal sockets can do the same in its own `source_irq_cb`, which is already told which source changed. A per-source choice of edge or level would let a level-triggered source keep the stricter reading, where only the level at completion counts.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
 ### The PLIC and the ACLINT write their interrupt outputs from whichever process is running
 
 - **Where**: `rvi/plic.h`, `write_irq`, reached from `source_irq_cb` (the model's own method) and from the claim/complete callbacks, which run in the thread of whoever is accessing the register (with `cmake/patches/vpv-peripherals-plic-look-again.patch`, the priority, enable and threshold writes reach it the same way). And `minres/aclint.cpp`, `update_mtime`, which writes `mtime_int_o` and is both a method of the model's own and what the `mtime` and `mtimecmp` write callbacks call.

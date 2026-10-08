@@ -96,6 +96,13 @@ class InterruptControllerContract : public ::testing::Test {
     lines_[source].write(true);
     bus.WaitFor(sc_core::SC_ZERO_TIME);
   }
+  // Raises `source` for one delta cycle, the shortest a line can be high,
+  // and lowers it again. It is how a device that interrupts with a message
+  // looks on a wire: there is an edge and nothing to hold the line up.
+  void Pulse(BusDriver& bus, unsigned source) {
+    RaiseWithoutSettling(bus, source);
+    Lower(bus, source);
+  }
 
   ControllerType controller_{"controller"};
   // The lines of the sources, by source number. Entry 0 is unused.
@@ -261,6 +268,81 @@ TYPED_TEST_P(InterruptControllerContract,
 }
 
 TYPED_TEST_P(InterruptControllerContract,
+             ASourceThatPulsedCanStillBeClaimedAfterItsLineHasDropped) {
+  std::uint32_t claimed = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Pulse(bus, 3);
+    claimed = bus.Read32(this->kClaimComplete);
+  });
+
+  EXPECT_EQ(claimed, 3U);
+}
+
+TYPED_TEST_P(InterruptControllerContract,
+             ASecondPulseBeforeTheClaimDoesNotInterruptAgainWhenCompleted) {
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Pulse(bus, 3);
+    // The handler has not started, so what it finds when it does covers
+    // both: two requests waiting are one interrupt.
+    this->Pulse(bus, 3);
+    const std::uint32_t claimed = bus.Read32(this->kClaimComplete);
+    bus.Write32(this->kClaimComplete, claimed);
+  });
+
+  EXPECT_FALSE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(InterruptControllerContract,
+             ASourceThatPulsesWhileItIsClaimedInterruptsAgainWhenCompleted) {
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Pulse(bus, 3);
+    const std::uint32_t claimed = bus.Read32(this->kClaimComplete);
+    // The device has more to say while its handler is still running, and
+    // the handler may already have looked. The PLIC specification lets a
+    // controller forget this request. A device that interrupts with
+    // messages has no line to hold high until it is heard, so we rely on a
+    // controller that remembers.
+    this->Pulse(bus, 3);
+    bus.Write32(this->kClaimComplete, claimed);
+  });
+
+  EXPECT_TRUE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(InterruptControllerContract,
+             ASourceThatPulsedWhileItWasClaimedInterruptsAgainOnlyOnce) {
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Pulse(bus, 3);
+    std::uint32_t claimed = bus.Read32(this->kClaimComplete);
+    this->Pulse(bus, 3);
+    bus.Write32(this->kClaimComplete, claimed);
+    // The handler runs again for the second request, and that is all.
+    claimed = bus.Read32(this->kClaimComplete);
+    bus.Write32(this->kClaimComplete, claimed);
+  });
+
+  EXPECT_FALSE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(InterruptControllerContract,
+             ASourceThatPulsesAfterItWasCompletedInterruptsAgain) {
+  this->OnTheBus([&](BusDriver& bus) {
+    this->Enable(bus, 3, /*priority=*/1);
+    this->Pulse(bus, 3);
+    const std::uint32_t claimed = bus.Read32(this->kClaimComplete);
+    bus.Write32(this->kClaimComplete, claimed);
+    this->Pulse(bus, 3);
+  });
+
+  EXPECT_TRUE(this->interrupt_.read());
+}
+
+TYPED_TEST_P(InterruptControllerContract,
              ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts) {
   this->OnTheBus([&](BusDriver& bus) {
     bus.Write32(this->Priority(3), 1);
@@ -329,6 +411,11 @@ REGISTER_TYPED_TEST_SUITE_P(
     AClaimedSourceDoesNotInterruptAgainUntilItIsCompleted,
     CompletingASourceWhoseLineIsStillHighInterruptsAgain,
     CompletingASourceWhoseLineHasDroppedDoesNotInterruptAgain,
+    ASourceThatPulsedCanStillBeClaimedAfterItsLineHasDropped,
+    ASecondPulseBeforeTheClaimDoesNotInterruptAgainWhenCompleted,
+    ASourceThatPulsesWhileItIsClaimedInterruptsAgainWhenCompleted,
+    ASourceThatPulsedWhileItWasClaimedInterruptsAgainOnlyOnce,
+    ASourceThatPulsesAfterItWasCompletedInterruptsAgain,
     ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts,
     APriorityIsSeenByADebugAccess, ADebugAccessToTheClaimRegisterDoesNotClaim,
     ARegisterForSourcesItDoesNotHaveReadsZeroAndIgnoresWrites);

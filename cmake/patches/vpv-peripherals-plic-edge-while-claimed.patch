@@ -1,0 +1,49 @@
+diff --git a/rvi/plic.h b/rvi/plic.h
+index f2dec23..adc4e5e 100644
+--- a/rvi/plic.h
++++ b/rvi/plic.h
+@@ -189,6 +189,8 @@ class plic : public sc_core::sc_module, public scc::tlm_target<> {
+     sc_core::sc_time clk;
+     std::unique_ptr<plic_regs<NUM_SOURCES, NUM_CONTEXTS>> regs;
+     std::array<bool, NUM_SOURCES> src_irq_cleared;
++    // Whether a source's line rose while the source was claimed and not yet completed.
++    std::array<bool, NUM_SOURCES> src_irq_rose_while_claimed;
+ };
+ 
+ template <uint32_t NUM_SOURCES, uint32_t NUM_CONTEXTS>
+@@ -200,6 +202,7 @@ plic<NUM_SOURCES, NUM_CONTEXTS>::plic(sc_core::sc_module_name nm)
+ 
+ {
+     src_irq_cleared.fill(true);
++    src_irq_rose_while_claimed.fill(false);
+ 
+     regs = std::make_unique<plic_regs<NUM_SOURCES, NUM_CONTEXTS>>("regs");
+     regs->registerResources(*this);
+@@ -291,6 +294,14 @@ void plic<NUM_SOURCES, NUM_CONTEXTS>::source_irq_cb() {
+             src_irq_cleared[i] = false;
+             handle_pending = true;
+             SCCDEBUG(this->name()) << "Setting interrupt " << src_id << " as pending";
++        } else if (interrupts_i[i].posedge()) {
++            const auto src_id = get_source_id(i);
++            const bool pending = (get_pending(src_id) >> (src_id & 0x1F)) & 1u;
++            // A source that is neither pending nor cleared has been claimed, and its handler is running. A request
++            // made now may come after the handler last looked at its device, and a source that only pulses its line
++            // will not be high at completion to say so. Remember the edge until then. (While the source is still
++            // pending the handler has yet to look, so a second request is covered by the first.)
++            if (!pending) src_irq_rose_while_claimed[i] = true;
+         }
+     }
+ 
+@@ -374,8 +385,10 @@ void plic<NUM_SOURCES, NUM_CONTEXTS>::claim_complete_write_cb(uint32_t ctx, uint
+     src_irq_cleared[src_id - 1] = true;  // Source cleared array does not include an entry for unused source 0
+ #ifdef SC_SIGNAL_IF
+     // A level-sensitive source whose line is still high at completion is pending again at once: its handler finished
+-    // without the device going quiet, or the device has more to say. There is no new rising edge to wait for.
+-    if (interrupts_i[src_id - 1].read()) {
++    // without the device going quiet, or the device has more to say. There is no new rising edge to wait for. A source
++    // whose line rose while it was claimed is pending again too, whatever its line says now.
++    if (interrupts_i[src_id - 1].read() || src_irq_rose_while_claimed[src_id - 1]) {
++        src_irq_rose_while_claimed[src_id - 1] = false;
+         get_pending(src_id) |= (0x1UL << bit_ofs);
+         src_irq_cleared[src_id - 1] = false;
+         for (uint32_t i = 0; i < NUM_CONTEXTS; ++i) handle_pending_irq(i);
