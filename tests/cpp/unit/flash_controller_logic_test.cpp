@@ -506,4 +506,25 @@ TEST(WhenAFlashControllerHasNotIdentifiedTheChip,
   EXPECT_EQ(rig.chip.PageAt(0, 0), SomePage());
 }
 
+// The registers are the CPU's to write at any time. What a command is
+// about is what they said when it was given.
+TEST(WhenTheCpuChangesTheRegistersAfterGivingAFlashControllerACommand,
+     TheCommandIsCarriedOutAsItWasGiven) {
+  Rig rig;
+  rig.chip.array.ProgramPage(2, 5, SomePage());
+  rig.Write32(kBlock, 2);
+  rig.Write32(kPage, 5);
+  rig.Write32(kLocal, 0x40);
+  rig.Write32(kCommand, kReadPage);
+
+  rig.Write32(kBlock, 0);
+  rig.Write32(kPage, 0);
+  rig.Write32(kLocal, 0x80);
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage());
+  EXPECT_EQ(rig.buffer.PageAt(0x80),
+            std::vector<std::uint8_t>(kSmall.page_size, 0));
+}
+
 }  // namespace socpuppet

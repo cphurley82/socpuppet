@@ -83,10 +83,11 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
-      if (command_ != 0 || value < kReadPage || value > kIdentify) {
-        return false;
-      }
-      command_ = value;
+      if (job_ || value < kReadPage || value > kIdentify) return false;
+      job_ = Job{.command = value,
+                 .block = block_,
+                 .page = page_,
+                 .local_address = local_address_};
       status_ = kBusy;
       break;
     case kStatusRegister:
@@ -111,28 +112,28 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
 }
 
 bool FlashControllerLogic::CarryOut() {
-  if (command_ == 0) return false;
-  status_ = Do(command_) ? kDone : kError;
-  command_ = 0;
+  if (!job_) return false;
+  status_ = Do(*job_) ? kDone : kError;
+  job_.reset();
   return true;
 }
 
-bool FlashControllerLogic::Do(std::uint32_t command) {
-  switch (command) {
+bool FlashControllerLogic::Do(const Job& job) {
+  switch (job.command) {
     case kReadPage: {
       if (!geometry_) return false;
       std::vector<std::uint8_t> page(geometry_->page_size);
-      return nand_.ReadPage(block_, page_, page) &&
-             local_memory_.Write(local_address_, page);
+      return nand_.ReadPage(job.block, job.page, page) &&
+             local_memory_.Write(job.local_address, page);
     }
     case kProgramPage: {
       if (!geometry_) return false;
       std::vector<std::uint8_t> page(geometry_->page_size);
-      return local_memory_.Read(local_address_, page) &&
-             nand_.ProgramPage(block_, page_, page);
+      return local_memory_.Read(job.local_address, page) &&
+             nand_.ProgramPage(job.block, job.page, page);
     }
     case kEraseBlock:
-      return nand_.EraseBlock(block_);
+      return nand_.EraseBlock(job.block);
     case kIdentify:
       geometry_ = nand_.Geometry();
       return geometry_.has_value();

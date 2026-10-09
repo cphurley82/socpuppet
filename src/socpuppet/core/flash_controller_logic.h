@@ -33,16 +33,24 @@ class FlashControllerLogic {
   bool Interrupting() const { return (status_ & interrupt_enable_) != 0; }
 
  private:
+  // A command, with what the registers said it was about when it was given.
+  struct Job {
+    std::uint32_t command;
+    std::uint32_t block;
+    std::uint32_t page;
+    std::uint32_t local_address;
+  };
+
   // Carries a command out, and returns whether it could be.
-  bool Do(std::uint32_t command);
+  bool Do(const Job& job);
 
   NandPort& nand_;
   MemoryPort& local_memory_;
   // What the chip is, once it has been told to say (the identify
   // command), and has said.
   std::optional<NandGeometry> geometry_;
-  // What the command register was told and has not done yet, or zero.
-  std::uint32_t command_ = 0;
+  // What the command register was told and has not done yet.
+  std::optional<Job> job_;
   std::uint32_t status_ = 0;
   // Which bits of the status interrupt the CPU while they are set.
   std::uint32_t interrupt_enable_ = 0;
