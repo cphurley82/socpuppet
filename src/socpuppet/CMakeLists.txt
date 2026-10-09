@@ -10,6 +10,7 @@ target_sources(socpuppet_core INTERFACE
     core/block_store.h
     core/interrupt_requests.h
     core/memory_store.h
+    core/nand_array.h
     core/script.h
     core/time.h
     core/trace.h)
