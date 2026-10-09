@@ -23,12 +23,29 @@ std::vector<std::uint8_t> PageAt(const NandArray& nand, std::uint32_t block,
   return data;
 }
 
+// A page of data in which no two neighbouring bytes are the same.
+std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
+  std::vector<std::uint8_t> data(kSmall.page_size);
+  for (std::size_t index = 0; index < data.size(); ++index) {
+    data[index] = static_cast<std::uint8_t>(first_byte + index);
+  }
+  return data;
+}
+
 }  // namespace
 
 TEST(WhenAPageWasNeverProgrammed, ItReadsAsAllOnes) {
   const NandArray nand{kSmall};
 
   EXPECT_EQ(PageAt(nand, 2, 5), std::vector<std::uint8_t>(16, 0xFF));
+}
+
+TEST(WhenAPageIsProgrammed, ItReadsBackAsItWasProgrammed) {
+  NandArray nand{kSmall};
+
+  ASSERT_EQ(nand.ProgramPage(2, 5, SomePage()), NandResult::kDone);
+
+  EXPECT_EQ(PageAt(nand, 2, 5), SomePage());
 }
 
 }  // namespace socpuppet
