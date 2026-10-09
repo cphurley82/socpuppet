@@ -18,7 +18,7 @@ constexpr NandGeometry kSmall{
 // so that a page the array leaves untouched is not taken for an erased one.
 std::vector<std::uint8_t> PageAt(const NandArray& nand, std::uint32_t block,
                                  std::uint32_t page) {
-  std::vector<std::uint8_t> data(nand.geometry().page_size, 0xA5);
+  std::vector<std::uint8_t> data(nand.Geometry().page_size, 0xA5);
   EXPECT_EQ(nand.ReadPage(block, page, data), NandResult::kDone);
   return data;
 }

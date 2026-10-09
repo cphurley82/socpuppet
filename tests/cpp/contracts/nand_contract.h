@@ -100,9 +100,11 @@ TYPED_TEST_P(NandContract, AChipAskedWhatItIsSaysItsGeometry) {
   });
 
   ASSERT_TRUE(said.has_value());
-  EXPECT_EQ(said->page_size, 16U);
-  EXPECT_EQ(said->pages_per_block, 8U);
-  EXPECT_EQ(said->blocks, 4U);
+  const socpuppet::NandGeometry geometry =
+      said.value_or(socpuppet::NandGeometry{});
+  EXPECT_EQ(geometry.page_size, 16U);
+  EXPECT_EQ(geometry.pages_per_block, 8U);
+  EXPECT_EQ(geometry.blocks, 4U);
 }
 
 // The buffer does not start out as ones, so that a page the chip leaves

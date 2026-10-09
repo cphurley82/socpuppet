@@ -66,7 +66,7 @@ class IdealNand : public sc_core::sc_module {
 
   tlm::tlm_response_status SayGeometry(std::span<std::uint8_t> data) const {
     if (data.size() != kNandGeometryBytes) return tlm::TLM_BURST_ERROR_RESPONSE;
-    StoreNandGeometry(array_.geometry(), data);
+    StoreNandGeometry(array_.Geometry(), data);
     return tlm::TLM_OK_RESPONSE;
   }
 

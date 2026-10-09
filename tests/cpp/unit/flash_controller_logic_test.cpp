@@ -53,7 +53,7 @@ class Chip : public NandPort {
  public:
   NandArray array{kSmall};
 
-  std::optional<NandGeometry> Geometry() override { return array.geometry(); }
+  std::optional<NandGeometry> Geometry() override { return array.Geometry(); }
   bool ReadPage(std::uint32_t block, std::uint32_t page,
                 std::span<std::uint8_t> out) override {
     return array.ReadPage(block, page, out) == NandResult::kDone;

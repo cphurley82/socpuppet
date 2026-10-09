@@ -29,7 +29,7 @@ class NandArray {
  public:
   explicit NandArray(const NandGeometry& geometry) : geometry_(geometry) {}
 
-  const NandGeometry& geometry() const { return geometry_; }
+  const NandGeometry& Geometry() const { return geometry_; }
 
   // A page nothing was ever programmed into reads as all ones, which is
   // what an erased NAND cell holds.
