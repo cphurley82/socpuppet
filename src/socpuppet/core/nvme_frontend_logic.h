@@ -51,6 +51,15 @@ class NvmeFrontendLogic {
   // fetched, and the CPU has not asked for its completion to be posted.
   bool CommandWaiting() const { return command_ && !posting_; }
 
+  // Whether the host has reset the controller and the firmware has not yet
+  // acknowledged, by writing a one to the status bit that told it. The
+  // acknowledgement says: I have let go of everything from before the
+  // reset. Until then the firmware may still be busy with a command from
+  // before, and what it does about that command is kept from the
+  // controller as it is now: no command is fetched, a completion and a
+  // queue to create are taken and dropped, and ready is not heard.
+  bool ResetIsPending() const;
+
   // The status register, as the CPU reads it.
   std::uint32_t Status() const;
 

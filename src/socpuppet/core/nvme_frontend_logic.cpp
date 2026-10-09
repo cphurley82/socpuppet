@@ -17,9 +17,9 @@ constexpr std::uint8_t kReadyTimeout = 2;
 
 // Where the CPU's registers are. Each is 32 bits wide.
 constexpr std::size_t kRegisterBytes = 4;
-constexpr std::uint64_t kStatusRegister = 0x00;
-constexpr std::uint64_t kInterruptEnableRegister = 0x04;
-constexpr std::uint64_t kControlRegister = 0x08;
+constexpr std::uint64_t kControlRegister = 0x00;
+constexpr std::uint64_t kStatusRegister = 0x04;
+constexpr std::uint64_t kInterruptEnableRegister = 0x08;
 // What the frontend has: how many I/O queue pairs in the low half, and how
 // many interrupt vectors in the high half.
 constexpr std::uint64_t kLimitsRegister = 0x0C;
@@ -50,11 +50,6 @@ constexpr std::uint32_t kEnabled = 1U << 0;
 constexpr std::uint32_t kDisabled = 1U << 1;
 // And the bit that is set for as long as a command is waiting for the CPU.
 constexpr std::uint32_t kCommandWaiting = 1U << 2;
-// And the bit that is set for as long as the host has the controller
-// enabled, which does not interrupt: it is what firmware reads to know how
-// things stand, when it has been told that something changed.
-constexpr std::uint32_t kHostHasItEnabled = 1U << 3;
-
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
 constexpr std::uint32_t kReady = 1U << 0;
@@ -66,9 +61,12 @@ constexpr std::uint32_t kSubmissionQueue = 2;
 // The last slot of the longest queue there can be: 65536 entries.
 constexpr std::uint32_t kLongestQueuesLastSlot = 0xFFFF;
 
-// The completion status register has the status code in its low byte, and
-// above it which list of codes that is from.
+// The completion status register is laid out as the status field of a
+// completion is, less the phase bit: the status code in its low byte, and
+// above it, in three bits, which list of codes that is from. The frontend
+// passes those on and keeps nothing of the rest.
 constexpr unsigned kStatusTypeShift = 8;
+constexpr std::uint32_t kStatusCodeAndType = 0x7FF;
 
 }  // namespace
 
@@ -90,17 +88,25 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
   if (*enable == NvmeHostRegisters::Enable::kSet) events_ |= kEnabled;
   if (*enable == NvmeHostRegisters::Enable::kCleared) {
     // A controller reset. The hardware's part of it is immediate: the
-    // queues are gone already, and so is the command that was waiting.
+    // queues are gone already, and so are the command that was waiting
+    // and the firmware's word that it was ready. The rest is the
+    // firmware's, and until it has acknowledged (see ResetIsPending) the
+    // frontend keeps what it does about the old controller away from the
+    // new one.
     command_.reset();
     posting_ = false;
+    ready_ = false;
     events_ |= kDisabled;
   }
   return true;
 }
 
+bool NvmeFrontendLogic::ResetIsPending() const {
+  return (events_ & kDisabled) != 0;
+}
+
 std::uint32_t NvmeFrontendLogic::Status() const {
-  return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}) |
-         (host_registers_.Enabled() ? kHostHasItEnabled : std::uint32_t{0});
+  return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0});
 }
 
 bool NvmeFrontendLogic::CpuInterrupting() const {
@@ -180,22 +186,30 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kStatusRegister:
-      events_ &= ~(value & (kEnabled | kDisabled));
+      events_ &= ~value;
       break;
     case kInterruptEnableRegister:
       interrupt_enable_ = value & (kEnabled | kDisabled | kCommandWaiting);
       break;
     case kControlRegister:
-      ready_ = (value & kReady) != 0;
+      // Ready is said of the controller the host has enabled now. Said to
+      // no one, or of the controller as it was before a reset, it is not
+      // heard.
+      ready_ = (value & kReady) != 0 && host_registers_.Enabled() &&
+               !ResetIsPending();
       break;
     case kCompletionResultRegister:
       completion_result_ = value;
       break;
     case kCompletionStatusRegister:
-      completion_status_ = value;
+      completion_status_ = value & kStatusCodeAndType;
       break;
     case kCompletionPostRegister:
-      if (value != 1 || !CommandWaiting()) return false;
+      if (value != 1) return false;
+      // The command the firmware was dealing with went with the reset.
+      // That is not the firmware's mistake, so the write is taken.
+      if (ResetIsPending()) break;
+      if (!CommandWaiting()) return false;
       posting_ = true;
       break;
     case kQueueIdRegister:
@@ -214,6 +228,9 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       queue_.link = value;
       break;
     case kQueueCreateRegister:
+      // A queue the firmware agreed to before a reset is not one of the
+      // controller's after it.
+      if (ResetIsPending()) break;
       return CreateQueue(value);
     default:
       return false;
@@ -222,9 +239,11 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
 }
 
 bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
-  // Queue 0 of each kind is the admin queue, which the frontend sets up
-  // for itself when the host enables the controller.
-  if (queue_.id == 0 || queue_.id >= NvmeQueues::kQueues ||
+  // No command can have asked for a queue of a controller the host does
+  // not have enabled. And queue 0 of each kind is the admin queue, which
+  // the frontend sets up for itself when the host enables the controller.
+  if (!host_registers_.Enabled() || queue_.id == 0 ||
+      queue_.id >= NvmeQueues::kQueues ||
       queue_.last > kLongestQueuesLastSlot) {
     return false;
   }
@@ -256,6 +275,9 @@ bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
 }
 
 bool NvmeFrontendLogic::Step() {
+  // Nothing is fetched for firmware that has not yet let go of what it
+  // had before the reset.
+  if (ResetIsPending()) return false;
   bool did_something = false;
   if (posting_) {
     queues_.Post(*command_,

@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_initiator_socket.h>
@@ -60,9 +61,9 @@ class SsdFirmware : public sc_core::sc_module {
  private:
   // ---- The frontend's registers for its CPU.
   enum Frontend : std::uint64_t {
-    kStatus = 0x00,
-    kInterruptEnable = 0x04,
-    kControl = 0x08,
+    kControl = 0x00,
+    kStatus = 0x04,
+    kInterruptEnable = 0x08,
     kLimits = 0x0C,
     kCommandQueue = 0x10,
     kCompletionResult = 0x14,
@@ -80,7 +81,6 @@ class SsdFirmware : public sc_core::sc_module {
     kEnabled = 1U << 0,
     kDisabled = 1U << 1,
     kCommandWaiting = 1U << 2,
-    kHostHasItEnabled = 1U << 3,
   };
   static constexpr std::uint32_t kReady = 1U << 0;
   static constexpr std::uint32_t kCreateCompletionQueue = 1;
@@ -205,7 +205,10 @@ class SsdFirmware : public sc_core::sc_module {
   std::uint64_t PageBuffer() const { return map_.buffer; }
   std::uint64_t Scratch() const { return map_.buffer + kHostPage; }
 
-  // ---- The bus.
+  // ---- The bus. The firmware asks its hardware for nothing the hardware
+  // would refuse, so a refusal is a failure of the test, and the firmware
+  // stops: the host then waits in vain, and its patience runs out in
+  // simulated time.
   std::uint32_t Read32(std::uint64_t address) {
     std::array<std::uint8_t, 4> bytes{};
     Read(address, bytes);
@@ -215,11 +218,21 @@ class SsdFirmware : public sc_core::sc_module {
     Write(address, socpuppet::LittleEndianBytes(value));
   }
   void Read(std::uint64_t address, std::span<std::uint8_t> out) {
-    socpuppet::Transport(socket, tlm::TLM_READ_COMMAND, address, out);
+    Check(socpuppet::Transport(socket, tlm::TLM_READ_COMMAND, address, out),
+          "read", address);
   }
   void Write(std::uint64_t address, std::span<const std::uint8_t> in) {
-    socpuppet::Transport(socket, tlm::TLM_WRITE_COMMAND, address,
-                         socpuppet::WriteData(in));
+    Check(socpuppet::Transport(socket, tlm::TLM_WRITE_COMMAND, address,
+                               socpuppet::WriteData(in)),
+          "write", address);
+  }
+  void Check(tlm::tlm_response_status response, const char* access,
+             std::uint64_t address) {
+    if (response == tlm::TLM_OK_RESPONSE) return;
+    ADD_FAILURE() << "The SSD's hardware refused its firmware's " << access
+                  << " at 0x" << std::hex << address << ": "
+                  << socpuppet::ResponseString(response) << ".";
+    stopped_ = true;
   }
 
   // Gives the DMA engine or the flash controller a command and waits for
@@ -227,7 +240,16 @@ class SsdFirmware : public sc_core::sc_module {
   bool Do(std::uint64_t device, std::uint32_t command) {
     Write32(device + kDeviceCommand, command);
     std::uint32_t status = Read32(device + kDeviceStatus);
-    while ((status & kBusy) != 0) {
+    // Nothing takes simulated time yet, so the device is done within a
+    // delta cycle or two. The limit is there so that one that never
+    // finishes fails the test and does not hang it.
+    for (int turn = 0; (status & kBusy) != 0; ++turn) {
+      if (turn == kPatienceInDeltaCycles) {
+        ADD_FAILURE() << "The device at 0x" << std::hex << device
+                      << " is still busy.";
+        stopped_ = true;
+        return false;
+      }
       wait(sc_core::SC_ZERO_TIME);
       status = Read32(device + kDeviceStatus);
     }
@@ -259,12 +281,13 @@ class SsdFirmware : public sc_core::sc_module {
   // ---- The firmware.
   void Run() {
     StartUp();
-    for (;;) {
+    while (!stopped_) {
       while (!irq.read()) wait(irq.posedge_event());
       const std::uint32_t status = Read32(map_.frontend + kStatus);
-      if ((status & (kEnabled | kDisabled)) != 0) {
-        TheHostChangedItsMind(status);
-      }
+      // The reset first: what the host enabled is the controller as it is
+      // after it.
+      if ((status & kDisabled) != 0) TheHostResetTheController();
+      if ((status & kEnabled) != 0) TheHostEnabledTheController();
       if ((status & kCommandWaiting) != 0) DealWithTheCommand();
       // What was just done may have lowered the line, which shows a delta
       // cycle later.
@@ -281,23 +304,28 @@ class SsdFirmware : public sc_core::sc_module {
     const std::uint32_t limits = Read32(map_.frontend + kLimits);
     io_queue_pairs_ = limits & 0xFFFF;
     vectors_ = limits >> 16;
+    // By identifier, and identifiers count from 1.
+    completion_queues_.assign(io_queue_pairs_ + 1, false);
+    submission_queues_.assign(io_queue_pairs_ + 1, false);
     Write32(map_.frontend + kInterruptEnable,
             kEnabled | kDisabled | kCommandWaiting);
   }
 
-  // The host has enabled the controller or disabled it, or both since the
-  // firmware last looked. Disabling is a controller reset: the queues are
-  // gone, and what is on the drive stays. Either way the firmware says
-  // whether it is ready by how things stand now.
-  void TheHostChangedItsMind(std::uint32_t status) {
-    Write32(map_.frontend + kStatus, status & (kEnabled | kDisabled));
-    if ((status & kDisabled) != 0) {
-      completion_queues_ = {};
-      submission_queues_ = {};
-    }
-    const bool enabled =
-        (Read32(map_.frontend + kStatus) & kHostHasItEnabled) != 0;
-    Write32(map_.frontend + kControl, enabled ? kReady : 0);
+  // A controller reset: the queues are gone, and what is on the drive
+  // stays. The acknowledgement comes last, because it says the firmware
+  // has let go of everything from before.
+  void TheHostResetTheController() {
+    completion_queues_.assign(completion_queues_.size(), false);
+    submission_queues_.assign(submission_queues_.size(), false);
+    Write32(map_.frontend + kStatus, kDisabled);
+  }
+
+  // There is nothing to start up, so the firmware is ready at once. If
+  // the host has changed its mind again by now, the frontend does not
+  // hear it, and says so in its own time.
+  void TheHostEnabledTheController() {
+    Write32(map_.frontend + kStatus, kEnabled);
+    Write32(map_.frontend + kControl, kReady);
   }
 
   void DealWithTheCommand() {
@@ -575,16 +603,20 @@ class SsdFirmware : public sc_core::sc_module {
     return {};
   }
 
+  // How many delta cycles the firmware gives a device to finish.
+  static constexpr int kPatienceInDeltaCycles = 100;
+
   SsdMap map_;
+  // Set when the hardware has refused the firmware something.
+  bool stopped_ = false;
   // What the hardware said it has.
   std::uint32_t page_size_ = 0;
   std::uint32_t pages_per_block_ = 0;
   std::uint32_t io_queue_pairs_ = 0;
   std::uint32_t vectors_ = 0;
-  // The I/O queues the host has had created, by identifier. There are at
-  // most 65535 of each, and far fewer here.
-  std::array<bool, 16> completion_queues_{};
-  std::array<bool, 16> submission_queues_{};
+  // The I/O queues the host has had created, by identifier.
+  std::vector<bool> completion_queues_;
+  std::vector<bool> submission_queues_;
   // The flash translation layer: for each of the drive's pages, the NAND
   // page that holds it, if it was ever written. And the next NAND page
   // nobody has.

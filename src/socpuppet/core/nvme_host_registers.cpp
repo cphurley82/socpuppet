@@ -58,9 +58,11 @@ std::optional<NvmeHostRegisters::Enable> NvmeHostRegisters::Write(
     // queue pointer is the low half of what the host writes.
     std::uint32_t value = 0;
     const std::uint64_t from_first = offset - kControllerRegistersSize;
-    if (in.size() != sizeof value || from_first % sizeof value != 0 ||
-        (std::ranges::copy(in, BytesOf(value).begin()),
-         !queues.RingDoorbell(from_first / sizeof value, value))) {
+    if (in.size() != sizeof value || from_first % sizeof value != 0) {
+      return std::nullopt;
+    }
+    std::ranges::copy(in, BytesOf(value).begin());
+    if (!queues.RingDoorbell(from_first / sizeof value, value)) {
       return std::nullopt;
     }
     return Enable::kUnchanged;

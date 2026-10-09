@@ -38,9 +38,9 @@ enum HostRegister : std::uint64_t {
 // The registers the SSD's CPU sees, as docs/models/nvme-frontend.md gives
 // them.
 enum CpuRegister : std::uint64_t {
-  kStatus = 0x00,
-  kInterruptEnable = 0x04,
-  kControl = 0x08,
+  kControl = 0x00,
+  kStatus = 0x04,
+  kInterruptEnable = 0x08,
   kCompletionStatus = 0x18,
   kCompletionPost = 0x1C,
   kCommand = 0x40,
@@ -51,7 +51,6 @@ enum CpuRegister : std::uint64_t {
 enum StatusBit : std::uint32_t {
   kEnabled = 1U << 0,
   kCommandWaiting = 1U << 2,
-  kHostHasItEnabled = 1U << 3,
 };
 constexpr std::uint32_t kReady = 1U << 0;
 
@@ -133,6 +132,20 @@ struct HostAndCpuWithAnNvmeFrontend {
                        const std::vector<std::uint8_t>& data) {
     platform.DebugWrite("frontend.dma", address,
                         std::as_bytes(std::span{data}));
+  }
+
+  // What the host finds in the first slot of its admin completion queue:
+  // which command the completion is for, and how it went. They are in the
+  // completion's last four bytes: the command's identifier, then the phase
+  // bit with the status above it.
+  int CommandIdOfTheFirstCompletion() {
+    return LoadLittleEndian<std::uint16_t>(
+        HostMemoryAt(kAdminCompletionQueue + 12, 2));
+  }
+  int StatusOfTheFirstCompletion() {
+    return LoadLittleEndian<std::uint16_t>(
+               HostMemoryAt(kAdminCompletionQueue + 14, 2)) >>
+           1;
   }
 
   // A register of the CPU's block as a debugger sees it, or nothing if the
@@ -217,10 +230,8 @@ TEST(WhenAHostSubmitsACommandThroughAnNvmeFrontend,
   fixture.platform.Run();
 
   EXPECT_EQ(seen_by_firmware, SomeCommand(7));
-  // The completion's last four bytes: the command's identifier, then the
-  // phase bit and the status, which is shifted up past it.
-  EXPECT_EQ(fixture.HostMemoryAt(kAdminCompletionQueue + 12, 4),
-            (std::vector<std::uint8_t>{7, 0, 0x01 | (0x02 << 1), 0}));
+  EXPECT_EQ(fixture.CommandIdOfTheFirstCompletion(), 7);
+  EXPECT_EQ(fixture.StatusOfTheFirstCompletion(), 0x02);
 }
 
 // The frontend works alongside the host, not inside the host's write: when
@@ -247,8 +258,8 @@ TEST(WhenAHostHasJustRungADoorbellOfAnNvmeFrontend,
 
   fixture.platform.Run();
 
-  EXPECT_EQ(when_the_write_returned, kHostHasItEnabled);
-  EXPECT_EQ(afterwards, kCommandWaiting | kHostHasItEnabled);
+  EXPECT_EQ(when_the_write_returned, 0U);
+  EXPECT_EQ(afterwards, kCommandWaiting);
 }
 
 // One rise for each command: the line falls when the firmware has dealt
@@ -334,7 +345,7 @@ TEST(WhenADebuggerLooksAtARegisterOfAnNvmeFrontendsCpu, ItSeesWhatTheCpuWould) {
       [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled | kHostHasItEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
 }
 
 // A debugger can look and cannot touch: a completion posted this way, or a
@@ -349,7 +360,7 @@ TEST(WhenADebuggerWritesToARegisterOfAnNvmeFrontendsCpu, TheWriteIsDeclined) {
       "cpu.socket", kStatus, std::as_bytes(std::span{acknowledgement}));
 
   EXPECT_FALSE(answered);
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled | kHostHasItEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
 }
 
 TEST(WhenAnNvmeFrontendRefusesAnAccess, WhoeverMadeItGetsAnAddressError) {

@@ -33,9 +33,9 @@ enum HostRegister : std::uint64_t {
 // The registers the SSD's CPU sees, as docs/models/nvme-frontend.md gives
 // them. Each is 32 bits wide, and the command is 64 bytes.
 enum CpuRegister : std::uint64_t {
-  kStatus = 0x00,
-  kInterruptEnable = 0x04,
-  kControl = 0x08,
+  kControl = 0x00,
+  kStatus = 0x04,
+  kInterruptEnable = 0x08,
   kLimits = 0x0C,
   kCommandQueue = 0x10,
   kCompletionResult = 0x14,
@@ -58,9 +58,6 @@ enum StatusBit : std::uint32_t {
   kDisabled = 1U << 1,
   // A command is waiting for the CPU. It is set for as long as one is.
   kCommandWaiting = 1U << 2,
-  // The host has the controller enabled, now. It is set for as long as
-  // it has.
-  kHostHasItEnabled = 1U << 3,
 };
 
 // The bit of the control register by which firmware says it is ready.
@@ -176,7 +173,11 @@ struct Rig {
     HostWrite64(kAcq, kAdminCompletionQueue);
     HostWrite32(kCc, 1);
   }
-  void HostDisables() { HostWrite32(kCc, 0); }
+  // A host that has reset the controller starts its queues over.
+  void HostDisables() {
+    HostWrite32(kCc, 0);
+    tails = {};
+  }
 
   // A register as the SSD's CPU reads it, and a write by the CPU.
   std::uint32_t CpuRead32(std::uint64_t offset) const {
@@ -258,6 +259,9 @@ struct Rig {
             static_cast<std::uint8_t>((phase_and_status >> 9) & 0x7)};
   }
 
+  // Whether a bit of the status register is set, as the CPU reads it.
+  bool CpuSees(StatusBit bit) const { return (CpuRead32(kStatus) & bit) != 0; }
+
   // Whether the host sees the controller as ready: CSTS.RDY.
   bool HostSeesReady() const { return (HostRead32(kCsts) & 1U) != 0; }
 };
@@ -311,7 +315,7 @@ TEST(WhenTheHostEnablesAnNvmeFrontend, ItsCpuIsToldSo) {
 
   rig.HostEnables();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled | kHostHasItEnabled);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
 }
 
 TEST(WhenTheHostDisablesAnNvmeFrontend, ItsCpuIsToldSo) {
@@ -340,12 +344,11 @@ TEST(WhenTheCpuAcknowledgesOneOfTwoThingsTheHostHasDone,
 TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
 
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
+  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
   EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
 }
 
@@ -368,13 +371,12 @@ TEST(WhenTheCpuWritesAOneToTheCommandWaitingBitOfAnNvmeFrontend,
      TheCommandIsStillWaiting) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
   rig.CpuWrite32(kStatus, kCommandWaiting);
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
+  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
 }
 
 TEST(WhenNoCommandIsWaitingForTheCpuOfAnNvmeFrontend, TheCommandReadsAsZeros) {
@@ -438,13 +440,12 @@ TEST(WhenTheCpuHasJustAskedForACompletionToBePosted,
      TheCommandNoLongerWaitsAndNothingIsInTheHostsMemoryYet) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
   rig.CpuPosts();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kHostHasItEnabled);
+  EXPECT_FALSE(rig.CpuSees(kCommandWaiting));
   EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
 }
 
@@ -505,14 +506,13 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAPairOfIoQueues,
   rig.HostEnables();
   rig.CpuCreatesIoQueues();
 
-  const bool rang = rig.HostSubmitsIo(SomeCommand(9));
+  rig.HostSubmitsIo(SomeCommand(9));
   rig.frontend.Step();
   const std::vector<std::uint8_t> waiting = rig.CommandWaiting();
   const std::uint32_t from_queue = rig.CpuRead32(kCommandQueue);
   rig.CpuPosts();
   rig.frontend.Step();
 
-  EXPECT_TRUE(rang);
   EXPECT_EQ(waiting, SomeCommand(9));
   EXPECT_EQ(from_queue, 1U);
   EXPECT_EQ(rig.HostReadsCompletion(kIoCompletionQueue, 0),
@@ -538,30 +538,80 @@ TEST(WhenAnNvmeFrontendHasPostedACompletionToAnIoQueue,
 }
 
 // Firmware checks what the host asks for before it has a queue created, so
-// these are the firmware's own mistakes. The frontend still refuses what
-// it could not carry out: the host's memory is not its to guess at.
-TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueItCannotHave, TheWriteIsRefused) {
+// what follows are the firmware's own mistakes. The frontend still refuses
+// what it could not carry out: the host's memory is not its to guess at.
+
+// There are eight I/O queues of each kind.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateItsEighthPairOfIoQueues,
+     TheyAreCreated) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_TRUE(rig.CpuCreates(kCompletionQueue, 8, 0x5000, 1));
+  EXPECT_TRUE(rig.CpuCreates(kSubmissionQueue, 8, 0x6000, 8));
+}
+
+TEST(WhenFirmwareHasAnNvmeFrontendCreateANinthPairOfIoQueues,
+     TheWriteIsRefused) {
   Rig rig;
   rig.HostEnables();
   rig.CpuCreatesIoQueues();
 
-  // The admin queues are the frontend's own, and there are eight I/O
-  // queues of each kind.
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 0, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 0, 0x5000, 1));
   EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 9, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 9, 0x5000, 1));
-  // A queue that exists.
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 9, 0x6000, 1));
+}
+
+// The admin queues are the frontend's own.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateQueueZero, TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 0, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 0, 0x6000, 0));
+}
+
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueThatExists, TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuCreatesIoQueues();
+
   EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x5000, 1));
-  // A submission queue whose completions would have nowhere to go.
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 2, 0x5000, 2));
-  // A completion queue on an interrupt vector the frontend has no line
-  // for: it has two.
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 2, 0x5000, 2));
-  // A kind of queue there is not.
-  EXPECT_FALSE(rig.CpuCreates(QueueKind{0}, 2, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(QueueKind{3}, 2, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x6000, 1));
+}
+
+// Its commands' completions would have nowhere to go.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateASubmissionQueueWithNoCompletionQueue,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x6000, 1));
+}
+
+// The rig's frontend has two interrupt vectors, 0 and 1.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateACompletionQueueOnAVectorItLacks,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 2));
+}
+
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAKindOfQueueThereIsNot,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.CpuCreates(QueueKind{0}, 1, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(QueueKind{3}, 1, 0x5000, 1));
+}
+
+// No command can have asked for it.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueAndTheHostHasNotEnabledIt,
+     TheWriteIsRefused) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 1));
 }
 
 // A queue's last slot is a 16-bit number, as its size is in the command
@@ -588,19 +638,149 @@ TEST(WhenFirmwareAsksAnNvmeFrontendWhatItHas,
 }
 
 // Clearing CC.EN is a controller reset. The frontend carries out its part
-// at once: every queue is gone, and so is the command that was waiting.
-// Its firmware is told, and does the rest.
-TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting,
-     TheCommandIsGoneAndItsCompletionIsRefused) {
+// at once: every queue is gone, the command that was waiting is gone, and
+// the controller is no longer ready. Its firmware is told, and does its
+// own part.
+TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting, TheCommandIsGone) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
   rig.HostDisables();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kDisabled);
+  EXPECT_FALSE(rig.CpuSees(kCommandWaiting));
+  EXPECT_EQ(rig.CommandWaiting(), std::vector<std::uint8_t>(kCommandBytes, 0));
+}
+
+// Ready was the firmware's to say, and a reset takes it back: what the
+// firmware said was about the controller as it was before.
+TEST(WhenTheHostResetsAnNvmeFrontendThatWasReady, ItIsNoLongerReady) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kControl, kReady);
+
+  rig.HostDisables();
+
+  EXPECT_FALSE(rig.HostSeesReady());
+  EXPECT_EQ(rig.CpuRead32(kControl), 0U);
+}
+
+// Between the reset and the firmware's acknowledgement of it, the firmware
+// may still be busy with a command from before. What it does about that
+// command must not land on the controller as it is after.
+//
+// The firmware acknowledges by writing a one to the status bit that told
+// it. That says: I have let go of everything from before the reset.
+
+// The command it was dealing with is gone, so its completion has nowhere
+// to go. It is not a mistake of the firmware's, so it is not refused.
+TEST(WhenFirmwareHasACompletionPostedBeforeItHasAcknowledgedAReset,
+     TheWriteIsTakenAndNothingIsPosted) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.HostDisables();
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(8));
+
+  const bool taken = rig.CpuPosts(/*status=*/0x02);
+  rig.frontend.Step();
+
+  EXPECT_TRUE(taken);
+  EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
+}
+
+// The host may enable the controller again and submit at once. The
+// firmware is not ready for a command until it has dealt with the reset.
+TEST(WhenTheHostSubmitsACommandBeforeFirmwareHasAcknowledgedAReset,
+     TheCommandIsNotFetchedUntilItHas) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostDisables();
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(8));
+  const bool fetched_before = rig.frontend.Step();
+  const bool waiting_before = rig.CpuSees(kCommandWaiting);
+
+  rig.CpuWrite32(kStatus, kDisabled);
+  rig.frontend.Step();
+
+  EXPECT_FALSE(fetched_before);
+  EXPECT_FALSE(waiting_before);
+  EXPECT_EQ(rig.CommandWaiting(), SomeCommand(8));
+}
+
+// A queue the firmware agreed to before the reset is not one of the
+// controller's after it.
+TEST(WhenFirmwareHasAQueueCreatedBeforeItHasAcknowledgedAReset,
+     TheWriteIsTakenAndNoQueueIsCreated) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostDisables();
+  rig.HostEnables();
+
+  const bool taken = rig.CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, 1);
+  rig.CpuWrite32(kStatus, kDisabled);
+
+  EXPECT_TRUE(taken);
+  // It can be created now, which it could not if it existed.
+  EXPECT_TRUE(rig.CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, 1));
+}
+
+// What the firmware says of being ready is about the controller the host
+// has enabled now. Said too early, or to no one, it is not heard.
+TEST(WhenFirmwareSaysItIsReadyBeforeItHasAcknowledgedAReset, ItIsNotReady) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostDisables();
+  rig.HostEnables();
+
+  rig.CpuWrite32(kControl, kReady);
+
+  EXPECT_FALSE(rig.HostSeesReady());
+}
+
+TEST(WhenFirmwareSaysItIsReadyAndTheHostDoesNotHaveTheControllerEnabled,
+     ItIsNotReady) {
+  Rig never_enabled;
+  Rig disabled;
+  disabled.HostEnables();
+  disabled.HostDisables();
+  disabled.CpuWrite32(kStatus, kDisabled);
+
+  never_enabled.CpuWrite32(kControl, kReady);
+  disabled.CpuWrite32(kControl, kReady);
+
+  EXPECT_FALSE(never_enabled.HostSeesReady());
+  EXPECT_FALSE(disabled.HostSeesReady());
+}
+
+TEST(WhenFirmwareHasAcknowledgedAResetAndTheHostHasEnabledTheControllerAgain,
+     ItIsReadyWhenFirmwareSaysSo) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostDisables();
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kDisabled);
+
+  rig.CpuWrite32(kControl, kReady);
+
+  EXPECT_TRUE(rig.HostSeesReady());
+}
+
+// Once the reset is acknowledged, a completion with no command waiting is
+// the firmware's mistake again.
+TEST(WhenFirmwareHasACompletionPostedAfterAcknowledgingAResetWithNoCommand,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.HostDisables();
+  rig.CpuWrite32(kStatus, kDisabled);
+
   EXPECT_FALSE(rig.CpuPosts());
 }
 
@@ -658,7 +838,7 @@ TEST(WhenTheHostEnablesAnNvmeFrontendAgainAfterAReset,
   rig.CpuPosts();
   rig.frontend.Step();
   rig.HostDisables();
-  rig.tails = {};
+  rig.CpuWrite32(kStatus, kDisabled);
 
   rig.HostEnables();
   rig.HostSubmits(SomeCommand(8));
@@ -732,6 +912,7 @@ TEST(WhenTheCpuEnablesInterruptsAnNvmeFrontendDoesNotHave,
 TEST(WhenTheCpuReadsBackARegisterItWroteInAnNvmeFrontend,
      ItReadsWhatWasWritten) {
   Rig rig;
+  rig.HostEnables();
   rig.CpuWrite32(kControl, kReady);
   rig.CpuWrite32(kCompletionResult, 0x1111'1111);
   rig.CpuWrite32(kCompletionStatus, 0x0000'0102);
@@ -831,13 +1012,12 @@ TEST(WhenTheCpuWritesSomethingOtherThanOneToHaveACompletionPosted,
      ItIsRefusedAndTheCommandStillWaits) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
   EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 0));
   EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 2));
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
+  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
 }
 
 // The host's register block is an NVMe controller's, and behaves as the
@@ -876,45 +1056,16 @@ TEST(WhenTheHostRingsADoorbellOfAnNvmeFrontendPastTheEndOfTheQueue,
   EXPECT_FALSE(rig.HostWrite32(kDoorbells, 4));
 }
 
-// The two things the host can have done are remembered until acknowledged,
-// and do not say which came last. This says how things stand now, which
-// is what firmware goes by when it says whether it is ready.
-TEST(WhenTheHostHasEnabledAndDisabledAnNvmeFrontend,
-     ItsCpuCanReadWhichItIsNow) {
-  Rig enabled_then_disabled;
-  enabled_then_disabled.HostEnables();
-  enabled_then_disabled.HostDisables();
-  Rig and_enabled_again;
-  and_enabled_again.HostEnables();
-  and_enabled_again.HostDisables();
-  and_enabled_again.HostEnables();
-
-  EXPECT_EQ(enabled_then_disabled.CpuRead32(kStatus) & kHostHasItEnabled, 0U);
-  EXPECT_EQ(and_enabled_again.CpuRead32(kStatus) & kHostHasItEnabled,
-            kHostHasItEnabled);
-}
-
-// It is how things are, and not something to acknowledge or wait for.
-TEST(WhenTheCpuWritesAOneToTheBitThatSaysTheHostHasAnNvmeFrontendEnabled,
-     NothingChanges) {
-  Rig rig;
-  rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
-
-  rig.CpuWrite32(kStatus, kHostHasItEnabled);
-
-  EXPECT_EQ(rig.CpuRead32(kStatus), kHostHasItEnabled);
-}
-
-TEST(WhenTheCpuAsksToBeInterruptedWhileTheHostHasAnNvmeFrontendEnabled,
-     ItIsNotAnInterruptTheFrontendHas) {
+// The register is laid out as the status field of a completion is, less
+// the phase bit, which is the frontend's. The frontend passes on the code
+// and which list it is from, and has no use for the rest.
+TEST(WhenTheCpuWritesMoreThanAStatusCodeAndItsTypeToAnNvmeFrontend,
+     TheRegisterReadsBackWithoutTheRest) {
   Rig rig;
 
-  rig.CpuWrite32(kInterruptEnable, kHostHasItEnabled);
-  rig.HostEnables();
+  rig.CpuWrite32(kCompletionStatus, 0xFFFF'FFFF);
 
-  EXPECT_EQ(rig.CpuRead32(kInterruptEnable), 0U);
-  EXPECT_FALSE(rig.frontend.CpuInterrupting());
+  EXPECT_EQ(rig.CpuRead32(kCompletionStatus), 0x7FFU);
 }
 
 }  // namespace socpuppet
