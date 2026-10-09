@@ -390,4 +390,21 @@ TEST(WhenTheCpuPostsAStatusFromTheCommandsOwnList,
   EXPECT_EQ(posted.status_type, 1);
 }
 
+// The frontend writes to the host's memory in its own time, and not inside
+// the CPU's write. But the command stops waiting at once: the CPU has
+// dealt with it, and must not be told about it again.
+TEST(WhenTheCpuHasJustAskedForACompletionToBePosted,
+     TheCommandNoLongerWaitsAndNothingIsInTheHostsMemoryYet) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  rig.CpuPosts();
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), 0U);
+  EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
+}
+
 }  // namespace socpuppet

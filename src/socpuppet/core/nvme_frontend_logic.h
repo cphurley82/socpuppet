@@ -41,6 +41,10 @@ class NvmeFrontendLogic {
   bool Step();
 
  private:
+  // Whether there is a command the CPU has yet to deal with: one has been
+  // fetched, and the CPU has not asked for its completion to be posted.
+  bool CommandWaiting() const { return command_ && !posting_; }
+
   NvmeHostRegisters host_registers_;
   NvmeQueues queues_;
   // Whether the firmware has said it is ready for the host's commands.

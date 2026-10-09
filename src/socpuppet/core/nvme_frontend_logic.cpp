@@ -83,7 +83,8 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
   switch (offset) {
     case kStatusRegister:
       StoreLittleEndian(
-          events_ | (command_ ? kCommandWaiting : std::uint32_t{0}), out);
+          events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}),
+          out);
       break;
     case kCommandQueueRegister:
       StoreLittleEndian(
