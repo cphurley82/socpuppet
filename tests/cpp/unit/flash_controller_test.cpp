@@ -229,4 +229,12 @@ TEST(WhenAFlashControllerIsGivenACommandWhileItIsBusy,
   EXPECT_EQ(rig.chip.PageAt(2, 5), SomePage());
 }
 
+TEST(WhenAFlashControllerIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.Write32(kCommand, 0));
+  EXPECT_FALSE(rig.Write32(kCommand, 4));
+  EXPECT_EQ(rig.Read32(kStatus), 0U);
+}
+
 }  // namespace socpuppet
