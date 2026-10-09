@@ -16,13 +16,12 @@ There is still no CPU anywhere: the SSD's firmware is a Python script too.
 import pytest
 
 import socpuppet as sp
-from socpuppet.boards.ssd import (
-    HOST_MSI_BASE,
-    HOST_RAM_BASE,
+from socpuppet.boards.scripted_host import (
+    MSI_BASE,
+    RAM_BASE,
     bring_up_the_drive,
-    ssd,
-    stand_in_firmware,
 )
+from socpuppet.boards.ssd import ssd, stand_in_firmware
 
 BLOCKS = 1024
 
@@ -90,10 +89,10 @@ class TestWhenAPythonHostBringsUpAnSsdOverPcie:
         completions = [
             record
             for record in writes
-            if len(record.data) == 16 and record.address >= HOST_RAM_BASE
+            if len(record.data) == 16 and record.address >= RAM_BASE
         ]
         messages = [
-            record.data for record in writes if record.address == HOST_MSI_BASE
+            record.data for record in writes if record.address == MSI_BASE
         ]
         assert completions
         assert messages == [bytes(4)] * len(completions)

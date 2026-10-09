@@ -26,7 +26,8 @@ cpu = ssd.add("cpu", sp.ScriptedBusMaster(firmware.script))
 `socpuppet.boards.ssd` does that for you, with the whole SSD around it:
 
 ```python
-from socpuppet.boards.ssd import bring_up_the_drive, ssd, stand_in_firmware
+from socpuppet.boards.scripted_host import bring_up_the_drive
+from socpuppet.boards.ssd import ssd, stand_in_firmware
 
 def host():
     nvme = yield from bring_up_the_drive()

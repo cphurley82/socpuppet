@@ -17,7 +17,11 @@ import pytest
 import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
-from socpuppet.boards.ssd import add_ssd_function, stand_in_firmware
+from socpuppet.boards.ssd import (
+    UPLINK_REACH,
+    add_ssd_function,
+    stand_in_firmware,
+)
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
@@ -60,7 +64,7 @@ def host_with_an_ssd(script, firmware=None):
     platform.connect(host.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
     bus.map(ssd.frontend.bar0, base=NVME_BASE)
-    ssd.uplink.map(bus.add_input(), base=0, size=1 << 63)
+    ssd.uplink.map(bus.add_input(), base=0, size=UPLINK_REACH)
     platform.connect(ssd.frontend.irq0, host.irq)
     platform.build()
     return platform

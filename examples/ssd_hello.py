@@ -22,12 +22,8 @@ The host cannot tell any of this. It runs what nvme_hello.py's host ran.
 Run it:                    python examples/ssd_hello.py
 """
 
-from socpuppet.boards.ssd import (
-    HOST_MSI_BASE,
-    bring_up_the_drive,
-    ssd,
-    stand_in_firmware,
-)
+from socpuppet.boards.scripted_host import MSI_BASE, bring_up_the_drive
+from socpuppet.boards.ssd import ssd, stand_in_firmware
 
 MESSAGE = b"Hello from the host, by way of PCIe and a page of NAND."
 
@@ -71,7 +67,7 @@ if __name__ == "__main__":
     # commands its frontend fetched, the data its DMA engine moved, the
     # completions, and an interrupt message for each.
     from_the_drive = platform.trace
-    messages = sum(record.address == HOST_MSI_BASE for record in from_the_drive)
+    messages = sum(record.address == MSI_BASE for record in from_the_drive)
     print(
         f"{len(from_the_drive)} accesses came up the link from the drive, "
         f"{messages} of them interrupt messages."

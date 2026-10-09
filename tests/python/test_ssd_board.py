@@ -4,7 +4,8 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
-from socpuppet.boards.ssd import HOST_ECAM_BASE, ssd, stand_in_firmware
+from socpuppet.boards.scripted_host import ECAM_BASE
+from socpuppet.boards.ssd import ssd, stand_in_firmware
 from socpuppet.pcie_host import PcieFunction
 
 
@@ -27,14 +28,20 @@ class TestAnSsdOfSoManyBlocks:
             "page_size": 4096,
         }
 
-    @pytest.mark.parametrize("blocks", [0, 100, 513])
+    @pytest.mark.parametrize("blocks", [100, 513])
     def test_is_refused_if_that_is_not_whole_nand_blocks(self, blocks):
-        with pytest.raises(ValueError, match="multiple of 512") as refused:
+        with pytest.raises(
+            ValueError, match=rf"\b{blocks} blocks were asked for"
+        ) as refused:
             ssd(
                 host=nothing, blocks=blocks, firmware=stand_in_firmware().script
             )
 
-        assert str(blocks) in str(refused.value)
+        assert "512, or a multiple of it" in str(refused.value)
+
+    def test_is_refused_if_that_is_no_blocks_at_all(self):
+        with pytest.raises(ValueError, match="at least one"):
+            ssd(host=nothing, blocks=0, firmware=stand_in_firmware().script)
 
 
 class TestAnSsdWithNothingInItsCpusPlace:
@@ -51,7 +58,7 @@ class TestWhenAHostScansThePcieBusTheSsdIsOn:
         found = []
 
         def host():
-            found.extend((yield from sp.PcieHost(ecam=HOST_ECAM_BASE).scan()))
+            found.extend((yield from sp.PcieHost(ecam=ECAM_BASE).scan()))
 
         board = ssd(host=host, firmware=stand_in_firmware().script)
         board.platform.build()
@@ -68,3 +75,17 @@ class TestWhenAHostScansThePcieBusTheSsdIsOn:
                 class_code=NVME_CLASS,
             )
         ]
+
+
+class TestTheScriptedHostInFrontOfTheSsd:
+    # So that a script written for one host finds its way around the other.
+    def test_has_its_devices_where_the_real_host_board_has_them(self):
+        from socpuppet.boards import host, scripted_host
+
+        assert scripted_host.RAM_BASE == host.RAM_BASE
+        assert scripted_host.MSI_BASE == host.MSI_BASE
+        assert scripted_host.ECAM_BASE == host.IO_BASE + host.ECAM_OFFSET
+        assert (
+            scripted_host.PCIE_WINDOW_BASE
+            == host.IO_BASE + host.PCIE_WINDOW_OFFSET
+        )

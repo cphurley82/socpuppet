@@ -22,6 +22,8 @@ firmware (`sp.SsdFirmware`), in the CPU's place.
 
 To use an SSD from a Python host, with nothing else to build:
 
+    from socpuppet.boards.scripted_host import bring_up_the_drive
+
     def my_host():
         nvme = yield from bring_up_the_drive()
         yield from nvme.write_blocks(first=0, data=bytes(512))
@@ -36,23 +38,18 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
+from socpuppet.boards.scripted_host import ScriptedHost, add_scripted_host
 from socpuppet.components import (
     DmaEngine,
     FlashController,
     IdealNand,
     Memory,
-    MsiReceiver,
     NvmeFrontend,
     PcieEndpoint,
-    PcieRootComplex,
     Router,
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.msi_host import MsiHost
-from socpuppet.nvme_host import NvmeHost
-from socpuppet.ops import Steps
-from socpuppet.pcie_host import PcieHost
 from socpuppet.placed import Placed, PlacedRouter
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
@@ -77,19 +74,10 @@ NAND_PAGES_PER_BLOCK = 64
 #: number of NAND blocks.
 DRIVE_BLOCKS_PER_NAND_BLOCK = NAND_PAGES_PER_BLOCK * NAND_PAGE_SIZE // 512
 
-#: How much of the host's address space the SSD can reach for its DMA: the
-#: lower half of what 64 bits can say, which is more than any host has.
-_HOST_ADDRESSES = 1 << 63
-
-# ---- The host that `ssd()` puts in front of the drive, with its devices
-# where the real host has them (`socpuppet.boards.host`).
-HOST_RAM_BASE = 0x8000_0000
-HOST_RAM_SIZE = 1024 * 1024
-HOST_MSI_BASE = 0x0200_0000
-HOST_ECAM_BASE = 0x1010_0000
-HOST_ECAM_SIZE = 1024 * 1024
-HOST_PCIE_WINDOW_BASE = 0x1080_0000
-HOST_PCIE_WINDOW_SIZE = 1024 * 1024
+#: How much of the host's address space the SSD can reach for its DMA,
+#: from address 0 up: the lower half of what 64 bits can say, which is more
+#: than any host has. It is how big a range to map onto an SSD's `uplink`.
+UPLINK_REACH = 1 << 63
 
 
 class Ssd(NamedTuple):
@@ -137,29 +125,25 @@ def add_ssd_function(
     That is everything behind the endpoint, for a host that reaches a
     drive's registers straight from its bus. What is left to connect is
     what an endpoint would be connected to: `frontend.bar0` (the drive's
-    registers), `uplink` (map the host's memory onto it), and the
-    frontend's interrupt lines, `frontend.irq0` and so on.
+    registers), `uplink` (map the host's bus onto it, from address 0 and
+    `UPLINK_REACH` long), and the frontend's interrupt lines,
+    `frontend.irq0` and so on.
 
     `blocks` is how many 512-byte blocks the drive holds, which has to be
     a whole number of NAND blocks. `firmware` is the script that stands
     in for the SSD's firmware (see `stand_in_firmware`). The SSD's parts
     go in `group`, or at the top of the platform if there is none.
     """
-    if blocks <= 0 or blocks % DRIVE_BLOCKS_PER_NAND_BLOCK:
+    if blocks < DRIVE_BLOCKS_PER_NAND_BLOCK or (
+        blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
+    ):
         raise ValueError(
-            f"An SSD holds a whole number of NAND blocks, each of "
-            f"{DRIVE_BLOCKS_PER_NAND_BLOCK} of the drive's 512-byte blocks, "
-            f"and {blocks} blocks were asked for. Ask for a multiple of "
-            f"{DRIVE_BLOCKS_PER_NAND_BLOCK}."
-        )
-    if firmware is None:
-        raise NotImplementedError(
-            "🚧 The SSD has no CPU of its own yet, so it needs a script to "
-            "stand in for its firmware: "
-            "firmware=socpuppet.boards.ssd.stand_in_firmware().script."
+            f"An SSD holds a whole number of NAND blocks, and at least one. "
+            f"A NAND block is {DRIVE_BLOCKS_PER_NAND_BLOCK} of the drive's "
+            f"512-byte blocks, and {blocks} blocks were asked for. Ask for "
+            f"{DRIVE_BLOCKS_PER_NAND_BLOCK}, or a multiple of it."
         )
     place = platform if group is None else group
-    cpu = place.add("cpu", ScriptedBusMaster(script=firmware))
     bus = place.add("bus", Router())
     frontend = place.add("frontend", NvmeFrontend(vectors=VECTORS))
     dma = place.add("dma", DmaEngine())
@@ -175,14 +159,15 @@ def add_ssd_function(
     buffer = place.add("buffer", Memory(size=BUFFER_SIZE))
     uplink = place.add("uplink", Router())
 
+    # Whatever is in the CPU's place, with the frontend's line to tell it
+    # when there is work.
+    cpu = _add_scripted_cpu(platform, place, frontend, firmware)
     # What the CPU sees: the three devices' registers, and the buffer.
     platform.connect(cpu.socket, bus.target)
     bus.map(frontend.cpu, base=FRONTEND_BASE)
     bus.map(dma.cpu, base=DMA_BASE)
     bus.map(flash.cpu, base=FLASH_BASE)
     bus.map(buffer.socket, base=BUFFER_BASE)
-    # The frontend tells the CPU when there is work.
-    platform.connect(frontend.cpu_irq, cpu.irq)
     # The two devices that move data reach the buffer over the same bus,
     # and the flash controller has the NAND behind it.
     platform.connect(dma.local, bus.add_input())
@@ -192,7 +177,38 @@ def add_ssd_function(
     # completions and for the DMA engine's data.
     platform.connect(frontend.dma, uplink.target)
     platform.connect(dma.host, uplink.add_input())
-    return Ssd(cpu, bus, frontend, dma, flash, nand, buffer, uplink)
+    return Ssd(
+        cpu=cpu,
+        bus=bus,
+        frontend=frontend,
+        dma=dma,
+        flash=flash,
+        nand=nand,
+        buffer=buffer,
+        uplink=uplink,
+    )
+
+
+def _add_scripted_cpu(
+    platform: Platform,
+    place: Platform | Group,
+    frontend: Placed,
+    firmware: Script | None,
+) -> Placed:
+    """🎭 Put a script in the SSD's CPU slot, to stand in for its firmware.
+
+    The frontend's line goes straight to the script, which has one
+    interrupt input and no interrupt controller.
+    """
+    if firmware is None:
+        raise NotImplementedError(
+            "🚧 The SSD has no CPU of its own yet, so it needs a script to "
+            "stand in for its firmware: "
+            "firmware=socpuppet.boards.ssd.stand_in_firmware().script."
+        )
+    cpu = place.add("cpu", ScriptedBusMaster(script=firmware))
+    platform.connect(frontend.cpu_irq, cpu.irq)
+    return cpu
 
 
 def add_ssd(
@@ -230,7 +246,7 @@ def add_ssd(
     # The function behind the endpoint: its registers, its way to the
     # host's memory, and one interrupt line per vector.
     platform.connect(endpoint.bar0, ssd.frontend.bar0)
-    ssd.uplink.map(endpoint.dma, base=0, size=_HOST_ADDRESSES)
+    ssd.uplink.map(endpoint.dma, base=0, size=UPLINK_REACH)
     for vector in range(VECTORS):
         platform.connect(
             getattr(ssd.frontend, f"irq{vector}"),
@@ -240,12 +256,11 @@ def add_ssd(
 
 
 class SsdBoard(NamedTuple):
-    """The SSD with a stand-in host in front of it, and their parts."""
+    """The SSD with a 🎭 scripted host in front of it, and their parts."""
 
     platform: Platform
     ssd: Ssd
-    #: The stand-in host: a script, in the place of the host's CPU.
-    host: Placed
+    host: ScriptedHost
 
 
 def ssd(
@@ -258,64 +273,21 @@ def ssd(
     """Describe the SSD, with a 🎭 scripted host on its PCIe link.
 
     Nothing is simulated until `platform.build()`. `host` is the script
-    that plays the host: it starts with `bring_up_the_drive()`. `blocks`
-    is how many 512-byte blocks the drive holds, and `firmware` is the
-    script that stands in for the SSD's firmware.
-
-    The host has 1 MiB of memory and the devices a host needs to reach a
-    PCIe drive, at the addresses the real host board has them. With
-    `trace`, everything the drive sends up to the host is recorded in
-    `platform.trace`: its DMA, and its interrupts, which are messages.
+    that plays the host: it starts with `bring_up_the_drive()` (see
+    `socpuppet.boards.scripted_host`). `blocks` is how many 512-byte
+    blocks the drive holds, and `firmware` is the script that stands in
+    for the SSD's firmware. With `trace`, everything the drive sends up to
+    the host is recorded in `platform.trace`.
     """
     platform = Platform()
-    host_group = platform.group("host")
-    cpu = host_group.add("cpu", ScriptedBusMaster(script=host))
-    bus = host_group.add("bus", Router())
-    ram = host_group.add("ram", Memory(size=HOST_RAM_SIZE))
-    msi = host_group.add("msi", MsiReceiver())
-    root_complex = host_group.add("rc", PcieRootComplex())
-
-    platform.connect(cpu.socket, bus.target)
-    bus.map(ram.socket, base=HOST_RAM_BASE)
-    bus.map(msi.socket, base=HOST_MSI_BASE)
-    bus.map(root_complex.ecam, base=HOST_ECAM_BASE, size=HOST_ECAM_SIZE)
-    bus.map(
-        root_complex.mmio,
-        base=HOST_PCIE_WINDOW_BASE,
-        size=HOST_PCIE_WINDOW_SIZE,
+    scripted_host = add_scripted_host(
+        platform, host, group=platform.group("host"), trace=trace
     )
-    platform.connect(msi.irq, cpu.irq)
-    # What the drive sends up (DMA, and interrupts as messages) comes onto
-    # the host's bus.
-    platform.connect(root_complex.dma, bus.add_input(), trace=trace)
     drive = add_ssd(
         platform,
-        root_complex,
+        scripted_host.root_complex,
         blocks=blocks,
         group=platform.group("ssd"),
         firmware=firmware,
     )
-    return SsdBoard(platform, drive, cpu)
-
-
-def bring_up_the_drive() -> Steps[NvmeHost]:
-    """What `ssd()`'s host does before any I/O: find the drive, and enable it.
-
-    A piece of a host script, to hand over to with `yield from`. It scans
-    the PCIe bus, gives the drive's registers a place, has its interrupts
-    sent to the host's MSI receiver, and enables the controller. What
-    comes back is the host's NVMe driver, 🎭 a stand-in too:
-    `read_blocks`, `write_blocks` and `identify_namespace`.
-    """
-    pci = PcieHost(ecam=HOST_ECAM_BASE)
-    (drive,) = yield from pci.scan()
-    yield from pci.place(drive, HOST_PCIE_WINDOW_BASE)
-    msi = MsiHost(receiver=HOST_MSI_BASE)
-    yield from pci.route_interrupts(drive, to=msi)
-    nvme = NvmeHost(
-        registers=HOST_PCIE_WINDOW_BASE,
-        memory=HOST_RAM_BASE,
-        interrupt=msi.wait,
-    )
-    yield from nvme.enable()
-    return nvme
+    return SsdBoard(platform, drive, scripted_host)
