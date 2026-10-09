@@ -84,7 +84,7 @@ bool FlashController::WriteRegister(std::uint64_t offset,
       status_ &= ~(value & (kDone | kError));
       break;
     case kInterruptEnableRegister:
-      interrupt_enable_ = value;
+      interrupt_enable_ = value & (kDone | kError);
       break;
     case kBlockRegister:
       block_ = value;

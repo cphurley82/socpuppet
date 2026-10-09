@@ -362,4 +362,14 @@ TEST(WhenTheCpuReadsBackARegisterItWroteInAFlashController,
   EXPECT_EQ(rig.Read32(kLocal), 0x3333'3333U);
 }
 
+// Only the status bits can interrupt, so only they can be enabled.
+TEST(WhenTheCpuEnablesInterruptsAFlashControllerDoesNotHave,
+     TheRegisterReadsBackWithoutThem) {
+  Rig rig;
+
+  rig.Write32(kInterruptEnable, 0xFFFF'FFFF);
+
+  EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
+}
+
 }  // namespace socpuppet
