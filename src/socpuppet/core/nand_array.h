@@ -55,6 +55,7 @@ class NandArray {
   }
 
   NandResult EraseBlock(std::uint32_t block) {
+    if (block >= geometry_.blocks) return NandResult::kOutOfRange;
     for (std::uint32_t page = 0; page < geometry_.pages_per_block; ++page) {
       pages_.erase(Index(block, page));
     }
