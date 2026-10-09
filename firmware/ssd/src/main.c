@@ -27,15 +27,19 @@ const struct device *const ssd_frontend = DEVICE_DT_GET_ONE(socpuppet_nvme_front
 const struct device *const ssd_dma = DEVICE_DT_GET_ONE(socpuppet_dma_engine);
 const struct device *const ssd_nand = DEVICE_DT_GET_ONE(socpuppet_flash_controller);
 
+BUILD_ASSERT(sizeof(struct nvme_command) == NVME_FRONTEND_COMMAND_SIZE,
+	     "What the frontend hands over is one whole NVMe command.");
+
 static void deal_with_the_command(void)
 {
 	struct nvme_command command;
+	uint16_t from_queue = nvme_frontend_read_command(ssd_frontend, command.bytes);
 	/*
 	 * Queue 0 is the admin queue. The same opcode means one thing there
 	 * and another on an I/O queue.
 	 */
-	bool is_admin = nvme_frontend_read_command(ssd_frontend, command.bytes) == 0;
-	struct nvme_outcome outcome = is_admin ? admin_command(&command) : io_command(&command);
+	struct nvme_outcome outcome =
+		from_queue == 0 ? admin_command(&command) : io_command(&command);
 
 	nvme_frontend_post(ssd_frontend, outcome.status, outcome.result);
 }
@@ -48,6 +52,7 @@ int main(void)
 		printk("The SSD's firmware cannot use its NAND (error %d), and stops.\n", result);
 		return 0;
 	}
+	admin_start();
 	printk("socpuppet SSD firmware: a drive of %u pages of %u bytes\n", ftl_pages(),
 	       ftl_page_size());
 

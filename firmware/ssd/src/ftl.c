@@ -5,20 +5,10 @@
 #include <errno.h>
 #include <string.h>
 
-#include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sys/util.h>
 
 #include "ssd.h"
-
-/*
- * The buffer, from the board's devicetree. The firmware carves it up by
- * hand: a page of the drive, a page of scratch, and the table.
- */
-#define BUFFER      DT_NODELABEL(ssd_buffer)
-#define BUFFER_BASE ((uint8_t *)DT_REG_ADDR(BUFFER))
-#define BUFFER_SIZE DT_REG_SIZE(BUFFER)
 
 /*
  * How much of a flash Zephyr's flash API has offsets for. An offset is an
@@ -38,16 +28,6 @@ static uint32_t *where;
 /* The next NAND page nobody has. */
 static uint32_t next_free_nand_page;
 
-uint8_t *ssd_page_buffer(void)
-{
-	return BUFFER_BASE;
-}
-
-uint8_t *ssd_scratch(void)
-{
-	return BUFFER_BASE + ROUND_UP(page_size, NVME_HOST_PAGE);
-}
-
 uint32_t ftl_pages(void)
 {
 	return pages;
@@ -61,6 +41,7 @@ uint32_t ftl_page_size(void)
 int ftl_start(void)
 {
 	uint64_t bytes;
+	size_t room;
 	int result;
 
 	if (!device_is_ready(ssd_nand)) {
@@ -84,9 +65,9 @@ int ftl_start(void)
 	}
 	pages = bytes / page_size;
 
-	/* The table goes after the two pages, and has to fit. */
-	where = (uint32_t *)(ssd_scratch() + NVME_HOST_PAGE);
-	if ((uint8_t *)(where + pages) > BUFFER_BASE + BUFFER_SIZE) {
+	/* The table has what is left of the buffer, and has to fit. */
+	where = ssd_buffer_after_a_page(page_size, &room);
+	if (room / sizeof(*where) < pages) {
 		return -ENOMEM;
 	}
 	for (uint32_t page = 0; page < pages; ++page) {

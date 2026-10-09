@@ -190,11 +190,12 @@ class SsdFirmware:
         self._frontend = frontend
         self._dma = dma
         self._flash = flash
-        #: One page of the drive, as it is being read or written.
-        self._page_buffer = buffer
         #: A page of scratch, for what is made up to send to the host, and
         #: for what is fetched from the host to be read.
-        self._scratch = buffer + _HOST_PAGE
+        self._scratch = buffer
+        #: One page of the drive, as it is being read or written. It comes
+        #: second because how long it is depends on the NAND.
+        self._page_buffer = buffer + _HOST_PAGE
         # What the hardware says it has, asked when the script starts.
         self._page_size = 0
         self._pages_per_block = 0

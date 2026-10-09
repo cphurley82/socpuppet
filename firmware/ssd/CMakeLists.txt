@@ -7,6 +7,7 @@ project(socpuppet_ssd_firmware)
 
 target_sources(app PRIVATE
   src/admin.c
+  src/buffer.c
   src/data.c
   src/ftl.c
   src/io.c

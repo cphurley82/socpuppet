@@ -99,8 +99,7 @@ void nvme_frontend_acknowledge(const struct device *dev, uint32_t happened)
 {
 	const struct nvme_frontend_config *config = dev->config;
 
-	sys_write32(happened & (NVME_FRONTEND_ENABLED | NVME_FRONTEND_RESET),
-		    config->base + STATUS);
+	sys_write32(happened, config->base + STATUS);
 }
 
 void nvme_frontend_say_ready(const struct device *dev)
@@ -151,8 +150,10 @@ static int nvme_frontend_init(const struct device *dev)
 	struct nvme_frontend_data *data = dev->data;
 
 	k_sem_init(&data->something_happened, 0, 1);
-	/* Not until the firmware waits: see nvme_frontend_wait(). */
-	sys_write32(0, config->base + INTERRUPT_ENABLE);
+	/*
+	 * The frontend interrupts for nothing until it is told to, which is
+	 * when the firmware first waits: see nvme_frontend_wait().
+	 */
 	config->connect_interrupt();
 
 	return 0;

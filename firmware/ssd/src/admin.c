@@ -13,7 +13,6 @@
 #include <socpuppet/drivers/nvme_frontend.h>
 
 #include "data.h"
-#include "ftl.h"
 #include "ssd.h"
 
 /* What Identify can be asked for. */
@@ -40,14 +39,12 @@ void admin_forget_the_queues(void)
 }
 
 /* What the frontend has, and so what the host may ask for. */
-static struct nvme_frontend_limits limits(void)
+static struct nvme_frontend_limits limits;
+
+void admin_start(void)
 {
-	struct nvme_frontend_limits has;
-
-	nvme_frontend_get_limits(ssd_frontend, &has);
-	has.io_queue_pairs = MIN(has.io_queue_pairs, MOST_QUEUE_PAIRS);
-
-	return has;
+	nvme_frontend_get_limits(ssd_frontend, &limits);
+	limits.io_queue_pairs = MIN(limits.io_queue_pairs, MOST_QUEUE_PAIRS);
 }
 
 /* Sends the scratch page to where a command's data goes. */
@@ -55,24 +52,24 @@ static uint16_t send_the_scratch_page(const struct nvme_command *command)
 {
 	/* What is left of the page to send. */
 	const uint8_t *from = ssd_scratch();
-	uint64_t first = nvme_data(command);
-	uint32_t in_the_first = NVME_HOST_PAGE - (uint32_t)(first % NVME_HOST_PAGE);
+	struct data data;
+	struct data_piece piece;
+	uint16_t status;
 
 	/*
 	 * One page of data is in one piece, or two if it does not start at the
 	 * start of a page of the host's memory. It never needs a list, which
 	 * is as well: a list would be fetched into the scratch page.
 	 */
-	if (dma_engine_copy_to_host(ssd_dma, first, from, in_the_first) != 0) {
-		return NVME_DATA_TRANSFER_ERROR;
-	}
-	if (in_the_first < NVME_HOST_PAGE &&
-	    dma_engine_copy_to_host(ssd_dma, nvme_more_data(command), from + in_the_first,
-				    NVME_HOST_PAGE - in_the_first) != 0) {
-		return NVME_DATA_TRANSFER_ERROR;
+	data_begin(&data, command, NVME_HOST_PAGE);
+	while ((status = data_next(&data, &piece)) == NVME_SUCCESS && piece.length != 0) {
+		if (dma_engine_copy_to_host(ssd_dma, piece.address, from, piece.length) != 0) {
+			return NVME_DATA_TRANSFER_ERROR;
+		}
+		from += piece.length;
 	}
 
-	return NVME_SUCCESS;
+	return status;
 }
 
 /*
@@ -82,7 +79,7 @@ static uint16_t send_the_scratch_page(const struct nvme_command *command)
 static uint16_t identify(const struct nvme_command *command)
 {
 	uint8_t *page = ssd_scratch();
-	uint64_t blocks = (uint64_t)ftl_pages() * (ftl_page_size() / NVME_BLOCK_SIZE);
+	uint64_t blocks = io_drive_blocks();
 
 	memset(page, 0, NVME_HOST_PAGE);
 	switch (nvme_dword(command, 10) & 0xFF) {
@@ -124,7 +121,7 @@ static struct nvme_outcome set_features(const struct nvme_command *command)
 	 * asked for, counted from zero: submission queues in the low half,
 	 * completion queues in the high half.
 	 */
-	uint32_t from_zero = limits().io_queue_pairs - 1;
+	uint32_t from_zero = limits.io_queue_pairs - 1;
 
 	if ((nvme_dword(command, 10) & 0xFF) != NUMBER_OF_QUEUES) {
 		return (struct nvme_outcome){.status = NVME_INVALID_FIELD};
@@ -139,7 +136,7 @@ static struct nvme_outcome set_features(const struct nvme_command *command)
  */
 static bool is_an_io_queue(uint32_t queue_id)
 {
-	return queue_id >= 1 && queue_id <= limits().io_queue_pairs;
+	return queue_id >= 1 && queue_id <= limits.io_queue_pairs;
 }
 
 /*
@@ -178,7 +175,7 @@ static uint16_t create_queue(const struct nvme_command *command, enum nvme_front
 	}
 	if (kind == NVME_FRONTEND_COMPLETION_QUEUE) {
 		/* The vector has to be one the drive has. */
-		if (queue.link >= limits().vectors) {
+		if (queue.link >= limits.vectors) {
 			return NVME_INVALID_INTERRUPT_VECTOR;
 		}
 	} else if (queue.link != 0 &&

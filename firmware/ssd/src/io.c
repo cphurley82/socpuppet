@@ -10,7 +10,7 @@
 #include "ftl.h"
 #include "ssd.h"
 
-static uint64_t drive_blocks(void)
+uint64_t io_drive_blocks(void)
 {
 	return (uint64_t)ftl_pages() * (ftl_page_size() / NVME_BLOCK_SIZE);
 }
@@ -46,7 +46,7 @@ static uint16_t read_or_write(const struct nvme_command *command)
 	if (nvme_namespace(command) != NVME_THE_NAMESPACE) {
 		return NVME_INVALID_NAMESPACE;
 	}
-	if (first > drive_blocks() || count > drive_blocks() - first) {
+	if (first > io_drive_blocks() || count > io_drive_blocks() - first) {
 		return NVME_LBA_OUT_OF_RANGE;
 	}
 

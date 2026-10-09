@@ -99,7 +99,7 @@ uint16_t nvme_frontend_read_command(const struct device *dev,
  */
 void nvme_frontend_post(const struct device *dev, uint16_t status, uint32_t result);
 
-/* The two kinds of queue. */
+/* The two kinds of queue. The values are what the frontend is told. */
 enum nvme_frontend_queue_kind {
 	NVME_FRONTEND_COMPLETION_QUEUE = 1,
 	NVME_FRONTEND_SUBMISSION_QUEUE = 2,
