@@ -84,4 +84,11 @@ TEST(WhenABlockIsErased, TheBlocksAroundItKeepWhatTheyHold) {
   EXPECT_EQ(PageAt(nand, 3, 0), SomePage(20));
 }
 
+TEST(WhenABlockPastTheEndOfTheChipIsAskedFor, ReadingItIsRefused) {
+  const NandArray nand{kSmall};
+  std::vector<std::uint8_t> data(kSmall.page_size);
+
+  EXPECT_EQ(nand.ReadPage(4, 0, data), NandResult::kOutOfRange);
+}
+
 }  // namespace socpuppet

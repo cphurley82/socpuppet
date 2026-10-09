@@ -21,6 +21,8 @@ struct NandGeometry {
 // How an operation on the array came out.
 enum class NandResult {
   kDone,
+  // There is no such block, or no such page in the block.
+  kOutOfRange,
 };
 
 // The cells of a NAND flash chip, with no simulator in them: pages that
@@ -35,6 +37,7 @@ class NandArray {
   // what an erased NAND cell holds.
   NandResult ReadPage(std::uint32_t block, std::uint32_t page,
                       std::span<std::uint8_t> out) const {
+    if (block >= geometry_.blocks) return NandResult::kOutOfRange;
     const auto programmed = pages_.find(Index(block, page));
     if (programmed == pages_.end()) {
       std::ranges::fill(out, kErased);
