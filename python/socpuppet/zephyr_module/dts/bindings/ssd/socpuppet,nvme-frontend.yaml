@@ -1,0 +1,20 @@
+description: |
+  The NVMe frontend of a socpuppet SSD, as the SSD's own CPU sees it: the
+  hardware that keeps the host's queues. It holds each command it has
+  fetched for the firmware to read, and posts the completion the firmware
+  gives it.
+
+  `interrupts-extended` names the PLIC source of its line, which is high
+  while it has something to tell the CPU that the CPU asked to be told:
+  the host has enabled or reset the controller, or a command is waiting.
+
+compatible: "socpuppet,nvme-frontend"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts-extended:
+    required: true

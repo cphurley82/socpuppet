@@ -377,6 +377,73 @@ class TestWhenAnMsiBridgesLinesGoToPlicSources:
         )
 
 
+class TestWhenAnSsdsDevicesAreOnItsCpusBus:
+    # The three devices an SSD's firmware drives. Each has a node for its
+    # register block, with the PLIC source its line goes to.
+
+    def test_the_nvme_frontends_node_is_exactly_this(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        frontend = platform.add("frontend", sp.NvmeFrontend())
+        bus.map(frontend.cpu, base=0x1001_0000)
+        platform.connect(frontend.cpu_irq, plic.source1)
+
+        node = textwrap.dedent(
+            """\
+            frontend: nvme-frontend@10010000 {
+            \tcompatible = "socpuppet,nvme-frontend";
+            \treg = <0x0 0x10010000 0x0 0x80>;
+            \tinterrupts-extended = <&plic 1 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_the_dma_engines_node_is_exactly_this(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        dma = platform.add("dma", sp.DmaEngine())
+        bus.map(dma.cpu, base=0x1002_0000)
+        platform.connect(dma.irq, plic.source2)
+
+        node = textwrap.dedent(
+            """\
+            dma: dma-controller@10020000 {
+            \tcompatible = "socpuppet,dma-engine";
+            \treg = <0x0 0x10020000 0x0 0x20>;
+            \tinterrupts-extended = <&plic 2 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_the_flash_controllers_node_is_exactly_this(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        flash = platform.add("flash", sp.FlashController())
+        bus.map(flash.cpu, base=0x1003_0000)
+        platform.connect(flash.irq, plic.source3)
+
+        node = textwrap.dedent(
+            """\
+            flash: nand-controller@10030000 {
+            \tcompatible = "socpuppet,flash-controller";
+            \treg = <0x0 0x10030000 0x0 0x30>;
+            \tinterrupts-extended = <&plic 3 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
+class TestWhenOnlyTheHostsSideOfAnNvmeFrontendCanBeReached:
+    # To a host the frontend is an NVMe drive's registers, which a PCIe
+    # scan finds. The node is for the SSD's own firmware.
+    def test_it_has_no_node(self):
+        platform, bus, _ = cpu_with_its_peripherals()
+        frontend = platform.add("frontend", sp.NvmeFrontend())
+        bus.map(frontend.bar0, base=0x1001_0000)
+
+        assert "nvme-frontend" not in platform.devicetree()
+
+
 def cpu_with_a_pcie_root_complex():
     """The CPU and its peripherals, with a PCIe root complex's two windows."""
     platform, bus, _ = cpu_with_its_peripherals()

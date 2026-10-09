@@ -1,0 +1,17 @@
+description: |
+  The DMA engine of a socpuppet SSD: what copies between the host's memory
+  and the SSD's own. The firmware says where in each and how many bytes.
+
+  `interrupts-extended` names the PLIC source of its line, which is high
+  while a copy is done, or has failed, and the CPU asked to be told.
+
+compatible: "socpuppet,dma-engine"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts-extended:
+    required: true

@@ -1,0 +1,18 @@
+description: |
+  The flash controller of a socpuppet SSD: what moves a page between the
+  NAND flash chip and the SSD's own memory, and erases a block. The
+  firmware says which page and where it is in memory.
+
+  `interrupts-extended` names the PLIC source of its line, which is high
+  while a command is done, or has failed, and the CPU asked to be told.
+
+compatible: "socpuppet,flash-controller"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts-extended:
+    required: true

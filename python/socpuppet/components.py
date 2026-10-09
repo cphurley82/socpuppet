@@ -398,6 +398,14 @@ class DmaEngine(Component):
     #: Seven 32-bit registers, and room for one more.
     mapped_size = 0x20
 
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "dma-controller",
+            ((reached["cpu"].address, self.mapped_size),),
+            ('compatible = "socpuppet,dma-engine";',),
+        )
+
 
 class FlashController(Component):
     """The part of an SSD's controller that works the NAND flash chip.
@@ -419,6 +427,14 @@ class FlashController(Component):
     )
     #: Twelve 32-bit registers, three of them reserved.
     mapped_size = 0x30
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "nand-controller",
+            ((reached["cpu"].address, self.mapped_size),),
+            ('compatible = "socpuppet,flash-controller";',),
+        )
 
 
 class IdealNand(Component):
@@ -645,6 +661,20 @@ class NvmeFrontend(Component):
     @override
     def size_at(self, port: str) -> int | None:
         return {"bar0": self.BAR0_SIZE, "cpu": self.CPU_SIZE}.get(port)
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+        # The node is for the SSD's own firmware, which reaches the CPU's
+        # register block. A host finds the other one by scanning its PCIe
+        # bus, as an NVMe drive's.
+        cpu = reached.get("cpu")
+        if cpu is None:
+            return None
+        return DeviceNode(
+            "nvme-frontend",
+            ((cpu.address, self.CPU_SIZE),),
+            ('compatible = "socpuppet,nvme-frontend";',),
+        )
 
 
 class PassThroughLinkEndpoint(Component):
