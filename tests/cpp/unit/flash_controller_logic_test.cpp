@@ -132,7 +132,7 @@ struct RigWith {
   }
   // The bytes do not start out as zeros, so that a register the controller
   // leaves untouched is not taken for one that reads as zero.
-  std::uint32_t Read32(std::uint64_t offset) {
+  std::uint32_t Read32(std::uint64_t offset) const {
     std::array<std::uint8_t, 4> bytes{0xA5, 0xA5, 0xA5, 0xA5};
     EXPECT_TRUE(controller.ReadRegister(offset, bytes));
     return LoadLittleEndian<std::uint32_t>(bytes);
