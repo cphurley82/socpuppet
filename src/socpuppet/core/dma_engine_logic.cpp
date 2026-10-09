@@ -77,6 +77,9 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
                  .length = length_};
       status_.Start();
       break;
+    case kStatusRegister:
+      status_.WriteStatus(value);
+      break;
     case kInterruptEnableRegister:
       status_.WriteInterruptEnable(value);
       break;

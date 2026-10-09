@@ -309,4 +309,17 @@ TEST(WhenACopyIsDoneAndDoneIsEnabledAsAnInterrupt, TheDmaEngineInterrupts) {
   EXPECT_TRUE(rig.engine.Interrupting());
 }
 
+TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
+     TheDmaEngineStopsInterrupting) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 24);
+  rig.Write32(kInterruptEnable, kDone);
+  rig.Do(kFromHost);
+
+  rig.Write32(kStatus, kDone);
+
+  EXPECT_FALSE(rig.engine.Interrupting());
+  EXPECT_EQ(rig.Read32(kStatus), 0U);
+}
+
 }  // namespace socpuppet
