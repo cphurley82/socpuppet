@@ -20,3 +20,39 @@ config SOCPUPPET_MAP_WITHOUT_MMU
 	bool
 	default y
 	depends on SOC_FAMILY_SOCPUPPET && PCIE_MSI_X && !MMU
+
+# The three devices an SSD's firmware drives. Each driver is built
+# whenever the devicetree has its device.
+config SOCPUPPET_NVME_FRONTEND
+	bool "socpuppet SSD NVMe frontend"
+	default y
+	depends on DT_HAS_SOCPUPPET_NVME_FRONTEND_ENABLED
+	help
+	  The NVMe frontend of a socpuppet SSD: the hardware that keeps the
+	  host's queues, hands each command to the firmware and posts the
+	  completion the firmware gives it. The driver's functions are in
+	  <socpuppet/drivers/nvme_frontend.h>.
+
+config SOCPUPPET_DMA_ENGINE
+	bool "socpuppet SSD DMA engine"
+	default y
+	depends on DT_HAS_SOCPUPPET_DMA_ENGINE_ENABLED
+	help
+	  The DMA engine of a socpuppet SSD, which copies between the host's
+	  memory and the SSD's own. The driver's functions are in
+	  <socpuppet/drivers/dma_engine.h>.
+
+# The flash controller is a driver of Zephyr's flash class, so it is built
+# when the application has asked for flash drivers at all.
+config SOCPUPPET_FLASH_CONTROLLER
+	bool "socpuppet SSD flash controller"
+	default y
+	depends on DT_HAS_SOCPUPPET_FLASH_CONTROLLER_ENABLED
+	depends on FLASH
+	select FLASH_HAS_DRIVER_ENABLED
+	select FLASH_HAS_PAGE_LAYOUT
+	select FLASH_HAS_EXPLICIT_ERASE
+	help
+	  The flash controller of a socpuppet SSD, which moves pages between
+	  the NAND flash chip and the SSD's own memory. Firmware uses it
+	  through Zephyr's flash API.

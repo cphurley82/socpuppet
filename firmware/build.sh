@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Builds the firmware the tests boot. All of it is Zephyr's own, two
-# samples and one of its tests:
+# Builds the firmware the tests boot. Most of it is Zephyr's own, two
+# samples and one of its tests, and one image is socpuppet's:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
 #   hello_world       for socpuppet_host and socpuppet_ssd, socpuppet's own
 #                     boards: the host, and the SSD's controller
 #   synchronization   for socpuppet_host
 #   disk_access       for socpuppet_host with its SSD: Zephyr's test of its
 #                     disk interface, which here drives its NVMe driver
+#   ssd               for socpuppet_ssd: the SSD's own firmware, which is
+#                     the application in firmware/ssd
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
@@ -23,8 +25,8 @@ set -euo pipefail
 zephyr_version=v4.4.2
 sdk_version=1.0.1
 # Each image to build, as "application board [shield]". The application is
-# a directory of Zephyr's, and the image is named after the last part of
-# it. A shield is Zephyr's word for hardware plugged into a board:
+# a directory of Zephyr's, or one of this repository's if it starts with
+# "firmware/", and the image is named after the last part of it. A shield is Zephyr's word for hardware plugged into a board:
 # `socpuppet_host_drive` is the host's SSD and the PCIe link it is on.
 images=(
   "samples/hello_world qemu_riscv64"
@@ -33,11 +35,13 @@ images=(
   "samples/hello_world socpuppet_ssd"
   "samples/synchronization socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
+  "firmware/ssd socpuppet_ssd"
 )
 # socpuppet's boards, shields and drivers are in a Zephyr module that ships
 # inside the Python package (`socpuppet zephyr-module` prints where). Here
 # it is used straight from the repository.
-module=$(cd "$(dirname "$0")/../python/socpuppet/zephyr_module" && pwd)
+repository=$(cd "$(dirname "$0")/.." && pwd)
+module=${repository}/python/socpuppet/zephyr_module
 
 mkdir -p "${1:-build/firmware}"
 out=$(cd "${1:-build/firmware}" && pwd)
@@ -127,7 +131,11 @@ for each in "${images[@]}"; do
   name=$(basename "${application}")
   echo "Building ${name} for ${board}${shield:+ with ${shield}}"
   build=${out}/build_${name}_${board}
-  cmake -S "${zephyr}/${application}" -B "${build}" -G Ninja \
+  case ${application} in
+    firmware/*) source=${repository}/${application} ;;
+    *) source=${zephyr}/${application} ;;
+  esac
+  cmake -S "${source}" -B "${build}" -G Ninja \
     -DBOARD="${board}" ${shield:+-DSHIELD="${shield}"} \
     -DCONFIG_BUILD_OUTPUT_BIN=y \
     -DZEPHYR_EXTRA_MODULES="${module}" \
