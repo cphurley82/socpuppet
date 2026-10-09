@@ -59,7 +59,7 @@ bool FlashController::CarryOut() {
   std::vector<std::uint8_t> page(nand_.Geometry()->page_size);
   nand_.ReadPage(block_, page_, page);
   local_memory_.Write(local_, page);
-  status_ |= kDone;
+  status_ = kDone;
   return true;
 }
 

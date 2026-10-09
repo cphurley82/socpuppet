@@ -126,4 +126,13 @@ TEST(WhenAFlashControllerHasNotYetCarriedOutACommand,
   EXPECT_EQ(rig.Read32(kStatus) & (kBusy | kDone), kBusy);
 }
 
+TEST(WhenAFlashControllerHasCarriedOutACommand, ItsStatusNoLongerSaysBusy) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.Read32(kStatus) & kBusy, 0U);
+}
+
 }  // namespace socpuppet
