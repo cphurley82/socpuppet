@@ -68,7 +68,7 @@ class FlashController : public sc_core::sc_module {
     const std::span data{transaction.get_data_ptr(),
                          transaction.get_data_length()};
     return transaction.is_read() &&
-                   logic_.PeekRegister(transaction.get_address(), data)
+                   logic_.ReadRegister(transaction.get_address(), data)
                ? transaction.get_data_length()
                : 0;
   }

@@ -27,14 +27,15 @@ constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
 constexpr std::uint64_t kLocal = 0x14;
-constexpr std::uint64_t kPageSize = 0x20;
-constexpr std::uint64_t kPagesPerBlock = 0x24;
-constexpr std::uint64_t kBlocks = 0x28;
+constexpr std::uint64_t kPageSizeRegister = 0x20;
+constexpr std::uint64_t kPagesPerBlockRegister = 0x24;
+constexpr std::uint64_t kBlocksRegister = 0x28;
 
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
 constexpr std::uint32_t kProgramPage = 2;
 constexpr std::uint32_t kEraseBlock = 3;
+constexpr std::uint32_t kIdentify = 4;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -116,9 +117,11 @@ std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
   return data;
 }
 
-// A controller with a chip and a buffer, as its CPU sees it.
-struct Rig {
-  Chip chip;
+// A controller with a chip and a buffer, as its CPU sees it, before it
+// has been told anything.
+template <typename ChipType>
+struct RigWith {
+  ChipType chip;
   Buffer buffer;
   FlashControllerLogic controller{chip, buffer};
 
@@ -131,6 +134,20 @@ struct Rig {
     std::array<std::uint8_t, 4> bytes{0xA5, 0xA5, 0xA5, 0xA5};
     EXPECT_TRUE(controller.ReadRegister(offset, bytes));
     return LoadLittleEndian<std::uint32_t>(bytes);
+  }
+  // Gives a command and lets the controller carry it out.
+  void Do(std::uint32_t command) {
+    Write32(kCommand, command);
+    controller.CarryOut();
+  }
+};
+
+// The same, once its firmware has started it: the chip has been
+// identified, and the status that said so has been cleared.
+struct Rig : RigWith<Chip> {
+  Rig() {
+    Do(kIdentify);
+    Write32(kStatus, kDone);
   }
 };
 
@@ -255,7 +272,7 @@ TEST(WhenAFlashControllerIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
   Rig rig;
 
   EXPECT_FALSE(rig.Write32(kCommand, 0));
-  EXPECT_FALSE(rig.Write32(kCommand, 4));
+  EXPECT_FALSE(rig.Write32(kCommand, 5));
   EXPECT_EQ(rig.Read32(kStatus), 0U);
 }
 
@@ -357,13 +374,17 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   EXPECT_FALSE(rig.controller.Interrupting());
 }
 
-TEST(WhenTheCpuReadsTheGeometryRegistersOfAFlashController,
-     TheySayWhatTheChipSays) {
-  Rig rig;
+TEST(WhenAFlashControllerHasBeenToldToIdentifyTheChip,
+     ItsGeometryRegistersSayWhatTheChipSays) {
+  RigWith<Chip> rig;
 
-  EXPECT_EQ(rig.Read32(kPageSize), 16U);
-  EXPECT_EQ(rig.Read32(kPagesPerBlock), 8U);
-  EXPECT_EQ(rig.Read32(kBlocks), 4U);
+  rig.Do(kIdentify);
+
+  EXPECT_EQ(rig.Read32(kStatus), kDone);
+
+  EXPECT_EQ(rig.Read32(kPageSizeRegister), 16U);
+  EXPECT_EQ(rig.Read32(kPagesPerBlockRegister), 8U);
+  EXPECT_EQ(rig.Read32(kBlocksRegister), 4U);
 }
 
 TEST(WhenTheCpuReadsBackARegisterItWroteInAFlashController,
@@ -426,9 +447,9 @@ TEST(WhenAnAccessToAFlashControllerIsBesideItsRegisters, ItIsRefused) {
 TEST(WhenTheCpuWritesToAGeometryRegisterOfAFlashController, ItIsRefused) {
   Rig rig;
 
-  EXPECT_FALSE(rig.Write32(kPageSize, 32));
-  EXPECT_FALSE(rig.Write32(kPagesPerBlock, 32));
-  EXPECT_FALSE(rig.Write32(kBlocks, 32));
+  EXPECT_FALSE(rig.Write32(kPageSizeRegister, 32));
+  EXPECT_FALSE(rig.Write32(kPagesPerBlockRegister, 32));
+  EXPECT_FALSE(rig.Write32(kBlocksRegister, 32));
 }
 
 TEST(WhenAFlashControllerHasNothingToDo, CarryingOutSaysSoAndChangesNothing) {
@@ -446,28 +467,43 @@ TEST(WhenAFlashControllerHasCarriedOutACommand, ThereIsNothingMoreToDo) {
   EXPECT_FALSE(rig.controller.CarryOut());
 }
 
-TEST(WhenTheChipWillNotSayWhatItIs, TheGeometryRegistersReadAsZero) {
-  NoChip chip;
-  Buffer buffer;
-  FlashControllerLogic controller{chip, buffer};
-  std::array<std::uint8_t, 4> page_size{0xA5, 0xA5, 0xA5, 0xA5};
+TEST(WhenTheChipWillNotSayWhatItIs,
+     IdentifyingItEndsInErrorAndTheGeometryRegistersReadAsZero) {
+  RigWith<NoChip> rig;
 
-  ASSERT_TRUE(controller.ReadRegister(kPageSize, page_size));
+  rig.Do(kIdentify);
 
-  EXPECT_EQ(LoadLittleEndian<std::uint32_t>(page_size), 0U);
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.Read32(kPageSizeRegister), 0U);
+  EXPECT_EQ(rig.Read32(kPagesPerBlockRegister), 0U);
+  EXPECT_EQ(rig.Read32(kBlocksRegister), 0U);
 }
 
-TEST(WhenTheChipWillNotSayWhatItIs, ACommandEndsInError) {
-  NoChip chip;
-  Buffer buffer;
-  FlashControllerLogic controller{chip, buffer};
-  std::array<std::uint8_t, 4> status{};
+// The controller cannot move a page before it knows how big a page is.
+TEST(WhenAFlashControllerHasNotIdentifiedTheChip,
+     ItsGeometryRegistersReadAsZero) {
+  RigWith<Chip> rig;
 
-  controller.WriteRegister(kCommand, LittleEndianBytes(kReadPage));
-  controller.CarryOut();
-  controller.ReadRegister(kStatus, status);
+  EXPECT_EQ(rig.Read32(kPageSizeRegister), 0U);
+  EXPECT_EQ(rig.Read32(kPagesPerBlockRegister), 0U);
+  EXPECT_EQ(rig.Read32(kBlocksRegister), 0U);
+}
 
-  EXPECT_EQ(LoadLittleEndian<std::uint32_t>(status), kError);
+TEST(WhenAFlashControllerHasNotIdentifiedTheChip,
+     ACommandForAPageEndsInErrorAndMovesNothing) {
+  RigWith<Chip> rig;
+  rig.chip.array.ProgramPage(0, 0, SomePage());
+  rig.buffer.store.Write(0x40, SomePage(50));
+  rig.Write32(kLocal, 0x40);
+
+  rig.Do(kReadPage);
+  const std::uint32_t after_the_read = rig.Read32(kStatus);
+  rig.Do(kProgramPage);
+
+  EXPECT_EQ(after_the_read, kError);
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage(50));
+  EXPECT_EQ(rig.chip.PageAt(0, 0), SomePage());
 }
 
 }  // namespace socpuppet

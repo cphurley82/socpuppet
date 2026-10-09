@@ -34,6 +34,7 @@ constexpr std::uint64_t kPageSizeRegister = 0x20;
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
 constexpr std::uint32_t kProgramPage = 2;
+constexpr std::uint32_t kIdentify = 4;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -111,17 +112,22 @@ struct CpuWithAFlashController {
   Platform platform;
 };
 
-// Tells the controller to do something with one page, and waits until it
-// says it is no longer busy, the way firmware that polls would.
+// Gives the controller a command and waits until it says it is no longer
+// busy, the way firmware that polls would.
+void Command(BusDriver& cpu, std::uint32_t command) {
+  cpu.Write32(kCommand, command);
+  while ((cpu.Read32(kStatus) & kBusy) != 0) {
+    cpu.WaitFor(sc_core::SC_ZERO_TIME);
+  }
+}
+
+// The same, for a command about one page of the chip.
 void Command(BusDriver& cpu, std::uint32_t command, std::uint32_t block,
              std::uint32_t page, std::uint32_t local) {
   cpu.Write32(kBlock, block);
   cpu.Write32(kPage, page);
   cpu.Write32(kLocal, local);
-  cpu.Write32(kCommand, command);
-  while ((cpu.Read32(kStatus) & kBusy) != 0) {
-    cpu.WaitFor(sc_core::SC_ZERO_TIME);
-  }
+  Command(cpu, command);
 }
 
 }  // namespace
@@ -129,6 +135,7 @@ void Command(BusDriver& cpu, std::uint32_t command, std::uint32_t block,
 TEST(WhenACpuHasAFlashControllerProgramAPageAndReadItBack,
      ThePageComesBackToTheSsdsMemory) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
+    Command(cpu, kIdentify);
     Command(cpu, kProgramPage, 2, 5, 0x40);
     Command(cpu, kReadPage, 2, 5, 0x80);
   }};
@@ -148,7 +155,7 @@ TEST(WhenACpuHasJustToldAFlashControllerToDoSomething,
   std::uint32_t when_the_write_returned = 0;
   std::uint32_t afterwards = 0;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
-    cpu.Write32(kCommand, kReadPage);
+    cpu.Write32(kCommand, kIdentify);
     when_the_write_returned = cpu.Read32(kStatus);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
@@ -165,7 +172,7 @@ TEST(WhenAFlashControllerFinishesACommandWithItsInterruptEnabled,
      ItsLineRisesAndStaysHigh) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
     cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kReadPage);
+    cpu.Write32(kCommand, kIdentify);
   }};
 
   fixture.platform.Run();
@@ -179,7 +186,7 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   CpuWithAFlashController* wired = nullptr;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
     cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kReadPage);
+    cpu.Write32(kCommand, kIdentify);
     wired->InterruptLine().WaitForRises(1, sc_core::sc_time(1, sc_core::SC_MS));
     cpu.Write32(kStatus, kDone);
   }};
@@ -198,7 +205,7 @@ TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
      TheRunCarriesOnAndTheLineSaysWhatTheStatusDoes) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
     cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kReadPage);
+    cpu.Write32(kCommand, kIdentify);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
     cpu.Write32(kStatus, 0);
   }};
@@ -227,19 +234,10 @@ TEST(WhenADebuggerWritesToAFlashControllersRegister, TheWriteIsDeclined) {
   EXPECT_EQ(fixture.DebugRead32(kBlock), 0U);
 }
 
-// A debugger's look takes no simulated time and nothing notices it, so it
-// cannot be the reason the chip is asked what it is. Until the firmware has
-// asked, the controller does not know.
-TEST(WhenADebuggerLooksAtAFlashControllersGeometryBeforeTheCpuHas, ItSeesZero) {
-  CpuWithAFlashController fixture{[](BusDriver&) {}};
-
-  EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 0U);
-}
-
-TEST(WhenADebuggerLooksAtAFlashControllersGeometryAfterTheCpuHas,
-     ItSeesWhatTheChipSaid) {
+TEST(WhenADebuggerLooksAtAFlashControllersGeometry,
+     ItSeesWhatTheChipSaidWhenItWasIdentified) {
   CpuWithAFlashController fixture{
-      [](BusDriver& cpu) { cpu.Read32(kPageSizeRegister); }};
+      [](BusDriver& cpu) { Command(cpu, kIdentify); }};
   fixture.platform.Run();
 
   EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 16U);

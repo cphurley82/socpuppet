@@ -16,7 +16,7 @@ constexpr std::uint64_t kStatusRegister = 0x04;
 constexpr std::uint64_t kInterruptEnableRegister = 0x08;
 constexpr std::uint64_t kBlockRegister = 0x0C;
 constexpr std::uint64_t kPageRegister = 0x10;
-constexpr std::uint64_t kLocalRegister = 0x14;
+constexpr std::uint64_t kLocalAddressRegister = 0x14;
 // What the chip is, for the firmware to read.
 constexpr std::uint64_t kPageSizeRegister = 0x20;
 constexpr std::uint64_t kPagesPerBlockRegister = 0x24;
@@ -26,6 +26,7 @@ constexpr std::uint64_t kBlocksRegister = 0x28;
 constexpr std::uint32_t kReadPage = 1;
 constexpr std::uint32_t kProgramPage = 2;
 constexpr std::uint32_t kEraseBlock = 3;
+constexpr std::uint32_t kIdentify = 4;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -39,15 +40,6 @@ FlashControllerLogic::FlashControllerLogic(NandPort& nand,
     : nand_(nand), local_memory_(local_memory) {}
 
 bool FlashControllerLogic::ReadRegister(std::uint64_t offset,
-                                        std::span<std::uint8_t> out) {
-  if (offset == kPageSizeRegister || offset == kPagesPerBlockRegister ||
-      offset == kBlocksRegister) {
-    Geometry();
-  }
-  return PeekRegister(offset, out);
-}
-
-bool FlashControllerLogic::PeekRegister(std::uint64_t offset,
                                         std::span<std::uint8_t> out) const {
   if (out.size() != kRegisterBytes) return false;
   const NandGeometry geometry = geometry_.value_or(NandGeometry{});
@@ -67,8 +59,8 @@ bool FlashControllerLogic::PeekRegister(std::uint64_t offset,
     case kPageRegister:
       StoreLittleEndian(page_, out);
       break;
-    case kLocalRegister:
-      StoreLittleEndian(local_, out);
+    case kLocalAddressRegister:
+      StoreLittleEndian(local_address_, out);
       break;
     case kPageSizeRegister:
       StoreLittleEndian(geometry.page_size, out);
@@ -91,7 +83,7 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
-      if (command_ != 0 || value < kReadPage || value > kEraseBlock) {
+      if (command_ != 0 || value < kReadPage || value > kIdentify) {
         return false;
       }
       command_ = value;
@@ -109,18 +101,13 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
     case kPageRegister:
       page_ = value;
       break;
-    case kLocalRegister:
-      local_ = value;
+    case kLocalAddressRegister:
+      local_address_ = value;
       break;
     default:
       return false;
   }
   return true;
-}
-
-NandGeometry FlashControllerLogic::Geometry() {
-  if (!geometry_) geometry_ = nand_.Geometry();
-  return geometry_.value_or(NandGeometry{});
 }
 
 bool FlashControllerLogic::CarryOut() {
@@ -131,18 +118,24 @@ bool FlashControllerLogic::CarryOut() {
 }
 
 bool FlashControllerLogic::Do(std::uint32_t command) {
-  // A chip that will not say what it is has a page of no bytes, and
-  // refuses whatever is asked of it next.
-  std::vector<std::uint8_t> page(Geometry().page_size);
   switch (command) {
-    case kReadPage:
+    case kReadPage: {
+      if (!geometry_) return false;
+      std::vector<std::uint8_t> page(geometry_->page_size);
       return nand_.ReadPage(block_, page_, page) &&
-             local_memory_.Write(local_, page);
-    case kProgramPage:
-      return local_memory_.Read(local_, page) &&
+             local_memory_.Write(local_address_, page);
+    }
+    case kProgramPage: {
+      if (!geometry_) return false;
+      std::vector<std::uint8_t> page(geometry_->page_size);
+      return local_memory_.Read(local_address_, page) &&
              nand_.ProgramPage(block_, page_, page);
+    }
     case kEraseBlock:
       return nand_.EraseBlock(block_);
+    case kIdentify:
+      geometry_ = nand_.Geometry();
+      return geometry_.has_value();
     default:
       return false;
   }

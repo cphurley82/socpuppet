@@ -18,12 +18,11 @@ class FlashControllerLogic {
   FlashControllerLogic(NandPort& nand, MemoryPort& local_memory);
 
   // Reads and writes of the register block, by the CPU. Each returns false,
-  // and touches nothing, if there is no register to take the access.
-  bool ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out);
-  // The same read as a debugger makes it, which nothing may notice: the
-  // chip is not asked what it is, so until something else has asked, the
-  // geometry registers are seen as zeros.
-  bool PeekRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
+  // and touches nothing, if the access is refused: there is no register
+  // there, it is not 32 bits wide, a register that only says something is
+  // written to, or the command register is told something it does not
+  // know, or anything at all while the last command is not yet done.
+  bool ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in);
 
   // Does what the command register was last told, if it has not been done
@@ -37,12 +36,10 @@ class FlashControllerLogic {
   // Carries a command out, and returns whether it could be.
   bool Do(std::uint32_t command);
 
-  // What the chip is, all zeros if it will not say. The chip is asked the
-  // first time anything needs to know, and its answer is kept.
-  NandGeometry Geometry();
-
   NandPort& nand_;
   MemoryPort& local_memory_;
+  // What the chip is, once it has been told to say (the identify
+  // command), and has said.
   std::optional<NandGeometry> geometry_;
   // What the command register was told and has not done yet, or zero.
   std::uint32_t command_ = 0;
@@ -52,7 +49,7 @@ class FlashControllerLogic {
   // Which page of the chip, and where it is in the SSD's own memory.
   std::uint32_t block_ = 0;
   std::uint32_t page_ = 0;
-  std::uint32_t local_ = 0;
+  std::uint32_t local_address_ = 0;
 };
 
 }  // namespace socpuppet
