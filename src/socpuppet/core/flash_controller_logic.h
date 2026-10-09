@@ -1,5 +1,5 @@
-#ifndef SOCPUPPET_CORE_FLASH_CONTROLLER_H_
-#define SOCPUPPET_CORE_FLASH_CONTROLLER_H_
+#ifndef SOCPUPPET_CORE_FLASH_CONTROLLER_LOGIC_H_
+#define SOCPUPPET_CORE_FLASH_CONTROLLER_LOGIC_H_
 
 #include <cstdint>
 #include <optional>
@@ -13,9 +13,9 @@ namespace socpuppet {
 // What a flash controller does, with no simulator attached: the registers
 // the SSD's CPU talks to, and the page it moves between the NAND chip and
 // the SSD's own memory when told to.
-class FlashController {
+class FlashControllerLogic {
  public:
-  FlashController(NandPort& nand, MemoryPort& local_memory);
+  FlashControllerLogic(NandPort& nand, MemoryPort& local_memory);
 
   // Reads and writes of the register block, by the CPU. Each returns false,
   // and touches nothing, if there is no register to take the access.
@@ -53,4 +53,4 @@ class FlashController {
 
 }  // namespace socpuppet
 
-#endif  // SOCPUPPET_CORE_FLASH_CONTROLLER_H_
+#endif  // SOCPUPPET_CORE_FLASH_CONTROLLER_LOGIC_H_

@@ -1,4 +1,4 @@
-#include "socpuppet/core/flash_controller.h"
+#include "socpuppet/core/flash_controller_logic.h"
 
 #include <array>
 #include <cstddef>
@@ -120,7 +120,7 @@ std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
 struct Rig {
   Chip chip;
   Buffer buffer;
-  FlashController controller{chip, buffer};
+  FlashControllerLogic controller{chip, buffer};
 
   bool Write32(std::uint64_t offset, std::uint32_t value) {
     return controller.WriteRegister(offset, LittleEndianBytes(value));
@@ -449,7 +449,7 @@ TEST(WhenAFlashControllerHasCarriedOutACommand, ThereIsNothingMoreToDo) {
 TEST(WhenTheChipWillNotSayWhatItIs, TheGeometryRegistersReadAsZero) {
   NoChip chip;
   Buffer buffer;
-  FlashController controller{chip, buffer};
+  FlashControllerLogic controller{chip, buffer};
   std::array<std::uint8_t, 4> page_size{0xA5, 0xA5, 0xA5, 0xA5};
 
   ASSERT_TRUE(controller.ReadRegister(kPageSize, page_size));
@@ -460,7 +460,7 @@ TEST(WhenTheChipWillNotSayWhatItIs, TheGeometryRegistersReadAsZero) {
 TEST(WhenTheChipWillNotSayWhatItIs, ACommandEndsInError) {
   NoChip chip;
   Buffer buffer;
-  FlashController controller{chip, buffer};
+  FlashControllerLogic controller{chip, buffer};
   std::array<std::uint8_t, 4> status{};
 
   controller.WriteRegister(kCommand, LittleEndianBytes(kReadPage));

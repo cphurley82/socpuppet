@@ -1,4 +1,4 @@
-#include "socpuppet/core/flash_controller.h"
+#include "socpuppet/core/flash_controller_logic.h"
 
 #include <cstddef>
 #include <vector>
@@ -34,11 +34,12 @@ constexpr std::uint32_t kBusy = 1U << 2;
 
 }  // namespace
 
-FlashController::FlashController(NandPort& nand, MemoryPort& local_memory)
+FlashControllerLogic::FlashControllerLogic(NandPort& nand,
+                                           MemoryPort& local_memory)
     : nand_(nand), local_memory_(local_memory) {}
 
-bool FlashController::ReadRegister(std::uint64_t offset,
-                                   std::span<std::uint8_t> out) {
+bool FlashControllerLogic::ReadRegister(std::uint64_t offset,
+                                        std::span<std::uint8_t> out) {
   if (out.size() != kRegisterBytes) return false;
   switch (offset) {
     case kCommandRegister:
@@ -74,8 +75,8 @@ bool FlashController::ReadRegister(std::uint64_t offset,
   return true;
 }
 
-bool FlashController::WriteRegister(std::uint64_t offset,
-                                    std::span<const std::uint8_t> in) {
+bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
+                                         std::span<const std::uint8_t> in) {
   if (in.size() != kRegisterBytes) return false;
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
@@ -107,19 +108,19 @@ bool FlashController::WriteRegister(std::uint64_t offset,
   return true;
 }
 
-NandGeometry FlashController::Geometry() {
+NandGeometry FlashControllerLogic::Geometry() {
   if (!geometry_) geometry_ = nand_.Geometry();
   return geometry_.value_or(NandGeometry{});
 }
 
-bool FlashController::CarryOut() {
+bool FlashControllerLogic::CarryOut() {
   if (command_ == 0) return false;
   status_ = Do(command_) ? kDone : kError;
   command_ = 0;
   return true;
 }
 
-bool FlashController::Do(std::uint32_t command) {
+bool FlashControllerLogic::Do(std::uint32_t command) {
   // A chip that will not say what it is has a page of no bytes, and
   // refuses whatever is asked of it next.
   std::vector<std::uint8_t> page(Geometry().page_size);

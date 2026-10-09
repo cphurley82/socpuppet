@@ -40,10 +40,10 @@ target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
 
 # The devices of the SSD that are neither its CPU nor its NVMe frontend:
 # the flash controller, in front of the NAND.
-add_library(socpuppet_ssd_devices STATIC core/flash_controller.cpp)
+add_library(socpuppet_ssd_devices STATIC core/flash_controller_logic.cpp)
 target_sources(socpuppet_ssd_devices PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    core/flash_controller.h)
+    core/flash_controller_logic.h)
 socpuppet_dev_checks(socpuppet_ssd_devices)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
 
