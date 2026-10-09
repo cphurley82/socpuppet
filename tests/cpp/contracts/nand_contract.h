@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include <systemc>
@@ -14,6 +16,20 @@
 #include "socpuppet/models/nand_link.h"
 #include "socpuppet/platform/slots.h"
 #include "tests/cpp/support/bus_driver.h"
+
+namespace nand_contract {
+
+// The operations a controller asks of a chip, and the chip's response.
+inline tlm::tlm_response_status ReadPage(BusDriver& controller,
+                                         std::uint32_t block,
+                                         std::uint32_t page,
+                                         std::span<std::uint8_t> out) {
+  return socpuppet::NandTransport(controller.socket,
+                                  socpuppet::NandCommand::Operation::kReadPage,
+                                  block, page, out);
+}
+
+}  // namespace nand_contract
 
 // What every NAND flash chip must do, the ideal one and any more like the
 // real thing: what a flash controller relies on, whichever is behind it.
@@ -55,6 +71,21 @@ TYPED_TEST_P(NandContract, AChipAskedWhatItIsSaysItsGeometry) {
   EXPECT_EQ(said->blocks, 4U);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry);
+// The buffer does not start out as ones, so that a page the chip leaves
+// untouched is not taken for an erased one.
+TYPED_TEST_P(NandContract, APageThatWasNeverProgrammedReadsAsAllOnes) {
+  std::vector<std::uint8_t> read(16, 0xA5);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    response = nand_contract::ReadPage(controller, 2, 5, read);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(read, std::vector<std::uint8_t>(16, 0xFF));
+}
+
+REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
+                            APageThatWasNeverProgrammedReadsAsAllOnes);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_

@@ -30,11 +30,27 @@ class IdealNand : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     const std::span<std::uint8_t> data{transaction.get_data_ptr(),
                                        transaction.get_data_length()};
+    transaction.set_response_status(
+        CarryOut(*NandCommandOf(transaction), data));
+  }
+
+  tlm::tlm_response_status CarryOut(const NandCommand& command,
+                                    std::span<std::uint8_t> data) {
+    switch (command.operation) {
+      case NandCommand::Operation::kReadPage:
+        array_.ReadPage(command.block, command.page, data);
+        return tlm::TLM_OK_RESPONSE;
+      default:
+        return SayGeometry(data);
+    }
+  }
+
+  tlm::tlm_response_status SayGeometry(std::span<std::uint8_t> data) const {
     const NandGeometry& geometry = array_.geometry();
     StoreLittleEndian(geometry.page_size, data.subspan(0));
     StoreLittleEndian(geometry.pages_per_block, data.subspan(4));
     StoreLittleEndian(geometry.blocks, data.subspan(8));
-    transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+    return tlm::TLM_OK_RESPONSE;
   }
 
   NandArray array_;
