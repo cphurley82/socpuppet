@@ -29,8 +29,9 @@
 #include <stdint.h>
 
 /*
- * Asks the NAND what it is and makes an empty table. Returns 0, or a
- * negative errno if the NAND cannot be used.
+ * Asks the NAND what it is and makes an empty table. Returns 0. If the
+ * NAND cannot be used it says why on the console, with what to do about
+ * it, and returns a negative errno.
  */
 int ftl_start(void);
 

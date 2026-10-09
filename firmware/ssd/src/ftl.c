@@ -42,19 +42,11 @@ int ftl_start(void)
 {
 	uint64_t bytes;
 	size_t room;
-	int result;
 
-	if (!device_is_ready(ssd_nand)) {
+	if (!device_is_ready(ssd_nand) || flash_get_size(ssd_nand, &bytes) != 0) {
+		printk("The flash controller is not ready: it could not identify its NAND, or it "
+		       "never answered.\n");
 		return -ENODEV;
-	}
-	/* The NAND is written a page at a time. */
-	page_size = flash_get_write_block_size(ssd_nand);
-	result = flash_get_size(ssd_nand, &bytes);
-	if (result != 0) {
-		return result;
-	}
-	if (page_size == 0 || page_size % NVME_BLOCK_SIZE != 0) {
-		return -ENOTSUP;
 	}
 	/* Every page has to be somewhere flash_read() can be told to go. */
 	if (bytes > FLASH_API_REACH) {
@@ -63,11 +55,20 @@ int ftl_start(void)
 		       (uint32_t)(bytes / MiB), (uint32_t)(FLASH_API_REACH / MiB));
 		return -EFBIG;
 	}
+	/* The NAND is written a page at a time. */
+	page_size = flash_get_write_block_size(ssd_nand);
 	pages = bytes / page_size;
 
-	/* The table has what is left of the buffer, and has to fit. */
+	/*
+	 * The table has what is left of the buffer, and has to fit. On this
+	 * board it always does: a NAND the flash API can reach needs half of
+	 * what there is. A board with a smaller buffer is what this is for.
+	 */
 	where = ssd_buffer_after_a_page(page_size, &room);
 	if (room / sizeof(*where) < pages) {
+		printk("A table for %u pages does not fit in what is left of the buffer, %u "
+		       "bytes. Describe a smaller drive, or a bigger buffer.\n",
+		       pages, (uint32_t)room);
 		return -ENOMEM;
 	}
 	for (uint32_t page = 0; page < pages; ++page) {

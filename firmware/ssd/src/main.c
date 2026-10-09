@@ -46,10 +46,9 @@ static void deal_with_the_command(void)
 
 int main(void)
 {
-	int result = ftl_start();
-
-	if (result != 0) {
-		printk("The SSD's firmware cannot use its NAND (error %d), and stops.\n", result);
+	/* With no NAND there is no drive. The FTL has said what is wrong. */
+	if (ftl_start() != 0) {
+		printk("The SSD's firmware stops.\n");
 		return 0;
 	}
 	admin_start();

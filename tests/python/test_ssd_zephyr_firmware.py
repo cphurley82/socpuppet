@@ -9,6 +9,7 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards import ssd as board
 from socpuppet.boards.ssd import ssd
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
@@ -82,3 +83,56 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
         )
 
         assert banner in said
+
+
+def console_with_a_flash_controller_whose_status_is(status, firmware, *, until):
+    """Boots the firmware with something broken where its NAND should be.
+
+    It is the SSD's CPU with what a CPU needs, and a memory where the
+    flash controller's registers would be, whose status register reads
+    `status` whatever it is told. Runs until `until` is on the console, and
+    returns all that is there.
+    """
+    platform = sp.Platform()
+    cpu = platform.add(
+        "cpu", sp.DbtRiseCpu(xlen=32, reset_vector=board.SRAM_BASE)
+    )
+    bus = platform.add("bus", sp.Router())
+    sram = platform.add("sram", sp.Memory(size=board.SRAM_SIZE))
+    console = platform.add("uart", sp.Ns16550())
+    timer = platform.add("timer", sp.MachineTimer(frequency_hz=board.TIMER_HZ))
+    plic = platform.add("plic", sp.Plic())
+    registers = platform.add("flash", sp.Memory(size=0x30))
+    platform.connect(cpu.socket, bus.target)
+    bus.map(sram.socket, base=board.SRAM_BASE)
+    bus.map(console.socket, base=board.UART_BASE)
+    bus.map(timer.socket, base=board.TIMER_BASE)
+    bus.map(plic.socket, base=board.PLIC_BASE)
+    bus.map(registers.socket, base=board.FLASH_BASE)
+    platform.connect(plic.irq, cpu.irq)
+    platform.connect(timer.irq, cpu.timer_irq)
+    platform.build()
+    platform.load_elf(firmware("ssd_socpuppet_ssd.elf"))
+    platform.poke32(board.FLASH_BASE + 0x04, status)
+    # The firmware gives a device a tenth of a second of simulated time to
+    # answer. A second is time for that and still ends a run that never
+    # prints.
+    platform.run_until(lambda: until in console.output, timeout=sp.ms(1000))
+    return console.output
+
+
+NOT_READY = (
+    "The flash controller is not ready: it could not identify its NAND, "
+    "or it never answered.\r\nThe SSD's firmware stops.\r\n"
+)
+
+
+@pytest.mark.platform
+class TestWhenTheFlashControllerCannotIdentifyTheNand:
+    # Bit 1 of its status is ERROR. With no geometry there is no drive.
+    def test_the_firmware_says_so_and_stops(self, firmware):
+        said = console_with_a_flash_controller_whose_status_is(
+            1 << 1, firmware, until=NOT_READY
+        )
+
+        assert NOT_READY in said
