@@ -45,8 +45,8 @@ INVALID_QUEUE_SIZE = (1, 0x02)
 INVALID_INTERRUPT_VECTOR = (1, 0x08)
 
 
-def host_with_an_ssd(script, firmware=None):
-    """A scripted host with a RAM and an SSD of BLOCKS blocks, built.
+def host_with_an_ssd(script, firmware=None, blocks=BLOCKS):
+    """A scripted host with a RAM and an SSD of `blocks` blocks, built.
 
     The SSD's firmware is `firmware`, or a stand-in of the platform's own.
     """
@@ -57,7 +57,7 @@ def host_with_an_ssd(script, firmware=None):
     ram = platform.add("ram", sp.Memory(size=RAM_SIZE))
     ssd = add_ssd_function(
         platform,
-        blocks=BLOCKS,
+        blocks=blocks,
         group=platform.group("ssd"),
         firmware=firmware.script,
     )
@@ -448,3 +448,24 @@ class TestWhenADriverHasWrittenToPagesOfTheSsd:
         host_with_an_ssd(script, firmware).run()
 
         assert firmware.page_map == {63: 0, 0: 1}
+
+
+@pytest.mark.platform
+class TestWhenADriverWritesMorePagesThanOneNandBlockHolds:
+    # A NAND block is 64 pages, and the firmware fills the NAND a page at a
+    # time, so the 65th page written is the first of the second block. 65
+    # pages are 520 of the drive's blocks.
+    def test_what_went_to_the_second_nand_block_is_as_it_was_written(self):
+        written = some_data(520)
+        read_back = []
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.write_blocks(first=0, data=written)
+            read_back.append((yield from nvme.read_blocks(first=0, count=8)))
+            read_back.append((yield from nvme.read_blocks(first=512, count=8)))
+
+        host_with_an_ssd(script, blocks=2 * BLOCKS).run()
+
+        assert read_back == [written[:4096], written[512 * 512 :]]
