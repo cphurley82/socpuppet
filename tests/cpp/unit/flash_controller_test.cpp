@@ -273,4 +273,19 @@ TEST(WhenOneIsWrittenToTheBusyBitOfAFlashController, ItStaysBusy) {
   EXPECT_EQ(rig.Read32(kStatus), kBusy);
 }
 
+// So that what the status says is always about the last command, with no
+// need to clear it first.
+TEST(WhenAFlashControllerIsGivenANewCommand,
+     WhatTheStatusSaidOfTheLastOneIsGone) {
+  Rig rig;
+  rig.Write32(kBlock, 4);
+  rig.Write32(kCommand, kReadPage);
+  rig.controller.CarryOut();
+  rig.Write32(kBlock, 0);
+
+  rig.Write32(kCommand, kReadPage);
+
+  EXPECT_EQ(rig.Read32(kStatus), kBusy);
+}
+
 }  // namespace socpuppet
