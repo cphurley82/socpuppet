@@ -91,4 +91,10 @@ TEST(WhenABlockPastTheEndOfTheChipIsAskedFor, ReadingItIsRefused) {
   EXPECT_EQ(nand.ReadPage(4, 0, data), NandResult::kOutOfRange);
 }
 
+TEST(WhenABlockPastTheEndOfTheChipIsAskedFor, ProgrammingItIsRefused) {
+  NandArray nand{kSmall};
+
+  EXPECT_EQ(nand.ProgramPage(4, 0, SomePage()), NandResult::kOutOfRange);
+}
+
 }  // namespace socpuppet

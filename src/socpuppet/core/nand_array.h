@@ -49,6 +49,7 @@ class NandArray {
 
   NandResult ProgramPage(std::uint32_t block, std::uint32_t page,
                          std::span<const std::uint8_t> in) {
+    if (block >= geometry_.blocks) return NandResult::kOutOfRange;
     pages_[Index(block, page)].assign(in.begin(), in.end());
     return NandResult::kDone;
   }
