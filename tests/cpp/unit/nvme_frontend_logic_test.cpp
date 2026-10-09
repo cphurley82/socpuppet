@@ -407,4 +407,17 @@ TEST(WhenTheCpuHasJustAskedForACompletionToBePosted,
   EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
 }
 
+TEST(WhenAnNvmeFrontendHasPostedACompletion, ItFetchesTheNextCommand) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.HostSubmits(SomeCommand(8));
+  rig.frontend.Step();
+  rig.CpuPosts();
+
+  rig.frontend.Step();
+
+  EXPECT_EQ(rig.CommandWaiting(), SomeCommand(8));
+}
+
 }  // namespace socpuppet
