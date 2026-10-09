@@ -182,4 +182,18 @@ TEST(WhenADmaEngineHasNotYetCarriedOutACommand, ItsStatusSaysBusy) {
   EXPECT_EQ(rig.Read32(kStatus), kBusy);
 }
 
+// The firmware can ask for any length up to 4 GiB, and the engine cannot
+// hold that much at once, so it copies a piece at a time. A piece ends
+// wherever the engine's own buffer does.
+TEST(WhenADmaEngineIsToldToCopyMoreThanItHoldsAtOnce, ItAllArrives) {
+  Rig rig;
+  rig.host.Write(kHost + 0x10, SomeBytes(10'000));
+  rig.Describe(kHost + 0x10, kLocal + 0x20, 10'000);
+
+  rig.Do(kFromHost);
+
+  EXPECT_EQ(rig.local.At(kLocal + 0x20, 10'000), SomeBytes(10'000));
+  EXPECT_EQ(rig.Read32(kStatus), kDone);
+}
+
 }  // namespace socpuppet

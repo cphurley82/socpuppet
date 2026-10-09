@@ -1,6 +1,8 @@
 #include "socpuppet/core/dma_engine_logic.h"
 
-#include <vector>
+#include <algorithm>
+#include <array>
+#include <cstddef>
 
 #include "socpuppet/core/little_endian.h"
 
@@ -15,6 +17,9 @@ constexpr std::uint64_t kHostAddressLowRegister = 0x0C;
 constexpr std::uint64_t kHostAddressHighRegister = 0x10;
 constexpr std::uint64_t kLocalAddressRegister = 0x14;
 constexpr std::uint64_t kLengthRegister = 0x18;
+
+// How many bytes the engine copies at a time.
+constexpr std::size_t kPieceBytes = 4096;
 
 // What the command register can be told.
 constexpr std::uint32_t kFromHost = 1;
@@ -70,13 +75,25 @@ bool DmaEngineLogic::CarryOut() {
 
 bool DmaEngineLogic::Do(const Job& job) {
   if (job.length == 0) return false;
-  std::vector<std::uint8_t> bytes(job.length);
-  if (job.command == kFromHost) {
-    return host_memory_.Read(job.host_address, bytes) &&
-           local_memory_.Write(job.local_address, bytes);
+  const bool from_host = job.command == kFromHost;
+  MemoryPort& source = from_host ? host_memory_ : local_memory_;
+  MemoryPort& destination = from_host ? local_memory_ : host_memory_;
+  std::uint64_t from = from_host ? job.host_address : job.local_address;
+  std::uint64_t to = from_host ? job.local_address : job.host_address;
+  // A piece at a time, so that a long copy does not take as much of the
+  // simulator's memory as it moves.
+  std::array<std::uint8_t, kPieceBytes> buffer{};
+  for (std::uint64_t left = job.length; left != 0;) {
+    const std::span piece =
+        std::span{buffer}.first(std::min<std::uint64_t>(left, kPieceBytes));
+    if (!source.Read(from, piece) || !destination.Write(to, piece)) {
+      return false;
+    }
+    from += piece.size();
+    to += piece.size();
+    left -= piece.size();
   }
-  return local_memory_.Read(job.local_address, bytes) &&
-         host_memory_.Write(job.host_address, bytes);
+  return true;
 }
 
 }  // namespace socpuppet
