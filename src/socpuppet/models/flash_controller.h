@@ -44,6 +44,7 @@ class FlashController : public sc_core::sc_module,
   explicit FlashController(const sc_core::sc_module_name& name)
       : sc_module(name), logic_(*this, *this) {
     cpu.register_b_transport(this, &FlashController::b_transport);
+    cpu.register_transport_dbg(this, &FlashController::transport_dbg);
     SC_THREAD(Work);
     SC_METHOD(DriveTheLine);
     sensitive << line_may_have_changed_;
@@ -63,6 +64,18 @@ class FlashController : public sc_core::sc_module,
       line_may_have_changed_.notify();
       work_.notify(sc_core::SC_ZERO_TIME);
     }
+  }
+
+  // Debug transport: the registers as a debugger sees them, in no simulated
+  // time. Returns the bytes transferred, which is none if nothing is there.
+  // A debugger can look and cannot touch: a write is declined, because a
+  // command given this way would be work the firmware never asked for.
+  unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
+    const std::span data{transaction.get_data_ptr(),
+                         transaction.get_data_length()};
+    return logic_.ReadRegister(transaction.get_address(), data)
+               ? transaction.get_data_length()
+               : 0;
   }
 
   void Work() {

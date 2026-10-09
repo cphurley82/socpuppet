@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -9,6 +10,7 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/bus_driver.h"
@@ -87,6 +89,18 @@ struct CpuWithAFlashController {
   void PutInBuffer(std::uint64_t address,
                    const std::vector<std::uint8_t>& data) {
     platform.DebugWrite("flash.local", address, std::as_bytes(std::span{data}));
+  }
+
+  // A register as a debugger sees it, or nothing if the controller would
+  // not show it. What comes back is not zeros unless the controller put
+  // them there.
+  std::optional<std::uint32_t> DebugRead32(std::uint64_t offset) {
+    std::array<std::uint8_t, 4> seen{0xA5, 0xA5, 0xA5, 0xA5};
+    if (!platform.DebugRead("cpu.socket", offset,
+                            std::as_writable_bytes(std::span{seen}))) {
+      return std::nullopt;
+    }
+    return LoadLittleEndian<std::uint32_t>(seen);
   }
 
   LineWatcher& InterruptLine() {
@@ -191,6 +205,14 @@ TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
   EXPECT_NO_THROW(fixture.platform.Run());
 
   EXPECT_TRUE(fixture.InterruptLine().line->read());
+}
+
+TEST(WhenADebuggerLooksAtAFlashControllersRegister, ItSeesWhatTheCpuWrote) {
+  CpuWithAFlashController fixture{
+      [](BusDriver& cpu) { cpu.Write32(kBlock, 3); }};
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.DebugRead32(kBlock), 3U);
 }
 
 }  // namespace socpuppet
