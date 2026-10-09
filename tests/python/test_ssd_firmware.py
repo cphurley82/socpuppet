@@ -41,8 +41,12 @@ INVALID_QUEUE_SIZE = (1, 0x02)
 INVALID_INTERRUPT_VECTOR = (1, 0x08)
 
 
-def host_with_an_ssd(script):
-    """A scripted host with a RAM and an SSD of BLOCKS blocks, built."""
+def host_with_an_ssd(script, firmware=None):
+    """A scripted host with a RAM and an SSD of BLOCKS blocks, built.
+
+    The SSD's firmware is `firmware`, or a stand-in of the platform's own.
+    """
+    firmware = firmware or stand_in_firmware()
     platform = sp.Platform()
     host = platform.add("host", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
@@ -51,7 +55,7 @@ def host_with_an_ssd(script):
         platform,
         blocks=BLOCKS,
         group=platform.group("ssd"),
-        firmware=stand_in_firmware().script,
+        firmware=firmware.script,
     )
     platform.connect(host.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
@@ -420,3 +424,23 @@ class TestWhenAHostSendsAnIoCommand:
             self.io(opcode=opcode, namespace=1, data=NOWHERE)
             == DATA_TRANSFER_ERROR
         )
+
+
+@pytest.mark.platform
+class TestWhenADriverHasWrittenToPagesOfTheSsd:
+    # A NAND page is eight of the drive's blocks, so block 504 is in page
+    # 63 of the drive and block 0 in page 0. The firmware gives each the
+    # next NAND page nobody has, in the order they were first written.
+    def test_the_firmware_can_say_which_nand_page_holds_each(self):
+        firmware = stand_in_firmware()
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.write_blocks(first=504, data=bytes(512))
+            yield from nvme.write_blocks(first=0, data=bytes(512))
+            yield from nvme.write_blocks(first=505, data=bytes(512))
+
+        host_with_an_ssd(script, firmware).run()
+
+        assert firmware.page_map == {63: 0, 0: 1}

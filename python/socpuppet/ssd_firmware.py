@@ -213,6 +213,16 @@ class SsdFirmware:
         self._where: dict[int, int] = {}
         self._next_free_nand_page = 0
 
+    @property
+    def page_map(self) -> dict[int, int]:
+        """Where the drive's pages are: the NAND page that holds each.
+
+        Only pages that were ever written are in it. A page here is a NAND
+        page's worth of the drive's blocks, and a NAND page is numbered
+        through the whole chip.
+        """
+        return dict(self._where)
+
     # ---- The firmware.
 
     def script(self) -> Steps[None]:
