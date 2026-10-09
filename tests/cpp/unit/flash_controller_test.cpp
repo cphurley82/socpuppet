@@ -200,4 +200,17 @@ TEST(WhenLocalMemoryDoesNotTakeThePageAFlashControllerRead,
   EXPECT_EQ(rig.Read32(kStatus), kError);
 }
 
+TEST(WhenLocalMemoryDoesNotGiveThePageAFlashControllerIsToProgram,
+     TheStatusSaysErrorAndTheChipIsLeftAlone) {
+  Rig rig;
+  rig.Write32(kLocal, 0x1000);
+
+  rig.Write32(kCommand, kProgramPage);
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.chip.PageAt(0, 0),
+            std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
+}
+
 }  // namespace socpuppet

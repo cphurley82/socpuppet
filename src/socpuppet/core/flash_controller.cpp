@@ -72,8 +72,8 @@ bool FlashController::Do(std::uint32_t command) {
       return nand_.ReadPage(block_, page_, page) &&
              local_memory_.Write(local_, page);
     case kProgramPage:
-      local_memory_.Read(local_, page);
-      return nand_.ProgramPage(block_, page_, page);
+      return local_memory_.Read(local_, page) &&
+             nand_.ProgramPage(block_, page_, page);
     default:
       return nand_.EraseBlock(block_);
   }
