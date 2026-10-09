@@ -26,6 +26,9 @@ constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
 constexpr std::uint64_t kLocal = 0x14;
+constexpr std::uint64_t kPageSize = 0x20;
+constexpr std::uint64_t kPagesPerBlock = 0x24;
+constexpr std::uint64_t kBlocks = 0x28;
 
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
@@ -334,6 +337,15 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   rig.Write32(kStatus, kDone);
 
   EXPECT_FALSE(rig.controller.Interrupting());
+}
+
+TEST(WhenTheCpuReadsTheGeometryRegistersOfAFlashController,
+     TheySayWhatTheChipSays) {
+  Rig rig;
+
+  EXPECT_EQ(rig.Read32(kPageSize), 16U);
+  EXPECT_EQ(rig.Read32(kPagesPerBlock), 8U);
+  EXPECT_EQ(rig.Read32(kBlocks), 4U);
 }
 
 }  // namespace socpuppet

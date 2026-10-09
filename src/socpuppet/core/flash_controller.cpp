@@ -15,6 +15,10 @@ constexpr std::uint64_t kInterruptEnableRegister = 0x08;
 constexpr std::uint64_t kBlockRegister = 0x0C;
 constexpr std::uint64_t kPageRegister = 0x10;
 constexpr std::uint64_t kLocalRegister = 0x14;
+// What the chip is, for the firmware to read.
+constexpr std::uint64_t kPageSizeRegister = 0x20;
+constexpr std::uint64_t kPagesPerBlockRegister = 0x24;
+constexpr std::uint64_t kBlocksRegister = 0x28;
 
 // What the command register can be told.
 constexpr std::uint32_t kReadPage = 1;
@@ -33,7 +37,23 @@ FlashController::FlashController(NandPort& nand, MemoryPort& local_memory)
 
 bool FlashController::ReadRegister(std::uint64_t offset,
                                    std::span<std::uint8_t> out) {
-  if (offset == kStatusRegister) StoreLittleEndian(status_, out);
+  const NandGeometry geometry = *nand_.Geometry();
+  switch (offset) {
+    case kStatusRegister:
+      StoreLittleEndian(status_, out);
+      break;
+    case kPageSizeRegister:
+      StoreLittleEndian(geometry.page_size, out);
+      break;
+    case kPagesPerBlockRegister:
+      StoreLittleEndian(geometry.pages_per_block, out);
+      break;
+    case kBlocksRegister:
+      StoreLittleEndian(geometry.blocks, out);
+      break;
+    default:
+      break;
+  }
   return true;
 }
 
