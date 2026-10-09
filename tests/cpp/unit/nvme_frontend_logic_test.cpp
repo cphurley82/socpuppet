@@ -285,4 +285,13 @@ TEST(WhenNoCommandIsWaitingForTheCpuOfAnNvmeFrontend, TheCommandReadsAsZeros) {
   EXPECT_EQ(rig.CommandWaiting(), std::vector<std::uint8_t>(kCommandBytes, 0));
 }
 
+TEST(WhenACommandFromTheAdminQueueIsWaiting, TheCpuIsToldItCameFromQueueZero) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  EXPECT_EQ(rig.CpuRead32(kCommandQueue), 0U);
+}
+
 }  // namespace socpuppet

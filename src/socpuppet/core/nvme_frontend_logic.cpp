@@ -16,6 +16,8 @@ constexpr std::uint8_t kReadyTimeout = 2;
 // Where the CPU's registers are. Each is 32 bits wide.
 constexpr std::uint64_t kStatusRegister = 0x00;
 constexpr std::uint64_t kControlRegister = 0x08;
+// Which submission queue the command that is waiting came from.
+constexpr std::uint64_t kCommandQueueRegister = 0x10;
 // The command that is waiting, 64 bytes of it.
 constexpr std::uint64_t kCommandRegister = 0x40;
 
@@ -68,6 +70,10 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
     case kStatusRegister:
       StoreLittleEndian(
           events_ | (command_ ? kCommandWaiting : std::uint32_t{0}), out);
+      break;
+    case kCommandQueueRegister:
+      StoreLittleEndian(
+          std::uint32_t{command_ ? command_->queue_id : std::uint16_t{0}}, out);
       break;
     case kCommandRegister:
       if (command_) {
