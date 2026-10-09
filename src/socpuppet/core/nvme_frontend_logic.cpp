@@ -19,4 +19,9 @@ bool NvmeFrontendLogic::ReadHostRegister(std::uint64_t offset,
   return host_registers_.Read(offset, out, {.ready_timeout = kReadyTimeout});
 }
 
+bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
+                                          std::span<const std::uint8_t> in) {
+  return host_registers_.Write(offset, in).has_value();
+}
+
 }  // namespace socpuppet

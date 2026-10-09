@@ -27,6 +27,8 @@ class NvmeFrontendLogic {
   // touches nothing, if the access is refused.
   bool ReadHostRegister(std::uint64_t offset,
                         std::span<std::uint8_t> out) const;
+  bool WriteHostRegister(std::uint64_t offset,
+                         std::span<const std::uint8_t> in);
 
  private:
   NvmeHostRegisters host_registers_;

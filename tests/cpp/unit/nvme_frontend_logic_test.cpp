@@ -49,6 +49,10 @@ enum CpuRegister : std::uint64_t {
   kCommand = 0x40,
 };
 
+// Where the host of these tests keeps its admin queues.
+constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
+constexpr std::uint64_t kAdminCompletionQueue = 0x2000;
+
 // The host's memory: 64 KiB of it, at address 0.
 class HostMemory : public MemoryPort {
  public:
@@ -77,6 +81,31 @@ struct Rig {
     EXPECT_TRUE(frontend.ReadHostRegister(offset, bytes));
     return LoadLittleEndian<std::uint64_t>(bytes);
   }
+  std::uint32_t HostRead32(std::uint64_t offset) const {
+    std::array<std::uint8_t, 4> bytes{0xA5, 0xA5, 0xA5, 0xA5};
+    EXPECT_TRUE(frontend.ReadHostRegister(offset, bytes));
+    return LoadLittleEndian<std::uint32_t>(bytes);
+  }
+  bool HostWrite32(std::uint64_t offset, std::uint32_t value) {
+    return frontend.WriteHostRegister(offset, LittleEndianBytes(value));
+  }
+  bool HostWrite64(std::uint64_t offset, std::uint64_t value) {
+    return frontend.WriteHostRegister(offset, LittleEndianBytes(value));
+  }
+
+  // What a host does to enable the controller, and to disable it: it says
+  // where its admin queues are, of four entries each, and sets CC.EN, or
+  // clears it.
+  void HostEnables() {
+    HostWrite32(kAqa, 3U << 16 | 3U);
+    HostWrite64(kAsq, kAdminSubmissionQueue);
+    HostWrite64(kAcq, kAdminCompletionQueue);
+    HostWrite32(kCc, 1);
+  }
+  void HostDisables() { HostWrite32(kCc, 0); }
+
+  // Whether the host sees the controller as ready: CSTS.RDY.
+  bool HostSeesReady() const { return (HostRead32(kCsts) & 1U) != 0; }
 };
 
 }  // namespace
@@ -91,6 +120,16 @@ TEST(WhenTheHostReadsWhatAnNvmeFrontendCanDo,
   const std::uint64_t ready_timeout = (rig.HostRead64(kCap) >> 24) & 0xFF;
 
   EXPECT_EQ(ready_timeout, 2U);
+}
+
+// On a controller with no firmware, enabling it is all there is to being
+// ready. Here the firmware has work to do first, and says when it is done.
+TEST(WhenTheHostEnablesAnNvmeFrontend, ItIsNotReadyUntilItsFirmwareSaysSo) {
+  Rig rig;
+
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.HostSeesReady());
 }
 
 }  // namespace socpuppet
