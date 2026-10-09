@@ -117,7 +117,17 @@ TEST(WhenADmaEngineIsToldToCopyFromTheHost, TheBytesArriveInTheSsdsMemory) {
   rig.Do(kFromHost);
 
   EXPECT_EQ(rig.local.At(kLocal + 0x200, 24), SomeBytes(24));
-  EXPECT_EQ(rig.Read32(kStatus), kDone);
+}
+
+TEST(WhenADmaEngineHasCarriedOutACopy, ItsStatusSaysDoneAndNotBusy) {
+  for (const std::uint32_t command : {kFromHost, kToHost}) {
+    Rig rig;
+    rig.Describe(kHost, kLocal, 24);
+
+    rig.Do(command);
+
+    EXPECT_EQ(rig.Read32(kStatus), kDone) << "command " << command;
+  }
 }
 
 TEST(WhenADmaEngineIsToldToCopyToTheHost, TheBytesArriveInTheHostsMemory) {
@@ -128,7 +138,6 @@ TEST(WhenADmaEngineIsToldToCopyToTheHost, TheBytesArriveInTheHostsMemory) {
   rig.Do(kToHost);
 
   EXPECT_EQ(rig.host.At(kHost + 0x100, 24), SomeBytes(24));
-  EXPECT_EQ(rig.Read32(kStatus), kDone);
 }
 
 // The host's memory is 64 KiB long, and so is the SSD's.
@@ -194,7 +203,6 @@ TEST(WhenADmaEngineIsToldToCopyMoreThanItHoldsAtOnce, ItAllArrives) {
   rig.Do(kFromHost);
 
   EXPECT_EQ(rig.local.At(kLocal + 0x20, 10'000), SomeBytes(10'000));
-  EXPECT_EQ(rig.Read32(kStatus), kDone);
 }
 
 // The host's memory ends 16 bytes into this copy's second piece.
@@ -217,12 +225,13 @@ TEST(WhenADmaEngineIsGivenACommandWhileItIsBusy,
   rig.host.Write(kHost, SomeBytes(24));
   rig.Describe(kHost, kLocal, 24);
   rig.Write32(kCommand, kFromHost);
+  rig.Describe(kHost + 0x100, kLocal, 24);
 
   EXPECT_FALSE(rig.Write32(kCommand, kToHost));
   rig.engine.CarryOut();
 
   EXPECT_EQ(rig.local.At(kLocal, 24), SomeBytes(24));
-  EXPECT_EQ(rig.host.At(kHost, 24), SomeBytes(24));
+  EXPECT_EQ(rig.host.At(kHost + 0x100, 24), std::vector<std::uint8_t>(24, 0));
 }
 
 TEST(WhenADmaEngineIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
@@ -240,6 +249,7 @@ TEST(WhenTheCpuChangesTheRegistersAfterGivingADmaEngineACommand,
      TheCommandIsCarriedOutAsItWasGiven) {
   Rig rig;
   rig.host.Write(kHost + 0x100, SomeBytes(24));
+  rig.host.Write(kHost + 0x300, SomeBytes(8));
   rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
   rig.Write32(kCommand, kFromHost);
 
@@ -310,7 +320,7 @@ TEST(WhenACopyIsDoneAndDoneIsEnabledAsAnInterrupt, TheDmaEngineInterrupts) {
 }
 
 TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
-     TheDmaEngineStopsInterrupting) {
+     TheDmaEngineStopsInterruptingAndTheBitReadsAsClear) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
   rig.Write32(kInterruptEnable, kDone);

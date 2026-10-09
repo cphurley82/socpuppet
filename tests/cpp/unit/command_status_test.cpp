@@ -8,9 +8,11 @@ namespace socpuppet {
 
 namespace {
 
-constexpr std::uint32_t kDone = CommandStatus::kDone;
-constexpr std::uint32_t kError = CommandStatus::kError;
-constexpr std::uint32_t kBusy = CommandStatus::kBusy;
+// The bits of the status register, as docs/models/dma-engine.md and
+// docs/models/flash-controller.md give them.
+constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kError = 1U << 1;
+constexpr std::uint32_t kBusy = 1U << 2;
 
 // A status after a command that was carried out, or one that could not be.
 CommandStatus AfterACommand(bool carried_out) {
