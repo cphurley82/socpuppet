@@ -12,7 +12,7 @@
 
 #include "socpuppet/core/nvme_controller.h"
 #include "socpuppet/models/interrupt_lines.h"
-#include "socpuppet/platform/transport.h"
+#include "socpuppet/models/socket_memory.h"
 
 namespace socpuppet {
 
@@ -39,8 +39,7 @@ namespace socpuppet {
 // host is told about an interrupt when the line rises (that is when a PCIe
 // endpoint sends an MSI-X message), so a line that stayed high for the
 // completions still waiting would tell it nothing.
-class BehavioralNvme : public sc_core::sc_module,
-                       private NvmeController::HostMemory {
+class BehavioralNvme : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<BehavioralNvme> bar0{"bar0"};
   tlm_utils::simple_initiator_socket<BehavioralNvme> dma{"dma"};
@@ -53,7 +52,7 @@ class BehavioralNvme : public sc_core::sc_module,
                  std::size_t vectors)
       : sc_module(name),
         irq("irq", vectors),
-        controller_(*this, blocks, vectors),
+        controller_(host_memory_, blocks, vectors),
         interrupt_lines_("interrupt_lines", irq, controller_) {
     bar0.register_b_transport(this, &BehavioralNvme::b_transport);
     bar0.register_transport_dbg(this, &BehavioralNvme::transport_dbg);
@@ -101,16 +100,9 @@ class BehavioralNvme : public sc_core::sc_module,
     }
   }
 
-  // NvmeController::HostMemory: the controller's DMA.
-  bool Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    return Transport(dma, tlm::TLM_READ_COMMAND, address, out) ==
-           tlm::TLM_OK_RESPONSE;
-  }
-  bool Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    return Transport(dma, tlm::TLM_WRITE_COMMAND, address, WriteData(in)) ==
-           tlm::TLM_OK_RESPONSE;
-  }
-
+  // The host's memory, as the controller reaches it for its DMA.
+  SocketMemory<tlm_utils::simple_initiator_socket<BehavioralNvme>> host_memory_{
+      dma};
   NvmeController controller_;
   // Writes `irq` from what the controller asks for.
   InterruptLines interrupt_lines_;

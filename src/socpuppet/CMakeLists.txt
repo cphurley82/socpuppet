@@ -160,6 +160,7 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_link.h
     models/pcie_root_complex.h
     models/scripted_bus_master.h
+    models/socket_memory.h
     models/tie_low.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_dbt_rise_cpu socpuppet_machine_timer

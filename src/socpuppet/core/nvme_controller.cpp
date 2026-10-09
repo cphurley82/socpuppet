@@ -55,7 +55,7 @@ bool Fits(std::uint64_t offset, std::size_t length) {
 }
 
 // Where in the host's memory `length` bytes of a command's data are.
-std::vector<HostExtent> Extents(NvmeController::HostMemory& host_memory,
+std::vector<HostExtent> Extents(MemoryPort& host_memory,
                                 const spdk_nvme_cmd& command,
                                 std::size_t length) {
   return PrpExtents(command.dptr.prp.prp1, command.dptr.prp.prp2, length,
@@ -68,12 +68,12 @@ std::vector<HostExtent> Extents(NvmeController::HostMemory& host_memory,
 
 }  // namespace
 
-NvmeController::NvmeController(HostMemory& host_memory, std::uint64_t blocks,
+NvmeController::NvmeController(MemoryPort& host_memory, std::uint64_t blocks,
                                std::size_t vectors)
     : NvmeController(host_memory, std::make_unique<RamBlockStore>(blocks),
                      vectors) {}
 
-NvmeController::NvmeController(HostMemory& host_memory,
+NvmeController::NvmeController(MemoryPort& host_memory,
                                std::unique_ptr<BlockStore> drive,
                                std::size_t vectors)
     : host_memory_(host_memory), vectors_(vectors), drive_(std::move(drive)) {}

@@ -11,6 +11,7 @@
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/nand_geometry.h"
+#include "socpuppet/core/nand_port.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
@@ -142,6 +143,36 @@ std::optional<NandGeometry> NandGeometryOf(Socket& socket) {
   }
   return LoadNandGeometry(answer);
 }
+
+// The chip behind one of a model's initiator sockets, as a flash
+// controller's logic reaches it. An operation is refused if the chip's
+// response is anything but OK.
+template <typename Socket>
+class SocketNand final : public NandPort {
+ public:
+  explicit SocketNand(Socket& socket) : socket_(socket) {}
+
+  std::optional<NandGeometry> Geometry() override {
+    return NandGeometryOf(socket_);
+  }
+  bool ReadPage(std::uint32_t block, std::uint32_t page,
+                std::span<std::uint8_t> out) override {
+    return NandTransport(socket_, NandCommand::Operation::kReadPage, block,
+                         page, out) == tlm::TLM_OK_RESPONSE;
+  }
+  bool ProgramPage(std::uint32_t block, std::uint32_t page,
+                   std::span<const std::uint8_t> in) override {
+    return NandTransport(socket_, NandCommand::Operation::kProgramPage, block,
+                         page, WriteData(in)) == tlm::TLM_OK_RESPONSE;
+  }
+  bool EraseBlock(std::uint32_t block) override {
+    return NandTransport(socket_, NandCommand::Operation::kEraseBlock, block, 0,
+                         {}) == tlm::TLM_OK_RESPONSE;
+  }
+
+ private:
+  Socket& socket_;
+};
 
 }  // namespace socpuppet
 

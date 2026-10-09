@@ -33,17 +33,13 @@ namespace socpuppet {
 // the registers, commands and completions come from SPDK's nvme_spec.h.
 class NvmeController : public InterruptRequests {
  public:
-  // The host's memory, which the controller reads and writes on its own
-  // initiative (direct memory access, DMA).
-  using HostMemory = MemoryPort;
-
   // `blocks` is how many blocks its one namespace holds, and `vectors`
   // how many interrupt vectors it has. The drive is kept in RAM, zeros
   // until written.
-  NvmeController(HostMemory& host_memory, std::uint64_t blocks,
+  NvmeController(MemoryPort& host_memory, std::uint64_t blocks,
                  std::size_t vectors);
   // The same, with the drive the caller gives it.
-  NvmeController(HostMemory& host_memory, std::unique_ptr<BlockStore> drive,
+  NvmeController(MemoryPort& host_memory, std::unique_ptr<BlockStore> drive,
                  std::size_t vectors);
 
   // Reads from the register block, the way a host reads the memory behind
@@ -173,7 +169,7 @@ class NvmeController : public InterruptRequests {
   // end of the drive.
   std::optional<BlockRange> BlocksOf(const spdk_nvme_cmd& command) const;
 
-  HostMemory& host_memory_;
+  MemoryPort& host_memory_;
   std::size_t vectors_;
   // What the drive holds.
   std::unique_ptr<BlockStore> drive_;

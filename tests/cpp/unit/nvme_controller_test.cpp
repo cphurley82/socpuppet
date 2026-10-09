@@ -14,7 +14,7 @@ namespace socpuppet {
 constexpr std::uint64_t kAdminSubmissionDoorbell = 0x1000;
 
 // A host with no memory, for tests in which the controller never looks.
-class NoHostMemory : public NvmeController::HostMemory {
+class NoHostMemory : public MemoryPort {
   bool Read(std::uint64_t, std::span<std::uint8_t>) override { return true; }
   bool Write(std::uint64_t, std::span<const std::uint8_t>) override {
     return true;
