@@ -224,4 +224,13 @@ TEST(WhenADmaEngineIsGivenACommandWhileItIsBusy,
   EXPECT_EQ(rig.host.At(kHost, 24), SomeBytes(24));
 }
 
+TEST(WhenADmaEngineIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 24);
+
+  EXPECT_FALSE(rig.Write32(kCommand, 0));
+  EXPECT_FALSE(rig.Write32(kCommand, 3));
+  EXPECT_EQ(rig.Read32(kStatus), 0U);
+}
+
 }  // namespace socpuppet
