@@ -173,7 +173,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | UART | `UartContract` | `Ns16550` |
 | machine timer | `MachineTimerContract` | `MachineTimer` |
 | interrupt controller | `InterruptControllerContract` | `Plic` |
-| NVMe function | `NvmeContract` | 🎭 `BehavioralNvme` |
+| NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 
 When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
@@ -193,6 +193,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
 - [MSI-to-PLIC bridge](models/msi-plic-bridge.md)
+- [NVMe frontend](models/nvme-frontend.md)
 - [PCIe endpoint](models/pcie-endpoint.md)
 - [PCIe root complex](models/pcie-root-complex.md)
 - [Router](models/router.md)

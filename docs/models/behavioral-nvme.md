@@ -72,7 +72,8 @@ A line is high while a completion queue on its vector holds a completion the hos
 
 ## Under the hood
 
-- `src/socpuppet/core/nvme_controller.h` is the controller: registers, queues and commands, with no simulator in it. `src/socpuppet/core/prp.h` works out where a command's data is.
+- `src/socpuppet/core/nvme_controller.h` is the controller: what each command does, with no simulator in it. `src/socpuppet/core/prp.h` works out where a command's data is.
+- `src/socpuppet/core/nvme_queues.h` and `nvme_host_registers.h` are the queues and the register block, which the [NVMe frontend](nvme-frontend.md) of the real SSD uses too.
 - `src/socpuppet/models/behavioral_nvme.h` is the SystemC wrapper: the sockets, the interrupt lines, and the process that does the controller's work.
 - The layouts of every register, command and data structure are not ours. They come from [SPDK](https://github.com/spdk/spdk)'s `nvme_spec.h`, the Storage Performance Development Kit's rendering of the NVMe specification as C structs.
 - What every NVMe function must do is written down as tests, in `tests/cpp/contracts/nvme_contract.h`. The real SSD will be held to the same ones.
