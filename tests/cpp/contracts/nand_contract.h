@@ -229,15 +229,67 @@ TYPED_TEST_P(NandContract,
   EXPECT_EQ(response, tlm::TLM_BURST_ERROR_RESPONSE);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(
-    NandContract, AChipAskedWhatItIsSaysItsGeometry,
-    APageThatWasNeverProgrammedReadsAsAllOnes,
-    AProgrammedPageReadsBackAsItWasProgrammed,
-    EveryPageOfAnErasedBlockReadsAsAllOnes,
-    ABlockPastTheEndOfTheChipGetsAnAddressError,
-    APagePastTheEndOfItsBlockGetsAnAddressError,
-    DataThatIsNotOnePageLongGetsABurstError,
-    AnAccessThatIsNotACommandForAChipGetsACommandError,
-    AnAnswerAboutGeometryThatWouldNotFitGetsABurstError);
+// A chip is not memory: there is nothing a debugger's read of an address
+// could mean to it.
+TYPED_TEST_P(NandContract, ADebugAccessIsDeclined) {
+  std::vector<std::uint8_t> data(16);
+  unsigned bytes_read = 1;
+  unsigned bytes_written = 1;
+
+  this->AsItsController([&](BusDriver& controller) {
+    bytes_read = socpuppet::DebugTransport(controller.socket,
+                                           tlm::TLM_READ_COMMAND, 0, data);
+    bytes_written = socpuppet::DebugTransport(controller.socket,
+                                              tlm::TLM_WRITE_COMMAND, 0, data);
+  });
+
+  EXPECT_EQ(bytes_read, 0U);
+  EXPECT_EQ(bytes_written, 0U);
+}
+
+TYPED_TEST_P(NandContract, APageOfAnErasedBlockCanBeProgrammedAgain) {
+  std::vector<std::uint8_t> read(16);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    nand_contract::ProgramPage(controller, 2, 5, nand_contract::SomePage(10));
+    nand_contract::EraseBlock(controller, 2);
+    response = nand_contract::ProgramPage(controller, 2, 5,
+                                          nand_contract::SomePage(20));
+    nand_contract::ReadPage(controller, 2, 5, read);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(read, nand_contract::SomePage(20));
+}
+
+TYPED_TEST_P(NandContract, ErasingABlockLeavesTheBlocksAroundItAlone) {
+  std::vector<std::uint8_t> before(16);
+  std::vector<std::uint8_t> after(16);
+
+  this->AsItsController([&](BusDriver& controller) {
+    nand_contract::ProgramPage(controller, 1, 7, nand_contract::SomePage(10));
+    nand_contract::ProgramPage(controller, 3, 0, nand_contract::SomePage(20));
+    nand_contract::EraseBlock(controller, 2);
+    nand_contract::ReadPage(controller, 1, 7, before);
+    nand_contract::ReadPage(controller, 3, 0, after);
+  });
+
+  EXPECT_EQ(before, nand_contract::SomePage(10));
+  EXPECT_EQ(after, nand_contract::SomePage(20));
+}
+
+REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
+                            APageThatWasNeverProgrammedReadsAsAllOnes,
+                            AProgrammedPageReadsBackAsItWasProgrammed,
+                            EveryPageOfAnErasedBlockReadsAsAllOnes,
+                            ABlockPastTheEndOfTheChipGetsAnAddressError,
+                            APagePastTheEndOfItsBlockGetsAnAddressError,
+                            DataThatIsNotOnePageLongGetsABurstError,
+                            AnAccessThatIsNotACommandForAChipGetsACommandError,
+                            AnAnswerAboutGeometryThatWouldNotFitGetsABurstError,
+                            ADebugAccessIsDeclined,
+                            APageOfAnErasedBlockCanBeProgrammedAgain,
+                            ErasingABlockLeavesTheBlocksAroundItAlone);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_
