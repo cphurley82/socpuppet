@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the firmware the tests boot. Most of it is Zephyr's own, two
-# samples and one of its tests, and one image is socpuppet's:
+# samples and two of its tests, and one image is socpuppet's:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
 #   hello_world       for socpuppet_host and socpuppet_ssd, socpuppet's own
 #                     boards: the host, and the SSD's controller
@@ -9,6 +9,10 @@
 #                     disk interface, which here drives its NVMe driver
 #   ssd               for socpuppet_ssd: the SSD's own firmware, which is
 #                     the application in firmware/ssd
+#   flash_test        for socpuppet_ssd: Zephyr's test of a flash driver,
+#                     which here is the driver for the SSD's NAND. The
+#                     application in firmware/flash_test says how to build
+#                     it for the board, and adds nothing to it
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
@@ -36,6 +40,7 @@ images=(
   "samples/synchronization socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
   "firmware/ssd socpuppet_ssd"
+  "firmware/flash_test socpuppet_ssd"
 )
 # socpuppet's boards, shields and drivers are in a Zephyr module that ships
 # inside the Python package (`socpuppet zephyr-module` prints where). Here

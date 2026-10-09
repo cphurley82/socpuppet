@@ -56,3 +56,12 @@ config SOCPUPPET_FLASH_CONTROLLER
 	  The flash controller of a socpuppet SSD, which moves pages between
 	  the NAND flash chip and the SSD's own memory. Firmware uses it
 	  through Zephyr's flash API.
+
+config SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE
+	int "Largest NAND page the flash controller's driver can read part of"
+	default 4096
+	depends on SOCPUPPET_FLASH_CONTROLLER
+	help
+	  The driver learns the size of a NAND page from the chip. To read
+	  part of a page it has to fetch the whole of it, into memory of its
+	  own, and this is how many bytes it sets aside.

@@ -1,0 +1,2 @@
+# The test's own options are Zephyr's, with the test.
+source "$(ZEPHYR_BASE)/tests/drivers/flash/common/Kconfig"

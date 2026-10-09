@@ -1,0 +1,17 @@
+/*
+ * Where Zephyr's flash test may write: it looks for a partition called
+ * storage_partition. The first 1 MiB of the NAND is four blocks, and the
+ * test uses two.
+ */
+&ssd_flash {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		storage_partition: partition@0 {
+			label = "storage";
+			reg = <0x0 0x100000>;
+		};
+	};
+};

@@ -7,14 +7,21 @@
  * through flash_read(), flash_write() and flash_erase(), as it would any
  * flash. Three things about a NAND show through, as they do on real ones:
  *
- *   - A read or a write is of whole NAND pages. The size of one is
+ *   - A write is of whole NAND pages. The size of one is
  *     flash_get_write_block_size(), and an offset or a length that is not
  *     a multiple of it is refused.
  *   - An erase is of whole NAND blocks, which are what Zephyr's flash
  *     class calls pages: flash_get_page_info_by_offs() gives one.
- *   - The controller moves a page straight between the chip and the
- *     buffer the caller gives, without the CPU touching a byte of it. So
- *     the buffer is memory, and not, say, a register.
+ *   - The controller moves a page straight between the chip and memory,
+ *     without the CPU touching a byte of it. So the buffer a caller gives
+ *     is memory, and not, say, a register.
+ *
+ * A read may be of any bytes, as Zephyr asks of every flash driver. The
+ * controller can only fetch a whole page, so a read of part of one is
+ * fetched into a page of the driver's own and copied from there. A read
+ * of whole pages goes straight to the caller's buffer, and that is the
+ * kind to use for data. The driver has one such page and no lock on it:
+ * one thread at a time.
  */
 
 #define DT_DRV_COMPAT socpuppet_flash_controller
@@ -26,6 +33,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
 #include <zephyr/sys/sys_io.h>
+#include <zephyr/sys/util.h>
 
 #include "command_status.h"
 
@@ -54,6 +62,8 @@ struct flash_controller_data {
 	/* The same, as Zephyr's flash class wants it. */
 	struct flash_parameters parameters;
 	struct flash_pages_layout layout;
+	/* A page of the chip, for a read that is not of whole pages. */
+	uint8_t page[CONFIG_SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE] __aligned(4);
 };
 
 static uint64_t flash_controller_bytes(const struct flash_controller_data *data)
@@ -61,52 +71,88 @@ static uint64_t flash_controller_bytes(const struct flash_controller_data *data)
 	return (uint64_t)data->page_size * data->pages_per_block * data->blocks;
 }
 
+/* Whether a run of bytes is inside the chip. */
+static bool flash_controller_has(const struct flash_controller_data *data, off_t offset,
+				 size_t length)
+{
+	return offset >= 0 && (uint64_t)offset + length <= flash_controller_bytes(data);
+}
+
 /* Whether a run of bytes is whole units of `unit` bytes, inside the chip. */
 static bool flash_controller_is_whole(const struct flash_controller_data *data, off_t offset,
 				      size_t length, uint32_t unit)
 {
-	return offset >= 0 && offset % unit == 0 && length % unit == 0 &&
-	       (uint64_t)offset + length <= flash_controller_bytes(data);
+	return flash_controller_has(data, offset, length) && offset % unit == 0 &&
+	       length % unit == 0;
 }
 
-/* Moves pages one at a time between the chip and `buffer`. */
-static int flash_controller_move(const struct device *dev, uint32_t command, off_t offset,
-				 const void *buffer, size_t length)
+/* Has one page moved between the chip and the memory at `local`. */
+static int flash_controller_move_page(const struct device *dev, uint32_t command, uint32_t page,
+				      const void *local)
 {
 	const struct flash_controller_config *config = dev->config;
 	const struct flash_controller_data *data = dev->data;
-	uint32_t page = offset / data->page_size;
-	uintptr_t local = (uintptr_t)buffer;
 
-	if (!flash_controller_is_whole(data, offset, length, data->page_size)) {
-		return -EINVAL;
-	}
+	sys_write32(page / data->pages_per_block, config->base + BLOCK);
+	sys_write32(page % data->pages_per_block, config->base + PAGE);
+	sys_write32((uint32_t)(uintptr_t)local, config->base + LOCAL_ADDRESS);
 
-	for (size_t moved = 0; moved < length; moved += data->page_size, ++page) {
-		int result;
-
-		sys_write32(page / data->pages_per_block, config->base + BLOCK);
-		sys_write32(page % data->pages_per_block, config->base + PAGE);
-		sys_write32((uint32_t)(local + moved), config->base + LOCAL_ADDRESS);
-		result = ssd_device_do(config->base, command);
-		if (result != 0) {
-			return result;
-		}
-	}
-
-	return 0;
+	return ssd_device_do(config->base, command);
 }
 
 static int flash_controller_read(const struct device *dev, off_t offset, void *buffer,
 				 size_t length)
 {
-	return flash_controller_move(dev, READ_PAGE, offset, buffer, length);
+	struct flash_controller_data *data = dev->data;
+	uint8_t *to = buffer;
+
+	if (!flash_controller_has(data, offset, length)) {
+		return -EINVAL;
+	}
+
+	while (length != 0) {
+		uint32_t within = offset % data->page_size;
+		size_t piece = MIN(length, data->page_size - within);
+		/* A whole page goes straight to the caller, and a part by way of our own. */
+		bool is_whole = piece == data->page_size;
+		int result = flash_controller_move_page(dev, READ_PAGE, offset / data->page_size,
+							is_whole ? to : data->page);
+
+		if (result != 0) {
+			return result;
+		}
+		if (!is_whole) {
+			memcpy(to, &data->page[within], piece);
+		}
+		offset += piece;
+		to += piece;
+		length -= piece;
+	}
+
+	return 0;
 }
 
 static int flash_controller_write(const struct device *dev, off_t offset, const void *buffer,
 				  size_t length)
 {
-	return flash_controller_move(dev, PROGRAM_PAGE, offset, buffer, length);
+	const struct flash_controller_data *data = dev->data;
+	const uint8_t *from = buffer;
+
+	if (!flash_controller_is_whole(data, offset, length, data->page_size)) {
+		return -EINVAL;
+	}
+
+	for (uint32_t page = offset / data->page_size; length != 0; ++page) {
+		int result = flash_controller_move_page(dev, PROGRAM_PAGE, page, from);
+
+		if (result != 0) {
+			return result;
+		}
+		from += data->page_size;
+		length -= data->page_size;
+	}
+
+	return 0;
 }
 
 static int flash_controller_erase(const struct device *dev, off_t offset, size_t size)
