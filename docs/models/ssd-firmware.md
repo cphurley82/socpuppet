@@ -117,7 +117,7 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 | Runs on | nothing: each step is one access on the SSD's bus | the SSD's 32-bit RISC-V core |
 | Reaches the hardware | by reading and writing the three devices' registers | through three Zephyr drivers: the NAND through Zephyr's own flash API, the frontend and the DMA engine through small APIs of their own |
 | Waits for the host | on the frontend's interrupt line | asleep, until the frontend's interrupt handler wakes it |
-| Takes | no simulated time | a few milliseconds to boot, and about a millisecond for a command |
+| Takes | no simulated time | a few milliseconds to boot, and a millisecond or two for a command |
 | Keeps its table | in a Python dict, `firmware.page_map` | in the SSD's buffer, after the page of scratch and the page of the drive: four bytes for each page of the drive |
 | Biggest drive | any | 2 GiB |
 | A device that never finishes | the script gives up, and its error says which device | its driver gives up after a tenth of a second |
