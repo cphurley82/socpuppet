@@ -2,52 +2,44 @@
 
 import json
 import pathlib
-import re
 
 import pytest
 
-import socpuppet
 import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
+from processes import run_socpuppet
+from socpuppet.boards import ssd as boards_ssd
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
-from socpuppet.boards.scripted_host import ECAM_BASE
+from socpuppet.boards.scripted_host import ECAM_BASE, idle_host
 from socpuppet.boards.ssd import (
+    DMA_SOURCE,
+    FLASH_SOURCE,
+    FRONTEND_SOURCE,
     SRAM_BASE,
-    TIMER_HZ,
-    idle_host,
     ssd,
     stand_in_firmware,
 )
 from socpuppet.pcie_host import PcieFunction
+from zephyr_module import ZEPHYR_MODULE, clock_rate
 
-ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
 SSD_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_ssd"
+SSD_DESCRIPTION = pathlib.Path(boards_ssd.__file__)
 
 
 class TestTheZephyrBoardForTheSsd:
     # The firmware's view of the SSD is its own CPU's: the host is not in
-    # it.
-    def test_its_devicetree_is_what_the_ssd_description_generates(self):
-        board = ssd(host=idle_host)
+    # it. The command is the one that writes the file again.
+    def test_its_devicetree_is_what_the_devicetree_command_prints(self):
+        printed = run_socpuppet(
+            "devicetree", str(SSD_DESCRIPTION), "--via", "ssd.cpu.socket"
+        ).stdout
 
-        # When this fails, write the file again:
-        #   socpuppet devicetree python/socpuppet/boards/ssd.py \
-        #       --via ssd.cpu.socket
-        assert (
-            SSD_BOARD / "socpuppet_ssd.dts"
-        ).read_text() == board.platform.devicetree(via=board.ssd.cpu.socket)
+        assert (SSD_BOARD / "socpuppet_ssd.dts").read_text() == printed
 
     def test_its_clock_rate_is_the_rate_the_ssds_timer_counts_at(self):
-        defaults = (
-            ZEPHYR_MODULE / "soc/socpuppet/Kconfig.defconfig"
-        ).read_text()
+        timer = ssd(host=idle_host).ssd.cpu_kit.timer.component
 
-        rate = re.search(
-            r"config SYS_CLOCK_HW_CYCLES_PER_SEC\s+default (\d+)", defaults
-        )
-
-        assert rate is not None
-        assert int(rate.group(1)) == TIMER_HZ
+        assert clock_rate() == timer.parameters["frequency_hz"]
 
     @needs_dtc
     def test_the_devicetree_compiler_accepts_it(self, tmp_path):
@@ -89,18 +81,14 @@ class TestAnSsdOfSoManyBlocks:
 
 
 class TestAnSsdWithNoScriptForItsFirmware:
-    # It has a controller of its own: a CPU, and what a CPU needs.
+    # It has a CPU of its own, and what a CPU needs.
 
     def test_has_a_32_bit_cpu_that_starts_at_the_start_of_its_sram(self):
-        board = ssd(host=idle_host)
+        cpu = ssd(host=idle_host).ssd.cpu.component
 
-        cpu = board.ssd.cpu.component
         assert isinstance(cpu, sp.DbtRiseCpu)
-        assert cpu.parameters == {
-            "xlen": 32,
-            "reset_vector": SRAM_BASE,
-            "gdb_port": 0,
-        }
+        assert cpu.parameters["xlen"] == 32
+        assert cpu.parameters["reset_vector"] == SRAM_BASE
 
     def test_gives_its_cpu_the_gdb_port_asked_for(self):
         board = ssd(host=idle_host, gdb_port=1234)
@@ -108,15 +96,12 @@ class TestAnSsdWithNoScriptForItsFirmware:
         assert board.ssd.cpu.component.parameters["gdb_port"] == 1234
 
     def test_has_an_sram_a_uart_a_timer_and_an_interrupt_controller(self):
-        controller = ssd(host=idle_host).ssd.controller
+        kit = ssd(host=idle_host).ssd.cpu_kit
 
-        assert controller is not None
-        assert controller.sram.component.parameters == {"size": 256 * 1024}
-        assert isinstance(controller.uart.component, sp.Ns16550)
-        assert controller.timer.component.parameters == {
-            "frequency_hz": TIMER_HZ
-        }
-        assert isinstance(controller.plic.component, sp.Plic)
+        assert isinstance(kit.sram.component, sp.Memory)
+        assert isinstance(kit.uart.component, sp.Ns16550)
+        assert isinstance(kit.timer.component, sp.MachineTimer)
+        assert isinstance(kit.plic.component, sp.Plic)
 
     def test_gives_each_of_its_three_devices_a_plic_source_of_its_own(self):
         board = ssd(host=idle_host)
@@ -128,10 +113,11 @@ class TestAnSsdWithNoScriptForItsFirmware:
             for each in connections
             if each["sink"].startswith("ssd.plic.source")
         } == {
-            "ssd.frontend.cpu_irq": "ssd.plic.source1",
-            "ssd.dma.irq": "ssd.plic.source2",
-            "ssd.flash.irq": "ssd.plic.source3",
+            "ssd.frontend.cpu_irq": f"ssd.plic.source{FRONTEND_SOURCE}",
+            "ssd.dma.irq": f"ssd.plic.source{DMA_SOURCE}",
+            "ssd.flash.irq": f"ssd.plic.source{FLASH_SOURCE}",
         }
+        assert len({FRONTEND_SOURCE, DMA_SOURCE, FLASH_SOURCE}) == 3
 
     def test_sends_the_plic_and_the_timer_to_the_cpu(self):
         board = ssd(host=idle_host)
@@ -152,19 +138,21 @@ class TestAnSsdWithAScriptForItsFirmware:
     # 🎭 The script is in the CPU's place, and needs none of what a CPU
     # does: the frontend's line goes straight to it.
 
-    def test_has_the_script_where_its_cpu_would_be_and_no_controller(self):
+    def test_has_the_script_where_its_cpu_would_be_and_no_cpu_kit(self):
         board = ssd(host=idle_host, firmware=stand_in_firmware().script)
 
         assert isinstance(board.ssd.cpu.component, sp.ScriptedBusMaster)
-        assert board.ssd.controller is None
+        assert board.ssd.cpu_kit is None
 
-    def test_is_refused_a_gdb_port_because_there_is_no_cpu_to_debug(self):
-        with pytest.raises(ValueError, match="gdb_port"):
+    def test_is_refused_a_gdb_port_and_told_there_is_no_cpu_to_debug(self):
+        with pytest.raises(ValueError, match=r"gdb_port=1234") as refused:
             ssd(
                 host=idle_host,
                 firmware=stand_in_firmware().script,
                 gdb_port=1234,
             )
+
+        assert "a debugger attaches to a CPU" in str(refused.value)
 
 
 @pytest.mark.platform

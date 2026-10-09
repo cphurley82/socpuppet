@@ -4,7 +4,8 @@ description: |
   firmware says which page and where it is in memory.
 
   `interrupts-extended` names the PLIC source of its line, which is high
-  while a command is done, or has failed, and the CPU asked to be told.
+  while a command is done, or has failed, and the CPU asked to be told. A driver that
+  asks the status register instead has no use for it.
 
 compatible: "socpuppet,flash-controller"
 
@@ -12,7 +13,4 @@ include: base.yaml
 
 properties:
   reg:
-    required: true
-
-  interrupts-extended:
     required: true

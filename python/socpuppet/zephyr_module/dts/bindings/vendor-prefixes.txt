@@ -1,0 +1,3 @@
+# The vendor of a compatible such as "socpuppet,pcie". Zephyr warns about
+# a prefix it has not been told of.
+socpuppet	socpuppet

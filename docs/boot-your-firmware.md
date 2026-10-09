@@ -119,14 +119,15 @@ The SSD is never alone: it has a host on its PCIe link. `ssd()` describes both, 
 
 ```python
 import socpuppet as sp
-from socpuppet.boards.ssd import idle_host, ssd
+from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards.ssd import ssd
 
 board = ssd(host=idle_host)
 board.platform.build()
 board.platform.load_elf("build/zephyr/zephyr.elf", via=board.ssd.cpu.socket)
 
 board.platform.run(sp.ms(100))
-print(board.ssd.controller.uart.output)
+print(board.ssd.cpu_kit.uart.output)
 ```
 
 ```text

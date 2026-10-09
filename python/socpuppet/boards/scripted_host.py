@@ -23,6 +23,7 @@ finds its way around the other.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.components import (
@@ -35,7 +36,7 @@ from socpuppet.components import (
 )
 from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost
-from socpuppet.ops import Steps
+from socpuppet.ops import Operation, Steps
 from socpuppet.pcie_host import PcieHost
 from socpuppet.placed import Placed, PlacedRouter
 from socpuppet.platform import Group, Platform
@@ -101,6 +102,11 @@ def add_scripted_host(
     return ScriptedHost(
         cpu=cpu, bus=bus, ram=ram, msi=msi, root_complex=root_complex
     )
+
+
+def idle_host() -> Iterator[Operation]:
+    """A host script that does nothing: for when only the drive matters."""
+    yield from ()
 
 
 def bring_up_the_drive() -> Steps[NvmeHost]:

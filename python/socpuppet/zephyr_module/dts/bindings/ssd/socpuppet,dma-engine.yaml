@@ -3,7 +3,8 @@ description: |
   and the SSD's own. The firmware says where in each and how many bytes.
 
   `interrupts-extended` names the PLIC source of its line, which is high
-  while a copy is done, or has failed, and the CPU asked to be told.
+  while a copy is done, or has failed, and the CPU asked to be told. A driver that
+  asks the status register instead has no use for it.
 
 compatible: "socpuppet,dma-engine"
 
@@ -11,7 +12,4 @@ include: base.yaml
 
 properties:
   reg:
-    required: true
-
-  interrupts-extended:
     required: true

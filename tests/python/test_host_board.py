@@ -1,12 +1,10 @@
 """The host platform and the Zephyr board that is generated from it."""
 
 import json
-import pathlib
 import re
 
 import pytest
 
-import socpuppet
 from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
 from socpuppet.boards.host import (
@@ -17,8 +15,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
 )
-
-ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
+from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 
 class TestTheZephyrBoardForTheHost:
@@ -30,16 +27,7 @@ class TestTheZephyrBoardForTheHost:
         assert checked_in.read_text() == host().platform.devicetree()
 
     def test_its_clock_rate_is_the_rate_the_hosts_timer_counts_at(self):
-        defaults = (
-            ZEPHYR_MODULE / "soc/socpuppet/Kconfig.defconfig"
-        ).read_text()
-
-        rate = re.search(
-            r"config SYS_CLOCK_HW_CYCLES_PER_SEC\s+default (\d+)", defaults
-        )
-
-        assert rate is not None
-        assert int(rate.group(1)) == TIMER_HZ
+        assert clock_rate() == TIMER_HZ
 
 
 class TestTheZephyrShieldForTheHostsDrive:

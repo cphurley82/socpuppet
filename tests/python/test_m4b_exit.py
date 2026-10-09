@@ -12,7 +12,8 @@ SSD. There is a host on the PCIe link, and it does nothing.
 import pytest
 
 import socpuppet as sp
-from socpuppet.boards.ssd import idle_host, ssd
+from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards.ssd import ssd
 
 
 @pytest.mark.platform
@@ -23,7 +24,7 @@ class TestWhenZephyrsHelloWorldBootsOnTheSsdsController:
         board.platform.load_elf(
             firmware("hello_world_socpuppet_ssd.elf"), via=board.ssd.cpu.socket
         )
-        console = board.ssd.controller.uart
+        console = board.ssd.cpu_kit.uart
         greeting = "Hello World! socpuppet_ssd/socpuppet_rv32"
 
         # The greeting comes within a few milliseconds of simulated time.

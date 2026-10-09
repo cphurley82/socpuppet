@@ -1,8 +1,9 @@
 if SOC_FAMILY_SOCPUPPET
 
-# How many times a second the machine timer counts. The timer in the
-# platform description counts at the same rate, and a test keeps the two
-# from drifting apart (tests/python/test_host_board.py).
+# How many times a second the machine timer counts. The timer in each
+# board's platform description counts at the same rate, and the board's
+# tests keep the two from drifting apart (tests/python/test_host_board.py
+# and test_ssd_board.py).
 config SYS_CLOCK_HW_CYCLES_PER_SEC
 	default 10000000
 

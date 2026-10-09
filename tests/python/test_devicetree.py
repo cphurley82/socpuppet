@@ -440,8 +440,9 @@ class TestWhenOnlyTheHostsSideOfAnNvmeFrontendCanBeReached:
         platform, bus, _ = cpu_with_its_peripherals()
         frontend = platform.add("frontend", sp.NvmeFrontend())
         bus.map(frontend.bar0, base=0x1001_0000)
+        without_it, _, _ = cpu_with_its_peripherals()
 
-        assert "nvme-frontend" not in platform.devicetree()
+        assert platform.devicetree() == without_it.devicetree()
 
 
 def cpu_with_a_pcie_root_complex():
