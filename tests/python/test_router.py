@@ -163,15 +163,13 @@ class TestWhenAComponentWithTwoRegisterBlocksIsMapped:
         bus.map(frontend.cpu, base=0x1000)
         bus.map(frontend.bar0, base=0x10_0000)
 
-        # The CPU's block is 0x80 bytes and the host's is 0x2000, so a
-        # memory fits right after each and not one byte sooner.
-        bus.map(platform.add("after_cpu", sp.Memory(size=0x10)).socket, 0x1080)
-        bus.map(
-            platform.add("after_bar0", sp.Memory(size=0x10)).socket, 0x10_2000
-        )
+        # The CPU's block is 0x80 bytes and the host's is 0x2000: the last
+        # byte of each is taken, and the byte after it is free.
         with pytest.raises(ValueError, match=r"frontend\.cpu"):
-            bus.map(platform.add("in_cpu", sp.Memory(size=0x10)).socket, 0x1070)
+            bus.map(platform.add("on_cpu", sp.Memory(size=1)).socket, 0x107F)
         with pytest.raises(ValueError, match=r"frontend\.bar0"):
             bus.map(
-                platform.add("in_bar0", sp.Memory(size=0x10)).socket, 0x10_1FF0
+                platform.add("on_bar0", sp.Memory(size=1)).socket, 0x10_1FFF
             )
+        bus.map(platform.add("after_cpu", sp.Memory(size=1)).socket, 0x1080)
+        bus.map(platform.add("after_bar0", sp.Memory(size=1)).socket, 0x10_2000)

@@ -30,12 +30,14 @@ struct BehavioralNvmeRig {
 // The SSD: its hardware, with a stand-in for the firmware in its CPU's
 // place.
 //
-//   the host ══ frontend ◀── registers ── firmware ── registers ──▶ dma, flash
-//               frontend ──▶ uplink ◀── dma                         flash ──▶
-//               nand
-//                              │        dma, flash ──▶ bus ──▶ buffer
-//                              ▼
-//                        the host's memory
+// clang-format off
+//   the host ══ frontend ◀─ registers ─ firmware ─ registers ─▶ dma, flash
+//                  │                                             │      │
+//                  └──────────▶ uplink ◀─────────────────────────┘      ▼
+//                                 │        dma, flash ─▶ bus ─▶ buffer  nand
+//                                 ▼
+//                          the host's memory
+// clang-format on
 //
 // The frontend fetches commands and posts completions, the DMA engine
 // moves a command's data, and both reach the host's memory through one
@@ -56,10 +58,11 @@ struct SsdRig {
                                .flash = 0x1003'0000,
                                .buffer = 0x4000'0000};
   static constexpr std::uint64_t kBufferSize = 0x1'0000;
-  // The host's addresses are 64 bits wide, and the uplink passes on every
-  // one of them unchanged.
-  static constexpr std::uint64_t kAllOfTheHostsAddresses = std::uint64_t{1}
-                                                           << 63;
+  // The uplink passes an address on unchanged. It does so for the lower
+  // half of all the addresses 64 bits can say, which is far more than any
+  // host here has.
+  static constexpr std::uint64_t kAddressesTheUplinkPassesOn = std::uint64_t{1}
+                                                               << 63;
 
   static void Register(socpuppet::Registry& registry) {
     AddSsdFirmware(registry, "ssd_firmware", kMap);
@@ -90,7 +93,7 @@ struct SsdRig {
                  {{"inputs", 2},
                   {"outputs", 1},
                   {"out0.base", 0},
-                  {"out0.size", kAllOfTheHostsAddresses}});
+                  {"out0.size", kAddressesTheUplinkPassesOn}});
     // The firmware's bus.
     platform.Bind("ssd.cpu.socket", "ssd.bus.target");
     platform.Bind("ssd.bus.out0", "ssd.frontend.cpu");
