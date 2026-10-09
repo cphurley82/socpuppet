@@ -176,4 +176,21 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   EXPECT_FALSE(fixture.InterruptLine().line->read());
 }
 
+// The CPU's write and the end of the controller's work both change what
+// the line should say. Here they come in the same delta cycle, which a
+// line with two writers would not survive.
+TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
+     TheRunCarriesOnAndTheLineSaysWhatTheStatusDoes) {
+  CpuWithAFlashController fixture{[](BusDriver& cpu) {
+    cpu.Write32(kInterruptEnable, kDone);
+    cpu.Write32(kCommand, kReadPage);
+    cpu.WaitFor(sc_core::SC_ZERO_TIME);
+    cpu.Write32(kStatus, 0);
+  }};
+
+  EXPECT_NO_THROW(fixture.platform.Run());
+
+  EXPECT_TRUE(fixture.InterruptLine().line->read());
+}
+
 }  // namespace socpuppet
