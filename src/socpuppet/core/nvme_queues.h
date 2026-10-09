@@ -86,12 +86,9 @@ class NvmeQueues : public InterruptRequests {
   // it on a completion the host has not acknowledged.
   std::optional<Command> Fetch();
 
-  // What a completion says of its command.
-  struct Completion {
-    // The queue the command was fetched from, and the identifier the host
-    // gave it.
-    std::uint16_t queue_id = 0;
-    std::uint16_t command_id = 0;
+  // How a command went: what its completion will say beyond which command
+  // it is for.
+  struct Outcome {
     // The status code, which is zero for success, and which list of codes
     // it is from: the generic one (type 0) or the command's own (type 1).
     std::uint8_t status = 0;
@@ -101,9 +98,10 @@ class NvmeQueues : public InterruptRequests {
     std::uint32_t result = 0;
   };
 
-  // Posts a completion, to the completion queue of the queue its command
-  // was fetched from. There is room, because Fetch() saw to it.
-  void Post(const Completion& completion);
+  // Posts the completion of a command that was fetched, to the completion
+  // queue of the queue it came from. There is room, because Fetch() saw to
+  // it.
+  void Post(const Command& command, const Outcome& outcome);
 
   // InterruptRequests. The controller is asking on a vector while a
   // completion queue that uses the vector holds a completion the host has

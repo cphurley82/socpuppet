@@ -32,7 +32,7 @@ namespace socpuppet {
 //
 // It follows the NVMe base specification, which is public. The layouts of
 // the registers, commands and completions come from SPDK's nvme_spec.h.
-class NvmeController : public InterruptRequests {
+class NvmeController {
  public:
   // `blocks` is how many blocks its one namespace holds, and `vectors`
   // how many interrupt vectors it has. The drive is kept in RAM, zeros
@@ -60,22 +60,12 @@ class NvmeController : public InterruptRequests {
   // completion there. Returns false if there was nothing to do.
   bool CarryOutOne();
 
-  // InterruptRequests: what its queues ask for (see NvmeQueues).
-  bool Interrupting(std::size_t vector) const override;
-  bool Quieted() const override;
-  void Rearm() override;
+  // What the controller asks of the host on its interrupt vectors.
+  InterruptRequests& HostInterrupts() { return queues_; }
 
  private:
   // How a command went: what its completion will say.
-  struct Outcome {
-    // The status code, which is zero for success, and which list of codes
-    // it is from: the generic one (type 0) or the command's own (type 1).
-    std::uint8_t status = 0;
-    std::uint8_t status_type = 0;
-    // The command's answer, for the few commands that have one that fits
-    // in 32 bits (the completion's first dword).
-    std::uint32_t result = 0;
-  };
+  using Outcome = NvmeQueues::Outcome;
   // A failure with a status from the list that belongs to the command,
   // and not from the generic one.
   static Outcome CommandSpecific(std::uint8_t status);
@@ -116,9 +106,8 @@ class NvmeController : public InterruptRequests {
   // What the drive holds.
   std::unique_ptr<BlockStore> drive_;
 
-  // The register block, and whether the host has the controller enabled.
+  // The register block.
   NvmeHostRegisters registers_;
-  bool enabled_ = false;
 
   // The queues. The admin queues are set up from the registers above when
   // the controller is enabled, and the host sets up each I/O queue with an

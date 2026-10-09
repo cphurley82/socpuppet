@@ -82,19 +82,22 @@ std::optional<NvmeQueues::Command> NvmeQueues::Fetch() {
   return command;
 }
 
-void NvmeQueues::Post(const Completion& completion) {
-  const SubmissionQueue& submissions = submissions_[completion.queue_id];
+void NvmeQueues::Post(const Command& command, const Outcome& outcome) {
+  // The host gave the command an identifier, which the completion repeats.
+  spdk_nvme_cmd as_sent{};
+  std::ranges::copy(command.bytes, reinterpret_cast<std::uint8_t*>(&as_sent));
+  const SubmissionQueue& submissions = submissions_[command.queue_id];
   CompletionQueue& completions = completions_[submissions.completion_queue];
 
   spdk_nvme_cpl entry{};
-  entry.cdw0 = completion.result;
+  entry.cdw0 = outcome.result;
   entry.sqhd = submissions.head;
-  entry.sqid = completion.queue_id;
-  entry.cid = completion.command_id;
+  entry.sqid = command.queue_id;
+  entry.cid = as_sent.cid;
   // The status code type is three bits wide. The mask is for GCC, which
   // cannot tell that an 8-bit value of 0 or 1 fits.
-  entry.status.sct = completion.status_type & 0x7;
-  entry.status.sc = completion.status;
+  entry.status.sct = outcome.status_type & 0x7;
+  entry.status.sc = outcome.status;
   entry.status.p = completions.phase ? 1 : 0;
   // The bytes of SPDK's structure are laid out exactly as the
   // specification says they are in the host's memory. (That takes a

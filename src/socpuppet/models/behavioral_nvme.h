@@ -53,7 +53,7 @@ class BehavioralNvme : public sc_core::sc_module {
       : sc_module(name),
         irq("irq", vectors),
         controller_(host_memory_, blocks, vectors),
-        interrupt_lines_("interrupt_lines", irq, controller_) {
+        interrupt_lines_("interrupt_lines", irq, controller_.HostInterrupts()) {
     bar0.register_b_transport(this, &BehavioralNvme::b_transport);
     bar0.register_transport_dbg(this, &BehavioralNvme::transport_dbg);
     SC_THREAD(Work);

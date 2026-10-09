@@ -66,9 +66,6 @@ constexpr std::uint32_t kSubmissionQueue = 2;
 // The last slot of the longest queue there can be: 65536 entries.
 constexpr std::uint32_t kLongestQueuesLastSlot = 0xFFFF;
 
-// Where in a command the host puts the identifier it gives it.
-constexpr std::size_t kCommandIdOffset = 2;
-
 // The completion status register has the status code in its low byte, and
 // above it which list of codes that is from.
 constexpr unsigned kStatusTypeShift = 8;
@@ -87,25 +84,13 @@ bool NvmeFrontendLogic::ReadHostRegister(std::uint64_t offset,
 
 bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
                                           std::span<const std::uint8_t> in) {
-  if (NvmeHostRegisters::IsInTheDoorbells(offset)) {
-    const std::optional<NvmeHostRegisters::Doorbell> doorbell =
-        NvmeHostRegisters::DoorbellWrite(offset, in);
-    return doorbell && queues_.RingDoorbell(doorbell->number, doorbell->value);
-  }
   const std::optional<NvmeHostRegisters::Enable> enable =
-      host_registers_.Write(offset, in);
+      host_registers_.Write(offset, in, queues_);
   if (!enable) return false;
-  if (*enable == NvmeHostRegisters::Enable::kSet) {
-    // The admin queues are the hardware's to set up: the host has said
-    // where they are, in registers, before any command could say.
-    host_registers_.CreateAdminQueues(queues_);
-    host_has_it_enabled_ = true;
-    events_ |= kEnabled;
-  }
+  if (*enable == NvmeHostRegisters::Enable::kSet) events_ |= kEnabled;
   if (*enable == NvmeHostRegisters::Enable::kCleared) {
-    // A controller reset. The hardware's part of it is immediate.
-    queues_.RemoveAll();
-    host_has_it_enabled_ = false;
+    // A controller reset. The hardware's part of it is immediate: the
+    // queues are gone already, and so is the command that was waiting.
     command_.reset();
     posting_ = false;
     events_ |= kDisabled;
@@ -115,7 +100,7 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
 
 std::uint32_t NvmeFrontendLogic::Status() const {
   return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}) |
-         (host_has_it_enabled_ ? kHostHasItEnabled : std::uint32_t{0});
+         (host_registers_.Enabled() ? kHostHasItEnabled : std::uint32_t{0});
 }
 
 bool NvmeFrontendLogic::CpuInterrupting() const {
@@ -273,10 +258,8 @@ bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
 bool NvmeFrontendLogic::Step() {
   bool did_something = false;
   if (posting_) {
-    queues_.Post({.queue_id = command_->queue_id,
-                  .command_id = LoadLittleEndian<std::uint16_t>(
-                      std::span{command_->bytes}.subspan(kCommandIdOffset)),
-                  .status = static_cast<std::uint8_t>(completion_status_),
+    queues_.Post(*command_,
+                 {.status = static_cast<std::uint8_t>(completion_status_),
                   .status_type = static_cast<std::uint8_t>(
                       (completion_status_ >> kStatusTypeShift) & 0x7),
                   .result = completion_result_});

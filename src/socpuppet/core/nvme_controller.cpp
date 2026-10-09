@@ -70,33 +70,15 @@ bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
   // There is nothing to start up, so the controller is ready as soon as it
   // is enabled, and no longer once it is not. A host need not wait at all.
-  return registers_.Read(offset, out, {.ready_timeout = 0, .ready = enabled_});
+  return registers_.Read(offset, out,
+                         {.ready_timeout = 0, .ready = registers_.Enabled()});
 }
 
 bool NvmeController::WriteRegister(std::uint64_t offset,
                                    std::span<const std::uint8_t> in) {
-  if (NvmeHostRegisters::IsInTheDoorbells(offset)) {
-    const std::optional<NvmeHostRegisters::Doorbell> doorbell =
-        NvmeHostRegisters::DoorbellWrite(offset, in);
-    return doorbell && queues_.RingDoorbell(doorbell->number, doorbell->value);
-  }
-  const std::optional<NvmeHostRegisters::Enable> enable =
-      registers_.Write(offset, in);
-  if (!enable) return false;
-  if (*enable == NvmeHostRegisters::Enable::kSet) {
-    // Setting CC.EN: the controller takes the admin queues from where the
-    // registers say they are, and is ready for admin commands.
-    enabled_ = true;
-    registers_.CreateAdminQueues(queues_);
-  }
-  if (*enable == NvmeHostRegisters::Enable::kCleared) {
-    // Clearing CC.EN is a controller reset: it does away with every
-    // queue. The registers keep what the host told them, and everything on
-    // the drive stays.
-    enabled_ = false;
-    queues_.RemoveAll();
-  }
-  return true;
+  // The registers keep what the host told them through a reset, and
+  // everything on the drive stays.
+  return registers_.Write(offset, in, queues_).has_value();
 }
 
 bool NvmeController::CarryOutOne() {
@@ -104,13 +86,8 @@ bool NvmeController::CarryOutOne() {
   if (!fetched) return false;
   spdk_nvme_cmd command{};
   std::ranges::copy(fetched->bytes, BytesOf(command).begin());
-  const Outcome outcome =
-      fetched->queue_id == 0 ? CarryOutAdmin(command) : CarryOutIo(command);
-  queues_.Post({.queue_id = fetched->queue_id,
-                .command_id = command.cid,
-                .status = outcome.status,
-                .status_type = outcome.status_type,
-                .result = outcome.result});
+  queues_.Post(*fetched, fetched->queue_id == 0 ? CarryOutAdmin(command)
+                                                : CarryOutIo(command));
   return true;
 }
 
@@ -322,13 +299,5 @@ std::optional<NvmeController::BlockRange> NvmeController::BlocksOf(
   if (first > blocks || count > blocks - first) return {};
   return BlockRange{.first = first, .count = count};
 }
-
-bool NvmeController::Interrupting(std::size_t vector) const {
-  return queues_.Interrupting(vector);
-}
-
-bool NvmeController::Quieted() const { return queues_.Quieted(); }
-
-void NvmeController::Rearm() { queues_.Rearm(); }
 
 }  // namespace socpuppet

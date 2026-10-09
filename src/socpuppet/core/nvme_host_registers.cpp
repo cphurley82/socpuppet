@@ -51,7 +51,35 @@ bool NvmeHostRegisters::Read(std::uint64_t offset, std::span<std::uint8_t> out,
 }
 
 std::optional<NvmeHostRegisters::Enable> NvmeHostRegisters::Write(
-    std::uint64_t offset, std::span<const std::uint8_t> in) {
+    std::uint64_t offset, std::span<const std::uint8_t> in,
+    NvmeQueues& queues) {
+  if (offset >= kControllerRegistersSize) {
+    // The doorbells are 32 bits each, in pairs, queue after queue. The
+    // queue pointer is the low half of what the host writes.
+    std::uint32_t value = 0;
+    const std::uint64_t from_first = offset - kControllerRegistersSize;
+    if (in.size() != sizeof value || from_first % sizeof value != 0 ||
+        (std::ranges::copy(in, BytesOf(value).begin()),
+         !queues.RingDoorbell(from_first / sizeof value, value))) {
+      return std::nullopt;
+    }
+    return Enable::kUnchanged;
+  }
+  const std::optional<Enable> enable = WriteControllerRegister(offset, in);
+  if (enable == Enable::kSet) CreateAdminQueues(queues);
+  if (enable == Enable::kCleared) queues.RemoveAll();
+  return enable;
+}
+
+bool NvmeHostRegisters::Enabled() const {
+  spdk_nvme_cc_register configuration{};
+  configuration.raw = configuration_;
+  return configuration.bits.en != 0;
+}
+
+std::optional<NvmeHostRegisters::Enable>
+NvmeHostRegisters::WriteControllerRegister(std::uint64_t offset,
+                                           std::span<const std::uint8_t> in) {
   if (!Fits(offset, in.size())) return std::nullopt;
   // Lay the write over the registers the host may change, as they are,
   // and keep those. What it laid over the others is dropped.
@@ -84,23 +112,6 @@ void NvmeHostRegisters::CreateAdminQueues(NvmeQueues& queues) const {
       {.base = admin_submission_queue_,
        .last = static_cast<std::uint16_t>(sizes.bits.asqs)},
       /*completion_queue=*/0);
-}
-
-bool NvmeHostRegisters::IsInTheDoorbells(std::uint64_t offset) {
-  return offset >= kControllerRegistersSize;
-}
-
-std::optional<NvmeHostRegisters::Doorbell> NvmeHostRegisters::DoorbellWrite(
-    std::uint64_t offset, std::span<const std::uint8_t> in) {
-  // The doorbells are 32 bits each. The queue pointer is the low half of
-  // what the host writes.
-  std::uint32_t value = 0;
-  const std::uint64_t from_first = offset - kControllerRegistersSize;
-  if (in.size() != sizeof value || from_first % sizeof value != 0) {
-    return std::nullopt;
-  }
-  std::ranges::copy(in, BytesOf(value).begin());
-  return Doorbell{.number = from_first / sizeof value, .value = value};
 }
 
 }  // namespace socpuppet

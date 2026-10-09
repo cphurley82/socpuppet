@@ -41,31 +41,30 @@ class NvmeHostRegisters {
   // What a write did to the enable bit, CC.EN.
   enum class Enable { kUnchanged, kSet, kCleared };
 
-  // Writes to the controller registers. A write to a register the host
-  // only reads changes nothing. Returns nothing, and changes nothing, if
-  // the write is not all inside them.
+  // A write to the register block, by the host: to a controller register,
+  // or to a doorbell. Returns nothing, and changes nothing, if the write
+  // is refused: it is not all inside the controller registers, or it is
+  // not a 32-bit write to the doorbell of a queue that exists, with a
+  // pointer that is one of the queue's slots. A write to a register the
+  // host only reads changes nothing.
+  //
+  // The queues are whoever's the register block is. A doorbell write goes
+  // to them. Setting CC.EN makes the admin queues exist, where AQA, ASQ
+  // and ACQ say they are, with the first interrupt vector. Clearing it is
+  // a controller reset, which does away with every queue.
   std::optional<Enable> Write(std::uint64_t offset,
-                              std::span<const std::uint8_t> in);
+                              std::span<const std::uint8_t> in,
+                              NvmeQueues& queues);
 
-  // Makes the admin queues exist, where AQA, ASQ and ACQ say they are. The
-  // admin completion queue's interrupt vector is the first.
-  void CreateAdminQueues(NvmeQueues& queues) const;
-
-  // Whether an offset is past the controller registers, in the doorbells.
-  static bool IsInTheDoorbells(std::uint64_t offset);
-
-  // A write to a doorbell: which one, counting from the first, and the
-  // queue pointer the host wrote.
-  struct Doorbell {
-    std::uint64_t number = 0;
-    std::uint32_t value = 0;
-  };
-  // What a write in the doorbells is, or nothing if it is not a 32-bit
-  // write to one of them.
-  static std::optional<Doorbell> DoorbellWrite(
-      std::uint64_t offset, std::span<const std::uint8_t> in);
+  // Whether the host has the controller enabled: CC.EN.
+  bool Enabled() const;
 
  private:
+  // A write to the controller registers, and what it did to CC.EN.
+  std::optional<Enable> WriteControllerRegister(
+      std::uint64_t offset, std::span<const std::uint8_t> in);
+  void CreateAdminQueues(NvmeQueues& queues) const;
+
   // As the host last wrote them.
   std::uint32_t configuration_ = 0;
   std::uint32_t admin_queue_sizes_ = 0;
