@@ -54,6 +54,8 @@ class NvmeFrontendLogic {
 
   NvmeHostRegisters host_registers_;
   NvmeQueues queues_;
+  // How many interrupt vectors the frontend has for the host.
+  std::size_t vectors_;
   // Whether the firmware has said it is ready for the host's commands.
   bool ready_ = false;
   // What the host has done that the CPU has not yet acknowledged.

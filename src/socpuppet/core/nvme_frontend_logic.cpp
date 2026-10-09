@@ -51,6 +51,10 @@ constexpr std::uint32_t kReady = 1U << 0;
 
 // What the queue-create register is told.
 constexpr std::uint32_t kCompletionQueue = 1;
+constexpr std::uint32_t kSubmissionQueue = 2;
+
+// The last slot of the longest queue there can be: 65536 entries.
+constexpr std::uint32_t kLongestQueuesLastSlot = 0xFFFF;
 
 // Where in a command the host puts the identifier it gives it.
 constexpr std::size_t kCommandIdOffset = 2;
@@ -62,8 +66,8 @@ constexpr unsigned kStatusTypeShift = 8;
 }  // namespace
 
 NvmeFrontendLogic::NvmeFrontendLogic(MemoryPort& host_memory,
-                                     std::size_t /*vectors*/)
-    : queues_(host_memory) {}
+                                     std::size_t vectors)
+    : queues_(host_memory), vectors_(vectors) {}
 
 bool NvmeFrontendLogic::ReadHostRegister(std::uint64_t offset,
                                          std::span<std::uint8_t> out) const {
@@ -160,16 +164,37 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
 }
 
 bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
+  // Queue 0 of each kind is the admin queue, which the frontend sets up
+  // for itself when the host enables the controller.
+  if (queue_.id == 0 || queue_.id >= NvmeQueues::kQueues ||
+      queue_.last > kLongestQueuesLastSlot) {
+    return false;
+  }
   const NvmeQueues::Ring ring{.base = queue_.base,
                               .last = static_cast<std::uint16_t>(queue_.last)};
-  if (kind == kCompletionQueue) {
-    queues_.CreateCompletionQueue(queue_.id, ring,
-                                  static_cast<std::uint16_t>(queue_.link));
-  } else {
-    queues_.CreateSubmissionQueue(queue_.id, ring,
-                                  static_cast<std::uint16_t>(queue_.link));
+  switch (kind) {
+    case kCompletionQueue:
+      // Its completions are announced on an interrupt vector, which has to
+      // be one the frontend has a line for.
+      if (queues_.HasCompletionQueue(queue_.id) || queue_.link >= vectors_) {
+        return false;
+      }
+      queues_.CreateCompletionQueue(queue_.id, ring,
+                                    static_cast<std::uint16_t>(queue_.link));
+      return true;
+    case kSubmissionQueue:
+      // Its commands' completions go to a completion queue, which has to
+      // be there first.
+      if (queues_.HasSubmissionQueue(queue_.id) ||
+          !queues_.HasCompletionQueue(queue_.link)) {
+        return false;
+      }
+      queues_.CreateSubmissionQueue(queue_.id, ring,
+                                    static_cast<std::uint16_t>(queue_.link));
+      return true;
+    default:
+      return false;
   }
-  return true;
 }
 
 bool NvmeFrontendLogic::Step() {

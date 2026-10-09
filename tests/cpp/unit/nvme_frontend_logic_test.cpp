@@ -534,4 +534,44 @@ TEST(WhenAnNvmeFrontendHasPostedACompletionToAnIoQueue,
   EXPECT_FALSE(rig.frontend.HostInterrupts().Interrupting(0));
 }
 
+// Firmware checks what the host asks for before it has a queue created, so
+// these are the firmware's own mistakes. The frontend still refuses what
+// it could not carry out: the host's memory is not its to guess at.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueItCannotHave, TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuCreatesIoQueues();
+
+  // The admin queues are the frontend's own, and there are eight I/O
+  // queues of each kind.
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 0, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 0, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 9, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 9, 0x5000, 1));
+  // A queue that exists.
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x5000, 1));
+  // A submission queue whose completions would have nowhere to go.
+  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 2, 0x5000, 2));
+  // A completion queue on an interrupt vector the frontend has no line
+  // for: it has two.
+  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 2, 0x5000, 2));
+  // A kind of queue there is not.
+  EXPECT_FALSE(rig.CpuCreates(QueueKind{0}, 2, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(QueueKind{3}, 2, 0x5000, 1));
+}
+
+// A queue's last slot is a 16-bit number, as its size is in the command
+// that asks for it.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueLongerThanAQueueCanBe,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kQueueId, 1);
+  rig.CpuWrite32(kQueueLast, 0x1'0000);
+  rig.CpuWrite32(kQueueLink, 1);
+
+  EXPECT_FALSE(rig.CpuWrite32(kQueueCreate, kCompletionQueue));
+}
+
 }  // namespace socpuppet
