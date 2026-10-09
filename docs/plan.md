@@ -85,9 +85,9 @@ The kit arrives as a Python package, because that is how a firmware developer ge
 
 (board `socpuppet_ssd`; host = Python host stand-in from M2, NAND = ideal)
 
-- a) SSD hardware with a Python "firmware" stand-in in the CPU slot: NVMe frontend (config space, BAR0 registers and doorbells, MSI-X table, SQE fetch engine, DMA engine, completion poster), flash controller, ideal NAND. Exit: M2 host tests and NVMe contract tests pass.
-- b) RV32IMAC CPU, SRAM, DRAM buffer, UART, timer. Exit: Zephyr `hello_world` on `socpuppet_ssd`.
-- c) SSD firmware: admin path, PRP handling, page-mapped FTL. Exit: the same M2 tests pass against the firmware, with data checked against the behavioral device.
+- a) SSD hardware with a "firmware" stand-in in the CPU slot: NVMe frontend (BAR0 registers and doorbells, SQE fetch engine, completion poster, with configuration space and the MSI-X table left to the PCIe endpoint M2 built), DMA engine, flash controller, ideal NAND behind a NAND slot with a contract suite of its own. The stand-in is a script, in Python for pytest and as a C++ coroutine for the contract rig. Exit: M2 host tests and NVMe contract tests pass.
+- b) RV32IMAC CPU, SRAM, DRAM buffer, UART, timer, PLIC. Exit: Zephyr `hello_world` on `socpuppet_ssd`.
+- c) SSD firmware, with drivers for the three devices in socpuppet's Zephyr module: admin path, PRP handling, page-mapped FTL. Exit: the same M2 tests pass against the firmware, with data checked against the behavioral device.
 
 ### M5 — IO-die manager subsystem
 
@@ -134,7 +134,6 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| Single- vs. multi-core SSD controller | M4b | single core |
 | D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
 | Does "bootchain" include a ROM/bootloader stage per image? (not in handoff; ELFs are loaded from Python) | After M8 | no bootloader |
 | `native_sim` firmware tier | Optional, any time after M3 | not built |
@@ -150,6 +149,26 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 ## Status
 
 **M0, M1, M2 and M3 are done.** M4 (the SSD subsystem) and M5 (the IO-die manager) come next, and are independent of each other.
+
+Decided on 2026-10-08, planning M4:
+
+- **One core in the SSD's controller.** One RV32IMAC runs the command path, the admin commands and the FTL in one Zephyr image. That settles the question this plan had left open until M4b. A real controller splits those over several cores, and a second one can be a milestone of its own.
+- **Hardware keeps the queues and firmware makes the decisions.** The NVMe frontend owns everything the host sees and every queue pointer: the registers and doorbells, fetching a command into a slot that the CPU reads, posting its completion, and the interrupt lines. Firmware owns `CSTS.RDY`, decodes each command, and tells the hardware where a queue is once it has agreed to create one. A reset by the host is hardware's to carry out and firmware's to notice. `CAP.TO` says one second, so that a host waits for firmware that is still booting.
+- **One command at a time.** The frontend has one slot, and fetches the next command when firmware has posted the completion of the last. A command whose completion queue is full is not fetched, which is what keeps a full queue from being written over.
+- **Four new models**: `nvme_frontend`, `dma_engine`, `flash_controller` and `ideal_nand`, each a plain C++ core with a thin SystemC wrapper. The PCIe endpoint is unchanged. The frontend's fetches and the DMA engine's transfers share the endpoint's one way up to the host through a router, which is the arbiter a real controller has in front of its PCIe core.
+- **A NAND slot from the start**, with a contract suite, spoken to over TLM with an extension that says read page, program page or erase block. 🎭 The ideal NAND takes no time and lets a page be programmed twice. M9's realistic NAND passes the same suite.
+- **The FTL is a page map and nothing more.** A page is 4 KiB, eight of the drive's blocks, the map is a table in the DRAM buffer, and an overwrite programs the same page again. Only the ideal NAND allows that. M9 is where it stops being allowed, and where garbage collection comes in.
+- **Two firmware stand-ins, as the host has two drivers**: a Python generator in the package (`sp.SsdFirmware`) for pytest and the examples, and a C++ coroutine in the tests' support code for the contract rig, written from the register tables and sharing nothing with the models.
+- **The Zephyr firmware reaches the hardware through drivers in socpuppet's Zephyr module**, with bindings and Kconfig, in Zephyr's device model, and not by writing registers from the application. Zephyr's own flash API is tried on the flash controller first.
+- **`boards/ssd.py` becomes the SSD.** M2's behavioral drive moves to `boards/drive.py`, as `add_behavioral_drive`. The host with a drive keeps the behavioral one until M6.
+- **A fidelity tier is a choice between two description functions in Python**, `add_behavioral_drive` and `add_ssd`, with or without a firmware stand-in. The registry gains no mechanism for it, and parameter schemas stay where they were: not needed yet.
+- **Nothing takes time yet.** DMA, flash and NAND are immediate throughout M4. The DMA engine's registers are where latency starts when a milestone wants it.
+
+The steps, in order. Each ends with its own exit test and a docs commit.
+
+- **M4a**: the NAND and its contract, the flash controller, the DMA engine, the frontend (core, then model), the Python stand-in and the board, the C++ stand-in and the contract rig. Exit: all of the NVMe contract against the SSD, and `tests/python/test_m4a_exit.py`, M2's three scenarios against it.
+- **M4b**: `zephyr,sram` goes to the memory that holds the reset vector, devicetree nodes and bindings for the three devices, the controller kit in `add_ssd`, the SoC `socpuppet_rv32` and the board. Exit: `tests/python/test_m4b_exit.py`.
+- **M4c**: the drivers, the application in `firmware/ssd/`, then one behaviour at a time against the tests the Python stand-in already passes. Exit: `tests/python/test_m4_exit.py`, with the SSD and the behavioral drive in one platform, given the same writes and read back.
 
 What M3b delivered: stock Zephyr 4.4.2 on the host board finds the drive by scanning the PCIe bus, starts it with its own NVMe driver, and reads and writes blocks. The exit test is `tests/python/test_m3b_exit.py`, which boots Zephyr's own test of its disk interface (`tests/drivers/disk/disk_access`), unchanged. [boot-your-firmware.md](boot-your-firmware.md) says how to build an application of your own for it.
 
@@ -204,7 +223,7 @@ Left out of M0 on purpose, because nothing in M0 could exercise them. Each belon
 | Item from the M0 list | Where it goes | Why |
 |---|---|---|
 | "Resolved" JSON dump after build | done in M2, without a second dump | `to_json()` includes what a component works out from the description (the root complex is the first: where its memory window is). It is the same before and after build. |
-| Parameter schemas and fidelity tiers in the registry | M4 | Parameters are plain name → number so far, checked by a catalogue parity test, and M2's models needed nothing more. A tier is a choice between implementations of one slot, and M4's SSD is the first second implementation. |
+| Parameter schemas and fidelity tiers in the registry | when a model needs a parameter that is not a number | Parameters are plain name → number so far, checked by a catalogue parity test and by the factory's own ranges. A tier turned out to need no mechanism: planning M4, it is a choice between two description functions in Python. |
 | Driving wires from Python | M5 | The scripted IO-die manager is the first thing that needs to release a reset from Python. |
 
 Things later milestones should know:
