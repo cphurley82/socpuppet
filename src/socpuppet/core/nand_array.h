@@ -29,6 +29,9 @@ enum class NandResult {
 
 // The cells of a NAND flash chip, with no simulator in them: pages that
 // are read and programmed whole, in blocks that are erased whole.
+//
+// It is an ideal chip. A page may be programmed again without erasing its
+// block first, which no real NAND allows, and nothing wears out.
 class NandArray {
  public:
   explicit NandArray(const NandGeometry& geometry) : geometry_(geometry) {}

@@ -140,4 +140,16 @@ TEST(WhenTheDataIsNotOnePageLong, ProgrammingIsRefused) {
             std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
 }
 
+// What makes this array ideal. A real NAND cell can only be changed from
+// one to zero by programming, so a page has to be erased, a whole block at
+// a time, before it can hold something new.
+TEST(WhenAPageIsProgrammedASecondTime, ItHoldsWhatWasProgrammedLast) {
+  NandArray nand{kSmall};
+  ASSERT_EQ(nand.ProgramPage(2, 5, SomePage(10)), NandResult::kDone);
+
+  ASSERT_EQ(nand.ProgramPage(2, 5, SomePage(20)), NandResult::kDone);
+
+  EXPECT_EQ(PageAt(nand, 2, 5), SomePage(20));
+}
+
 }  // namespace socpuppet
