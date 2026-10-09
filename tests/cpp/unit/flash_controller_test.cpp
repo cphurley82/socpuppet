@@ -237,4 +237,20 @@ TEST(WhenAFlashControllerIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
   EXPECT_EQ(rig.Read32(kStatus), 0U);
 }
 
+TEST(WhenOneIsWrittenToAStatusBitOfAFlashController, TheBitIsCleared) {
+  Rig done;
+  done.Write32(kCommand, kReadPage);
+  done.controller.CarryOut();
+  Rig error;
+  error.Write32(kBlock, 4);
+  error.Write32(kCommand, kReadPage);
+  error.controller.CarryOut();
+
+  done.Write32(kStatus, kDone);
+  error.Write32(kStatus, kError);
+
+  EXPECT_EQ(done.Read32(kStatus), 0U);
+  EXPECT_EQ(error.Read32(kStatus), 0U);
+}
+
 }  // namespace socpuppet
