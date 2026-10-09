@@ -109,7 +109,13 @@ def idle_host() -> Iterator[Operation]:
     yield from ()
 
 
-def bring_up_the_drive() -> Steps[NvmeHost]:
+def bring_up_the_drive(
+    *,
+    ecam: int = ECAM_BASE,
+    window: int = PCIE_WINDOW_BASE,
+    memory: int = RAM_BASE,
+    memory_size: int | None = None,
+) -> Steps[NvmeHost]:
     """What the scripted host does before any I/O: find the drive, enable it.
 
     A piece of a host script, to hand over to with `yield from`. It scans
@@ -117,14 +123,22 @@ def bring_up_the_drive() -> Steps[NvmeHost]:
     sent to the host's MSI receiver, and enables the controller. What
     comes back is the host's NVMe driver, 🎭 a stand-in too:
     `read_blocks`, `write_blocks` and `identify_namespace`.
+
+    With nothing said, it is the drive on `add_scripted_host`'s own link.
+    A host with a second root complex says where that one's two windows
+    are, with `ecam` and `window`, and gives each drive's driver memory of
+    its own to work in, with `memory` and `memory_size`.
     """
-    pci = PcieHost(ecam=ECAM_BASE)
+    pci = PcieHost(ecam=ecam)
     (drive,) = yield from pci.scan()
-    yield from pci.place(drive, PCIE_WINDOW_BASE)
+    yield from pci.place(drive, window)
     msi = MsiHost(receiver=MSI_BASE)
     yield from pci.route_interrupts(drive, to=msi)
     nvme = NvmeHost(
-        registers=PCIE_WINDOW_BASE, memory=RAM_BASE, interrupt=msi.wait
+        registers=window,
+        memory=memory,
+        memory_size=memory_size,
+        interrupt=msi.wait,
     )
     yield from nvme.enable()
     return nvme

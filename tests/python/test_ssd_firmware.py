@@ -50,12 +50,13 @@ INVALID_QUEUE_SIZE = (1, 0x02)
 INVALID_INTERRUPT_VECTOR = (1, 0x08)
 
 
-def host_with_an_ssd(script, firmware=None, blocks=BLOCKS):
+def host_with_an_ssd(script, *, firmware, blocks=BLOCKS):
     """A scripted host with a RAM and an SSD of `blocks` blocks, built.
 
-    The SSD's firmware is `firmware`, or a stand-in of the platform's own.
+    `firmware` is the stand-in for the SSD's firmware, or None for an SSD
+    with a CPU, into which firmware is still to be loaded. Returns the
+    platform and the SSD.
     """
-    firmware = firmware or stand_in_firmware()
     platform = sp.Platform()
     host = platform.add("host", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
@@ -64,7 +65,7 @@ def host_with_an_ssd(script, firmware=None, blocks=BLOCKS):
         platform,
         blocks=blocks,
         group=platform.group("ssd"),
-        firmware=firmware.script,
+        firmware=None if firmware is None else firmware.script,
     )
     platform.connect(host.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
@@ -72,7 +73,45 @@ def host_with_an_ssd(script, firmware=None, blocks=BLOCKS):
     ssd.uplink.map(bus.add_input(), base=0, size=UPLINK_REACH)
     platform.connect(ssd.frontend.irq0, host.irq)
     platform.build()
-    return platform
+    return platform, ssd
+
+
+@pytest.fixture(params=["a script for firmware", "Zephyr for firmware"])
+def run_on_an_ssd(request, firmware):
+    """Runs a host's script to its end, on a host with an SSD.
+
+    Every test that asks for this runs twice: once with 🎭 the Python
+    stand-in for the SSD's firmware, and once with the real thing, the
+    Zephyr application in firmware/ssd on the SSD's own CPU. What a host
+    sees has to be the same.
+    """
+    image = (
+        firmware("ssd_socpuppet_ssd.elf")
+        if request.param == "Zephyr for firmware"
+        else None
+    )
+
+    def run(script, blocks=BLOCKS):
+        finished = []
+
+        def to_its_end():
+            yield from script()
+            finished.append(True)
+
+        platform, ssd = host_with_an_ssd(
+            to_its_end,
+            firmware=None if image else stand_in_firmware(),
+            blocks=blocks,
+        )
+        if image:
+            platform.load_elf(image, via=ssd.cpu.socket)
+        # A script takes no simulated time at all, and the firmware a few
+        # milliseconds to boot and less for a command. A second is far
+        # more than either, and still ends a run that would never finish.
+        platform.run_until(lambda: bool(finished), timeout=sp.ms(1000))
+        assert finished, "The host's script did not get to its end."
+
+    return run
 
 
 def some_data(blocks):
@@ -82,40 +121,50 @@ def some_data(blocks):
     )
 
 
-def what_a_driver_does(steps):
+@pytest.fixture
+def what_a_driver_does(run_on_an_ssd):
     """Runs `steps(nvme)` as the host, with the driver stand-in enabled.
 
     Returns what the steps return.
     """
-    returned = []
 
-    def script():
-        nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
-        yield from nvme.enable()
-        returned.append((yield from steps(nvme)))
+    def run(steps):
+        returned = []
 
-    host_with_an_ssd(script).run()
-    (value,) = returned
-    return value
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            returned.append((yield from steps(nvme)))
+
+        run_on_an_ssd(script)
+        (value,) = returned
+        return value
+
+    return run
 
 
-def what_a_raw_host_gets(steps):
+@pytest.fixture
+def what_a_raw_host_gets(run_on_an_ssd):
     """Runs `steps(host)` as the host, enabled. Returns what they return."""
-    returned = []
 
-    def script():
-        host = RawNvmeHost(registers=NVME_BASE, memory=RAM_BASE)
-        yield from host.enable()
-        returned.append((yield from steps(host)))
+    def run(steps):
+        returned = []
 
-    host_with_an_ssd(script).run()
-    (value,) = returned
-    return value
+        def script():
+            host = RawNvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from host.enable()
+            returned.append((yield from steps(host)))
+
+        run_on_an_ssd(script)
+        (value,) = returned
+        return value
+
+    return run
 
 
 @pytest.mark.platform
 class TestWhenADriverIdentifiesTheSsdsNamespace:
-    def test_it_learns_how_many_blocks_the_nand_holds(self):
+    def test_it_learns_how_many_blocks_the_nand_holds(self, what_a_driver_does):
         def steps(nvme):
             return (yield from nvme.identify_namespace())
 
@@ -127,7 +176,7 @@ class TestWhenADriverIdentifiesTheSsdsNamespace:
 @pytest.mark.platform
 class TestWhenADriverReadsABlockThatWasNeverWritten:
     # An erased NAND page is all ones. The zeros are the firmware's.
-    def test_it_gets_a_block_of_zeros(self):
+    def test_it_gets_a_block_of_zeros(self, what_a_driver_does):
         def steps(nvme):
             return (yield from nvme.read_blocks(first=3, count=1))
 
@@ -144,7 +193,9 @@ class TestWhenADriverWritesBlocksAndReadsThemBack:
             pytest.param(13, 24, id="a list of pages, across NAND pages"),
         ],
     )
-    def test_they_are_as_they_were_written(self, first, count):
+    def test_they_are_as_they_were_written(
+        self, what_a_driver_does, first, count
+    ):
         written = some_data(count)
 
         def steps(nvme):
@@ -153,7 +204,9 @@ class TestWhenADriverWritesBlocksAndReadsThemBack:
 
         assert what_a_driver_does(steps) == written
 
-    def test_the_blocks_around_them_in_the_same_nand_page_are_untouched(self):
+    def test_the_blocks_around_them_in_the_same_nand_page_are_untouched(
+        self, what_a_driver_does
+    ):
         def steps(nvme):
             yield from nvme.write_blocks(first=2, data=bytes([0x11]) * 512)
             yield from nvme.write_blocks(first=3, data=bytes([0x22]) * 512)
@@ -166,7 +219,9 @@ class TestWhenADriverWritesBlocksAndReadsThemBack:
     # The firmware has one page of buffer. A drive that only remembered
     # what went through it last would pass a test that reads back what it
     # has just written.
-    def test_they_are_still_there_after_blocks_far_away_are_written(self):
+    def test_they_are_still_there_after_blocks_far_away_are_written(
+        self, what_a_driver_does
+    ):
         written = some_data(1)
 
         def steps(nvme):
@@ -178,7 +233,9 @@ class TestWhenADriverWritesBlocksAndReadsThemBack:
 
         assert what_a_driver_does(steps) == written
 
-    def test_they_are_still_there_after_a_controller_reset(self):
+    def test_they_are_still_there_after_a_controller_reset(
+        self, what_a_driver_does
+    ):
         written = some_data(1)
 
         def steps(nvme):
@@ -192,14 +249,14 @@ class TestWhenADriverWritesBlocksAndReadsThemBack:
 
 @pytest.mark.platform
 class TestWhenADriverAsksForBlocksPastTheEndOfTheSsd:
-    def test_a_read_is_refused_as_out_of_range(self):
+    def test_a_read_is_refused_as_out_of_range(self, what_a_driver_does):
         def steps(nvme):
             yield from nvme.read_blocks(first=BLOCKS - 1, count=2)
 
         with pytest.raises(sp.NvmeError, match=r"(?i)out of range"):
             what_a_driver_does(steps)
 
-    def test_a_write_is_refused_and_writes_nothing(self):
+    def test_a_write_is_refused_and_writes_nothing(self, what_a_driver_does):
         def steps(nvme):
             with pytest.raises(sp.NvmeError, match=r"(?i)out of range"):
                 yield from nvme.write_blocks(
@@ -213,7 +270,7 @@ class TestWhenADriverAsksForBlocksPastTheEndOfTheSsd:
 @pytest.mark.platform
 class TestWhenAHostSendsAnAdminCommandTheSsdDoesNotHave:
     # Opcode 0x7F is one the specification does not assign.
-    def test_it_completes_as_an_invalid_opcode(self):
+    def test_it_completes_as_an_invalid_opcode(self, what_a_raw_host_gets):
         def steps(host):
             return (yield from host.admin(opcode=0x7F))
 
@@ -222,7 +279,7 @@ class TestWhenAHostSendsAnAdminCommandTheSsdDoesNotHave:
 
 @pytest.mark.platform
 class TestWhenAHostIdentifies:
-    def identified(self, what, namespace=0):
+    def identified(self, what_a_raw_host_gets, what, namespace=0):
         """The completion of an Identify, and the page it filled."""
 
         def steps(host):
@@ -236,27 +293,35 @@ class TestWhenAHostIdentifies:
 
         return what_a_raw_host_gets(steps)
 
-    def test_the_controller_says_it_has_one_namespace(self):
-        completion, page = self.identified(what=0x01)
+    def test_the_controller_says_it_has_one_namespace(
+        self, what_a_raw_host_gets
+    ):
+        completion, page = self.identified(what_a_raw_host_gets, what=0x01)
 
         assert completion.status == SUCCESS
         # The number of namespaces is 32 bits at offset 516.
         assert struct.unpack_from("<I", page, 516) == (1,)
 
-    def test_the_list_of_active_namespaces_holds_namespace_one_alone(self):
-        completion, page = self.identified(what=0x02)
+    def test_the_list_of_active_namespaces_holds_namespace_one_alone(
+        self, what_a_raw_host_gets
+    ):
+        completion, page = self.identified(what_a_raw_host_gets, what=0x02)
 
         assert completion.status == SUCCESS
         assert struct.unpack_from("<II", page) == (1, 0)
 
-    def test_namespace_two_is_an_invalid_namespace(self):
-        completion, _ = self.identified(what=0x00, namespace=2)
+    def test_namespace_two_is_an_invalid_namespace(self, what_a_raw_host_gets):
+        completion, _ = self.identified(
+            what_a_raw_host_gets, what=0x00, namespace=2
+        )
 
         assert completion.status == INVALID_NAMESPACE
 
     # 0x7F is not something Identify can be asked for.
-    def test_something_identify_cannot_be_asked_for_is_an_invalid_field(self):
-        completion, _ = self.identified(what=0x7F)
+    def test_something_identify_cannot_be_asked_for_is_an_invalid_field(
+        self, what_a_raw_host_gets
+    ):
+        completion, _ = self.identified(what_a_raw_host_gets, what=0x7F)
 
         assert completion.status == INVALID_FIELD
 
@@ -265,7 +330,9 @@ class TestWhenAHostIdentifies:
 class TestWhenAHostSetsAFeature:
     # Feature 7 is the number of queues. The host asks for one of each, and
     # the answer is what the drive has, counted from zero, in both halves.
-    def test_the_number_of_queues_is_answered_with_how_many_the_ssd_has(self):
+    def test_the_number_of_queues_is_answered_with_how_many_the_ssd_has(
+        self, what_a_raw_host_gets
+    ):
         def steps(host):
             return (
                 yield from host.admin(opcode=raw_nvme.SET_FEATURES, dword10=7)
@@ -277,7 +344,9 @@ class TestWhenAHostSetsAFeature:
         from_zero = IO_QUEUE_PAIRS - 1
         assert completion.result == from_zero << 16 | from_zero
 
-    def test_a_feature_the_ssd_does_not_have_is_an_invalid_field(self):
+    def test_a_feature_the_ssd_does_not_have_is_an_invalid_field(
+        self, what_a_raw_host_gets
+    ):
         def steps(host):
             return (
                 yield from host.admin(
@@ -334,7 +403,9 @@ class TestWhenAHostAsksForACompletionQueueItCannotHave:
             ),
         ],
     )
-    def test_it_is_refused(self, queue_id, entries, vector, status):
+    def test_it_is_refused(
+        self, what_a_raw_host_gets, queue_id, entries, vector, status
+    ):
         def steps(host):
             return (
                 yield from create(
@@ -348,7 +419,9 @@ class TestWhenAHostAsksForACompletionQueueItCannotHave:
 
         assert what_a_raw_host_gets(steps).status == status
 
-    def test_one_that_exists_is_an_invalid_queue_identifier(self):
+    def test_one_that_exists_is_an_invalid_queue_identifier(
+        self, what_a_raw_host_gets
+    ):
         def steps(host):
             yield from host.create_io_queues()
             return (
@@ -394,7 +467,9 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
             ),
         ],
     )
-    def test_it_is_refused(self, queue_id, entries, status):
+    def test_it_is_refused(
+        self, what_a_raw_host_gets, queue_id, entries, status
+    ):
         def steps(host):
             yield from host.create_io_queues()
             return (
@@ -410,7 +485,7 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
         assert what_a_raw_host_gets(steps).status == status
 
     def test_one_before_its_completion_queue_is_a_completion_queue_invalid(
-        self,
+        self, what_a_raw_host_gets
     ):
         def steps(host):
             return (
@@ -429,7 +504,9 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
 class TestWhenAHostResetsTheSsd:
     # A queue that exists cannot be asked for again, so being given it
     # again says it was gone.
-    def test_an_io_queue_it_had_can_be_asked_for_again(self):
+    def test_an_io_queue_it_had_can_be_asked_for_again(
+        self, what_a_raw_host_gets
+    ):
         def steps(host):
             yield from host.create_io_queues()
             yield from host.disable()
@@ -448,32 +525,45 @@ class TestWhenAHostResetsTheSsd:
 
 @pytest.mark.platform
 class TestWhenAHostSendsAnIoCommand:
-    def io(self, **command):
+    def io(self, what_a_raw_host_gets, **command):
         def steps(host):
             yield from host.create_io_queues()
             return (yield from host.io(**command))
 
         return what_a_raw_host_gets(steps).status
 
-    def test_a_flush_succeeds(self):
-        assert self.io(opcode=raw_nvme.FLUSH, namespace=1) == SUCCESS
+    def test_a_flush_succeeds(self, what_a_raw_host_gets):
+        assert (
+            self.io(what_a_raw_host_gets, opcode=raw_nvme.FLUSH, namespace=1)
+            == SUCCESS
+        )
 
     # Opcode 3 is one the NVM command set does not assign.
-    def test_one_the_ssd_does_not_have_is_an_invalid_opcode(self):
-        assert self.io(opcode=0x03, namespace=1) == INVALID_OPCODE
-
-    @pytest.mark.parametrize("opcode", [raw_nvme.READ, raw_nvme.WRITE])
-    def test_a_read_or_a_write_of_namespace_two_is_an_invalid_namespace(
-        self, opcode
+    def test_one_the_ssd_does_not_have_is_an_invalid_opcode(
+        self, what_a_raw_host_gets
     ):
         assert (
-            self.io(opcode=opcode, namespace=2, data=DATA) == INVALID_NAMESPACE
+            self.io(what_a_raw_host_gets, opcode=0x03, namespace=1)
+            == INVALID_OPCODE
         )
 
     @pytest.mark.parametrize("opcode", [raw_nvme.READ, raw_nvme.WRITE])
-    def test_data_where_nothing_answers_is_a_data_transfer_error(self, opcode):
+    def test_a_read_or_a_write_of_namespace_two_is_an_invalid_namespace(
+        self, what_a_raw_host_gets, opcode
+    ):
         assert (
-            self.io(opcode=opcode, namespace=1, data=NOWHERE)
+            self.io(what_a_raw_host_gets, opcode=opcode, namespace=2, data=DATA)
+            == INVALID_NAMESPACE
+        )
+
+    @pytest.mark.parametrize("opcode", [raw_nvme.READ, raw_nvme.WRITE])
+    def test_data_where_nothing_answers_is_a_data_transfer_error(
+        self, what_a_raw_host_gets, opcode
+    ):
+        assert (
+            self.io(
+                what_a_raw_host_gets, opcode=opcode, namespace=1, data=NOWHERE
+            )
             == DATA_TRANSFER_ERROR
         )
 
@@ -493,7 +583,8 @@ class TestWhenADriverHasWrittenToPagesOfTheSsd:
             yield from nvme.write_blocks(first=0, data=bytes(512))
             yield from nvme.write_blocks(first=505, data=bytes(512))
 
-        host_with_an_ssd(script, firmware).run()
+        platform, _ = host_with_an_ssd(script, firmware=firmware)
+        platform.run()
 
         assert firmware.page_map == {63: 0, 0: 1}
 
@@ -503,7 +594,9 @@ class TestWhenADriverWritesMorePagesThanOneNandBlockHolds:
     # A NAND block is 64 pages, and the firmware fills the NAND a page at a
     # time, so the 65th page written is the first of the second block. 65
     # pages are 520 of the drive's blocks.
-    def test_what_went_to_the_second_nand_block_is_as_it_was_written(self):
+    def test_what_went_to_the_second_nand_block_is_as_it_was_written(
+        self, run_on_an_ssd
+    ):
         written = some_data(520)
         read_back = []
 
@@ -514,7 +607,7 @@ class TestWhenADriverWritesMorePagesThanOneNandBlockHolds:
             read_back.append((yield from nvme.read_blocks(first=0, count=8)))
             read_back.append((yield from nvme.read_blocks(first=512, count=8)))
 
-        host_with_an_ssd(script, blocks=2 * BLOCKS).run()
+        run_on_an_ssd(script, blocks=2 * BLOCKS)
 
         assert read_back == [written[:4096], written[512 * 512 :]]
 
@@ -530,7 +623,9 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
     # is to a list of pointers to the rest. A list that fills its own page
     # ends with a pointer to more of the list.
 
-    def test_a_list_that_runs_on_into_a_second_list_is_followed(self):
+    def test_a_list_that_runs_on_into_a_second_list_is_followed(
+        self, what_a_raw_host_gets
+    ):
         # Four pages of data. The list starts 16 bytes before the end of
         # its page, so it has room for two entries: one page of data, and
         # the way on to the second list, which has the other two.
@@ -571,7 +666,9 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
         assert written.status == SUCCESS
         assert read_back == [page_of(0x10 + index) for index in range(4)]
 
-    def test_a_list_where_nothing_answers_is_a_data_transfer_error(self):
+    def test_a_list_where_nothing_answers_is_a_data_transfer_error(
+        self, what_a_raw_host_gets
+    ):
         def steps(host):
             yield from host.create_io_queues()
             return (
@@ -588,7 +685,7 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
 
     # A pointer is eight bytes, and a list of them starts where one can.
     def test_a_list_that_does_not_start_at_a_pointer_is_a_prp_offset_invalid(
-        self,
+        self, what_a_raw_host_gets
     ):
         def steps(host):
             yield from host.create_io_queues()
@@ -607,7 +704,7 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
 
 @pytest.mark.platform
 class TestWhenAHostIdentifiesWithItsDataWhereNothingAnswers:
-    def test_it_is_a_data_transfer_error(self):
+    def test_it_is_a_data_transfer_error(self, what_a_raw_host_gets):
         def steps(host):
             return (
                 yield from host.admin(
