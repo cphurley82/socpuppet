@@ -45,6 +45,9 @@ class FlashController : public sc_core::sc_module,
       : sc_module(name), logic_(*this, *this) {
     cpu.register_b_transport(this, &FlashController::b_transport);
     SC_THREAD(Work);
+    SC_METHOD(DriveTheLine);
+    sensitive << line_may_have_changed_;
+    dont_initialize();
   }
 
  private:
@@ -62,9 +65,14 @@ class FlashController : public sc_core::sc_module,
   void Work() {
     for (;;) {
       wait(work_);
-      logic_.CarryOut();
+      if (logic_.CarryOut()) line_may_have_changed_.notify();
     }
   }
+
+  // The only process that writes the line. A SystemC signal takes one
+  // writer, and both the CPU's access and the controller's own work change
+  // what the line should say.
+  void DriveTheLine() { irq.write(logic_.Interrupting()); }
 
   // NandPort: the chip.
   std::optional<NandGeometry> Geometry() override {
@@ -99,6 +107,8 @@ class FlashController : public sc_core::sc_module,
   // Notified when the CPU has written to a register, which may have given
   // the controller something to do.
   sc_core::sc_event work_;
+  // Notified when what the interrupt line should say may have changed.
+  sc_core::sc_event line_may_have_changed_;
 };
 
 }  // namespace socpuppet

@@ -23,6 +23,7 @@ namespace {
 // docs/models/ gives them.
 constexpr std::uint64_t kCommand = 0x00;
 constexpr std::uint64_t kStatus = 0x04;
+constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
 constexpr std::uint64_t kLocal = 0x14;
@@ -32,6 +33,7 @@ constexpr std::uint32_t kReadPage = 1;
 constexpr std::uint32_t kProgramPage = 2;
 
 // The bits of the status register.
+constexpr std::uint32_t kDone = 1U << 0;
 constexpr std::uint32_t kBusy = 1U << 2;
 
 // A page is 16 bytes on the chip these tests use.
@@ -87,6 +89,10 @@ struct CpuWithAFlashController {
     platform.DebugWrite("flash.local", address, std::as_bytes(std::span{data}));
   }
 
+  LineWatcher& InterruptLine() {
+    return platform.ModuleAt<LineWatcher>("watcher");
+  }
+
   Platform platform;
 };
 
@@ -116,6 +122,41 @@ TEST(WhenACpuHasAFlashControllerProgramAPageAndReadItBack,
   fixture.platform.Run();
 
   EXPECT_EQ(fixture.BufferAt(0x80), SomePage());
+}
+
+// The controller works alongside the CPU, not inside the CPU's write: when
+// the write to the command register returns, nothing has been done yet.
+// The work is done in the next delta cycle, in which the CPU and the
+// controller may run in either order, so the CPU gives it two.
+TEST(WhenACpuHasJustToldAFlashControllerToDoSomething,
+     ItIsBusyWhenTheWriteReturnsAndDoneOnceItHasHadItsTurn) {
+  std::uint32_t when_the_write_returned = 0;
+  std::uint32_t afterwards = 0;
+  CpuWithAFlashController fixture{[&](BusDriver& cpu) {
+    cpu.Write32(kCommand, kReadPage);
+    when_the_write_returned = cpu.Read32(kStatus);
+    cpu.WaitFor(sc_core::SC_ZERO_TIME);
+    cpu.WaitFor(sc_core::SC_ZERO_TIME);
+    afterwards = cpu.Read32(kStatus);
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(when_the_write_returned, kBusy);
+  EXPECT_EQ(afterwards, kDone);
+}
+
+TEST(WhenAFlashControllerFinishesACommandWithItsInterruptEnabled,
+     ItsLineRisesAndStaysHigh) {
+  CpuWithAFlashController fixture{[](BusDriver& cpu) {
+    cpu.Write32(kInterruptEnable, kDone);
+    cpu.Write32(kCommand, kReadPage);
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.InterruptLine().Rises(), 1);
+  EXPECT_TRUE(fixture.InterruptLine().line->read());
 }
 
 }  // namespace socpuppet
