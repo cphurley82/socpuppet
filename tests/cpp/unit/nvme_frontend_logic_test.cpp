@@ -373,4 +373,21 @@ TEST(WhenTheCpuPostsTheCompletionOfTheWaitingCommand,
                         .status_type = 0}));
 }
 
+// NVMe has a list of status codes that mean the same for every command,
+// and each command has a list of its own. Type 1 is the command's own.
+TEST(WhenTheCpuPostsAStatusFromTheCommandsOwnList,
+     TheCompletionSaysWhichListItIsFrom) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  rig.CpuPosts(/*status=*/1U << 8 | 0x01);
+  rig.frontend.Step();
+
+  const Completion posted = rig.HostReadsCompletion(kAdminCompletionQueue, 0);
+  EXPECT_EQ(posted.status, 0x01);
+  EXPECT_EQ(posted.status_type, 1);
+}
+
 }  // namespace socpuppet
