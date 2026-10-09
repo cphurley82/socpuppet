@@ -174,6 +174,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | machine timer | `MachineTimerContract` | `MachineTimer` |
 | interrupt controller | `InterruptControllerContract` | `Plic` |
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme` |
+| NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 
 When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
 
@@ -186,6 +187,7 @@ When the real die-to-die link arrives it passes `LinkContract` too, and the plat
 Each has a page saying what real hardware it stands for and what it leaves out.
 
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
+- [Flash controller](models/flash-controller.md)
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
@@ -195,6 +197,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Router](models/router.md)
 - [UART (16550)](models/ns16550.md)
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
+- 🎭 [Ideal NAND](models/ideal-nand.md)
 - 🎭 [MSI receiver](models/msi-receiver.md)
 - 🎭 [NVMe host driver](models/nvme-host.md)
 - 🎭 [PCIe host](models/pcie-host.md)

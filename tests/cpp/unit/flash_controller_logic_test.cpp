@@ -19,8 +19,8 @@ namespace socpuppet {
 
 namespace {
 
-// The controller's registers, each 32 bits wide, as its page in
-// docs/models/ gives them.
+// The controller's registers, each 32 bits wide, as
+// docs/models/flash-controller.md gives them.
 constexpr std::uint64_t kCommand = 0x00;
 constexpr std::uint64_t kStatus = 0x04;
 constexpr std::uint64_t kInterruptEnable = 0x08;
