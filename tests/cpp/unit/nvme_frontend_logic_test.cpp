@@ -66,6 +66,22 @@ constexpr std::uint32_t kReady = 1U << 0;
 constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
 constexpr std::uint64_t kAdminCompletionQueue = 0x2000;
 
+// How long a command is, and where in it the host puts the identifier it
+// gives the command.
+constexpr std::size_t kCommandBytes = 64;
+constexpr std::size_t kCommandIdOffset = 2;
+
+// A command with an identifier, and otherwise bytes that are all different
+// and that differ from another command's.
+std::vector<std::uint8_t> SomeCommand(std::uint16_t command_id) {
+  std::vector<std::uint8_t> command(kCommandBytes);
+  for (std::size_t index = 0; index < command.size(); ++index) {
+    command[index] = static_cast<std::uint8_t>(index + (7 * command_id) + 1);
+  }
+  StoreLittleEndian(command_id, std::span{command}.subspan(kCommandIdOffset));
+  return command;
+}
+
 // The host's memory: 64 KiB of it, at address 0.
 class HostMemory : public MemoryPort {
  public:
@@ -84,6 +100,8 @@ class HostMemory : public MemoryPort {
 struct Rig {
   HostMemory memory;
   NvmeFrontendLogic frontend{memory, /*vectors=*/2};
+  // Where the host will put its next admin command.
+  std::uint16_t admin_tail = 0;
 
   // A register as the host reads it. The bytes do not start out as zeros,
   // so that a register the frontend leaves untouched is not taken for one
@@ -125,6 +143,21 @@ struct Rig {
   }
   bool CpuWrite32(std::uint64_t offset, std::uint32_t value) {
     return frontend.WriteCpuRegister(offset, LittleEndianBytes(value));
+  }
+
+  // What a host does to submit a command to its admin queue: it writes the
+  // command into the queue's next slot, and the new tail to the doorbell.
+  void HostSubmits(const std::vector<std::uint8_t>& command) {
+    memory.Write(kAdminSubmissionQueue + (admin_tail * kCommandBytes), command);
+    admin_tail = static_cast<std::uint16_t>((admin_tail + 1) % 4);
+    HostWrite32(kDoorbells, admin_tail);
+  }
+
+  // The command that is waiting for the CPU, as the CPU reads it.
+  std::vector<std::uint8_t> CommandWaiting() const {
+    std::vector<std::uint8_t> command(kCommandBytes, 0xA5);
+    EXPECT_TRUE(frontend.ReadCpuRegister(kCommand, command));
+    return command;
   }
 
   // Whether the host sees the controller as ready: CSTS.RDY.
@@ -204,6 +237,18 @@ TEST(WhenTheCpuAcknowledgesOneOfTwoThingsTheHostHasDone,
   rig.CpuWrite32(kStatus, kDisabled);
 
   EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
+}
+
+TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+  EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
 }
 
 }  // namespace socpuppet

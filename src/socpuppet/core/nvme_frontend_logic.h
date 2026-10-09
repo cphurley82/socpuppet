@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 #include "socpuppet/core/memory_port.h"
@@ -34,6 +35,11 @@ class NvmeFrontendLogic {
   bool ReadCpuRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
   bool WriteCpuRegister(std::uint64_t offset, std::span<const std::uint8_t> in);
 
+  // Does what there is to do in the host's memory: fetches the next
+  // command, if the CPU is not still busy with the last. Returns whether
+  // it did anything.
+  bool Step();
+
  private:
   NvmeHostRegisters host_registers_;
   NvmeQueues queues_;
@@ -41,6 +47,10 @@ class NvmeFrontendLogic {
   bool ready_ = false;
   // What the host has done that the CPU has not yet acknowledged.
   std::uint32_t events_ = 0;
+  // The command the CPU is to deal with next, if there is one. There is
+  // room for one: the next is fetched when this one's completion has been
+  // posted.
+  std::optional<NvmeQueues::Command> command_;
 };
 
 }  // namespace socpuppet
