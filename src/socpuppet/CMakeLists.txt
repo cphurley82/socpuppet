@@ -153,6 +153,7 @@ target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     models/behavioral_nvme.h
     models/command_device.h
+    models/dma_engine.h
     models/flash_controller.h
     models/ideal_nand.h
     models/interrupt_lines.h

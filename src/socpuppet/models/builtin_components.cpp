@@ -11,6 +11,7 @@
 
 #include "socpuppet/models/behavioral_nvme.h"
 #include "socpuppet/models/dbt_rise_cpu.h"
+#include "socpuppet/models/dma_engine.h"
 #include "socpuppet/models/flash_controller.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/machine_timer.h"
@@ -90,6 +91,17 @@ Registry BuiltinComponents() {
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("dma_engine", [](const char* name, Parameters&) {
+    auto module = std::make_unique<DmaEngine>(name);
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("host", module->host),
+                            InitiatorPort("local", module->local),
+                            // Firmware may poll the status and leave the
+                            // line alone.
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("flash_controller", [](const char* name, Parameters&) {

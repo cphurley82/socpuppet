@@ -367,6 +367,29 @@ class DbtRiseCpu(Component):
             )
 
 
+class DmaEngine(Component):
+    """The part of an SSD's controller that copies to and from the host.
+
+    🎓 DMA is direct memory access: a device reading and writing memory by
+    itself. The SSD's CPU says where in the host's memory, where in the
+    SSD's own, and how many bytes, and the engine copies them one way or
+    the other. `cpu` is its register block, `host` is how it reaches the
+    host's memory, `local` the SSD's own, and `irq` is high while it has
+    something to tell the CPU, if the CPU asked to be told.
+    """
+
+    implementation = "dma_engine"
+    port_specs = (
+        target("cpu"),
+        initiator("host"),
+        initiator("local"),
+        # Firmware may poll the status register and leave the line alone.
+        wire_out("irq", required=False),
+    )
+    #: Seven 32-bit registers, and room for one more.
+    mapped_size = 0x20
+
+
 class FlashController(Component):
     """The part of an SSD's controller that works the NAND flash chip.
 
