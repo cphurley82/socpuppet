@@ -253,4 +253,24 @@ TEST(WhenOneIsWrittenToAStatusBitOfAFlashController, TheBitIsCleared) {
   EXPECT_EQ(error.Read32(kStatus), 0U);
 }
 
+TEST(WhenZeroIsWrittenToAStatusBitOfAFlashController, TheBitStaysAsItWas) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+  rig.controller.CarryOut();
+
+  rig.Write32(kStatus, kError);
+
+  EXPECT_EQ(rig.Read32(kStatus), kDone);
+}
+
+// Busy is the controller's to say, and not the CPU's to take back.
+TEST(WhenOneIsWrittenToTheBusyBitOfAFlashController, ItStaysBusy) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+
+  rig.Write32(kStatus, kBusy);
+
+  EXPECT_EQ(rig.Read32(kStatus), kBusy);
+}
+
 }  // namespace socpuppet
