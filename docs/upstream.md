@@ -417,7 +417,7 @@ Two more things read in the same file and not acted on:
 - **What we do**: the firmware refuses the drive. `firmware/ssd/src/ftl.c` compares the NAND's size with what an `off_t` can name before it makes its table, says both numbers on the console, and stops. `tests/python/test_ssd_zephyr_firmware.py` holds it to that, at 3 GiB and at exactly 2 GiB. 🎭 The Python stand-in for the firmware has no such limit, because it talks to the flash controller's registers, which count in pages.
 - **Upstream fix**: a 64-bit offset type for the flash API. That is a large change with every flash driver in its path, so the proposal to make first is the question of whether the flash class is meant for raw NAND at all. Zephyr has no NAND class to use in its place.
 - **Kind**: missing feature.
-- **When it lands**: nothing to delete. If the answer is that the flash class is not for this, the flash controller's driver gets an API of its own that counts in pages, as its registers do.
+- **When it lands**: the firmware's check goes, and a drive may be bigger than 2 GiB. socpuppet keeps the flash class either way ([plan.md](plan.md), decided on 2026-10-09), so if the answer is that the class is not for raw NAND, the limit stays and this entry says so.
 
 ## SPDK
 
