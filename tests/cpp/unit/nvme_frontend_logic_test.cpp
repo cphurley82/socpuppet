@@ -193,4 +193,17 @@ TEST(WhenTheHostDisablesAnNvmeFrontend, ItsCpuIsToldSo) {
   EXPECT_EQ(rig.CpuRead32(kStatus), kDisabled);
 }
 
+// A host that disables the controller and enables it again before the
+// firmware has looked leaves both for it to find.
+TEST(WhenTheCpuAcknowledgesOneOfTwoThingsTheHostHasDone,
+     TheOtherIsStillThereToRead) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostDisables();
+
+  rig.CpuWrite32(kStatus, kDisabled);
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
+}
+
 }  // namespace socpuppet
