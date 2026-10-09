@@ -45,6 +45,14 @@ inline tlm::tlm_response_status EraseBlock(BusDriver& controller,
       0, {});
 }
 
+// Asks the chip what it is, with room for `out.size()` bytes of answer.
+inline tlm::tlm_response_status AskGeometry(BusDriver& controller,
+                                            std::span<std::uint8_t> out) {
+  return socpuppet::NandTransport(controller.socket,
+                                  socpuppet::NandCommand::Operation::kGeometry,
+                                  0, 0, out);
+}
+
 // A page of data for the contract's chip, in which no two neighbouring
 // bytes are the same.
 inline std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
@@ -128,16 +136,22 @@ TYPED_TEST_P(NandContract, AProgrammedPageReadsBackAsItWasProgrammed) {
 TYPED_TEST_P(NandContract, EveryPageOfAnErasedBlockReadsAsAllOnes) {
   std::vector<std::uint8_t> first(16);
   std::vector<std::uint8_t> last(16);
+  tlm::tlm_response_status programmed_first = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status programmed_last = tlm::TLM_INCOMPLETE_RESPONSE;
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
 
   this->AsItsController([&](BusDriver& controller) {
-    nand_contract::ProgramPage(controller, 2, 0, nand_contract::SomePage());
-    nand_contract::ProgramPage(controller, 2, 7, nand_contract::SomePage());
+    programmed_first =
+        nand_contract::ProgramPage(controller, 2, 0, nand_contract::SomePage());
+    programmed_last =
+        nand_contract::ProgramPage(controller, 2, 7, nand_contract::SomePage());
     response = nand_contract::EraseBlock(controller, 2);
     nand_contract::ReadPage(controller, 2, 0, first);
     nand_contract::ReadPage(controller, 2, 7, last);
   });
 
+  ASSERT_EQ(programmed_first, tlm::TLM_OK_RESPONSE);
+  ASSERT_EQ(programmed_last, tlm::TLM_OK_RESPONSE);
   EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
   EXPECT_EQ(first, std::vector<std::uint8_t>(16, 0xFF));
   EXPECT_EQ(last, std::vector<std::uint8_t>(16, 0xFF));
@@ -182,20 +196,21 @@ TYPED_TEST_P(NandContract, APagePastTheEndOfItsBlockGetsAnAddressError) {
 }
 
 TYPED_TEST_P(NandContract, DataThatIsNotOnePageLongGetsABurstError) {
-  std::vector<std::uint8_t> too_short(15);
-  const std::vector<std::uint8_t> too_long(17, 0x11);
+  std::vector<std::uint8_t> too_short(15, 0x11);
+  std::vector<std::uint8_t> too_long(17, 0x22);
   std::vector<std::uint8_t> afterwards(16);
-  tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
-  tlm::tlm_response_status program_response = tlm::TLM_INCOMPLETE_RESPONSE;
+  std::vector<tlm::tlm_response_status> responses;
 
   this->AsItsController([&](BusDriver& controller) {
-    read_response = nand_contract::ReadPage(controller, 0, 0, too_short);
-    program_response = nand_contract::ProgramPage(controller, 0, 0, too_long);
+    responses = {nand_contract::ReadPage(controller, 0, 0, too_short),
+                 nand_contract::ReadPage(controller, 0, 0, too_long),
+                 nand_contract::ProgramPage(controller, 0, 0, too_short),
+                 nand_contract::ProgramPage(controller, 0, 0, too_long)};
     nand_contract::ReadPage(controller, 0, 0, afterwards);
   });
 
-  EXPECT_EQ(read_response, tlm::TLM_BURST_ERROR_RESPONSE);
-  EXPECT_EQ(program_response, tlm::TLM_BURST_ERROR_RESPONSE);
+  EXPECT_EQ(responses, std::vector<tlm::tlm_response_status>(
+                           4, tlm::TLM_BURST_ERROR_RESPONSE));
   EXPECT_EQ(afterwards, std::vector<std::uint8_t>(16, 0xFF));
 }
 
@@ -221,9 +236,7 @@ TYPED_TEST_P(NandContract,
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
 
   this->AsItsController([&](BusDriver& controller) {
-    response = socpuppet::NandTransport(
-        controller.socket, socpuppet::NandCommand::Operation::kGeometry, 0, 0,
-        too_short);
+    response = nand_contract::AskGeometry(controller, too_short);
   });
 
   EXPECT_EQ(response, tlm::TLM_BURST_ERROR_RESPONSE);
@@ -237,10 +250,8 @@ TYPED_TEST_P(NandContract, ADebugAccessIsDeclined) {
   unsigned bytes_written = 1;
 
   this->AsItsController([&](BusDriver& controller) {
-    bytes_read = socpuppet::DebugTransport(controller.socket,
-                                           tlm::TLM_READ_COMMAND, 0, data);
-    bytes_written = socpuppet::DebugTransport(controller.socket,
-                                              tlm::TLM_WRITE_COMMAND, 0, data);
+    bytes_read = controller.DebugRead(0, data);
+    bytes_written = controller.DebugWrite(0, data);
   });
 
   EXPECT_EQ(bytes_read, 0U);
@@ -264,19 +275,21 @@ TYPED_TEST_P(NandContract, APageOfAnErasedBlockCanBeProgrammedAgain) {
 }
 
 TYPED_TEST_P(NandContract, ErasingABlockLeavesTheBlocksAroundItAlone) {
-  std::vector<std::uint8_t> before(16);
-  std::vector<std::uint8_t> after(16);
+  std::vector<std::uint8_t> in_the_block_before(16);
+  std::vector<std::uint8_t> in_the_block_after(16);
+  tlm::tlm_response_status erased = tlm::TLM_INCOMPLETE_RESPONSE;
 
   this->AsItsController([&](BusDriver& controller) {
     nand_contract::ProgramPage(controller, 1, 7, nand_contract::SomePage(10));
     nand_contract::ProgramPage(controller, 3, 0, nand_contract::SomePage(20));
-    nand_contract::EraseBlock(controller, 2);
-    nand_contract::ReadPage(controller, 1, 7, before);
-    nand_contract::ReadPage(controller, 3, 0, after);
+    erased = nand_contract::EraseBlock(controller, 2);
+    nand_contract::ReadPage(controller, 1, 7, in_the_block_before);
+    nand_contract::ReadPage(controller, 3, 0, in_the_block_after);
   });
 
-  EXPECT_EQ(before, nand_contract::SomePage(10));
-  EXPECT_EQ(after, nand_contract::SomePage(20));
+  ASSERT_EQ(erased, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(in_the_block_before, nand_contract::SomePage(10));
+  EXPECT_EQ(in_the_block_after, nand_contract::SomePage(20));
 }
 
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,

@@ -95,14 +95,17 @@ class BusDriver : public sc_core::sc_module {
   void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
 
   // Debug transport: an access that takes no simulated time and has no side
-  // effects, the way a debugger looks at memory.
-  void DebugWrite(std::uint64_t address, std::span<const std::uint8_t> data) {
-    socpuppet::DebugTransport(socket, tlm::TLM_WRITE_COMMAND, address,
-                              socpuppet::WriteData(data));
+  // effects, the way a debugger looks at memory. Each returns how many
+  // bytes the target transferred, which is none if it declined.
+  unsigned DebugWrite(std::uint64_t address,
+                      std::span<const std::uint8_t> data) {
+    return socpuppet::DebugTransport(socket, tlm::TLM_WRITE_COMMAND, address,
+                                     socpuppet::WriteData(data));
   }
 
-  void DebugRead(std::uint64_t address, std::span<std::uint8_t> data) {
-    socpuppet::DebugTransport(socket, tlm::TLM_READ_COMMAND, address, data);
+  unsigned DebugRead(std::uint64_t address, std::span<std::uint8_t> data) {
+    return socpuppet::DebugTransport(socket, tlm::TLM_READ_COMMAND, address,
+                                     data);
   }
 
   // Whether the last Read or Write came back with the target's hint that
