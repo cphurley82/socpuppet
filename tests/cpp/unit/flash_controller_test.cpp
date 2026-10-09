@@ -28,6 +28,7 @@ constexpr std::uint64_t kLocal = 0x14;
 
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
+constexpr std::uint32_t kProgramPage = 2;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -53,6 +54,14 @@ class Chip : public NandPort {
   }
   bool EraseBlock(std::uint32_t block) override {
     return array.EraseBlock(block) == NandResult::kDone;
+  }
+
+  // What the chip holds in one page.
+  std::vector<std::uint8_t> PageAt(std::uint32_t block,
+                                   std::uint32_t page) const {
+    std::vector<std::uint8_t> data(kSmall.page_size);
+    EXPECT_EQ(array.ReadPage(block, page, data), NandResult::kDone);
+    return data;
   }
 };
 
@@ -133,6 +142,21 @@ TEST(WhenAFlashControllerHasCarriedOutACommand, ItsStatusNoLongerSaysBusy) {
   rig.controller.CarryOut();
 
   EXPECT_EQ(rig.Read32(kStatus) & kBusy, 0U);
+}
+
+TEST(WhenAFlashControllerIsToldToProgramAPage,
+     TheChipsPageHoldsWhatLocalMemoryHeld) {
+  Rig rig;
+  rig.buffer.store.Write(0x40, SomePage());
+  rig.Write32(kBlock, 2);
+  rig.Write32(kPage, 5);
+  rig.Write32(kLocal, 0x40);
+
+  rig.Write32(kCommand, kProgramPage);
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.chip.PageAt(2, 5), SomePage());
+  EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
 }
 
 }  // namespace socpuppet
