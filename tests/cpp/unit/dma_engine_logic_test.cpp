@@ -27,9 +27,12 @@ constexpr std::uint64_t kLength = 0x18;
 
 // What can be written to the command register.
 constexpr std::uint32_t kFromHost = 1;
+constexpr std::uint32_t kToHost = 2;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kError = 1U << 1;
+constexpr std::uint32_t kBusy = 1U << 2;
 
 // Where the two memories are in these tests, 64 KiB of each. The host's is
 // above 4 GiB, so that an address of it needs both halves.
@@ -114,6 +117,69 @@ TEST(WhenADmaEngineIsToldToCopyFromTheHost, TheBytesArriveInTheSsdsMemory) {
 
   EXPECT_EQ(rig.local.At(kLocal + 0x200, 24), SomeBytes(24));
   EXPECT_EQ(rig.Read32(kStatus), kDone);
+}
+
+TEST(WhenADmaEngineIsToldToCopyToTheHost, TheBytesArriveInTheHostsMemory) {
+  Rig rig;
+  rig.local.Write(kLocal + 0x200, SomeBytes(24));
+  rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
+
+  rig.Do(kToHost);
+
+  EXPECT_EQ(rig.host.At(kHost + 0x100, 24), SomeBytes(24));
+  EXPECT_EQ(rig.Read32(kStatus), kDone);
+}
+
+// The host's memory is 64 KiB long, and so is the SSD's.
+TEST(WhenNothingAnswersAtAnAddressADmaEngineIsToCopyFrom,
+     TheStatusSaysErrorAndNothingIsWritten) {
+  Rig from_host;
+  from_host.local.Write(kLocal, SomeBytes(24));
+  from_host.Describe(kHost + kMemorySize, kLocal, 24);
+  Rig to_host;
+  to_host.host.Write(kHost, SomeBytes(24));
+  to_host.Describe(kHost, kLocal + kMemorySize, 24);
+
+  from_host.Do(kFromHost);
+  to_host.Do(kToHost);
+
+  EXPECT_EQ(from_host.Read32(kStatus), kError);
+  EXPECT_EQ(from_host.local.At(kLocal, 24), SomeBytes(24));
+  EXPECT_EQ(to_host.Read32(kStatus), kError);
+  EXPECT_EQ(to_host.host.At(kHost, 24), SomeBytes(24));
+}
+
+TEST(WhenNothingAnswersAtAnAddressADmaEngineIsToCopyTo, TheStatusSaysError) {
+  Rig from_host;
+  from_host.Describe(kHost, kLocal + kMemorySize, 24);
+  Rig to_host;
+  to_host.Describe(kHost + kMemorySize, kLocal, 24);
+
+  from_host.Do(kFromHost);
+  to_host.Do(kToHost);
+
+  EXPECT_EQ(from_host.Read32(kStatus), kError);
+  EXPECT_EQ(to_host.Read32(kStatus), kError);
+}
+
+// A copy of nothing is more likely a mistake in the firmware than something
+// it meant, so the engine says so.
+TEST(WhenADmaEngineIsToldToCopyNoBytesAtAll, TheStatusSaysError) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 0);
+
+  rig.Do(kFromHost);
+
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+}
+
+TEST(WhenADmaEngineHasNotYetCarriedOutACommand, ItsStatusSaysBusy) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 24);
+
+  rig.Write32(kCommand, kFromHost);
+
+  EXPECT_EQ(rig.Read32(kStatus), kBusy);
 }
 
 }  // namespace socpuppet

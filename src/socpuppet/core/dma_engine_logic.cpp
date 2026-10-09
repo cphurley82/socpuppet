@@ -16,6 +16,9 @@ constexpr std::uint64_t kHostAddressHighRegister = 0x10;
 constexpr std::uint64_t kLocalAddressRegister = 0x14;
 constexpr std::uint64_t kLengthRegister = 0x18;
 
+// What the command register can be told.
+constexpr std::uint32_t kFromHost = 1;
+
 }  // namespace
 
 DmaEngineLogic::DmaEngineLogic(MemoryPort& host_memory,
@@ -66,10 +69,14 @@ bool DmaEngineLogic::CarryOut() {
 }
 
 bool DmaEngineLogic::Do(const Job& job) {
+  if (job.length == 0) return false;
   std::vector<std::uint8_t> bytes(job.length);
-  host_memory_.Read(job.host_address, bytes);
-  local_memory_.Write(job.local_address, bytes);
-  return true;
+  if (job.command == kFromHost) {
+    return host_memory_.Read(job.host_address, bytes) &&
+           local_memory_.Write(job.local_address, bytes);
+  }
+  return local_memory_.Read(job.local_address, bytes) &&
+         host_memory_.Write(job.host_address, bytes);
 }
 
 }  // namespace socpuppet
