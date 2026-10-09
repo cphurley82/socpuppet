@@ -663,6 +663,25 @@ TYPED_TEST_P(NvmeContract, ABlockReadsBackAsItWasWritten) {
   EXPECT_EQ(read_back, written);
 }
 
+// A drive that only remembered the last thing it was given would pass a
+// test that reads back what it has just written.
+TYPED_TEST_P(NvmeContract,
+             ABlockIsStillAsWrittenAfterOneFarFromItHasBeenWrittenToo) {
+  const std::vector<std::uint8_t> first_written = SomeData(kBlockSize);
+  const std::vector<std::uint8_t> last_written(kBlockSize, 0x5A);
+  std::optional<std::vector<std::uint8_t>> first_read_back;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    host.CreateIoQueues(kIoVector);
+    host.WriteBlocks(/*first=*/0, first_written);
+    host.WriteBlocks(/*first=*/TypeParam::kBlocks - 1, last_written);
+    first_read_back = host.ReadBlocks(/*first=*/0, /*blocks=*/1);
+  });
+
+  EXPECT_EQ(first_read_back, first_written);
+}
+
 TYPED_TEST_P(NvmeContract, ATransferOfTwoPagesReadsBackAsItWasWritten) {
   // Two pages of memory is sixteen blocks. The command gives the address
   // of each page.
@@ -945,7 +964,9 @@ REGISTER_TYPED_TEST_SUITE_P(
     ASubmissionQueueCreatedBeforeItsCompletionQueueIsCompletionQueueInvalid,
     ABlockThatWasNeverWrittenReadsAsZeros,
     WhenAnIoCommandCompletesTheLineOfItsQueuesVectorRises,
-    ABlockReadsBackAsItWasWritten, ATransferOfTwoPagesReadsBackAsItWasWritten,
+    ABlockReadsBackAsItWasWritten,
+    ABlockIsStillAsWrittenAfterOneFarFromItHasBeenWrittenToo,
+    ATransferOfTwoPagesReadsBackAsItWasWritten,
     ATransferOfThreePagesReadsBackAsItWasWritten,
     AReadPastTheEndOfTheNamespaceIsOutOfRange,
     AReadWhoseDataPageIsWhereNothingAnswersIsADataTransferError,
