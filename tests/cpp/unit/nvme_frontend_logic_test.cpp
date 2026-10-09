@@ -87,7 +87,8 @@ constexpr std::size_t kCommandIdOffset = 2;
 std::vector<std::uint8_t> SomeCommand(std::uint16_t command_id) {
   std::vector<std::uint8_t> command(kCommandBytes);
   for (std::size_t index = 0; index < command.size(); ++index) {
-    command[index] = static_cast<std::uint8_t>(index + (7 * command_id) + 1);
+    command[index] =
+        static_cast<std::uint8_t>(index + (std::size_t{7} * command_id) + 1);
   }
   StoreLittleEndian(command_id, std::span{command}.subspan(kCommandIdOffset));
   return command;
@@ -210,8 +211,8 @@ struct Rig {
   // queue, where it is and how long, and what goes with it. For a
   // completion queue that is its interrupt vector, and for a submission
   // queue the completion queue its commands' completions go to.
-  bool CpuCreates(QueueKind kind, std::uint32_t queue_id, std::uint64_t base,
-                  std::uint32_t link) {
+  bool CpuCreates(std::uint32_t kind, std::uint32_t queue_id,
+                  std::uint64_t base, std::uint32_t link) {
     CpuWrite32(kQueueId, queue_id);
     CpuWrite32(kQueueBaseLow, static_cast<std::uint32_t>(base));
     CpuWrite32(kQueueBaseHigh, static_cast<std::uint32_t>(base >> 32));
@@ -221,8 +222,10 @@ struct Rig {
   }
   // The first pair of I/O queues, with the second interrupt vector.
   void CpuCreatesIoQueues() {
-    CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, /*vector=*/1);
-    CpuCreates(kSubmissionQueue, 1, kIoSubmissionQueue, /*completion queue=*/1);
+    // Completion queue 1 on vector 1, and submission queue 1, whose
+    // completions go to it.
+    CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, /*link=*/1);
+    CpuCreates(kSubmissionQueue, 1, kIoSubmissionQueue, /*link=*/1);
   }
 
   // The command that is waiting for the CPU, as the CPU reads it.
@@ -602,8 +605,8 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAKindOfQueueThereIsNot,
   Rig rig;
   rig.HostEnables();
 
-  EXPECT_FALSE(rig.CpuCreates(QueueKind{0}, 1, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(QueueKind{3}, 1, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(0, 1, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(3, 1, 0x5000, 1));
 }
 
 // No command can have asked for it.

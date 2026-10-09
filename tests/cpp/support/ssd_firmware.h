@@ -445,7 +445,7 @@ class SsdFirmware : public sc_core::sc_module {
     return CopyToTheHost(command, Scratch(), kHostPage);
   }
 
-  Outcome SetFeatures(const Command& command) {
+  Outcome SetFeatures(const Command& command) const {
     if ((command.Dword(10) & 0xFF) != kNumberOfQueues) {
       return Generic(kInvalidField);
     }
@@ -515,7 +515,8 @@ class SsdFirmware : public sc_core::sc_module {
   // Puts one of the drive's pages in the page buffer: from the NAND, or
   // as zeros if it was never written.
   bool Load(std::uint32_t page) {
-    if (where_[page]) return Flash(kReadPage, *where_[page]);
+    const std::optional<std::uint32_t> nand_page = where_[page];
+    if (nand_page) return Flash(kReadPage, *nand_page);
     Write(PageBuffer(), std::vector<std::uint8_t>(page_size_, 0));
     return true;
   }
@@ -535,8 +536,12 @@ class SsdFirmware : public sc_core::sc_module {
         !Copy(kFromHost, host_address, PageBuffer() + offset, length)) {
       return false;
     }
-    if (!where_[page]) where_[page] = next_free_nand_page_++;
-    return Flash(kProgramPage, *where_[page]);
+    const std::uint32_t nand_page = where_[page].value_or(next_free_nand_page_);
+    if (!where_[page]) {
+      where_[page] = nand_page;
+      ++next_free_nand_page_;
+    }
+    return Flash(kProgramPage, nand_page);
   }
 
   // ---- A command's data.

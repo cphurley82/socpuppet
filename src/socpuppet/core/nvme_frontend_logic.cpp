@@ -279,7 +279,7 @@ bool NvmeFrontendLogic::Step() {
   // had before the reset.
   if (ResetIsPending()) return false;
   bool did_something = false;
-  if (posting_) {
+  if (posting_ && command_) {
     queues_.Post(*command_,
                  {.status = static_cast<std::uint8_t>(completion_status_),
                   .status_type = static_cast<std::uint8_t>(

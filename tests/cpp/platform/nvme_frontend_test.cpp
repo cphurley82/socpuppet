@@ -67,7 +67,8 @@ constexpr std::size_t kCommandBytes = 64;
 std::vector<std::uint8_t> SomeCommand(std::uint16_t command_id) {
   std::vector<std::uint8_t> command(kCommandBytes);
   for (std::size_t index = 0; index < command.size(); ++index) {
-    command[index] = static_cast<std::uint8_t>(index + (7 * command_id) + 1);
+    command[index] =
+        static_cast<std::uint8_t>(index + (std::size_t{7} * command_id) + 1);
   }
   StoreLittleEndian(command_id, std::span{command}.subspan(2));
   return command;
