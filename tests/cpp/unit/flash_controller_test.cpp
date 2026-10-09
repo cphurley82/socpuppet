@@ -29,6 +29,7 @@ constexpr std::uint64_t kLocal = 0x14;
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
 constexpr std::uint32_t kProgramPage = 2;
+constexpr std::uint32_t kEraseBlock = 3;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -156,6 +157,19 @@ TEST(WhenAFlashControllerIsToldToProgramAPage,
   rig.controller.CarryOut();
 
   EXPECT_EQ(rig.chip.PageAt(2, 5), SomePage());
+  EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
+}
+
+TEST(WhenAFlashControllerIsToldToEraseABlock, TheBlocksPagesReadAsAllOnes) {
+  Rig rig;
+  rig.chip.array.ProgramPage(2, 5, SomePage());
+  rig.Write32(kBlock, 2);
+
+  rig.Write32(kCommand, kEraseBlock);
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.chip.PageAt(2, 5),
+            std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
   EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
 }
 

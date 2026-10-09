@@ -17,6 +17,7 @@ constexpr std::uint64_t kLocalRegister = 0x14;
 
 // What the command register can be told.
 constexpr std::uint32_t kReadPage = 1;
+constexpr std::uint32_t kProgramPage = 2;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
@@ -59,12 +60,18 @@ bool FlashController::WriteRegister(std::uint64_t offset,
 bool FlashController::CarryOut() {
   if (command_ == 0) return false;
   std::vector<std::uint8_t> page(nand_.Geometry()->page_size);
-  if (command_ == kReadPage) {
-    nand_.ReadPage(block_, page_, page);
-    local_memory_.Write(local_, page);
-  } else {
-    local_memory_.Read(local_, page);
-    nand_.ProgramPage(block_, page_, page);
+  switch (command_) {
+    case kReadPage:
+      nand_.ReadPage(block_, page_, page);
+      local_memory_.Write(local_, page);
+      break;
+    case kProgramPage:
+      local_memory_.Read(local_, page);
+      nand_.ProgramPage(block_, page_, page);
+      break;
+    default:
+      nand_.EraseBlock(block_);
+      break;
   }
   command_ = 0;
   status_ = kDone;
