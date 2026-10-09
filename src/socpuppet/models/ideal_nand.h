@@ -38,16 +38,24 @@ class IdealNand : public sc_core::sc_module {
                                     std::span<std::uint8_t> data) {
     switch (command.operation) {
       case NandCommand::Operation::kReadPage:
-        array_.ReadPage(command.block, command.page, data);
-        return tlm::TLM_OK_RESPONSE;
+        return ResponseFor(array_.ReadPage(command.block, command.page, data));
       case NandCommand::Operation::kProgramPage:
-        array_.ProgramPage(command.block, command.page, data);
-        return tlm::TLM_OK_RESPONSE;
+        return ResponseFor(
+            array_.ProgramPage(command.block, command.page, data));
       case NandCommand::Operation::kEraseBlock:
-        array_.EraseBlock(command.block);
-        return tlm::TLM_OK_RESPONSE;
+        return ResponseFor(array_.EraseBlock(command.block));
       default:
         return SayGeometry(data);
+    }
+  }
+
+  // How the array's answer goes back to the controller, as TLM has it.
+  static tlm::tlm_response_status ResponseFor(NandResult result) {
+    switch (result) {
+      case NandResult::kOutOfRange:
+        return tlm::TLM_ADDRESS_ERROR_RESPONSE;
+      default:
+        return tlm::TLM_OK_RESPONSE;
     }
   }
 
