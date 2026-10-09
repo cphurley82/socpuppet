@@ -519,4 +519,19 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAPairOfIoQueues,
                         .phase = true}));
 }
 
+TEST(WhenAnNvmeFrontendHasPostedACompletionToAnIoQueue,
+     ItInterruptsTheHostOnThatQueuesVector) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuCreatesIoQueues();
+  rig.HostSubmitsIo(SomeCommand(9));
+  rig.frontend.Step();
+  rig.CpuPosts();
+
+  rig.frontend.Step();
+
+  EXPECT_TRUE(rig.frontend.HostInterrupts().Interrupting(1));
+  EXPECT_FALSE(rig.frontend.HostInterrupts().Interrupting(0));
+}
+
 }  // namespace socpuppet
