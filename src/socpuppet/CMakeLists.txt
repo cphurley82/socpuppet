@@ -9,6 +9,7 @@ target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/block_store.h
     core/interrupt_requests.h
+    core/memory_port.h
     core/memory_store.h
     core/nand_array.h
     core/script.h

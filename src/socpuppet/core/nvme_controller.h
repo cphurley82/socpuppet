@@ -10,6 +10,7 @@
 
 #include "socpuppet/core/block_store.h"
 #include "socpuppet/core/interrupt_requests.h"
+#include "socpuppet/core/memory_port.h"
 
 // The layouts of the controller registers and of a command. They are
 // SPDK's (nvme_spec.h), and only nvme_controller.cpp includes it.
@@ -33,15 +34,8 @@ namespace socpuppet {
 class NvmeController : public InterruptRequests {
  public:
   // The host's memory, which the controller reads and writes on its own
-  // initiative (direct memory access, DMA). Each returns false if the host
-  // did not take the access: nothing is at the address, say.
-  class HostMemory {
-   public:
-    virtual ~HostMemory() = default;
-    virtual bool Read(std::uint64_t address, std::span<std::uint8_t> out) = 0;
-    virtual bool Write(std::uint64_t address,
-                       std::span<const std::uint8_t> in) = 0;
-  };
+  // initiative (direct memory access, DMA).
+  using HostMemory = MemoryPort;
 
   // `blocks` is how many blocks its one namespace holds, and `vectors`
   // how many interrupt vectors it has. The drive is kept in RAM, zeros
