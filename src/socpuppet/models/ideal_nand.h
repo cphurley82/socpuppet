@@ -54,9 +54,12 @@ class IdealNand : public sc_core::sc_module {
     switch (result) {
       case NandResult::kOutOfRange:
         return tlm::TLM_ADDRESS_ERROR_RESPONSE;
-      default:
+      case NandResult::kWrongLength:
+        return tlm::TLM_BURST_ERROR_RESPONSE;
+      case NandResult::kDone:
         return tlm::TLM_OK_RESPONSE;
     }
+    return tlm::TLM_GENERIC_ERROR_RESPONSE;
   }
 
   tlm::tlm_response_status SayGeometry(std::span<std::uint8_t> data) const {

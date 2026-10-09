@@ -181,11 +181,30 @@ TYPED_TEST_P(NandContract, APagePastTheEndOfItsBlockGetsAnAddressError) {
   EXPECT_EQ(first_of_the_next_block, std::vector<std::uint8_t>(16, 0xFF));
 }
 
+TYPED_TEST_P(NandContract, DataThatIsNotOnePageLongGetsABurstError) {
+  std::vector<std::uint8_t> too_short(15);
+  const std::vector<std::uint8_t> too_long(17, 0x11);
+  std::vector<std::uint8_t> afterwards(16);
+  tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status program_response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    read_response = nand_contract::ReadPage(controller, 0, 0, too_short);
+    program_response = nand_contract::ProgramPage(controller, 0, 0, too_long);
+    nand_contract::ReadPage(controller, 0, 0, afterwards);
+  });
+
+  EXPECT_EQ(read_response, tlm::TLM_BURST_ERROR_RESPONSE);
+  EXPECT_EQ(program_response, tlm::TLM_BURST_ERROR_RESPONSE);
+  EXPECT_EQ(afterwards, std::vector<std::uint8_t>(16, 0xFF));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
                             APageThatWasNeverProgrammedReadsAsAllOnes,
                             AProgrammedPageReadsBackAsItWasProgrammed,
                             EveryPageOfAnErasedBlockReadsAsAllOnes,
                             ABlockPastTheEndOfTheChipGetsAnAddressError,
-                            APagePastTheEndOfItsBlockGetsAnAddressError);
+                            APagePastTheEndOfItsBlockGetsAnAddressError,
+                            DataThatIsNotOnePageLongGetsABurstError);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_
