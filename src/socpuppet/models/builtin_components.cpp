@@ -95,7 +95,7 @@ Registry BuiltinComponents() {
     auto module = std::make_unique<IdealNand>(
         name,
         NandGeometry{.page_size = static_cast<std::uint32_t>(
-                         parameters.Optional("page_size", 4096, kNandCount)),
+                         parameters.Required("page_size", kNandCount)),
                      .pages_per_block = static_cast<std::uint32_t>(
                          parameters.Required("pages_per_block", kNandCount)),
                      .blocks = static_cast<std::uint32_t>(
