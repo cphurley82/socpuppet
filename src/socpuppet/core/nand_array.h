@@ -23,6 +23,8 @@ enum class NandResult {
   kDone,
   // There is no such block, or no such page in the block.
   kOutOfRange,
+  // The data is not one page long.
+  kWrongLength,
 };
 
 // The cells of a NAND flash chip, with no simulator in them: pages that
@@ -38,6 +40,7 @@ class NandArray {
   NandResult ReadPage(std::uint32_t block, std::uint32_t page,
                       std::span<std::uint8_t> out) const {
     if (!IsAPage(block, page)) return NandResult::kOutOfRange;
+    if (out.size() != geometry_.page_size) return NandResult::kWrongLength;
     const auto programmed = pages_.find(Index(block, page));
     if (programmed == pages_.end()) {
       std::ranges::fill(out, kErased);
