@@ -50,8 +50,9 @@ class FlashControllerLogic {
   // What the chip is, once it has been told to say (the identify
   // command), and has said.
   std::optional<NandGeometry> geometry_;
-  // What the command register was told and has not done yet.
-  std::optional<Job> job_;
+  // What the command register was last told. It has not been done yet if
+  // the status says busy.
+  Job job_{};
   CommandStatus status_;
   // Which page of the chip, and where it is in the SSD's own memory.
   std::uint32_t block_ = 0;

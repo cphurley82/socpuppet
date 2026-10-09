@@ -26,7 +26,7 @@ platform.connect(dma.local, bus.add_input())    # its way into the SSD's own
 
 | Port | What it is |
 |---|---|
-| `cpu` | The register block, 28 bytes. |
+| `cpu` | The register block, 32 bytes. |
 | `host` | How it reads and writes the host's memory. In an SSD this goes up through the [PCIe endpoint](pcie-endpoint.md). |
 | `local` | How it reads and writes the SSD's own memory. Connect it to an input of the bus that memory is on. |
 | `irq` | High while the engine has something to tell the CPU that the CPU asked to be told. Firmware that polls can leave it unconnected. |
@@ -45,7 +45,7 @@ Each is 32 bits wide.
 | `0x14` | `LOCAL_ADDRESS` | read, write | Where in the SSD's own memory. |
 | `0x18` | `LENGTH` | read, write | How many bytes. |
 
-The first three work exactly as the [flash controller](flash-controller.md)'s do, so a driver for one is most of a driver for the other.
+`0x1C` is reserved, with nothing there. The first three work exactly as the [flash controller](flash-controller.md)'s do, so a driver for one is most of a driver for the other.
 
 - **A command is about what the registers said when it was given.** The firmware may describe the next copy while this one is still busy.
 - **One command at a time.** A write to `COMMAND` while the engine is busy is refused.

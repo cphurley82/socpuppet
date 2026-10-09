@@ -27,6 +27,26 @@ constexpr std::size_t kPieceBytes = 4096;
 constexpr std::uint32_t kFromHost = 1;
 constexpr std::uint32_t kToHost = 2;
 
+// Copies `length` bytes from one memory to another, a piece at a time, so
+// that a long copy does not take as much of the simulator's memory as it
+// moves. Returns false at the first piece either memory does not take, with
+// the pieces before it already copied.
+bool Copy(MemoryPort& source, std::uint64_t from, MemoryPort& destination,
+          std::uint64_t to, std::uint64_t length) {
+  std::array<std::uint8_t, kPieceBytes> buffer{};
+  for (std::uint64_t left = length; left != 0;) {
+    const std::span piece =
+        std::span{buffer}.first(std::min<std::uint64_t>(left, kPieceBytes));
+    if (!source.Read(from, piece) || !destination.Write(to, piece)) {
+      return false;
+    }
+    from += piece.size();
+    to += piece.size();
+    left -= piece.size();
+  }
+  return true;
+}
+
 }  // namespace
 
 DmaEngineLogic::DmaEngineLogic(MemoryPort& host_memory,
@@ -70,7 +90,9 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
-      if (job_ || (value != kFromHost && value != kToHost)) return false;
+      if (status_.Busy() || (value != kFromHost && value != kToHost)) {
+        return false;
+      }
       job_ = Job{.command = value,
                  .host_address = host_address_,
                  .local_address = local_address_,
@@ -103,33 +125,18 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
 }
 
 bool DmaEngineLogic::CarryOut() {
-  if (!job_) return false;
-  status_.Finish(Do(*job_));
-  job_.reset();
+  if (!status_.Busy()) return false;
+  status_.Finish(Do(job_));
   return true;
 }
 
 bool DmaEngineLogic::Do(const Job& job) {
   if (job.length == 0) return false;
-  const bool from_host = job.command == kFromHost;
-  MemoryPort& source = from_host ? host_memory_ : local_memory_;
-  MemoryPort& destination = from_host ? local_memory_ : host_memory_;
-  std::uint64_t from = from_host ? job.host_address : job.local_address;
-  std::uint64_t to = from_host ? job.local_address : job.host_address;
-  // A piece at a time, so that a long copy does not take as much of the
-  // simulator's memory as it moves.
-  std::array<std::uint8_t, kPieceBytes> buffer{};
-  for (std::uint64_t left = job.length; left != 0;) {
-    const std::span piece =
-        std::span{buffer}.first(std::min<std::uint64_t>(left, kPieceBytes));
-    if (!source.Read(from, piece) || !destination.Write(to, piece)) {
-      return false;
-    }
-    from += piece.size();
-    to += piece.size();
-    left -= piece.size();
-  }
-  return true;
+  return job.command == kFromHost
+             ? Copy(host_memory_, job.host_address, local_memory_,
+                    job.local_address, job.length)
+             : Copy(local_memory_, job.local_address, host_memory_,
+                    job.host_address, job.length);
 }
 
 }  // namespace socpuppet

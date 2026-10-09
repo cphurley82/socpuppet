@@ -1,6 +1,8 @@
 #ifndef SOCPUPPET_MODELS_COMMAND_DEVICE_H_
 #define SOCPUPPET_MODELS_COMMAND_DEVICE_H_
 
+#include <concepts>
+#include <cstdint>
 #include <span>
 
 #include <systemc>
@@ -8,6 +10,20 @@
 #include <tlm_utils/simple_target_socket.h>
 
 namespace socpuppet {
+
+// What the logic of such a device has to offer its shell (below): reads and
+// writes of its register block, each saying whether the access was taken,
+// the carrying out of the command it was last given, which says whether
+// there was one, and whether it is asking for its CPU's attention.
+template <typename T>
+concept CommandLogic =
+    requires(T logic, const T looked_at, std::uint64_t offset,
+             std::span<std::uint8_t> out, std::span<const std::uint8_t> in) {
+      { looked_at.ReadRegister(offset, out) } -> std::same_as<bool>;
+      { logic.WriteRegister(offset, in) } -> std::same_as<bool>;
+      { logic.CarryOut() } -> std::same_as<bool>;
+      { looked_at.Interrupting() } -> std::same_as<bool>;
+    };
 
 // The SystemC shell of a device that its CPU gives one command at a time,
 // through a register block: the flash controller and the DMA engine of an
@@ -17,11 +33,6 @@ namespace socpuppet {
 // debugger may do. A device derives from this and adds the sockets its
 // work goes out through.
 //
-// `Logic` needs ReadRegister and WriteRegister, each taking an offset and
-// a span of bytes and returning whether the access was taken, CarryOut,
-// which does the pending command and returns whether there was one, and
-// Interrupting.
-//
 // A write to a register returns at once, and a command is carried out by a
 // process of the device's own, one delta cycle later at the same simulated
 // time. (A delta cycle is one round of the simulator letting every process
@@ -29,7 +40,7 @@ namespace socpuppet {
 // its CPU in the same way, and there is an engineering reason too: carrying
 // a command out puts an access on the bus the CPU's own write is still
 // crossing.
-template <typename Logic>
+template <CommandLogic Logic>
 class CommandDevice : public sc_core::sc_module {
  public:
   // The register block.
@@ -40,7 +51,7 @@ class CommandDevice : public sc_core::sc_module {
 
  protected:
   // `logic` is the deriving device's own member. It is only used once the
-  // simulation runs, so it need not have been constructed yet.
+  // device has been built, so it need not have been constructed yet.
   CommandDevice(const sc_core::sc_module_name& name, Logic& logic)
       : sc_module(name), logic_(logic) {
     cpu.register_b_transport(this, &CommandDevice::b_transport);

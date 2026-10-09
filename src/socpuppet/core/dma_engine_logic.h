@@ -2,7 +2,6 @@
 #define SOCPUPPET_CORE_DMA_ENGINE_LOGIC_H_
 
 #include <cstdint>
-#include <optional>
 #include <span>
 
 #include "socpuppet/core/command_status.h"
@@ -43,9 +42,10 @@ class DmaEngineLogic {
 
   MemoryPort& host_memory_;
   MemoryPort& local_memory_;
-  // What the command register was told and has not done yet.
-  std::optional<Job> job_;
   CommandStatus status_;
+  // What the command register was last told. It has not been done yet if
+  // the status says busy.
+  Job job_{};
   // What to copy: where it is in the host's memory, where in the SSD's
   // own, and how many bytes.
   std::uint64_t host_address_ = 0;

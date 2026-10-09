@@ -10,6 +10,8 @@ namespace socpuppet {
 //
 // The status has three bits. BUSY is set from when a command is given
 // until it has been carried out, and then DONE or ERROR says how it went.
+// A device takes no command while it is busy: that is the device's to
+// refuse, by asking Busy() first.
 // Giving the next command forgets how the last one went, so the status is
 // always about the last command. The CPU clears DONE or ERROR by writing a
 // one to it, and cannot clear BUSY. The device interrupts while a bit the
@@ -24,6 +26,9 @@ class CommandStatus {
   void Start() { status_ = kBusy; }
   // The device has carried the command out, or could not.
   void Finish(bool carried_out) { status_ = carried_out ? kDone : kError; }
+
+  // Whether a command has been given and not yet carried out.
+  bool Busy() const { return (status_ & kBusy) != 0; }
 
   // The registers, as the CPU reads and writes them.
   std::uint32_t Status() const { return status_; }

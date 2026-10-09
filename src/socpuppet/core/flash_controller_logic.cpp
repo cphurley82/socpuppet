@@ -78,7 +78,9 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
-      if (job_ || value < kReadPage || value > kIdentify) return false;
+      if (status_.Busy() || value < kReadPage || value > kIdentify) {
+        return false;
+      }
       job_ = Job{.command = value,
                  .block = block_,
                  .page = page_,
@@ -107,9 +109,8 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
 }
 
 bool FlashControllerLogic::CarryOut() {
-  if (!job_) return false;
-  status_.Finish(Do(*job_));
-  job_.reset();
+  if (!status_.Busy()) return false;
+  status_.Finish(Do(job_));
   return true;
 }
 
