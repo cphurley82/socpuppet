@@ -73,7 +73,8 @@ class FlashController : public sc_core::sc_module,
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
     const std::span data{transaction.get_data_ptr(),
                          transaction.get_data_length()};
-    return logic_.ReadRegister(transaction.get_address(), data)
+    return transaction.is_read() &&
+                   logic_.ReadRegister(transaction.get_address(), data)
                ? transaction.get_data_length()
                : 0;
   }

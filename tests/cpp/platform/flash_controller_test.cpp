@@ -215,4 +215,15 @@ TEST(WhenADebuggerLooksAtAFlashControllersRegister, ItSeesWhatTheCpuWrote) {
   EXPECT_EQ(fixture.DebugRead32(kBlock), 3U);
 }
 
+TEST(WhenADebuggerWritesToAFlashControllersRegister, TheWriteIsDeclined) {
+  const std::array<std::uint8_t, 4> three{3, 0, 0, 0};
+  CpuWithAFlashController fixture{[](BusDriver&) {}};
+
+  const bool answered = fixture.platform.DebugWrite(
+      "cpu.socket", kBlock, std::as_bytes(std::span{three}));
+
+  EXPECT_FALSE(answered);
+  EXPECT_EQ(fixture.DebugRead32(kBlock), 0U);
+}
+
 }  // namespace socpuppet
