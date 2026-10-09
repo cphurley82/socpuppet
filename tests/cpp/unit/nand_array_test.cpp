@@ -129,4 +129,15 @@ TEST(WhenTheDataIsNotOnePageLong, ReadingIsRefused) {
   EXPECT_EQ(nand.ReadPage(0, 0, too_long), NandResult::kWrongLength);
 }
 
+TEST(WhenTheDataIsNotOnePageLong, ProgrammingIsRefused) {
+  NandArray nand{kSmall};
+  std::vector<std::uint8_t> too_short(kSmall.page_size - 1, 0x11);
+  std::vector<std::uint8_t> too_long(kSmall.page_size + 1, 0x22);
+
+  EXPECT_EQ(nand.ProgramPage(0, 0, too_short), NandResult::kWrongLength);
+  EXPECT_EQ(nand.ProgramPage(0, 0, too_long), NandResult::kWrongLength);
+  EXPECT_EQ(PageAt(nand, 0, 0),
+            std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
+}
+
 }  // namespace socpuppet
