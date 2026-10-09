@@ -17,6 +17,7 @@ constexpr std::uint8_t kReadyTimeout = 2;
 
 // Where the CPU's registers are. Each is 32 bits wide.
 constexpr std::uint64_t kStatusRegister = 0x00;
+constexpr std::uint64_t kInterruptEnableRegister = 0x04;
 constexpr std::uint64_t kControlRegister = 0x08;
 // What the frontend has: how many I/O queue pairs in the low half, and how
 // many interrupt vectors in the high half.
@@ -105,13 +106,19 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
   return true;
 }
 
+std::uint32_t NvmeFrontendLogic::Status() const {
+  return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0});
+}
+
+bool NvmeFrontendLogic::CpuInterrupting() const {
+  return (Status() & interrupt_enable_) != 0;
+}
+
 bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
                                         std::span<std::uint8_t> out) const {
   switch (offset) {
     case kStatusRegister:
-      StoreLittleEndian(
-          events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}),
-          out);
+      StoreLittleEndian(Status(), out);
       break;
     case kLimitsRegister:
       StoreLittleEndian(static_cast<std::uint32_t>(vectors_ << kVectorsShift) |
@@ -141,6 +148,9 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
   switch (offset) {
     case kStatusRegister:
       events_ &= ~value;
+      break;
+    case kInterruptEnableRegister:
+      interrupt_enable_ = value;
       break;
     case kControlRegister:
       ready_ = (value & kReady) != 0;

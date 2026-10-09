@@ -670,4 +670,24 @@ TEST(WhenTheHostEnablesAnNvmeFrontendAgainAfterAReset,
                         .phase = true}));
 }
 
+// The CPU is interrupted while a status bit it has enabled is set. For a
+// command that is as long as the command waits, so the interrupt goes away
+// when the command has been dealt with and comes back with the next.
+TEST(WhenACommandWaitsAndTheCpuAskedToBeInterruptedForOne,
+     TheNvmeFrontendInterruptsItsCpuUntilTheCommandIsDealtWith) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kInterruptEnable, kCommandWaiting);
+  const bool before = rig.frontend.CpuInterrupting();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  const bool while_waiting = rig.frontend.CpuInterrupting();
+
+  rig.CpuPosts();
+
+  EXPECT_FALSE(before);
+  EXPECT_TRUE(while_waiting);
+  EXPECT_FALSE(rig.frontend.CpuInterrupting());
+}
+
 }  // namespace socpuppet

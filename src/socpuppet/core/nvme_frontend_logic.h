@@ -40,6 +40,9 @@ class NvmeFrontendLogic {
   // still busy with the last. Returns whether it did anything.
   bool Step();
 
+  // Whether the frontend is asking for its own CPU's attention.
+  bool CpuInterrupting() const;
+
   // What the frontend asks of the host on its interrupt vectors.
   InterruptRequests& HostInterrupts() { return queues_; }
 
@@ -47,6 +50,9 @@ class NvmeFrontendLogic {
   // Whether there is a command the CPU has yet to deal with: one has been
   // fetched, and the CPU has not asked for its completion to be posted.
   bool CommandWaiting() const { return command_ && !posting_; }
+
+  // The status register, as the CPU reads it.
+  std::uint32_t Status() const;
 
   // Creates the queue the queue registers describe, of the kind the
   // queue-create register was told. Returns false if it cannot be.
@@ -60,6 +66,8 @@ class NvmeFrontendLogic {
   bool ready_ = false;
   // What the host has done that the CPU has not yet acknowledged.
   std::uint32_t events_ = 0;
+  // Which bits of the status interrupt the CPU while they are set.
+  std::uint32_t interrupt_enable_ = 0;
   // The command the CPU is to deal with next, if there is one. There is
   // room for one: the next is fetched when this one's completion has been
   // posted.
