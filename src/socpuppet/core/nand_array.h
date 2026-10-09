@@ -44,11 +44,11 @@ class NandArray {
                       std::span<std::uint8_t> out) const {
     if (!IsAPage(block, page)) return NandResult::kOutOfRange;
     if (out.size() != geometry_.page_size) return NandResult::kWrongLength;
-    const auto programmed = pages_.find(Index(block, page));
-    if (programmed == pages_.end()) {
+    const std::vector<std::uint8_t>* programmed = Find(block, page);
+    if (programmed == nullptr) {
       std::ranges::fill(out, kErased);
     } else {
-      std::ranges::copy(programmed->second, out.begin());
+      std::ranges::copy(*programmed, out.begin());
     }
     return NandResult::kDone;
   }
@@ -57,15 +57,13 @@ class NandArray {
                          std::span<const std::uint8_t> in) {
     if (!IsAPage(block, page)) return NandResult::kOutOfRange;
     if (in.size() != geometry_.page_size) return NandResult::kWrongLength;
-    pages_[Index(block, page)].assign(in.begin(), in.end());
+    blocks_[block][page].assign(in.begin(), in.end());
     return NandResult::kDone;
   }
 
   NandResult EraseBlock(std::uint32_t block) {
     if (block >= geometry_.blocks) return NandResult::kOutOfRange;
-    for (std::uint32_t page = 0; page < geometry_.pages_per_block; ++page) {
-      pages_.erase(Index(block, page));
-    }
+    blocks_.erase(block);
     return NandResult::kDone;
   }
 
@@ -76,15 +74,23 @@ class NandArray {
     return block < geometry_.blocks && page < geometry_.pages_per_block;
   }
 
-  // A page's number, counting through the whole chip.
-  std::uint64_t Index(std::uint32_t block, std::uint32_t page) const {
-    return (std::uint64_t{block} * geometry_.pages_per_block) + page;
+  // What was programmed into a page, or nothing if nothing was.
+  const std::vector<std::uint8_t>* Find(std::uint32_t block,
+                                        std::uint32_t page) const {
+    const auto pages = blocks_.find(block);
+    if (pages == blocks_.end()) return nullptr;
+    const auto programmed = pages->second.find(page);
+    return programmed == pages->second.end() ? nullptr : &programmed->second;
   }
 
   NandGeometry geometry_;
-  // The pages that hold something, by their number. Only those take any
-  // memory, so a chip may be far larger than the machine it is simulated on.
-  std::unordered_map<std::uint64_t, std::vector<std::uint8_t>> pages_;
+  // The pages that hold something, by block and then by page. Only those
+  // take any memory, so a chip may be far larger than the machine it is
+  // simulated on, and erasing a block is forgetting it.
+  std::unordered_map<
+      std::uint32_t,
+      std::unordered_map<std::uint32_t, std::vector<std::uint8_t>>>
+      blocks_;
 };
 
 }  // namespace socpuppet
