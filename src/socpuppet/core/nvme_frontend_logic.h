@@ -30,9 +30,15 @@ class NvmeFrontendLogic {
   bool WriteHostRegister(std::uint64_t offset,
                          std::span<const std::uint8_t> in);
 
+  // Reads and writes of the register block of the SSD's own CPU.
+  bool ReadCpuRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
+  bool WriteCpuRegister(std::uint64_t offset, std::span<const std::uint8_t> in);
+
  private:
   NvmeHostRegisters host_registers_;
   NvmeQueues queues_;
+  // Whether the firmware has said it is ready for the host's commands.
+  bool ready_ = false;
 };
 
 }  // namespace socpuppet

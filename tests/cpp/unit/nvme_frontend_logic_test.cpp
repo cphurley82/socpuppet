@@ -49,6 +49,9 @@ enum CpuRegister : std::uint64_t {
   kCommand = 0x40,
 };
 
+// The bit of the control register by which firmware says it is ready.
+constexpr std::uint32_t kReady = 1U << 0;
+
 // Where the host of these tests keeps its admin queues.
 constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
 constexpr std::uint64_t kAdminCompletionQueue = 0x2000;
@@ -104,6 +107,16 @@ struct Rig {
   }
   void HostDisables() { HostWrite32(kCc, 0); }
 
+  // A register as the SSD's CPU reads it, and a write by the CPU.
+  std::uint32_t CpuRead32(std::uint64_t offset) const {
+    std::array<std::uint8_t, 4> bytes{0xA5, 0xA5, 0xA5, 0xA5};
+    EXPECT_TRUE(frontend.ReadCpuRegister(offset, bytes));
+    return LoadLittleEndian<std::uint32_t>(bytes);
+  }
+  bool CpuWrite32(std::uint64_t offset, std::uint32_t value) {
+    return frontend.WriteCpuRegister(offset, LittleEndianBytes(value));
+  }
+
   // Whether the host sees the controller as ready: CSTS.RDY.
   bool HostSeesReady() const { return (HostRead32(kCsts) & 1U) != 0; }
 };
@@ -128,6 +141,26 @@ TEST(WhenTheHostEnablesAnNvmeFrontend, ItIsNotReadyUntilItsFirmwareSaysSo) {
   Rig rig;
 
   rig.HostEnables();
+
+  EXPECT_FALSE(rig.HostSeesReady());
+}
+
+TEST(WhenTheFirmwareOfAnNvmeFrontendSaysItIsReady, TheHostSeesReady) {
+  Rig rig;
+  rig.HostEnables();
+
+  rig.CpuWrite32(kControl, kReady);
+
+  EXPECT_TRUE(rig.HostSeesReady());
+}
+
+TEST(WhenTheFirmwareOfAnNvmeFrontendSaysItIsNoLongerReady,
+     TheHostSeesNotReady) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kControl, kReady);
+
+  rig.CpuWrite32(kControl, 0);
 
   EXPECT_FALSE(rig.HostSeesReady());
 }
