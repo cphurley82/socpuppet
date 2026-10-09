@@ -73,4 +73,15 @@ TEST(WhenABlockIsErased, EveryPageOfItReadsAsAllOnes) {
   EXPECT_EQ(PageAt(nand, 2, 7), erased);
 }
 
+TEST(WhenABlockIsErased, TheBlocksAroundItKeepWhatTheyHold) {
+  NandArray nand{kSmall};
+  ASSERT_EQ(nand.ProgramPage(1, 7, SomePage(10)), NandResult::kDone);
+  ASSERT_EQ(nand.ProgramPage(3, 0, SomePage(20)), NandResult::kDone);
+
+  ASSERT_EQ(nand.EraseBlock(2), NandResult::kDone);
+
+  EXPECT_EQ(PageAt(nand, 1, 7), SomePage(10));
+  EXPECT_EQ(PageAt(nand, 3, 0), SomePage(20));
+}
+
 }  // namespace socpuppet
