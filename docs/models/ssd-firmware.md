@@ -118,12 +118,14 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 | Reaches the hardware | by reading and writing the three devices' registers | through three Zephyr drivers: the NAND through Zephyr's own flash API, the frontend and the DMA engine through small APIs of their own |
 | Waits for the host | on the frontend's interrupt line | asleep, until the frontend's interrupt handler wakes it |
 | Takes | no simulated time | a few milliseconds to boot, and about a millisecond for a command |
-| Keeps its table | in a Python dict, `firmware.page_map` | in the SSD's buffer, after the page and the page of scratch: four bytes for each page of the drive |
+| Keeps its table | in a Python dict, `firmware.page_map` | in the SSD's buffer, after the page of scratch and the page of the drive: four bytes for each page of the drive |
 | Biggest drive | any | 2 GiB |
-| A device that never finishes | gives up, and says which device | 🚧 is asked for ever |
+| A device that never finishes | the script gives up, and its error says which device | its driver gives up after a tenth of a second |
+| Says what went wrong | in a Python exception, which ends the run | on the SSD's console, and then waits there for ever |
 
 - 💡 **The time is the CPU's.** The core runs about ten million instructions in a simulated second, and clearing a 4 KiB page a byte at a time is four thousand of them. Nothing else on the SSD takes time yet, so for now the firmware is all of a command's latency.
 - **The table is made empty at every start**, an entry at a time, which takes the firmware about half a microsecond of simulated time for each page of the drive: a quarter of a second for 2 GiB. The host waits, as it would for a real drive. 🎓 An NVMe controller tells its host how long to be patient (`CAP.TO`), and [the frontend](nvme-frontend.md) says one second.
+- 🔧 **When it cannot be a drive it says why, and what to change**: a NAND too big for it, a flash controller that reports an error or never answers, a NAND page bigger than the driver was built for. A line that starts `E:` is from a driver, in Zephyr's log, and comes before Zephyr's own banner, because drivers start first.
 - ⚠️ **2 GiB is Zephyr's limit, and not the hardware's.** Zephyr's flash API names a place on a flash with a signed 32-bit number on this CPU. The firmware checks, and given a bigger NAND it says so on its console and stops. [upstream.md](../upstream.md) has the details.
 
 ## Under the hood
@@ -132,5 +134,5 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 - `firmware/ssd/src` is the Zephyr application, a file for each section of the script, and `python/socpuppet/zephyr_module/drivers/ssd` its three drivers.
 - `tests/python/test_ssd_firmware.py` runs each of them on the SSD's hardware, every test once with the script and once with Zephyr, with the [driver stand-in](nvme-host.md) for what a driver does and a bare host of the tests' own (`tests/python/raw_nvme.py`) for what a drive refuses.
 - `tests/python/test_m4_exit.py` gives the SSD with Zephyr on it and 🎭 the [stand-in drive](behavioral-nvme.md) the same writes, and reads both back whole.
-- `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has: a console.
+- `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has, a console, and `test_ssd_stand_in_firmware.py` what only the script has: a table that Python can read.
 - `tests/cpp/support/ssd_firmware.h` is the same firmware again in C++, for the NVMe contract. It is a test's own, and the two share nothing but the specification.
