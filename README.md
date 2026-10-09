@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third is in rehearsal: an SSD built the way a real one is. Its own CPU boots Zephyr, and a script plays its firmware until Zephyr can. That firmware, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. The two Zephyrs have not met yet. That, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -101,7 +101,7 @@ def script():
 
 The platform around it, split over two dies, is in `examples/nvme_hello.py`.
 
-And `examples/ssd_hello.py` is the same host in front of an SSD that is built like one: hardware that keeps the queues and moves the data, a NAND chip to keep it in, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write.
+And `examples/ssd_hello.py` is the same host in front of an SSD that is built like one: hardware that keeps the queues and moves the data, a NAND chip to keep it in, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write. `examples/ssd_firmware_hello.py` swaps the script for the SSD's own CPU and the real firmware, a Zephyr application in `firmware/ssd`. The host's script does not change by a line.
 
 ## Try it
 

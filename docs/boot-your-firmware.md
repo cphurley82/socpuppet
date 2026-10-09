@@ -102,11 +102,11 @@ The second board is `socpuppet_ssd`: the controller inside the SSD, which is whe
 | Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
 | Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
 | UART, the console | `0x1000_0000` | `ns16550` |
-| [NVMe frontend](models/nvme-frontend.md) | `0x1001_0000`, PLIC source 1 | 🚧 |
-| [DMA engine](models/dma-engine.md) | `0x1002_0000`, PLIC source 2 | 🚧 |
-| [Flash controller](models/flash-controller.md) | `0x1003_0000`, PLIC source 3 | 🚧 |
+| [NVMe frontend](models/nvme-frontend.md) | `0x1001_0000`, PLIC source 1 | `socpuppet,nvme-frontend` |
+| [DMA engine](models/dma-engine.md) | `0x1002_0000`, PLIC source 2 | `socpuppet,dma-engine` |
+| [Flash controller](models/flash-controller.md) | `0x1003_0000`, PLIC source 3 | `socpuppet,flash-controller`, a Zephyr flash device |
 
-🚧 The three devices are in the devicetree, with bindings in socpuppet's module, and have no drivers yet. Zephyr boots and prints. Firmware that makes the board a drive is the next milestone, and until then 🎭 [a script](models/ssd-firmware.md) plays that part.
+The last three drivers are socpuppet's own, in its Zephyr module. [Bring up your SSD firmware](#bring-up-your-ssd-firmware) says how to use them. First, the board by itself.
 
 Build for it by naming the board:
 
@@ -140,6 +140,89 @@ Or `python -m socpuppet.boards.ssd build/zephyr/zephyr.elf`.
 - ⚠️ **Say whose firmware it is.** The platform has two places an image could go, so `load_elf` wants `via=board.ssd.cpu.socket`. The same goes for the devicetree: `socpuppet devicetree python/socpuppet/boards/ssd.py --via ssd.cpu.socket` is the SSD's own CPU's view, and the host is not in it.
 - **Everything below applies**: waiting for output, looking inside, and GDB, with `ssd(host=idle_host, gdb_port=1234)` and the same `riscv64-zephyr-elf-gdb`, which debugs 32-bit code too.
 - `tests/python/test_m4b_exit.py` is a complete example.
+
+### Bring up your SSD firmware
+
+`hello_world` boots on the board and is no drive: the host on the link enables the controller and waits for an answer that never comes. Firmware that answers is [`firmware/ssd`](../firmware/ssd/README.md) in socpuppet's repository, a Zephyr application of a few hundred lines. Build it as it is, or start your own from it:
+
+```sh
+west build -b socpuppet_ssd /path/to/socpuppet/firmware/ssd -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+The three drivers are built because the board has the devices. The flash controller's is a driver of Zephyr's flash class, so the application asks for that with `CONFIG_FLASH=y`.
+
+| Device | What firmware calls | Header |
+|---|---|---|
+| NVMe frontend | `nvme_frontend_wait`, `_acknowledge`, `_say_ready`, `_read_command`, `_post`, `_create_queue`, `_get_limits` | `<socpuppet/drivers/nvme_frontend.h>` |
+| DMA engine | `dma_engine_copy_from_host`, `dma_engine_copy_to_host` | `<socpuppet/drivers/dma_engine.h>` |
+| Flash controller | `flash_read`, `flash_write`, `flash_erase`, `flash_get_size`, `flash_get_write_block_size` | `<zephyr/drivers/flash.h>`, Zephyr's own |
+
+The least a firmware can do and still be found by a host is to say it is ready:
+
+```c
+#include <socpuppet/drivers/nvme_frontend.h>
+#include <zephyr/device.h>
+
+static const struct device *const frontend = DEVICE_DT_GET_ONE(socpuppet_nvme_frontend);
+
+int main(void)
+{
+	for (;;) {
+		uint32_t happened = nvme_frontend_wait(frontend);
+
+		if (happened & NVME_FRONTEND_RESET) {
+			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_RESET);
+		}
+		if (happened & NVME_FRONTEND_ENABLED) {
+			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_ENABLED);
+			nvme_frontend_say_ready(frontend);
+		}
+		if (happened & NVME_FRONTEND_COMMAND_WAITING) {
+			/* Read it, do it, and post how it went. Here: refuse it. */
+			nvme_frontend_post(frontend, 0x01 /* Invalid Command Opcode */, 0);
+		}
+	}
+}
+```
+
+A host finds that drive, and gets no further than its first command:
+
+```text
+NvmeError: The controller failed the Set Features command: Invalid Command Opcode (status code type 0, status code 0x01).
+```
+
+Everything after that is deciding what each command means, which is the rest of `firmware/ssd`. This is a host for it. 🎭 It is a script, and the same one whichever firmware the SSD has:
+
+```python
+import socpuppet as sp
+from socpuppet.boards.scripted_host import bring_up_the_drive
+from socpuppet.boards.ssd import ssd
+
+read_back = []
+
+def host():
+    nvme = yield from bring_up_the_drive()      # waits for "ready"
+    yield from nvme.write_blocks(first=7, data=b"spam".ljust(512, b"\0"))
+    read_back.append((yield from nvme.read_blocks(first=7, count=1)))
+
+board = ssd(host=host, blocks=4096)
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf", via=board.ssd.cpu.socket)
+
+board.platform.run_until(lambda: bool(read_back), timeout=sp.ms(1000))
+print(board.ssd.cpu_kit.uart.output)
+```
+
+`examples/ssd_firmware_hello.py` is that, with more to say for itself.
+
+- ⚠️ **End the run yourself.** A script comes to an end and a CPU does not, so `platform.run()` with nothing to stop it would go on for ever. `run_until` with a timeout ends it when the host has what it wanted, or when it is plain that it never will.
+- ⚠️ **See to a reset before an enable**, and acknowledge it last. Acknowledging a reset is a promise that the firmware has let go of every queue and command from before it. [The frontend's page](models/nvme-frontend.md) has the handshake, and why.
+- ⚠️ **A write the hardware refuses is a bus fault.** Zephyr stops and prints the CPU's registers on the console, under `mcause: 7, Store/AMO access fault`. The line to read is `mtval`, which is the address that was refused: `10010034` is the frontend's `QUEUE_CREATE`. `nvme_frontend_create_queue` with a queue the frontend cannot keep is the usual one, so check what the host asked for first, as `firmware/ssd/src/admin.c` does.
+- **Data goes through the buffer.** The DMA engine and the flash controller are given addresses on the SSD's bus and do the copying themselves, so what they are pointed at has to be memory. The 4 MiB at `0x4000_0000` is there for it: `DT_NODELABEL(ssd_buffer)` in the devicetree. Zephyr does not manage it, so the firmware carves it up by hand.
+- **A NAND is read and written a page at a time** (`flash_get_write_block_size`), and ⚠️ no more than 2 GiB of one can be reached through Zephyr's flash API from a 32-bit CPU. [upstream.md](upstream.md) says why.
+- **Hold it to the tests.** `tests/python/test_ssd_firmware.py` is what a host may expect of an SSD's firmware, a behaviour a test, and it runs whatever `ssd_socpuppet_ssd.elf` it finds in `SOCPUPPET_FIRMWARE_DIR`. Put your image there under that name and see how far it gets.
+- 🎭 **Or do without the CPU.** [`sp.SsdFirmware`](models/ssd-firmware.md) is the same firmware as a Python script, for when the SSD's firmware is not what you are working on.
 
 ## Waiting for something to happen
 

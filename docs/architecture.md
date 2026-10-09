@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data. It has a CPU of its own that boots Zephyr, and 🎭 a script that plays its firmware until Zephyr can. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with a CPU of its own. That CPU runs the SSD's firmware, a Zephyr application, and 🎭 a script can play the firmware where a CPU is not wanted. The host and the SSD have each booted with a stand-in for the other, and have yet to meet. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -58,7 +58,7 @@ flowchart LR
     subgraph ssd["the SSD"]
         ep["PCIe endpoint"]
         fe["NVMe frontend"]
-        cpu["CPU and firmware<br/>(🎭 or a script)"]
+        cpu["CPU and firmware<br/>(or 🎭 a script)"]
         dma["DMA engine"]
         flash["flash controller"]
         nand["🎭 ideal NAND"]
@@ -82,7 +82,7 @@ flowchart LR
 
 🎓 A real SSD's controller is built this way round: hardware for what is the same every time, and firmware for what takes judgement. The [NVMe frontend](models/nvme-frontend.md) keeps the queues, fetches each command and posts its completion. The firmware reads the command and decides. The [DMA engine](models/dma-engine.md) copies a command's data between the host's memory and the SSD's buffer, and the [flash controller](models/flash-controller.md) moves pages between the buffer and the NAND. The host sees none of it: behind the endpoint is an NVMe drive, as the stand-in drive is.
 
-`socpuppet.boards.ssd` describes it, and `examples/ssd_hello.py` runs it.
+`socpuppet.boards.ssd` describes it. `examples/ssd_hello.py` runs it with 🎭 a script for its firmware, and `examples/ssd_firmware_hello.py` with the real thing, the Zephyr application in `firmware/ssd`. [The firmware's page](models/ssd-firmware.md) is about both.
 
 ## Words you will meet
 
@@ -207,7 +207,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | UART | `UartContract` | `Ns16550` |
 | machine timer | `MachineTimerContract` | `MachineTimer` |
 | interrupt controller | `InterruptControllerContract` | `Plic` |
-| NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware |
+| NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 
 When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
@@ -259,4 +259,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the SSD's Zephyr firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).
+🚧 Not built yet: the real die-to-die link and the manager that trains it, and the host and the SSD in one simulation with their own firmware on both. See [plan.md](plan.md).

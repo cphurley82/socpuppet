@@ -67,3 +67,4 @@ Each is 32 bits wide.
 - `src/socpuppet/core/command_status.h` is what the engine and the flash controller share: busy, done and error, and what interrupts for them.
 - `src/socpuppet/models/dma_engine.h` is the SystemC wrapper, which adds two sockets to `CommandDevice` (`src/socpuppet/models/command_device.h`), the shell of any device its CPU gives one command at a time: the process that does the work, and the one process that drives `irq`.
 - `tests/cpp/unit/dma_engine_logic_test.cpp` and `tests/cpp/platform/dma_engine_test.cpp` say what it does, one behaviour each.
+- `python/socpuppet/zephyr_module/drivers/ssd/dma_engine.c` is Zephyr's driver for it, two functions in `<socpuppet/drivers/dma_engine.h>`. `command_status.h` beside it is the part it shares with the flash controller's driver, as the models share theirs.

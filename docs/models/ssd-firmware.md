@@ -4,7 +4,9 @@
 
 ## What it stands in for
 
-The firmware of an SSD's controller: the program on the SSD's own CPU that decides what the drive does with each thing the host asks of it. On the finished platform that is Zephyr, running on the SSD's RISC-V core. 🚧 Zephyr boots there now, and knows nothing yet of being a drive. Until it does, this stands in for it, and it stays on afterwards as the firmware for anyone who is bringing up a host, or who wants to read what an SSD does without reading C.
+The firmware of an SSD's controller: the program on the SSD's own CPU that decides what the drive does with each thing the host asks of it. On the finished platform that is Zephyr, running on the SSD's RISC-V core: the application in `firmware/ssd`. This stands in for it where there is no CPU, and it is kept on purpose, as the firmware for anyone who is bringing up a host, or who wants to read what an SSD does without reading C.
+
+🧦 The two are written alike, section for section, and held to the same tests. So what this page says the firmware does is true of both, and [the real one](#the-real-one) says where they part.
 
 🎓 The hardware around it keeps the queues and moves the data (see the [NVMe frontend](nvme-frontend.md)). What is left for firmware is the judgement:
 
@@ -95,8 +97,40 @@ The reset comes first, on purpose. If the host has reset the controller and enab
 - **A write that fails half-way** has written the pages before the failure.
 - **Most of the command set**, as the stand-in drive does: no deleting queues, no Get Features or log pages, no Dataset Management.
 
+## The real one
+
+`firmware/ssd` is the same firmware as a Zephyr application for the board `socpuppet_ssd`. Leave the script out of the description and the SSD has a CPU to load it into:
+
+```python
+board = ssd(host=host)                  # no firmware=: the SSD gets a CPU
+board.platform.build()
+board.platform.load_elf("build/firmware/ssd_socpuppet_ssd.elf",
+                        via=board.ssd.cpu.socket)
+```
+
+`examples/ssd_firmware_hello.py` is that show, and [boot-your-firmware.md](../boot-your-firmware.md#bring-up-your-ssd-firmware) says how to build the image, or one of your own.
+
+A host cannot tell the two apart by what they answer. This is what differs behind the curtain:
+
+| | 🎭 The script | Zephyr, in `firmware/ssd` |
+|---|---|---|
+| Runs on | nothing: each step is one access on the SSD's bus | the SSD's 32-bit RISC-V core |
+| Reaches the hardware | by reading and writing the three devices' registers | through three Zephyr drivers: the NAND through Zephyr's own flash API, the frontend and the DMA engine through small APIs of their own |
+| Waits for the host | on the frontend's interrupt line | asleep, until the frontend's interrupt handler wakes it |
+| Takes | no simulated time | a few milliseconds to boot, and about a millisecond for a command |
+| Keeps its table | in a Python dict, `firmware.page_map` | in the SSD's buffer, after the page and the page of scratch: four bytes for each page of the drive |
+| Biggest drive | any | 2 GiB |
+| A device that never finishes | gives up, and says which device | 🚧 is asked for ever |
+
+- 💡 **The time is the CPU's.** The core runs about ten million instructions in a simulated second, and clearing a 4 KiB page a byte at a time is four thousand of them. Nothing else on the SSD takes time yet, so for now the firmware is all of a command's latency.
+- **The table is made empty at every start**, an entry at a time, which takes the firmware about half a microsecond of simulated time for each page of the drive: a quarter of a second for 2 GiB. The host waits, as it would for a real drive. 🎓 An NVMe controller tells its host how long to be patient (`CAP.TO`), and [the frontend](nvme-frontend.md) says one second.
+- ⚠️ **2 GiB is Zephyr's limit, and not the hardware's.** Zephyr's flash API names a place on a flash with a signed 32-bit number on this CPU. The firmware checks, and given a bigger NAND it says so on its console and stops. [upstream.md](../upstream.md) has the details.
+
 ## Under the hood
 
-- `python/socpuppet/ssd_firmware.py` is all of it: the registers it uses of the three devices, at the top, and then the firmware from the loop down.
-- `tests/python/test_ssd_firmware.py` runs it on the SSD's hardware, with the [driver stand-in](nvme-host.md) for what a driver does and a bare host of the tests' own (`tests/python/raw_nvme.py`) for what a drive refuses.
+- `python/socpuppet/ssd_firmware.py` is all of the stand-in: the registers it uses of the three devices, at the top, and then the firmware from the loop down.
+- `firmware/ssd/src` is the Zephyr application, a file for each section of the script, and `python/socpuppet/zephyr_module/drivers/ssd` its three drivers.
+- `tests/python/test_ssd_firmware.py` runs each of them on the SSD's hardware, every test once with the script and once with Zephyr, with the [driver stand-in](nvme-host.md) for what a driver does and a bare host of the tests' own (`tests/python/raw_nvme.py`) for what a drive refuses.
+- `tests/python/test_m4_exit.py` gives the SSD with Zephyr on it and 🎭 the [stand-in drive](behavioral-nvme.md) the same writes, and reads both back whole.
+- `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has: a console.
 - `tests/cpp/support/ssd_firmware.h` is the same firmware again in C++, for the NVMe contract. It is a test's own, and the two share nothing but the specification.
