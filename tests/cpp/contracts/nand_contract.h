@@ -38,6 +38,13 @@ inline tlm::tlm_response_status ProgramPage(BusDriver& controller,
       page, socpuppet::WriteData(in));
 }
 
+inline tlm::tlm_response_status EraseBlock(BusDriver& controller,
+                                           std::uint32_t block) {
+  return socpuppet::NandTransport(
+      controller.socket, socpuppet::NandCommand::Operation::kEraseBlock, block,
+      0, {});
+}
+
 // A page of data for the contract's chip, in which no two neighbouring
 // bytes are the same.
 inline std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
@@ -118,8 +125,27 @@ TYPED_TEST_P(NandContract, AProgrammedPageReadsBackAsItWasProgrammed) {
   EXPECT_EQ(read, nand_contract::SomePage());
 }
 
+TYPED_TEST_P(NandContract, EveryPageOfAnErasedBlockReadsAsAllOnes) {
+  std::vector<std::uint8_t> first(16);
+  std::vector<std::uint8_t> last(16);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    nand_contract::ProgramPage(controller, 2, 0, nand_contract::SomePage());
+    nand_contract::ProgramPage(controller, 2, 7, nand_contract::SomePage());
+    response = nand_contract::EraseBlock(controller, 2);
+    nand_contract::ReadPage(controller, 2, 0, first);
+    nand_contract::ReadPage(controller, 2, 7, last);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(first, std::vector<std::uint8_t>(16, 0xFF));
+  EXPECT_EQ(last, std::vector<std::uint8_t>(16, 0xFF));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
                             APageThatWasNeverProgrammedReadsAsAllOnes,
-                            AProgrammedPageReadsBackAsItWasProgrammed);
+                            AProgrammedPageReadsBackAsItWasProgrammed,
+                            EveryPageOfAnErasedBlockReadsAsAllOnes);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_

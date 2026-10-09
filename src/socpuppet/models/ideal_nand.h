@@ -43,6 +43,9 @@ class IdealNand : public sc_core::sc_module {
       case NandCommand::Operation::kProgramPage:
         array_.ProgramPage(command.block, command.page, data);
         return tlm::TLM_OK_RESPONSE;
+      case NandCommand::Operation::kEraseBlock:
+        array_.EraseBlock(command.block);
+        return tlm::TLM_OK_RESPONSE;
       default:
         return SayGeometry(data);
     }
