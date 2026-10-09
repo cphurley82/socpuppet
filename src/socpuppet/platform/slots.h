@@ -9,6 +9,8 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/core/nand_array.h"
+
 namespace socpuppet {
 
 // Slot contracts, as C++20 concepts.
@@ -111,6 +113,17 @@ concept NvmeFunctionSlot = requires(T function) {
     function.irq
   } -> std::convertible_to<sc_core::sc_vector<sc_core::sc_out<bool>>&>;
 };
+
+// A NAND flash chip: built from a name and its geometry, reached through
+// one TLM target socket, which takes the operations in
+// socpuppet/models/nand_link.h. How it must behave is the NAND contract
+// (tests/cpp/contracts/nand_contract.h).
+template <typename T>
+concept NandSlot =
+    std::constructible_from<T, sc_core::sc_module_name, const NandGeometry&> &&
+    requires(T nand) {
+      { nand.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+    };
 
 }  // namespace socpuppet
 

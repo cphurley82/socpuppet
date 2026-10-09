@@ -136,10 +136,12 @@ add_library(socpuppet_models INTERFACE)
 target_sources(socpuppet_models INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     models/behavioral_nvme.h
+    models/ideal_nand.h
     models/interrupt_lines.h
     models/memory.h
     models/msi_plic_bridge.h
     models/msi_receiver.h
+    models/nand_link.h
     models/pass_through_link.h
     models/pcie_endpoint.h
     models/pcie_link.h
