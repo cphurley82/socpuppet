@@ -12,6 +12,7 @@ target_sources(socpuppet_core INTERFACE
     core/memory_port.h
     core/memory_store.h
     core/nand_array.h
+    core/nand_geometry.h
     core/nand_port.h
     core/script.h
     core/time.h

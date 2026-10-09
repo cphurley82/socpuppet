@@ -7,16 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace socpuppet {
+#include "socpuppet/core/nand_geometry.h"
 
-// How a NAND flash chip is laid out: blocks, each of so many pages, each of
-// so many bytes. A page is what is read and programmed at a time, and a
-// block is what is erased at a time.
-struct NandGeometry {
-  std::uint32_t page_size;
-  std::uint32_t pages_per_block;
-  std::uint32_t blocks;
-};
+namespace socpuppet {
 
 // How an operation on the array came out.
 enum class NandResult {

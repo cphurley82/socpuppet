@@ -9,7 +9,7 @@
 #include <systemc>
 #include <tlm>
 
-#include "socpuppet/core/nand_array.h"
+#include "socpuppet/core/nand_geometry.h"
 
 namespace socpuppet {
 

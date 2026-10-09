@@ -5,7 +5,7 @@
 #include <optional>
 #include <span>
 
-#include "socpuppet/core/nand_array.h"
+#include "socpuppet/core/nand_geometry.h"
 
 namespace socpuppet {
 

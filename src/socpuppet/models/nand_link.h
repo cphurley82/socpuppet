@@ -10,7 +10,7 @@
 #include <tlm>
 
 #include "socpuppet/core/little_endian.h"
-#include "socpuppet/core/nand_array.h"
+#include "socpuppet/core/nand_geometry.h"
 #include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
