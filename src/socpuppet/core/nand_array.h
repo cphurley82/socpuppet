@@ -50,6 +50,13 @@ class NandArray {
     return NandResult::kDone;
   }
 
+  NandResult EraseBlock(std::uint32_t block) {
+    for (std::uint32_t page = 0; page < geometry_.pages_per_block; ++page) {
+      pages_.erase(Index(block, page));
+    }
+    return NandResult::kDone;
+  }
+
  private:
   static constexpr std::uint8_t kErased = 0xFF;
 

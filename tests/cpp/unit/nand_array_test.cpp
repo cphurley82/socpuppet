@@ -61,4 +61,16 @@ TEST(WhenAPageIsProgrammed, ThePagesAroundItStillReadAsAllOnes) {
   EXPECT_EQ(PageAt(nand, 3, 5), erased);
 }
 
+TEST(WhenABlockIsErased, EveryPageOfItReadsAsAllOnes) {
+  NandArray nand{kSmall};
+  ASSERT_EQ(nand.ProgramPage(2, 0, SomePage()), NandResult::kDone);
+  ASSERT_EQ(nand.ProgramPage(2, 7, SomePage()), NandResult::kDone);
+
+  ASSERT_EQ(nand.EraseBlock(2), NandResult::kDone);
+
+  const std::vector<std::uint8_t> erased(kSmall.page_size, 0xFF);
+  EXPECT_EQ(PageAt(nand, 2, 0), erased);
+  EXPECT_EQ(PageAt(nand, 2, 7), erased);
+}
+
 }  // namespace socpuppet
