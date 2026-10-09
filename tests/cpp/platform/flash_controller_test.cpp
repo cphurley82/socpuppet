@@ -29,6 +29,7 @@ constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
 constexpr std::uint64_t kLocal = 0x14;
+constexpr std::uint64_t kPageSizeRegister = 0x20;
 
 // What can be written to the command register.
 constexpr std::uint32_t kReadPage = 1;
@@ -224,6 +225,24 @@ TEST(WhenADebuggerWritesToAFlashControllersRegister, TheWriteIsDeclined) {
 
   EXPECT_FALSE(answered);
   EXPECT_EQ(fixture.DebugRead32(kBlock), 0U);
+}
+
+// A debugger's look takes no simulated time and nothing notices it, so it
+// cannot be the reason the chip is asked what it is. Until the firmware has
+// asked, the controller does not know.
+TEST(WhenADebuggerLooksAtAFlashControllersGeometryBeforeTheCpuHas, ItSeesZero) {
+  CpuWithAFlashController fixture{[](BusDriver&) {}};
+
+  EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 0U);
+}
+
+TEST(WhenADebuggerLooksAtAFlashControllersGeometryAfterTheCpuHas,
+     ItSeesWhatTheChipSaid) {
+  CpuWithAFlashController fixture{
+      [](BusDriver& cpu) { cpu.Read32(kPageSizeRegister); }};
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 16U);
 }
 
 }  // namespace socpuppet

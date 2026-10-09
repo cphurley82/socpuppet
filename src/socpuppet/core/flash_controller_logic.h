@@ -20,6 +20,10 @@ class FlashControllerLogic {
   // Reads and writes of the register block, by the CPU. Each returns false,
   // and touches nothing, if there is no register to take the access.
   bool ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out);
+  // The same read as a debugger makes it, which nothing may notice: the
+  // chip is not asked what it is, so until something else has asked, the
+  // geometry registers are seen as zeros.
+  bool PeekRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in);
 
   // Does what the command register was last told, if it has not been done

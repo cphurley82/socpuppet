@@ -40,7 +40,17 @@ FlashControllerLogic::FlashControllerLogic(NandPort& nand,
 
 bool FlashControllerLogic::ReadRegister(std::uint64_t offset,
                                         std::span<std::uint8_t> out) {
+  if (offset == kPageSizeRegister || offset == kPagesPerBlockRegister ||
+      offset == kBlocksRegister) {
+    Geometry();
+  }
+  return PeekRegister(offset, out);
+}
+
+bool FlashControllerLogic::PeekRegister(std::uint64_t offset,
+                                        std::span<std::uint8_t> out) const {
   if (out.size() != kRegisterBytes) return false;
+  const NandGeometry geometry = geometry_.value_or(NandGeometry{});
   switch (offset) {
     case kCommandRegister:
       StoreLittleEndian(std::uint32_t{0}, out);
@@ -61,13 +71,13 @@ bool FlashControllerLogic::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(local_, out);
       break;
     case kPageSizeRegister:
-      StoreLittleEndian(Geometry().page_size, out);
+      StoreLittleEndian(geometry.page_size, out);
       break;
     case kPagesPerBlockRegister:
-      StoreLittleEndian(Geometry().pages_per_block, out);
+      StoreLittleEndian(geometry.pages_per_block, out);
       break;
     case kBlocksRegister:
-      StoreLittleEndian(Geometry().blocks, out);
+      StoreLittleEndian(geometry.blocks, out);
       break;
     default:
       return false;
