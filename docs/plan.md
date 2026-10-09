@@ -96,6 +96,41 @@ The kit arrives as a Python package, because that is how a firmware developer ge
 - a) D2D link model: one link module per die, link state machine (reset → training → active, error/retrain), configurable latency and bandwidth, sideband register channel, error injection hooks, compute-die reset control. D2D contract suite passed by both pass-through and full link. Manager slot filled by a Python script that trains the link over sideband.
 - b) RV32IMAC management core, UART, timer; Zephyr link-training and reset-release firmware. Exit: firmware boots, trains the link, releases reset, and the compute-side stand-in then reaches IO-die MMIO across the link.
 
+**Decided on 2026-10-09, planning M5.**
+
+- **The link is UCIe-style, as close as public sources allow**, in its state machine, its register layout and its sideband message format, so that a trace of a boot reads like a sideband capture of a real part and what a learner sees here is recognisable elsewhere. The sources are the Hot Chips 2023 UCIe tutorial and Berkeley's open [uciedigital](https://github.com/ucb-bar/uciedigital) RTL, which carries the encodings and offsets. The spec itself is not used. This retires the handoff's "never copy register tables" line, which was written to keep the evaluation copy of the spec out of the repo and is kept to in a stronger form: nothing here comes from the spec at all. ⚠️ The docs say "UCIe-style, modelled from public sources, not compliant", and that is not modesty: whole layers are missing.
+- **Mainband traffic is raw memory-mapped TLM**, which settles the open decision. The endpoint forwards the payload untouched, adds time, and refuses DMI, because every access on real hardware has to cross the link and be seen doing so. Debug accesses cross whatever the link's state, since a debugger looks at memory without disturbing it.
+- **One endpoint class, two per link, symmetric.** `sp.D2dLink(latency_ns=, bytes_per_ns=, training_ns=)` places a `D2dLinkEndpoint` on each die. It keeps the pass-through's four mainband sockets and adds a `sideband` target (the die's register block), a second peer pair for the sideband so it can be traced apart from mainband, and optional `reset` and `irq` wire outputs.
+- **UCIe's link training state machine**: RESET → SBINIT → MBINIT → MBTRAIN → LINKINIT → ACTIVE, with PHYRETRAIN and TRAINERROR. RESET is held at least 4 ms and a substate left unanswered for 8 ms ends in TRAINERROR, both UCIe's own figures. `training_ns` is SBINIT to ACTIVE, a quarter of it per state. Only ACTIVE carries mainband: at any other time a transaction is refused with a generic error and never delivered, which a script sees as a bus error and firmware as a bus fault.
+- **UCIe's sideband packets**, a 64-bit header and 0, 32 or 64 bits of data, travelling over the sideband pair as one TLM write of the packet's bytes at address 0. A completion is a packet back, not a nested reply, so the trace shows a request and its completion as two records the way a capture would.
+- **The register block is the UCIe Link DVSEC at a static address**, which is how UCIe reaches it on a part with no configuration space: the extended capability header, the vendor header (0xD2DE), Link Capability, Link Control (start training, retrain), Link Status (up, training, status changed, uncorrectable fatal), the notification control that enables the interrupt, a register locator pointing at a vendor-defined block of ours (the state code, the far die's reset, fault injection), and the Sideband Mailbox, which performs a register access against the other endpoint. **The manager releases the compute die by a mailbox write of 0 to the compute endpoint's reset register** — the sideband is up from power-on, so it is reachable before the link is.
+- **Timing is loosely timed**: `latency_ns` once per crossing, plus the transaction's bytes at `bytes_per_ns`, with each direction serialized on its own. ⚠️ A Python test cannot see 20 ns in `platform.time` after one write, because the initiator folds the delay into its quantum. Measure through the trace, whose records carry the arrival time, or set `platform.quantum = 0`.
+- **No wire crosses the link.** An interrupt or a reset is a message on the sideband or it stays on its die. That closes the question the pass-through's page left open. ⚠️ The host board still wires the IO die's timer to the compute die's CPU; M7 moves the timer where it belongs.
+- **The manager's stand-in is a Python script**, 🎭 `sp.IoManager`, in the shape of `sp.SsdFirmware`: start training, sleep until the interrupt, read Link Status, release the compute die, and retrain if a fault takes the link down. The C++ contract rig trains with bus writes instead, so there is no C++ stand-in for it.
+- **`LinkContract` becomes rig-based**, in `NvmeContract`'s shape, because the D2D link has to be trained before it carries anything and the pass-through has nothing to train. The six items stay word for word; what only the real link does is tested on the real link.
+- **The board is `socpuppet.boards.io_manager`**, with the IO die's map mirroring the SSD's so that the SoC `socpuppet_rv32` is reused, the DVSEC at 0x1001_0000, and a scratch memory as the round trip's target. The compute die's window onto the IO die is an **identity map**: a router hands its target an offset from the window's base, and the IO die's bus holds absolute addresses, so the compute die reaches the IO die at the addresses the manager itself uses. M7 will want the same.
+- **The CPU kit becomes shared** (`boards/cpu_kit.py`), lifted out of the SSD board in a refactor of its own, as M5b is the third board to want it.
+- **One Zephyr driver, one node.** `socpuppet,ucie-link` is a driver of Zephyr's reset class, because releasing the other die is exactly what that class is for, with training as plain functions beside it. 🚧 If the reset class rubs the way the flash class did, the fallback is a function of our own and an entry in [upstream.md](upstream.md).
+
+The steps, each one `/tdd` session:
+
+| # | Step | Where the behaviour goes |
+|---|---|---|
+| M5a 1 | `LinkContract` becomes rig-based (no behaviour change) | `tests/cpp/contracts/link_contract.h` |
+| M5a 2 | Sideband packets encode and decode | `core/ucie_sideband.h` |
+| M5a 3 | Latency and bandwidth per direction | `core/link_channel.h` |
+| M5a 4 | The training state machine, both ends | `core/ucie_link_state.h` |
+| M5a 5 | The DVSEC registers and the mailbox | `core/ucie_link_registers.h`, `core/d2d_link_logic.h` |
+| M5a 6 | The endpoint, its wires and the contract | `models/d2d_link.h` |
+| M5a 7 | `sp.D2dLink`, and `platform.link(trace=)` | `components.py`, `platform.py` |
+| M5a 8 | 🎭 The manager script and the trace decoder | `io_manager.py`, `ucie.py` |
+| M5a 9 | The board and the M5a exit test | `boards/io_manager.py` |
+| M5b 10 | The CPU kit leaves the SSD board (no behaviour change) | `boards/cpu_kit.py` |
+| M5b 11 | A manager with a CPU, and its Zephyr board | `socpuppet_iomgr` |
+| M5b 12 | The driver, the firmware and the M5 exit test | `drivers/d2d/`, `firmware/iomgr` |
+
+Left for later: dropped and corrupted transactions are M10's error injection, not M5's, which injects a fault and nothing finer.
+
 ## Phase 3: Full bootchain
 
 ### M6 — Host firmware ↔ SSD firmware
@@ -134,7 +169,6 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| D2D mainband protocol (raw memory-mapped vs. PCIe/CXL-like layer) | M5a | raw memory-mapped transactions |
 | Does "bootchain" include a ROM/bootloader stage per image? (not in handoff; ELFs are loaded from Python) | After M8 | no bootloader |
 | `native_sim` firmware tier | Optional, any time after M3 | not built |
 | Second compute die; host DRAM on the IO die | After M8 | one compute die, DRAM on compute die |
@@ -274,7 +308,7 @@ Left out of M0 on purpose, because nothing in M0 could exercise them. Each belon
 |---|---|---|
 | "Resolved" JSON dump after build | done in M2, without a second dump | `to_json()` includes what a component works out from the description (the root complex is the first: where its memory window is). It is the same before and after build. |
 | Parameter schemas and fidelity tiers in the registry | when a model needs a parameter that is not a number | Parameters are plain name → number so far, checked by a catalogue parity test and by the factory's own ranges. A tier turned out to need no mechanism: planning M4, it is a choice between two description functions in Python. |
-| Driving wires from Python | M5 | The scripted IO-die manager is the first thing that needs to release a reset from Python. |
+| Driving wires from Python | nowhere; not needed | The scripted IO-die manager was expected to want it, and does not: planning M5 settled that no wire crosses the link, so the manager releases the compute die by writing a register over the sideband, as the firmware does. Python drives a wire by writing to the model that owns it. |
 
 Things later milestones should know:
 
