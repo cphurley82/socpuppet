@@ -630,4 +630,44 @@ TEST(WhenTheHostResetsAnNvmeFrontendBeforeItHasPostedACompletion,
   EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
 }
 
+TEST(WhenTheHostResetsAnNvmeFrontendThatWasInterruptingIt,
+     TheFrontendStopsInterrupting) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.CpuPosts();
+  rig.frontend.Step();
+
+  rig.HostDisables();
+
+  EXPECT_FALSE(rig.frontend.HostInterrupts().Interrupting(0));
+}
+
+// The admin queues start over: the host's first command after the reset
+// is in the first slot again, and so is its completion.
+TEST(WhenTheHostEnablesAnNvmeFrontendAgainAfterAReset,
+     TheAdminQueuesStartFromTheirFirstSlots) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.CpuPosts();
+  rig.frontend.Step();
+  rig.HostDisables();
+  rig.tails = {};
+
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(8));
+  rig.frontend.Step();
+  rig.CpuPosts();
+  rig.frontend.Step();
+
+  EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0),
+            (Completion{.submission_queue = 0,
+                        .submission_head = 1,
+                        .command_id = 8,
+                        .phase = true}));
+}
+
 }  // namespace socpuppet
