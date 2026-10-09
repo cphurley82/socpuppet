@@ -45,6 +45,10 @@ namespace {
 // that tells the host about them, has room for 2048.
 constexpr Within kInterruptVectors{.least = 1, .most = 2048};
 
+// What a NAND chip's geometry is made of: counts that a controller reads
+// from 32-bit registers, and none of which can be nothing.
+constexpr Within kNandCount{.least = 1, .most = 0xFFFF'FFFF};
+
 // Adds a port for each of a component's numbered lines: `prefix` and a
 // number, counting up from `first`. `make_port` turns a name and a line
 // into the port.
@@ -89,12 +93,13 @@ Registry BuiltinComponents() {
   });
   registry.Add("ideal_nand", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<IdealNand>(
-        name, NandGeometry{.page_size = static_cast<std::uint32_t>(
-                               parameters.Optional("page_size", 4096)),
-                           .pages_per_block = static_cast<std::uint32_t>(
-                               parameters.Required("pages_per_block")),
-                           .blocks = static_cast<std::uint32_t>(
-                               parameters.Required("blocks"))});
+        name,
+        NandGeometry{.page_size = static_cast<std::uint32_t>(
+                         parameters.Optional("page_size", 4096, kNandCount)),
+                     .pages_per_block = static_cast<std::uint32_t>(
+                         parameters.Required("pages_per_block", kNandCount)),
+                     .blocks = static_cast<std::uint32_t>(
+                         parameters.Required("blocks", kNandCount))});
     std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
