@@ -758,4 +758,20 @@ TEST(WhenTheCpuReadsARegisterOfAnNvmeFrontendThatIsOnlyForWriting,
   EXPECT_EQ(rig.CpuRead32(kQueueCreate), 0U);
 }
 
+// A 32-bit CPU reads the 64 bytes four at a time.
+TEST(WhenTheCpuReadsTheWaitingCommandAWordAtATime, ItReadsTheWholeCommand) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  std::vector<std::uint8_t> read(kCommandBytes);
+  for (std::size_t offset = 0; offset < kCommandBytes; offset += 4) {
+    ASSERT_TRUE(rig.frontend.ReadCpuRegister(
+        kCommand + offset, std::span{read}.subspan(offset, 4)));
+  }
+
+  EXPECT_EQ(read, SomeCommand(7));
+}
+
 }  // namespace socpuppet

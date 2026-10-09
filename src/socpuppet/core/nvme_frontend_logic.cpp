@@ -116,6 +116,16 @@ bool NvmeFrontendLogic::CpuInterrupting() const {
 
 bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
                                         std::span<std::uint8_t> out) const {
+  if (offset >= kCommandRegister) {
+    // The command, or any piece of it. With none waiting it is zeros.
+    const std::uint64_t from = offset - kCommandRegister;
+    std::ranges::fill(out, std::uint8_t{0});
+    if (command_) {
+      std::ranges::copy(std::span{command_->bytes}.subspan(from, out.size()),
+                        out.begin());
+    }
+    return true;
+  }
   switch (offset) {
     case kStatusRegister:
       StoreLittleEndian(Status(), out);
@@ -159,13 +169,6 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
     case kCommandQueueRegister:
       StoreLittleEndian(
           std::uint32_t{command_ ? command_->queue_id : std::uint16_t{0}}, out);
-      break;
-    case kCommandRegister:
-      if (command_) {
-        std::ranges::copy(command_->bytes, out.begin());
-      } else {
-        std::ranges::fill(out, std::uint8_t{0});
-      }
       break;
     default:
       break;
