@@ -46,7 +46,7 @@ It has two faces.
 
 It is an NVMe controller, and what the [stand-in drive's page](behavioral-nvme.md) says of registers, doorbells and interrupt lines holds here too: the two share that code. Two things differ, because there is firmware.
 
-- **Ready is the firmware's to say.** Setting `CC.EN` does not make the controller ready. `CSTS.RDY` is whatever the firmware last said, and the firmware says so when it has finished starting up, or finished tidying after a reset.
+- **Ready is the firmware's to say.** Setting `CC.EN` does not make the controller ready. `CSTS.RDY` is what the firmware said of the controller the host has enabled now, and the firmware says so when it has finished starting up. A reset takes it back at once.
 - **So the host is told to wait.** `CAP.TO` says one second. A host that has just enabled the controller may find the firmware still booting.
 
 ### To the SSD's CPU: the registers
@@ -55,13 +55,13 @@ Each is 32 bits wide, except the command.
 
 | Offset | Name | | |
 |---|---|---|---|
-| `0x00` | `STATUS` | read, write one to clear | See below. |
-| `0x04` | `INT_ENABLE` | read, write | Bits 0 to 2: which of the first three status bits raise `cpu_irq`. |
-| `0x08` | `CONTROL` | read, write | Bit 0 `READY`: the host sees it as `CSTS.RDY`. |
+| `0x00` | `CONTROL` | read, write | Bit 0 `READY`: the host sees it as `CSTS.RDY`. |
+| `0x04` | `STATUS` | read, write one to clear | See below. |
+| `0x08` | `INT_ENABLE` | read, write | Bits 0 to 2: which of the status bits raise `cpu_irq`. |
 | `0x0C` | `LIMITS` | read | How many I/O queue pairs the frontend has, in the low half, and how many interrupt vectors, in the high half. |
 | `0x10` | `COMMAND_QUEUE` | read | Which submission queue the waiting command came from. 0 is the admin queue. |
 | `0x14` | `COMPLETION_RESULT` | read, write | The first 32 bits of the completion: the command's answer, for the few that have one. |
-| `0x18` | `COMPLETION_STATUS` | read, write | The status code in the low byte, zero for success, and in bits 8 to 10 which list of codes it is from. |
+| `0x18` | `COMPLETION_STATUS` | read, write | How the command went, laid out as the status field of a completion is, less the phase bit: the status code in the low byte, zero for success, and in bits 8 to 10 which list of codes it is from. The other bits read back as zero. |
 | `0x1C` | `COMPLETION_POST` | write | Write 1 to have the completion posted. |
 | `0x20` | `QUEUE_ID` | read, write | A queue to create: which, |
 | `0x24` | `QUEUE_BASE_LOW` | read, write | where it is in the host's memory, |
@@ -71,24 +71,21 @@ Each is 32 bits wide, except the command.
 | `0x34` | `QUEUE_CREATE` | write | Write 1 to create that completion queue, 2 for a submission queue. |
 | `0x40` | `COMMAND` | read | The waiting command, 64 bytes, read whole or a piece at a time. Zeros when none is waiting. |
 
-`0x38` and `0x3C` are reserved, with nothing there.
+`0x38` and `0x3C` are reserved, with nothing there. `STATUS` and `INT_ENABLE` are where the [DMA engine](dma-engine.md) and the [flash controller](flash-controller.md) have theirs.
 
 `STATUS` has two kinds of bit:
 
 | Bit | Name | |
 |---|---|---|
 | 0 | `ENABLED` | The host has enabled the controller. Stays set until the CPU writes a one to it. |
-| 1 | `DISABLED` | The host has disabled it, which is a controller reset. Stays set until the CPU writes a one to it. |
-| 2 | `COMMAND` | A command is waiting. Set for exactly as long as one is. |
-| 3 | `HOST_ENABLE` | The host has the controller enabled, now. It does not interrupt. |
-
-💡 Why both `ENABLED` and `HOST_ENABLE`? The first two bits say that something happened, and wake the firmware. If the host disabled the controller and enabled it again before the firmware looked, both are set, and neither says which came last. Bit 3 says how things stand, and that is what the firmware goes by when it says whether it is ready.
+| 1 | `DISABLED` | The host has disabled it, which is a controller reset. Stays set until the CPU writes a one to it, and that write means something: see "A reset" below. |
+| 2 | `COMMAND_WAITING` | A command is waiting. Set for exactly as long as one is. |
 
 ### One command at a time
 
 The frontend holds one command for the CPU. It fetches the next when the firmware has had this one's completion posted.
 
-- **`COMMAND` falls and rises once per command.** The command stops waiting the moment the CPU writes `COMPLETION_POST`, and the next one, if there is one, starts waiting a delta cycle or two later. So `cpu_irq` has a rise for every command, and an interrupt controller that hears rises hears them all.
+- **`COMMAND_WAITING` falls and rises once per command.** The command stops waiting the moment the CPU writes `COMPLETION_POST`, and the next one, if there is one, starts waiting a delta cycle or two later. So `cpu_irq` has a rise for every command, and an interrupt controller that hears rises hears them all.
 - **The frontend fills in what it knows.** The completion says which command it is for, which queue that came from and how far the queue has been read, and the firmware never has to. The firmware supplies only how it went.
 - **Which command comes next** is the frontend's choice: the lowest-numbered queue with one, so admin commands go first. A command whose completion queue is full is not fetched until the host has made room, which is what keeps a full queue from being written over.
 
@@ -98,7 +95,27 @@ The admin queues are the frontend's own: the host says where they are in registe
 
 ### A reset
 
-When the host clears `CC.EN` the frontend does its part at once: every queue is gone, the waiting command is gone, a completion not yet posted never will be, and the host's interrupt lines fall. It sets `DISABLED`, and the firmware does the rest: forget its own record of the queues, and say it is no longer ready.
+When the host clears `CC.EN` the frontend does its part at once: every queue is gone, the waiting command is gone, a completion not yet posted never will be, the host's interrupt lines fall, and the controller is no longer ready. It sets `DISABLED`, and the firmware does the rest, which is to forget its own record of the queues.
+
+⚠️ The firmware may be in the middle of a command when the reset comes, and the host may enable the controller again and submit before the firmware has even noticed. So the frontend keeps the two apart, with a handshake:
+
+```text
+ host: CC.EN = 0 ──▶ frontend: queues gone, command gone, not ready, DISABLED set
+                     │
+                     │   until the firmware acknowledges:
+                     │     no command is fetched
+                     │     COMPLETION_POST is taken, and nothing is posted
+                     │     QUEUE_CREATE is taken, and nothing is created
+                     │     READY is not heard
+                     │
+ firmware: forget the queues, write 1 to DISABLED ──▶ "I have let go of everything from before"
+                     │
+ firmware: write 1 to ENABLED, set READY ──▶ the host sees the controller ready
+```
+
+- **The acknowledgement is a promise.** Writing a one to `DISABLED` says the firmware holds nothing from before the reset: no command it will still complete, no queue it will still ask for. Firmware does that from wherever it does its work, and not from an interrupt handler while a thread is still busy.
+- **Nothing in the window is the firmware's mistake.** The completion of a command the reset took away has nowhere to go, so it is dropped, and not refused.
+- **`READY` is only heard when it is true**: the host has the controller enabled, and no reset is waiting to be acknowledged. So firmware that finds both `DISABLED` and `ENABLED` set deals with the reset first, then says it is ready, and need not ask which came last. If the host has disabled the controller again by then, the frontend does not hear it.
 
 ## What it leaves out
 
@@ -107,7 +124,7 @@ When the host clears `CC.EN` the frontend does its part at once: every queue is 
 - **Checking the host.** The page size and entry sizes in `CC` are taken as read, as on the stand-in drive, and interrupts cannot be masked.
 - **`CSTS.CFS`**, the bit by which a controller says it has failed.
 - **DMA failures.** A queue at an address where nothing answers is not noticed: the command fetched from it is zeros, and a completion posted to it goes nowhere.
-- **Refusals as status.** ⚠️ A write the frontend refuses gets a bus error: a completion with no command waiting, a queue it cannot create (one that exists, an identifier or a vector it does not have, a submission queue whose completion queue is missing), a write to a register that only says something. Firmware that checks before it asks never sees one.
+- **Refusals as status.** ⚠️ A write the frontend refuses gets a bus error: a completion with no command waiting, a queue it cannot create (one that exists, an identifier or a vector it does not have, a submission queue whose completion queue is missing, any queue while the host does not have the controller enabled), a write to a register that only says something. Firmware that checks before it asks never sees one, because what a reset takes from under it is not refused.
 - **A debugger's hands, on the CPU's side.** A debugger can read the CPU's registers and cannot write them. On the host's side it can do both, as on the stand-in drive, and a write there starts nothing.
 
 ## Under the hood
