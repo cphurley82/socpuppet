@@ -59,7 +59,10 @@ class FlashController : public sc_core::sc_module,
                         : logic_.WriteRegister(transaction.get_address(), data);
     transaction.set_response_status(ok ? tlm::TLM_OK_RESPONSE
                                        : tlm::TLM_ADDRESS_ERROR_RESPONSE);
-    if (transaction.is_write()) work_.notify(sc_core::SC_ZERO_TIME);
+    if (transaction.is_write()) {
+      line_may_have_changed_.notify();
+      work_.notify(sc_core::SC_ZERO_TIME);
+    }
   }
 
   void Work() {

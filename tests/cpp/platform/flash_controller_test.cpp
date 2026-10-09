@@ -159,4 +159,21 @@ TEST(WhenAFlashControllerFinishesACommandWithItsInterruptEnabled,
   EXPECT_TRUE(fixture.InterruptLine().line->read());
 }
 
+TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
+     TheFlashControllersLineFalls) {
+  CpuWithAFlashController* wired = nullptr;
+  CpuWithAFlashController fixture{[&](BusDriver& cpu) {
+    cpu.Write32(kInterruptEnable, kDone);
+    cpu.Write32(kCommand, kReadPage);
+    wired->InterruptLine().WaitForRises(1, sc_core::sc_time(1, sc_core::SC_MS));
+    cpu.Write32(kStatus, kDone);
+  }};
+  wired = &fixture;
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.InterruptLine().Rises(), 1);
+  EXPECT_FALSE(fixture.InterruptLine().line->read());
+}
+
 }  // namespace socpuppet
