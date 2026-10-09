@@ -25,6 +25,7 @@ table that says, for each page of the drive, which NAND page holds it.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
@@ -131,6 +132,8 @@ _INVALID_FIELD = _Outcome(0x02)
 _DATA_TRANSFER_ERROR = _Outcome(0x04)
 _INVALID_NAMESPACE = _Outcome(0x0B)
 _LBA_OUT_OF_RANGE = _Outcome(0x80)
+_PRP_OFFSET_INVALID = _Outcome(0x13)
+_INTERNAL_ERROR = _Outcome(0x06)
 #: Statuses of the two commands that create a queue.
 _COMPLETION_QUEUE_INVALID = _Outcome(0x00, 1)
 _INVALID_QUEUE_IDENTIFIER = _Outcome(0x01, 1)
@@ -154,12 +157,7 @@ class _Command(NamedTuple):
 
     @classmethod
     def from_bytes(cls, command: bytes) -> _Command:
-        opcode, namespace, data, more_data, dword10, dword11, dword12 = (
-            struct.unpack("<B3xI16xQQIII12x", command)
-        )
-        return cls(
-            opcode, namespace, data, more_data, dword10, dword11, dword12
-        )
+        return cls._make(struct.unpack("<B3xI16xQQIII12x", command))
 
 
 class _Extent(NamedTuple):
@@ -182,9 +180,8 @@ class SsdFirmware:
     to hand to a `ScriptedBusMaster`.
 
     ⚠️ It keeps its table of where the drive's pages are in Python, and
-    not on the drive. A reset of the SSD's CPU starts the script again
-    with an empty table, and what was written is no longer found. Real
-    firmware writes the table to the NAND as well, and reads it back.
+    not on the drive. Real firmware writes the table to the NAND as well,
+    and finds it again when it starts.
     """
 
     def __init__(
@@ -208,9 +205,10 @@ class SsdFirmware:
         self._completion_queues: set[int] = set()
         self._submission_queues: set[int] = set()
         # The flash translation layer: for each page of the drive that was
-        # ever written, the NAND page that holds it. And the next NAND
+        # ever written, the NAND page that holds it. 🎓 An FTL calls this
+        # its logical-to-physical table, L2P for short. And the next NAND
         # page nobody has.
-        self._where: dict[int, int] = {}
+        self._page_map: dict[int, int] = {}
         self._next_free_nand_page = 0
 
     @property
@@ -221,7 +219,7 @@ class SsdFirmware:
         page's worth of the drive's blocks, and a NAND page is numbered
         through the whole chip.
         """
-        return dict(self._where)
+        return dict(self._page_map)
 
     # ---- The firmware.
 
@@ -241,14 +239,13 @@ class SsdFirmware:
                 yield from self._deal_with_the_command()
 
     def _start_up(self) -> Steps[None]:
-        # A reset of the SSD's CPU starts the script again, and with it
-        # the firmware's memory of what it had.
-        self._completion_queues.clear()
-        self._submission_queues.clear()
-        self._where.clear()
-        self._next_free_nand_page = 0
         # What is the chip, and what has the frontend got?
-        yield from self._do(self._flash, _IDENTIFY_THE_CHIP)
+        if not (yield from self._do(self._flash, _IDENTIFY_THE_CHIP)):
+            raise RuntimeError(
+                "The flash controller could not identify the NAND chip, so "
+                "the firmware cannot tell what the drive is. Is a NAND "
+                "connected to the flash controller's `nand` port?"
+            )
         self._page_size = yield read32(self._flash + _PAGE_SIZE)
         self._pages_per_block = yield read32(self._flash + _PAGES_PER_BLOCK)
         blocks = yield read32(self._flash + _BLOCKS)
@@ -398,7 +395,7 @@ class SsdFirmware:
         else:
             return _INVALID_FIELD
         yield write(self._scratch, bytes(page))
-        return (yield from self._send_to_the_host(command, self._scratch))
+        return (yield from self._send_the_scratch_page(command))
 
     def _set_features(self, command: _Command) -> _Outcome:
         if command.dword10 & 0xFF != _NUMBER_OF_QUEUES:
@@ -426,36 +423,66 @@ class SsdFirmware:
     def _read_or_write(self, command: _Command) -> Steps[_Outcome]:
         if command.namespace != _THE_NAMESPACE:
             return _INVALID_NAMESPACE
-        # The first block is in dwords 10 and 11, and how many, counted
-        # from zero, in the low half of dword 12.
+        # 🎓 NVMe calls a block's number its LBA, logical block address.
+        # The first one is in dwords 10 and 11, and how many blocks,
+        # counted from zero, in the low half of dword 12.
         first = command.dword11 << 32 | command.dword10
         count = (command.dword12 & 0xFFFF) + 1
         if first + count > self._blocks():
             return _LBA_OUT_OF_RANGE
         extents = yield from self._data_of(command, count * _BLOCK_SIZE)
-        if extents is None:
-            return _DATA_TRANSFER_ERROR
-        # Through the host's memory an extent at a time, and through the
-        # drive a page at a time, whichever ends first.
-        at = first * _BLOCK_SIZE
+        if isinstance(extents, _Outcome):
+            return extents
+        # A page of the drive at a time: put it in the buffer once, move
+        # every piece of the command's data that is in it, and for a write
+        # program it once.
+        writing = command.opcode == _WRITE
+        direction = _FROM_HOST if writing else _TO_HOST
+        in_the_buffer: int | None = None
+        for page, offset, address, length in self._pieces(
+            first * _BLOCK_SIZE, extents
+        ):
+            if page != in_the_buffer:
+                if (
+                    writing
+                    and in_the_buffer is not None
+                    and not (yield from self._store(in_the_buffer))
+                ):
+                    return _INTERNAL_ERROR
+                if not (yield from self._load(page)):
+                    return _INTERNAL_ERROR
+                in_the_buffer = page
+            if not (
+                yield from self._copy(
+                    direction, address, self._page_buffer + offset, length
+                )
+            ):
+                return _DATA_TRANSFER_ERROR
+        if (
+            writing
+            and in_the_buffer is not None
+            and not (yield from self._store(in_the_buffer))
+        ):
+            return _INTERNAL_ERROR
+        return _SUCCESS
+
+    def _pieces(
+        self, at: int, extents: list[_Extent]
+    ) -> Iterator[tuple[int, int, int, int]]:
+        """Cut a command's data where a page ends, the host's or the drive's.
+
+        `at` is where on the drive the data starts, in bytes. Each piece
+        is (which page of the drive, where in that page, where in the
+        host's memory, how many bytes), in the order the data is in.
+        """
         for address, extent_length in extents:
             while extent_length:
                 page, offset = divmod(at, self._page_size)
                 length = min(extent_length, self._page_size - offset)
-                if command.opcode == _WRITE:
-                    ok = yield from self._write_into_page(
-                        page, offset, address, length
-                    )
-                else:
-                    ok = yield from self._read_from_page(
-                        page, offset, address, length
-                    )
-                if not ok:
-                    return _DATA_TRANSFER_ERROR
+                yield page, offset, address, length
                 at += length
                 address += length
                 extent_length -= length
-        return _SUCCESS
 
     def _load(self, page: int) -> Steps[bool]:
         """Put one of the drive's pages in the page buffer.
@@ -464,52 +491,40 @@ class SsdFirmware:
         NAND page reads as all ones, so the zeros a host expects of a new
         drive come from the firmware, which knows what was never written.
         """
-        nand_page = self._where.get(page)
+        nand_page = self._page_map.get(page)
         if nand_page is None:
             yield write(self._page_buffer, bytes(self._page_size))
             return True
         return (yield from self._flash_page(_READ_PAGE, nand_page))
 
-    def _read_from_page(
-        self, page: int, offset: int, host_address: int, length: int
-    ) -> Steps[bool]:
-        return (yield from self._load(page)) and (
-            yield from self._copy(
-                _TO_HOST, host_address, self._page_buffer + offset, length
-            )
-        )
+    def _store(self, page: int) -> Steps[bool]:
+        """Program the page buffer into the NAND, as a page of the drive.
 
-    def _write_into_page(
-        self, page: int, offset: int, host_address: int, length: int
-    ) -> Steps[bool]:
-        """Change part of one of the drive's pages.
-
-        What is not being written has to survive, so the page is read,
-        changed and programmed again. A page written for the first time
-        takes the next NAND page nobody has. One written again is
+        A write of part of a page is why the page was loaded first: what
+        is not being written has to survive. A page written for the first
+        time takes the next NAND page nobody has. One written again is
         programmed where it is, which only an ideal NAND allows: a real
         one has to be given a fresh page, and that is where garbage
         collection begins.
         """
-        if not (yield from self._load(page)) or not (
-            yield from self._copy(
-                _FROM_HOST, host_address, self._page_buffer + offset, length
-            )
-        ):
+        nand_page = self._page_map.get(page, self._next_free_nand_page)
+        if not (yield from self._flash_page(_PROGRAM_PAGE, nand_page)):
             return False
-        if page not in self._where:
-            self._where[page] = self._next_free_nand_page
+        # The table says so only once it is true.
+        if page not in self._page_map:
+            self._page_map[page] = nand_page
             self._next_free_nand_page += 1
-        return (yield from self._flash_page(_PROGRAM_PAGE, self._where[page]))
+        return True
 
     # ---- A command's data.
 
     def _data_of(
         self, command: _Command, length: int
-    ) -> Steps[list[_Extent] | None]:
+    ) -> Steps[list[_Extent] | _Outcome]:
         """Where in the host's memory `length` bytes of a command's data are.
 
-        None if the host's list of them could not be fetched.
+        Or how the command has failed, if the host's list of them is not
+        where a list can be, or could not be fetched.
 
         🎓 NVMe says where data is page by page (PRPs, physical region
         pages). The first pointer is to the data itself, and may start
@@ -530,13 +545,16 @@ class SsdFirmware:
         while left:
             # As much of the list as its page holds, fetched into the
             # scratch page to be read.
+            if pointers % 8:
+                # A pointer is eight bytes, and a list starts where one can.
+                return _PRP_OFFSET_INVALID
             list_bytes = _HOST_PAGE - pointers % _HOST_PAGE
             if not (
                 yield from self._copy(
                     _FROM_HOST, pointers, self._scratch, list_bytes
                 )
             ):
-                return None
+                return _DATA_TRANSFER_ERROR
             fetched = yield read(self._scratch, list_bytes)
             entries = struct.unpack(f"<{list_bytes // 8}Q", fetched)
             for index, entry in enumerate(entries):
@@ -552,13 +570,12 @@ class SsdFirmware:
                 left -= here
         return extents
 
-    def _send_to_the_host(
-        self, command: _Command, local_address: int
-    ) -> Steps[_Outcome]:
-        """Send a page of the buffer to where a command's data goes."""
+    def _send_the_scratch_page(self, command: _Command) -> Steps[_Outcome]:
+        """Send the scratch page to where a command's data goes."""
         extents = yield from self._data_of(command, _HOST_PAGE)
-        if extents is None:
-            return _DATA_TRANSFER_ERROR
+        # One page of data is in one piece, or two, and never needs a list.
+        assert not isinstance(extents, _Outcome)
+        local_address = self._scratch
         for address, length in extents:
             if not (
                 yield from self._copy(_TO_HOST, address, local_address, length)

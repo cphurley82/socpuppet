@@ -38,6 +38,7 @@ INVALID_OPCODE = (0, 0x01)
 INVALID_FIELD = (0, 0x02)
 DATA_TRANSFER_ERROR = (0, 0x04)
 INVALID_NAMESPACE = (0, 0x0B)
+PRP_OFFSET_INVALID = (0, 0x13)
 # And from the list of the commands that create a queue.
 COMPLETION_QUEUE_INVALID = (1, 0x00)
 INVALID_QUEUE_IDENTIFIER = (1, 0x01)
@@ -469,3 +470,141 @@ class TestWhenADriverWritesMorePagesThanOneNandBlockHolds:
         host_with_an_ssd(script, blocks=2 * BLOCKS).run()
 
         assert read_back == [written[:4096], written[512 * 512 :]]
+
+
+def page_of(fill):
+    """A page of the host's memory, every byte of it `fill`."""
+    return bytes([fill]) * 4096
+
+
+@pytest.mark.platform
+class TestWhenACommandsDataIsGivenAsAListOfPages:
+    # 🎓 When a command's data is more than two pages, its second pointer
+    # is to a list of pointers to the rest. A list that fills its own page
+    # ends with a pointer to more of the list.
+
+    def test_a_list_that_runs_on_into_a_second_list_is_followed(self):
+        # Four pages of data. The list starts 16 bytes before the end of
+        # its page, so it has room for two entries: one page of data, and
+        # the way on to the second list, which has the other two.
+        first_list = DATA + 0x1FF0
+        second_list = DATA + 0x2000
+        pages = [DATA + 0x3000, DATA + 0x5000, DATA + 0x4000, DATA + 0x6000]
+
+        def steps(host):
+            yield from host.create_io_queues()
+            for index, page in enumerate(pages):
+                yield sp.write(page, page_of(0x10 + index))
+            yield sp.write(
+                first_list, struct.pack("<QQ", pages[1], second_list)
+            )
+            yield sp.write(second_list, struct.pack("<QQ", pages[2], pages[3]))
+            written = yield from host.io(
+                opcode=raw_nvme.WRITE,
+                namespace=1,
+                data=pages[0],
+                more_data=first_list,
+                dword12=32 - 1,
+            )
+            # Read back a page at a time, each into the same place.
+            read_back = []
+            for index in range(4):
+                yield from host.io(
+                    opcode=raw_nvme.READ,
+                    namespace=1,
+                    data=DATA,
+                    dword10=8 * index,
+                    dword12=8 - 1,
+                )
+                read_back.append((yield sp.read(DATA, 4096)))
+            return written, read_back
+
+        written, read_back = what_a_raw_host_gets(steps)
+
+        assert written[:2] == SUCCESS
+        assert read_back == [page_of(0x10 + index) for index in range(4)]
+
+    def test_a_list_where_nothing_answers_is_a_data_transfer_error(self):
+        def steps(host):
+            yield from host.create_io_queues()
+            return (
+                yield from host.io(
+                    opcode=raw_nvme.WRITE,
+                    namespace=1,
+                    data=DATA,
+                    more_data=NOWHERE,
+                    dword12=24 - 1,
+                )
+            )
+
+        assert what_a_raw_host_gets(steps)[:2] == DATA_TRANSFER_ERROR
+
+    # A pointer is eight bytes, and a list of them starts where one can.
+    def test_a_list_that_does_not_start_at_a_pointer_is_a_prp_offset_invalid(
+        self,
+    ):
+        def steps(host):
+            yield from host.create_io_queues()
+            return (
+                yield from host.io(
+                    opcode=raw_nvme.WRITE,
+                    namespace=1,
+                    data=DATA,
+                    more_data=DATA + 0x2004,
+                    dword12=24 - 1,
+                )
+            )
+
+        assert what_a_raw_host_gets(steps)[:2] == PRP_OFFSET_INVALID
+
+
+@pytest.mark.platform
+class TestWhenAHostIdentifiesWithItsDataWhereNothingAnswers:
+    def test_it_is_a_data_transfer_error(self):
+        def steps(host):
+            return (
+                yield from host.admin(
+                    opcode=raw_nvme.IDENTIFY, data=NOWHERE, dword10=0x01
+                )
+            )
+
+        assert what_a_raw_host_gets(steps)[:2] == DATA_TRANSFER_ERROR
+
+
+def firmware_with_a_flash_controller_whose_status_is(status):
+    """The firmware stand-in alone on a bus, with a memory where the flash
+    controller's registers would be, whose status register reads `status`.
+    Built."""
+    flash = 0x3000
+    firmware = sp.SsdFirmware(
+        frontend=0x1000, dma=0x2000, flash=flash, buffer=0x4000
+    )
+    platform = sp.Platform()
+    cpu = platform.add("cpu", sp.ScriptedBusMaster(firmware.script))
+    bus = platform.add("bus", sp.Router())
+    registers = platform.add("flash", sp.Memory(size=0x30))
+    platform.connect(cpu.socket, bus.target)
+    bus.map(registers.socket, base=flash)
+    platform.build()
+    platform.poke32(flash + 0x04, status)
+    return platform
+
+
+@pytest.mark.platform
+class TestWhenTheFlashControllerNeverFinishes:
+    # Bit 2 of its status is BUSY.
+    def test_the_firmware_gives_up_and_says_which_device(self):
+        platform = firmware_with_a_flash_controller_whose_status_is(1 << 2)
+
+        with pytest.raises(RuntimeError, match="0x3000 is still busy"):
+            platform.run()
+
+
+@pytest.mark.platform
+class TestWhenTheFlashControllerCannotIdentifyTheNand:
+    # Bit 1 of its status is ERROR. With no geometry there is no drive.
+    def test_the_firmware_stops_and_says_so(self):
+        platform = firmware_with_a_flash_controller_whose_status_is(1 << 1)
+
+        with pytest.raises(RuntimeError, match="identify the NAND"):
+            platform.run()
