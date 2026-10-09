@@ -160,8 +160,6 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
-  // One end of a link. The die's side may be left unconnected in either
-  // direction; the peer side must be bound to the other endpoint.
   registry.Add("nvme_frontend", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<NvmeFrontend>(
         name, parameters.Required("vectors", kInterruptVectors));
@@ -180,6 +178,8 @@ Registry BuiltinComponents() {
                      });
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
+  // One end of a link. The die's side may be left unconnected in either
+  // direction; the peer side must be bound to the other endpoint.
   registry.Add("pass_through_link_endpoint", [](const char* name, Parameters&) {
     auto module = std::make_unique<PassThroughLinkEndpoint>(name);
     std::vector<Port> ports{

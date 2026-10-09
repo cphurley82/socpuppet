@@ -126,9 +126,9 @@ class NvmeFrontend : public sc_core::sc_module {
   void Work() {
     for (;;) {
       wait(work_);
-      // A loop, because there may be more than one thing to do: several
-      // writes can come before this process gets its turn.
-      while (logic_.Step()) {
+      // One step does all there is to do, however many writes came before
+      // this process got its turn: it posts, and then it fetches.
+      if (logic_.Step()) {
         host_lines_.Update();
         cpus_line_may_have_changed_.notify();
       }
