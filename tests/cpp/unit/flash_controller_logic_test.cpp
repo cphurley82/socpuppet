@@ -26,7 +26,7 @@ constexpr std::uint64_t kStatus = 0x04;
 constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
-constexpr std::uint64_t kLocal = 0x14;
+constexpr std::uint64_t kLocalAddress = 0x14;
 constexpr std::uint64_t kPageSizeRegister = 0x20;
 constexpr std::uint64_t kPagesPerBlockRegister = 0x24;
 constexpr std::uint64_t kBlocksRegister = 0x28;
@@ -45,6 +45,8 @@ constexpr std::uint32_t kBusy = 1U << 2;
 // A small chip: 4 blocks of 8 pages, each page 16 bytes.
 constexpr NandGeometry kSmall{
     .page_size = 16, .pages_per_block = 8, .blocks = 4};
+// One past the end of that chip.
+constexpr std::uint32_t kNoSuchBlock = 4;
 
 // A chip on the controller's NAND port.
 class Chip : public NandPort {
@@ -158,13 +160,12 @@ TEST(WhenAFlashControllerIsToldToReadAPage, ThePageArrivesInLocalMemory) {
   rig.chip.array.ProgramPage(2, 5, SomePage());
   rig.Write32(kBlock, 2);
   rig.Write32(kPage, 5);
-  rig.Write32(kLocal, 0x40);
+  rig.Write32(kLocalAddress, 0x40);
 
   rig.Write32(kCommand, kReadPage);
   rig.controller.CarryOut();
 
   EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage());
-  EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
 }
 
 TEST(WhenAFlashControllerHasNotYetCarriedOutACommand,
@@ -176,13 +177,15 @@ TEST(WhenAFlashControllerHasNotYetCarriedOutACommand,
   EXPECT_EQ(rig.Read32(kStatus) & (kBusy | kDone), kBusy);
 }
 
-TEST(WhenAFlashControllerHasCarriedOutACommand, ItsStatusNoLongerSaysBusy) {
-  Rig rig;
-  rig.Write32(kCommand, kReadPage);
+TEST(WhenAFlashControllerHasCarriedOutACommand, ItsStatusSaysDoneAndNotBusy) {
+  for (const std::uint32_t command :
+       {kReadPage, kProgramPage, kEraseBlock, kIdentify}) {
+    Rig rig;
 
-  rig.controller.CarryOut();
+    rig.Do(command);
 
-  EXPECT_EQ(rig.Read32(kStatus) & kBusy, 0U);
+    EXPECT_EQ(rig.Read32(kStatus), kDone) << "command " << command;
+  }
 }
 
 TEST(WhenAFlashControllerIsToldToProgramAPage,
@@ -191,13 +194,12 @@ TEST(WhenAFlashControllerIsToldToProgramAPage,
   rig.buffer.store.Write(0x40, SomePage());
   rig.Write32(kBlock, 2);
   rig.Write32(kPage, 5);
-  rig.Write32(kLocal, 0x40);
+  rig.Write32(kLocalAddress, 0x40);
 
   rig.Write32(kCommand, kProgramPage);
   rig.controller.CarryOut();
 
   EXPECT_EQ(rig.chip.PageAt(2, 5), SomePage());
-  EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
 }
 
 TEST(WhenAFlashControllerIsToldToEraseABlock, TheBlocksPagesReadAsAllOnes) {
@@ -210,15 +212,13 @@ TEST(WhenAFlashControllerIsToldToEraseABlock, TheBlocksPagesReadAsAllOnes) {
 
   EXPECT_EQ(rig.chip.PageAt(2, 5),
             std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
-  EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
 }
 
-// Block 4 is one past the end of the chip.
 TEST(WhenTheChipRefusesWhatAFlashControllerAsksOfIt,
      TheStatusSaysErrorAndNotDone) {
   for (const std::uint32_t command : {kReadPage, kProgramPage, kEraseBlock}) {
     Rig rig;
-    rig.Write32(kBlock, 4);
+    rig.Write32(kBlock, kNoSuchBlock);
 
     rig.Write32(kCommand, command);
     rig.controller.CarryOut();
@@ -231,7 +231,7 @@ TEST(WhenTheChipRefusesWhatAFlashControllerAsksOfIt,
 TEST(WhenLocalMemoryDoesNotTakeThePageAFlashControllerRead,
      TheStatusSaysErrorAndNotDone) {
   Rig rig;
-  rig.Write32(kLocal, 0x1000);
+  rig.Write32(kLocalAddress, 0x1000);
 
   rig.Write32(kCommand, kReadPage);
   rig.controller.CarryOut();
@@ -242,7 +242,7 @@ TEST(WhenLocalMemoryDoesNotTakeThePageAFlashControllerRead,
 TEST(WhenLocalMemoryDoesNotGiveThePageAFlashControllerIsToProgram,
      TheStatusSaysErrorAndTheChipIsLeftAlone) {
   Rig rig;
-  rig.Write32(kLocal, 0x1000);
+  rig.Write32(kLocalAddress, 0x1000);
 
   rig.Write32(kCommand, kProgramPage);
   rig.controller.CarryOut();
@@ -258,7 +258,7 @@ TEST(WhenAFlashControllerIsGivenACommandWhileItIsBusy,
   rig.chip.array.ProgramPage(2, 5, SomePage());
   rig.Write32(kBlock, 2);
   rig.Write32(kPage, 5);
-  rig.Write32(kLocal, 0x40);
+  rig.Write32(kLocalAddress, 0x40);
   rig.Write32(kCommand, kReadPage);
 
   EXPECT_FALSE(rig.Write32(kCommand, kEraseBlock));
@@ -281,7 +281,7 @@ TEST(WhenOneIsWrittenToAStatusBitOfAFlashController, TheBitIsCleared) {
   done.Write32(kCommand, kReadPage);
   done.controller.CarryOut();
   Rig error;
-  error.Write32(kBlock, 4);
+  error.Write32(kBlock, kNoSuchBlock);
   error.Write32(kCommand, kReadPage);
   error.controller.CarryOut();
 
@@ -317,7 +317,7 @@ TEST(WhenOneIsWrittenToTheBusyBitOfAFlashController, ItStaysBusy) {
 TEST(WhenAFlashControllerIsGivenANewCommand,
      WhatTheStatusSaidOfTheLastOneIsGone) {
   Rig rig;
-  rig.Write32(kBlock, 4);
+  rig.Write32(kBlock, kNoSuchBlock);
   rig.Write32(kCommand, kReadPage);
   rig.controller.CarryOut();
   rig.Write32(kBlock, 0);
@@ -354,7 +354,7 @@ TEST(WhenACommandFailsAndOnlyDoneIsEnabledAsAnInterrupt,
      TheFlashControllerDoesNotInterrupt) {
   Rig rig;
   rig.Write32(kInterruptEnable, kDone);
-  rig.Write32(kBlock, 4);
+  rig.Write32(kBlock, kNoSuchBlock);
   rig.Write32(kCommand, kReadPage);
 
   rig.controller.CarryOut();
@@ -393,12 +393,12 @@ TEST(WhenTheCpuReadsBackARegisterItWroteInAFlashController,
   rig.Write32(kInterruptEnable, kDone | kError);
   rig.Write32(kBlock, 0x1111'1111);
   rig.Write32(kPage, 0x2222'2222);
-  rig.Write32(kLocal, 0x3333'3333);
+  rig.Write32(kLocalAddress, 0x3333'3333);
 
   EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
   EXPECT_EQ(rig.Read32(kBlock), 0x1111'1111U);
   EXPECT_EQ(rig.Read32(kPage), 0x2222'2222U);
-  EXPECT_EQ(rig.Read32(kLocal), 0x3333'3333U);
+  EXPECT_EQ(rig.Read32(kLocalAddress), 0x3333'3333U);
 }
 
 // Only the status bits can interrupt, so only they can be enabled.
@@ -421,8 +421,8 @@ TEST(WhenTheCpuReadsTheCommandRegisterOfAFlashController, ItReadsAsZero) {
 
 TEST(WhenAnAccessToAFlashControllerIsNot32BitsWide, ItIsRefused) {
   Rig rig;
-  std::array<std::uint8_t, 2> two{};
-  std::array<std::uint8_t, 8> eight{};
+  std::array<std::uint8_t, 2> two{1, 0};
+  std::array<std::uint8_t, 8> eight{1, 0, 0, 0, 1, 0, 0, 0};
 
   EXPECT_FALSE(rig.controller.ReadRegister(kStatus, two));
   EXPECT_FALSE(rig.controller.ReadRegister(kStatus, eight));
@@ -494,7 +494,7 @@ TEST(WhenAFlashControllerHasNotIdentifiedTheChip,
   RigWith<Chip> rig;
   rig.chip.array.ProgramPage(0, 0, SomePage());
   rig.buffer.store.Write(0x40, SomePage(50));
-  rig.Write32(kLocal, 0x40);
+  rig.Write32(kLocalAddress, 0x40);
 
   rig.Do(kReadPage);
   const std::uint32_t after_the_read = rig.Read32(kStatus);
@@ -514,12 +514,12 @@ TEST(WhenTheCpuChangesTheRegistersAfterGivingAFlashControllerACommand,
   rig.chip.array.ProgramPage(2, 5, SomePage());
   rig.Write32(kBlock, 2);
   rig.Write32(kPage, 5);
-  rig.Write32(kLocal, 0x40);
+  rig.Write32(kLocalAddress, 0x40);
   rig.Write32(kCommand, kReadPage);
 
   rig.Write32(kBlock, 0);
   rig.Write32(kPage, 0);
-  rig.Write32(kLocal, 0x80);
+  rig.Write32(kLocalAddress, 0x80);
   rig.controller.CarryOut();
 
   EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage());

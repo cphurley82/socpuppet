@@ -28,7 +28,7 @@ constexpr std::uint64_t kStatus = 0x04;
 constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
-constexpr std::uint64_t kLocal = 0x14;
+constexpr std::uint64_t kLocalAddress = 0x14;
 constexpr std::uint64_t kPageSizeRegister = 0x20;
 
 // What can be written to the command register.
@@ -61,8 +61,9 @@ struct CpuWithAFlashController {
       : platform{WithADriverAndAWatcher(body)} {
     platform.Add("cpu", "bus_driver");
     platform.Add("flash", "flash_controller");
-    platform.Add("nand", "ideal_nand",
-                 {{"blocks", 4}, {"pages_per_block", 8}, {"page_size", 16}});
+    platform.Add(
+        "nand", "ideal_nand",
+        {{"blocks", 4}, {"pages_per_block", 8}, {"page_size", kPageSize}});
     platform.Add("buffer", "memory", {{"size", 0x100}});
     platform.Add("watcher", "line_watcher");
     platform.Bind("cpu.socket", "flash.cpu");
@@ -105,6 +106,19 @@ struct CpuWithAFlashController {
     return LoadLittleEndian<std::uint32_t>(seen);
   }
 
+  // How many times the controller's interrupt line has risen, and whether
+  // it is high now.
+  int Rises() { return InterruptLine().Rises(); }
+  bool LineIsHigh() { return InterruptLine().line->read(); }
+
+  // Waits, in the calling simulation thread, for the line's first rise.
+  // Nothing here takes simulated time, so the rise comes within delta
+  // cycles: the patience is only there so that a line that never rises
+  // fails the test and does not hang it.
+  bool WaitForTheLineToRise() {
+    return InterruptLine().WaitForRises(1, sc_core::sc_time(1, sc_core::SC_MS));
+  }
+
   LineWatcher& InterruptLine() {
     return platform.ModuleAt<LineWatcher>("watcher");
   }
@@ -126,7 +140,7 @@ void Command(BusDriver& cpu, std::uint32_t command, std::uint32_t block,
              std::uint32_t page, std::uint32_t local) {
   cpu.Write32(kBlock, block);
   cpu.Write32(kPage, page);
-  cpu.Write32(kLocal, local);
+  cpu.Write32(kLocalAddress, local);
   Command(cpu, command);
 }
 
@@ -177,25 +191,26 @@ TEST(WhenAFlashControllerFinishesACommandWithItsInterruptEnabled,
 
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.InterruptLine().Rises(), 1);
-  EXPECT_TRUE(fixture.InterruptLine().line->read());
+  EXPECT_EQ(fixture.Rises(), 1);
+  EXPECT_TRUE(fixture.LineIsHigh());
 }
 
 TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
      TheFlashControllersLineFalls) {
   CpuWithAFlashController* wired = nullptr;
+  bool rose = false;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
     cpu.Write32(kInterruptEnable, kDone);
     cpu.Write32(kCommand, kIdentify);
-    wired->InterruptLine().WaitForRises(1, sc_core::sc_time(1, sc_core::SC_MS));
+    rose = wired->WaitForTheLineToRise();
     cpu.Write32(kStatus, kDone);
   }};
   wired = &fixture;
 
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.InterruptLine().Rises(), 1);
-  EXPECT_FALSE(fixture.InterruptLine().line->read());
+  ASSERT_TRUE(rose);
+  EXPECT_FALSE(fixture.LineIsHigh());
 }
 
 // The CPU's write and the end of the controller's work both change what
@@ -212,7 +227,7 @@ TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
 
   EXPECT_NO_THROW(fixture.platform.Run());
 
-  EXPECT_TRUE(fixture.InterruptLine().line->read());
+  EXPECT_TRUE(fixture.LineIsHigh());
 }
 
 TEST(WhenADebuggerLooksAtAFlashControllersRegister, ItSeesWhatTheCpuWrote) {
@@ -247,6 +262,7 @@ TEST(WhenAFlashControllerRefusesAnAccess, TheCpuGetsAnAddressError) {
   tlm::tlm_response_status beside = tlm::TLM_INCOMPLETE_RESPONSE;
   tlm::tlm_response_status too_narrow = tlm::TLM_INCOMPLETE_RESPONSE;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
+    // 0x18 is between two registers.
     beside = cpu.Write32(0x18, 1);
     too_narrow = cpu.Write(kBlock, std::array<std::uint8_t, 2>{1, 0});
   }};
