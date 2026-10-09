@@ -690,4 +690,29 @@ TEST(WhenACommandWaitsAndTheCpuAskedToBeInterruptedForOne,
   EXPECT_FALSE(rig.frontend.CpuInterrupting());
 }
 
+TEST(WhenTheHostEnablesAnNvmeFrontendAndTheCpuAskedToBeInterruptedForThat,
+     TheFrontendInterruptsItsCpuUntilTheCpuAcknowledges) {
+  Rig rig;
+  rig.CpuWrite32(kInterruptEnable, kEnabled);
+  rig.HostEnables();
+  const bool until_acknowledged = rig.frontend.CpuInterrupting();
+
+  rig.CpuWrite32(kStatus, kEnabled);
+
+  EXPECT_TRUE(until_acknowledged);
+  EXPECT_FALSE(rig.frontend.CpuInterrupting());
+}
+
+TEST(WhenSomethingHappensThatTheCpuDidNotAskToBeInterruptedFor,
+     TheNvmeFrontendDoesNotInterruptItsCpu) {
+  Rig rig;
+  rig.CpuWrite32(kInterruptEnable, kDisabled);
+
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  EXPECT_FALSE(rig.frontend.CpuInterrupting());
+}
+
 }  // namespace socpuppet
