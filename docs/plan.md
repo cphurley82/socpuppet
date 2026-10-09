@@ -148,7 +148,15 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2, M3 and M4a are done.** M4b (the SSD's own CPU and its board) and M4c (its Zephyr firmware) come next, and M5 (the IO-die manager) is independent of both.
+**M0, M1, M2, M3, M4a and M4b are done.** M4c (the SSD's Zephyr firmware) comes next, and M5 (the IO-die manager) is independent of it.
+
+What M4b delivered: the SSD's own controller, and the Zephyr board for it. The exit test is `tests/python/test_m4b_exit.py`: Zephyr's `hello_world`, unchanged, prints `Hello World! socpuppet_ssd/socpuppet_rv32`. [boot-your-firmware.md](boot-your-firmware.md) has a section on the board.
+
+- **The controller**: with no script for its firmware, `add_ssd` gives the SSD the CPU kit that M3a built, as a 32-bit core, with an SRAM, a UART, a timer and a PLIC, and each of the three devices' lines on a PLIC source of its own. Nothing new had to be modelled.
+- **In the Zephyr module**: the SoC `socpuppet_rv32`, the board `socpuppet_ssd` with its devicetree generated from the SSD's description as its own CPU sees it, and bindings for the three devices. They have no drivers yet.
+- **Nothing in Zephyr or in the CPU had to be worked around.** A 32-bit Zephyr took a devicetree with two address cells as it was, and the core started at an address that is not `0x8000_0000`.
+- **No change to the devicetree generator.** The plan expected to have to say which of two memories is the one the firmware runs from. It is the first in address order, and the SRAM is below the buffer.
+
 
 What M4a delivered: an SSD built the way a real one is, with a script where its firmware will be. The exit tests are the whole NVMe contract against it (`Ssd/NvmeContract` in `tests/cpp/contracts/nvme_test.cpp`) and `tests/python/test_m4a_exit.py`, which is M2's exit test with the stand-in drive swapped out and the host's script unchanged. `examples/ssd_hello.py` is the show to run by hand.
 

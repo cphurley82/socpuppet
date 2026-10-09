@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4a there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with 🎭 a script where its firmware will be. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data. It has a CPU of its own that boots Zephyr, and 🎭 a script that plays its firmware until Zephyr can. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -58,7 +58,7 @@ flowchart LR
     subgraph ssd["the SSD"]
         ep["PCIe endpoint"]
         fe["NVMe frontend"]
-        cpu["🎭 firmware<br/>(a script, for now)"]
+        cpu["CPU and firmware<br/>(🎭 or a script)"]
         dma["DMA engine"]
         flash["flash controller"]
         nand["🎭 ideal NAND"]
@@ -77,7 +77,7 @@ flowchart LR
     host == "PCIe link" ==> ep
 
     classDef standin fill:#fde68a,stroke:#b45309,color:#000
-    class cpu,nand standin
+    class nand standin
 ```
 
 🎓 A real SSD's controller is built this way round: hardware for what is the same every time, and firmware for what takes judgement. The [NVMe frontend](models/nvme-frontend.md) keeps the queues, fetches each command and posts its completion. The firmware reads the command and decides. The [DMA engine](models/dma-engine.md) copies a command's data between the host's memory and the SSD's buffer, and the [flash controller](models/flash-controller.md) moves pages between the buffer and the NAND. The host sees none of it: behind the endpoint is an NVMe drive, as the stand-in drive is.
@@ -259,4 +259,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the SSD's own CPU and its Zephyr firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).
+🚧 Not built yet: the SSD's Zephyr firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).

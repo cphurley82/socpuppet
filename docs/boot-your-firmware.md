@@ -1,6 +1,6 @@
 # Boot your firmware here 🧦
 
-How to run a Zephyr application on socpuppet's host board. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
+How to run a Zephyr application on one of socpuppet's boards: the host, or [the SSD's controller](#the-ssds-controller). The steps are the host's, and the SSD's section says what differs. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
 
 🚧 socpuppet is not on PyPI yet. Until it is, "install" means building it from a checkout: see [development.md](development.md).
 
@@ -89,6 +89,56 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 ⚠️ Firmware built with the shield needs the drive. On a host described without one it stops before it prints anything: the first place it looks for the drive is an address where nothing answers.
 
 💡 A PCIe device interrupts with a message, and the board's interrupt controller only has wires. [The bridge's page](models/msi-plic-bridge.md) says how the two meet.
+
+## The SSD's controller
+
+The second board is `socpuppet_ssd`: the controller inside the SSD, which is where an SSD's firmware runs. It is a 32-bit RISC-V machine, with the SSD's hardware around it.
+
+| What | Where | Zephyr driver |
+|---|---|---|
+| CPU | RV32IMAC, machine mode, starts at `0x2000_0000` | |
+| SRAM, which the firmware runs from | `0x2000_0000`, 256 KiB | |
+| Buffer, which data passes through | `0x4000_0000`, 4 MiB | (a second `memory` node, `ssd_buffer`) |
+| Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
+| Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
+| UART, the console | `0x1000_0000` | `ns16550` |
+| [NVMe frontend](models/nvme-frontend.md) | `0x1001_0000`, PLIC source 1 | 🚧 |
+| [DMA engine](models/dma-engine.md) | `0x1002_0000`, PLIC source 2 | 🚧 |
+| [Flash controller](models/flash-controller.md) | `0x1003_0000`, PLIC source 3 | 🚧 |
+
+🚧 The three devices are in the devicetree, with bindings in socpuppet's module, and have no drivers yet. Zephyr boots and prints. Firmware that makes the board a drive is the next milestone, and until then 🎭 [a script](models/ssd-firmware.md) plays that part.
+
+Build for it by naming the board:
+
+```sh
+west build -b socpuppet_ssd samples/hello_world -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+The SSD is never alone: it has a host on its PCIe link. `ssd()` describes both, with 🎭 a script for the host, and `idle_host` is a host that does nothing, for when only the firmware matters.
+
+```python
+import socpuppet as sp
+from socpuppet.boards.ssd import idle_host, ssd
+
+board = ssd(host=idle_host)
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf", via=board.ssd.cpu.socket)
+
+board.platform.run(sp.ms(100))
+print(board.ssd.controller.uart.output)
+```
+
+```text
+*** Booting Zephyr OS build v4.4.2 ***
+Hello World! socpuppet_ssd/socpuppet_rv32
+```
+
+Or `python -m socpuppet.boards.ssd build/zephyr/zephyr.elf`.
+
+- ⚠️ **Say whose firmware it is.** The platform has two places an image could go, so `load_elf` wants `via=board.ssd.cpu.socket`. The same goes for the devicetree: `socpuppet devicetree python/socpuppet/boards/ssd.py --via ssd.cpu.socket` is the SSD's own CPU's view, and the host is not in it.
+- **Everything below applies**: waiting for output, looking inside, and GDB, with `ssd(host=idle_host, gdb_port=1234)` and the same `riscv64-zephyr-elf-gdb`, which debugs 32-bit code too.
+- `tests/python/test_m4b_exit.py` is a complete example.
 
 ## Waiting for something to happen
 

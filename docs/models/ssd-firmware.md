@@ -4,7 +4,7 @@
 
 ## What it stands in for
 
-The firmware of an SSD's controller: the program on the SSD's own CPU that decides what the drive does with each thing the host asks of it. On the finished platform that is Zephyr, running on the SSD's RISC-V core. 🚧 Until that boots, this stands in for it, and it stays on afterwards as the firmware for anyone who is bringing up a host, or who wants to read what an SSD does without reading C.
+The firmware of an SSD's controller: the program on the SSD's own CPU that decides what the drive does with each thing the host asks of it. On the finished platform that is Zephyr, running on the SSD's RISC-V core. 🚧 Zephyr boots there now, and knows nothing yet of being a drive. Until it does, this stands in for it, and it stays on afterwards as the firmware for anyone who is bringing up a host, or who wants to read what an SSD does without reading C.
 
 🎓 The hardware around it keeps the queues and moves the data (see the [NVMe frontend](nvme-frontend.md)). What is left for firmware is the judgement:
 

@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third is in rehearsal: an SSD built the way a real one is, with a script where its firmware will be. Its own CPU and Zephyr firmware, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third is in rehearsal: an SSD built the way a real one is. Its own CPU boots Zephyr, and a script plays its firmware until Zephyr can. That firmware, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -118,7 +118,7 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
-- 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board.
+- 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board, or on the SSD's controller.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🔧 [Building and testing](docs/development.md).
 - 🎨 [Style, and the tools that hold us to it](docs/style.md).
