@@ -40,6 +40,9 @@ class NvmeFrontendLogic {
   // still busy with the last. Returns whether it did anything.
   bool Step();
 
+  // What the frontend asks of the host on its interrupt vectors.
+  InterruptRequests& HostInterrupts() { return queues_; }
+
  private:
   // Whether there is a command the CPU has yet to deal with: one has been
   // fetched, and the CPU has not asked for its completion to be posted.

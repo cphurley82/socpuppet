@@ -437,4 +437,22 @@ TEST(WhenTheCpuAsksTwiceForTheCompletionOfOneCommand, TheSecondIsRefused) {
   EXPECT_FALSE(rig.CpuPosts());
 }
 
+// The frontend is asking for the host's attention while a completion queue
+// holds something the host has not acknowledged, on the queue's vector.
+// The admin queue's is the first.
+TEST(WhenAnNvmeFrontendHasPostedACompletion, ItInterruptsTheHost) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  const bool before = rig.frontend.HostInterrupts().Interrupting(0);
+  rig.CpuPosts();
+
+  rig.frontend.Step();
+
+  EXPECT_FALSE(before);
+  EXPECT_TRUE(rig.frontend.HostInterrupts().Interrupting(0));
+  EXPECT_FALSE(rig.frontend.HostInterrupts().Interrupting(1));
+}
+
 }  // namespace socpuppet
