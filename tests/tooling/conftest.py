@@ -21,6 +21,11 @@ CONFIG_FILES = [
     "ruff.toml",
     "mypy.ini",
     ".rumdl.toml",
+    # What the C written for Zephyr is held to, where it lives.
+    "firmware/.clang-format",
+    "firmware/CPPLINT.cfg",
+    "python/socpuppet/zephyr_module/.clang-format",
+    "python/socpuppet/zephyr_module/CPPLINT.cfg",
 ]
 
 LINT = REPO / "tools" / "lint.py"
@@ -36,6 +41,7 @@ def repo(tmp_path):
 def _make_repo(path):
     subprocess.run(["git", "init", "--quiet", str(path)], check=True)
     for name in CONFIG_FILES:
+        (path / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / name, path / name)
 
 

@@ -7,6 +7,7 @@ socpuppet is meant to be read. A learner should be able to open any file and fin
 | Language | Style | Checked by |
 |---|---|---|
 | C++ | [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) | clang-format, cpplint, clang-tidy, the compiler's warnings |
+| C, for Zephyr | [Zephyr's coding style](https://docs.zephyrproject.org/latest/contribute/style/index.html) | clang-format, Zephyr's own build |
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
 | Markdown | one paragraph per line | rumdl |
 | CI workflows, shell scripts | | actionlint, shellcheck |
@@ -72,6 +73,17 @@ Includes come in groups, each sorted: the header a file implements or tests, the
   ```
 
 - **`check_headers`** compiles each header alone, which shows that it includes everything it uses.
+
+## C, for Zephyr
+
+The firmware in `firmware/` and the drivers in socpuppet's Zephyr module (`python/socpuppet/zephyr_module/`) are C, and they follow Zephyr's style and not the C++ code's: tabs, braces the way the Linux kernel has them, 100 columns, `snake_case` names, `/* */` comments.
+
+💡 Why a second style? That code is read next to Zephyr's own. A driver is written by looking at the driver beside it, and it is what would be sent upstream. Code in the house style of the tree it lives in is easier to read there than code that is consistent with a simulator the reader has never seen.
+
+- **clang-format** lays it out, as it does the C++. Each of the two directories has a `.clang-format` of its own with Zephyr's settings, and clang-format goes by the nearest one.
+- **cpplint is not run on it.** It checks Google's C++ style. A `CPPLINT.cfg` in each directory says to leave the files alone.
+- **Zephyr's build** compiles it, with Zephyr's warnings. `firmware/build.sh` builds every image the tests boot.
+- A header's guard is the header's name as Zephyr would spell it, such as `SOCPUPPET_DRIVERS_DMA_ENGINE_H_`, and not its path from `src/`.
 
 ## Python
 

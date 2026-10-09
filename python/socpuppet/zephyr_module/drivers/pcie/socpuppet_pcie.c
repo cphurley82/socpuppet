@@ -36,8 +36,7 @@ struct socpuppet_pcie_data {
 	size_t allocated;
 };
 
-static uint32_t socpuppet_pcie_conf_read(const struct device *dev, pcie_bdf_t bdf,
-					 unsigned int reg)
+static uint32_t socpuppet_pcie_conf_read(const struct device *dev, pcie_bdf_t bdf, unsigned int reg)
 {
 	const struct pcie_ctrl_config *config = dev->config;
 
@@ -109,8 +108,7 @@ static bool socpuppet_pcie_region_get_allocate_base(const struct device *dev, pc
 
 /* The interrupt each of the bridge's vectors arrives as: its PLIC source. */
 static const unsigned int msi_bridge_irqs[] = {
-	LISTIFY(DT_NUM_IRQS(MSI_BRIDGE), MSI_BRIDGE_IRQ, (,))
-};
+	LISTIFY(DT_NUM_IRQS(MSI_BRIDGE), MSI_BRIDGE_IRQ, (, ))};
 
 /*
  * Says, for each of a device's interrupt vectors, what the device is to
@@ -181,7 +179,7 @@ static DEVICE_API(pcie_ctrl, socpuppet_pcie_api) = {
 #endif
 };
 
-#define SOCPUPPET_PCIE_INIT(n)                                                                    \
+#define SOCPUPPET_PCIE_INIT(n)                                                                     \
 	static struct socpuppet_pcie_data socpuppet_pcie_data##n;                                  \
 	static const struct pcie_ctrl_config socpuppet_pcie_config##n = {                          \
 		.cfg_addr = DT_INST_REG_ADDR(n),                                                   \

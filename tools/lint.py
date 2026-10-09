@@ -39,7 +39,10 @@ class Linter:
 LINTERS = [
     Linter(
         "clang-format",
-        patterns=("*.h", "*.cpp"),
+        # C++, and the C that is written for Zephyr, which has a style of
+        # its own: a .clang-format in a directory speaks for what is under
+        # it.
+        patterns=("*.h", "*.cpp", "*.c"),
         check=("clang-format", "--dry-run", "--Werror"),
         fix=("clang-format", "-i"),
     ),
