@@ -36,6 +36,7 @@ from socpuppet.ops import (
 )
 from socpuppet.pcie_host import PcieFunction, PcieHost
 from socpuppet.platform import Platform
+from socpuppet.ssd_firmware import SsdFirmware
 from socpuppet.time import ms, ns, us
 from socpuppet.trace import TraceRecord
 from socpuppet.trace import render as render_trace
@@ -68,6 +69,7 @@ __all__ = [
     "Plic",
     "Router",
     "ScriptedBusMaster",
+    "SsdFirmware",
     "Steps",
     "TraceRecord",
     "expect32",
