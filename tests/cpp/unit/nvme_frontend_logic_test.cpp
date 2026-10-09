@@ -612,4 +612,22 @@ TEST(WhenTheHostResetsAnNvmeFrontend, ItsQueuesAreGone) {
   EXPECT_FALSE(rig.HostSubmitsIo(SomeCommand(9)));
 }
 
+// The CPU had dealt with the command, and the host reset the controller
+// before the frontend had written the completion. There is no queue to
+// write it to any more.
+TEST(WhenTheHostResetsAnNvmeFrontendBeforeItHasPostedACompletion,
+     TheCompletionIsNeverPosted) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.CpuPosts();
+
+  rig.HostDisables();
+  const bool did_anything = rig.frontend.Step();
+
+  EXPECT_FALSE(did_anything);
+  EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
+}
+
 }  // namespace socpuppet

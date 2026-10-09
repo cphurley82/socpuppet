@@ -99,6 +99,7 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
     // A controller reset. The hardware's part of it is immediate.
     queues_.RemoveAll();
     command_.reset();
+    posting_ = false;
     events_ |= kDisabled;
   }
   return true;
