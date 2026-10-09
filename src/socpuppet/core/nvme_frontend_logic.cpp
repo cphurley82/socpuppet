@@ -95,7 +95,11 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
     host_registers_.CreateAdminQueues(queues_);
     events_ |= kEnabled;
   }
-  if (*enable == NvmeHostRegisters::Enable::kCleared) events_ |= kDisabled;
+  if (*enable == NvmeHostRegisters::Enable::kCleared) {
+    // A controller reset. The hardware's part of it is immediate.
+    command_.reset();
+    events_ |= kDisabled;
+  }
   return true;
 }
 

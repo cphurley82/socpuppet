@@ -584,4 +584,21 @@ TEST(WhenFirmwareAsksAnNvmeFrontendWhatItHas,
   EXPECT_EQ(rig.CpuRead32(kLimits), 2U << 16 | 8U);
 }
 
+// Clearing CC.EN is a controller reset. The frontend carries out its part
+// at once: every queue is gone, and so is the command that was waiting.
+// Its firmware is told, and does the rest.
+TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting,
+     TheCommandIsGoneAndItsCompletionIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  rig.HostDisables();
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kDisabled);
+  EXPECT_FALSE(rig.CpuPosts());
+}
+
 }  // namespace socpuppet
