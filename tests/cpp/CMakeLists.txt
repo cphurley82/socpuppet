@@ -4,6 +4,7 @@ include(GoogleTest)
 add_executable(unit_tests
   unit/block_store_test.cpp
   unit/command_status_test.cpp
+  unit/dma_engine_logic_test.cpp
   unit/elf_image_test.cpp
   unit/flash_controller_logic_test.cpp
   unit/little_endian_test.cpp
