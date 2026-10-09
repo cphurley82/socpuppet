@@ -199,12 +199,29 @@ TYPED_TEST_P(NandContract, DataThatIsNotOnePageLongGetsABurstError) {
   EXPECT_EQ(afterwards, std::vector<std::uint8_t>(16, 0xFF));
 }
 
+// A plain bus access, with nothing to say what is asked of the chip: what
+// arrives if a chip is wired to a bus by mistake.
+TYPED_TEST_P(NandContract, AnAccessThatIsNotACommandForAChipGetsACommandError) {
+  std::vector<std::uint8_t> data(16);
+  tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status write_response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    read_response = controller.Read(0, data);
+    write_response = controller.Write(0, data);
+  });
+
+  EXPECT_EQ(read_response, tlm::TLM_COMMAND_ERROR_RESPONSE);
+  EXPECT_EQ(write_response, tlm::TLM_COMMAND_ERROR_RESPONSE);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
                             APageThatWasNeverProgrammedReadsAsAllOnes,
                             AProgrammedPageReadsBackAsItWasProgrammed,
                             EveryPageOfAnErasedBlockReadsAsAllOnes,
                             ABlockPastTheEndOfTheChipGetsAnAddressError,
                             APagePastTheEndOfItsBlockGetsAnAddressError,
-                            DataThatIsNotOnePageLongGetsABurstError);
+                            DataThatIsNotOnePageLongGetsABurstError,
+                            AnAccessThatIsNotACommandForAChipGetsACommandError);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_

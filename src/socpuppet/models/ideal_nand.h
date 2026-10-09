@@ -30,8 +30,10 @@ class IdealNand : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     const std::span<std::uint8_t> data{transaction.get_data_ptr(),
                                        transaction.get_data_length()};
-    transaction.set_response_status(
-        CarryOut(*NandCommandOf(transaction), data));
+    const NandCommand* command = NandCommandOf(transaction);
+    transaction.set_response_status(command == nullptr
+                                        ? tlm::TLM_COMMAND_ERROR_RESPONSE
+                                        : CarryOut(*command, data));
   }
 
   tlm::tlm_response_status CarryOut(const NandCommand& command,
