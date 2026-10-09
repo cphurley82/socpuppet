@@ -601,4 +601,15 @@ TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting,
   EXPECT_FALSE(rig.CpuPosts());
 }
 
+TEST(WhenTheHostResetsAnNvmeFrontend, ItsQueuesAreGone) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuCreatesIoQueues();
+
+  rig.HostDisables();
+
+  EXPECT_FALSE(rig.HostSubmits(SomeCommand(7)));
+  EXPECT_FALSE(rig.HostSubmitsIo(SomeCommand(9)));
+}
+
 }  // namespace socpuppet
