@@ -302,4 +302,38 @@ TEST(WhenACommandIsDoneAndDoneIsEnabledAsAnInterrupt,
   EXPECT_TRUE(rig.controller.Interrupting());
 }
 
+TEST(WhenACommandIsDoneAndNoInterruptIsEnabled,
+     TheFlashControllerDoesNotInterrupt) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+
+  rig.controller.CarryOut();
+
+  EXPECT_FALSE(rig.controller.Interrupting());
+}
+
+TEST(WhenACommandFailsAndOnlyDoneIsEnabledAsAnInterrupt,
+     TheFlashControllerDoesNotInterrupt) {
+  Rig rig;
+  rig.Write32(kInterruptEnable, kDone);
+  rig.Write32(kBlock, 4);
+  rig.Write32(kCommand, kReadPage);
+
+  rig.controller.CarryOut();
+
+  EXPECT_FALSE(rig.controller.Interrupting());
+}
+
+TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
+     TheFlashControllerStopsInterrupting) {
+  Rig rig;
+  rig.Write32(kInterruptEnable, kDone);
+  rig.Write32(kCommand, kReadPage);
+  rig.controller.CarryOut();
+
+  rig.Write32(kStatus, kDone);
+
+  EXPECT_FALSE(rig.controller.Interrupting());
+}
+
 }  // namespace socpuppet
