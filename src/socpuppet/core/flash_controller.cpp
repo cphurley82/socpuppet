@@ -17,6 +17,7 @@ constexpr std::uint64_t kLocalRegister = 0x14;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kBusy = 1U << 2;
 
 }  // namespace
 
@@ -35,6 +36,7 @@ bool FlashController::WriteRegister(std::uint64_t offset,
   switch (offset) {
     case kCommandRegister:
       command_ = value;
+      status_ |= kBusy;
       break;
     case kBlockRegister:
       block_ = value;

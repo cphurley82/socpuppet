@@ -31,6 +31,7 @@ constexpr std::uint32_t kReadPage = 1;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kBusy = 1U << 2;
 
 // A small chip: 4 blocks of 8 pages, each page 16 bytes.
 constexpr NandGeometry kSmall{
@@ -114,6 +115,15 @@ TEST(WhenAFlashControllerIsToldToReadAPage, ThePageArrivesInLocalMemory) {
 
   EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage());
   EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
+}
+
+TEST(WhenAFlashControllerHasNotYetCarriedOutACommand,
+     ItsStatusSaysBusyAndNotDone) {
+  Rig rig;
+
+  rig.Write32(kCommand, kReadPage);
+
+  EXPECT_EQ(rig.Read32(kStatus) & (kBusy | kDone), kBusy);
 }
 
 }  // namespace socpuppet
