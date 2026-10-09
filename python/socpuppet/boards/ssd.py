@@ -37,6 +37,8 @@ To use an SSD from a Python host, with nothing else to build:
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
@@ -56,9 +58,11 @@ from socpuppet.components import (
     Script,
     ScriptedBusMaster,
 )
+from socpuppet.ops import Operation
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
+from socpuppet.time import ms
 
 # ---- The SSD's own address map: what its CPU sees. The host sees none of
 # it, only the endpoint.
@@ -390,3 +394,22 @@ def ssd(
         gdb_port=gdb_port,
     )
     return SsdBoard(platform, drive, scripted_host)
+
+
+def idle_host() -> Iterator[Operation]:
+    """A host that does nothing: for when only the SSD's firmware matters."""
+    yield from ()
+
+
+#: What `socpuppet devicetree` looks for in a description file. The SSD's
+#: firmware is built against the view from its own CPU:
+#: `socpuppet devicetree boards/ssd.py --via ssd.cpu.socket`.
+platform = ssd(host=idle_host).platform
+
+if __name__ == "__main__":
+    board = ssd(host=idle_host)
+    assert board.ssd.controller is not None
+    board.platform.build()
+    board.platform.load_elf(sys.argv[1], via=board.ssd.cpu.socket)
+    board.platform.run(ms(100))
+    print(board.ssd.controller.uart.output, end="")

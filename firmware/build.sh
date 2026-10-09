@@ -2,7 +2,8 @@
 # Builds the firmware the tests boot. All of it is Zephyr's own, two
 # samples and one of its tests:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
-#   hello_world       for socpuppet_host, socpuppet's own board
+#   hello_world       for socpuppet_host and socpuppet_ssd, socpuppet's own
+#                     boards: the host, and the SSD's controller
 #   synchronization   for socpuppet_host
 #   disk_access       for socpuppet_host with its SSD: Zephyr's test of its
 #                     disk interface, which here drives its NVMe driver
@@ -29,6 +30,7 @@ images=(
   "samples/hello_world qemu_riscv64"
   "samples/hello_world qemu_riscv32"
   "samples/hello_world socpuppet_host"
+  "samples/hello_world socpuppet_ssd"
   "samples/synchronization socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
 )

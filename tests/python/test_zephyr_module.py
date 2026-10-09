@@ -12,3 +12,4 @@ class TestWhenTheZephyrModuleCommandIsRun:
         module = pathlib.Path(printed.strip())
         assert (module / "zephyr" / "module.yml").is_file()
         assert (module / "boards/socpuppet/socpuppet_host/board.yml").is_file()
+        assert (module / "boards/socpuppet/socpuppet_ssd/board.yml").is_file()

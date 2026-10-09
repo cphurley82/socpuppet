@@ -1,0 +1,3 @@
+# The SSD's controller is built around socpuppet's 32-bit SoC.
+config BOARD_SOCPUPPET_SSD
+	select SOC_SOCPUPPET_RV32

@@ -2,3 +2,4 @@ family:
   - name: socpuppet
     socs:
       - name: socpuppet_rv64
+      - name: socpuppet_rv32

@@ -1,19 +1,59 @@
 """The SSD as a board: how it is described, before anything is simulated."""
 
 import json
+import pathlib
+import re
 
 import pytest
 
+import socpuppet
 import socpuppet as sp
+from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
 from socpuppet.boards.scripted_host import ECAM_BASE
-from socpuppet.boards.ssd import SRAM_BASE, TIMER_HZ, ssd, stand_in_firmware
+from socpuppet.boards.ssd import (
+    SRAM_BASE,
+    TIMER_HZ,
+    idle_host,
+    ssd,
+    stand_in_firmware,
+)
 from socpuppet.pcie_host import PcieFunction
 
+ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
+SSD_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_ssd"
 
-def nothing():
-    """A host that does nothing."""
-    yield from ()
+
+class TestTheZephyrBoardForTheSsd:
+    # The firmware's view of the SSD is its own CPU's: the host is not in
+    # it.
+    def test_its_devicetree_is_what_the_ssd_description_generates(self):
+        board = ssd(host=idle_host)
+
+        # When this fails, write the file again:
+        #   socpuppet devicetree python/socpuppet/boards/ssd.py \
+        #       --via ssd.cpu.socket
+        assert (
+            SSD_BOARD / "socpuppet_ssd.dts"
+        ).read_text() == board.platform.devicetree(via=board.ssd.cpu.socket)
+
+    def test_its_clock_rate_is_the_rate_the_ssds_timer_counts_at(self):
+        defaults = (
+            ZEPHYR_MODULE / "soc/socpuppet/Kconfig.defconfig"
+        ).read_text()
+
+        rate = re.search(
+            r"config SYS_CLOCK_HW_CYCLES_PER_SEC\s+default (\d+)", defaults
+        )
+
+        assert rate is not None
+        assert int(rate.group(1)) == TIMER_HZ
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_it(self, tmp_path):
+        board = (SSD_BOARD / "socpuppet_ssd.dts").read_text()
+
+        assert dtc_errors(board, tmp_path) == ""
 
 
 class TestAnSsdOfSoManyBlocks:
@@ -21,7 +61,7 @@ class TestAnSsdOfSoManyBlocks:
     # block: 512 of the drive's blocks.
     def test_has_a_nand_of_that_many_blocks_in_whole_nand_blocks(self):
         board = ssd(
-            host=nothing, blocks=2048, firmware=stand_in_firmware().script
+            host=idle_host, blocks=2048, firmware=stand_in_firmware().script
         )
 
         assert board.ssd.nand.component.parameters == {
@@ -36,21 +76,23 @@ class TestAnSsdOfSoManyBlocks:
             ValueError, match=rf"\b{blocks} blocks were asked for"
         ) as refused:
             ssd(
-                host=nothing, blocks=blocks, firmware=stand_in_firmware().script
+                host=idle_host,
+                blocks=blocks,
+                firmware=stand_in_firmware().script,
             )
 
         assert "512, or a multiple of it" in str(refused.value)
 
     def test_is_refused_if_that_is_no_blocks_at_all(self):
         with pytest.raises(ValueError, match="at least one"):
-            ssd(host=nothing, blocks=0, firmware=stand_in_firmware().script)
+            ssd(host=idle_host, blocks=0, firmware=stand_in_firmware().script)
 
 
 class TestAnSsdWithNoScriptForItsFirmware:
     # It has a controller of its own: a CPU, and what a CPU needs.
 
     def test_has_a_32_bit_cpu_that_starts_at_the_start_of_its_sram(self):
-        board = ssd(host=nothing)
+        board = ssd(host=idle_host)
 
         cpu = board.ssd.cpu.component
         assert isinstance(cpu, sp.DbtRiseCpu)
@@ -61,12 +103,12 @@ class TestAnSsdWithNoScriptForItsFirmware:
         }
 
     def test_gives_its_cpu_the_gdb_port_asked_for(self):
-        board = ssd(host=nothing, gdb_port=1234)
+        board = ssd(host=idle_host, gdb_port=1234)
 
         assert board.ssd.cpu.component.parameters["gdb_port"] == 1234
 
     def test_has_an_sram_a_uart_a_timer_and_an_interrupt_controller(self):
-        controller = ssd(host=nothing).ssd.controller
+        controller = ssd(host=idle_host).ssd.controller
 
         assert controller is not None
         assert controller.sram.component.parameters == {"size": 256 * 1024}
@@ -77,7 +119,7 @@ class TestAnSsdWithNoScriptForItsFirmware:
         assert isinstance(controller.plic.component, sp.Plic)
 
     def test_gives_each_of_its_three_devices_a_plic_source_of_its_own(self):
-        board = ssd(host=nothing)
+        board = ssd(host=idle_host)
 
         connections = json.loads(board.platform.to_json())["connections"]
 
@@ -92,7 +134,7 @@ class TestAnSsdWithNoScriptForItsFirmware:
         }
 
     def test_sends_the_plic_and_the_timer_to_the_cpu(self):
-        board = ssd(host=nothing)
+        board = ssd(host=idle_host)
 
         connections = json.loads(board.platform.to_json())["connections"]
 
@@ -111,7 +153,7 @@ class TestAnSsdWithAScriptForItsFirmware:
     # does: the frontend's line goes straight to it.
 
     def test_has_the_script_where_its_cpu_would_be_and_no_controller(self):
-        board = ssd(host=nothing, firmware=stand_in_firmware().script)
+        board = ssd(host=idle_host, firmware=stand_in_firmware().script)
 
         assert isinstance(board.ssd.cpu.component, sp.ScriptedBusMaster)
         assert board.ssd.controller is None
@@ -119,7 +161,7 @@ class TestAnSsdWithAScriptForItsFirmware:
     def test_is_refused_a_gdb_port_because_there_is_no_cpu_to_debug(self):
         with pytest.raises(ValueError, match="gdb_port"):
             ssd(
-                host=nothing,
+                host=idle_host,
                 firmware=stand_in_firmware().script,
                 gdb_port=1234,
             )

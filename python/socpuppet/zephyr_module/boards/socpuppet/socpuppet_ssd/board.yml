@@ -1,0 +1,5 @@
+board:
+  name: socpuppet_ssd
+  full_name: socpuppet SSD
+  socs:
+    - name: socpuppet_rv32

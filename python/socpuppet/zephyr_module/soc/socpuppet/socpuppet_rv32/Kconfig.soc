@@ -1,0 +1,6 @@
+config SOC_SOCPUPPET_RV32
+	bool
+	select SOC_FAMILY_SOCPUPPET
+
+config SOC
+	default "socpuppet_rv32" if SOC_SOCPUPPET_RV32
