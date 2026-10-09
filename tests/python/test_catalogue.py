@@ -33,6 +33,7 @@ def router_with_two_inputs():
 EXAMPLES = [
     sp.BehavioralNvme(blocks=64, vectors=3),
     sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000),
+    sp.FlashController(),
     sp.IdealNand(blocks=4),
     sp.MachineTimer(),
     sp.Memory(size=0x100),

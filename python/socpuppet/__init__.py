@@ -3,6 +3,7 @@
 from socpuppet.components import (
     BehavioralNvme,
     DbtRiseCpu,
+    FlashController,
     IdealNand,
     MachineTimer,
     Memory,
@@ -42,6 +43,7 @@ __all__ = [
     "BusError",
     "DbtRiseCpu",
     "ExpectationFailed",
+    "FlashController",
     "IdealNand",
     "MachineTimer",
     "Memory",

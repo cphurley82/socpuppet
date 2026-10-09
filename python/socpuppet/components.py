@@ -367,6 +367,28 @@ class DbtRiseCpu(Component):
             )
 
 
+class FlashController(Component):
+    """The part of an SSD's controller that works the NAND flash chip.
+
+    The SSD's CPU says which page of the chip, and where the page is in the
+    SSD's own memory, and the controller moves it one way or the other, or
+    erases a block. `cpu` is its register block, `local` is how it reads
+    and writes the SSD's memory, `nand` is the chip, and `irq` is high
+    while it has something to tell the CPU, if the CPU asked to be told.
+    """
+
+    implementation = "flash_controller"
+    port_specs = (
+        target("cpu"),
+        initiator("local"),
+        initiator("nand"),
+        # Firmware may poll the status register and leave the line alone.
+        wire_out("irq", required=False),
+    )
+    #: Twelve 32-bit registers, three of them reserved.
+    mapped_size = 0x30
+
+
 class IdealNand(Component):
     """🎭 Stand-in for a NAND flash chip.
 
