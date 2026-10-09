@@ -120,6 +120,37 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
     case kStatusRegister:
       StoreLittleEndian(Status(), out);
       break;
+    case kInterruptEnableRegister:
+      StoreLittleEndian(interrupt_enable_, out);
+      break;
+    case kControlRegister:
+      StoreLittleEndian(ready_ ? kReady : std::uint32_t{0}, out);
+      break;
+    case kCompletionResultRegister:
+      StoreLittleEndian(completion_result_, out);
+      break;
+    case kCompletionStatusRegister:
+      StoreLittleEndian(completion_status_, out);
+      break;
+    case kCompletionPostRegister:
+    case kQueueCreateRegister:
+      StoreLittleEndian(std::uint32_t{0}, out);
+      break;
+    case kQueueIdRegister:
+      StoreLittleEndian(queue_.id, out);
+      break;
+    case kQueueBaseLowRegister:
+      StoreLittleEndian(static_cast<std::uint32_t>(queue_.base), out);
+      break;
+    case kQueueBaseHighRegister:
+      StoreLittleEndian(static_cast<std::uint32_t>(queue_.base >> 32), out);
+      break;
+    case kQueueLastRegister:
+      StoreLittleEndian(queue_.last, out);
+      break;
+    case kQueueLinkRegister:
+      StoreLittleEndian(queue_.link, out);
+      break;
     case kLimitsRegister:
       StoreLittleEndian(static_cast<std::uint32_t>(vectors_ << kVectorsShift) |
                             NvmeQueues::kIoQueuePairs,
@@ -150,7 +181,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       events_ &= ~value;
       break;
     case kInterruptEnableRegister:
-      interrupt_enable_ = value;
+      interrupt_enable_ = value & (kEnabled | kDisabled | kCommandWaiting);
       break;
     case kControlRegister:
       ready_ = (value & kReady) != 0;

@@ -715,4 +715,47 @@ TEST(WhenSomethingHappensThatTheCpuDidNotAskToBeInterruptedFor,
   EXPECT_FALSE(rig.frontend.CpuInterrupting());
 }
 
+// Only the status bits can interrupt, so only they can be enabled.
+TEST(WhenTheCpuEnablesInterruptsAnNvmeFrontendDoesNotHave,
+     TheRegisterReadsBackWithoutThem) {
+  Rig rig;
+
+  rig.CpuWrite32(kInterruptEnable, 0xFFFF'FFFF);
+
+  EXPECT_EQ(rig.CpuRead32(kInterruptEnable),
+            kEnabled | kDisabled | kCommandWaiting);
+}
+
+TEST(WhenTheCpuReadsBackARegisterItWroteInAnNvmeFrontend,
+     ItReadsWhatWasWritten) {
+  Rig rig;
+  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(kCompletionResult, 0x1111'1111);
+  rig.CpuWrite32(kCompletionStatus, 0x0000'0102);
+  rig.CpuWrite32(kQueueId, 5);
+  rig.CpuWrite32(kQueueBaseLow, 0x2222'2222);
+  rig.CpuWrite32(kQueueBaseHigh, 0x3333'3333);
+  rig.CpuWrite32(kQueueLast, 0x4444);
+  rig.CpuWrite32(kQueueLink, 0x5555);
+
+  EXPECT_EQ(rig.CpuRead32(kControl), kReady);
+  EXPECT_EQ(rig.CpuRead32(kCompletionResult), 0x1111'1111U);
+  EXPECT_EQ(rig.CpuRead32(kCompletionStatus), 0x0000'0102U);
+  EXPECT_EQ(rig.CpuRead32(kQueueId), 5U);
+  EXPECT_EQ(rig.CpuRead32(kQueueBaseLow), 0x2222'2222U);
+  EXPECT_EQ(rig.CpuRead32(kQueueBaseHigh), 0x3333'3333U);
+  EXPECT_EQ(rig.CpuRead32(kQueueLast), 0x4444U);
+  EXPECT_EQ(rig.CpuRead32(kQueueLink), 0x5555U);
+}
+
+// The two registers that are written to make something happen have
+// nothing in them to read.
+TEST(WhenTheCpuReadsARegisterOfAnNvmeFrontendThatIsOnlyForWriting,
+     ItReadsAsZero) {
+  const Rig rig;
+
+  EXPECT_EQ(rig.CpuRead32(kCompletionPost), 0U);
+  EXPECT_EQ(rig.CpuRead32(kQueueCreate), 0U);
+}
+
 }  // namespace socpuppet
