@@ -11,6 +11,7 @@
 #include "socpuppet/core/block_store.h"
 #include "socpuppet/core/interrupt_requests.h"
 #include "socpuppet/core/memory_port.h"
+#include "socpuppet/core/nvme_queues.h"
 
 // The layouts of the controller registers and of a command. They are
 // SPDK's (nvme_spec.h), and only nvme_controller.cpp includes it.
@@ -59,64 +60,12 @@ class NvmeController : public InterruptRequests {
   // completion there. Returns false if there was nothing to do.
   bool CarryOutOne();
 
-  // InterruptRequests. The controller is asking on a vector while a
-  // completion queue that uses the vector holds a completion the host has
-  // not yet acknowledged, and the host acknowledges by writing the queue's
-  // head doorbell.
-  //
-  // Each completion queue is expected to have a vector to itself. Two
-  // queues on one vector would hold the line up for each other.
+  // InterruptRequests: what its queues ask for (see NvmeQueues).
   bool Interrupting(std::size_t vector) const override;
   bool Quieted() const override;
   void Rearm() override;
 
  private:
-  // How many I/O queue pairs the host may create. A real controller has a
-  // fixed number too, because each queue costs it a set of pointers and a
-  // pair of doorbell registers.
-  static constexpr std::uint16_t kIoQueuePairs = 8;
-  // Queue 0 of each kind is the admin queue, and the I/O queues follow.
-  static constexpr std::size_t kQueues = 1 + kIoQueuePairs;
-
-  // A submission queue: commands, which the host writes and the controller
-  // fetches. Like every queue here it is a ring in the host's memory.
-  struct SubmissionQueue {
-    // The admin queue exists while the controller is enabled. An I/O queue
-    // exists once the host has created it with an admin command.
-    bool exists = false;
-    // Where it is in the host's memory.
-    std::uint64_t base = 0;
-    // Its last slot. Queue sizes are given counted from zero, and a
-    // 65536-entry queue's last slot fits in 16 bits where its size does not.
-    std::uint16_t last = 0;
-    // Where the controller fetches its next command.
-    std::uint16_t head = 0;
-    // How far the host has filled the queue (from its doorbell).
-    std::uint16_t tail = 0;
-    // Which completion queue its commands' completions go to.
-    std::uint16_t completion_queue = 0;
-  };
-
-  // A completion queue: what became of each command, which the controller
-  // writes and the host reads.
-  struct CompletionQueue {
-    bool exists = false;
-    std::uint64_t base = 0;
-    std::uint16_t last = 0;
-    // Where the next completion goes.
-    std::uint16_t tail = 0;
-    // How far the host says it has read (from its doorbell).
-    std::uint16_t head = 0;
-    // The phase bit the next completion carries. It inverts each time the
-    // queue wraps around, which is how the host tells a new completion
-    // from the one that was in the slot a lap ago.
-    bool phase = true;
-    // Which interrupt vector tells the host there is something to read.
-    std::uint16_t vector = 0;
-    // Whether the host has acknowledged completions since the last Rearm().
-    bool quieted = false;
-  };
-
   // How a command went: what its completion will say.
   struct Outcome {
     // The status code, which is zero for success, and which list of codes
@@ -181,11 +130,10 @@ class NvmeController : public InterruptRequests {
   std::uint64_t admin_submission_queue_ = 0;
   std::uint64_t admin_completion_queue_ = 0;
 
-  // The queues, by identifier. The admin queues are set up from the
-  // registers above when the controller is enabled, and the host sets up
-  // each I/O queue with an admin command.
-  std::array<SubmissionQueue, kQueues> submissions_;
-  std::array<CompletionQueue, kQueues> completions_;
+  // The queues. The admin queues are set up from the registers above when
+  // the controller is enabled, and the host sets up each I/O queue with an
+  // admin command.
+  NvmeQueues queues_;
 };
 
 }  // namespace socpuppet

@@ -31,10 +31,13 @@ target_link_libraries(socpuppet_core INTERFACE socpuppet_elf_image)
 
 # The NVMe controller's logic is ours, and the layout of every register,
 # command and data structure it handles is SPDK's.
-add_library(socpuppet_nvme_controller STATIC core/nvme_controller.cpp)
+add_library(socpuppet_nvme_controller STATIC
+  core/nvme_controller.cpp
+  core/nvme_queues.cpp)
 target_sources(socpuppet_nvme_controller PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/nvme_controller.h
+    core/nvme_queues.h
     core/prp.h)
 target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)

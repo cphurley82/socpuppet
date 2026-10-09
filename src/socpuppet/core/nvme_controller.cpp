@@ -36,12 +36,6 @@ std::span<std::uint8_t> BytesOf(Structure& structure) {
   return {reinterpret_cast<std::uint8_t*>(&structure), sizeof structure};
 }
 
-// The slot after `pointer` in a queue whose last slot is `last`.
-std::uint16_t After(std::uint16_t pointer, std::uint16_t last) {
-  return pointer == last ? std::uint16_t{0}
-                         : static_cast<std::uint16_t>(pointer + 1);
-}
-
 // Whether an I/O queue may have this size, which the host gives counted
 // from zero. A queue always keeps one slot empty, so that full and empty
 // do not look alike, and a queue of one entry could hold nothing. There
@@ -76,7 +70,10 @@ NvmeController::NvmeController(MemoryPort& host_memory, std::uint64_t blocks,
 NvmeController::NvmeController(MemoryPort& host_memory,
                                std::unique_ptr<BlockStore> drive,
                                std::size_t vectors)
-    : host_memory_(host_memory), vectors_(vectors), drive_(std::move(drive)) {}
+    : host_memory_(host_memory),
+      vectors_(vectors),
+      drive_(std::move(drive)),
+      queues_(host_memory) {}
 
 bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
@@ -110,64 +107,36 @@ bool NvmeController::WriteRegister(std::uint64_t offset,
 void NvmeController::Enable() {
   spdk_nvme_aqa_register sizes{};
   sizes.raw = admin_queue_sizes_;
-  submissions_[0] = {.exists = true,
-                     .base = admin_submission_queue_,
-                     .last = static_cast<std::uint16_t>(sizes.bits.asqs)};
-  completions_[0] = {.exists = true,
-                     .base = admin_completion_queue_,
-                     .last = static_cast<std::uint16_t>(sizes.bits.acqs)};
+  // The admin completion queue's vector is the first.
+  queues_.CreateCompletionQueue(
+      0,
+      {.base = admin_completion_queue_,
+       .last = static_cast<std::uint16_t>(sizes.bits.acqs)},
+      /*vector=*/0);
+  queues_.CreateSubmissionQueue(
+      0,
+      {.base = admin_submission_queue_,
+       .last = static_cast<std::uint16_t>(sizes.bits.asqs)},
+      /*completion_queue=*/0);
 }
 
 // Clearing CC.EN is a controller reset: it does away with every queue. The
 // registers keep what the host told them, and everything on the drive
 // stays.
-void NvmeController::Reset() {
-  submissions_ = {};
-  completions_ = {};
-}
+void NvmeController::Reset() { queues_.RemoveAll(); }
 
 bool NvmeController::CarryOutOne() {
-  // The lowest-numbered queue with a command that can be carried out, so
-  // an admin command goes before any I/O command that is waiting. A
-  // command whose completion queue is full has to wait: its completion
-  // would land in the slot the host uses to tell full from empty, and the
-  // one after it on a completion the host has not acknowledged.
-  const auto has_work = [this](const SubmissionQueue& queue) {
-    if (!queue.exists || queue.head == queue.tail) return false;
-    const CompletionQueue& completions = completions_[queue.completion_queue];
-    return After(completions.tail, completions.last) != completions.head;
-  };
-  std::uint16_t queue_id = 0;
-  while (queue_id < kQueues && !has_work(submissions_[queue_id])) ++queue_id;
-  if (queue_id == kQueues) return false;
-  SubmissionQueue& submissions = submissions_[queue_id];
-  CompletionQueue& completions = completions_[submissions.completion_queue];
-
-  // Fetch the command.
+  const std::optional<NvmeQueues::Command> fetched = queues_.Fetch();
+  if (!fetched) return false;
   spdk_nvme_cmd command{};
-  host_memory_.Read(submissions.base + (submissions.head * sizeof command),
-                    BytesOf(command));
-  submissions.head = After(submissions.head, submissions.last);
-
-  // Do what it says.
+  std::ranges::copy(fetched->bytes, BytesOf(command).begin());
   const Outcome outcome =
-      queue_id == 0 ? CarryOutAdmin(command) : CarryOutIo(command);
-
-  // Post its completion.
-  spdk_nvme_cpl completion{};
-  completion.cdw0 = outcome.result;
-  completion.sqhd = submissions.head;
-  completion.sqid = queue_id;
-  completion.cid = command.cid;
-  // The status code type is three bits wide. The mask is for GCC, which
-  // cannot tell that an 8-bit value of 0 or 1 fits.
-  completion.status.sct = outcome.status_type & 0x7;
-  completion.status.sc = outcome.status;
-  completion.status.p = completions.phase ? 1 : 0;
-  host_memory_.Write(completions.base + (completions.tail * sizeof completion),
-                     BytesOf(completion));
-  completions.tail = After(completions.tail, completions.last);
-  if (completions.tail == 0) completions.phase = !completions.phase;
+      fetched->queue_id == 0 ? CarryOutAdmin(command) : CarryOutIo(command);
+  queues_.Post({.queue_id = fetched->queue_id,
+                .command_id = command.cid,
+                .status = outcome.status,
+                .status_type = outcome.status_type,
+                .result = outcome.result});
   return true;
 }
 
@@ -224,7 +193,8 @@ NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
   const std::size_t queue_id = command.cdw10_bits.create_io_q.qid;
   // Queue 0 is the admin queue, which the host does not create, and a
   // queue that exists is not created again: the host deletes it first.
-  if (queue_id == 0 || queue_id >= kQueues || completions_[queue_id].exists) {
+  if (queue_id == 0 || queue_id >= NvmeQueues::kQueues ||
+      queues_.HasCompletionQueue(queue_id)) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER);
   }
   if (!IsAQueueSize(command.cdw10_bits.create_io_q.qsize)) {
@@ -235,11 +205,12 @@ NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
   if (command.cdw11_bits.create_io_cq.iv >= vectors_) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_INTERRUPT_VECTOR);
   }
-  completions_[queue_id] = {
-      .exists = true,
-      .base = command.dptr.prp.prp1,
-      .last = static_cast<std::uint16_t>(command.cdw10_bits.create_io_q.qsize),
-      .vector = static_cast<std::uint16_t>(command.cdw11_bits.create_io_cq.iv)};
+  queues_.CreateCompletionQueue(
+      queue_id,
+      {.base = command.dptr.prp.prp1,
+       .last =
+           static_cast<std::uint16_t>(command.cdw10_bits.create_io_q.qsize)},
+      static_cast<std::uint16_t>(command.cdw11_bits.create_io_cq.iv));
   return {};
 }
 
@@ -249,21 +220,22 @@ NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
 NvmeController::Outcome NvmeController::CreateIoSubmissionQueue(
     const spdk_nvme_cmd& command) {
   const std::size_t queue_id = command.cdw10_bits.create_io_q.qid;
-  if (queue_id == 0 || queue_id >= kQueues || submissions_[queue_id].exists) {
+  if (queue_id == 0 || queue_id >= NvmeQueues::kQueues ||
+      queues_.HasSubmissionQueue(queue_id)) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_IDENTIFIER);
   }
   if (!IsAQueueSize(command.cdw10_bits.create_io_q.qsize)) {
     return CommandSpecific(SPDK_NVME_SC_INVALID_QUEUE_SIZE);
   }
   const std::size_t completion_queue = command.cdw11_bits.create_io_sq.cqid;
-  if (completion_queue >= kQueues || !completions_[completion_queue].exists) {
+  if (!queues_.HasCompletionQueue(completion_queue)) {
     return CommandSpecific(SPDK_NVME_SC_COMPLETION_QUEUE_INVALID);
   }
-  submissions_[queue_id] = {
-      .exists = true,
-      .base = command.dptr.prp.prp1,
-      .last = static_cast<std::uint16_t>(command.cdw10_bits.create_io_q.qsize),
-      .completion_queue = static_cast<std::uint16_t>(completion_queue)};
+  queues_.CreateSubmissionQueue(queue_id,
+                                {.base = command.dptr.prp.prp1,
+                                 .last = static_cast<std::uint16_t>(
+                                     command.cdw10_bits.create_io_q.qsize)},
+                                static_cast<std::uint16_t>(completion_queue));
   return {};
 }
 
@@ -307,8 +279,8 @@ NvmeController::Outcome NvmeController::SetFeatures(
       // host asked for, and the host uses the smaller number. Both counts
       // are from zero: submission queues, then completion queues.
       spdk_nvme_feat_number_of_queues granted{};
-      granted.bits.nsqr = kIoQueuePairs - 1U;
-      granted.bits.ncqr = kIoQueuePairs - 1U;
+      granted.bits.nsqr = NvmeQueues::kIoQueuePairs - 1U;
+      granted.bits.ncqr = NvmeQueues::kIoQueuePairs - 1U;
       return {.result = granted.raw};
     }
     default:
@@ -378,21 +350,12 @@ std::optional<NvmeController::BlockRange> NvmeController::BlocksOf(
 }
 
 bool NvmeController::Interrupting(std::size_t vector) const {
-  return std::ranges::any_of(
-      completions_, [vector](const CompletionQueue& queue) {
-        return queue.exists && queue.vector == vector && !queue.quieted &&
-               queue.head != queue.tail;
-      });
+  return queues_.Interrupting(vector);
 }
 
-bool NvmeController::Quieted() const {
-  return std::ranges::any_of(
-      completions_, [](const CompletionQueue& queue) { return queue.quieted; });
-}
+bool NvmeController::Quieted() const { return queues_.Quieted(); }
 
-void NvmeController::Rearm() {
-  for (CompletionQueue& queue : completions_) queue.quieted = false;
-}
+void NvmeController::Rearm() { queues_.Rearm(); }
 
 spdk_nvme_registers NvmeController::Registers() const {
   spdk_nvme_registers registers{};
@@ -419,22 +382,7 @@ bool NvmeController::RingDoorbell(std::uint64_t offset,
   const std::uint64_t from_first = offset - kControllerRegistersSize;
   if (in.size() != sizeof value || from_first % sizeof value != 0) return false;
   std::ranges::copy(in, BytesOf(value).begin());
-  const std::uint64_t doorbell = from_first / sizeof value;
-  const std::uint64_t queue_id = doorbell / 2;
-  if (queue_id >= kQueues) return false;
-  if (doorbell % 2 == 0) {
-    SubmissionQueue& queue = submissions_[queue_id];
-    // A tail that is not one of the queue's slots could never be reached,
-    // and the controller would fetch commands for ever.
-    if (!queue.exists || value > queue.last) return false;
-    queue.tail = static_cast<std::uint16_t>(value);
-  } else {
-    CompletionQueue& queue = completions_[queue_id];
-    if (!queue.exists || value > queue.last) return false;
-    queue.head = static_cast<std::uint16_t>(value);
-    queue.quieted = true;
-  }
-  return true;
+  return queues_.RingDoorbell(from_first / sizeof value, value);
 }
 
 }  // namespace socpuppet
