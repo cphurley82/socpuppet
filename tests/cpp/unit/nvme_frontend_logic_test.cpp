@@ -251,4 +251,32 @@ TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
   EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
 }
 
+// The frontend holds one command for the CPU at a time.
+TEST(WhenACommandIsWaitingForTheCpuOfAnNvmeFrontend, TheNextIsNotFetched) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.HostSubmits(SomeCommand(8));
+  rig.frontend.Step();
+
+  EXPECT_FALSE(rig.frontend.Step());
+
+  EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
+}
+
+// It is not something the host did, to be acknowledged: it says how
+// things are, and stops saying so when the command has been dealt with.
+TEST(WhenTheCpuWritesAOneToTheCommandWaitingBitOfAnNvmeFrontend,
+     TheCommandIsStillWaiting) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  rig.CpuWrite32(kStatus, kCommandWaiting);
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+}
+
 }  // namespace socpuppet
