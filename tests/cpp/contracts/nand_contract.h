@@ -29,6 +29,25 @@ inline tlm::tlm_response_status ReadPage(BusDriver& controller,
                                   block, page, out);
 }
 
+inline tlm::tlm_response_status ProgramPage(BusDriver& controller,
+                                            std::uint32_t block,
+                                            std::uint32_t page,
+                                            std::span<const std::uint8_t> in) {
+  return socpuppet::NandTransport(
+      controller.socket, socpuppet::NandCommand::Operation::kProgramPage, block,
+      page, socpuppet::WriteData(in));
+}
+
+// A page of data for the contract's chip, in which no two neighbouring
+// bytes are the same.
+inline std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
+  std::vector<std::uint8_t> data(16);
+  for (std::size_t index = 0; index < data.size(); ++index) {
+    data[index] = static_cast<std::uint8_t>(first_byte + index);
+  }
+  return data;
+}
+
 }  // namespace nand_contract
 
 // What every NAND flash chip must do, the ideal one and any more like the
@@ -85,7 +104,22 @@ TYPED_TEST_P(NandContract, APageThatWasNeverProgrammedReadsAsAllOnes) {
   EXPECT_EQ(read, std::vector<std::uint8_t>(16, 0xFF));
 }
 
+TYPED_TEST_P(NandContract, AProgrammedPageReadsBackAsItWasProgrammed) {
+  std::vector<std::uint8_t> read(16);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    response =
+        nand_contract::ProgramPage(controller, 2, 5, nand_contract::SomePage());
+    nand_contract::ReadPage(controller, 2, 5, read);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(read, nand_contract::SomePage());
+}
+
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
-                            APageThatWasNeverProgrammedReadsAsAllOnes);
+                            APageThatWasNeverProgrammedReadsAsAllOnes,
+                            AProgrammedPageReadsBackAsItWasProgrammed);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_

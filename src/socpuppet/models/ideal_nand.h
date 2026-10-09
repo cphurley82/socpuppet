@@ -40,6 +40,9 @@ class IdealNand : public sc_core::sc_module {
       case NandCommand::Operation::kReadPage:
         array_.ReadPage(command.block, command.page, data);
         return tlm::TLM_OK_RESPONSE;
+      case NandCommand::Operation::kProgramPage:
+        array_.ProgramPage(command.block, command.page, data);
+        return tlm::TLM_OK_RESPONSE;
       default:
         return SayGeometry(data);
     }
