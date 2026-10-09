@@ -273,4 +273,27 @@ TEST(WhenTheCpuReadsTheCommandRegisterOfADmaEngine, ItReadsAsZero) {
   EXPECT_EQ(rig.Read32(kCommand), 0U);
 }
 
+TEST(WhenAnAccessToADmaEngineIsNot32BitsWide, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 2> two{1, 0};
+  std::array<std::uint8_t, 8> eight{1, 0, 0, 0, 1, 0, 0, 0};
+
+  EXPECT_FALSE(rig.engine.ReadRegister(kStatus, two));
+  EXPECT_FALSE(rig.engine.ReadRegister(kStatus, eight));
+  EXPECT_FALSE(rig.engine.WriteRegister(kLength, two));
+  EXPECT_FALSE(rig.engine.WriteRegister(kLength, eight));
+  EXPECT_EQ(rig.Read32(kLength), 0U);
+}
+
+// 0x1C is after the last register, and 0x02 is in the middle of one.
+TEST(WhenAnAccessToADmaEngineIsBesideItsRegisters, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 4> data{};
+
+  for (const std::uint64_t offset : {0x1CU, 0x02U}) {
+    EXPECT_FALSE(rig.engine.ReadRegister(offset, data)) << offset;
+    EXPECT_FALSE(rig.engine.WriteRegister(offset, data)) << offset;
+  }
+}
+
 }  // namespace socpuppet

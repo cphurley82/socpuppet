@@ -11,6 +11,7 @@ namespace socpuppet {
 namespace {
 
 // Where the registers are. Each is 32 bits wide.
+constexpr std::size_t kRegisterBytes = 4;
 constexpr std::uint64_t kCommandRegister = 0x00;
 constexpr std::uint64_t kStatusRegister = 0x04;
 constexpr std::uint64_t kInterruptEnableRegister = 0x08;
@@ -34,6 +35,7 @@ DmaEngineLogic::DmaEngineLogic(MemoryPort& host_memory,
 
 bool DmaEngineLogic::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
+  if (out.size() != kRegisterBytes) return false;
   switch (offset) {
     case kCommandRegister:
       StoreLittleEndian(std::uint32_t{0}, out);
@@ -57,13 +59,14 @@ bool DmaEngineLogic::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(length_, out);
       break;
     default:
-      break;
+      return false;
   }
   return true;
 }
 
 bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
                                    std::span<const std::uint8_t> in) {
+  if (in.size() != kRegisterBytes) return false;
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
@@ -91,7 +94,7 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
       length_ = value;
       break;
     default:
-      break;
+      return false;
   }
   return true;
 }
