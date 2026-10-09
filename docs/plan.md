@@ -157,7 +157,6 @@ What M4b delivered: the SSD's own controller, and the Zephyr board for it. The e
 - **Nothing in Zephyr or in the CPU had to be worked around.** A 32-bit Zephyr took a devicetree with two address cells as it was, and the core started at an address that is not `0x8000_0000`.
 - **No change to the devicetree generator.** The plan expected to have to say which of two memories is the one the firmware runs from. It is the first in address order, and the SRAM is below the buffer.
 
-
 What M4a delivered: an SSD built the way a real one is, with a script where its firmware will be. The exit tests are the whole NVMe contract against it (`Ssd/NvmeContract` in `tests/cpp/contracts/nvme_test.cpp`) and `tests/python/test_m4a_exit.py`, which is M2's exit test with the stand-in drive swapped out and the host's script unchanged. `examples/ssd_hello.py` is the show to run by hand.
 
 - **Four models**, each a plain C++ core with a thin SystemC wrapper and a page of its own: the [NVMe frontend](models/nvme-frontend.md), the [DMA engine](models/dma-engine.md), the [flash controller](models/flash-controller.md) and 🎭 the [ideal NAND](models/ideal-nand.md).
