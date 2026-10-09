@@ -27,7 +27,10 @@ inline void AddBusDriver(socpuppet::Registry& registry,
                          std::string implementation,
                          const std::function<void(BusDriver&)>& body) {
   // clang-tidy's analyzer loses track of the body's storage on its way
-  // through two std::functions, and reports a leak there is not.
+  // through two std::functions, and reports a leak there is not. Where it
+  // reports it depends on the test that includes this: at the lambda, or
+  // at the call it is handed to.
+  // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
   registry.Add(std::move(implementation),
                // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
                [body](const char* name, socpuppet::Parameters&) {

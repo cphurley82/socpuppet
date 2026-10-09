@@ -333,7 +333,8 @@ TEST(WhenTheHostAndTheCpuWriteToAnNvmeFrontendInTheSameDeltaCycle,
       },
       [](BusDriver& cpu) {
         for (int turn = 0; turn < 4; ++turn) {
-          cpu.Write32(kInterruptEnable, turn % 2 == 0 ? kEnabled : 0);
+          const std::uint32_t enabled = turn % 2 == 0 ? 1U : 0U;
+          cpu.Write32(kInterruptEnable, enabled * kEnabled);
           cpu.WaitFor(sc_core::SC_ZERO_TIME);
         }
       }};
