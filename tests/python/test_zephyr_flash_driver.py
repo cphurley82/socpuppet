@@ -7,8 +7,10 @@ its Zephyr module. Zephyr has a test for any driver of that kind, its
 is, for the board `socpuppet_ssd`. It writes, reads back, erases, copies
 and asks the driver about itself, in the first two blocks of the NAND.
 
-So this is the driver's contract, and it was not written here: it is what
-Zephyr expects of every flash driver.
+So this is the driver's contract, and most of it was not written here: it
+is what Zephyr expects of every flash driver. Four cases beside it are
+socpuppet's, for what only a NAND does: a write of more than one page, and
+what the driver refuses.
 
 Two of the test's cases skip themselves. One is for a flash on a bus that
 limits the size of a transfer, and one for a flash with a power switch.
@@ -24,15 +26,20 @@ from socpuppet.boards.ssd import ssd
 #: one did.
 VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 
-#: The cases that are about this flash.
+#: Zephyr's cases that are about this flash, and then socpuppet's own
+#: (firmware/flash_test/src/nand.c), for what only a NAND does.
 CASES = [
-    "test_flash_copy",
-    "test_flash_erase",
-    "test_flash_fill",
-    "test_flash_flatten",
-    "test_flash_page_layout",
-    "test_get_size",
-    "test_read_unaligned_address",
+    "flash_driver.test_flash_copy",
+    "flash_driver.test_flash_erase",
+    "flash_driver.test_flash_fill",
+    "flash_driver.test_flash_flatten",
+    "flash_driver.test_flash_page_layout",
+    "flash_driver.test_get_size",
+    "flash_driver.test_read_unaligned_address",
+    "nand.test_a_write_of_two_pages_reads_back_in_one_read",
+    "nand.test_a_write_that_is_not_of_whole_pages_is_refused_and_writes_nothing",
+    "nand.test_an_erase_that_is_not_of_whole_blocks_is_refused_and_erases_nothing",
+    "nand.test_a_read_that_runs_past_the_end_of_the_nand_is_refused",
 ]
 
 
@@ -73,4 +80,4 @@ class TestWhenZephyrsFlashTestRunsOnTheSsdsNand:
     def test_the_case_passes_and_does_not_skip_itself(
         self, what_the_test_printed, case
     ):
-        assert f"PASS - [flash_driver.{case}]" in what_the_test_printed
+        assert f"PASS - [{case}]" in what_the_test_printed
