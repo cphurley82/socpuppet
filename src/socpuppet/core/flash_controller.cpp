@@ -39,6 +39,9 @@ bool FlashController::ReadRegister(std::uint64_t offset,
                                    std::span<std::uint8_t> out) {
   const NandGeometry geometry = *nand_.Geometry();
   switch (offset) {
+    case kCommandRegister:
+      StoreLittleEndian(std::uint32_t{0}, out);
+      break;
     case kStatusRegister:
       StoreLittleEndian(status_, out);
       break;

@@ -1,5 +1,6 @@
 #include "socpuppet/core/flash_controller.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -109,8 +110,10 @@ struct Rig {
   bool Write32(std::uint64_t offset, std::uint32_t value) {
     return controller.WriteRegister(offset, LittleEndianBytes(value));
   }
+  // The bytes do not start out as zeros, so that a register the controller
+  // leaves untouched is not taken for one that reads as zero.
   std::uint32_t Read32(std::uint64_t offset) {
-    std::array<std::uint8_t, 4> bytes{};
+    std::array<std::uint8_t, 4> bytes{0xA5, 0xA5, 0xA5, 0xA5};
     EXPECT_TRUE(controller.ReadRegister(offset, bytes));
     return LoadLittleEndian<std::uint32_t>(bytes);
   }
@@ -370,6 +373,14 @@ TEST(WhenTheCpuEnablesInterruptsAFlashControllerDoesNotHave,
   rig.Write32(kInterruptEnable, 0xFFFF'FFFF);
 
   EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
+}
+
+// The command register is for writing: there is nothing in it to read.
+TEST(WhenTheCpuReadsTheCommandRegisterOfAFlashController, ItReadsAsZero) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+
+  EXPECT_EQ(rig.Read32(kCommand), 0U);
 }
 
 }  // namespace socpuppet
