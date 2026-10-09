@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. The real SSD with its own firmware and the real die-to-die link are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third is in rehearsal: an SSD built the way a real one is, with a script where its firmware will be. Its own CPU and Zephyr firmware, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -101,6 +101,8 @@ def script():
 
 The platform around it, split over two dies, is in `examples/nvme_hello.py`.
 
+And `examples/ssd_hello.py` is the same host in front of an SSD that is built like one: hardware that keeps the queues and moves the data, a NAND chip to keep it in, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write.
+
 ## Try it
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.
@@ -111,6 +113,7 @@ uv sync
 uv run cmake --preset dev && uv run cmake --build --preset dev
 PYTHONPATH=python uv run python examples/m0_passthrough.py
 PYTHONPATH=python uv run python examples/nvme_hello.py
+PYTHONPATH=python uv run python examples/ssd_hello.py
 ```
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.

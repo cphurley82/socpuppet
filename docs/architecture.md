@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4a there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with 🎭 a script where its firmware will be. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -46,9 +46,43 @@ flowchart LR
     class link,nvme standin
 ```
 
-This is the host board, with the drive that M2's tests plug into its IO die. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
+This is the host board, with the drive that M2's tests plug into its IO die. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
+
+## The SSD
+
+```mermaid
+flowchart LR
+    host["the host"]
+    subgraph ssd["the SSD"]
+        ep["PCIe endpoint"]
+        fe["NVMe frontend"]
+        cpu["🎭 firmware<br/>(a script, for now)"]
+        dma["DMA engine"]
+        flash["flash controller"]
+        nand["🎭 ideal NAND"]
+        buf["buffer"]
+        ep -- "registers" --> fe
+        fe -- "a command" --> cpu
+        cpu -- "its completion" --> fe
+        cpu -- "copy this" --> dma
+        cpu -- "move this page" --> flash
+        dma <--> buf
+        flash <--> buf
+        flash --> nand
+        fe -- "commands, completions" --> ep
+        dma -- "data" --> ep
+    end
+    host == "PCIe link" ==> ep
+
+    classDef standin fill:#fde68a,stroke:#b45309,color:#000
+    class cpu,nand standin
+```
+
+🎓 A real SSD's controller is built this way round: hardware for what is the same every time, and firmware for what takes judgement. The [NVMe frontend](models/nvme-frontend.md) keeps the queues, fetches each command and posts its completion. The firmware reads the command and decides. The [DMA engine](models/dma-engine.md) copies a command's data between the host's memory and the SSD's buffer, and the [flash controller](models/flash-controller.md) moves pages between the buffer and the NAND. The host sees none of it: behind the endpoint is an NVMe drive, as the stand-in drive is.
+
+`socpuppet.boards.ssd` describes it, and `examples/ssd_hello.py` runs it.
 
 ## Words you will meet
 
@@ -205,6 +239,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - 🎭 [PCIe host](models/pcie-host.md)
 - 🎭 [Pass-through link](models/pass-through-link.md)
 - 🎭 [Scripted bus master](models/scripted-bus-master.md)
+- 🎭 [SSD firmware](models/ssd-firmware.md)
 - [Tracer](models/tracer.md)
 
 ## What is in the box, and where it came from
@@ -224,4 +259,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the SSD and its firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).
+🚧 Not built yet: the SSD's own CPU and its Zephyr firmware, the real die-to-die link and the manager that trains it. See [plan.md](plan.md).

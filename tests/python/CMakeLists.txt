@@ -16,6 +16,11 @@ add_test(NAME example_nvme_hello
           ${SOCPUPPET_TEST_PYTHON} examples/nvme_hello.py
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
+add_test(NAME example_ssd_hello
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
+          ${SOCPUPPET_TEST_PYTHON} examples/ssd_hello.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+
 # This one boots real firmware. Where the image has not been built it says
 # so and is counted as skipped.
 add_test(NAME example_host_hello

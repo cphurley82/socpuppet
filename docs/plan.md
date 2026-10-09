@@ -148,7 +148,23 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2 and M3 are done.** M4 (the SSD subsystem) and M5 (the IO-die manager) come next, and are independent of each other.
+**M0, M1, M2, M3 and M4a are done.** M4b (the SSD's own CPU and its board) and M4c (its Zephyr firmware) come next, and M5 (the IO-die manager) is independent of both.
+
+What M4a delivered: an SSD built the way a real one is, with a script where its firmware will be. The exit tests are the whole NVMe contract against it (`Ssd/NvmeContract` in `tests/cpp/contracts/nvme_test.cpp`) and `tests/python/test_m4a_exit.py`, which is M2's exit test with the stand-in drive swapped out and the host's script unchanged. `examples/ssd_hello.py` is the show to run by hand.
+
+- **Four models**, each a plain C++ core with a thin SystemC wrapper and a page of its own: the [NVMe frontend](models/nvme-frontend.md), the [DMA engine](models/dma-engine.md), the [flash controller](models/flash-controller.md) and 🎭 the [ideal NAND](models/ideal-nand.md).
+- **A NAND slot and its contract**, `tests/cpp/contracts/nand_contract.h`, which M9's realistic NAND is to pass. A controller talks to a chip over TLM with an extension that says which operation and which page (`models/nand_link.h`).
+- **Two firmware stand-ins.** 🎭 [`sp.SsdFirmware`](models/ssd-firmware.md) is a Python script for the SSD's CPU slot, written to be read. `tests/cpp/support/ssd_firmware.h` is the same firmware in C++ for the contract rig, a test's own.
+- **The SSD as a board**, `socpuppet.boards.ssd`: `add_ssd` puts one on a root complex's link, `add_ssd_function` is the same with no PCIe around it, and `ssd()` is the kit, with a scripted host in front.
+- **What the stand-in drive and the SSD share**: an NVMe controller's queues (`core/nvme_queues.h`) and the register block it shows its host (`core/nvme_host_registers.h`), both taken out of the behavioral controller, which is now what each command does and little else.
+- **No change to the PCIe endpoint, or to the host.**
+
+What planning M4 got wrong, or left to be found:
+
+- **The frontend's registers for its CPU are not the plan's.** There are no per-queue registers: firmware describes one queue and has it created, which is six registers where the plan had seventy-two. "A command is waiting" is a level and not something to acknowledge, so the CPU's line falls and rises once for each command. And a reset is a handshake, which the plan did not have at all and a review found the lack of: see the list below.
+- **The flash controller has to be told to identify its chip.** The plan had it ask by itself the first time a geometry register was read, which made a read do something and gave a debugger a different view from the CPU's.
+- **The C++ firmware stand-in is not a coroutine script.** It is plain C++ in a simulation thread, with a socket and an interrupt input. It reads as the firmware does, and the contract's host ends the run, so nothing needs the script's operations.
+- **Nothing borrowed.** No open model of an NVMe controller split into hardware and firmware was found to put behind an adapter. FEMU, MQSim and SimpleSSD model the whole drive from the host's side, as the stand-in drive does. The layouts are still SPDK's.
 
 Decided on 2026-10-08, planning M4:
 
