@@ -11,6 +11,7 @@ namespace {
 // Where the registers are. Each is 32 bits wide.
 constexpr std::uint64_t kCommandRegister = 0x00;
 constexpr std::uint64_t kStatusRegister = 0x04;
+constexpr std::uint64_t kInterruptEnableRegister = 0x08;
 constexpr std::uint64_t kBlockRegister = 0x0C;
 constexpr std::uint64_t kPageRegister = 0x10;
 constexpr std::uint64_t kLocalRegister = 0x14;
@@ -49,6 +50,9 @@ bool FlashController::WriteRegister(std::uint64_t offset,
       break;
     case kStatusRegister:
       status_ &= ~(value & (kDone | kError));
+      break;
+    case kInterruptEnableRegister:
+      interrupt_enable_ = value;
       break;
     case kBlockRegister:
       block_ = value;

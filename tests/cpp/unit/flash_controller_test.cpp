@@ -22,6 +22,7 @@ namespace {
 // docs/models/ gives them.
 constexpr std::uint64_t kCommand = 0x00;
 constexpr std::uint64_t kStatus = 0x04;
+constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kBlock = 0x0C;
 constexpr std::uint64_t kPage = 0x10;
 constexpr std::uint64_t kLocal = 0x14;
@@ -286,6 +287,19 @@ TEST(WhenAFlashControllerIsGivenANewCommand,
   rig.Write32(kCommand, kReadPage);
 
   EXPECT_EQ(rig.Read32(kStatus), kBusy);
+}
+
+TEST(WhenACommandIsDoneAndDoneIsEnabledAsAnInterrupt,
+     TheFlashControllerInterrupts) {
+  Rig rig;
+  rig.Write32(kInterruptEnable, kDone);
+  rig.Write32(kCommand, kReadPage);
+  const bool while_busy = rig.controller.Interrupting();
+
+  rig.controller.CarryOut();
+
+  EXPECT_FALSE(while_busy);
+  EXPECT_TRUE(rig.controller.Interrupting());
 }
 
 }  // namespace socpuppet

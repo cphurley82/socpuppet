@@ -25,6 +25,9 @@ class FlashController {
   // yet. Returns whether there was anything to do.
   bool CarryOut();
 
+  // Whether the controller is asking for its CPU's attention.
+  bool Interrupting() const { return (status_ & interrupt_enable_) != 0; }
+
  private:
   // Carries a command out, and returns whether it could be.
   bool Do(std::uint32_t command);
@@ -34,6 +37,8 @@ class FlashController {
   // What the command register was told and has not done yet, or zero.
   std::uint32_t command_ = 0;
   std::uint32_t status_ = 0;
+  // Which bits of the status interrupt the CPU while they are set.
+  std::uint32_t interrupt_enable_ = 0;
   // Which page of the chip, and where it is in the SSD's own memory.
   std::uint32_t block_ = 0;
   std::uint32_t page_ = 0;
