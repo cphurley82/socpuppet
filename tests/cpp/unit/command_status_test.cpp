@@ -1,0 +1,126 @@
+#include "socpuppet/core/command_status.h"
+
+#include <cstdint>
+
+#include <gtest/gtest.h>
+
+namespace socpuppet {
+
+namespace {
+
+constexpr std::uint32_t kDone = CommandStatus::kDone;
+constexpr std::uint32_t kError = CommandStatus::kError;
+constexpr std::uint32_t kBusy = CommandStatus::kBusy;
+
+// A status after a command that was carried out, or one that could not be.
+CommandStatus AfterACommand(bool carried_out) {
+  CommandStatus status;
+  status.Start();
+  status.Finish(carried_out);
+  return status;
+}
+
+}  // namespace
+
+TEST(WhenADeviceHasBeenGivenNoCommandYet, ItsStatusSaysNothing) {
+  const CommandStatus status;
+
+  EXPECT_EQ(status.Status(), 0U);
+}
+
+TEST(WhenADeviceIsGivenACommand, ItsStatusSaysBusyAndNothingElse) {
+  CommandStatus status;
+
+  status.Start();
+
+  EXPECT_EQ(status.Status(), kBusy);
+}
+
+TEST(WhenADeviceHasCarriedItsCommandOut, ItsStatusSaysDoneAndNothingElse) {
+  EXPECT_EQ(AfterACommand(true).Status(), kDone);
+}
+
+TEST(WhenADeviceCouldNotCarryItsCommandOut, ItsStatusSaysErrorAndNothingElse) {
+  EXPECT_EQ(AfterACommand(false).Status(), kError);
+}
+
+// So that the status is always about the last command.
+TEST(WhenADeviceIsGivenItsNextCommand, HowTheLastOneWentIsForgotten) {
+  CommandStatus status = AfterACommand(false);
+
+  status.Start();
+
+  EXPECT_EQ(status.Status(), kBusy);
+}
+
+TEST(WhenTheCpuWritesAOneToDoneOrError, TheBitIsCleared) {
+  CommandStatus done = AfterACommand(true);
+  CommandStatus error = AfterACommand(false);
+
+  done.WriteStatus(kDone);
+  error.WriteStatus(kError);
+
+  EXPECT_EQ(done.Status(), 0U);
+  EXPECT_EQ(error.Status(), 0U);
+}
+
+TEST(WhenTheCpuWritesAZeroToDone, DoneStaysSet) {
+  CommandStatus status = AfterACommand(true);
+
+  status.WriteStatus(kError);
+
+  EXPECT_EQ(status.Status(), kDone);
+}
+
+// Busy is the device's to say, and not the CPU's to take back.
+TEST(WhenTheCpuWritesAOneToBusy, TheDeviceStaysBusy) {
+  CommandStatus status;
+  status.Start();
+
+  status.WriteStatus(kBusy);
+
+  EXPECT_EQ(status.Status(), kBusy);
+}
+
+TEST(WhenTheCpuEnablesEveryInterruptThereCouldBe, OnlyDoneAndErrorAreEnabled) {
+  CommandStatus status;
+
+  status.WriteInterruptEnable(0xFFFF'FFFF);
+
+  EXPECT_EQ(status.InterruptEnable(), kDone | kError);
+}
+
+TEST(WhenAnEnabledStatusBitIsSet, TheDeviceInterrupts) {
+  CommandStatus status;
+  status.WriteInterruptEnable(kDone);
+  status.Start();
+  const bool while_busy = status.Interrupting();
+
+  status.Finish(true);
+
+  EXPECT_FALSE(while_busy);
+  EXPECT_TRUE(status.Interrupting());
+}
+
+TEST(WhenTheStatusBitThatIsSetIsNotEnabled, TheDeviceDoesNotInterrupt) {
+  CommandStatus status;
+  status.WriteInterruptEnable(kDone);
+  status.Start();
+
+  status.Finish(false);
+
+  EXPECT_FALSE(status.Interrupting());
+}
+
+TEST(WhenTheCpuClearsTheBitThatInterruptedIt, TheDeviceStopsInterrupting) {
+  CommandStatus status;
+  status.WriteInterruptEnable(kDone);
+  status.Start();
+  status.Finish(true);
+
+  status.WriteStatus(kDone);
+
+  EXPECT_FALSE(status.Interrupting());
+}
+
+}  // namespace socpuppet
