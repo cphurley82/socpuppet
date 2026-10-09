@@ -12,6 +12,7 @@ target_sources(socpuppet_core INTERFACE
     core/memory_port.h
     core/memory_store.h
     core/nand_array.h
+    core/nand_port.h
     core/script.h
     core/time.h
     core/trace.h)
@@ -36,6 +37,15 @@ target_sources(socpuppet_nvme_controller PUBLIC
 target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
+
+# The devices of the SSD that are neither its CPU nor its NVMe frontend:
+# the flash controller, in front of the NAND.
+add_library(socpuppet_ssd_devices STATIC core/flash_controller.cpp)
+target_sources(socpuppet_ssd_devices PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/flash_controller.h)
+socpuppet_dev_checks(socpuppet_ssd_devices)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
 
 # What a PCIe endpoint's registers do. Ours, and long enough to be worth
 # compiling once.
@@ -166,7 +176,7 @@ socpuppet_dev_checks(socpuppet_builtin_components)
 
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
-  socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
+  socpuppet_ssd_devices socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
   socpuppet_plic)
 
