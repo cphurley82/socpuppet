@@ -62,7 +62,7 @@ The reset comes first, on purpose. If the host has reset the controller and enab
 
 - **Admin**: Identify (the controller, the namespace, the list of namespaces), Set Features for the number of queues, and the two commands that create an I/O queue pair.
 - **I/O**: Read, Write and Flush, on one namespace of 512-byte blocks.
-- **What it refuses** comes back as the status the specification gives it, as from the [stand-in drive](behavioral-nvme.md): an opcode it does not have, a block past the end, a namespace other than number 1, a queue identifier or an interrupt vector the drive does not have, a queue that already exists, a queue of one entry, a submission queue before its completion queue, and data at an address in the host's memory where nothing answers.
+- **What it refuses** comes back as the status the specification gives it, as from the [stand-in drive](behavioral-nvme.md): an opcode it does not have, a block past the end, a namespace other than number 1, a queue identifier or an interrupt vector the drive does not have, a queue that already exists, a queue of one entry, a submission queue before its completion queue, data at an address in the host's memory where nothing answers, and a list of data pages that does not start where a pointer can.
 
 ### Where the data goes: a very small FTL
 
@@ -76,9 +76,9 @@ The reset comes first, on purpose. If the host has reset the controller and enab
  page 511 ───────────────────────────▶   page 0
 ```
 
-- **A page written for the first time** takes the next NAND page nobody has. So pages land on the NAND in the order they were first written, whatever their place on the drive. `firmware.page_map` is the table.
+- **A page written for the first time** takes the next NAND page nobody has. So pages land on the NAND in the order they were first written, whatever their place on the drive. `firmware.page_map` is the table. 🎓 An FTL calls it the logical-to-physical table, L2P for short, and the host's block numbers are logical block addresses, LBAs.
 - **A page that was never written** is in no NAND page, and reads as zeros. 💡 An erased NAND page reads as all ones. The zeros a host expects of a new drive come from the firmware, which knows what was never written.
-- **A write of part of a page** has to keep the rest, so the firmware reads the page into the buffer, has the DMA engine lay the host's blocks over it, and programs it again.
+- **A write of part of a page** has to keep the rest, so the firmware reads the page into the buffer, has the DMA engine lay the host's blocks over it, and programs it again. It does that once for each page of the drive a command touches, however many pieces the host's memory cuts the data into.
 - **A page that is written again is programmed where it is.** ⚠️ Only the [ideal NAND](ideal-nand.md) allows that. A real chip has to be given a fresh page, the table changed, and the old page left as rubbish until its whole block can be erased. That is where garbage collection begins, and where this FTL stops.
 
 ### A command's data
@@ -89,7 +89,7 @@ The reset comes first, on purpose. If the host has reset the controller and enab
 
 - **A CPU.** Nothing is executed. Each step of the script is one access on the SSD's bus.
 - **Time.** The firmware takes none. A real one takes most of the time a command takes.
-- **Remembering where things are.** ⚠️ The table is kept in Python, and not on the NAND. Real firmware writes it to the flash as well and finds it again at power-on. Here a reset of the SSD's CPU starts the script afresh with an empty table, and what was written is no longer found. A controller reset, which is the host's doing, loses nothing.
+- **Remembering where things are.** ⚠️ The table is kept in Python, and not on the NAND or in the SSD's buffer. Real firmware writes it to the flash as well and finds it again at power-on. A controller reset, which is the host's doing, loses nothing. 🚧 A reset of the SSD's own CPU is not something the board can do yet.
 - **More than one thing at a time.** One command, one page of buffer.
 - **Garbage collection, wear levelling, bad blocks.** Everything a real FTL spends its life on.
 - **A write that fails half-way** has written the pages before the failure.

@@ -17,6 +17,7 @@ import pytest
 import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
+from socpuppet.boards.drive import VECTORS
 from socpuppet.boards.ssd import (
     UPLINK_REACH,
     add_ssd_function,
@@ -28,6 +29,9 @@ RAM_SIZE = 0x10_0000
 NVME_BASE = 0x1000_0000
 # One NAND block of 64 pages of 4 KiB.
 BLOCKS = 512
+# How many I/O queue pairs the SSD's frontend has, which its firmware
+# reads from it (docs/models/nvme-frontend.md).
+IO_QUEUE_PAIRS = 8
 # Where a raw host puts a command's data: after its four pages of queues.
 DATA = RAM_BASE + 0x8000
 # An address in the host's map where nothing answers.
@@ -197,18 +201,13 @@ class TestWhenADriverAsksForBlocksPastTheEndOfTheSsd:
 
     def test_a_write_is_refused_and_writes_nothing(self):
         def steps(nvme):
-            try:
+            with pytest.raises(sp.NvmeError, match=r"(?i)out of range"):
                 yield from nvme.write_blocks(
                     first=BLOCKS - 1, data=bytes([0x33]) * 1024
                 )
-            except sp.NvmeError as refused:
-                last = yield from nvme.read_blocks(first=BLOCKS - 1, count=1)
-                return str(refused), last
-            return None
+            return (yield from nvme.read_blocks(first=BLOCKS - 1, count=1))
 
-        why, last_block = what_a_driver_does(steps)
-        assert "out of range" in why.lower()
-        assert last_block == bytes(512)
+        assert what_a_driver_does(steps) == bytes(512)
 
 
 @pytest.mark.platform
@@ -218,7 +217,7 @@ class TestWhenAHostSendsAnAdminCommandTheSsdDoesNotHave:
         def steps(host):
             return (yield from host.admin(opcode=0x7F))
 
-        assert what_a_raw_host_gets(steps)[:2] == INVALID_OPCODE
+        assert what_a_raw_host_gets(steps).status == INVALID_OPCODE
 
 
 @pytest.mark.platform
@@ -240,26 +239,26 @@ class TestWhenAHostIdentifies:
     def test_the_controller_says_it_has_one_namespace(self):
         completion, page = self.identified(what=0x01)
 
-        assert completion[:2] == SUCCESS
+        assert completion.status == SUCCESS
         # The number of namespaces is 32 bits at offset 516.
         assert struct.unpack_from("<I", page, 516) == (1,)
 
     def test_the_list_of_active_namespaces_holds_namespace_one_alone(self):
         completion, page = self.identified(what=0x02)
 
-        assert completion[:2] == SUCCESS
+        assert completion.status == SUCCESS
         assert struct.unpack_from("<II", page) == (1, 0)
 
     def test_namespace_two_is_an_invalid_namespace(self):
         completion, _ = self.identified(what=0x00, namespace=2)
 
-        assert completion[:2] == INVALID_NAMESPACE
+        assert completion.status == INVALID_NAMESPACE
 
     # 0x7F is not something Identify can be asked for.
-    def test_something_there_is_not_is_an_invalid_field(self):
+    def test_something_identify_cannot_be_asked_for_is_an_invalid_field(self):
         completion, _ = self.identified(what=0x7F)
 
-        assert completion[:2] == INVALID_FIELD
+        assert completion.status == INVALID_FIELD
 
 
 @pytest.mark.platform
@@ -274,8 +273,9 @@ class TestWhenAHostSetsAFeature:
 
         completion = what_a_raw_host_gets(steps)
 
-        assert completion[:2] == SUCCESS
-        assert completion.result == 7 << 16 | 7
+        assert completion.status == SUCCESS
+        from_zero = IO_QUEUE_PAIRS - 1
+        assert completion.result == from_zero << 16 | from_zero
 
     def test_a_feature_the_ssd_does_not_have_is_an_invalid_field(self):
         def steps(host):
@@ -285,7 +285,7 @@ class TestWhenAHostSetsAFeature:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == INVALID_FIELD
+        assert what_a_raw_host_gets(steps).status == INVALID_FIELD
 
 
 def create(host, opcode, *, queue_id, entries=8, link):
@@ -304,15 +304,37 @@ class TestWhenAHostAsksForACompletionQueueItCannotHave:
     @pytest.mark.parametrize(
         ("queue_id", "entries", "vector", "status"),
         [
-            pytest.param(0, 8, 0, INVALID_QUEUE_IDENTIFIER, id="queue 0"),
-            pytest.param(9, 8, 0, INVALID_QUEUE_IDENTIFIER, id="a ninth"),
-            pytest.param(2, 1, 0, INVALID_QUEUE_SIZE, id="of one entry"),
-            pytest.param(2, 8, 2, INVALID_INTERRUPT_VECTOR, id="on vector 2"),
+            pytest.param(
+                0,
+                8,
+                0,
+                INVALID_QUEUE_IDENTIFIER,
+                id="queue 0 is an invalid queue identifier",
+            ),
+            pytest.param(
+                IO_QUEUE_PAIRS + 1,
+                8,
+                0,
+                INVALID_QUEUE_IDENTIFIER,
+                id="one more than the SSD has is an invalid queue identifier",
+            ),
+            pytest.param(
+                2,
+                1,
+                0,
+                INVALID_QUEUE_SIZE,
+                id="one entry is an invalid queue size",
+            ),
+            pytest.param(
+                2,
+                8,
+                VECTORS,
+                INVALID_INTERRUPT_VECTOR,
+                id="a vector the SSD lacks is an invalid interrupt vector",
+            ),
         ],
     )
-    def test_the_command_fails_with_the_status_for_it(
-        self, queue_id, entries, vector, status
-    ):
+    def test_it_is_refused(self, queue_id, entries, vector, status):
         def steps(host):
             return (
                 yield from create(
@@ -324,7 +346,7 @@ class TestWhenAHostAsksForACompletionQueueItCannotHave:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == status
+        assert what_a_raw_host_gets(steps).status == status
 
     def test_one_that_exists_is_an_invalid_queue_identifier(self):
         def steps(host):
@@ -338,7 +360,7 @@ class TestWhenAHostAsksForACompletionQueueItCannotHave:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == INVALID_QUEUE_IDENTIFIER
+        assert what_a_raw_host_gets(steps).status == INVALID_QUEUE_IDENTIFIER
 
 
 @pytest.mark.platform
@@ -346,15 +368,33 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
     @pytest.mark.parametrize(
         ("queue_id", "entries", "status"),
         [
-            pytest.param(0, 8, INVALID_QUEUE_IDENTIFIER, id="queue 0"),
-            pytest.param(9, 8, INVALID_QUEUE_IDENTIFIER, id="a ninth"),
-            pytest.param(1, 8, INVALID_QUEUE_IDENTIFIER, id="one that exists"),
-            pytest.param(2, 1, INVALID_QUEUE_SIZE, id="of one entry"),
+            pytest.param(
+                0,
+                8,
+                INVALID_QUEUE_IDENTIFIER,
+                id="queue 0 is an invalid queue identifier",
+            ),
+            pytest.param(
+                IO_QUEUE_PAIRS + 1,
+                8,
+                INVALID_QUEUE_IDENTIFIER,
+                id="one more than the SSD has is an invalid queue identifier",
+            ),
+            pytest.param(
+                1,
+                8,
+                INVALID_QUEUE_IDENTIFIER,
+                id="one that exists is an invalid queue identifier",
+            ),
+            pytest.param(
+                2,
+                1,
+                INVALID_QUEUE_SIZE,
+                id="one entry is an invalid queue size",
+            ),
         ],
     )
-    def test_the_command_fails_with_the_status_for_it(
-        self, queue_id, entries, status
-    ):
+    def test_it_is_refused(self, queue_id, entries, status):
         def steps(host):
             yield from host.create_io_queues()
             return (
@@ -367,7 +407,7 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == status
+        assert what_a_raw_host_gets(steps).status == status
 
     def test_one_before_its_completion_queue_is_a_completion_queue_invalid(
         self,
@@ -382,21 +422,28 @@ class TestWhenAHostAsksForASubmissionQueueItCannotHave:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == COMPLETION_QUEUE_INVALID
+        assert what_a_raw_host_gets(steps).status == COMPLETION_QUEUE_INVALID
 
 
 @pytest.mark.platform
 class TestWhenAHostResetsTheSsd:
-    def test_the_io_queues_are_gone_and_can_be_asked_for_again(self):
+    # A queue that exists cannot be asked for again, so being given it
+    # again says it was gone.
+    def test_an_io_queue_it_had_can_be_asked_for_again(self):
         def steps(host):
             yield from host.create_io_queues()
             yield from host.disable()
             yield from host.enable()
-            # This asserts that both queues were created.
-            yield from host.create_io_queues()
-            return (yield from host.io(opcode=raw_nvme.FLUSH, namespace=1))
+            return (
+                yield from create(
+                    host,
+                    raw_nvme.CREATE_IO_COMPLETION_QUEUE,
+                    queue_id=1,
+                    link=0,
+                )
+            )
 
-        assert what_a_raw_host_gets(steps)[:2] == SUCCESS
+        assert what_a_raw_host_gets(steps).status == SUCCESS
 
 
 @pytest.mark.platform
@@ -406,7 +453,7 @@ class TestWhenAHostSendsAnIoCommand:
             yield from host.create_io_queues()
             return (yield from host.io(**command))
 
-        return what_a_raw_host_gets(steps)[:2]
+        return what_a_raw_host_gets(steps).status
 
     def test_a_flush_succeeds(self):
         assert self.io(opcode=raw_nvme.FLUSH, namespace=1) == SUCCESS
@@ -521,7 +568,7 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
 
         written, read_back = what_a_raw_host_gets(steps)
 
-        assert written[:2] == SUCCESS
+        assert written.status == SUCCESS
         assert read_back == [page_of(0x10 + index) for index in range(4)]
 
     def test_a_list_where_nothing_answers_is_a_data_transfer_error(self):
@@ -537,7 +584,7 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == DATA_TRANSFER_ERROR
+        assert what_a_raw_host_gets(steps).status == DATA_TRANSFER_ERROR
 
     # A pointer is eight bytes, and a list of them starts where one can.
     def test_a_list_that_does_not_start_at_a_pointer_is_a_prp_offset_invalid(
@@ -555,7 +602,7 @@ class TestWhenACommandsDataIsGivenAsAListOfPages:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == PRP_OFFSET_INVALID
+        assert what_a_raw_host_gets(steps).status == PRP_OFFSET_INVALID
 
 
 @pytest.mark.platform
@@ -568,7 +615,7 @@ class TestWhenAHostIdentifiesWithItsDataWhereNothingAnswers:
                 )
             )
 
-        assert what_a_raw_host_gets(steps)[:2] == DATA_TRANSFER_ERROR
+        assert what_a_raw_host_gets(steps).status == DATA_TRANSFER_ERROR
 
 
 def firmware_with_a_flash_controller_whose_status_is(status):

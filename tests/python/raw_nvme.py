@@ -40,11 +40,10 @@ READ = 0x02
 class Completion(NamedTuple):
     """How a command went, as its completion says."""
 
-    #: Which list the status code is from: 0 is the one every command
-    #: shares, 1 is the command's own.
-    status_type: int
-    #: The status code. 0 is success.
-    status: int
+    #: The status: which list its code is from, and the code. List 0 is
+    #: the one every command shares, list 1 is the command's own, and code
+    #: 0 of list 0 is success.
+    status: tuple[int, int]
     #: The command's answer, for the few that have one.
     result: int
 
@@ -104,14 +103,14 @@ class RawNvmeHost:
             dword10=size | 1,
             dword11=0,
         )
-        assert created[:2] == SUCCESS, created
+        assert created.status == SUCCESS, created
         created = yield from self.admin(
             opcode=CREATE_IO_SUBMISSION_QUEUE,
             data=self._io.submissions,
             dword10=size | 1,
             dword11=1 << 16,
         )
-        assert created[:2] == SUCCESS, created
+        assert created.status == SUCCESS, created
 
     def admin(self, **command):
         """Submits a command to the admin queue. Returns its Completion."""
@@ -166,9 +165,7 @@ class RawNvmeHost:
             queues.phase ^= 1
         yield sp.write32(self._doorbell(queues, 1), queues.head)
         return Completion(
-            status_type=(status >> 9) & 0x7,
-            status=(status >> 1) & 0xFF,
-            result=result,
+            status=((status >> 9) & 0x7, (status >> 1) & 0xFF), result=result
         )
 
     def _doorbell(self, queues, which):

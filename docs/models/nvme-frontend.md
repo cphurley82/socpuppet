@@ -58,7 +58,7 @@ Each is 32 bits wide, except the command.
 | `0x00` | `CONTROL` | read, write | Bit 0 `READY`: the host sees it as `CSTS.RDY`. |
 | `0x04` | `STATUS` | read, write one to clear | See below. |
 | `0x08` | `INT_ENABLE` | read, write | Bits 0 to 2: which of the status bits raise `cpu_irq`. |
-| `0x0C` | `LIMITS` | read | How many I/O queue pairs the frontend has, in the low half, and how many interrupt vectors, in the high half. |
+| `0x0C` | `LIMITS` | read | How many I/O queue pairs the frontend has, in the low half, which is eight, and how many interrupt vectors, in the high half. |
 | `0x10` | `COMMAND_QUEUE` | read | Which submission queue the waiting command came from. 0 is the admin queue. |
 | `0x14` | `COMPLETION_RESULT` | read, write | The first 32 bits of the completion: the command's answer, for the few that have one. |
 | `0x18` | `COMPLETION_STATUS` | read, write | How the command went, laid out as the status field of a completion is, less the phase bit: the status code in the low byte, zero for success, and in bits 8 to 10 which list of codes it is from. The other bits read back as zero. |
