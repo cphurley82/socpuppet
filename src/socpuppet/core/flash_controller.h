@@ -26,6 +26,9 @@ class FlashController {
   bool CarryOut();
 
  private:
+  // Carries a command out, and returns whether it could be.
+  bool Do(std::uint32_t command);
+
   NandPort& nand_;
   MemoryPort& local_memory_;
   // What the command register was told and has not done yet, or zero.

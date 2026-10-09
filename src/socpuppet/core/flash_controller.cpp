@@ -21,6 +21,7 @@ constexpr std::uint32_t kProgramPage = 2;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kError = 1U << 1;
 constexpr std::uint32_t kBusy = 1U << 2;
 
 }  // namespace
@@ -59,23 +60,24 @@ bool FlashController::WriteRegister(std::uint64_t offset,
 
 bool FlashController::CarryOut() {
   if (command_ == 0) return false;
+  status_ = Do(command_) ? kDone : kError;
+  command_ = 0;
+  return true;
+}
+
+bool FlashController::Do(std::uint32_t command) {
   std::vector<std::uint8_t> page(nand_.Geometry()->page_size);
-  switch (command_) {
+  switch (command) {
     case kReadPage:
-      nand_.ReadPage(block_, page_, page);
+      if (!nand_.ReadPage(block_, page_, page)) return false;
       local_memory_.Write(local_, page);
-      break;
+      return true;
     case kProgramPage:
       local_memory_.Read(local_, page);
-      nand_.ProgramPage(block_, page_, page);
-      break;
+      return nand_.ProgramPage(block_, page_, page);
     default:
-      nand_.EraseBlock(block_);
-      break;
+      return nand_.EraseBlock(block_);
   }
-  command_ = 0;
-  status_ = kDone;
-  return true;
 }
 
 }  // namespace socpuppet

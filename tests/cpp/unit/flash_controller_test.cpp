@@ -33,6 +33,7 @@ constexpr std::uint32_t kEraseBlock = 3;
 
 // The bits of the status register.
 constexpr std::uint32_t kDone = 1U << 0;
+constexpr std::uint32_t kError = 1U << 1;
 constexpr std::uint32_t kBusy = 1U << 2;
 
 // A small chip: 4 blocks of 8 pages, each page 16 bytes.
@@ -171,6 +172,20 @@ TEST(WhenAFlashControllerIsToldToEraseABlock, TheBlocksPagesReadAsAllOnes) {
   EXPECT_EQ(rig.chip.PageAt(2, 5),
             std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
   EXPECT_EQ(rig.Read32(kStatus) & kDone, kDone);
+}
+
+// Block 4 is one past the end of the chip.
+TEST(WhenTheChipRefusesWhatAFlashControllerAsksOfIt,
+     TheStatusSaysErrorAndNotDone) {
+  for (const std::uint32_t command : {kReadPage, kProgramPage, kEraseBlock}) {
+    Rig rig;
+    rig.Write32(kBlock, 4);
+
+    rig.Write32(kCommand, command);
+    rig.controller.CarryOut();
+
+    EXPECT_EQ(rig.Read32(kStatus), kError) << "command " << command;
+  }
 }
 
 }  // namespace socpuppet
