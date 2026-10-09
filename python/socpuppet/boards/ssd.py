@@ -17,8 +17,10 @@ one is built the way a real one is:
 - the **flash controller** moves pages between the buffer and the
   **NAND**, which is where the data is kept.
 
-🎭 Until the SSD has a CPU model of its own, a script stands in for the
-firmware (`sp.SsdFirmware`), in the CPU's place.
+The CPU is a 32-bit RISC-V core, with an SRAM to run from, a UART, a
+timer and an interrupt controller, and firmware is loaded into it as an
+ELF file. 🎭 Or a script stands in for the firmware (`sp.SsdFirmware`), in
+the CPU's place, and then there is no CPU at all.
 
 To use an SSD from a Python host, with nothing else to build:
 
@@ -40,27 +42,48 @@ from typing import NamedTuple
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
 from socpuppet.boards.scripted_host import ScriptedHost, add_scripted_host
 from socpuppet.components import (
+    DbtRiseCpu,
     DmaEngine,
     FlashController,
     IdealNand,
+    MachineTimer,
     Memory,
+    Ns16550,
     NvmeFrontend,
     PcieEndpoint,
+    Plic,
     Router,
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.placed import Placed, PlacedRouter
+from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
 
 # ---- The SSD's own address map: what its CPU sees. The host sees none of
 # it, only the endpoint.
+#: The machine timer, and how many times a second it counts. The firmware
+#: has to be told the same number: CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC in
+#: Zephyr.
+TIMER_BASE = 0x0200_0000
+TIMER_HZ = 10_000_000
+#: The interrupt controller, and which of its sources each device's line
+#: goes to.
+PLIC_BASE = 0x0C00_0000
+FRONTEND_SOURCE = 1
+DMA_SOURCE = 2
+FLASH_SOURCE = 3
+#: The UART, which is the firmware's console.
+UART_BASE = 0x1000_0000
 #: The registers of the NVMe frontend, the DMA engine and the flash
 #: controller.
 FRONTEND_BASE = 0x1001_0000
 DMA_BASE = 0x1002_0000
 FLASH_BASE = 0x1003_0000
+#: The SRAM: 256 KiB, which the firmware is loaded into and runs from. The
+#: CPU starts at its first instruction.
+SRAM_BASE = 0x2000_0000
+SRAM_SIZE = 256 * 1024
 #: The buffer: 4 MiB of memory that data passes through on its way
 #: between the host and the NAND.
 BUFFER_BASE = 0x4000_0000
@@ -80,10 +103,22 @@ DRIVE_BLOCKS_PER_NAND_BLOCK = NAND_PAGES_PER_BLOCK * NAND_PAGE_SIZE // 512
 UPLINK_REACH = 1 << 63
 
 
+class Controller(NamedTuple):
+    """What an SSD's CPU has around it, when it is a real one."""
+
+    #: Where the firmware is loaded, and runs from.
+    sram: Placed
+    #: The firmware's console: `uart.output` is what it has printed.
+    uart: PlacedUart
+    timer: Placed
+    plic: Placed
+
+
 class Ssd(NamedTuple):
     """An SSD at its place in a platform, part by part."""
 
-    #: The SSD's CPU, or what stands in for it.
+    #: The SSD's CPU, or 🎭 the script that stands in for it. Firmware is
+    #: loaded through it: `platform.load_elf(file, via=ssd.cpu.socket)`.
     cpu: Placed
     #: The bus the CPU reaches the three devices and the buffer through.
     bus: PlacedRouter
@@ -95,6 +130,8 @@ class Ssd(NamedTuple):
     #: The one way up to the host's memory, which the frontend and the DMA
     #: engine share.
     uplink: PlacedRouter
+    #: What a real CPU has around it. None when a script is in its place.
+    controller: Controller | None = None
     #: Its PCIe endpoint, if it has one (see `add_ssd_function`).
     endpoint: Placed | None = None
 
@@ -119,6 +156,7 @@ def add_ssd_function(
     blocks: int,
     group: Group | None = None,
     firmware: Script | None = None,
+    gdb_port: int = 0,
 ) -> Ssd:
     """Describe an SSD with no PCIe around it: an NVMe function.
 
@@ -130,9 +168,15 @@ def add_ssd_function(
     `frontend.irq0` and so on.
 
     `blocks` is how many 512-byte blocks the drive holds, which has to be
-    a whole number of NAND blocks. `firmware` is the script that stands
-    in for the SSD's firmware (see `stand_in_firmware`). The SSD's parts
-    go in `group`, or at the top of the platform if there is none.
+    a whole number of NAND blocks. The SSD's parts go in `group`, or at
+    the top of the platform if there is none.
+
+    With no `firmware`, the SSD has its own CPU, and real firmware is
+    loaded into it: `platform.load_elf(file, via=ssd.cpu.socket)`. With a
+    `gdb_port`, that CPU listens for a debugger on the TCP port and waits
+    for one to attach before it executes anything. 🎭 Or `firmware` is a
+    script that stands in for the firmware, in the CPU's place (see
+    `stand_in_firmware`).
     """
     if blocks < DRIVE_BLOCKS_PER_NAND_BLOCK or (
         blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
@@ -161,7 +205,13 @@ def add_ssd_function(
 
     # Whatever is in the CPU's place, with the frontend's line to tell it
     # when there is work.
-    cpu = _add_scripted_cpu(platform, place, frontend, firmware)
+    controller = None
+    if firmware is None:
+        cpu, controller = _add_controller(
+            platform, place, bus, (frontend, dma, flash), gdb_port
+        )
+    else:
+        cpu = _add_scripted_cpu(platform, place, frontend, firmware, gdb_port)
     # What the CPU sees: the three devices' registers, and the buffer.
     platform.connect(cpu.socket, bus.target)
     bus.map(frontend.cpu, base=FRONTEND_BASE)
@@ -186,25 +236,63 @@ def add_ssd_function(
         nand=nand,
         buffer=buffer,
         uplink=uplink,
+        controller=controller,
     )
+
+
+def _add_controller(
+    platform: Platform,
+    place: Platform | Group,
+    bus: PlacedRouter,
+    devices: tuple[Placed, Placed, Placed],
+    gdb_port: int,
+) -> tuple[Placed, Controller]:
+    """Put a CPU in the SSD's CPU slot, with what a CPU needs around it.
+
+    `devices` are the frontend, the DMA engine and the flash controller,
+    whose lines go to sources of the interrupt controller: a CPU has one
+    input for all its devices, and asks the controller which it was.
+    """
+    frontend, dma, flash = devices
+    cpu = place.add(
+        "cpu", DbtRiseCpu(xlen=32, reset_vector=SRAM_BASE, gdb_port=gdb_port)
+    )
+    sram = place.add("sram", Memory(size=SRAM_SIZE))
+    uart = place.add("uart", Ns16550())
+    timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
+    plic = place.add("plic", Plic())
+    bus.map(timer.socket, base=TIMER_BASE)
+    bus.map(plic.socket, base=PLIC_BASE)
+    bus.map(uart.socket, base=UART_BASE)
+    bus.map(sram.socket, base=SRAM_BASE)
+    platform.connect(
+        frontend.cpu_irq, getattr(plic, f"source{FRONTEND_SOURCE}")
+    )
+    platform.connect(dma.irq, getattr(plic, f"source{DMA_SOURCE}"))
+    platform.connect(flash.irq, getattr(plic, f"source{FLASH_SOURCE}"))
+    platform.connect(plic.irq, cpu.irq)
+    platform.connect(timer.irq, cpu.timer_irq)
+    return cpu, Controller(sram=sram, uart=uart, timer=timer, plic=plic)
 
 
 def _add_scripted_cpu(
     platform: Platform,
     place: Platform | Group,
     frontend: Placed,
-    firmware: Script | None,
+    firmware: Script,
+    gdb_port: int,
 ) -> Placed:
     """🎭 Put a script in the SSD's CPU slot, to stand in for its firmware.
 
     The frontend's line goes straight to the script, which has one
     interrupt input and no interrupt controller.
     """
-    if firmware is None:
-        raise NotImplementedError(
-            "🚧 The SSD has no CPU of its own yet, so it needs a script to "
-            "stand in for its firmware: "
-            "firmware=socpuppet.boards.ssd.stand_in_firmware().script."
+    if gdb_port:
+        raise ValueError(
+            f"gdb_port={gdb_port} was asked for, and a debugger attaches to "
+            "a CPU. With a script standing in for its firmware the SSD has "
+            "none. Leave out `firmware` for an SSD with a CPU, or leave out "
+            "`gdb_port`."
         )
     cpu = place.add("cpu", ScriptedBusMaster(script=firmware))
     platform.connect(frontend.cpu_irq, cpu.irq)
@@ -218,6 +306,7 @@ def add_ssd(
     blocks: int,
     group: Group | None = None,
     firmware: Script | None = None,
+    gdb_port: int = 0,
 ) -> Ssd:
     """Describe an SSD on the PCIe link of `root_complex`.
 
@@ -227,7 +316,11 @@ def add_ssd(
     does, so a host cannot tell the two apart by looking.
     """
     ssd = add_ssd_function(
-        platform, blocks=blocks, group=group, firmware=firmware
+        platform,
+        blocks=blocks,
+        group=group,
+        firmware=firmware,
+        gdb_port=gdb_port,
     )
     place = platform if group is None else group
     endpoint = place.add(
@@ -268,6 +361,7 @@ def ssd(
     host: Script,
     blocks: int = 4096,
     firmware: Script | None = None,
+    gdb_port: int = 0,
     trace: bool = False,
 ) -> SsdBoard:
     """Describe the SSD, with a 🎭 scripted host on its PCIe link.
@@ -275,9 +369,13 @@ def ssd(
     Nothing is simulated until `platform.build()`. `host` is the script
     that plays the host: it starts with `bring_up_the_drive()` (see
     `socpuppet.boards.scripted_host`). `blocks` is how many 512-byte
-    blocks the drive holds, and `firmware` is the script that stands in
-    for the SSD's firmware. With `trace`, everything the drive sends up to
-    the host is recorded in `platform.trace`.
+    blocks the drive holds.
+
+    The SSD has its own CPU, and firmware is loaded into it with
+    `platform.load_elf(file, via=board.ssd.cpu.socket)`. With a `gdb_port`
+    the CPU waits for a debugger on that TCP port. 🎭 Or `firmware` is a
+    script that stands in for the SSD's firmware. With `trace`, everything
+    the drive sends up to the host is recorded in `platform.trace`.
     """
     platform = Platform()
     scripted_host = add_scripted_host(
@@ -289,5 +387,6 @@ def ssd(
         blocks=blocks,
         group=platform.group("ssd"),
         firmware=firmware,
+        gdb_port=gdb_port,
     )
     return SsdBoard(platform, drive, scripted_host)
