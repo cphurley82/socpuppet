@@ -81,5 +81,6 @@ The gaps at `0x18`, `0x1C` and `0x2C` are reserved, with nothing there.
 ## Under the hood
 
 - `src/socpuppet/core/flash_controller_logic.h` is the registers and what a command does, with no simulator in it. It reaches the chip and the memory through two small interfaces (`core/nand_port.h`, `core/memory_port.h`), so its tests need neither.
-- `src/socpuppet/models/flash_controller.h` is the SystemC wrapper: the sockets, the process that does the work, and the one process that drives `irq`.
+- `src/socpuppet/core/command_status.h` is what it shares with the [DMA engine](dma-engine.md): busy, done and error, and what interrupts for them.
+- `src/socpuppet/models/flash_controller.h` is the SystemC wrapper, which adds two sockets to `CommandDevice` (`src/socpuppet/models/command_device.h`), the shell of any device its CPU gives one command at a time: the process that does the work, and the one process that drives `irq`.
 - `tests/cpp/unit/flash_controller_logic_test.cpp` and `tests/cpp/platform/flash_controller_test.cpp` say what it does, one behaviour each.

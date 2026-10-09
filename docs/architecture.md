@@ -187,6 +187,7 @@ When the real die-to-die link arrives it passes `LinkContract` too, and the plat
 Each has a page saying what real hardware it stands for and what it leaves out.
 
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
+- [DMA engine](models/dma-engine.md)
 - [Flash controller](models/flash-controller.md)
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)

@@ -40,8 +40,9 @@ target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
 
-# The devices of the SSD that are neither its CPU nor its NVMe frontend:
-# the flash controller, in front of the NAND.
+# The devices of the SSD that its CPU gives commands to: the DMA engine,
+# between the host's memory and the SSD's own, and the flash controller, in
+# front of the NAND.
 add_library(socpuppet_ssd_devices STATIC
   core/dma_engine_logic.cpp
   core/flash_controller_logic.cpp)
