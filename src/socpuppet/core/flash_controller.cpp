@@ -1,6 +1,7 @@
 #include "socpuppet/core/flash_controller.h"
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "socpuppet/core/little_endian.h"
@@ -40,7 +41,7 @@ FlashController::FlashController(NandPort& nand, MemoryPort& local_memory)
 bool FlashController::ReadRegister(std::uint64_t offset,
                                    std::span<std::uint8_t> out) {
   if (out.size() != kRegisterBytes) return false;
-  const NandGeometry geometry = *nand_.Geometry();
+  const NandGeometry geometry = nand_.Geometry().value_or(NandGeometry{});
   switch (offset) {
     case kCommandRegister:
       StoreLittleEndian(std::uint32_t{0}, out);
@@ -116,7 +117,9 @@ bool FlashController::CarryOut() {
 }
 
 bool FlashController::Do(std::uint32_t command) {
-  std::vector<std::uint8_t> page(nand_.Geometry()->page_size);
+  const std::optional<NandGeometry> geometry = nand_.Geometry();
+  if (!geometry) return false;
+  std::vector<std::uint8_t> page(geometry->page_size);
   switch (command) {
     case kReadPage:
       return nand_.ReadPage(block_, page_, page) &&

@@ -72,6 +72,21 @@ class Chip : public NandPort {
   }
 };
 
+// Nothing on the controller's NAND port, or a chip that answers nothing.
+class NoChip : public NandPort {
+ public:
+  std::optional<NandGeometry> Geometry() override { return std::nullopt; }
+  bool ReadPage(std::uint32_t, std::uint32_t,
+                std::span<std::uint8_t>) override {
+    return false;
+  }
+  bool ProgramPage(std::uint32_t, std::uint32_t,
+                   std::span<const std::uint8_t>) override {
+    return false;
+  }
+  bool EraseBlock(std::uint32_t) override { return false; }
+};
+
 // The SSD's own memory: 256 bytes of it, at address 0.
 class Buffer : public MemoryPort {
  public:
@@ -429,6 +444,30 @@ TEST(WhenAFlashControllerHasCarriedOutACommand, ThereIsNothingMoreToDo) {
 
   EXPECT_TRUE(rig.controller.CarryOut());
   EXPECT_FALSE(rig.controller.CarryOut());
+}
+
+TEST(WhenTheChipWillNotSayWhatItIs, TheGeometryRegistersReadAsZero) {
+  NoChip chip;
+  Buffer buffer;
+  FlashController controller{chip, buffer};
+  std::array<std::uint8_t, 4> page_size{0xA5, 0xA5, 0xA5, 0xA5};
+
+  ASSERT_TRUE(controller.ReadRegister(kPageSize, page_size));
+
+  EXPECT_EQ(LoadLittleEndian<std::uint32_t>(page_size), 0U);
+}
+
+TEST(WhenTheChipWillNotSayWhatItIs, ACommandEndsInError) {
+  NoChip chip;
+  Buffer buffer;
+  FlashController controller{chip, buffer};
+  std::array<std::uint8_t, 4> status{};
+
+  controller.WriteRegister(kCommand, LittleEndianBytes(kReadPage));
+  controller.CarryOut();
+  controller.ReadRegister(kStatus, status);
+
+  EXPECT_EQ(LoadLittleEndian<std::uint32_t>(status), kError);
 }
 
 }  // namespace socpuppet
