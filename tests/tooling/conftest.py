@@ -21,7 +21,10 @@ CONFIG_FILES = [
     "ruff.toml",
     "mypy.ini",
     ".rumdl.toml",
-    # What the C written for Zephyr is held to, where it lives.
+]
+
+# What the C written for Zephyr is held to, in the directories it lives in.
+ZEPHYR_CONFIG_FILES = [
     "firmware/.clang-format",
     "firmware/CPPLINT.cfg",
     "python/socpuppet/zephyr_module/.clang-format",
@@ -41,8 +44,19 @@ def repo(tmp_path):
 def _make_repo(path):
     subprocess.run(["git", "init", "--quiet", str(path)], check=True)
     for name in CONFIG_FILES:
-        (path / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / name, path / name)
+
+
+@pytest.fixture
+def zephyrs_style(repo):
+    """Gives the throwaway repository the real configuration for Zephyr's C.
+
+    It is not there for every test, because it brings directories with it
+    (`python/socpuppet` for one) that other tests make for themselves.
+    """
+    for name in ZEPHYR_CONFIG_FILES:
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / name, repo / name)
 
 
 @pytest.fixture

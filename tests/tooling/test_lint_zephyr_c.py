@@ -7,6 +7,8 @@ the Linux kernel has them, 100 columns.
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("zephyrs_style")
+
 ZEPHYR_C = "int answer(void)\n{\n\treturn 42;\n}\n"
 GOOGLE_C = "int answer(void) { return 42; }\n"
 
