@@ -196,4 +196,18 @@ TEST(WhenADmaEngineIsToldToCopyMoreThanItHoldsAtOnce, ItAllArrives) {
   EXPECT_EQ(rig.Read32(kStatus), kDone);
 }
 
+// The host's memory ends 16 bytes into this copy's second piece.
+TEST(WhenACopyRunsOffTheEndOfWhatAnswers,
+     TheStatusSaysErrorAndThePiecesBeforeHaveBeenCopied) {
+  Rig rig;
+  const std::uint64_t near_the_end = kHost + kMemorySize - 4096 - 16;
+  rig.host.Write(near_the_end, SomeBytes(4096));
+  rig.Describe(near_the_end, kLocal, 8192);
+
+  rig.Do(kFromHost);
+
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.local.At(kLocal, 4096), SomeBytes(4096));
+}
+
 }  // namespace socpuppet
