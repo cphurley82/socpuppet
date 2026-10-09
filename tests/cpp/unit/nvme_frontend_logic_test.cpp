@@ -837,4 +837,40 @@ TEST(WhenTheCpuWritesSomethingOtherThanOneToHaveACompletionPosted,
   EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
 }
 
+// The host's register block is an NVMe controller's, and behaves as the
+// stand-in drive's does in what the two have in common.
+TEST(WhenTheHostReadsBackTheConfigurationItGaveAnNvmeFrontend,
+     ItReadsWhatWasWritten) {
+  Rig rig;
+
+  rig.HostWrite32(kCc, 0x0046'0001);
+
+  EXPECT_EQ(rig.HostRead32(kCc), 0x0046'0001U);
+}
+
+TEST(WhenTheHostReadsADoorbellOfAnNvmeFrontend, TheReadIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  std::array<std::uint8_t, 4> data{};
+
+  EXPECT_FALSE(rig.frontend.ReadHostRegister(kDoorbells, data));
+}
+
+TEST(WhenTheHostRingsADoorbellOfAnNvmeFrontendWithMoreThan32Bits,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.HostWrite64(kDoorbells, 1));
+}
+
+// The queues have four entries, so 4 is not one of their slots.
+TEST(WhenTheHostRingsADoorbellOfAnNvmeFrontendPastTheEndOfTheQueue,
+     TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.HostWrite32(kDoorbells, 4));
+}
+
 }  // namespace socpuppet
