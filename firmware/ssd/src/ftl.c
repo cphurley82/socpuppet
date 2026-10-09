@@ -7,6 +7,7 @@
 
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
 #include "ssd.h"
@@ -18,6 +19,14 @@
 #define BUFFER      DT_NODELABEL(ssd_buffer)
 #define BUFFER_BASE ((uint8_t *)DT_REG_ADDR(BUFFER))
 #define BUFFER_SIZE DT_REG_SIZE(BUFFER)
+
+/*
+ * How much of a flash Zephyr's flash API has offsets for. An offset is an
+ * off_t, which is signed, and 32 bits on a 32-bit CPU: 2 GiB, then. See
+ * docs/upstream.md in socpuppet.
+ */
+#define FLASH_API_REACH (1ULL << (8 * sizeof(off_t) - 1))
+#define MiB             (1ULL << 20)
 
 /* In the table, a page of the drive that is in no NAND page. */
 #define NOWHERE UINT32_MAX
@@ -65,6 +74,13 @@ int ftl_start(void)
 	}
 	if (page_size == 0 || page_size % NVME_BLOCK_SIZE != 0) {
 		return -ENOTSUP;
+	}
+	/* Every page has to be somewhere flash_read() can be told to go. */
+	if (bytes > FLASH_API_REACH) {
+		printk("The NAND is %u MiB, and Zephyr's flash API reaches only the first %u MiB "
+		       "of one on this CPU. Describe a smaller drive.\n",
+		       (uint32_t)(bytes / MiB), (uint32_t)(FLASH_API_REACH / MiB));
+		return -EFBIG;
 	}
 	pages = bytes / page_size;
 

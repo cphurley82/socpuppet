@@ -347,7 +347,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 They all come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The last two are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -398,6 +398,26 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: drop the include.
 - **Kind**: build.
 - **When it lands**: delete the file, and the include directory in the SoC's `CMakeLists.txt`.
+
+### A flash driver that asks its chip how big a page is cannot say so
+
+- **Where**: `include/zephyr/drivers/flash.h`, `struct flash_parameters`, the member `const size_t write_block_size`.
+- **What is wrong**: the comment above the structure says its values are "filled in during flash device initialization and stay constant through a runtime". The `const` on the member says something stronger: that they are known when the driver is compiled. A driver that learns the size from the device (🎓 a NAND chip says what it is when asked, with a command called Read Parameter Page) has a structure in its device data that C will not let it assign to.
+- **How to see it**: in a driver's init function, `data->parameters.write_block_size = size_the_chip_gave;`. The compiler says `assignment of read-only member 'write_block_size'`. Assigning a whole structure fails the same way.
+- **What we do**: `drivers/ssd/flash_controller.c` builds the structure as a compound literal and copies it over the one in the device data with `memcpy`. The object it copies over was not defined `const`, so that is allowed, and it is still a way round what the header asks for.
+- **Upstream fix**: drop the `const` from the member. `get_parameters` already returns a pointer to a `const` structure, and that is what keeps a caller from writing to it.
+- **Kind**: portability.
+- **When it lands**: the `memcpy` becomes an assignment.
+
+### A flash bigger than 2 GiB has no offsets on a 32-bit CPU
+
+- **Where**: `include/zephyr/drivers/flash.h`: `flash_read`, `flash_write` and `flash_erase` take an `off_t`, and `struct flash_pages_info` holds one.
+- **What is wrong**: `off_t` is the C library's, and with the SDK's library for 32-bit RISC-V it is a `long`, 32 bits and signed. The last byte the flash API can name is just short of 2 GiB. `flash_get_size` gives a `uint64_t`, so a driver can say how big its flash is and a caller still cannot reach the far end of it. An SSD's NAND is that big as a matter of course, and its controller is very often a 32-bit CPU.
+- **How to see it**: `sizeof(off_t)` in an application for `socpuppet_ssd` is 4.
+- **What we do**: the firmware refuses the drive. `firmware/ssd/src/ftl.c` compares the NAND's size with what an `off_t` can name before it makes its table, says both numbers on the console, and stops. `tests/python/test_ssd_zephyr_firmware.py` holds it to that, at 3 GiB and at exactly 2 GiB. 🎭 The Python stand-in for the firmware has no such limit, because it talks to the flash controller's registers, which count in pages.
+- **Upstream fix**: a 64-bit offset type for the flash API. That is a large change with every flash driver in its path, so the proposal to make first is the question of whether the flash class is meant for raw NAND at all. Zephyr has no NAND class to use in its place.
+- **Kind**: missing feature.
+- **When it lands**: nothing to delete. If the answer is that the flash class is not for this, the flash controller's driver gets an API of its own that counts in pages, as its registers do.
 
 ## SPDK
 
