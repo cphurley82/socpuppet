@@ -774,4 +774,67 @@ TEST(WhenTheCpuReadsTheWaitingCommandAWordAtATime, ItReadsTheWholeCommand) {
   EXPECT_EQ(read, SomeCommand(7));
 }
 
+// The command is 64 bytes, from 0x40 to 0x80.
+TEST(WhenAReadOfTheWaitingCommandRunsPastItsEnd, ItIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  std::array<std::uint8_t, 8> eight{};
+  std::array<std::uint8_t, 4> four{};
+
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kCommand + 60, eight));
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kCommand + 64, four));
+}
+
+TEST(WhenAnAccessToARegisterOfAnNvmeFrontendsCpuIsNot32BitsWide, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 2> two{1, 0};
+  std::array<std::uint8_t, 8> eight{1, 0, 0, 0, 1, 0, 0, 0};
+
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kStatus, two));
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kStatus, eight));
+  EXPECT_FALSE(rig.frontend.WriteCpuRegister(kQueueId, two));
+  EXPECT_FALSE(rig.frontend.WriteCpuRegister(kQueueId, eight));
+  EXPECT_EQ(rig.CpuRead32(kQueueId), 0U);
+}
+
+// 0x38 is between the last register and the command, and 0x02 is in the
+// middle of a register.
+TEST(WhenAnAccessIsBesideTheRegistersOfAnNvmeFrontendsCpu, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 4> data{};
+
+  for (const std::uint64_t offset : {0x38U, 0x3CU, 0x02U}) {
+    EXPECT_FALSE(rig.frontend.ReadCpuRegister(offset, data)) << offset;
+    EXPECT_FALSE(rig.frontend.WriteCpuRegister(offset, data)) << offset;
+  }
+}
+
+// What the frontend has, and the command the host sent, are not the
+// firmware's to change.
+TEST(WhenTheCpuWritesToARegisterOfAnNvmeFrontendThatOnlySaysSomething,
+     ItIsRefused) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.CpuWrite32(kLimits, 1));
+  EXPECT_FALSE(rig.CpuWrite32(kCommandQueue, 1));
+  EXPECT_FALSE(rig.CpuWrite32(kCommand, 1));
+}
+
+// A one has the completion posted. Anything else is not something the
+// register can be told.
+TEST(WhenTheCpuWritesSomethingOtherThanOneToHaveACompletionPosted,
+     ItIsRefusedAndTheCommandStillWaits) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 0));
+  EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 2));
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+}
+
 }  // namespace socpuppet

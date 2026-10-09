@@ -16,6 +16,7 @@ namespace {
 constexpr std::uint8_t kReadyTimeout = 2;
 
 // Where the CPU's registers are. Each is 32 bits wide.
+constexpr std::size_t kRegisterBytes = 4;
 constexpr std::uint64_t kStatusRegister = 0x00;
 constexpr std::uint64_t kInterruptEnableRegister = 0x04;
 constexpr std::uint64_t kControlRegister = 0x08;
@@ -119,6 +120,10 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
   if (offset >= kCommandRegister) {
     // The command, or any piece of it. With none waiting it is zeros.
     const std::uint64_t from = offset - kCommandRegister;
+    if (from > NvmeQueues::kCommandBytes ||
+        out.size() > NvmeQueues::kCommandBytes - from) {
+      return false;
+    }
     std::ranges::fill(out, std::uint8_t{0});
     if (command_) {
       std::ranges::copy(std::span{command_->bytes}.subspan(from, out.size()),
@@ -126,6 +131,7 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
     }
     return true;
   }
+  if (out.size() != kRegisterBytes) return false;
   switch (offset) {
     case kStatusRegister:
       StoreLittleEndian(Status(), out);
@@ -171,13 +177,14 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
           std::uint32_t{command_ ? command_->queue_id : std::uint16_t{0}}, out);
       break;
     default:
-      break;
+      return false;
   }
   return true;
 }
 
 bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
                                          std::span<const std::uint8_t> in) {
+  if (in.size() != kRegisterBytes) return false;
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kStatusRegister:
@@ -196,7 +203,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       completion_status_ = value;
       break;
     case kCompletionPostRegister:
-      if (!CommandWaiting()) return false;
+      if (value != 1 || !CommandWaiting()) return false;
       posting_ = true;
       break;
     case kQueueIdRegister:
@@ -217,7 +224,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
     case kQueueCreateRegister:
       return CreateQueue(value);
     default:
-      break;
+      return false;
   }
   return true;
 }
