@@ -144,6 +144,15 @@ class Component(ABC):
     #: for a component that cannot be mapped onto a router.
     mapped_size: int | None = None
 
+    def size_at(self, port: str) -> int | None:
+        """How many bytes of address space the component answers to at `port`.
+
+        It is `mapped_size`, whichever port, unless a component with more
+        than one register block says otherwise. None means the component
+        has no size of its own there.
+        """
+        return self.mapped_size
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         # Two components are the same only if they are one object, so that
@@ -583,6 +592,59 @@ class Ns16550(Component):
             ),
             chosen=("zephyr,console", "zephyr,shell-uart"),
         )
+
+
+class NvmeFrontend(Component):
+    """The NVMe frontend of an SSD's controller.
+
+    The hardware between the host and the SSD's firmware: it keeps the
+    queues, and the firmware makes the decisions. It fetches each command
+    the host submits and holds it for the SSD's CPU, and when the firmware
+    says how the command went it posts the completion and interrupts the
+    host.
+
+    To the host it is an NVMe function with no PCIe around it, as
+    `BehavioralNvme` is: `bar0` is its register block, `dma` is how it
+    reads and writes the host's memory, and `irq0`, `irq1` and so on are
+    its interrupt lines, one per vector. To the SSD's own CPU it is a
+    device on its bus: `cpu` is a second register block, and `cpu_irq` is
+    high while the frontend has something to tell the CPU that the CPU
+    asked to be told.
+
+    `vectors` is how many interrupt lines it has for the host: the admin
+    queue uses the first, and firmware gives each I/O queue the one the
+    host asked for.
+    """
+
+    implementation = "nvme_frontend"
+    #: The host's register block: the controller registers take the first
+    #: 4 KiB, and the doorbells come after them.
+    BAR0_SIZE: ClassVar[int] = 0x2000
+    #: The CPU's register block: fourteen registers, then the 64 bytes of
+    #: the command that is waiting.
+    CPU_SIZE: ClassVar[int] = 0x80
+
+    vectors: int = 2
+
+    @property
+    def port_specs(self) -> tuple[PortSpec, ...]:
+        """Two register blocks, the DMA port, and the interrupt lines."""
+        return (
+            target("bar0"),
+            initiator("dma"),
+            target("cpu"),
+            # Firmware may poll the status register and leave the line alone.
+            wire_out("cpu_irq", required=False),
+            # A host need not use every vector.
+            *(
+                wire_out(f"irq{vector}", required=False)
+                for vector in range(self.vectors)
+            ),
+        )
+
+    @override
+    def size_at(self, port: str) -> int | None:
+        return {"bar0": self.BAR0_SIZE, "cpu": self.CPU_SIZE}.get(port)
 
 
 class PassThroughLinkEndpoint(Component):

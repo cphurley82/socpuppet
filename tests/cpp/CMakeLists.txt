@@ -44,6 +44,7 @@ add_executable(kernel_tests
   platform/msi_plic_bridge_test.cpp
   platform/msi_receiver_test.cpp
   platform/ns16550_test.cpp
+  platform/nvme_frontend_test.cpp
   platform/pcie_test.cpp
   platform/router_test.cpp
   platform/scripted_master_test.cpp

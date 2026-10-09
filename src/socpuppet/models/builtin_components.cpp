@@ -19,6 +19,7 @@
 #include "socpuppet/models/msi_plic_bridge.h"
 #include "socpuppet/models/msi_receiver.h"
 #include "socpuppet/models/ns16550.h"
+#include "socpuppet/models/nvme_frontend.h"
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/pcie_endpoint.h"
 #include "socpuppet/models/pcie_root_complex.h"
@@ -161,6 +162,24 @@ Registry BuiltinComponents() {
   });
   // One end of a link. The die's side may be left unconnected in either
   // direction; the peer side must be bound to the other endpoint.
+  registry.Add("nvme_frontend", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<NvmeFrontend>(
+        name, parameters.Required("vectors", kInterruptVectors));
+    std::vector<Port> ports{TargetPort("bar0", module->bar0),
+                            InitiatorPort("dma", module->dma),
+                            TargetPort("cpu", module->cpu),
+                            // Firmware may poll the status and leave the
+                            // line alone.
+                            WireSourcePort("cpu_irq", module->cpu_irq,
+                                           /*required=*/false)};
+    // A host need not use every vector, so a line may be left unconnected.
+    AddNumberedPorts(ports, "irq", 0, module->irq,
+                     [](std::string port, sc_core::sc_out<bool>& line) {
+                       return WireSourcePort(std::move(port), line,
+                                             /*required=*/false);
+                     });
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("pass_through_link_endpoint", [](const char* name, Parameters&) {
     auto module = std::make_unique<PassThroughLinkEndpoint>(name);
     std::vector<Port> ports{

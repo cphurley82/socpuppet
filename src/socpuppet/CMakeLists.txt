@@ -169,6 +169,7 @@ target_sources(socpuppet_models INTERFACE
     models/msi_plic_bridge.h
     models/msi_receiver.h
     models/nand_link.h
+    models/nvme_frontend.h
     models/pass_through_link.h
     models/pcie_endpoint.h
     models/pcie_link.h

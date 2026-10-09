@@ -64,7 +64,7 @@ class PlacedRouter(Placed):
         """
         self._platform.refuse_if_built("map a range")
         if size is None:
-            size = target.placed.component.mapped_size
+            size = target.placed.component.size_at(target.name)
         if size is None:
             raise ValueError(
                 f"Cannot map {target.path}: it has no size of its own, as a "

@@ -41,6 +41,7 @@ EXAMPLES = [
     sp.MsiPlicBridge(vectors=3),
     sp.MsiReceiver(),
     sp.Ns16550(),
+    sp.NvmeFrontend(vectors=3),
     PassThroughLinkEndpoint(),
     sp.PcieEndpoint(
         vendor_id=0x5350,

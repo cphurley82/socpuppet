@@ -153,3 +153,25 @@ class TestWhenAWindowOfAStatedSizeIsMappedOntoALink:
         platform.poke32(0x1000_2010, 0xC0FFEE)
 
         assert platform.peek32(0x1000_2010) == 0xC0FFEE
+
+
+class TestWhenAComponentWithTwoRegisterBlocksIsMapped:
+    def test_each_range_is_as_long_as_its_own_block(self):
+        platform = sp.Platform()
+        bus = platform.add("bus", sp.Router())
+        frontend = platform.add("frontend", sp.NvmeFrontend())
+        bus.map(frontend.cpu, base=0x1000)
+        bus.map(frontend.bar0, base=0x10_0000)
+
+        # The CPU's block is 0x80 bytes and the host's is 0x2000, so a
+        # memory fits right after each and not one byte sooner.
+        bus.map(platform.add("after_cpu", sp.Memory(size=0x10)).socket, 0x1080)
+        bus.map(
+            platform.add("after_bar0", sp.Memory(size=0x10)).socket, 0x10_2000
+        )
+        with pytest.raises(ValueError, match=r"frontend\.cpu"):
+            bus.map(platform.add("in_cpu", sp.Memory(size=0x10)).socket, 0x1070)
+        with pytest.raises(ValueError, match=r"frontend\.bar0"):
+            bus.map(
+                platform.add("in_bar0", sp.Memory(size=0x10)).socket, 0x10_1FF0
+            )
