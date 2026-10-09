@@ -213,4 +213,20 @@ TEST(WhenLocalMemoryDoesNotGiveThePageAFlashControllerIsToProgram,
             std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
 }
 
+TEST(WhenAFlashControllerIsGivenACommandWhileItIsBusy,
+     TheWriteIsRefusedAndTheFirstCommandIsCarriedOutAsItWas) {
+  Rig rig;
+  rig.chip.array.ProgramPage(2, 5, SomePage());
+  rig.Write32(kBlock, 2);
+  rig.Write32(kPage, 5);
+  rig.Write32(kLocal, 0x40);
+  rig.Write32(kCommand, kReadPage);
+
+  EXPECT_FALSE(rig.Write32(kCommand, kEraseBlock));
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.buffer.PageAt(0x40), SomePage());
+  EXPECT_EQ(rig.chip.PageAt(2, 5), SomePage());
+}
+
 }  // namespace socpuppet

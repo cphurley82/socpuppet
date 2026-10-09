@@ -40,6 +40,7 @@ bool FlashController::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
+      if (command_ != 0) return false;
       command_ = value;
       status_ |= kBusy;
       break;
