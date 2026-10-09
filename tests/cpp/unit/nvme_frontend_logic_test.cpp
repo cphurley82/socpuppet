@@ -420,4 +420,21 @@ TEST(WhenAnNvmeFrontendHasPostedACompletion, ItFetchesTheNextCommand) {
   EXPECT_EQ(rig.CommandWaiting(), SomeCommand(8));
 }
 
+TEST(WhenTheCpuAsksForACompletionWithNoCommandWaiting, TheWriteIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+
+  EXPECT_FALSE(rig.CpuPosts());
+}
+
+TEST(WhenTheCpuAsksTwiceForTheCompletionOfOneCommand, TheSecondIsRefused) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+  rig.CpuPosts();
+
+  EXPECT_FALSE(rig.CpuPosts());
+}
+
 }  // namespace socpuppet

@@ -120,6 +120,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       completion_status_ = value;
       break;
     case kCompletionPostRegister:
+      if (!CommandWaiting()) return false;
       posting_ = true;
       break;
     default:
