@@ -215,13 +215,29 @@ TYPED_TEST_P(NandContract, AnAccessThatIsNotACommandForAChipGetsACommandError) {
   EXPECT_EQ(write_response, tlm::TLM_COMMAND_ERROR_RESPONSE);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
-                            APageThatWasNeverProgrammedReadsAsAllOnes,
-                            AProgrammedPageReadsBackAsItWasProgrammed,
-                            EveryPageOfAnErasedBlockReadsAsAllOnes,
-                            ABlockPastTheEndOfTheChipGetsAnAddressError,
-                            APagePastTheEndOfItsBlockGetsAnAddressError,
-                            DataThatIsNotOnePageLongGetsABurstError,
-                            AnAccessThatIsNotACommandForAChipGetsACommandError);
+TYPED_TEST_P(NandContract,
+             AnAnswerAboutGeometryThatWouldNotFitGetsABurstError) {
+  std::vector<std::uint8_t> too_short(socpuppet::kNandGeometryBytes - 1);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    response = socpuppet::NandTransport(
+        controller.socket, socpuppet::NandCommand::Operation::kGeometry, 0, 0,
+        too_short);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_BURST_ERROR_RESPONSE);
+}
+
+REGISTER_TYPED_TEST_SUITE_P(
+    NandContract, AChipAskedWhatItIsSaysItsGeometry,
+    APageThatWasNeverProgrammedReadsAsAllOnes,
+    AProgrammedPageReadsBackAsItWasProgrammed,
+    EveryPageOfAnErasedBlockReadsAsAllOnes,
+    ABlockPastTheEndOfTheChipGetsAnAddressError,
+    APagePastTheEndOfItsBlockGetsAnAddressError,
+    DataThatIsNotOnePageLongGetsABurstError,
+    AnAccessThatIsNotACommandForAChipGetsACommandError,
+    AnAnswerAboutGeometryThatWouldNotFitGetsABurstError);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_

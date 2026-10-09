@@ -46,9 +46,10 @@ class IdealNand : public sc_core::sc_module {
             array_.ProgramPage(command.block, command.page, data));
       case NandCommand::Operation::kEraseBlock:
         return ResponseFor(array_.EraseBlock(command.block));
-      default:
+      case NandCommand::Operation::kGeometry:
         return SayGeometry(data);
     }
+    return tlm::TLM_COMMAND_ERROR_RESPONSE;
   }
 
   // How the array's answer goes back to the controller, as TLM has it.
@@ -65,6 +66,7 @@ class IdealNand : public sc_core::sc_module {
   }
 
   tlm::tlm_response_status SayGeometry(std::span<std::uint8_t> data) const {
+    if (data.size() != kNandGeometryBytes) return tlm::TLM_BURST_ERROR_RESPONSE;
     const NandGeometry& geometry = array_.geometry();
     StoreLittleEndian(geometry.page_size, data.subspan(0));
     StoreLittleEndian(geometry.pages_per_block, data.subspan(4));
