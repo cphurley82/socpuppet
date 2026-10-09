@@ -322,4 +322,20 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   EXPECT_EQ(rig.Read32(kStatus), 0U);
 }
 
+TEST(WhenADmaEngineHasNothingToDo, CarryingOutSaysSoAndChangesNothing) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.engine.CarryOut());
+  EXPECT_EQ(rig.Read32(kStatus), 0U);
+}
+
+TEST(WhenADmaEngineHasCarriedOutACommand, ThereIsNothingMoreToDo) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 24);
+  rig.Write32(kCommand, kFromHost);
+
+  EXPECT_TRUE(rig.engine.CarryOut());
+  EXPECT_FALSE(rig.engine.CarryOut());
+}
+
 }  // namespace socpuppet
