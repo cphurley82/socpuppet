@@ -48,6 +48,10 @@ class NvmeFrontendLogic {
   // fetched, and the CPU has not asked for its completion to be posted.
   bool CommandWaiting() const { return command_ && !posting_; }
 
+  // Creates the queue the queue registers describe, of the kind the
+  // queue-create register was told. Returns false if it cannot be.
+  bool CreateQueue(std::uint32_t kind);
+
   NvmeHostRegisters host_registers_;
   NvmeQueues queues_;
   // Whether the firmware has said it is ready for the host's commands.
@@ -63,6 +67,14 @@ class NvmeFrontendLogic {
   std::uint32_t completion_result_ = 0;
   std::uint32_t completion_status_ = 0;
   bool posting_ = false;
+  // The queue registers, as the CPU wrote them.
+  struct QueueRegisters {
+    std::uint32_t id = 0;
+    std::uint64_t base = 0;
+    std::uint32_t last = 0;
+    std::uint32_t link = 0;
+  };
+  QueueRegisters queue_;
 };
 
 }  // namespace socpuppet

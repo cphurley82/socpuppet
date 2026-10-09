@@ -63,9 +63,19 @@ enum StatusBit : std::uint32_t {
 // The bit of the control register by which firmware says it is ready.
 constexpr std::uint32_t kReady = 1U << 0;
 
-// Where the host of these tests keeps its admin queues.
+// Where the host of these tests keeps its admin queues, and the first pair
+// of I/O queues it asks for. Every queue has four entries.
 constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
 constexpr std::uint64_t kAdminCompletionQueue = 0x2000;
+constexpr std::uint64_t kIoSubmissionQueue = 0x3000;
+constexpr std::uint64_t kIoCompletionQueue = 0x4000;
+constexpr std::uint16_t kLastSlot = 3;
+
+// What is written to the queue-create register.
+enum QueueKind : std::uint32_t {
+  kCompletionQueue = 1,
+  kSubmissionQueue = 2,
+};
 
 // How long a command is, and where in it the host puts the identifier it
 // gives the command.
@@ -130,8 +140,8 @@ class HostMemory : public MemoryPort {
 struct Rig {
   HostMemory memory;
   NvmeFrontendLogic frontend{memory, /*vectors=*/2};
-  // Where the host will put its next admin command.
-  std::uint16_t admin_tail = 0;
+  // Where the host will put its next command in each submission queue.
+  std::array<std::uint16_t, 2> tails{};
 
   // A register as the host reads it. The bytes do not start out as zeros,
   // so that a register the frontend leaves untouched is not taken for one
@@ -175,12 +185,40 @@ struct Rig {
     return frontend.WriteCpuRegister(offset, LittleEndianBytes(value));
   }
 
-  // What a host does to submit a command to its admin queue: it writes the
-  // command into the queue's next slot, and the new tail to the doorbell.
-  void HostSubmits(const std::vector<std::uint8_t>& command) {
-    memory.Write(kAdminSubmissionQueue + (admin_tail * kCommandBytes), command);
-    admin_tail = static_cast<std::uint16_t>((admin_tail + 1) % 4);
-    HostWrite32(kDoorbells, admin_tail);
+  // What a host does to submit a command: it writes the command into the
+  // queue's next slot, and the new tail to the queue's doorbell. To its
+  // admin queue, or to its first I/O queue.
+  bool HostSubmits(const std::vector<std::uint8_t>& command) {
+    return SubmitTo(0, kAdminSubmissionQueue, command);
+  }
+  bool HostSubmitsIo(const std::vector<std::uint8_t>& command) {
+    return SubmitTo(1, kIoSubmissionQueue, command);
+  }
+  bool SubmitTo(std::size_t queue_id, std::uint64_t queue,
+                const std::vector<std::uint8_t>& command) {
+    std::uint16_t& tail = tails[queue_id];
+    memory.Write(queue + (tail * kCommandBytes), command);
+    tail = static_cast<std::uint16_t>((tail + 1) % (kLastSlot + 1));
+    return HostWrite32(kDoorbells + (8 * queue_id), tail);
+  }
+
+  // What firmware does when it has agreed to create a queue: it says which
+  // queue, where it is and how long, and what goes with it. For a
+  // completion queue that is its interrupt vector, and for a submission
+  // queue the completion queue its commands' completions go to.
+  bool CpuCreates(QueueKind kind, std::uint32_t queue_id, std::uint64_t base,
+                  std::uint32_t link) {
+    CpuWrite32(kQueueId, queue_id);
+    CpuWrite32(kQueueBaseLow, static_cast<std::uint32_t>(base));
+    CpuWrite32(kQueueBaseHigh, static_cast<std::uint32_t>(base >> 32));
+    CpuWrite32(kQueueLast, kLastSlot);
+    CpuWrite32(kQueueLink, link);
+    return CpuWrite32(kQueueCreate, kind);
+  }
+  // The first pair of I/O queues, with the second interrupt vector.
+  void CpuCreatesIoQueues() {
+    CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, /*vector=*/1);
+    CpuCreates(kSubmissionQueue, 1, kIoSubmissionQueue, /*completion queue=*/1);
   }
 
   // The command that is waiting for the CPU, as the CPU reads it.
@@ -453,6 +491,32 @@ TEST(WhenAnNvmeFrontendHasPostedACompletion, ItInterruptsTheHost) {
   EXPECT_FALSE(before);
   EXPECT_TRUE(rig.frontend.HostInterrupts().Interrupting(0));
   EXPECT_FALSE(rig.frontend.HostInterrupts().Interrupting(1));
+}
+
+// The host asks for a queue with an admin command, and the firmware decides
+// whether it may have one. If so it tells the frontend, which from then on
+// takes that queue's doorbell and fetches from it.
+TEST(WhenFirmwareHasAnNvmeFrontendCreateAPairOfIoQueues,
+     AHostsCommandOnThemReachesTheCpuAndItsCompletionTheHost) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuCreatesIoQueues();
+
+  const bool rang = rig.HostSubmitsIo(SomeCommand(9));
+  rig.frontend.Step();
+  const std::vector<std::uint8_t> waiting = rig.CommandWaiting();
+  const std::uint32_t from_queue = rig.CpuRead32(kCommandQueue);
+  rig.CpuPosts();
+  rig.frontend.Step();
+
+  EXPECT_TRUE(rang);
+  EXPECT_EQ(waiting, SomeCommand(9));
+  EXPECT_EQ(from_queue, 1U);
+  EXPECT_EQ(rig.HostReadsCompletion(kIoCompletionQueue, 0),
+            (Completion{.submission_queue = 1,
+                        .submission_head = 1,
+                        .command_id = 9,
+                        .phase = true}));
 }
 
 }  // namespace socpuppet

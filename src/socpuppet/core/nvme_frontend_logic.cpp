@@ -25,6 +25,16 @@ constexpr std::uint64_t kCommandQueueRegister = 0x10;
 constexpr std::uint64_t kCompletionResultRegister = 0x14;
 constexpr std::uint64_t kCompletionStatusRegister = 0x18;
 constexpr std::uint64_t kCompletionPostRegister = 0x1C;
+// A queue the firmware has agreed to create: which, where it is in the
+// host's memory, its last slot, and what goes with it, which is a
+// completion queue's interrupt vector or a submission queue's completion
+// queue. A write to the last register creates it.
+constexpr std::uint64_t kQueueIdRegister = 0x20;
+constexpr std::uint64_t kQueueBaseLowRegister = 0x24;
+constexpr std::uint64_t kQueueBaseHighRegister = 0x28;
+constexpr std::uint64_t kQueueLastRegister = 0x2C;
+constexpr std::uint64_t kQueueLinkRegister = 0x30;
+constexpr std::uint64_t kQueueCreateRegister = 0x34;
 // The command that is waiting, 64 bytes of it.
 constexpr std::uint64_t kCommandRegister = 0x40;
 
@@ -38,6 +48,9 @@ constexpr std::uint32_t kCommandWaiting = 1U << 2;
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
 constexpr std::uint32_t kReady = 1U << 0;
+
+// What the queue-create register is told.
+constexpr std::uint32_t kCompletionQueue = 1;
 
 // Where in a command the host puts the identifier it gives it.
 constexpr std::size_t kCommandIdOffset = 2;
@@ -123,8 +136,38 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       if (!CommandWaiting()) return false;
       posting_ = true;
       break;
+    case kQueueIdRegister:
+      queue_.id = value;
+      break;
+    case kQueueBaseLowRegister:
+      queue_.base = (queue_.base & ~std::uint64_t{0xFFFF'FFFF}) | value;
+      break;
+    case kQueueBaseHighRegister:
+      queue_.base = (queue_.base & 0xFFFF'FFFF) | (std::uint64_t{value} << 32);
+      break;
+    case kQueueLastRegister:
+      queue_.last = value;
+      break;
+    case kQueueLinkRegister:
+      queue_.link = value;
+      break;
+    case kQueueCreateRegister:
+      return CreateQueue(value);
     default:
       break;
+  }
+  return true;
+}
+
+bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
+  const NvmeQueues::Ring ring{.base = queue_.base,
+                              .last = static_cast<std::uint16_t>(queue_.last)};
+  if (kind == kCompletionQueue) {
+    queues_.CreateCompletionQueue(queue_.id, ring,
+                                  static_cast<std::uint16_t>(queue_.link));
+  } else {
+    queues_.CreateSubmissionQueue(queue_.id, ring,
+                                  static_cast<std::uint16_t>(queue_.link));
   }
   return true;
 }
