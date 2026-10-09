@@ -103,4 +103,13 @@ TEST(WhenABlockPastTheEndOfTheChipIsAskedFor, ErasingItIsRefused) {
   EXPECT_EQ(nand.EraseBlock(4), NandResult::kOutOfRange);
 }
 
+// Page 8 of block 0 would be the first page of block 1, if pages were
+// simply counted through the chip.
+TEST(WhenAPagePastTheEndOfItsBlockIsAskedFor, ReadingItIsRefused) {
+  const NandArray nand{kSmall};
+  std::vector<std::uint8_t> data(kSmall.page_size);
+
+  EXPECT_EQ(nand.ReadPage(0, 8, data), NandResult::kOutOfRange);
+}
+
 }  // namespace socpuppet

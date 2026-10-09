@@ -37,7 +37,9 @@ class NandArray {
   // what an erased NAND cell holds.
   NandResult ReadPage(std::uint32_t block, std::uint32_t page,
                       std::span<std::uint8_t> out) const {
-    if (block >= geometry_.blocks) return NandResult::kOutOfRange;
+    if (block >= geometry_.blocks || page >= geometry_.pages_per_block) {
+      return NandResult::kOutOfRange;
+    }
     const auto programmed = pages_.find(Index(block, page));
     if (programmed == pages_.end()) {
       std::ranges::fill(out, kErased);
