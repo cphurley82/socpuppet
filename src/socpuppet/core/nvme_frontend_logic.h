@@ -39,6 +39,8 @@ class NvmeFrontendLogic {
   NvmeQueues queues_;
   // Whether the firmware has said it is ready for the host's commands.
   bool ready_ = false;
+  // What the host has done that the CPU has not yet acknowledged.
+  std::uint32_t events_ = 0;
 };
 
 }  // namespace socpuppet

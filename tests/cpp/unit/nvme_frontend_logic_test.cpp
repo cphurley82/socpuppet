@@ -49,6 +49,16 @@ enum CpuRegister : std::uint64_t {
   kCommand = 0x40,
 };
 
+// The bits of the CPU's status register.
+enum StatusBit : std::uint32_t {
+  // The host has enabled the controller, or disabled it. Each stays set
+  // until the CPU writes a one to it.
+  kEnabled = 1U << 0,
+  kDisabled = 1U << 1,
+  // A command is waiting for the CPU. It is set for as long as one is.
+  kCommandWaiting = 1U << 2,
+};
+
 // The bit of the control register by which firmware says it is ready.
 constexpr std::uint32_t kReady = 1U << 0;
 
@@ -163,6 +173,14 @@ TEST(WhenTheFirmwareOfAnNvmeFrontendSaysItIsNoLongerReady,
   rig.CpuWrite32(kControl, 0);
 
   EXPECT_FALSE(rig.HostSeesReady());
+}
+
+TEST(WhenTheHostEnablesAnNvmeFrontend, ItsCpuIsToldSo) {
+  Rig rig;
+
+  rig.HostEnables();
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
 }
 
 }  // namespace socpuppet

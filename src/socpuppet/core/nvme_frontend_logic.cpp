@@ -1,5 +1,7 @@
 #include "socpuppet/core/nvme_frontend_logic.h"
 
+#include <optional>
+
 #include "socpuppet/core/little_endian.h"
 
 namespace socpuppet {
@@ -11,7 +13,12 @@ namespace {
 constexpr std::uint8_t kReadyTimeout = 2;
 
 // Where the CPU's registers are. Each is 32 bits wide.
+constexpr std::uint64_t kStatusRegister = 0x00;
 constexpr std::uint64_t kControlRegister = 0x08;
+
+// The bits of the status register that say what the host has done. Each
+// stays set until the CPU writes a one to it.
+constexpr std::uint32_t kEnabled = 1U << 0;
 
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
@@ -31,11 +38,22 @@ bool NvmeFrontendLogic::ReadHostRegister(std::uint64_t offset,
 
 bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
                                           std::span<const std::uint8_t> in) {
-  return host_registers_.Write(offset, in).has_value();
+  const std::optional<NvmeHostRegisters::Enable> enable =
+      host_registers_.Write(offset, in);
+  if (!enable) return false;
+  if (*enable == NvmeHostRegisters::Enable::kSet) events_ |= kEnabled;
+  return true;
 }
 
-bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t /*offset*/,
-                                        std::span<std::uint8_t> /*out*/) const {
+bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
+                                        std::span<std::uint8_t> out) const {
+  switch (offset) {
+    case kStatusRegister:
+      StoreLittleEndian(events_, out);
+      break;
+    default:
+      break;
+  }
   return true;
 }
 
