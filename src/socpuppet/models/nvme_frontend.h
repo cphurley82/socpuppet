@@ -56,6 +56,7 @@ class NvmeFrontend : public sc_core::sc_module {
     bar0.register_b_transport(this, &NvmeFrontend::HostTransport);
     bar0.register_transport_dbg(this, &NvmeFrontend::HostDebugTransport);
     cpu.register_b_transport(this, &NvmeFrontend::CpuTransport);
+    cpu.register_transport_dbg(this, &NvmeFrontend::CpuDebugTransport);
     SC_THREAD(Work);
     SC_METHOD(DriveTheCpusLine);
     sensitive << cpus_line_may_have_changed_;
@@ -100,6 +101,17 @@ class NvmeFrontend : public sc_core::sc_module {
     transaction.set_response_status(ok ? tlm::TLM_OK_RESPONSE
                                        : tlm::TLM_ADDRESS_ERROR_RESPONSE);
     if (transaction.is_write()) SomethingMayHaveChanged();
+  }
+
+  // Debug transport: the CPU's register block as a debugger sees it. A
+  // debugger can look and cannot touch: a write is declined, because a
+  // completion posted this way would be something the firmware never did.
+  unsigned CpuDebugTransport(tlm::tlm_generic_payload& transaction) {
+    return transaction.is_read() &&
+                   logic_.ReadCpuRegister(transaction.get_address(),
+                                          DataOf(transaction))
+               ? transaction.get_data_length()
+               : 0;
   }
 
   // After a write to either register block: the lines first, so that a

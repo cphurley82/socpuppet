@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -133,6 +134,27 @@ struct HostAndCpuWithAnNvmeFrontend {
                         std::as_bytes(std::span{data}));
   }
 
+  // A register of the CPU's block as a debugger sees it, or nothing if the
+  // frontend would not show it. What comes back is not zeros unless the
+  // frontend put them there.
+  std::optional<std::uint32_t> DebugReadCpu32(std::uint64_t offset) {
+    std::array<std::uint8_t, 4> seen{0xA5, 0xA5, 0xA5, 0xA5};
+    if (!platform.DebugRead("cpu.socket", offset,
+                            std::as_writable_bytes(std::span{seen}))) {
+      return std::nullopt;
+    }
+    return LoadLittleEndian<std::uint32_t>(seen);
+  }
+
+  // How many times a line has risen, and whether it is high now. `line` is
+  // "irq0" or "irq1", to the host, or "cpu_irq".
+  int Rises(const std::string& line) {
+    return platform.ModuleAt<LineWatcher>(line).Rises();
+  }
+  bool IsHigh(const std::string& line) {
+    return platform.ModuleAt<LineWatcher>(line).line->read();
+  }
+
   Platform platform;
 };
 
@@ -198,6 +220,167 @@ TEST(WhenAHostSubmitsACommandThroughAnNvmeFrontend,
   // phase bit and the status, which is shifted up past it.
   EXPECT_EQ(fixture.HostMemoryAt(kAdminCompletionQueue + 12, 4),
             (std::vector<std::uint8_t>{7, 0, 0x01 | (0x02 << 1), 0}));
+}
+
+// The frontend works alongside the host, not inside the host's write: when
+// the write to the doorbell returns, the command has not been fetched. It
+// is fetched in the next delta cycle, in which the host and the frontend
+// may run in either order, so the host gives it two.
+TEST(WhenAHostHasJustRungADoorbellOfAnNvmeFrontend,
+     NoCommandWaitsForTheCpuYetAndOneDoesOnceTheFrontendHasHadItsTurn) {
+  HostAndCpuWithAnNvmeFrontend* wired = nullptr;
+  std::optional<std::uint32_t> when_the_write_returned;
+  std::optional<std::uint32_t> afterwards;
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [&](BusDriver& host) {
+        HostEnables(host);
+        host.Write32(kAdminTailDoorbell, 1);
+        when_the_write_returned = wired->DebugReadCpu32(kStatus);
+        host.WaitFor(sc_core::SC_ZERO_TIME);
+        host.WaitFor(sc_core::SC_ZERO_TIME);
+        afterwards = wired->DebugReadCpu32(kStatus);
+      },
+      [](BusDriver& cpu) { FirmwareComesReady(cpu); }};
+  wired = &fixture;
+  fixture.PutInHostMemory(kAdminSubmissionQueue, SomeCommand(7));
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(when_the_write_returned, 0U);
+  EXPECT_EQ(afterwards, kCommandWaiting);
+}
+
+// One rise for each command: the line falls when the firmware has dealt
+// with one, and rises again when the next has been fetched. An interrupt
+// controller that hears a rise hears every command.
+TEST(WhenTwoCommandsComeAndTheCpuAskedToBeInterruptedForACommand,
+     TheCpusLineRisesOnceForEachAndFallsWhenBothAreDealtWith) {
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [](BusDriver& host) {
+        HostEnables(host);
+        host.Write32(kAdminTailDoorbell, 2);
+      },
+      [](BusDriver& cpu) {
+        cpu.Write32(kInterruptEnable, kCommandWaiting);
+        FirmwareComesReady(cpu);
+        FirmwareDealsWithACommand(cpu, /*status=*/0);
+        FirmwareDealsWithACommand(cpu, /*status=*/0);
+      }};
+  fixture.PutInHostMemory(kAdminSubmissionQueue, SomeCommand(7));
+  fixture.PutInHostMemory(kAdminSubmissionQueue + kCommandBytes,
+                          SomeCommand(8));
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.Rises("cpu_irq"), 2);
+  EXPECT_FALSE(fixture.IsHigh("cpu_irq"));
+}
+
+// The admin queue's vector is the first. The line stays high until the
+// host says how far it has read, by writing the queue's head doorbell.
+TEST(WhenAnNvmeFrontendPostsACompletion,
+     TheHostsLineRisesAndFallsWhenTheHostAcknowledges) {
+  HostAndCpuWithAnNvmeFrontend* wired = nullptr;
+  bool high_before_the_acknowledgement = false;
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [&](BusDriver& host) {
+        HostEnables(host);
+        host.Write32(kAdminTailDoorbell, 1);
+        high_before_the_acknowledgement =
+            WaitUntil(host, [&] { return wired->IsHigh("irq0"); });
+        host.Write32(kAdminHeadDoorbell, 1);
+      },
+      [](BusDriver& cpu) {
+        FirmwareComesReady(cpu);
+        FirmwareDealsWithACommand(cpu, /*status=*/0);
+      }};
+  wired = &fixture;
+  fixture.PutInHostMemory(kAdminSubmissionQueue, SomeCommand(7));
+
+  fixture.platform.Run();
+
+  EXPECT_TRUE(high_before_the_acknowledgement);
+  EXPECT_EQ(fixture.Rises("irq0"), 1);
+  EXPECT_FALSE(fixture.IsHigh("irq0"));
+  EXPECT_EQ(fixture.Rises("irq1"), 0);
+}
+
+// The host's write, the CPU's write and the end of the frontend's own work
+// all change what the lines should say. Here the host and the CPU write in
+// the same delta cycle as each other, again and again, which a line with
+// two writers would not survive.
+TEST(WhenTheHostAndTheCpuWriteToAnNvmeFrontendInTheSameDeltaCycle,
+     TheRunCarriesOn) {
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [](BusDriver& host) {
+        for (int turn = 0; turn < 4; ++turn) {
+          host.Write32(kCc, turn % 2 == 0 ? 1 : 0);
+          host.WaitFor(sc_core::SC_ZERO_TIME);
+        }
+      },
+      [](BusDriver& cpu) {
+        for (int turn = 0; turn < 4; ++turn) {
+          cpu.Write32(kInterruptEnable, turn % 2 == 0 ? kEnabled : 0);
+          cpu.WaitFor(sc_core::SC_ZERO_TIME);
+        }
+      }};
+
+  EXPECT_NO_THROW(fixture.platform.Run());
+}
+
+TEST(WhenADebuggerLooksAtARegisterOfAnNvmeFrontendsCpu, ItSeesWhatTheCpuWould) {
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+}
+
+// A debugger can look and cannot touch: a completion posted this way, or a
+// status acknowledged, would be something the firmware never did.
+TEST(WhenADebuggerWritesToARegisterOfAnNvmeFrontendsCpu, TheWriteIsDeclined) {
+  const std::array<std::uint8_t, 4> acknowledgement{kEnabled, 0, 0, 0};
+  HostAndCpuWithAnNvmeFrontend fixture{
+      [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
+  fixture.platform.Run();
+
+  const bool answered = fixture.platform.DebugWrite(
+      "cpu.socket", kStatus, std::as_bytes(std::span{acknowledgement}));
+
+  EXPECT_FALSE(answered);
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+}
+
+TEST(WhenAnNvmeFrontendRefusesAnAccess, WhoeverMadeItGetsAnAddressError) {
+  tlm::tlm_response_status hosts = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status cpus = tlm::TLM_INCOMPLETE_RESPONSE;
+  HostAndCpuWithAnNvmeFrontend fixture{
+      // The doorbell of a queue that does not exist: nothing is enabled.
+      [&](BusDriver& host) { hosts = host.Write32(kAdminTailDoorbell, 1); },
+      // A completion, with no command waiting.
+      [&](BusDriver& cpu) { cpus = cpu.Write32(kCompletionPost, 1); }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(hosts, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  EXPECT_EQ(cpus, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+}
+
+// A host need not use every vector, and firmware may poll the status
+// register and never look at its line.
+TEST(WhenTheInterruptLinesOfAnNvmeFrontendAreLeftUnconnected,
+     ThePlatformStillElaborates) {
+  Platform platform{HostAndCpuWithAnNvmeFrontend::WithDriversAndWatchers(
+      [](BusDriver&) {}, [](BusDriver&) {})};
+  platform.Add("host", "host_driver");
+  platform.Add("cpu", "cpu_driver");
+  platform.Add("frontend", "nvme_frontend", {{"vectors", 2}});
+  platform.Add("host_memory", "memory", {{"size", 0x1'0000}});
+  platform.Bind("host.socket", "frontend.bar0");
+  platform.Bind("cpu.socket", "frontend.cpu");
+  platform.Bind("frontend.dma", "host_memory.socket");
+
+  EXPECT_NO_THROW(platform.Elaborate());
 }
 
 }  // namespace socpuppet
