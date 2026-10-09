@@ -161,10 +161,31 @@ TYPED_TEST_P(NandContract, ABlockPastTheEndOfTheChipGetsAnAddressError) {
   EXPECT_EQ(erase_response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 
+// Page 8 of block 0 would be the first page of block 1, if pages were
+// simply counted through the chip.
+TYPED_TEST_P(NandContract, APagePastTheEndOfItsBlockGetsAnAddressError) {
+  std::vector<std::uint8_t> read(16);
+  std::vector<std::uint8_t> first_of_the_next_block(16);
+  tlm::tlm_response_status read_response = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status program_response = tlm::TLM_INCOMPLETE_RESPONSE;
+
+  this->AsItsController([&](BusDriver& controller) {
+    read_response = nand_contract::ReadPage(controller, 0, 8, read);
+    program_response =
+        nand_contract::ProgramPage(controller, 0, 8, nand_contract::SomePage());
+    nand_contract::ReadPage(controller, 1, 0, first_of_the_next_block);
+  });
+
+  EXPECT_EQ(read_response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  EXPECT_EQ(program_response, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  EXPECT_EQ(first_of_the_next_block, std::vector<std::uint8_t>(16, 0xFF));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(NandContract, AChipAskedWhatItIsSaysItsGeometry,
                             APageThatWasNeverProgrammedReadsAsAllOnes,
                             AProgrammedPageReadsBackAsItWasProgrammed,
                             EveryPageOfAnErasedBlockReadsAsAllOnes,
-                            ABlockPastTheEndOfTheChipGetsAnAddressError);
+                            ABlockPastTheEndOfTheChipGetsAnAddressError,
+                            APagePastTheEndOfItsBlockGetsAnAddressError);
 
 #endif  // TESTS_CPP_CONTRACTS_NAND_CONTRACT_H_
