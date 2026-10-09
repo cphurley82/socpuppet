@@ -8,7 +8,6 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
-#include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/nand_array.h"
 #include "socpuppet/models/nand_link.h"
 
@@ -67,10 +66,7 @@ class IdealNand : public sc_core::sc_module {
 
   tlm::tlm_response_status SayGeometry(std::span<std::uint8_t> data) const {
     if (data.size() != kNandGeometryBytes) return tlm::TLM_BURST_ERROR_RESPONSE;
-    const NandGeometry& geometry = array_.geometry();
-    StoreLittleEndian(geometry.page_size, data.subspan(0));
-    StoreLittleEndian(geometry.pages_per_block, data.subspan(4));
-    StoreLittleEndian(geometry.blocks, data.subspan(8));
+    StoreNandGeometry(array_.geometry(), data);
     return tlm::TLM_OK_RESPONSE;
   }
 
