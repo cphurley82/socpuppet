@@ -383,4 +383,16 @@ TEST(WhenTheCpuReadsTheCommandRegisterOfAFlashController, ItReadsAsZero) {
   EXPECT_EQ(rig.Read32(kCommand), 0U);
 }
 
+TEST(WhenAnAccessToAFlashControllerIsNot32BitsWide, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 2> two{};
+  std::array<std::uint8_t, 8> eight{};
+
+  EXPECT_FALSE(rig.controller.ReadRegister(kStatus, two));
+  EXPECT_FALSE(rig.controller.ReadRegister(kStatus, eight));
+  EXPECT_FALSE(rig.controller.WriteRegister(kBlock, two));
+  EXPECT_FALSE(rig.controller.WriteRegister(kBlock, eight));
+  EXPECT_EQ(rig.Read32(kBlock), 0U);
+}
+
 }  // namespace socpuppet

@@ -1,5 +1,6 @@
 #include "socpuppet/core/flash_controller.h"
 
+#include <cstddef>
 #include <vector>
 
 #include "socpuppet/core/little_endian.h"
@@ -9,6 +10,7 @@ namespace socpuppet {
 namespace {
 
 // Where the registers are. Each is 32 bits wide.
+constexpr std::size_t kRegisterBytes = 4;
 constexpr std::uint64_t kCommandRegister = 0x00;
 constexpr std::uint64_t kStatusRegister = 0x04;
 constexpr std::uint64_t kInterruptEnableRegister = 0x08;
@@ -37,6 +39,7 @@ FlashController::FlashController(NandPort& nand, MemoryPort& local_memory)
 
 bool FlashController::ReadRegister(std::uint64_t offset,
                                    std::span<std::uint8_t> out) {
+  if (out.size() != kRegisterBytes) return false;
   const NandGeometry geometry = *nand_.Geometry();
   switch (offset) {
     case kCommandRegister:
@@ -74,6 +77,7 @@ bool FlashController::ReadRegister(std::uint64_t offset,
 
 bool FlashController::WriteRegister(std::uint64_t offset,
                                     std::span<const std::uint8_t> in) {
+  if (in.size() != kRegisterBytes) return false;
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
