@@ -367,6 +367,27 @@ class DbtRiseCpu(Component):
             )
 
 
+class IdealNand(Component):
+    """🎭 Stand-in for a NAND flash chip.
+
+    🎓 NAND flash is what an SSD keeps its data in. It is read and
+    programmed a page at a time and erased a block at a time, a block
+    being many pages. `page_size` is a page in bytes, `pages_per_block`
+    how many make a block, and `blocks` how many blocks the chip has.
+
+    This one is ideal: nothing takes any time, and a page can be
+    programmed again without its block being erased first, which no real
+    chip allows. A flash controller reaches it through `socket`.
+    """
+
+    implementation = "ideal_nand"
+    port_specs = (target("socket"),)
+
+    blocks: int
+    pages_per_block: int = 64
+    page_size: int = 4096
+
+
 class MachineTimer(Component):
     """The RISC-V machine timer, which gives an operating system its tick.
 

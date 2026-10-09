@@ -11,6 +11,7 @@
 
 #include "socpuppet/models/behavioral_nvme.h"
 #include "socpuppet/models/dbt_rise_cpu.h"
+#include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/msi_plic_bridge.h"
@@ -33,6 +34,7 @@ static_assert(UartSlot<Ns16550>);
 static_assert(MachineTimerSlot<MachineTimer>);
 static_assert(InterruptControllerSlot<Plic>);
 static_assert(NvmeFunctionSlot<BehavioralNvme>);
+static_assert(NandSlot<IdealNand>);
 static_assert(CpuSlot<ScriptedBusMaster>);
 static_assert(CpuSlot<DbtRiseCpu>);
 
@@ -83,6 +85,17 @@ Registry BuiltinComponents() {
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("ideal_nand", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<IdealNand>(
+        name, NandGeometry{.page_size = static_cast<std::uint32_t>(
+                               parameters.Optional("page_size", 4096)),
+                           .pages_per_block = static_cast<std::uint32_t>(
+                               parameters.Required("pages_per_block")),
+                           .blocks = static_cast<std::uint32_t>(
+                               parameters.Required("blocks"))});
+    std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("machine_timer", [](const char* name, Parameters& parameters) {
