@@ -70,7 +70,7 @@ bool FlashController::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(geometry.blocks, out);
       break;
     default:
-      break;
+      return false;
   }
   return true;
 }
@@ -103,7 +103,7 @@ bool FlashController::WriteRegister(std::uint64_t offset,
       local_ = value;
       break;
     default:
-      break;
+      return false;
   }
   return true;
 }

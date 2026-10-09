@@ -395,4 +395,25 @@ TEST(WhenAnAccessToAFlashControllerIsNot32BitsWide, ItIsRefused) {
   EXPECT_EQ(rig.Read32(kBlock), 0U);
 }
 
+// 0x18 is between two registers, 0x2C is after the last, and 0x02 is in
+// the middle of one.
+TEST(WhenAnAccessToAFlashControllerIsBesideItsRegisters, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 4> data{};
+
+  for (const std::uint64_t offset : {0x18U, 0x2CU, 0x02U}) {
+    EXPECT_FALSE(rig.controller.ReadRegister(offset, data)) << offset;
+    EXPECT_FALSE(rig.controller.WriteRegister(offset, data)) << offset;
+  }
+}
+
+// What the chip is cannot be changed by writing to a register.
+TEST(WhenTheCpuWritesToAGeometryRegisterOfAFlashController, ItIsRefused) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.Write32(kPageSize, 32));
+  EXPECT_FALSE(rig.Write32(kPagesPerBlock, 32));
+  EXPECT_FALSE(rig.Write32(kBlocks, 32));
+}
+
 }  // namespace socpuppet
