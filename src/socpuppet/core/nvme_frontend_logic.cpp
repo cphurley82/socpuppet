@@ -70,7 +70,11 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
           events_ | (command_ ? kCommandWaiting : std::uint32_t{0}), out);
       break;
     case kCommandRegister:
-      std::ranges::copy(command_->bytes, out.begin());
+      if (command_) {
+        std::ranges::copy(command_->bytes, out.begin());
+      } else {
+        std::ranges::fill(out, std::uint8_t{0});
+      }
       break;
     default:
       break;

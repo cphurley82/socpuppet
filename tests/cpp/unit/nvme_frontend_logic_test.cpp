@@ -279,4 +279,10 @@ TEST(WhenTheCpuWritesAOneToTheCommandWaitingBitOfAnNvmeFrontend,
   EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
 }
 
+TEST(WhenNoCommandIsWaitingForTheCpuOfAnNvmeFrontend, TheCommandReadsAsZeros) {
+  const Rig rig;
+
+  EXPECT_EQ(rig.CommandWaiting(), std::vector<std::uint8_t>(kCommandBytes, 0));
+}
+
 }  // namespace socpuppet
