@@ -31,7 +31,8 @@
 /*
  * Asks the NAND what it is and makes an empty table. Returns 0. If the
  * NAND cannot be used it says why on the console, with what to do about
- * it, and returns a negative errno.
+ * it, and returns a negative errno. If it is the flash controller's driver
+ * that did not start, the driver has said why, in the log.
  */
 int ftl_start(void);
 

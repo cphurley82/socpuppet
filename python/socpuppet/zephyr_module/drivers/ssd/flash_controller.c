@@ -32,10 +32,13 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/flash.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/sys/util.h>
 
 #include "command_status.h"
+
+LOG_MODULE_REGISTER(socpuppet_flash_controller, CONFIG_FLASH_LOG_LEVEL);
 
 #define BLOCK           0x0C
 #define PAGE            0x10
@@ -220,13 +223,33 @@ static int flash_controller_init(const struct device *dev)
 	const struct flash_controller_config *config = dev->config;
 	struct flash_controller_data *data = dev->data;
 
-	if (ssd_device_do(config->base, IDENTIFY) != 0) {
-		return -ENODEV;
+	int result = ssd_device_do(config->base, IDENTIFY);
+
+	/*
+	 * A driver that does not start leaves its device "not ready", which
+	 * is all its user can find out. Why is for the log, in firmware that
+	 * has one (CONFIG_LOG).
+	 */
+	if (result == -ETIMEDOUT) {
+		LOG_ERR("The flash controller did not answer in %u ms.",
+			SSD_DEVICE_PATIENCE / USEC_PER_MSEC);
+		return result;
+	}
+	if (result != 0) {
+		LOG_ERR("The flash controller could not identify its NAND.");
+		return result;
 	}
 
 	data->page_size = sys_read32(config->base + PAGE_SIZE);
 	data->pages_per_block = sys_read32(config->base + PAGES_PER_BLOCK);
 	data->blocks = sys_read32(config->base + BLOCKS);
+	if (data->page_size > sizeof(data->page)) {
+		LOG_ERR("The NAND's pages are %u bytes, and this driver was built for pages of up "
+			"to %u. Build the firmware with a bigger "
+			"CONFIG_SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE.",
+			data->page_size, (uint32_t)sizeof(data->page));
+		return -ENOTSUP;
+	}
 	/*
 	 * An erased NAND cell holds a one. Zephyr declares a flash's write
 	 * block size constant, for drivers that know it when they are built.

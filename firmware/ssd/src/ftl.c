@@ -44,8 +44,8 @@ int ftl_start(void)
 	size_t room;
 
 	if (!device_is_ready(ssd_nand) || flash_get_size(ssd_nand, &bytes) != 0) {
-		printk("The flash controller is not ready: it could not identify its NAND, or it "
-		       "never answered.\n");
+		printk("The flash controller's driver did not start (it says why above), so there "
+		       "is no NAND.\n");
 		return -ENODEV;
 	}
 	/* Every page has to be somewhere flash_read() can be told to go. */

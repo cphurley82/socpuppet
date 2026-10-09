@@ -93,13 +93,24 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
         assert banner in said
 
 
-def console_with_a_flash_controller_whose_status_is(status, firmware, *, until):
+# The flash controller's registers that these tests set
+# (docs/models/flash-controller.md), and the bits of its status.
+STATUS = 0x04
+PAGE_SIZE = 0x20
+PAGES_PER_BLOCK = 0x24
+BLOCKS = 0x28
+DONE = 1 << 0
+ERROR = 1 << 1
+BUSY = 1 << 2
+
+
+def console_with_a_flash_controller_that_says(registers, firmware):
     """Boots the firmware with something broken where its NAND should be.
 
     It is the SSD's CPU with what a CPU needs, and a memory where the
-    flash controller's registers would be, whose status register reads
-    `status` whatever it is told. Runs until `until` is on the console, and
-    returns all that is there.
+    flash controller's registers would be. `registers` is what they read,
+    by offset, whatever the firmware tells them. Runs until the firmware
+    says it stops, and returns all that is on the console.
     """
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=32, reset_vector=SRAM_BASE))
@@ -108,48 +119,80 @@ def console_with_a_flash_controller_whose_status_is(status, firmware, *, until):
     console = platform.add("uart", sp.Ns16550())
     timer = platform.add("timer", sp.MachineTimer(frequency_hz=TIMER_HZ))
     plic = platform.add("plic", sp.Plic())
-    registers = platform.add("flash", sp.Memory(size=0x30))
+    flash = platform.add("flash", sp.Memory(size=0x30))
     platform.connect(cpu.socket, bus.target)
     bus.map(sram.socket, base=SRAM_BASE)
     bus.map(console.socket, base=UART_BASE)
     bus.map(timer.socket, base=TIMER_BASE)
     bus.map(plic.socket, base=PLIC_BASE)
-    bus.map(registers.socket, base=FLASH_BASE)
+    bus.map(flash.socket, base=FLASH_BASE)
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
     platform.build()
     platform.load_elf(firmware("ssd_socpuppet_ssd.elf"))
-    platform.poke32(FLASH_BASE + 0x04, status)
+    for offset, value in registers.items():
+        platform.poke32(FLASH_BASE + offset, value)
     # The firmware gives a device a tenth of a second of simulated time to
     # answer. A second is time for that and still ends a run that never
     # prints.
-    platform.run_until(lambda: until in console.output, timeout=sp.ms(1000))
+    platform.run_until(lambda: STOPS in console.output, timeout=sp.ms(1000))
     return console.output
 
 
-NOT_READY = (
-    "The flash controller is not ready: it could not identify its NAND, "
-    "or it never answered.\r\nThe SSD's firmware stops.\r\n"
+#: What the firmware says last when it has no NAND to be a drive with.
+STOPS = (
+    "The flash controller's driver did not start (it says why above), so "
+    "there is no NAND.\r\nThe SSD's firmware stops.\r\n"
 )
+
+
+def reason_and_what_follows(said):
+    """What a console says from the driver's reason on, without Zephyr's
+    banner, which comes between the reason and the firmware's last words:
+    drivers start before Zephyr says it is booting. "E:" is how Zephyr
+    marks an error in its log."""
+    reason, _, rest = said.partition("*** Booting Zephyr OS")
+    return reason + rest.partition("\r\n")[2]
 
 
 @pytest.mark.platform
 class TestWhenTheFlashControllerCannotIdentifyTheNand:
-    # Bit 1 of its status is ERROR. With no geometry there is no drive.
+    # With no geometry there is no drive.
     def test_the_firmware_says_so_and_stops(self, firmware):
-        said = console_with_a_flash_controller_whose_status_is(
-            1 << 1, firmware, until=NOT_READY
+        said = console_with_a_flash_controller_that_says(
+            {STATUS: ERROR}, firmware
         )
 
-        assert NOT_READY in said
+        assert reason_and_what_follows(said) == (
+            "E: The flash controller could not identify its NAND.\r\n" + STOPS
+        )
 
 
 @pytest.mark.platform
 class TestWhenTheFlashControllerNeverFinishes:
-    # Bit 2 of its status is BUSY.
     def test_the_firmware_gives_up_says_so_and_stops(self, firmware):
-        said = console_with_a_flash_controller_whose_status_is(
-            1 << 2, firmware, until=NOT_READY
+        said = console_with_a_flash_controller_that_says(
+            {STATUS: BUSY}, firmware
         )
 
-        assert NOT_READY in said
+        assert reason_and_what_follows(said) == (
+            "E: The flash controller did not answer in 100 ms.\r\n" + STOPS
+        )
+
+
+@pytest.mark.platform
+class TestWhenTheNandsPagesAreBiggerThanTheDriverWasBuiltFor:
+    """The driver keeps one NAND page of its own, of a size fixed when it
+    is built: 4096 bytes, unless the firmware's configuration says more."""
+
+    def test_the_firmware_says_what_to_change_and_stops(self, firmware):
+        said = console_with_a_flash_controller_that_says(
+            {STATUS: DONE, PAGE_SIZE: 8192, PAGES_PER_BLOCK: 64, BLOCKS: 1},
+            firmware,
+        )
+
+        assert reason_and_what_follows(said) == (
+            "E: The NAND's pages are 8192 bytes, and this driver was built "
+            "for pages of up to 4096. Build the firmware with a bigger "
+            "CONFIG_SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE.\r\n" + STOPS
+        )
