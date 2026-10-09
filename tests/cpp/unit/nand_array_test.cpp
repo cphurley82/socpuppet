@@ -112,4 +112,12 @@ TEST(WhenAPagePastTheEndOfItsBlockIsAskedFor, ReadingItIsRefused) {
   EXPECT_EQ(nand.ReadPage(0, 8, data), NandResult::kOutOfRange);
 }
 
+TEST(WhenAPagePastTheEndOfItsBlockIsAskedFor, ProgrammingItIsRefused) {
+  NandArray nand{kSmall};
+
+  EXPECT_EQ(nand.ProgramPage(0, 8, SomePage()), NandResult::kOutOfRange);
+  EXPECT_EQ(PageAt(nand, 1, 0),
+            std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
+}
+
 }  // namespace socpuppet

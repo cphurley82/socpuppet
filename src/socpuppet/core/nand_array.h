@@ -37,9 +37,7 @@ class NandArray {
   // what an erased NAND cell holds.
   NandResult ReadPage(std::uint32_t block, std::uint32_t page,
                       std::span<std::uint8_t> out) const {
-    if (block >= geometry_.blocks || page >= geometry_.pages_per_block) {
-      return NandResult::kOutOfRange;
-    }
+    if (!IsAPage(block, page)) return NandResult::kOutOfRange;
     const auto programmed = pages_.find(Index(block, page));
     if (programmed == pages_.end()) {
       std::ranges::fill(out, kErased);
@@ -51,7 +49,7 @@ class NandArray {
 
   NandResult ProgramPage(std::uint32_t block, std::uint32_t page,
                          std::span<const std::uint8_t> in) {
-    if (block >= geometry_.blocks) return NandResult::kOutOfRange;
+    if (!IsAPage(block, page)) return NandResult::kOutOfRange;
     pages_[Index(block, page)].assign(in.begin(), in.end());
     return NandResult::kDone;
   }
@@ -66,6 +64,10 @@ class NandArray {
 
  private:
   static constexpr std::uint8_t kErased = 0xFF;
+
+  bool IsAPage(std::uint32_t block, std::uint32_t page) const {
+    return block < geometry_.blocks && page < geometry_.pages_per_block;
+  }
 
   // A page's number, counting through the whole chip.
   std::uint64_t Index(std::uint32_t block, std::uint32_t page) const {
