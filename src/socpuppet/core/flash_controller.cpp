@@ -42,6 +42,18 @@ bool FlashController::ReadRegister(std::uint64_t offset,
     case kStatusRegister:
       StoreLittleEndian(status_, out);
       break;
+    case kInterruptEnableRegister:
+      StoreLittleEndian(interrupt_enable_, out);
+      break;
+    case kBlockRegister:
+      StoreLittleEndian(block_, out);
+      break;
+    case kPageRegister:
+      StoreLittleEndian(page_, out);
+      break;
+    case kLocalRegister:
+      StoreLittleEndian(local_, out);
+      break;
     case kPageSizeRegister:
       StoreLittleEndian(geometry.page_size, out);
       break;

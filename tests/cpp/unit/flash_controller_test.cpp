@@ -348,4 +348,18 @@ TEST(WhenTheCpuReadsTheGeometryRegistersOfAFlashController,
   EXPECT_EQ(rig.Read32(kBlocks), 4U);
 }
 
+TEST(WhenTheCpuReadsBackARegisterItWroteInAFlashController,
+     ItReadsWhatWasWritten) {
+  Rig rig;
+  rig.Write32(kInterruptEnable, kDone | kError);
+  rig.Write32(kBlock, 0x1111'1111);
+  rig.Write32(kPage, 0x2222'2222);
+  rig.Write32(kLocal, 0x3333'3333);
+
+  EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
+  EXPECT_EQ(rig.Read32(kBlock), 0x1111'1111U);
+  EXPECT_EQ(rig.Read32(kPage), 0x2222'2222U);
+  EXPECT_EQ(rig.Read32(kLocal), 0x3333'3333U);
+}
+
 }  // namespace socpuppet
