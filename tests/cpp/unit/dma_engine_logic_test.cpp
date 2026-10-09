@@ -233,4 +233,20 @@ TEST(WhenADmaEngineIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
   EXPECT_EQ(rig.Read32(kStatus), 0U);
 }
 
+// The registers are the CPU's to write at any time. What a command is
+// about is what they said when it was given.
+TEST(WhenTheCpuChangesTheRegistersAfterGivingADmaEngineACommand,
+     TheCommandIsCarriedOutAsItWasGiven) {
+  Rig rig;
+  rig.host.Write(kHost + 0x100, SomeBytes(24));
+  rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
+  rig.Write32(kCommand, kFromHost);
+
+  rig.Describe(kHost + 0x300, kLocal + 0x400, 8);
+  rig.engine.CarryOut();
+
+  EXPECT_EQ(rig.local.At(kLocal + 0x200, 24), SomeBytes(24));
+  EXPECT_EQ(rig.local.At(kLocal + 0x400, 8), std::vector<std::uint8_t>(8, 0));
+}
+
 }  // namespace socpuppet
