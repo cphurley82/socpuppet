@@ -416,4 +416,19 @@ TEST(WhenTheCpuWritesToAGeometryRegisterOfAFlashController, ItIsRefused) {
   EXPECT_FALSE(rig.Write32(kBlocks, 32));
 }
 
+TEST(WhenAFlashControllerHasNothingToDo, CarryingOutSaysSoAndChangesNothing) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.controller.CarryOut());
+  EXPECT_EQ(rig.Read32(kStatus), 0U);
+}
+
+TEST(WhenAFlashControllerHasCarriedOutACommand, ThereIsNothingMoreToDo) {
+  Rig rig;
+  rig.Write32(kCommand, kReadPage);
+
+  EXPECT_TRUE(rig.controller.CarryOut());
+  EXPECT_FALSE(rig.controller.CarryOut());
+}
+
 }  // namespace socpuppet
