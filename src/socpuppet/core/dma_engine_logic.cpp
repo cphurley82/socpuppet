@@ -13,6 +13,7 @@ namespace {
 // Where the registers are. Each is 32 bits wide.
 constexpr std::uint64_t kCommandRegister = 0x00;
 constexpr std::uint64_t kStatusRegister = 0x04;
+constexpr std::uint64_t kInterruptEnableRegister = 0x08;
 constexpr std::uint64_t kHostAddressLowRegister = 0x0C;
 constexpr std::uint64_t kHostAddressHighRegister = 0x10;
 constexpr std::uint64_t kLocalAddressRegister = 0x14;
@@ -33,7 +34,31 @@ DmaEngineLogic::DmaEngineLogic(MemoryPort& host_memory,
 
 bool DmaEngineLogic::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
-  if (offset == kStatusRegister) StoreLittleEndian(status_.Status(), out);
+  switch (offset) {
+    case kCommandRegister:
+      StoreLittleEndian(std::uint32_t{0}, out);
+      break;
+    case kStatusRegister:
+      StoreLittleEndian(status_.Status(), out);
+      break;
+    case kInterruptEnableRegister:
+      StoreLittleEndian(status_.InterruptEnable(), out);
+      break;
+    case kHostAddressLowRegister:
+      StoreLittleEndian(static_cast<std::uint32_t>(host_address_), out);
+      break;
+    case kHostAddressHighRegister:
+      StoreLittleEndian(static_cast<std::uint32_t>(host_address_ >> 32), out);
+      break;
+    case kLocalAddressRegister:
+      StoreLittleEndian(local_address_, out);
+      break;
+    case kLengthRegister:
+      StoreLittleEndian(length_, out);
+      break;
+    default:
+      break;
+  }
   return true;
 }
 
@@ -48,6 +73,9 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
                  .local_address = local_address_,
                  .length = length_};
       status_.Start();
+      break;
+    case kInterruptEnableRegister:
+      status_.WriteInterruptEnable(value);
       break;
     case kHostAddressLowRegister:
       host_address_ = (host_address_ & ~std::uint64_t{0xFFFF'FFFF}) | value;

@@ -20,6 +20,7 @@ namespace {
 // gives them.
 constexpr std::uint64_t kCommand = 0x00;
 constexpr std::uint64_t kStatus = 0x04;
+constexpr std::uint64_t kInterruptEnable = 0x08;
 constexpr std::uint64_t kHostAddressLow = 0x0C;
 constexpr std::uint64_t kHostAddressHigh = 0x10;
 constexpr std::uint64_t kLocalAddress = 0x14;
@@ -247,6 +248,29 @@ TEST(WhenTheCpuChangesTheRegistersAfterGivingADmaEngineACommand,
 
   EXPECT_EQ(rig.local.At(kLocal + 0x200, 24), SomeBytes(24));
   EXPECT_EQ(rig.local.At(kLocal + 0x400, 8), std::vector<std::uint8_t>(8, 0));
+}
+
+TEST(WhenTheCpuReadsBackARegisterItWroteInADmaEngine, ItReadsWhatWasWritten) {
+  Rig rig;
+  rig.Write32(kInterruptEnable, kDone | kError);
+  rig.Write32(kHostAddressLow, 0x1111'1111);
+  rig.Write32(kHostAddressHigh, 0x2222'2222);
+  rig.Write32(kLocalAddress, 0x3333'3333);
+  rig.Write32(kLength, 0x4444'4444);
+
+  EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
+  EXPECT_EQ(rig.Read32(kHostAddressLow), 0x1111'1111U);
+  EXPECT_EQ(rig.Read32(kHostAddressHigh), 0x2222'2222U);
+  EXPECT_EQ(rig.Read32(kLocalAddress), 0x3333'3333U);
+  EXPECT_EQ(rig.Read32(kLength), 0x4444'4444U);
+}
+
+// The command register is for writing: there is nothing in it to read.
+TEST(WhenTheCpuReadsTheCommandRegisterOfADmaEngine, ItReadsAsZero) {
+  Rig rig;
+  rig.Write32(kCommand, kFromHost);
+
+  EXPECT_EQ(rig.Read32(kCommand), 0U);
 }
 
 }  // namespace socpuppet
