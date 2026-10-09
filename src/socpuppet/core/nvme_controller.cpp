@@ -24,10 +24,6 @@ constexpr std::uint32_t kTheNamespace = 1;
 constexpr std::uint32_t kBlockSizeShift = 9;
 static_assert(std::size_t{1} << kBlockSizeShift == BlockStore::kBlockSize);
 
-// The controller registers end where the doorbells begin.
-constexpr std::size_t kControllerRegistersSize =
-    offsetof(spdk_nvme_registers, doorbell);
-
 // The bytes of one of SPDK's structures, which are laid out exactly as the
 // specification says they are in a register block or in the host's memory.
 // (That takes a little-endian machine to build on, as SPDK's structures do.)
@@ -42,11 +38,6 @@ std::span<std::uint8_t> BytesOf(Structure& structure) {
 // is no upper limit to check: the field's largest value is the largest
 // size the controller says it takes (CAP.MQES).
 bool IsAQueueSize(std::uint32_t size_from_zero) { return size_from_zero != 0; }
-
-bool Fits(std::uint64_t offset, std::size_t length) {
-  return offset <= kControllerRegistersSize &&
-         length <= kControllerRegistersSize - offset;
-}
 
 // Where in the host's memory `length` bytes of a command's data are.
 std::vector<HostExtent> Extents(MemoryPort& host_memory,
@@ -77,53 +68,36 @@ NvmeController::NvmeController(MemoryPort& host_memory,
 
 bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
-  if (!Fits(offset, out.size())) return false;
-  spdk_nvme_registers registers = Registers();
-  std::ranges::copy(BytesOf(registers).subspan(offset, out.size()),
-                    out.begin());
-  return true;
+  // There is nothing to start up, so the controller is ready as soon as it
+  // is enabled, and no longer once it is not. A host need not wait at all.
+  return registers_.Read(offset, out, {.ready_timeout = 0, .ready = enabled_});
 }
 
 bool NvmeController::WriteRegister(std::uint64_t offset,
                                    std::span<const std::uint8_t> in) {
-  if (offset >= kControllerRegistersSize) return RingDoorbell(offset, in);
-  if (!Fits(offset, in.size())) return false;
-  // Lay the write over the registers as they are, and keep what the host
-  // is allowed to change. A write to a read-only register changes nothing.
-  spdk_nvme_registers registers = Registers();
-  const bool was_enabled = registers.cc.bits.en;
-  std::ranges::copy(in, BytesOf(registers).subspan(offset).begin());
-  configuration_ = registers.cc.raw;
-  admin_queue_sizes_ = registers.aqa.raw;
-  admin_submission_queue_ = registers.asq;
-  admin_completion_queue_ = registers.acq;
-  if (!was_enabled && registers.cc.bits.en) Enable();
-  if (was_enabled && !registers.cc.bits.en) Reset();
+  if (NvmeHostRegisters::IsInTheDoorbells(offset)) {
+    const std::optional<NvmeHostRegisters::Doorbell> doorbell =
+        NvmeHostRegisters::DoorbellWrite(offset, in);
+    return doorbell && queues_.RingDoorbell(doorbell->number, doorbell->value);
+  }
+  const std::optional<NvmeHostRegisters::Enable> enable =
+      registers_.Write(offset, in);
+  if (!enable) return false;
+  if (*enable == NvmeHostRegisters::Enable::kSet) {
+    // Setting CC.EN: the controller takes the admin queues from where the
+    // registers say they are, and is ready for admin commands.
+    enabled_ = true;
+    registers_.CreateAdminQueues(queues_);
+  }
+  if (*enable == NvmeHostRegisters::Enable::kCleared) {
+    // Clearing CC.EN is a controller reset: it does away with every
+    // queue. The registers keep what the host told them, and everything on
+    // the drive stays.
+    enabled_ = false;
+    queues_.RemoveAll();
+  }
   return true;
 }
-
-// Setting CC.EN: the controller takes the admin queues from where the
-// registers say they are, and is ready for admin commands.
-void NvmeController::Enable() {
-  spdk_nvme_aqa_register sizes{};
-  sizes.raw = admin_queue_sizes_;
-  // The admin completion queue's vector is the first.
-  queues_.CreateCompletionQueue(
-      0,
-      {.base = admin_completion_queue_,
-       .last = static_cast<std::uint16_t>(sizes.bits.acqs)},
-      /*vector=*/0);
-  queues_.CreateSubmissionQueue(
-      0,
-      {.base = admin_submission_queue_,
-       .last = static_cast<std::uint16_t>(sizes.bits.asqs)},
-      /*completion_queue=*/0);
-}
-
-// Clearing CC.EN is a controller reset: it does away with every queue. The
-// registers keep what the host told them, and everything on the drive
-// stays.
-void NvmeController::Reset() { queues_.RemoveAll(); }
 
 bool NvmeController::CarryOutOne() {
   const std::optional<NvmeQueues::Command> fetched = queues_.Fetch();
@@ -356,33 +330,5 @@ bool NvmeController::Interrupting(std::size_t vector) const {
 bool NvmeController::Quieted() const { return queues_.Quieted(); }
 
 void NvmeController::Rearm() { queues_.Rearm(); }
-
-spdk_nvme_registers NvmeController::Registers() const {
-  spdk_nvme_registers registers{};
-  // An I/O queue may have as many entries as the field can say: 65536.
-  // The entries are in the host's memory, so they cost the controller
-  // nothing.
-  registers.cap.bits.mqes = 0xFFFF;
-  registers.cc.raw = configuration_;
-  // There is nothing to start up, so the controller is ready as soon as it
-  // is enabled.
-  registers.csts.bits.rdy = registers.cc.bits.en;
-  registers.aqa.raw = admin_queue_sizes_;
-  registers.asq = admin_submission_queue_;
-  registers.acq = admin_completion_queue_;
-  return registers;
-}
-
-bool NvmeController::RingDoorbell(std::uint64_t offset,
-                                  std::span<const std::uint8_t> in) {
-  // The doorbells are 32 bits each, in pairs, queue after queue: a
-  // submission queue's tail, then the completion queue's head. The queue
-  // pointer is the low half of what the host writes.
-  std::uint32_t value = 0;
-  const std::uint64_t from_first = offset - kControllerRegistersSize;
-  if (in.size() != sizeof value || from_first % sizeof value != 0) return false;
-  std::ranges::copy(in, BytesOf(value).begin());
-  return queues_.RingDoorbell(from_first / sizeof value, value);
-}
 
 }  // namespace socpuppet

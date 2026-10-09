@@ -11,12 +11,12 @@
 #include "socpuppet/core/block_store.h"
 #include "socpuppet/core/interrupt_requests.h"
 #include "socpuppet/core/memory_port.h"
+#include "socpuppet/core/nvme_host_registers.h"
 #include "socpuppet/core/nvme_queues.h"
 
-// The layouts of the controller registers and of a command. They are
-// SPDK's (nvme_spec.h), and only nvme_controller.cpp includes it.
-struct spdk_nvme_registers;  // NOLINT(readability-identifier-naming)
-struct spdk_nvme_cmd;        // NOLINT(readability-identifier-naming)
+// The layout of a command. It is SPDK's (nvme_spec.h), and only
+// nvme_controller.cpp includes it.
+struct spdk_nvme_cmd;  // NOLINT(readability-identifier-naming)
 
 namespace socpuppet {
 
@@ -88,13 +88,6 @@ class NvmeController : public InterruptRequests {
   Outcome FetchFromHost(const spdk_nvme_cmd& command,
                         std::span<std::uint8_t> data);
 
-  // The registers as the host would read them now.
-  spdk_nvme_registers Registers() const;
-  bool RingDoorbell(std::uint64_t offset, std::span<const std::uint8_t> in);
-  // What setting and clearing CC.EN do.
-  void Enable();
-  void Reset();
-
   // Does what an admin command says, whichever command it is.
   Outcome CarryOutAdmin(const spdk_nvme_cmd& command);
   // The admin commands, one each.
@@ -123,12 +116,9 @@ class NvmeController : public InterruptRequests {
   // What the drive holds.
   std::unique_ptr<BlockStore> drive_;
 
-  // Registers, as the host last wrote them: CC (the configuration), AQA
-  // (how long the admin queues are), and ASQ and ACQ (where they are).
-  std::uint32_t configuration_ = 0;
-  std::uint32_t admin_queue_sizes_ = 0;
-  std::uint64_t admin_submission_queue_ = 0;
-  std::uint64_t admin_completion_queue_ = 0;
+  // The register block, and whether the host has the controller enabled.
+  NvmeHostRegisters registers_;
+  bool enabled_ = false;
 
   // The queues. The admin queues are set up from the registers above when
   // the controller is enabled, and the host sets up each I/O queue with an
