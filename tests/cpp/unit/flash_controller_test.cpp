@@ -188,4 +188,16 @@ TEST(WhenTheChipRefusesWhatAFlashControllerAsksOfIt,
   }
 }
 
+// The buffer is 256 bytes long, so nothing answers at 0x1000.
+TEST(WhenLocalMemoryDoesNotTakeThePageAFlashControllerRead,
+     TheStatusSaysErrorAndNotDone) {
+  Rig rig;
+  rig.Write32(kLocal, 0x1000);
+
+  rig.Write32(kCommand, kReadPage);
+  rig.controller.CarryOut();
+
+  EXPECT_EQ(rig.Read32(kStatus), kError);
+}
+
 }  // namespace socpuppet
