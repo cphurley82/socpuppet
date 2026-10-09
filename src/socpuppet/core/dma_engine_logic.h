@@ -26,6 +26,9 @@ class DmaEngineLogic {
   // yet. Returns whether there was anything to do.
   bool CarryOut();
 
+  // Whether the engine is asking for its CPU's attention.
+  bool Interrupting() const { return status_.Interrupting(); }
+
  private:
   // A command, with what the registers said it was about when it was given.
   struct Job {

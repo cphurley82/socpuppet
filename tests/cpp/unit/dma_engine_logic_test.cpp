@@ -296,4 +296,17 @@ TEST(WhenAnAccessToADmaEngineIsBesideItsRegisters, ItIsRefused) {
   }
 }
 
+TEST(WhenACopyIsDoneAndDoneIsEnabledAsAnInterrupt, TheDmaEngineInterrupts) {
+  Rig rig;
+  rig.Describe(kHost, kLocal, 24);
+  rig.Write32(kInterruptEnable, kDone);
+  rig.Write32(kCommand, kFromHost);
+  const bool while_busy = rig.engine.Interrupting();
+
+  rig.engine.CarryOut();
+
+  EXPECT_FALSE(while_busy);
+  EXPECT_TRUE(rig.engine.Interrupting());
+}
+
 }  // namespace socpuppet
