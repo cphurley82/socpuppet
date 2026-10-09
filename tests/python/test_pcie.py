@@ -15,7 +15,12 @@ import pytest
 
 import socpuppet as sp
 from scripts import play
-from socpuppet.boards.ssd import DEVICE_ID, NVME_CLASS, VENDOR_ID, add_ssd
+from socpuppet.boards.drive import (
+    DEVICE_ID,
+    NVME_CLASS,
+    VENDOR_ID,
+    add_behavioral_drive,
+)
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
@@ -37,7 +42,7 @@ def host_with_a_drive(script, blocks=64):
     ram = platform.add("ram", sp.Memory(size=RAM_SIZE))
     msi = platform.add("msi", sp.MsiReceiver())
     rc = platform.add("rc", sp.PcieRootComplex())
-    add_ssd(platform, rc, blocks=blocks)
+    add_behavioral_drive(platform, rc, blocks=blocks)
     platform.connect(cpu.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
     bus.map(msi.socket, base=MSI_BASE)

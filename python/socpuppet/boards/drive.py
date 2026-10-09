@@ -1,4 +1,4 @@
-"""🎭 The SSD, as far as it goes yet: a stand-in drive behind a PCIe endpoint.
+"""🎭 A stand-in drive behind a PCIe endpoint.
 
     PCIe link ══ endpoint ─▶ nvme     (the endpoint's bar0 to the drive's)
                      ▲─────── nvme    (the drive's DMA and interrupt lines)
@@ -28,21 +28,21 @@ NVME_CLASS = 0x01_08_02
 VECTORS = 2
 
 
-class Ssd(NamedTuple):
-    """An SSD at its place in a platform: the drive, and its PCIe endpoint."""
+class BehavioralDrive(NamedTuple):
+    """The drive at its place in a platform, and its PCIe endpoint."""
 
     nvme: Placed
     endpoint: Placed
 
 
-def add_ssd(
+def add_behavioral_drive(
     platform: Platform,
     root_complex: Placed,
     *,
     blocks: int,
     group: Group | None = None,
-) -> Ssd:
-    """Describe an SSD on the PCIe link of `root_complex`.
+) -> BehavioralDrive:
+    """Describe a stand-in drive on the PCIe link of `root_complex`.
 
     `blocks` is how many 512-byte blocks it holds. Its two components go in
     `group`, or at the top of the platform if there is none.
@@ -70,4 +70,4 @@ def add_ssd(
         platform.connect(
             getattr(nvme, f"irq{vector}"), getattr(endpoint, f"irq{vector}")
         )
-    return Ssd(nvme, endpoint)
+    return BehavioralDrive(nvme, endpoint)

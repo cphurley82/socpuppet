@@ -8,6 +8,7 @@ import pytest
 
 import socpuppet
 from devicetree_compiler import dtc_errors, needs_dtc
+from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
@@ -16,7 +17,6 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
 )
-from socpuppet.boards.ssd import DEVICE_ID, VENDOR_ID
 
 ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
 

@@ -14,7 +14,7 @@ answers for itself.
 import pytest
 
 import socpuppet as sp
-from socpuppet.boards.ssd import add_ssd
+from socpuppet.boards.drive import add_behavioral_drive
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
@@ -45,7 +45,7 @@ def host_and_ssd(script):
     d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
     io_bus = io.add("bus", sp.Router())
     rc = io.add("rc", sp.PcieRootComplex())
-    add_ssd(platform, rc, blocks=BLOCKS, group=ssd)
+    add_behavioral_drive(platform, rc, blocks=BLOCKS, group=ssd)
 
     # The host's view: its own memory, the MSI receiver, and the IO die
     # through the link.

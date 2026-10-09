@@ -44,7 +44,11 @@ import textwrap
 from typing import NamedTuple
 
 from socpuppet import devicetree
-from socpuppet.boards.ssd import VECTORS, Ssd, add_ssd
+from socpuppet.boards.drive import (
+    VECTORS,
+    BehavioralDrive,
+    add_behavioral_drive,
+)
 from socpuppet.components import (
     DbtRiseCpu,
     MachineTimer,
@@ -91,7 +95,7 @@ TIMER_HZ = 10_000_000
 class HostDrive(NamedTuple):
     """The host's SSD, and what the host has for its sake."""
 
-    ssd: Ssd
+    ssd: BehavioralDrive
     #: The bridge that takes the SSD's interrupt messages.
     msi: Placed
     #: The host's end of the PCIe link the SSD is on.
@@ -160,7 +164,7 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
             getattr(msi, f"irq{vector}"),
             getattr(plic, f"source{MSI_SOURCE + vector}"),
         )
-    ssd = add_ssd(
+    ssd = add_behavioral_drive(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
     return Host(platform, cpu, uart, HostDrive(ssd, msi, root_complex))

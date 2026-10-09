@@ -20,7 +20,7 @@ Run it:                    python examples/nvme_hello.py
 """
 
 import socpuppet as sp
-from socpuppet.boards.ssd import add_ssd
+from socpuppet.boards.drive import add_behavioral_drive
 
 RAM_BASE = 0x8000_0000
 MSI_BASE = 0x2000_0000
@@ -76,8 +76,8 @@ d2d = platform.link("d2d", sp.PassThroughLink(), compute, io)
 io_bus = io.add("bus", sp.Router())
 rc = io.add("rc", sp.PcieRootComplex())
 # The SSD: 🎭 a stand-in NVMe drive, and the PCIe endpoint that fronts for
-# it, connected to the root complex (see socpuppet/boards/ssd.py).
-add_ssd(platform, rc, blocks=2048, group=ssd)
+# it, connected to the root complex (see socpuppet/boards/drive.py).
+add_behavioral_drive(platform, rc, blocks=2048, group=ssd)
 
 # The host's view: its own memory, the MSI receiver, and the IO die
 # through the link.
