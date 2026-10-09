@@ -273,4 +273,21 @@ TEST(WhenAFlashControllerRefusesAnAccess, TheCpuGetsAnAddressError) {
   EXPECT_EQ(too_narrow, tlm::TLM_ADDRESS_ERROR_RESPONSE);
 }
 
+// Firmware may poll the status register and never look at the line.
+TEST(WhenAFlashControllersInterruptLineIsLeftUnconnected,
+     ThePlatformStillElaborates) {
+  Platform platform{
+      CpuWithAFlashController::WithADriverAndAWatcher([](BusDriver&) {})};
+  platform.Add("cpu", "bus_driver");
+  platform.Add("flash", "flash_controller");
+  platform.Add("nand", "ideal_nand",
+               {{"blocks", 4}, {"pages_per_block", 8}, {"page_size", 16}});
+  platform.Add("buffer", "memory", {{"size", 0x100}});
+  platform.Bind("cpu.socket", "flash.cpu");
+  platform.Bind("flash.local", "buffer.socket");
+  platform.Bind("flash.nand", "nand.socket");
+
+  EXPECT_NO_THROW(platform.Elaborate());
+}
+
 }  // namespace socpuppet
