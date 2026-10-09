@@ -8,6 +8,7 @@ add_library(socpuppet_core INTERFACE)
 target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/block_store.h
+    core/command_status.h
     core/interrupt_requests.h
     core/memory_port.h
     core/memory_store.h

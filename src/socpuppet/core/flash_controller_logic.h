@@ -5,6 +5,7 @@
 #include <optional>
 #include <span>
 
+#include "socpuppet/core/command_status.h"
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/nand_port.h"
 
@@ -30,7 +31,7 @@ class FlashControllerLogic {
   bool CarryOut();
 
   // Whether the controller is asking for its CPU's attention.
-  bool Interrupting() const { return (status_ & interrupt_enable_) != 0; }
+  bool Interrupting() const { return status_.Interrupting(); }
 
  private:
   // A command, with what the registers said it was about when it was given.
@@ -51,9 +52,7 @@ class FlashControllerLogic {
   std::optional<NandGeometry> geometry_;
   // What the command register was told and has not done yet.
   std::optional<Job> job_;
-  std::uint32_t status_ = 0;
-  // Which bits of the status interrupt the CPU while they are set.
-  std::uint32_t interrupt_enable_ = 0;
+  CommandStatus status_;
   // Which page of the chip, and where it is in the SSD's own memory.
   std::uint32_t block_ = 0;
   std::uint32_t page_ = 0;

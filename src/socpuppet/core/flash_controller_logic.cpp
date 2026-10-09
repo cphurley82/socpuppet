@@ -28,11 +28,6 @@ constexpr std::uint32_t kProgramPage = 2;
 constexpr std::uint32_t kEraseBlock = 3;
 constexpr std::uint32_t kIdentify = 4;
 
-// The bits of the status register.
-constexpr std::uint32_t kDone = 1U << 0;
-constexpr std::uint32_t kError = 1U << 1;
-constexpr std::uint32_t kBusy = 1U << 2;
-
 }  // namespace
 
 FlashControllerLogic::FlashControllerLogic(NandPort& nand,
@@ -48,10 +43,10 @@ bool FlashControllerLogic::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(std::uint32_t{0}, out);
       break;
     case kStatusRegister:
-      StoreLittleEndian(status_, out);
+      StoreLittleEndian(status_.Status(), out);
       break;
     case kInterruptEnableRegister:
-      StoreLittleEndian(interrupt_enable_, out);
+      StoreLittleEndian(status_.InterruptEnable(), out);
       break;
     case kBlockRegister:
       StoreLittleEndian(block_, out);
@@ -88,13 +83,13 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
                  .block = block_,
                  .page = page_,
                  .local_address = local_address_};
-      status_ = kBusy;
+      status_.Start();
       break;
     case kStatusRegister:
-      status_ &= ~(value & (kDone | kError));
+      status_.WriteStatus(value);
       break;
     case kInterruptEnableRegister:
-      interrupt_enable_ = value & (kDone | kError);
+      status_.WriteInterruptEnable(value);
       break;
     case kBlockRegister:
       block_ = value;
@@ -113,7 +108,7 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
 
 bool FlashControllerLogic::CarryOut() {
   if (!job_) return false;
-  status_ = Do(*job_) ? kDone : kError;
+  status_.Finish(Do(*job_));
   job_.reset();
   return true;
 }
