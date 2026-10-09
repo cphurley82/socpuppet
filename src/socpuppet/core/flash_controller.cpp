@@ -1,7 +1,6 @@
 #include "socpuppet/core/flash_controller.h"
 
 #include <cstddef>
-#include <optional>
 #include <vector>
 
 #include "socpuppet/core/little_endian.h"
@@ -41,7 +40,6 @@ FlashController::FlashController(NandPort& nand, MemoryPort& local_memory)
 bool FlashController::ReadRegister(std::uint64_t offset,
                                    std::span<std::uint8_t> out) {
   if (out.size() != kRegisterBytes) return false;
-  const NandGeometry geometry = nand_.Geometry().value_or(NandGeometry{});
   switch (offset) {
     case kCommandRegister:
       StoreLittleEndian(std::uint32_t{0}, out);
@@ -62,13 +60,13 @@ bool FlashController::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(local_, out);
       break;
     case kPageSizeRegister:
-      StoreLittleEndian(geometry.page_size, out);
+      StoreLittleEndian(Geometry().page_size, out);
       break;
     case kPagesPerBlockRegister:
-      StoreLittleEndian(geometry.pages_per_block, out);
+      StoreLittleEndian(Geometry().pages_per_block, out);
       break;
     case kBlocksRegister:
-      StoreLittleEndian(geometry.blocks, out);
+      StoreLittleEndian(Geometry().blocks, out);
       break;
     default:
       return false;
@@ -109,6 +107,11 @@ bool FlashController::WriteRegister(std::uint64_t offset,
   return true;
 }
 
+NandGeometry FlashController::Geometry() {
+  if (!geometry_) geometry_ = nand_.Geometry();
+  return geometry_.value_or(NandGeometry{});
+}
+
 bool FlashController::CarryOut() {
   if (command_ == 0) return false;
   status_ = Do(command_) ? kDone : kError;
@@ -117,9 +120,9 @@ bool FlashController::CarryOut() {
 }
 
 bool FlashController::Do(std::uint32_t command) {
-  const std::optional<NandGeometry> geometry = nand_.Geometry();
-  if (!geometry) return false;
-  std::vector<std::uint8_t> page(geometry->page_size);
+  // A chip that will not say what it is has a page of no bytes, and
+  // refuses whatever is asked of it next.
+  std::vector<std::uint8_t> page(Geometry().page_size);
   switch (command) {
     case kReadPage:
       return nand_.ReadPage(block_, page_, page) &&

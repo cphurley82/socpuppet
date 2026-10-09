@@ -2,6 +2,7 @@
 #define SOCPUPPET_CORE_FLASH_CONTROLLER_H_
 
 #include <cstdint>
+#include <optional>
 #include <span>
 
 #include "socpuppet/core/memory_port.h"
@@ -32,8 +33,13 @@ class FlashController {
   // Carries a command out, and returns whether it could be.
   bool Do(std::uint32_t command);
 
+  // What the chip is, all zeros if it will not say. The chip is asked the
+  // first time anything needs to know, and its answer is kept.
+  NandGeometry Geometry();
+
   NandPort& nand_;
   MemoryPort& local_memory_;
+  std::optional<NandGeometry> geometry_;
   // What the command register was told and has not done yet, or zero.
   std::uint32_t command_ = 0;
   std::uint32_t status_ = 0;
