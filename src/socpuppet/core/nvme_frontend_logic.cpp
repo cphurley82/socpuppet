@@ -18,6 +18,10 @@ constexpr std::uint8_t kReadyTimeout = 2;
 // Where the CPU's registers are. Each is 32 bits wide.
 constexpr std::uint64_t kStatusRegister = 0x00;
 constexpr std::uint64_t kControlRegister = 0x08;
+// What the frontend has: how many I/O queue pairs in the low half, and how
+// many interrupt vectors in the high half.
+constexpr std::uint64_t kLimitsRegister = 0x0C;
+constexpr unsigned kVectorsShift = 16;
 // Which submission queue the command that is waiting came from.
 constexpr std::uint64_t kCommandQueueRegister = 0x10;
 // What the completion of the waiting command is to say, and the register
@@ -102,6 +106,11 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
       StoreLittleEndian(
           events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}),
           out);
+      break;
+    case kLimitsRegister:
+      StoreLittleEndian(static_cast<std::uint32_t>(vectors_ << kVectorsShift) |
+                            NvmeQueues::kIoQueuePairs,
+                        out);
       break;
     case kCommandQueueRegister:
       StoreLittleEndian(

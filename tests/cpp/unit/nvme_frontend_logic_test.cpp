@@ -574,4 +574,14 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueLongerThanAQueueCanBe,
   EXPECT_FALSE(rig.CpuWrite32(kQueueCreate, kCompletionQueue));
 }
 
+// How many I/O queue pairs it has is in the low half, and how many
+// interrupt vectors in the high half. The host asks the firmware both, and
+// this is where the firmware finds out.
+TEST(WhenFirmwareAsksAnNvmeFrontendWhatItHas,
+     ItSaysEightIoQueuePairsAndItsVectors) {
+  const Rig rig;
+
+  EXPECT_EQ(rig.CpuRead32(kLimits), 2U << 16 | 8U);
+}
+
 }  // namespace socpuppet
