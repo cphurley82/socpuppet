@@ -183,4 +183,14 @@ TEST(WhenTheHostEnablesAnNvmeFrontend, ItsCpuIsToldSo) {
   EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
 }
 
+TEST(WhenTheHostDisablesAnNvmeFrontend, ItsCpuIsToldSo) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+
+  rig.HostDisables();
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kDisabled);
+}
+
 }  // namespace socpuppet

@@ -19,6 +19,7 @@ constexpr std::uint64_t kControlRegister = 0x08;
 // The bits of the status register that say what the host has done. Each
 // stays set until the CPU writes a one to it.
 constexpr std::uint32_t kEnabled = 1U << 0;
+constexpr std::uint32_t kDisabled = 1U << 1;
 
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
@@ -42,6 +43,7 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
       host_registers_.Write(offset, in);
   if (!enable) return false;
   if (*enable == NvmeHostRegisters::Enable::kSet) events_ |= kEnabled;
+  if (*enable == NvmeHostRegisters::Enable::kCleared) events_ |= kDisabled;
   return true;
 }
 
@@ -61,6 +63,9 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
                                          std::span<const std::uint8_t> in) {
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
+    case kStatusRegister:
+      events_ &= ~value;
+      break;
     case kControlRegister:
       ready_ = (value & kReady) != 0;
       break;
