@@ -245,4 +245,18 @@ TEST(WhenADebuggerLooksAtAFlashControllersGeometryAfterTheCpuHas,
   EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 16U);
 }
 
+TEST(WhenAFlashControllerRefusesAnAccess, TheCpuGetsAnAddressError) {
+  tlm::tlm_response_status beside = tlm::TLM_INCOMPLETE_RESPONSE;
+  tlm::tlm_response_status too_narrow = tlm::TLM_INCOMPLETE_RESPONSE;
+  CpuWithAFlashController fixture{[&](BusDriver& cpu) {
+    beside = cpu.Write32(0x18, 1);
+    too_narrow = cpu.Write(kBlock, std::array<std::uint8_t, 2>{1, 0});
+  }};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(beside, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+  EXPECT_EQ(too_narrow, tlm::TLM_ADDRESS_ERROR_RESPONSE);
+}
+
 }  // namespace socpuppet
