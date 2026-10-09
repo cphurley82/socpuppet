@@ -23,7 +23,7 @@
  *
  * Returns 0, or -EIO if the copy was not made, or not all of it: nothing
  * answered at an address, on either side. What was copied before the
- * failure stays copied.
+ * failure stays copied. Returns -ETIMEDOUT if the engine never finished.
  */
 int dma_engine_copy_from_host(const struct device *dev, uint64_t host_address, void *local,
 			      size_t length);

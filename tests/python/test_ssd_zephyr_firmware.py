@@ -9,8 +9,16 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.boards.scripted_host import idle_host
-from socpuppet.boards import ssd as board
-from socpuppet.boards.ssd import ssd
+from socpuppet.boards.ssd import (
+    FLASH_BASE,
+    PLIC_BASE,
+    SRAM_BASE,
+    SRAM_SIZE,
+    TIMER_BASE,
+    TIMER_HZ,
+    UART_BASE,
+    ssd,
+)
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512
@@ -94,26 +102,24 @@ def console_with_a_flash_controller_whose_status_is(status, firmware, *, until):
     returns all that is there.
     """
     platform = sp.Platform()
-    cpu = platform.add(
-        "cpu", sp.DbtRiseCpu(xlen=32, reset_vector=board.SRAM_BASE)
-    )
+    cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=32, reset_vector=SRAM_BASE))
     bus = platform.add("bus", sp.Router())
-    sram = platform.add("sram", sp.Memory(size=board.SRAM_SIZE))
+    sram = platform.add("sram", sp.Memory(size=SRAM_SIZE))
     console = platform.add("uart", sp.Ns16550())
-    timer = platform.add("timer", sp.MachineTimer(frequency_hz=board.TIMER_HZ))
+    timer = platform.add("timer", sp.MachineTimer(frequency_hz=TIMER_HZ))
     plic = platform.add("plic", sp.Plic())
     registers = platform.add("flash", sp.Memory(size=0x30))
     platform.connect(cpu.socket, bus.target)
-    bus.map(sram.socket, base=board.SRAM_BASE)
-    bus.map(console.socket, base=board.UART_BASE)
-    bus.map(timer.socket, base=board.TIMER_BASE)
-    bus.map(plic.socket, base=board.PLIC_BASE)
-    bus.map(registers.socket, base=board.FLASH_BASE)
+    bus.map(sram.socket, base=SRAM_BASE)
+    bus.map(console.socket, base=UART_BASE)
+    bus.map(timer.socket, base=TIMER_BASE)
+    bus.map(plic.socket, base=PLIC_BASE)
+    bus.map(registers.socket, base=FLASH_BASE)
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
     platform.build()
     platform.load_elf(firmware("ssd_socpuppet_ssd.elf"))
-    platform.poke32(board.FLASH_BASE + 0x04, status)
+    platform.poke32(FLASH_BASE + 0x04, status)
     # The firmware gives a device a tenth of a second of simulated time to
     # answer. A second is time for that and still ends a run that never
     # prints.
@@ -133,6 +139,17 @@ class TestWhenTheFlashControllerCannotIdentifyTheNand:
     def test_the_firmware_says_so_and_stops(self, firmware):
         said = console_with_a_flash_controller_whose_status_is(
             1 << 1, firmware, until=NOT_READY
+        )
+
+        assert NOT_READY in said
+
+
+@pytest.mark.platform
+class TestWhenTheFlashControllerNeverFinishes:
+    # Bit 2 of its status is BUSY.
+    def test_the_firmware_gives_up_says_so_and_stops(self, firmware):
+        said = console_with_a_flash_controller_whose_status_is(
+            1 << 2, firmware, until=NOT_READY
         )
 
         assert NOT_READY in said
