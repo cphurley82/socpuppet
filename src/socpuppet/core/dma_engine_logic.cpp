@@ -41,6 +41,7 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kCommandRegister:
+      if (job_) return false;
       job_ = Job{.command = value,
                  .host_address = host_address_,
                  .local_address = local_address_,

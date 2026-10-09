@@ -210,4 +210,18 @@ TEST(WhenACopyRunsOffTheEndOfWhatAnswers,
   EXPECT_EQ(rig.local.At(kLocal, 4096), SomeBytes(4096));
 }
 
+TEST(WhenADmaEngineIsGivenACommandWhileItIsBusy,
+     TheWriteIsRefusedAndTheFirstCommandIsCarriedOutAsItWas) {
+  Rig rig;
+  rig.host.Write(kHost, SomeBytes(24));
+  rig.Describe(kHost, kLocal, 24);
+  rig.Write32(kCommand, kFromHost);
+
+  EXPECT_FALSE(rig.Write32(kCommand, kToHost));
+  rig.engine.CarryOut();
+
+  EXPECT_EQ(rig.local.At(kLocal, 24), SomeBytes(24));
+  EXPECT_EQ(rig.host.At(kHost, 24), SomeBytes(24));
+}
+
 }  // namespace socpuppet
