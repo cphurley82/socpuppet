@@ -58,6 +58,9 @@ enum StatusBit : std::uint32_t {
   kDisabled = 1U << 1,
   // A command is waiting for the CPU. It is set for as long as one is.
   kCommandWaiting = 1U << 2,
+  // The host has the controller enabled, now. It is set for as long as
+  // it has.
+  kHostHasItEnabled = 1U << 3,
 };
 
 // The bit of the control register by which firmware says it is ready.
@@ -308,7 +311,7 @@ TEST(WhenTheHostEnablesAnNvmeFrontend, ItsCpuIsToldSo) {
 
   rig.HostEnables();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled | kHostHasItEnabled);
 }
 
 TEST(WhenTheHostDisablesAnNvmeFrontend, ItsCpuIsToldSo) {
@@ -342,7 +345,7 @@ TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
   EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
 }
 
@@ -371,7 +374,7 @@ TEST(WhenTheCpuWritesAOneToTheCommandWaitingBitOfAnNvmeFrontend,
 
   rig.CpuWrite32(kStatus, kCommandWaiting);
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
 }
 
 TEST(WhenNoCommandIsWaitingForTheCpuOfAnNvmeFrontend, TheCommandReadsAsZeros) {
@@ -441,7 +444,7 @@ TEST(WhenTheCpuHasJustAskedForACompletionToBePosted,
 
   rig.CpuPosts();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), 0U);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kHostHasItEnabled);
   EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
 }
 
@@ -834,7 +837,7 @@ TEST(WhenTheCpuWritesSomethingOtherThanOneToHaveACompletionPosted,
 
   EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 0));
   EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 2));
-  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting);
+  EXPECT_EQ(rig.CpuRead32(kStatus), kCommandWaiting | kHostHasItEnabled);
 }
 
 // The host's register block is an NVMe controller's, and behaves as the
@@ -871,6 +874,47 @@ TEST(WhenTheHostRingsADoorbellOfAnNvmeFrontendPastTheEndOfTheQueue,
   rig.HostEnables();
 
   EXPECT_FALSE(rig.HostWrite32(kDoorbells, 4));
+}
+
+// The two things the host can have done are remembered until acknowledged,
+// and do not say which came last. This says how things stand now, which
+// is what firmware goes by when it says whether it is ready.
+TEST(WhenTheHostHasEnabledAndDisabledAnNvmeFrontend,
+     ItsCpuCanReadWhichItIsNow) {
+  Rig enabled_then_disabled;
+  enabled_then_disabled.HostEnables();
+  enabled_then_disabled.HostDisables();
+  Rig and_enabled_again;
+  and_enabled_again.HostEnables();
+  and_enabled_again.HostDisables();
+  and_enabled_again.HostEnables();
+
+  EXPECT_EQ(enabled_then_disabled.CpuRead32(kStatus) & kHostHasItEnabled, 0U);
+  EXPECT_EQ(and_enabled_again.CpuRead32(kStatus) & kHostHasItEnabled,
+            kHostHasItEnabled);
+}
+
+// It is how things are, and not something to acknowledge or wait for.
+TEST(WhenTheCpuWritesAOneToTheBitThatSaysTheHostHasAnNvmeFrontendEnabled,
+     NothingChanges) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(kStatus, kEnabled);
+
+  rig.CpuWrite32(kStatus, kHostHasItEnabled);
+
+  EXPECT_EQ(rig.CpuRead32(kStatus), kHostHasItEnabled);
+}
+
+TEST(WhenTheCpuAsksToBeInterruptedWhileTheHostHasAnNvmeFrontendEnabled,
+     ItIsNotAnInterruptTheFrontendHas) {
+  Rig rig;
+
+  rig.CpuWrite32(kInterruptEnable, kHostHasItEnabled);
+  rig.HostEnables();
+
+  EXPECT_EQ(rig.CpuRead32(kInterruptEnable), 0U);
+  EXPECT_FALSE(rig.frontend.CpuInterrupting());
 }
 
 }  // namespace socpuppet

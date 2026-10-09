@@ -66,6 +66,8 @@ class NvmeFrontendLogic {
   bool ready_ = false;
   // What the host has done that the CPU has not yet acknowledged.
   std::uint32_t events_ = 0;
+  // Whether the host has the controller enabled now.
+  bool host_has_it_enabled_ = false;
   // Which bits of the status interrupt the CPU while they are set.
   std::uint32_t interrupt_enable_ = 0;
   // The command the CPU is to deal with next, if there is one. There is

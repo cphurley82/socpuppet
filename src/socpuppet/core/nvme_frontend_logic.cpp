@@ -50,6 +50,10 @@ constexpr std::uint32_t kEnabled = 1U << 0;
 constexpr std::uint32_t kDisabled = 1U << 1;
 // And the bit that is set for as long as a command is waiting for the CPU.
 constexpr std::uint32_t kCommandWaiting = 1U << 2;
+// And the bit that is set for as long as the host has the controller
+// enabled, which does not interrupt: it is what firmware reads to know how
+// things stand, when it has been told that something changed.
+constexpr std::uint32_t kHostHasItEnabled = 1U << 3;
 
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
@@ -95,11 +99,13 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
     // The admin queues are the hardware's to set up: the host has said
     // where they are, in registers, before any command could say.
     host_registers_.CreateAdminQueues(queues_);
+    host_has_it_enabled_ = true;
     events_ |= kEnabled;
   }
   if (*enable == NvmeHostRegisters::Enable::kCleared) {
     // A controller reset. The hardware's part of it is immediate.
     queues_.RemoveAll();
+    host_has_it_enabled_ = false;
     command_.reset();
     posting_ = false;
     events_ |= kDisabled;
@@ -108,7 +114,8 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
 }
 
 std::uint32_t NvmeFrontendLogic::Status() const {
-  return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0});
+  return events_ | (CommandWaiting() ? kCommandWaiting : std::uint32_t{0}) |
+         (host_has_it_enabled_ ? kHostHasItEnabled : std::uint32_t{0});
 }
 
 bool NvmeFrontendLogic::CpuInterrupting() const {
@@ -188,7 +195,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case kStatusRegister:
-      events_ &= ~value;
+      events_ &= ~(value & (kEnabled | kDisabled));
       break;
     case kInterruptEnableRegister:
       interrupt_enable_ = value & (kEnabled | kDisabled | kCommandWaiting);
