@@ -1,13 +1,12 @@
-"""The Python stand-in for an SSD's firmware, on the SSD's hardware.
+"""An SSD's firmware, on the SSD's hardware, as a host sees it.
 
-There is no PCIe here: the drive's registers are mapped straight onto the
-host's bus, and its first interrupt line goes straight to the host. What
-is behind the registers is the whole SSD.
+There are two firmwares, and a host is not to tell them apart. So every
+test here runs twice: once with 🎭 the Python stand-in, `sp.SsdFirmware`,
+and once with the real thing, the Zephyr application in firmware/ssd on
+the SSD's own CPU. What only one of them does is in
+test_ssd_stand_in_firmware.py and test_ssd_zephyr_firmware.py.
 
-    host ─▶ bus ─┬─▶ ram
-     ▲      ▲    └─▶ ssd.frontend.bar0 ...
-     │      └──────── ssd.uplink
-     └─────────────── ssd.frontend.irq0
+There is no PCIe here (see ssd_on_a_bus.py).
 """
 
 import struct
@@ -18,17 +17,15 @@ import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
 from socpuppet.boards.drive import VECTORS
-from socpuppet.boards.ssd import (
-    UPLINK_REACH,
-    add_ssd_function,
-    stand_in_firmware,
+from socpuppet.boards.ssd import stand_in_firmware
+from ssd_on_a_bus import (
+    BLOCKS,
+    NVME_BASE,
+    RAM_BASE,
+    RAM_SIZE,
+    host_with_an_ssd,
 )
 
-RAM_BASE = 0x8000_0000
-RAM_SIZE = 0x10_0000
-NVME_BASE = 0x1000_0000
-# One NAND block of 64 pages of 4 KiB.
-BLOCKS = 512
 # How many I/O queue pairs the SSD's frontend has, which its firmware
 # reads from it (docs/models/nvme-frontend.md).
 IO_QUEUE_PAIRS = 8
@@ -48,32 +45,6 @@ COMPLETION_QUEUE_INVALID = (1, 0x00)
 INVALID_QUEUE_IDENTIFIER = (1, 0x01)
 INVALID_QUEUE_SIZE = (1, 0x02)
 INVALID_INTERRUPT_VECTOR = (1, 0x08)
-
-
-def host_with_an_ssd(script, *, firmware, blocks=BLOCKS):
-    """A scripted host with a RAM and an SSD of `blocks` blocks, built.
-
-    `firmware` is the stand-in for the SSD's firmware, or None for an SSD
-    with a CPU, into which firmware is still to be loaded. Returns the
-    platform and the SSD.
-    """
-    platform = sp.Platform()
-    host = platform.add("host", sp.ScriptedBusMaster(script))
-    bus = platform.add("bus", sp.Router())
-    ram = platform.add("ram", sp.Memory(size=RAM_SIZE))
-    ssd = add_ssd_function(
-        platform,
-        blocks=blocks,
-        group=platform.group("ssd"),
-        firmware=None if firmware is None else firmware.script,
-    )
-    platform.connect(host.socket, bus.target)
-    bus.map(ram.socket, base=RAM_BASE)
-    bus.map(ssd.frontend.bar0, base=NVME_BASE)
-    ssd.uplink.map(bus.add_input(), base=0, size=UPLINK_REACH)
-    platform.connect(ssd.frontend.irq0, host.irq)
-    platform.build()
-    return platform, ssd
 
 
 @pytest.fixture(params=["a script for firmware", "Zephyr for firmware"])
@@ -125,10 +96,10 @@ def some_data(blocks):
 def what_a_driver_does(run_on_an_ssd):
     """Runs `steps(nvme)` as the host, with the driver stand-in enabled.
 
-    Returns what the steps return.
+    The SSD has `blocks` blocks. Returns what the steps return.
     """
 
-    def run(steps):
+    def run(steps, blocks=BLOCKS):
         returned = []
 
         def script():
@@ -136,7 +107,7 @@ def what_a_driver_does(run_on_an_ssd):
             yield from nvme.enable()
             returned.append((yield from steps(nvme)))
 
-        run_on_an_ssd(script)
+        run_on_an_ssd(script, blocks=blocks)
         (value,) = returned
         return value
 
@@ -279,49 +250,49 @@ class TestWhenAHostSendsAnAdminCommandTheSsdDoesNotHave:
 
 @pytest.mark.platform
 class TestWhenAHostIdentifies:
-    def identified(self, what_a_raw_host_gets, what, namespace=0):
+    @pytest.fixture
+    def identified(self, what_a_raw_host_gets):
         """The completion of an Identify, and the page it filled."""
 
-        def steps(host):
-            completion = yield from host.admin(
-                opcode=raw_nvme.IDENTIFY,
-                namespace=namespace,
-                data=DATA,
-                dword10=what,
-            )
-            return completion, (yield sp.read(DATA, 4096))
+        def run(what, namespace=0):
+            def steps(host):
+                completion = yield from host.admin(
+                    opcode=raw_nvme.IDENTIFY,
+                    namespace=namespace,
+                    data=DATA,
+                    dword10=what,
+                )
+                return completion, (yield sp.read(DATA, 4096))
 
-        return what_a_raw_host_gets(steps)
+            return what_a_raw_host_gets(steps)
 
-    def test_the_controller_says_it_has_one_namespace(
-        self, what_a_raw_host_gets
-    ):
-        completion, page = self.identified(what_a_raw_host_gets, what=0x01)
+        return run
+
+    def test_the_controller_says_it_has_one_namespace(self, identified):
+        completion, page = identified(what=0x01)
 
         assert completion.status == SUCCESS
         # The number of namespaces is 32 bits at offset 516.
         assert struct.unpack_from("<I", page, 516) == (1,)
 
     def test_the_list_of_active_namespaces_holds_namespace_one_alone(
-        self, what_a_raw_host_gets
+        self, identified
     ):
-        completion, page = self.identified(what_a_raw_host_gets, what=0x02)
+        completion, page = identified(what=0x02)
 
         assert completion.status == SUCCESS
         assert struct.unpack_from("<II", page) == (1, 0)
 
-    def test_namespace_two_is_an_invalid_namespace(self, what_a_raw_host_gets):
-        completion, _ = self.identified(
-            what_a_raw_host_gets, what=0x00, namespace=2
-        )
+    def test_namespace_two_is_an_invalid_namespace(self, identified):
+        completion, _ = identified(what=0x00, namespace=2)
 
         assert completion.status == INVALID_NAMESPACE
 
     # 0x7F is not something Identify can be asked for.
     def test_something_identify_cannot_be_asked_for_is_an_invalid_field(
-        self, what_a_raw_host_gets
+        self, identified
     ):
-        completion, _ = self.identified(what_a_raw_host_gets, what=0x7F)
+        completion, _ = identified(what=0x7F)
 
         assert completion.status == INVALID_FIELD
 
@@ -525,68 +496,43 @@ class TestWhenAHostResetsTheSsd:
 
 @pytest.mark.platform
 class TestWhenAHostSendsAnIoCommand:
-    def io(self, what_a_raw_host_gets, **command):
-        def steps(host):
-            yield from host.create_io_queues()
-            return (yield from host.io(**command))
+    @pytest.fixture
+    def status_of(self, what_a_raw_host_gets):
+        """The status of one I/O command, sent once the I/O queues exist."""
 
-        return what_a_raw_host_gets(steps).status
+        def run(**command):
+            def steps(host):
+                yield from host.create_io_queues()
+                return (yield from host.io(**command))
 
-    def test_a_flush_succeeds(self, what_a_raw_host_gets):
-        assert (
-            self.io(what_a_raw_host_gets, opcode=raw_nvme.FLUSH, namespace=1)
-            == SUCCESS
-        )
+            return what_a_raw_host_gets(steps).status
+
+        return run
+
+    def test_a_flush_succeeds(self, status_of):
+        assert status_of(opcode=raw_nvme.FLUSH, namespace=1) == SUCCESS
 
     # Opcode 3 is one the NVM command set does not assign.
-    def test_one_the_ssd_does_not_have_is_an_invalid_opcode(
-        self, what_a_raw_host_gets
-    ):
-        assert (
-            self.io(what_a_raw_host_gets, opcode=0x03, namespace=1)
-            == INVALID_OPCODE
-        )
+    def test_one_the_ssd_does_not_have_is_an_invalid_opcode(self, status_of):
+        assert status_of(opcode=0x03, namespace=1) == INVALID_OPCODE
 
     @pytest.mark.parametrize("opcode", [raw_nvme.READ, raw_nvme.WRITE])
     def test_a_read_or_a_write_of_namespace_two_is_an_invalid_namespace(
-        self, what_a_raw_host_gets, opcode
+        self, status_of, opcode
     ):
         assert (
-            self.io(what_a_raw_host_gets, opcode=opcode, namespace=2, data=DATA)
+            status_of(opcode=opcode, namespace=2, data=DATA)
             == INVALID_NAMESPACE
         )
 
     @pytest.mark.parametrize("opcode", [raw_nvme.READ, raw_nvme.WRITE])
     def test_data_where_nothing_answers_is_a_data_transfer_error(
-        self, what_a_raw_host_gets, opcode
+        self, status_of, opcode
     ):
         assert (
-            self.io(
-                what_a_raw_host_gets, opcode=opcode, namespace=1, data=NOWHERE
-            )
+            status_of(opcode=opcode, namespace=1, data=NOWHERE)
             == DATA_TRANSFER_ERROR
         )
-
-
-@pytest.mark.platform
-class TestWhenADriverHasWrittenToPagesOfTheSsd:
-    # A NAND page is eight of the drive's blocks, so block 504 is in page
-    # 63 of the drive and block 0 in page 0. The firmware gives each the
-    # next NAND page nobody has, in the order they were first written.
-    def test_the_firmware_can_say_which_nand_page_holds_each(self):
-        firmware = stand_in_firmware()
-
-        def script():
-            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
-            yield from nvme.enable()
-            yield from nvme.write_blocks(first=504, data=bytes(512))
-            yield from nvme.write_blocks(first=0, data=bytes(512))
-            yield from nvme.write_blocks(first=505, data=bytes(512))
-
-        platform, _ = host_with_an_ssd(script, firmware=firmware)
-        platform.run()
-
-        assert firmware.page_map == {63: 0, 0: 1}
 
 
 @pytest.mark.platform
@@ -595,21 +541,20 @@ class TestWhenADriverWritesMorePagesThanOneNandBlockHolds:
     # time, so the 65th page written is the first of the second block. 65
     # pages are 520 of the drive's blocks.
     def test_what_went_to_the_second_nand_block_is_as_it_was_written(
-        self, run_on_an_ssd
+        self, what_a_driver_does
     ):
         written = some_data(520)
-        read_back = []
 
-        def script():
-            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
-            yield from nvme.enable()
+        def steps(nvme):
             yield from nvme.write_blocks(first=0, data=written)
-            read_back.append((yield from nvme.read_blocks(first=0, count=8)))
-            read_back.append((yield from nvme.read_blocks(first=512, count=8)))
+            first_page = yield from nvme.read_blocks(first=0, count=8)
+            last_page = yield from nvme.read_blocks(first=512, count=8)
+            return first_page, last_page
 
-        run_on_an_ssd(script, blocks=2 * BLOCKS)
-
-        assert read_back == [written[:4096], written[512 * 512 :]]
+        assert what_a_driver_does(steps, blocks=2 * BLOCKS) == (
+            written[:4096],
+            written[512 * 512 :],
+        )
 
 
 def page_of(fill):
@@ -713,42 +658,3 @@ class TestWhenAHostIdentifiesWithItsDataWhereNothingAnswers:
             )
 
         assert what_a_raw_host_gets(steps).status == DATA_TRANSFER_ERROR
-
-
-def firmware_with_a_flash_controller_whose_status_is(status):
-    """The firmware stand-in alone on a bus, with a memory where the flash
-    controller's registers would be, whose status register reads `status`.
-    Built."""
-    flash = 0x3000
-    firmware = sp.SsdFirmware(
-        frontend=0x1000, dma=0x2000, flash=flash, buffer=0x4000
-    )
-    platform = sp.Platform()
-    cpu = platform.add("cpu", sp.ScriptedBusMaster(firmware.script))
-    bus = platform.add("bus", sp.Router())
-    registers = platform.add("flash", sp.Memory(size=0x30))
-    platform.connect(cpu.socket, bus.target)
-    bus.map(registers.socket, base=flash)
-    platform.build()
-    platform.poke32(flash + 0x04, status)
-    return platform
-
-
-@pytest.mark.platform
-class TestWhenTheFlashControllerNeverFinishes:
-    # Bit 2 of its status is BUSY.
-    def test_the_firmware_gives_up_and_says_which_device(self):
-        platform = firmware_with_a_flash_controller_whose_status_is(1 << 2)
-
-        with pytest.raises(RuntimeError, match="0x3000 is still busy"):
-            platform.run()
-
-
-@pytest.mark.platform
-class TestWhenTheFlashControllerCannotIdentifyTheNand:
-    # Bit 1 of its status is ERROR. With no geometry there is no drive.
-    def test_the_firmware_stops_and_says_so(self):
-        platform = firmware_with_a_flash_controller_whose_status_is(1 << 1)
-
-        with pytest.raises(RuntimeError, match="identify the NAND"):
-            platform.run()

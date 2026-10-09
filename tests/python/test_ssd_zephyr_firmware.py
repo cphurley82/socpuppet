@@ -15,10 +15,11 @@ from socpuppet.boards.ssd import ssd
 BLOCKS_PER_GIB = (1 << 30) // 512
 
 
-def console_of_an_ssd(firmware, *, blocks, until):
+def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
     """Boots the firmware on an SSD of `blocks` blocks, with an idle host.
 
-    Runs until `until` is on the console, and returns all that is there.
+    Runs until `until` is on the console and for `and_then` longer, and
+    returns all that is there.
     """
     board = ssd(host=idle_host, blocks=blocks)
     board.platform.build()
@@ -33,6 +34,7 @@ def console_of_an_ssd(firmware, *, blocks, until):
     board.platform.run_until(
         lambda: until in console.output, timeout=sp.ms(1000)
     )
+    board.platform.run(and_then)
     return console.output
 
 
@@ -54,14 +56,22 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
     """
 
     def test_the_firmware_says_so_and_stops(self, firmware):
-        said = console_of_an_ssd(
-            firmware, blocks=3 * BLOCKS_PER_GIB, until="stops"
+        refusal = (
+            "The NAND is 3072 MiB, and Zephyr's flash API reaches only "
+            "the first 2048 MiB of one on this CPU."
         )
 
-        assert (
-            "The NAND is 3072 MiB, and Zephyr's flash API reaches only "
-            "the first 2048 MiB of one on this CPU." in said
+        # Firmware that carried on would make its table next, which takes
+        # it 0.4 s of simulated time for a drive this size, and then say
+        # what drive it is. 0.6 s is time for both.
+        said = console_of_an_ssd(
+            firmware,
+            blocks=3 * BLOCKS_PER_GIB,
+            until=refusal,
+            and_then=sp.ms(600),
         )
+
+        assert refusal in said
         assert "a drive of" not in said
 
     def test_a_nand_of_exactly_what_it_can_reach_is_a_drive(self, firmware):

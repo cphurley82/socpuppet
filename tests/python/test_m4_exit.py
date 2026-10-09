@@ -26,7 +26,10 @@ import pytest
 import socpuppet as sp
 from socpuppet.boards.drive import add_behavioral_drive
 from socpuppet.boards.scripted_host import (
+    ECAM_SIZE,
     MSI_BASE,
+    PCIE_WINDOW_BASE,
+    PCIE_WINDOW_SIZE,
     RAM_BASE,
     RAM_SIZE,
     add_scripted_host,
@@ -37,8 +40,8 @@ from socpuppet.boards.ssd import add_ssd, ssd
 BLOCKS = 1024
 # Where the host has the second root complex's two windows: after the
 # first one's.
-REFERENCE_ECAM = 0x1100_0000
-REFERENCE_WINDOW = 0x1180_0000
+REFERENCE_ECAM = PCIE_WINDOW_BASE + PCIE_WINDOW_SIZE
+REFERENCE_WINDOW = REFERENCE_ECAM + ECAM_SIZE
 
 
 def run_to_the_end(platform, script_has_finished):
@@ -142,8 +145,8 @@ def host_with_the_ssd_and_the_reference(script, image):
         platform, host.root_complex, blocks=BLOCKS, group=platform.group("ssd")
     )
     second_link = host_group.add("reference_rc", sp.PcieRootComplex())
-    host.bus.map(second_link.ecam, base=REFERENCE_ECAM, size=0x10_0000)
-    host.bus.map(second_link.mmio, base=REFERENCE_WINDOW, size=0x10_0000)
+    host.bus.map(second_link.ecam, base=REFERENCE_ECAM, size=ECAM_SIZE)
+    host.bus.map(second_link.mmio, base=REFERENCE_WINDOW, size=PCIE_WINDOW_SIZE)
     platform.connect(second_link.dma, host.bus.add_input())
     add_behavioral_drive(
         platform, second_link, blocks=BLOCKS, group=platform.group("reference")
@@ -151,6 +154,23 @@ def host_with_the_ssd_and_the_reference(script, image):
     platform.build()
     platform.load_elf(image, via=drive.cpu.socket)
     return platform
+
+
+def bring_up_both_drives():
+    """What the host does first: a driver for each of its two drives.
+
+    Each driver has half of the host's memory to work in. Returns them by
+    name, the SSD first.
+    """
+    half = RAM_SIZE // 2
+    the_ssd = yield from bring_up_the_drive(memory=RAM_BASE, memory_size=half)
+    the_reference = yield from bring_up_the_drive(
+        ecam=REFERENCE_ECAM,
+        window=REFERENCE_WINDOW,
+        memory=RAM_BASE + half,
+        memory_size=half,
+    )
+    return {"the SSD": the_ssd, "the reference": the_reference}
 
 
 def some_writes(count, seed):
@@ -169,35 +189,26 @@ def some_writes(count, seed):
     return writes
 
 
+def what_a_drive_holds_after(writes):
+    """All of a drive that was new: zeros, and each write laid over what
+    came before."""
+    held = bytearray(BLOCKS * 512)
+    for first, data in writes:
+        held[first * 512 : first * 512 + len(data)] = data
+    return bytes(held)
+
+
 @pytest.mark.platform
 class TestWhenTheSsdAndTheStandInDriveAreGivenTheSameWrites:
     def test_they_read_back_the_same_and_it_is_what_was_written(self, image):
         writes = some_writes(count=30, seed=4)
-        # What a drive should hold afterwards: zeros, and each write laid
-        # over what came before.
-        expected = bytearray(BLOCKS * 512)
-        for first, data in writes:
-            expected[first * 512 : first * 512 + len(data)] = data
         read_back = {}
 
         def script():
-            # Each driver has half of the host's memory to work in, and the
-            # host uses one drive at a time, so that an interrupt can only
-            # be from the drive it is waiting for.
-            half = RAM_SIZE // 2
-            the_ssd = yield from bring_up_the_drive(
-                memory=RAM_BASE, memory_size=half
-            )
-            the_reference = yield from bring_up_the_drive(
-                ecam=REFERENCE_ECAM,
-                window=REFERENCE_WINDOW,
-                memory=RAM_BASE + half,
-                memory_size=half,
-            )
-            for name, nvme in [
-                ("the SSD", the_ssd),
-                ("the reference", the_reference),
-            ]:
+            drives = yield from bring_up_both_drives()
+            # The host uses one drive at a time, so that an interrupt can
+            # only be from the drive it is waiting for.
+            for name, nvme in drives.items():
                 for first, data in writes:
                     yield from nvme.write_blocks(first=first, data=data)
                 whole = b""
@@ -210,4 +221,4 @@ class TestWhenTheSsdAndTheStandInDriveAreGivenTheSameWrites:
         run_to_the_end(platform, lambda: len(read_back) == 2)
 
         assert read_back["the SSD"] == read_back["the reference"]
-        assert read_back["the SSD"] == bytes(expected)
+        assert read_back["the SSD"] == what_a_drive_holds_after(writes)
