@@ -33,11 +33,13 @@ target_link_libraries(socpuppet_core INTERFACE socpuppet_elf_image)
 # command and data structure it handles is SPDK's.
 add_library(socpuppet_nvme_controller STATIC
   core/nvme_controller.cpp
+  core/nvme_frontend_logic.cpp
   core/nvme_host_registers.cpp
   core/nvme_queues.cpp)
 target_sources(socpuppet_nvme_controller PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/nvme_controller.h
+    core/nvme_frontend_logic.h
     core/nvme_host_registers.h
     core/nvme_queues.h
     core/prp.h)
