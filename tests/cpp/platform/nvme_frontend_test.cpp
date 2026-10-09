@@ -51,6 +51,7 @@ enum CpuRegister : std::uint64_t {
 enum StatusBit : std::uint32_t {
   kEnabled = 1U << 0,
   kCommandWaiting = 1U << 2,
+  kHostHasItEnabled = 1U << 3,
 };
 constexpr std::uint32_t kReady = 1U << 0;
 
@@ -246,8 +247,8 @@ TEST(WhenAHostHasJustRungADoorbellOfAnNvmeFrontend,
 
   fixture.platform.Run();
 
-  EXPECT_EQ(when_the_write_returned, 0U);
-  EXPECT_EQ(afterwards, kCommandWaiting);
+  EXPECT_EQ(when_the_write_returned, kHostHasItEnabled);
+  EXPECT_EQ(afterwards, kCommandWaiting | kHostHasItEnabled);
 }
 
 // One rise for each command: the line falls when the firmware has dealt
@@ -333,7 +334,7 @@ TEST(WhenADebuggerLooksAtARegisterOfAnNvmeFrontendsCpu, ItSeesWhatTheCpuWould) {
       [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled | kHostHasItEnabled);
 }
 
 // A debugger can look and cannot touch: a completion posted this way, or a
@@ -348,7 +349,7 @@ TEST(WhenADebuggerWritesToARegisterOfAnNvmeFrontendsCpu, TheWriteIsDeclined) {
       "cpu.socket", kStatus, std::as_bytes(std::span{acknowledgement}));
 
   EXPECT_FALSE(answered);
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled | kHostHasItEnabled);
 }
 
 TEST(WhenAnNvmeFrontendRefusesAnAccess, WhoeverMadeItGetsAnAddressError) {
