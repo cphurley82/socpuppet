@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <span>
 #include <vector>
 
@@ -82,6 +83,35 @@ std::vector<std::uint8_t> SomeCommand(std::uint16_t command_id) {
   return command;
 }
 
+// What a completion says, as the host reads it out of a completion queue:
+// 16 bytes, laid out as the NVMe specification gives them.
+struct Completion {
+  // The command's answer, where it has one that fits in 32 bits.
+  std::uint32_t result = 0;
+  // Which queue the command was submitted to, how far the controller has
+  // read that queue, and the identifier the host gave the command.
+  std::uint16_t submission_queue = 0;
+  std::uint16_t submission_head = 0;
+  std::uint16_t command_id = 0;
+  // The bit that tells a new completion from the one that was in the slot
+  // a lap of the queue ago.
+  bool phase = false;
+  // The status code, zero for success, and which list of codes it is from.
+  std::uint8_t status = 0;
+  std::uint8_t status_type = 0;
+
+  bool operator==(const Completion&) const = default;
+};
+
+void PrintTo(const Completion& completion, std::ostream* out) {
+  *out << "{result " << completion.result << ", from queue "
+       << completion.submission_queue << " read up to "
+       << completion.submission_head << ", command " << completion.command_id
+       << ", phase " << completion.phase << ", status "
+       << int{completion.status} << " of type " << int{completion.status_type}
+       << "}";
+}
+
 // The host's memory: 64 KiB of it, at address 0.
 class HostMemory : public MemoryPort {
  public:
@@ -158,6 +188,33 @@ struct Rig {
     std::vector<std::uint8_t> command(kCommandBytes, 0xA5);
     EXPECT_TRUE(frontend.ReadCpuRegister(kCommand, command));
     return command;
+  }
+
+  // What the CPU does when it has dealt with the waiting command: it says
+  // what the completion is to say, and has it posted. The status is the
+  // code in its low byte, and which list the code is from above that.
+  bool CpuPosts(std::uint32_t status = 0, std::uint32_t result = 0) {
+    CpuWrite32(kCompletionResult, result);
+    CpuWrite32(kCompletionStatus, status);
+    return CpuWrite32(kCompletionPost, 1);
+  }
+
+  // What the host finds in a slot of a completion queue.
+  Completion HostReadsCompletion(std::uint64_t queue, std::size_t slot) {
+    std::array<std::uint8_t, 16> bytes{};
+    EXPECT_TRUE(memory.Read(queue + (slot * bytes.size()), bytes));
+    const std::span<const std::uint8_t> entry{bytes};
+    const auto phase_and_status =
+        LoadLittleEndian<std::uint16_t>(entry.subspan(14));
+    return {
+        .result = LoadLittleEndian<std::uint32_t>(entry),
+        .submission_queue = LoadLittleEndian<std::uint16_t>(entry.subspan(10)),
+        .submission_head = LoadLittleEndian<std::uint16_t>(entry.subspan(8)),
+        .command_id = LoadLittleEndian<std::uint16_t>(entry.subspan(12)),
+        .phase = (phase_and_status & 1U) != 0,
+        .status = static_cast<std::uint8_t>(phase_and_status >> 1),
+        .status_type =
+            static_cast<std::uint8_t>((phase_and_status >> 9) & 0x7)};
   }
 
   // Whether the host sees the controller as ready: CSTS.RDY.
@@ -292,6 +349,28 @@ TEST(WhenACommandFromTheAdminQueueIsWaiting, TheCpuIsToldItCameFromQueueZero) {
   rig.frontend.Step();
 
   EXPECT_EQ(rig.CpuRead32(kCommandQueue), 0U);
+}
+
+// The completion says which command it is for and where it came from,
+// which the frontend knows, and how it went, which only the firmware does.
+TEST(WhenTheCpuPostsTheCompletionOfTheWaitingCommand,
+     TheHostFindsItInTheCompletionQueue) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostSubmits(SomeCommand(7));
+  rig.frontend.Step();
+
+  rig.CpuPosts(/*status=*/0x02, /*result=*/0x1234'5678);
+  rig.frontend.Step();
+
+  EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0),
+            (Completion{.result = 0x1234'5678,
+                        .submission_queue = 0,
+                        .submission_head = 1,
+                        .command_id = 7,
+                        .phase = true,
+                        .status = 0x02,
+                        .status_type = 0}));
 }
 
 }  // namespace socpuppet

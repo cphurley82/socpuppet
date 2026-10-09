@@ -35,9 +35,9 @@ class NvmeFrontendLogic {
   bool ReadCpuRegister(std::uint64_t offset, std::span<std::uint8_t> out) const;
   bool WriteCpuRegister(std::uint64_t offset, std::span<const std::uint8_t> in);
 
-  // Does what there is to do in the host's memory: fetches the next
-  // command, if the CPU is not still busy with the last. Returns whether
-  // it did anything.
+  // Does what there is to do in the host's memory: posts the completion
+  // the CPU has asked for, and fetches the next command if the CPU is not
+  // still busy with the last. Returns whether it did anything.
   bool Step();
 
  private:
@@ -51,6 +51,11 @@ class NvmeFrontendLogic {
   // room for one: the next is fetched when this one's completion has been
   // posted.
   std::optional<NvmeQueues::Command> command_;
+  // What the completion of that command is to say, as the CPU wrote it,
+  // and whether the CPU has asked for it to be posted.
+  std::uint32_t completion_result_ = 0;
+  std::uint32_t completion_status_ = 0;
+  bool posting_ = false;
 };
 
 }  // namespace socpuppet

@@ -1,7 +1,9 @@
 #include "socpuppet/core/nvme_frontend_logic.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <optional>
+#include <span>
 
 #include "socpuppet/core/little_endian.h"
 
@@ -18,6 +20,11 @@ constexpr std::uint64_t kStatusRegister = 0x00;
 constexpr std::uint64_t kControlRegister = 0x08;
 // Which submission queue the command that is waiting came from.
 constexpr std::uint64_t kCommandQueueRegister = 0x10;
+// What the completion of the waiting command is to say, and the register
+// that has it posted.
+constexpr std::uint64_t kCompletionResultRegister = 0x14;
+constexpr std::uint64_t kCompletionStatusRegister = 0x18;
+constexpr std::uint64_t kCompletionPostRegister = 0x1C;
 // The command that is waiting, 64 bytes of it.
 constexpr std::uint64_t kCommandRegister = 0x40;
 
@@ -31,6 +38,13 @@ constexpr std::uint32_t kCommandWaiting = 1U << 2;
 // The bit of the control register by which firmware says it is ready for
 // the host's commands. The host sees it as CSTS.RDY.
 constexpr std::uint32_t kReady = 1U << 0;
+
+// Where in a command the host puts the identifier it gives it.
+constexpr std::size_t kCommandIdOffset = 2;
+
+// The completion status register has the status code in its low byte, and
+// above it which list of codes that is from.
+constexpr unsigned kStatusTypeShift = 8;
 
 }  // namespace
 
@@ -98,6 +112,15 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
     case kControlRegister:
       ready_ = (value & kReady) != 0;
       break;
+    case kCompletionResultRegister:
+      completion_result_ = value;
+      break;
+    case kCompletionStatusRegister:
+      completion_status_ = value;
+      break;
+    case kCompletionPostRegister:
+      posting_ = true;
+      break;
     default:
       break;
   }
@@ -105,9 +128,24 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
 }
 
 bool NvmeFrontendLogic::Step() {
-  if (command_) return false;
-  command_ = queues_.Fetch();
-  return command_.has_value();
+  bool did_something = false;
+  if (posting_) {
+    queues_.Post({.queue_id = command_->queue_id,
+                  .command_id = LoadLittleEndian<std::uint16_t>(
+                      std::span{command_->bytes}.subspan(kCommandIdOffset)),
+                  .status = static_cast<std::uint8_t>(completion_status_),
+                  .status_type = static_cast<std::uint8_t>(
+                      (completion_status_ >> kStatusTypeShift) & 0x7),
+                  .result = completion_result_});
+    command_.reset();
+    posting_ = false;
+    did_something = true;
+  }
+  if (!command_) {
+    command_ = queues_.Fetch();
+    did_something = did_something || command_.has_value();
+  }
+  return did_something;
 }
 
 }  // namespace socpuppet
