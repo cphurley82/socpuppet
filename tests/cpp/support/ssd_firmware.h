@@ -230,12 +230,15 @@ class SsdFirmware : public sc_core::sc_module {
       const std::uint32_t status = Read32(map_.frontend + NVME_FRONTEND_STATUS);
       // The reset first: what the host enabled is the controller as it is
       // after it.
-      if ((status & NVME_FRONTEND_STATUS_DISABLED) != 0)
+      if ((status & NVME_FRONTEND_STATUS_DISABLED) != 0) {
         TheHostResetTheController();
-      if ((status & NVME_FRONTEND_STATUS_ENABLED) != 0)
+      }
+      if ((status & NVME_FRONTEND_STATUS_ENABLED) != 0) {
         TheHostEnabledTheController();
-      if ((status & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0)
+      }
+      if ((status & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0) {
         DealWithTheCommand();
+      }
       // What was just done may have lowered the line, which shows a delta
       // cycle later.
       wait(sc_core::SC_ZERO_TIME);
@@ -525,8 +528,9 @@ class SsdFirmware : public sc_core::sc_module {
       // As much of the list as its page holds, fetched into the scratch
       // page to be read.
       const std::uint32_t list_bytes = kHostPage - PageOffset(list);
-      if (!Copy(DMA_ENGINE_COMMAND_FROM_HOST, list, Scratch(), list_bytes))
+      if (!Copy(DMA_ENGINE_COMMAND_FROM_HOST, list, Scratch(), list_bytes)) {
         return std::nullopt;
+      }
       std::vector<std::uint8_t> entries(list_bytes);
       Read(Scratch(), entries);
       const std::size_t count = list_bytes / 8;

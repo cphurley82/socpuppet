@@ -59,8 +59,9 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
   const std::optional<NvmeHostRegisters::Enable> enable =
       host_registers_.Write(offset, in, queues_);
   if (!enable) return false;
-  if (*enable == NvmeHostRegisters::Enable::kSet)
+  if (*enable == NvmeHostRegisters::Enable::kSet) {
     events_ |= NVME_FRONTEND_STATUS_ENABLED;
+  }
   if (*enable == NvmeHostRegisters::Enable::kCleared) {
     // A controller reset. The hardware's part of it is immediate: the
     // queues are gone already, and so are the command that was waiting

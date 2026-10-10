@@ -39,6 +39,12 @@ Checks:
 # worth having on.
 WarningsAsErrors: '*'
 
+# The register maps' headers are left alone. They are generated
+# (tools/regs.py), and they are C, because the Zephyr drivers include the
+# same files: nothing but #define, which is what these checks would have
+# us replace.
+ExcludeHeaderFilterRegex: '.*/zephyr_module/include/socpuppet/regs/.*'
+
 CheckOptions:
   # Count the complexity a person reads, not what gtest's EXPECT_ macros
   # expand to.

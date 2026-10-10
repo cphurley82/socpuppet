@@ -147,8 +147,9 @@ std::uint32_t UcieLinkRegisters::RegisterAt(std::uint64_t offset) const {
 bool UcieLinkRegisters::Set(std::uint64_t offset, std::uint32_t value) {
   switch (offset) {
     case UCIE_LINK_CONTROL:
-      if ((value & UCIE_LINK_CONTROL_START_TRAINING) != 0)
+      if ((value & UCIE_LINK_CONTROL_START_TRAINING) != 0) {
         asked_.start_training = true;
+      }
       if ((value & UCIE_LINK_CONTROL_RETRAIN) != 0) asked_.retrain = true;
       return true;
     case UCIE_LINK_STATUS:
