@@ -52,6 +52,7 @@ class TwoDies {
       Settle();
       const std::optional<Picoseconds> next = NextMoment();
       if (!next || *next > when) break;
+      ASSERT_GT(*next, now_) << "a die asked to be looked at in the past";
       now_ = *next;
     }
     now_ = when;

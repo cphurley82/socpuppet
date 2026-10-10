@@ -128,10 +128,7 @@ void UcieLinkState::Await(const SidebandMessage& message, Picoseconds now) {
 }
 
 void UcieLinkState::Receive(const SidebandPacket& packet, Picoseconds now) {
-  const SidebandMessage message{
-      .code = packet.msgcode,
-      .subcode = packet.msgsubcode,
-      .carries_data = packet.opcode == SidebandOpcode::kMessageWith64bData};
+  const SidebandMessage message = MessageIn(packet);
   if (awaiting_ && message == *awaiting_) {
     awaiting_.reset();
     // MBINIT has two exchanges: what the two sides can do, and then that

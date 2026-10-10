@@ -26,6 +26,11 @@ namespace socpuppet {
 
 // What a packet is for.
 enum class SidebandOpcode : std::uint8_t {
+  // Reading and writing a register on the other die.
+  kMemoryRead32b = 0b00000,
+  kMemoryWrite32b = 0b00001,
+  // The answer to one of those.
+  kCompletionWithoutData = 0b10000,
   kCompletionWith32bData = 0b10001,
   kMessageWithoutData = 0b10010,
   kMessageWith64bData = 0b11011,
@@ -84,6 +89,15 @@ constexpr SidebandMessage kLinkMgmtRdiRequestRetrain{.code = 0x01,
 // {ErrMsg Fatal}, which says the link has failed in a way nothing can be
 // done about without training it again.
 constexpr SidebandMessage kErrorMessageFatal{.code = 0x09, .subcode = 0x02};
+
+// How a register access on the other die turned out. UCIe's own encoding
+// for this is not in public sources, so these numbers are ours; they
+// travel in the bits a message's code is in.
+enum class SidebandStatus : std::uint8_t {
+  kSuccess = 0,
+  // There is no such register on the other die, or it is not writable.
+  kUnsupportedRequest = 2,
+};
 
 struct SidebandPacket {
   // Every packet here is built with its fields named. These defaults are
@@ -166,8 +180,11 @@ inline std::uint64_t SidebandPacket::DataIn(
 inline std::optional<std::size_t> SidebandPacket::DataBytesOf(
     SidebandOpcode opcode) {
   switch (opcode) {
+    case SidebandOpcode::kMemoryRead32b:
+    case SidebandOpcode::kCompletionWithoutData:
     case SidebandOpcode::kMessageWithoutData:
       return 0;
+    case SidebandOpcode::kMemoryWrite32b:
     case SidebandOpcode::kCompletionWith32bData:
       return 4;
     case SidebandOpcode::kMessageWith64bData:
@@ -217,6 +234,56 @@ inline std::optional<SidebandPacket> SidebandPacket::Decode(
       .control_parity = kControlParity.In(header) != 0,
       .data_parity = kDataParity.In(header) != 0,
       .data = DataIn(bytes.subspan(kHeaderBytes, *data_bytes))};
+}
+
+// The message a packet carries, for comparing with the named ones above.
+inline SidebandMessage MessageIn(const SidebandPacket& packet) {
+  return {.code = packet.msgcode,
+          .subcode = packet.msgsubcode,
+          .carries_data = packet.opcode == SidebandOpcode::kMessageWith64bData};
+}
+
+// A register access on the other die, and its answer, use the same header
+// as a message with its fields read differently: the byte enables are
+// where a message's code is, and a 24-bit address is where its subcode and
+// information are. That is how UCIe fits a register access into the same
+// 64 bits, and keeping it means one packet type for the whole sideband.
+inline std::uint32_t AddressIn(const SidebandPacket& packet) {
+  return packet.msgsubcode | (std::uint32_t{packet.msginfo} << 8);
+}
+inline SidebandStatus StatusIn(const SidebandPacket& packet) {
+  return static_cast<SidebandStatus>(packet.msgcode);
+}
+
+// How much of an address a register access can carry: the 24 bits that
+// fit where a message's subcode and information are.
+constexpr std::uint32_t kLargestSidebandAddress = (1U << 24) - 1;
+
+// The packet that reads or writes `address` on the other die. An address
+// too big to travel is cut down to what fits, which is what arrives.
+inline SidebandPacket RegisterAccessPacket(SidebandOpcode opcode,
+                                           std::uint32_t address,
+                                           SidebandAgent from, SidebandAgent to,
+                                           std::uint32_t data = 0) {
+  const std::uint32_t fits = address & kLargestSidebandAddress;
+  return {.opcode = opcode,
+          .srcid = from,
+          .dstid = to,
+          .msgsubcode = static_cast<std::uint8_t>(fits),
+          .msginfo = static_cast<std::uint16_t>(fits >> 8),
+          .data = data};
+}
+
+// The answer to one of those.
+inline SidebandPacket CompletionPacket(SidebandStatus status,
+                                       std::optional<std::uint32_t> data,
+                                       SidebandAgent from, SidebandAgent to) {
+  return {.opcode = data ? SidebandOpcode::kCompletionWith32bData
+                         : SidebandOpcode::kCompletionWithoutData,
+          .srcid = from,
+          .dstid = to,
+          .msgcode = static_cast<std::uint8_t>(status),
+          .data = data.value_or(0)};
 }
 
 // The packet that carries `message` from one agent to another.

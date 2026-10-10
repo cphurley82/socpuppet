@@ -4,6 +4,7 @@ include(GoogleTest)
 add_executable(unit_tests
   unit/block_store_test.cpp
   unit/command_status_test.cpp
+  unit/d2d_link_logic_test.cpp
   unit/dma_engine_logic_test.cpp
   unit/elf_image_test.cpp
   unit/flash_controller_logic_test.cpp
@@ -16,6 +17,7 @@ add_executable(unit_tests
   unit/pcie_endpoint_registers_test.cpp
   unit/prp_test.cpp
   unit/script_test.cpp
+  unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp)
 # The tests write their own ELF images, with the library that reads them.

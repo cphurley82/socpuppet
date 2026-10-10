@@ -63,9 +63,13 @@ target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
 
 # The die-to-die link: where it is on its way up, and what its registers
 # do. UCIe's state machine and message codes, from public sources.
-add_library(socpuppet_ucie_link STATIC core/ucie_link_state.cpp)
+add_library(socpuppet_ucie_link STATIC
+  core/ucie_link_registers.cpp
+  core/ucie_link_state.cpp)
 target_sources(socpuppet_ucie_link PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/d2d_link_logic.h
+    core/ucie_link_registers.h
     core/ucie_link_state.h
     core/ucie_sideband.h)
 socpuppet_dev_checks(socpuppet_ucie_link)
