@@ -379,6 +379,8 @@ riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
 (gdb) continue
 ```
 
+⚠️ Start the run first and attach second, as here. The port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)).
+
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 
 ⚠️ One CPU per simulation can have a GDB port. On the host with the SSD, choose which: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's firmware, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. While the CPU you are debugging sits at a breakpoint the whole simulation waits, so the other CPU is not running either and will not have given up on you when you continue. 🚧 A debugger on each CPU at once is planned ([plan.md](plan.md), M8).

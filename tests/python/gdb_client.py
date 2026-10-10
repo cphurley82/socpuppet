@@ -27,6 +27,18 @@ class GdbClient:
         self.send(body)
         return self._reply()
 
+    def wait_for_the_cpu_to_stop(self):
+        """Return once the CPU is stopped where it starts, having run nothing.
+
+        A CPU with a GDB port stops before its first instruction, and it
+        gets there when the simulation runs. A debugger can attach sooner,
+        and a register read then would be answered at once, with what the
+        register held before the CPU's reset (docs/upstream.md). A read of
+        memory is answered by the simulation's own thread, which sees to
+        it when the CPU has stopped. What the read gets does not matter.
+        """
+        self.ask("m0,1")
+
     def program_counter(self):
         """The address of the instruction the CPU will execute next."""
         # Register 32 (0x20) is the program counter on RISC-V, after the 32

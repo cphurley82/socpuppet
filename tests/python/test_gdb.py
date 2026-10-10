@@ -52,6 +52,7 @@ def run_with_a_debugger(platform, port, session):
     def debug():
         debugger = GdbClient(port)
         try:
+            debugger.wait_for_the_cpu_to_stop()
             outcome["found"] = session(debugger)
         except Exception as error:
             outcome["error"] = error

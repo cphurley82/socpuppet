@@ -232,6 +232,16 @@ Each entry says:
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the test above can move into the contract that both masters pass.
 
+### A debugger's register read is not answered by the simulation's thread
+
+- **Where**: `src/iss/debugger/riscv_target_adapter.h`, `read_single_register`, `write_single_register` and the two that take every register at once. `read_mem` and `write_mem`, lower in the same file, show the other way: `srv->execute_synchronized(f)`.
+- **What is wrong**: a register is copied straight out of the core's register file, on the GDB server's thread, whatever the simulation's thread is doing. A memory access is handed to the simulation's thread, which sees to it when the core has stopped. The server listens from the moment the platform is built, so a debugger can attach before the simulation has run at all, and a register read then is answered at once with what the register held before the core's first reset: a program counter of 0. The same read a moment later gives the reset vector.
+- **How to see it**: attach, and read the program counter before the simulation is started. In `tests/python/test_gdb.py`, take `wait_for_the_cpu_to_stop` out of `run_with_a_debugger` and sleep for a moment before `platform.run`: every test of where the CPU is stopped fails with 0. CI met it by chance on 2026-10-10, in one job and not in the others, the first time a test attached to the second CPU of two.
+- **What we do**: the tests' debugger reads a byte of memory first (`GdbClient.wait_for_the_cpu_to_stop` in `tests/python/gdb_client.py`), which comes back only once the core is stopped where it starts. [boot-your-firmware.md](boot-your-firmware.md) has the run started before GDB is attached, which is the order that never sees it.
+- **Upstream fix**: hand register accesses to the simulation's thread, as memory accesses are.
+- **Kind**: bug.
+- **When it lands**: delete `wait_for_the_cpu_to_stop`, and the debugger may attach whenever it likes.
+
 ### Every core adds its `sysc` command to core 0's debug adapter
 
 - **Where**: `src/sysc/core_complex.cpp`, `core_complex::create_cpu`, lines 174 to 182: `tgt_adapter = srv->get_target(0); // FIXME: add core_id`.
