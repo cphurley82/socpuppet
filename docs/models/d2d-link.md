@@ -60,7 +60,7 @@ UCIe's link training state machine, as far as this model has it:
 
 A link is held in RESET for at least 4 ms after power-on, which is UCIe's figure. The die whose firmware writes *start link training* then sends UCIe's requests, a state at a time, and the other die hears that it has left reset and walks the same states beside it, answering. Each of the four states takes a quarter of `training_ns`. A state nobody answers within 8 ms, UCIe's figure again, ends in TRAINERROR, and so does a fault; the far die is told, and nothing crosses the mainband until firmware asks for a retrain, which starts over from RESET.
 
-The sideband handshake, as a traced run shows it (`examples/io_manager_hello.py`):
+The sideband handshake, as a traced run shows it. `ucie.sideband_packets(platform.trace)` reads the packets back, and `examples/io_manager_hello.py` prints them:
 
 ```text
  4000.000 us       io ─▶ {SBINIT Out of Reset}

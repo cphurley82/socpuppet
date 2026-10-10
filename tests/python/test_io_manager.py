@@ -165,5 +165,4 @@ class TestWhenALinkIsTraced:
 
 def what_the_sideband_said(trace):
     """Each packet in a trace of a link, described in one line."""
-    packets = (ucie.SidebandPacket.from_bytes(record.data) for record in trace)
-    return [packet.description() for packet in packets if packet is not None]
+    return [packet.description() for _, packet in ucie.sideband_packets(trace)]

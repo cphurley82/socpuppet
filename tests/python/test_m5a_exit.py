@@ -45,18 +45,6 @@ def until_the_round_trip_has_landed(board):
     )
 
 
-def sideband_packets(trace):
-    """Every sideband packet in a trace, as (when, the packet)."""
-    found = []
-    for record in trace:
-        if not record.source.endswith("sideband_peer_initiator"):
-            continue
-        packet = ucie.SidebandPacket.from_bytes(record.data)
-        if packet is not None:
-            found.append((record.time, packet))
-    return found
-
-
 @pytest.mark.platform
 class TestWhenTheManagerBoardRuns:
     def test_the_compute_die_round_trips_a_word_through_the_io_dies_memory(
@@ -74,16 +62,16 @@ class TestWhenTheManagerBoardRuns:
         board = a_board(trace=True)
         assert until_the_round_trip_has_landed(board)
 
-        said = sideband_packets(board.platform.trace)
+        said = ucie.sideband_packets(board.platform.trace)
         agreed = max(
-            when
-            for when, packet in said
+            record.time
+            for record, packet in said
             if (packet.msgcode, packet.msgsubcode)
             == ucie.MESSAGE_RDI_RSP_ACTIVE
         )
         released = next(
-            when
-            for when, packet in said
+            record.time
+            for record, packet in said
             if packet.opcode is ucie.Opcode.MEMORY_WRITE_32B
             and packet.address == ucie_link.DIE_RESET
         )

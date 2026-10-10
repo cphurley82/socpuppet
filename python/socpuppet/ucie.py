@@ -8,13 +8,8 @@ Here are the sideband packets the two ends of a link send each other, so
 that a trace of a link can be read as a capture of its management
 traffic:
 
-    for record in platform.trace:
-        if not record.source.endswith("sideband_peer_initiator"):
-            continue  # ⚠️ the mainband is traced too, and its bytes are
-            # not packets, however much they may look like one
-        packet = ucie.SidebandPacket.from_bytes(record.data)
-        if packet is not None:
-            print(record.time, packet.description())
+    for record, packet in ucie.sideband_packets(platform.trace):
+        print(record.time, packet.description())
 
 The register block one end of the link shows the firmware on its die is
 in `socpuppet.regs.ucie_link`, which is generated from the link's
@@ -30,7 +25,10 @@ from __future__ import annotations
 
 import dataclasses
 import struct
+from collections.abc import Iterable
 from enum import IntEnum
+
+from socpuppet.trace import TraceRecord
 
 
 class Opcode(IntEnum):
@@ -107,6 +105,12 @@ _FIELDS = {
     "data_parity": (63, 1),
 }
 _HEADER_BYTES = 8
+
+
+#: The port an end of `sp.D2dLink()` sends its sideband packets from. The
+#: name is the model's (`D2dLinkEndpoint`), and the exit tests, which
+#: read a real run back, are what notice if it changes.
+_SIDEBAND_PORT = "sideband_peer_initiator"
 
 
 def _field(header: int, name: str) -> int:
@@ -188,3 +192,33 @@ class SidebandPacket:
             (self.msgcode, self.msgsubcode),
             f"message {self.msgcode:#04x}/{self.msgsubcode:#04x}",
         )
+
+
+def sideband_packets(
+    trace: Iterable[TraceRecord],
+) -> list[tuple[TraceRecord, SidebandPacket]]:
+    """Every sideband packet in a trace, each with the record it was in.
+
+    The record says when the packet crossed and which end sent it: its
+    `source` is that end's port. ⚠️ A traced link's mainband is in the
+    same trace, and its bytes are not packets, however much eight of them
+    may look like one. Only what left a sideband port is read.
+
+    A link sends nothing but packets on its sideband, so one that does not
+    read as a packet is refused: this module and the model no longer
+    agree about the layout.
+    """
+    found = []
+    for record in trace:
+        if not record.source.endswith(_SIDEBAND_PORT):
+            continue
+        packet = SidebandPacket.from_bytes(record.data)
+        if packet is None:
+            raise ValueError(
+                f"{record.source} sent {record.data.hex(' ')} at "
+                f"{record.time} ps, which is no sideband packet that "
+                "socpuppet.ucie knows. Its layout and the one "
+                "socpuppet::SidebandPacket has in C++ have come apart."
+            )
+        found.append((record, packet))
+    return found

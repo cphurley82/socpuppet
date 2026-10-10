@@ -45,12 +45,7 @@ reached = board.platform.run_until(
 )
 
 print("\n📻 what the two ends said to each other on the sideband:")
-for record in board.platform.trace:
-    if not record.source.endswith("sideband_peer_initiator"):
-        continue
-    packet = ucie.SidebandPacket.from_bytes(record.data)
-    if packet is None:
-        continue
+for record, packet in ucie.sideband_packets(board.platform.trace):
     die = "io" if record.source.startswith("io") else "compute"
     when = record.time / 1_000_000
     print(f"  {when:9.3f} us  {die:>7} ─▶ {packet.description()}")
