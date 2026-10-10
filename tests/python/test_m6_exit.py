@@ -23,8 +23,9 @@ from socpuppet.boards.ssd import add_ssd, stand_in_firmware
 #: one did.
 VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 #: The verdict comes at about half a second of simulated time, as it does
-#: with the stand-in drive. 2 s leaves room and still ends a run that
-#: never gives one.
+#: with the stand-in drive, and a quarter of a second later under the
+#: slowest SSD here. 2 s leaves room and still ends a run that never
+#: gives one.
 LIMIT = sp.ms(2000)
 
 
@@ -95,6 +96,73 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
         assert "socpuppet SSD firmware" not in board.uart.output
         assert "disk_driver" in board.uart.output
         assert "disk_driver" not in ssds_console.output
+
+
+#: The largest drive the SSD's firmware takes: 2 GiB, in 512-byte blocks.
+LARGEST_DRIVE = 2 * (1 << 30) // 512
+
+
+@pytest.mark.platform
+@only_with_zephyr
+class TestWhenTheSsdsFirmwareTakesAQuarterOfASecondToComeReady:
+    """A host that is ready first has to wait for its drive.
+
+    Both CPUs leave reset together. The SSD's firmware starts by making an
+    empty table of the drive's pages, which takes it half a microsecond a
+    page: 0.27 s for the largest drive it takes. Zephyr on the host gets
+    to the drive and enables it 0.12 s in. The SSD's hardware remembers
+    that it was enabled until the firmware gets to it, and the host is
+    kept waiting for 0.15 s.
+
+    Zephyr's driver waits for a drive to say it is ready for as long as
+    the drive's own registers tell it to, which for this SSD is a second
+    and a half.
+    """
+
+    def test_the_host_finds_the_drive_and_its_tests_pass(
+        self, host_with_the_ssd
+    ):
+        board = host_with_the_ssd(blocks=LARGEST_DRIVE)
+
+        run_to_a_verdict(board)
+
+        assert f"Disk reports {LARGEST_DRIVE} sectors" in board.uart.output
+        assert "PASS - [disk_driver.test_read]" in board.uart.output
+        assert "PASS - [disk_driver.test_write]" in board.uart.output
+
+
+#: Long enough for a host whose SSD is ready at once to have printed its
+#: banner, which it does at 0.14 s, and too short for the SSD to have made
+#: the table of its largest drive. The two tests below hold it to both.
+A_FIFTH_OF_A_SECOND = sp.ms(200)
+
+
+@pytest.mark.platform
+@only_with_zephyr
+class TestAFifthOfASecondAfterBothCpusStart:
+    """What shows that the host of the slow SSD above really is waiting.
+
+    Zephyr starts its drivers before it prints its banner, so a host that
+    is waiting for its drive has printed nothing.
+    """
+
+    def test_a_host_whose_ssd_was_ready_at_once_has_printed_its_banner(
+        self, host_with_the_ssd
+    ):
+        board = host_with_the_ssd(blocks=4096)
+
+        board.platform.run(A_FIFTH_OF_A_SECOND)
+
+        assert "Booting Zephyr" in board.uart.output
+
+    def test_a_host_whose_ssd_is_making_its_table_has_printed_nothing(
+        self, host_with_the_ssd
+    ):
+        board = host_with_the_ssd(blocks=LARGEST_DRIVE)
+
+        board.platform.run(A_FIFTH_OF_A_SECOND)
+
+        assert board.uart.output == ""
 
 
 def run_to_a_verdict(board):
