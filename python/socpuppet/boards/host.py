@@ -44,6 +44,7 @@ import textwrap
 from typing import NamedTuple
 
 from socpuppet import devicetree
+from socpuppet.boards.cpu_kit import TIMER_HZ
 from socpuppet.boards.drive import (
     VECTORS,
     BehavioralDrive,
@@ -87,9 +88,9 @@ PCIE_WINDOW_SIZE = 0x10_0000
 #: The vectors after it take the sources after it.
 MSI_BASE = 0x0200_0000
 MSI_SOURCE = 1
-#: How many times a second the timer counts. The firmware has to be told
-#: the same number: CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC in Zephyr.
-TIMER_HZ = 10_000_000
+# How many times a second the timer counts is `TIMER_HZ`, which is one
+# number for every socpuppet board with a CPU (`boards/cpu_kit.py`): the
+# firmware of each is told the same rate.
 
 
 class HostDrive(NamedTuple):

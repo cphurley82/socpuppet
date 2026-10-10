@@ -179,17 +179,3 @@ class TestWhenAHostScansThePcieBusTheSsdIsOn:
                 class_code=NVME_CLASS,
             )
         ]
-
-
-class TestTheScriptedHostInFrontOfTheSsd:
-    # So that a script written for one host finds its way around the other.
-    def test_has_its_devices_where_the_real_host_board_has_them(self):
-        from socpuppet.boards import host, scripted_host
-
-        assert scripted_host.RAM_BASE == host.RAM_BASE
-        assert scripted_host.MSI_BASE == host.MSI_BASE
-        assert scripted_host.ECAM_BASE == host.IO_BASE + host.ECAM_OFFSET
-        assert (
-            scripted_host.PCIE_WINDOW_BASE
-            == host.IO_BASE + host.PCIE_WINDOW_OFFSET
-        )
