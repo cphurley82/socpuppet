@@ -505,9 +505,7 @@ class Memory(Component):
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
         socket = reached["socket"]
         size = (
-            self.size
-            if socket.window is None
-            else min(self.size, socket.window)
+            self.size if socket.limit is None else min(self.size, socket.limit)
         )
         return DeviceNode(
             "memory",
@@ -935,21 +933,21 @@ class PcieRootComplex(Component):
             return None
         # With both in reach there is a router on the way to each, and a
         # router's range has a size.
-        assert ecam.window is not None
-        assert mmio.window is not None
+        assert ecam.limit is not None
+        assert mmio.limit is not None
         # Each bus has 1 MiB of the configuration window: 32 devices of 8
         # functions, with 4 KiB of registers each.
-        buses = ecam.window >> 20
+        buses = ecam.limit >> 20
         if buses == 0:
             raise ValueError(
                 f"The configuration window at {ecam.port.path} is "
-                f"{ecam.window:#x} bytes, and a devicetree can only describe "
+                f"{ecam.limit:#x} bytes, and a devicetree can only describe "
                 "whole buses, which take 1 MiB each (0x100000). Map it with "
                 "size=0x100000 or more."
             )
         return DeviceNode(
             "pcie",
-            ((ecam.address, ecam.window),),
+            ((ecam.address, ecam.limit),),
             (
                 'compatible = "socpuppet,pcie";',
                 'device_type = "pci";',
@@ -962,7 +960,7 @@ class PcieRootComplex(Component):
                 # and a device's address there is the CPU's address for
                 # it: the root complex does not translate.
                 f"ranges = <0x2000000 {cells(mmio.address)} "
-                f"{cells(mmio.address)} {cells(mmio.window)}>;",
+                f"{cells(mmio.address)} {cells(mmio.limit)}>;",
             ),
             chosen=("zephyr,pcie-controller",),
         )

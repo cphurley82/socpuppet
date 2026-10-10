@@ -10,44 +10,37 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Collection, Iterator
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple, overload
 
 if TYPE_CHECKING:
     from socpuppet.placed import Port
     from socpuppet.platform import Connection
 
 
-class Reached(NamedTuple):
-    """A port that answers accesses, as a bus master finds it."""
-
-    #: The address at which the master finds what is behind the port.
-    address: int
-    port: Port
-    #: How many bytes of it the master can reach from there: the smallest
-    #: range mapped on the way. None if nothing on the way sets a limit.
-    window: int | None
-    #: The windows on the way, the master's own bus first.
-    windows: tuple[Window, ...]
-
-
 @dataclasses.dataclass(frozen=True)
 class Window:
-    """A range of one bus that leads onto another, as a master finds it."""
+    """A range of a router that leads on to what passes accesses further.
 
-    #: The router whose range it is.
+    That is a link, or another bus. A range that leads straight to what
+    answers is that device's own place on the bus and not a window, and
+    that goes for the two ranges of a PCIe root complex as well, which
+    answers for the device behind it.
+    """
+
+    #: The path of the router whose range it is.
     bus: str
-    #: Where the range starts in the master's map. What is behind the
-    #: window counts its addresses from here.
+    #: Where the range starts in the master's map.
     address: int
+    #: How many bytes of it the master can reach.
     size: int
 
     @property
     def translates(self) -> bool:
-        """Whether an address changes on its way through the window.
+        """Whether what is behind the window is at other addresses there.
 
-        A router hands its target the offset from the start of the range.
-        So only a window that starts at address 0 leaves addresses as
-        they are, and what is behind any other counts from zero.
+        A router hands on the offset from the start of its range, so the
+        bus behind a window counts from zero. Its addresses are the
+        master's own only if the window starts at 0 in the master's map.
         """
         return self.address != 0
 
@@ -92,48 +85,75 @@ def entries(
 
 def _entry(found: Reached, groups: Collection[str]) -> MapEntry:
     placed = found.port.placed
-    component = placed.component
     return MapEntry(
         address=found.address,
-        size=_narrowed(found.window, component.size_at(found.port.name)),
+        size=_narrowed(found.limit, placed.component.size_at(found.port.name)),
         component=placed.path,
         port=found.port.name,
-        implementation=component.implementation,
-        # The innermost of the groups the component is inside.
-        group=max(
-            (each for each in groups if placed.path.startswith(f"{each}.")),
-            key=len,
-            default=None,
-        ),
+        implementation=placed.component.implementation,
+        group=_group_of(placed.path, groups),
         windows=found.windows,
     )
 
 
-def reachable_ports(
-    connections: Collection[Connection],
-    view: Port,
-    base: int = 0,
-    window: int | None = None,
-    been: tuple[str, ...] = (),
-    windows: tuple[Window, ...] = (),
-    crossed: Window | None = None,
-) -> Iterator[Reached]:
-    """Yield each port that answers accesses made from the port `view`.
+def _group_of(path: str, groups: Collection[str]) -> str | None:
+    """The innermost of `groups` that the component at `path` is inside."""
+    return max(
+        (each for each in groups if path.startswith(f"{each}.")),
+        key=len,
+        default=None,
+    )
 
-    The rest is how the walk keeps its place, and a caller leaves it out:
-    where the port `view` is in the master's address map, how much of it
-    the master can reach, the ports an access has come through on the
-    way, the windows among them, and the range of a router it has just
-    come out of. That last one is a window only if what it leads to
-    passes the access on. Where it leads to what answers, it is that
-    device's own place on the bus.
-    """
+
+class Reached(NamedTuple):
+    """A port that answers accesses, as a bus master finds it."""
+
+    #: The address at which the master finds what is behind the port.
+    address: int
+    port: Port
+    #: How many bytes of it the master can reach from there: the smallest
+    #: range mapped on the way. None if nothing on the way sets a limit.
+    limit: int | None
+    #: The windows on the way, the master's own bus first.
+    windows: tuple[Window, ...]
+
+
+def reachable_ports(
+    connections: Collection[Connection], view: Port
+) -> Iterator[Reached]:
+    """Yield each port that answers accesses made from the port `view`."""
+    return _walk(connections, view, _Place())
+
+
+@dataclasses.dataclass(frozen=True)
+class _Place:
+    """Where a walk of the address map has got to."""
+
+    #: Where the port the walk is at is in the master's address map.
+    base: int = 0
+    #: How many bytes from there the master can reach, as `Reached.limit`.
+    limit: int | None = None
+    #: The ports an access has come through on the way.
+    been: tuple[str, ...] = ()
+    #: The windows among them.
+    windows: tuple[Window, ...] = ()
+    #: The range of a router the access has just come out of. It is a
+    #: window only if what it leads to passes the access on. Where it
+    #: leads to what answers, it is that device's own place on the bus.
+    entered: Window | None = None
+
+
+def _walk(
+    connections: Collection[Connection], view: Port, place: _Place
+) -> Iterator[Reached]:
+    """Yield what answers accesses from the port `view`, which is at `place`."""
     sink = next(
         (each.sink for each in connections if each.source.path == view.path),
         None,
     )
     if sink is None:
         return
+    been = place.been
     if sink.path in been:
         raise ValueError(
             "The address map loops: an access comes back to "
@@ -144,28 +164,40 @@ def reachable_ports(
         )
     routes = list(sink.placed.component.routes(sink.name))
     if not routes:
-        yield Reached(base, sink, window, windows)
+        yield Reached(place.base, sink, place.limit, place.windows)
         return
-    if crossed is not None:
-        windows = (*windows, crossed)
+    windows = place.windows
+    if place.entered is not None:
+        windows = (*windows, place.entered)
     for output, offset, size in routes:
-        yield from reachable_ports(
+        base = place.base + offset
+        yield from _walk(
             connections,
             getattr(sink.placed, output),
-            base + offset,
-            _narrowed(window, size),
-            (*been, sink.path),
-            windows,
-            None
-            if size is None
-            else Window(
-                sink.placed.path, base + offset, min(size, window or size)
+            _Place(
+                base=base,
+                limit=_narrowed(place.limit, size),
+                been=(*been, sink.path),
+                windows=windows,
+                # A way on with no size is no range: a link passes on all
+                # there is.
+                entered=(
+                    None
+                    if size is None
+                    else Window(
+                        sink.placed.path, base, _narrowed(place.limit, size)
+                    )
+                ),
             ),
         )
 
 
-def _narrowed(window: int | None, size: int | None) -> int | None:
-    """What is left of a window after a range of `size` bytes on the way."""
-    if window is None or size is None:
-        return window if size is None else size
-    return min(window, size)
+@overload
+def _narrowed(limit: int | None, size: int) -> int: ...
+@overload
+def _narrowed(limit: int | None, size: int | None) -> int | None: ...
+def _narrowed(limit: int | None, size: int | None) -> int | None:
+    """What is left of a limit after a range of `size` bytes on the way."""
+    if limit is None or size is None:
+        return limit if size is None else size
+    return min(limit, size)
