@@ -8,6 +8,7 @@ so on. This walks it.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Collection, Iterator
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -25,6 +26,42 @@ class Reached(NamedTuple):
     #: How many bytes of it the master can reach from there: the smallest
     #: range mapped on the way. None if nothing on the way sets a limit.
     window: int | None
+
+
+@dataclasses.dataclass(frozen=True)
+class MapEntry:
+    """One line of a bus master's address map: what answers at an address."""
+
+    address: int
+    #: How many bytes answer from there on. None if nothing says: the
+    #: component has no size of its own, and no router's range is on the
+    #: way to it.
+    size: int | None
+    #: The path of the component that answers there, such as `io.uart`.
+    component: str
+    #: Which of the component's ports the accesses arrive at.
+    port: str
+    #: The component's model, by its name in the C++ registry.
+    implementation: str
+
+
+def entries(connections: Collection[Connection], view: Port) -> list[MapEntry]:
+    """The address map as the port `view` sees it, lowest address first."""
+    return sorted(
+        (_entry(found) for found in reachable_ports(connections, view)),
+        key=lambda entry: entry.address,
+    )
+
+
+def _entry(found: Reached) -> MapEntry:
+    component = found.port.placed.component
+    return MapEntry(
+        address=found.address,
+        size=_narrowed(found.window, component.size_at(found.port.name)),
+        component=found.port.placed.path,
+        port=found.port.name,
+        implementation=component.implementation,
+    )
 
 
 def reachable_ports(

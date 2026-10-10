@@ -8,8 +8,8 @@ import sys
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
-from socpuppet import devicetree
-from socpuppet.address_map import reachable_ports
+from socpuppet import address_map, devicetree
+from socpuppet.address_map import MapEntry, reachable_ports
 from socpuppet.components import LinkModel
 from socpuppet.placed import Placed, Port
 from socpuppet.time import us
@@ -344,6 +344,15 @@ class Platform:
         describes the rest of what the master at `via` can reach.
         """
         return devicetree.overlay(self._connections, self._view(via), only)
+
+    def address_map(self, via: Port | None = None) -> list[MapEntry]:
+        """What a bus master can reach, and at which address.
+
+        One entry for each port that answers accesses, lowest address
+        first. `via` is the master's port, as in `peek32`. Works on a
+        description; nothing needs to be built.
+        """
+        return address_map.entries(self._connections, self._view(via))
 
     def to_json(self) -> str:
         """The description as JSON.
