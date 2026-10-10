@@ -35,7 +35,8 @@ def no_verdict(board):
     ever is most often waiting for its drive.
     """
     said = (
-        "The host's firmware gave no verdict in 2 s. It printed:\n"
+        "The host's firmware gave no verdict in the time it was given. "
+        "It printed:\n"
         f"{board.uart.output or '(nothing)'}"
     )
     # 🎭 The stand-in drive and an SSD with a script for its firmware have
