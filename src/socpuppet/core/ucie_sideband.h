@@ -49,16 +49,41 @@ struct SidebandMessage {
   bool operator==(const SidebandMessage&) const = default;
 };
 
-// The messages that bring a link up. Each is named for the state of link
-// training it belongs to.
+// The messages a link's two dies send each other. The first group brings
+// the link up, each named for the state of link training it belongs to;
+// after that come the ones that manage a link already trained, and the one
+// that reports a failure.
 //
+// {SBINIT Out of Reset}, which tells the other side that this one has left
+// reset and is training.
+constexpr SidebandMessage kSbinitOutOfReset{.code = 0x91, .subcode = 0x00};
 // {SBINIT Done Request}, which asks the other side to agree that the
-// sideband is up.
+// sideband is up, and its answer.
 constexpr SidebandMessage kSbinitDoneRequest{.code = 0x95, .subcode = 0x01};
+constexpr SidebandMessage kSbinitDoneResponse{.code = 0x9A, .subcode = 0x01};
 // {MBINIT.PARAM configuration request}, which offers the other side what
-// this one can do on the mainband.
+// this one can do on the mainband, and its answer.
 constexpr SidebandMessage kMbinitParamConfigurationRequest{
     .code = 0xA5, .subcode = 0x00, .carries_data = true};
+constexpr SidebandMessage kMbinitParamConfigurationResponse{
+    .code = 0xAA, .subcode = 0x00, .carries_data = true};
+// {MBINIT.CAL Done request}, which says the mainband has been calibrated.
+constexpr SidebandMessage kMbinitCalDoneRequest{.code = 0xA5, .subcode = 0x02};
+constexpr SidebandMessage kMbinitCalDoneResponse{.code = 0xAA, .subcode = 0x02};
+// Link management, between the two dies' adapters: asking for the link to
+// be in use, saying it is, saying it has failed, and asking for it to be
+// trained again.
+constexpr SidebandMessage kLinkMgmtRdiRequestActive{.code = 0x01,
+                                                    .subcode = 0x01};
+constexpr SidebandMessage kLinkMgmtRdiResponseActive{.code = 0x02,
+                                                     .subcode = 0x01};
+constexpr SidebandMessage kLinkMgmtRdiRequestLinkError{.code = 0x01,
+                                                       .subcode = 0x0A};
+constexpr SidebandMessage kLinkMgmtRdiRequestRetrain{.code = 0x01,
+                                                     .subcode = 0x0B};
+// {ErrMsg Fatal}, which says the link has failed in a way nothing can be
+// done about without training it again.
+constexpr SidebandMessage kErrorMessageFatal{.code = 0x09, .subcode = 0x02};
 
 struct SidebandPacket {
   // Every packet here is built with its fields named. These defaults are

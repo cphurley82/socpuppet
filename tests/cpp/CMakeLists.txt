@@ -16,6 +16,7 @@ add_executable(unit_tests
   unit/pcie_endpoint_registers_test.cpp
   unit/prp_test.cpp
   unit/script_test.cpp
+  unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
 target_link_libraries(unit_tests PRIVATE

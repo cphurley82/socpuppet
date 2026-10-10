@@ -18,8 +18,7 @@ target_sources(socpuppet_core INTERFACE
     core/nand_port.h
     core/script.h
     core/time.h
-    core/trace.h
-    core/ucie_sideband.h)
+    core/trace.h)
 
 # Reading ELF files is ELFIO's work. Like the adapters below, the one source
 # file that uses the borrowed library is compiled on its own.
@@ -61,6 +60,16 @@ target_sources(socpuppet_ssd_devices PUBLIC
     core/flash_controller_logic.h)
 socpuppet_dev_checks(socpuppet_ssd_devices)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
+
+# The die-to-die link: where it is on its way up, and what its registers
+# do. UCIe's state machine and message codes, from public sources.
+add_library(socpuppet_ucie_link STATIC core/ucie_link_state.cpp)
+target_sources(socpuppet_ucie_link PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/ucie_link_state.h
+    core/ucie_sideband.h)
+socpuppet_dev_checks(socpuppet_ucie_link)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_ucie_link)
 
 # What a PCIe endpoint's registers do. Ours, and long enough to be worth
 # compiling once.
@@ -196,7 +205,7 @@ socpuppet_dev_checks(socpuppet_builtin_components)
 
 socpuppet_check_headers(
   socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
-  socpuppet_ssd_devices socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
+  socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
   socpuppet_plic)
 
