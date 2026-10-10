@@ -1,0 +1,30 @@
+description: |
+  One end of a socpuppet die-to-die link, in the style of UCIe, as the
+  firmware on its own die sees it: the registers that train the link, say
+  what it is doing, and reach the registers at the other end of it over
+  the link's sideband.
+
+  The firmware on one die trains the link and then lets the other die out
+  of reset, which is a register at the far end. That makes this a reset
+  controller with one line, number 0, which is the other die.
+
+  `interrupts-extended` names the PLIC source of its line, which is high
+  while the link has something to tell the firmware that the firmware
+  asked to be told: that its status has changed.
+
+compatible: "socpuppet,ucie-link"
+
+include: [base.yaml, reset-controller.yaml]
+
+properties:
+  reg:
+    required: true
+
+  interrupts-extended:
+    required: true
+
+  "#reset-cells":
+    const: 1
+
+reset-cells:
+  - id

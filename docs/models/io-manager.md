@@ -6,7 +6,7 @@
 
 The management firmware of a chiplet host's IO die: the first thing that runs when the power comes on, and the thing that decides the rest of the chip may start.
 
-🎭 It is a stand-in, a Python script for a [scripted bus master](scripted-bus-master.md) in the place of the IO die's CPU, in the same shape as 🎭 [the SSD's firmware stand-in](ssd-firmware.md). 🚧 M5b puts a real RV32 core there with Zephyr on it, doing the same four things.
+🎭 It is a stand-in, a Python script for a [scripted bus master](scripted-bus-master.md) in the place of the IO die's CPU, in the same shape as 🎭 [the SSD's firmware stand-in](ssd-firmware.md). The real thing is `firmware/iomgr`, a Zephyr application on the IO die's own RV32 core, which does the same four things.
 
 ## What it does
 

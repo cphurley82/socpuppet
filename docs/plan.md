@@ -182,7 +182,29 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2, M3, M4 and M5a are done.** M5b (Zephyr in the manager's place) and M6 (the Zephyr host with the Zephyr SSD) are both open: M6 needs nothing from M5.
+**M0, M1, M2, M3, M4 and M5 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. M6 (the Zephyr host with the Zephyr SSD) is next, and M7 (the real host across the real link) after it.
+
+What M5b delivered, and with it M5: the IO die's manager runs its own firmware. The exit test is `tests/python/test_m5_exit.py`: Zephyr on the manager's CPU trains the link and lets the compute die go, the compute-side stand-in round-trips a word through the IO die's memory across the link, and when something faults the link the firmware trains it again and the dies carry on. [boot-your-firmware.md](boot-your-firmware.md) has a section on the board.
+
+- **The board**, `socpuppet_iomgr`: the same RV32 core and kit as the SSD's controller, with the link's registers where the SSD has its frontend's, so both share the SoC `socpuppet_rv32`. Nothing new had to be modelled. The kit is `boards/cpu_kit.py` now, out of the SSD board.
+- **One driver**, `socpuppet,ucie-link`, a driver of Zephyr's reset class. The other die is its one reset line, and letting it go is `reset_line_deassert()`. **The reset class fitted**, so the fallback the plan kept in reserve was not needed and there is nothing for [upstream.md](upstream.md).
+- **The firmware**, `firmware/iomgr`: sixty lines. Train, release, then sleep until the link goes down and train it again.
+- **Firmware that cannot do its job says why.** A link that will not train is a sentence on the console, and a test.
+
+What M5b found:
+
+- ⚠️ **The link's interrupt is a level, and the first driver hung on it.** The line is high while the status says it has changed, so a handler that only woke its thread was called again the moment it returned, for ever: Zephyr trained the link and never printed that it had. The handler clears the bit now. The 🎭 script never showed this, because a script has no handler to return from.
+- **The compute die runs the instant it is released**, before the manager has finished saying it released it. A test that reads the console when the round trip lands reads half a line. M8's boot-order test across three UARTs has to wait for lines and not for events.
+- **Asking for a driver class is the application's to do.** The driver first selected `RESET` by itself, which put it and the reset subsystem into `hello_world` for the board unasked. It depends on `RESET` now, as the flash driver depends on `FLASH`.
+- **The driver is as small as the firmware needs.** The reset API has four operations and the driver has one, and the mailbox can read as well as write and the driver only writes. M8 can add what it wants.
+
+Things M6 to M8 should know about the link:
+
+- **A debugger's look crosses a link that is down**, and a transaction does not: it is refused with a generic error, which Zephyr sees as a bus fault with the address in `mtval`. M7's host must not touch the IO die before the manager has let it go, and cannot, because it is held in reset until then.
+- **Serialization is by the order transactions are handed over**, which under temporal decoupling is not the order of their departure times ([models/d2d-link.md](models/d2d-link.md)).
+- **The compute die's window is an identity map**, so M7's host reaches the IO die at the IO die's own addresses. The host board's window today translates, and the M3 devicetree was generated for it: M7 changes the host's map.
+- ⚠️ **Nothing has checked that the DBT-RISE core honours a reset held from time zero.** The compute die here is 🎭 a script, which does. A wire starts low, and the link raises its reset in the first delta cycle, so a core that samples its reset before any wait would start anyway. M7 has to look at this first.
+- **The reset hold is 4 ms of every boot**, and the link's training is a millisecond more by default. M8's test waits at least 5 ms of simulated time before the host can run an instruction.
 
 What M5a delivered: the real die-to-die link, and 🎭 a script in the manager's place that brings it up. The exit test is `tests/python/test_m5a_exit.py`: the manager trains the link and lets the compute die go, and the compute-side stand-in then round-trips a word through the IO die's memory across the link — and nothing of it crosses before the link has been trained. `examples/io_manager_hello.py` is the show to run by hand: it prints UCIe's whole bring-up, packet by packet, out of the trace.
 

@@ -156,7 +156,8 @@ The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die wit
 
 - **Everything below `0x8000_0000` on the compute die is the other die's.** That one window is the whole of the compute die's map apart from its memory, so the compute die can reach anything the IO die's bus has, at the IO die's own addresses.
 - ⚠️ **The link's registers are reachable from one side only.** Each end of the link shows its own die a register block, and the two blocks are not in each other's maps: what crosses is the sideband mailbox, which names a register by its offset in the block at the *other* end.
-- 🚧 **M5b adds the manager's CPU** and what goes around it, at the addresses the SSD board uses for the same things (timer `0x0200_0000`, PLIC `0x0C00_0000`, UART `0x1000_0000`, SRAM `0x2000_0000`), which is why the link's registers sit where the SSD has its frontend's. ⚠️ The scratch has to stay above the SRAM, for the same reason the SSD's SRAM stays below its buffer.
+- **The manager's CPU has the kit every socpuppet CPU has**, at the addresses the SSD board uses for the same things (timer `0x0200_0000`, PLIC `0x0C00_0000`, UART `0x1000_0000`, SRAM `0x2000_0000`), which is why the link's registers sit where the SSD has its frontend's and why both boards share one SoC in Zephyr. The link's interrupt is the PLIC's source 1. ⚠️ The scratch has to stay above the SRAM, for the same reason the SSD's SRAM stays below its buffer.
+- 🎭 **With a script for its firmware the manager has no CPU**, and no timer, PLIC, UART or SRAM either. The link's registers and the scratch stay where they are.
 
 ## See it yourself
 
@@ -165,6 +166,7 @@ The map a description gives is printed as a devicetree, with nothing simulated:
 ```sh
 socpuppet devicetree python/socpuppet/boards/host.py
 socpuppet devicetree python/socpuppet/boards/ssd.py --via ssd.cpu.socket
+socpuppet devicetree python/socpuppet/boards/io_manager.py --via io.cpu.socket
 ```
 
 💡 The second command has to say whose map it wants, because that platform has two bus masters, and `--via` names the port the accesses start from. [Boot your own firmware](boot-your-firmware.md) has how to copy a board and move things around in it.

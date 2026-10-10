@@ -42,7 +42,7 @@ from socpuppet.components import (
 )
 from socpuppet.io_manager import IoManager
 from socpuppet.ops import Steps, expect32, write32
-from socpuppet.placed import Placed
+from socpuppet.placed import Placed, PlacedRouter
 from socpuppet.platform import Link, Platform
 from socpuppet.time import ms
 
@@ -75,6 +75,9 @@ class IoManagerBoard(NamedTuple):
     compute: Placed
     #: The link: `link.a` is the compute die's end, `link.b` the IO die's.
     link: Link
+    #: The IO die's bus, which the manager reaches everything through and
+    #: the compute die reaches across the link.
+    bus: PlacedRouter
     #: What a real CPU has around it. None when a script is in its place.
     cpu_kit: CpuKit | None = None
 
@@ -153,6 +156,7 @@ def io_manager(
         manager=cpu,
         compute=compute_cpu,
         link=link,
+        bus=bus,
         cpu_kit=cpu_kit,
     )
 

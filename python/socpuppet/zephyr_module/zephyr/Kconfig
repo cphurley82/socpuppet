@@ -65,3 +65,19 @@ config SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE
 	  The driver learns the size of a NAND page from the chip. To read
 	  part of a page it has to fetch the whole of it, into memory of its
 	  own, and this is how many bytes it sets aside.
+
+# One end of a socpuppet die-to-die link. It is a driver of Zephyr's reset
+# class, whose one line is the CPU of the die at the other end, so it is
+# built when the application has asked for reset drivers at all. The
+# training is functions of its own.
+config SOCPUPPET_UCIE_LINK
+	bool "socpuppet die-to-die link"
+	default y
+	depends on DT_HAS_SOCPUPPET_UCIE_LINK_ENABLED
+	depends on RESET
+	help
+	  One end of the die-to-die link of a socpuppet chiplet platform, in
+	  the style of UCIe. The firmware on one die trains the link and
+	  lets the other die out of reset. The driver's functions are in
+	  <socpuppet/drivers/ucie_link.h>, and letting the other die go is
+	  Zephyr's reset API.

@@ -102,6 +102,10 @@ A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, an
 
 ⚠️ A Python test cannot see 20 ns in `platform.time` after one write. A bus master may run up to a quantum (100 µs by default) ahead of the simulation's clock, and folds the delay into that. Measure through [the trace](tracer.md), whose records carry the arrival time, or set `platform.quantum = 0`.
 
+### The Zephyr driver
+
+`socpuppet,ucie-link` in socpuppet's Zephyr module (`drivers/d2d/ucie_link.c`). It is a driver of Zephyr's **reset** class: the die at the other end is its one line, `UCIE_LINK_THE_OTHER_DIE`, and `reset_line_deassert()` is the mailbox write that lets it go. Training is functions of its own, in `<socpuppet/drivers/ucie_link.h>`: `ucie_link_train()`, `ucie_link_retrain()`, `ucie_link_is_up()` and `ucie_link_wait_until_down()`. [boot-your-firmware.md](../boot-your-firmware.md#the-io-dies-manager) has the board and the firmware that uses it.
+
 ## What it leaves out
 
 - **The physical layer.** No lanes, no clock, no speed negotiation, no repair of a broken lane. MBTRAIN is a state that takes time and does nothing.

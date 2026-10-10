@@ -13,3 +13,8 @@ zephyr_sources_ifdef(CONFIG_SOCPUPPET_DMA_ENGINE
   ${CMAKE_CURRENT_LIST_DIR}/../drivers/ssd/dma_engine.c)
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_FLASH_CONTROLLER
   ${CMAKE_CURRENT_LIST_DIR}/../drivers/ssd/flash_controller.c)
+
+# The driver for one end of a socpuppet die-to-die link, for the firmware
+# on the die that manages it.
+zephyr_sources_ifdef(CONFIG_SOCPUPPET_UCIE_LINK
+  ${CMAKE_CURRENT_LIST_DIR}/../drivers/d2d/ucie_link.c)

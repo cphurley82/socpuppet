@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with a CPU of its own. That CPU runs the SSD's firmware, a Zephyr application, and 🎭 a script can play the firmware where a CPU is not wanted. Since M5a the die-to-die link between the host's two dies is real as well, in the style of UCIe: it has to be trained before it carries anything, and 🎭 a script on the IO die trains it and lets the compute die out of reset, which is how a chiplet starts. The host and the SSD have each booted with a stand-in for the other, and have yet to meet. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with a CPU of its own. That CPU runs the SSD's firmware, a Zephyr application, and 🎭 a script can play the firmware where a CPU is not wanted. Since M5 the die-to-die link between the host's two dies is real as well, in the style of UCIe: it has to be trained before it carries anything, and the IO die has a manager with a CPU of its own whose firmware, a third Zephyr application, trains it and lets the compute die out of reset, which is how a chiplet starts. The host and the SSD have each booted with a stand-in for the other, and have yet to meet. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -204,7 +204,7 @@ The host is two dies, and the link between them is not there when the power come
                                         🎭 the manager ┘
 ```
 
-`socpuppet.boards.io_manager` describes it, with 🎭 [a script in the manager's place](models/io-manager.md) and 🎭 another standing in for the whole compute die. `examples/io_manager_hello.py` runs it and prints [the link's](models/d2d-link.md) bring-up, packet by packet, out of the trace. 🚧 M5b puts Zephyr on the manager's CPU, and M7 puts the real host on the other die.
+`socpuppet.boards.io_manager` describes it, with 🎭 a script standing in for the whole compute die. The manager's CPU runs `firmware/iomgr`, a Zephyr application, on the board `socpuppet_iomgr`; or 🎭 [a script plays the manager](models/io-manager.md) where a CPU is not wanted. `examples/io_manager_hello.py` runs it that way and prints [the link's](models/d2d-link.md) bring-up, packet by packet, out of the trace. 🚧 M7 puts the real host on the other die.
 
 ## Stand-ins and contracts
 
@@ -275,4 +275,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the real die-to-die link and the manager that trains it, and the host and the SSD in one simulation with their own firmware on both. See [plan.md](plan.md).
+🚧 Not built yet: the host and the SSD in one simulation with their own firmware on both, and the real host on the far side of the real die-to-die link. See [plan.md](plan.md).

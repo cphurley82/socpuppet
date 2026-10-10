@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Builds the firmware the tests boot. Most of it is Zephyr's own, two
-# samples and two of its tests, and one image is socpuppet's:
+# samples and two of its tests, and two images are socpuppet's:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
-#   hello_world       for socpuppet_host and socpuppet_ssd, socpuppet's own
-#                     boards: the host, and the SSD's controller
+#   hello_world       for socpuppet_host, socpuppet_ssd and
+#                     socpuppet_iomgr, socpuppet's own boards: the host,
+#                     the SSD's controller, and the IO die's manager
 #   synchronization   for socpuppet_host
 #   disk_access       for socpuppet_host with its SSD: Zephyr's test of its
 #                     disk interface, which here drives its NVMe driver
+#   iomgr             for socpuppet_iomgr: the IO die's manager firmware,
+#                     which is the application in firmware/iomgr
 #   ssd               for socpuppet_ssd: the SSD's own firmware, which is
 #                     the application in firmware/ssd
 #   flash_test        for socpuppet_ssd: Zephyr's test of a flash driver,
@@ -40,6 +43,7 @@ images=(
   "samples/hello_world socpuppet_iomgr"
   "samples/synchronization socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
+  "firmware/iomgr socpuppet_iomgr"
   "firmware/ssd socpuppet_ssd"
   "firmware/flash_test socpuppet_ssd"
 )

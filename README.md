@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. The two Zephyrs have not met yet. That, and the real die-to-die link, are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. A fourth has opened as well: the die-to-die link between the host's two dies is real now, in the style of UCIe, and a third Zephyr on the IO die trains it and lets the compute die out of reset. The Zephyrs have not met yet, and the real host is not across the real link yet. Those are still to come. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 

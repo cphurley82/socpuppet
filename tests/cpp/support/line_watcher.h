@@ -23,7 +23,7 @@ class LineWatcher : public sc_core::sc_module {
   // `level`. Returns false if it does not within `patience`. A process
   // that has just written a register cannot read the line the device
   // drives from it in the same delta cycle: this is how to wait for it.
-  bool WaitForLevel(bool level, const sc_core::sc_time& patience) {
+  bool WaitForLevel(bool level, const sc_core::sc_time& patience) const {
     const sc_core::sc_time give_up = sc_core::sc_time_stamp() + patience;
     while (line.read() != level) {
       if (sc_core::sc_time_stamp() >= give_up) return false;

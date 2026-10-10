@@ -225,6 +225,68 @@ print(board.ssd.cpu_kit.uart.output)
 - **Hold it to the tests.** `tests/python/test_ssd_firmware.py` is what a host may expect of an SSD's firmware, a behaviour a test, and it runs whatever `ssd_socpuppet_ssd.elf` it finds in `SOCPUPPET_FIRMWARE_DIR`. Put your image there under that name and see how far it gets.
 - 🎭 **Or do without the CPU.** [`sp.SsdFirmware`](models/ssd-firmware.md) is the same firmware as a Python script, for when the SSD's firmware is not what you are working on.
 
+## The IO die's manager
+
+The third board is `socpuppet_iomgr`: the management CPU on the IO die of a chiplet host, whose firmware brings the die-to-die link up and lets the compute die start. It is the same 32-bit RISC-V machine as the SSD's controller, with one device of its own.
+
+| What | Where | Zephyr driver |
+|---|---|---|
+| CPU | RV32IMAC, machine mode, starts at `0x2000_0000` | |
+| SRAM, which the firmware runs from | `0x2000_0000`, 256 KiB | |
+| Scratch memory, for the other die to reach | `0x3000_0000`, 4 KiB | (a second `memory` node, `io_scratch`) |
+| Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
+| Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
+| UART, the console | `0x1000_0000` | `ns16550` |
+| [Die-to-die link](models/d2d-link.md) | `0x1001_0000`, PLIC source 1 | `socpuppet,ucie-link`, a Zephyr reset controller |
+
+```sh
+west build -b socpuppet_iomgr samples/hello_world -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+The manager is never alone either: there is a compute die at the other end of the link, 🎭 a script here, which stays held in reset until the firmware lets it go.
+
+```python
+import socpuppet as sp
+from socpuppet.boards.io_manager import io_manager, one_round_trip
+
+board = io_manager(compute=one_round_trip)
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf", via=board.manager.socket)
+
+board.platform.run(sp.ms(100))
+print(board.cpu_kit.uart.output)
+```
+
+`hello_world` boots and trains nothing, so the compute die never runs. Firmware that does the job is [`firmware/iomgr`](../firmware/iomgr/README.md), which is short enough to read whole:
+
+```c
+#include <zephyr/drivers/reset.h>
+#include <socpuppet/drivers/ucie_link.h>
+
+static const struct device *const link = DEVICE_DT_GET_ONE(socpuppet_ucie_link);
+
+ucie_link_train(link);                                  /* sleeps until it is up */
+reset_line_deassert(link, UCIE_LINK_THE_OTHER_DIE);     /* lets the other die go */
+for (;;) {
+	ucie_link_wait_until_down(link);                /* sleeps until it is not */
+	ucie_link_retrain(link);
+}
+```
+
+```text
+*** Booting Zephyr OS build v4.4.2 ***
+iomgr: training the D2D link
+iomgr: D2D link up
+iomgr: compute die released
+```
+
+- 🎓 **Letting the other die go is Zephyr's reset API**, because that is what it is: the other die's CPU is this link's one reset line. The register that holds it is at the *far* end of the link, so the driver reaches it over the link's sideband. `CONFIG_RESET=y` in `prj.conf` is what asks for the driver.
+- ⚠️ **The link's interrupt is a level.** Its line stays high for as long as the status says it has changed, so the driver's handler clears that bit before it returns. A handler that only woke a thread would be called again at once, for ever, and the thread would never run. What changed is still there to read: whether the link is up.
+- ⚠️ **A link takes 5 ms to come up, and 4 ms of that cannot be hurried.** UCIe holds a link in reset that long. Firmware that polled the status in a tight loop would wait just as long and learn nothing sooner.
+- 💡 **Break the link to see the firmware mend it.** A second 🎭 scripted master on the IO die's bus can write the link's fault-injection register, as `tests/python/test_m5_exit.py` does. The firmware says `iomgr: the D2D link went down`, trains it again, and says it is up.
+- `tests/python/test_m5b_exit.py` and `tests/python/test_m5_exit.py` are complete examples, and `examples/io_manager_hello.py` is the same boot with 🎭 a script in the firmware's place and the link's whole handshake printed out.
+
 ## Waiting for something to happen
 
 A test usually wants to run until the firmware says something, with a limit in case it never does:
