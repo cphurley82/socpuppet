@@ -8,9 +8,10 @@ import sys
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
-from socpuppet import address_map, devicetree
+from socpuppet import address_map, devicetree, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
 from socpuppet.components import LinkModel
+from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.time import us
 from socpuppet.trace import TraceRecord, wants_color
@@ -355,6 +356,15 @@ class Platform:
         return address_map.entries(
             self._connections, self._view(via), self._groups
         )
+
+    def interrupt_map(self) -> list[InterruptEntry]:
+        """Whose interrupt line is which number, to the firmware.
+
+        One entry for each line that goes to a numbered input of an
+        interrupt controller or of a CPU, in order of controller and then
+        of number. Works on a description; nothing needs to be built.
+        """
+        return interrupt_map.entries(self._connections)
 
     def to_json(self) -> str:
         """The description as JSON.

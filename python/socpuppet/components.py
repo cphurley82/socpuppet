@@ -233,6 +233,14 @@ class Component(ABC):
         """
         return None
 
+    def interrupt_number(self, port: str) -> int | None:
+        """Which of this component's interrupts a line arriving at `port` is.
+
+        The number is what firmware knows the line by. None if `port` is
+        not an interrupt input, or is one with no number.
+        """
+        return None
+
     def interrupt_input(self, port: str, label: str) -> str | None:
         """How a devicetree refers to an interrupt arriving at `port`.
 
@@ -350,11 +358,15 @@ class DbtRiseCpu(Component):
         )
 
     @override
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_number(self, port: str) -> int | None:
         # RISC-V numbers a CPU's interrupts by their bit in its
         # interrupt-pending register: 7 is the machine timer, 11 the
         # machine external interrupt.
-        number = {"timer_irq": 7, "irq": 11}.get(port)
+        return {"timer_irq": 7, "irq": 11}.get(port)
+
+    @override
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        number = self.interrupt_number(port)
         return None if number is None else f"&{label}_intc {number}"
 
     @override
@@ -1004,12 +1016,17 @@ class Plic(Component):
         )
 
     @override
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_number(self, port: str) -> int | None:
         if not port.startswith("source"):
             return None
+        return int(port.removeprefix("source"))
+
+    @override
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        number = self.interrupt_number(port)
         # The source's number, and the priority the firmware gives it unless
         # it chooses another: 1, the lowest that can interrupt.
-        return f"&{label} {port.removeprefix('source')} 1"
+        return None if number is None else f"&{label} {number} 1"
 
 
 class ScriptedBusMaster(Component):
