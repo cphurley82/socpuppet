@@ -245,7 +245,69 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0 to M6 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2, and the first two of them now run together: the host's firmware with the SSD's. M7 (the real host across the real link) is next.
+**M0 to M7 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. The first two of them run together, the host's firmware with the SSD's, and they do it across the real die-to-die link. M8 (all three firmwares in one boot) is next.
+
+What M7 delivered: the real host across the real link. The exit test is `tests/python/test_m7_exit.py`. Zephyr's `hello_world` and its disk test run on the host with `sp.D2dLink` between its dies and 🎭 the script for a manager on its IO die, the disk test against 🎭 the stand-in drive, the SSD with 🎭 a script for its firmware and the SSD with Zephyr for its firmware. With the link traced, every command is seen as a doorbell to the IO die and fetched back across the link, and completed by a write to the host's memory and an interrupt message to the compute die. `examples/chiplet_host_hello.py` is the show to run by hand: the link's bring-up out of the trace, packet by packet, and then Zephyr's greeting, every character of which crossed the link. [boot-your-firmware.md](boot-your-firmware.md) has "The host across the link".
+
+- **`host(manager=...)`**: the host takes the function that describes its IO die's manager, as it takes the one that describes its drive. With one, the link between its dies is the real one and its end on the compute die holds the host's CPU in reset. With none the host is as it was. `host(trace=True)` records what crosses, for either link.
+- **`add_manager`, in `boards/manager.py`**, is the manager on a bus, a CPU with its kit or 🎭 a script in its place. The IO manager board is built around it and the host is handed it. `Host.manager` and `IoManagerBoard.manager` are the `Manager` it returns: `board.manager.cpu` and `board.manager.cpu_kit`.
+- **No interrupt line leaves its die.** The host's timer is on the compute die at `0x0200_0000`, where every socpuppet CPU has its timer, and the MSI bridge is at `0x0300_0000`. That changed the devicetree of `socpuppet_host` and its shield's overlay, so the host's images were built again once, from the same sources. A test holds every interrupt line of the host to the die it starts on.
+- **The host's firmware cannot tell which link it has.** A test holds the devicetree its CPU sees with a manager to the one it sees without. Between the two links no image differs.
+- **[address-map.md](address-map.md) has the host across the link**, with the manager's map, which is the link's registers and nothing else, generated from the board.
+- **`ucie.sideband_packets(trace)`** reads a trace's sideband packets back, each with the record it was in. The loop had been written out four times, once without the check that keeps the mainband's bytes out of it.
+
+What M7 found:
+
+- **It worked the first time, again.** A real CPU had never sent mainband traffic across the real link, which planning listed as the risk, and nothing came of it. Steps 4 and 5 needed one argument between them, `trace`. So, as in M6, most of M7's tests were never seen to fail before their code existed, and each was checked with a mutation: a manager that never lets the compute die go, one that never starts training, a host with no reset wire, a host that keeps the stand-in link, the drive's way up wired past the link, and a link that carries traffic untrained.
+- ⚠️ **A mutation found a test that could not fail.** "Nothing crosses until the manager has let the host go" was first written against the disk test's image. With the link carrying traffic untrained and nothing holding the host's CPU, it still passed: that image's first access to the other die is a tenth of a second in, long after any release. `hello_world` sets its UART up 0.44 ms after its CPU starts, so the test runs that. A test that passes first time has only been shown to pass.
+- ⚠️ **The link's default latency never reaches the host's clock.** DBT-RISE's core counts a transaction's delay in whole cycles of its 100 ns clock, rounding down, and spends the first of them on the instruction's own cycle. So a delay of less than 200 ns costs a CPU nothing, and the link's default is 20 ns a crossing. So with the real link the disk test's verdict comes exactly 5.0 ms later than with the stand-in, the reset hold and the training, and not a microsecond more, with a quantum of 100 µs and with none. The link is not at fault: its trace records carry the time each crossing arrived. The figures are below and the fault is in [upstream.md](upstream.md).
+- **The real link costs no wall time you can measure.** It refuses DMI, so the host's CPU reaches its UART and its drive a transaction at a time, but the stand-in link's DMI was not saving anything: the host's RAM is on its own die. 0.147 s against 0.143 s for the disk test.
+- **What crosses, for one run of the disk test**: 4081 accesses from the compute die, of which 3332 are the console's and 588 the PCIe configuration window's, and 378 from the IO die. 69 commands, as M6 counted: 69 doorbells, 69 commands fetched, 69 completions written and 69 interrupt messages.
+- **An address in a trace record is the receiving die's.** The compute die's bus takes the start of its window off before an access crosses, so the UART is at `0x0` in a record. What the IO die sends carries the host's own addresses. A record still does not name the device that sent it.
+- **The reviews changed steps 2, 3 and 5.** `add_manager` takes its die's end of the link and not the whole link, which it could only have guessed the direction of. It moved to a module of its own so that the host does not import a sibling board. A scripted manager refuses a `gdb_port`, as a scripted SSD does. A sentence here and in [address-map.md](address-map.md) said the manager's bus keeps the link's registers out of the host's reach, which the window's size already does: what it keeps them out of is the host's generated devicetree, because the walk that makes a map does not clip to a window's size. And a sideband record that does not read as a packet is refused, where the first version left it out.
+- ⚠️ **One test in CI timed out once, on a commit that changed no code**: `test_scripts.py`'s test of a keyboard interrupt, in the coverage job, the commit before M7's first. It passed sixty times in sixty locally and in every CI run since. Nothing was changed for it.
+
+What M7 did not do, that the plan said or implied:
+
+- **A board called `socpuppet_compute`.** There is one board, `socpuppet_host`. Planning decided it, and the reason is under [M7](#m7--chiplet-split).
+- ⚠️ **"The M6 test passes" is M7's own test of the same thing**, the disk test with both of the SSD's firmwares across the link. M6's two other tests, the SSD that keeps its host waiting and the two consoles, were not run across the link.
+- **The manager with a CPU under the host.** `host(manager=add_manager)` describes it and nothing has run it. It is M8's, with its Zephyr image as the third.
+- **A link of your own under the host.** `host()` builds `sp.D2dLink()` at its defaults. The measurement below patched the board to try others.
+- **A debugger on a host that is held in reset.** `tests/python/test_gdb.py` uses the host with the stand-in link.
+- ⚠️ **The trace tests tell a command from data by its size**, 64 bytes for a command fetched and 16 for a completion. No piece of data is either size with this image, and a rebuilt image could have one that is. The test says so where the sizes are.
+- **/tdd was run a step at a time through the skill**, with both reviews on every step. Three tests of `ucie.sideband_packets` were written before any of its code, and not one at a time.
+
+Things M8 should know about the host across the link:
+
+- **`add_manager` with no script is M8's manager.** Under the host its kit lands in the group `io.manager`, clear of the host's own UART, its image loads `via=board.manager.cpu.socket` and its console is `board.manager.cpu_kit.uart`. ⚠️ Its CPU does not see the devicetree `socpuppet_iomgr` was generated from: the labels are `io_manager_...` and there is no scratch memory. The firmware finds the link by its `compatible`, so the M5 image may well run unchanged, but that is a test to write first, as M6 held the SSD's CPU's view under the host.
+- **The boot order has two silences.** The host's CPU does not run for 5 ms. Then `hello_world` reaches the other die 0.44 ms later, but a host with a drive prints nothing until it has started the drive: its first character comes 0.135 s after power-on.
+- **A delay under 200 ns does not slow a CPU**, and a longer one slows it by a cycle less than it should, rounded down to whole cycles (above). A test of the link's timing reads the trace.
+- **The walk that makes a map does not clip to a window's size.** Anything on the bus behind a window is listed in the map and the devicetree of whoever is in front of it, at any offset. Keep the IO die's main bus to what the host may reach.
+- **Check a test that passes first time with an image that would show the fault.** The disk test's image is a tenth of a second from its first crossing.
+- **Who said what, and when, is still in an example** (`examples/host_and_ssd_hello.py`), as M6's list says. M8 wants it of three consoles.
+
+What was measured in M7, on an Apple silicon laptop: Zephyr's disk test from power-on to the first words of its verdict, `PROJECT EXECUTION`, with a 2 MiB drive and the default quantum, three runs each. The simulated times came out the same three runs in three. The SSD is the one with Zephyr for its firmware. The counts of what crossed, above, stop at the same words.
+
+| Link between the dies | Wall time, 🎭 the stand-in drive | Simulated time, 🎭 the stand-in drive | Wall time, the SSD | Simulated time, the SSD |
+|---|---|---|---|---|
+| 🎭 The pass-through | 0.143 s | 511.8 ms | 0.176 s | 598.1 ms |
+| `sp.D2dLink()`, 20 ns a crossing | 0.147 s | 516.8 ms | 0.180 s | 603.1 ms |
+
+And what the link's latency does to that run with 🎭 the stand-in drive, which patched the board to try. The first column of times is at the default quantum and the second at a quantum of 0, where nothing is hidden by a CPU running ahead:
+
+| `latency_ns` | Simulated time, quantum 100 µs | Simulated time, quantum 0 | Later than the pass-through and its 5 ms, quantum 0 |
+|---|---|---|---|
+| 🎭 the pass-through | 511.8 ms | 489.038 ms | |
+| 20, the default | 516.8 ms | 494.038 ms | 0 |
+| 200 | | 494.445 ms | 0.407 ms |
+| 1 000 | 520.8 ms | | |
+| 2 000 | | 501.767 ms | 7.729 ms |
+| 10 000 | 553.9 ms | | |
+| 20 000 | | 575.071 ms | 81.033 ms |
+| 100 000 | 903.0 ms | | |
+
+- **20 ns is nothing and 20 µs is nearly all of it.** A crossing costs the host's CPU its latency in whole cycles of 100 ns, less one (above). So 4081 crossings at 20 µs, which would be 81.6 ms, make the run 81.0 ms longer, 199 parts in 200. At 200 ns they make it 0.407 ms longer, which is half, and at 20 ns no longer at all.
+- **The real link is as fast to simulate as the stand-in**, within 3%.
 
 What M6 delivered: two firmware images in one simulation. The exit test is `tests/python/test_m6_exit.py`: Zephyr's own disk test on the host's 64-bit CPU reads and writes an SSD whose 32-bit CPU runs the Zephyr firmware of `firmware/ssd`, each printing on its own console. It is M3b's exit test with the drive swapped, and it runs with 🎭 the firmware script in the SSD as well. `examples/host_and_ssd_hello.py` is the show to run by hand: both consoles as one story, each line with the time it was said. [boot-your-firmware.md](boot-your-firmware.md) has a section on running the two together.
 

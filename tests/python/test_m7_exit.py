@@ -7,9 +7,9 @@ trained, and the IO die has 🎭 the script for a manager to train it. The
 link's end on the compute die holds the host's CPU in reset until the
 manager lets it go.
 
-Nothing was built again for this. The host's firmware cannot tell which
-link it has, so its images are M3's: Zephyr's `hello_world` and its test
-of its disk interface.
+Nothing is built differently for this. The host's firmware cannot tell
+which link it has, so its images are the ones M3's and M6's tests run:
+Zephyr's `hello_world` and its test of its disk interface.
 """
 
 import functools

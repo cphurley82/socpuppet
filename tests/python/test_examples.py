@@ -18,6 +18,7 @@ COULD_NOT_RUN = 77
         "host_hello.py",
         "ssd_firmware_hello.py",
         "host_and_ssd_hello.py",
+        "chiplet_host_hello.py",
     ]
 )
 def example(request, pytestconfig):

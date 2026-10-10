@@ -274,6 +274,50 @@ ms     who   said
 - 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=stand_in_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
 - `tests/python/test_m6_exit.py` is a complete example.
 
+## The host across the link
+
+The host's two dies have 🎭 a stand-in between them by default, a link that is always up and passes everything straight through. The real one, [`sp.D2dLink`](models/d2d-link.md), carries nothing until it has been trained, and its end on the compute die holds the host's CPU in reset. So a host with the real link needs someone to train it: the IO die's manager. Hand `host` the function that describes one, and the link is the real one:
+
+```python
+import functools
+
+import socpuppet as sp
+from socpuppet.boards.host import host
+from socpuppet.boards.manager import add_manager, stand_in_manager
+
+a_scripted_manager = functools.partial(add_manager, script=stand_in_manager().script)
+
+board = host(manager=a_scripted_manager)
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf", via=board.cpu.socket)
+
+board.platform.run(sp.ms(100))
+print(board.uart.output)
+```
+
+Nothing is built differently for it. The image is the one from step 2, and with `drive_blocks=` and `drive=` as well it is the one built with the shield. The host's firmware cannot tell which link it has: the devicetree its CPU sees is the same with either, and a test holds it so.
+
+`examples/chiplet_host_hello.py` is that with Zephyr's `hello_world`. It prints the link's bring-up out of the trace, and then the host's console:
+
+```text
+   4000.000 us       io ─▶ {SBINIT Out of Reset}
+   ...
+   4750.000 us  compute ─▶ {LinkMgmt.RDI.Rsp.Active}
+   5000.000 us       io ─▶ MemoryWrite_32b 0x24 = 0x0
+   5000.000 us  compute ─▶ Completion, success
+
+*** Booting Zephyr OS build v4.4.2 ***
+Hello World! socpuppet_host/socpuppet_rv64
+```
+
+- 🎭 **The manager is a script here.** `stand_in_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. 🚧 That firmware, on a CPU of its own under this host, is the next milestone's: three images in one simulation.
+- ⚠️ **The host's first instruction is 5 ms late.** UCIe holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
+- ⚠️ **Say whose.** The manager's script is a bus master too, so `load_elf`, `peek32` and `devicetree` want `via=board.cpu.socket`, and say so if it is left out.
+- **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
+- 💡 **Watch it cross.** `host(manager=..., trace=True)` records every crossing in `board.platform.trace`, each with the port it left by: `compute.d2d.peer_initiator` for what the compute die sent and `io.d2d.peer_initiator` for what came back. ⚠️ An address in a record is the receiving die's own. What the compute die sends has had the start of its window taken off, so the UART is at `0x0` there and not at `0x1000_0000`. `ucie.sideband_packets(board.platform.trace)` reads the link's own management traffic back.
+- **It costs nothing you will notice.** Zephyr's disk test finishes 5 ms later than with the stand-in link, which is the late start and nothing more, and in the same wall time. ⚠️ That is not the whole truth about the link. A crossing takes [the link's](models/d2d-link.md) `latency_ns`, 20 ns by default, and its bytes at `bytes_per_ns`, and the host's CPU counts in whole cycles of 100 ns: a crossing of less than 200 ns does not show on its clock at all ([upstream.md](upstream.md) has why). The trace is where to look for the link's own timing. 🚧 `host()` has no way to be given a link of your own yet: copy the board to try a slow one.
+- `tests/python/test_m7_exit.py` is a complete example: `hello_world`, Zephyr's disk test against all three drives, and what the trace shows of each command.
+
 ## The IO die's manager
 
 The third board is `socpuppet_iomgr`: the management CPU on the IO die of a chiplet host, whose firmware brings the die-to-die link up and lets the compute die start. It is the same 32-bit RISC-V machine as the SSD's controller, with one device of its own.

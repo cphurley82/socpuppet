@@ -252,6 +252,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: nothing to delete. The `sysc` commands become safe to document.
 
+### A transaction's delay loses a clock cycle, and whatever is less than a whole one
+
+- **Where**: three places. `src/sysc/core_complex.cpp`, `read_mem` and `write_mem`: `auto incr = (local_time_post.value() - local_time_pre.value()) / curr_clk.read().value();`. `src/sysc/core2sc_adapter.h`, `notify_phase`: `if(cycle_incr > 1) this->instr_if.update_last_instr_cycles(cycle_incr);`. And `src/iss/arch/riscv_hart_common.h`, `update_last_instr_cycles`: `arch.cycle_offset += cycles - 1;`.
+- **What is wrong**: the delay a target adds to a transaction is turned into whole cycles of the core's clock by an integer division, which throws the remainder away, and those cycles then take the place of the instruction's own cycle where they should be added to it. So an access that is delayed by d costs `floor(d / period) - 1` cycles more than one that is not, and nothing at all below two cycles. With socpuppet's 100 ns clock a target that adds 20 ns, or 100 ns, or 199 ns, adds nothing however many times it is reached, and one that adds 300 ns adds 200. A loosely-timed model's latency below two cycles is invisible to the firmware's clock.
+- **How to see it**: by reading, a target that adds 150 ns to `delay` in `b_transport`, behind a core with a 100 ns clock, leaves the core's cycle count where a target that adds nothing leaves it. That has not been run on its own. What was run is Zephyr's disk test on the host across the die-to-die link, whose default is 20 ns a crossing, with a quantum of 0: the verdict comes exactly 5 ms later than with a link that adds nothing, which is the time before the host is let out of reset, after 4081 crossings. At 200 ns a crossing the run is 0.407 ms longer, which is 100 ns a crossing, and at 20 µs it is 81.0 ms longer, which is 199 parts in 200 of what the crossings come to. The figures are in [plan.md](plan.md), under what was measured in M7.
+- **What we do**: nothing. The link's trace records carry the time each crossing arrived, so the link's own timing can still be tested. No test of socpuppet's needs a CPU to feel a delay of less than two cycles.
+- **Upstream fix**: two changes, and the second may be as intended. Keep the remainder of the division and carry it into the next access, or account the delay as time on the quantum keeper and derive the cycles from that. And add an access's cycles to the instruction's own, unless an instruction is meant to take as long as its access and no longer, in which case only the lost remainder is the surprise.
+- **Kind**: bug, or at least a surprise.
+- **When it lands**: the link's default latency starts to cost simulated time, and the M7 figures in [plan.md](plan.md) want measuring again.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

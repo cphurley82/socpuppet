@@ -14,8 +14,8 @@ into it.
 
 The IO die is the one with the management CPU on it: it trains the link
 and then lets the compute die out of reset, which is how a chiplet host
-starts. 🎭 The compute die is a stand-in here, a script with a RAM,
-standing in for the whole of what M7 will put there.
+starts. 🎭 The compute die is a stand-in here, a script with a RAM. The
+real one is the host's: `host(manager=...)`, in `boards/host.py`.
 
 The compute die's window onto the IO die is an **identity map**: an
 address below the compute die's own RAM is the same address on the IO

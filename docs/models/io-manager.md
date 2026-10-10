@@ -24,7 +24,7 @@ Four steps, which is what firmware does and in the same order:
 
 💡 Step 3 is the whole reason a chiplet host has a manager die. The compute die's CPU cannot release itself, and nothing but the sideband can reach across a link that is not up yet.
 
-`socpuppet.boards.io_manager` is the board built around it, and `examples/io_manager_hello.py` is the show: a traced run that prints UCIe's whole bring-up, packet by packet, and then the compute die's first access across the link.
+`socpuppet.boards.io_manager` is the board built around it, and `examples/io_manager_hello.py` is the show: a traced run that prints UCIe's whole bring-up, packet by packet, and then the compute die's first access across the link. The stand-in is also the manager of the host across the real link: `host(manager=functools.partial(add_manager, script=stand_in_manager().script))`, with both names from `socpuppet.boards.manager`, and `examples/chiplet_host_hello.py` is that show, with Zephyr on the compute die.
 
 ## What it leaves out
 

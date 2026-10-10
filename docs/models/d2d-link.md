@@ -110,7 +110,7 @@ The **mailbox** is how firmware reaches the other end's registers: fill in an op
 
 A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, and each direction is serialized on its own: a transaction handed to a busy link waits for the bytes ahead of it. 64 bytes on the default link arrive 24 ns after they leave.
 
-⚠️ A Python test cannot see 20 ns in `platform.time` after one write. A bus master may run up to a quantum (100 µs by default) ahead of the simulation's clock, and folds the delay into that. Measure through [the trace](tracer.md), whose records carry the arrival time, or set `platform.quantum = 0`.
+⚠️ A Python test cannot see 20 ns in `platform.time` after one write. A bus master may run up to a quantum (100 µs by default) ahead of the simulation's clock, and folds the delay into that. Measure through [the trace](tracer.md), whose records carry the arrival time, or set `platform.quantum = 0`. ⚠️ With a CPU for the bus master even that is not enough for a delay this short: the CPU counts in whole cycles of 100 ns, and a crossing of less than 200 ns adds nothing to its clock ([upstream.md](../upstream.md)). The trace always has it.
 
 ### The Zephyr driver
 

@@ -36,10 +36,10 @@ Nearly everything that makes the real link interesting:
 - **Errors.** Nothing is ever dropped or corrupted, and nothing can be injected.
 - **Sideband.** There is no management channel and no control over the other die's reset.
 
-⚠️ It also grants DMI, which the real link is planned not to: there, every access has to cross the link and be seen doing so. Software that relies on fast paths through this stand-in will slow down when the real link replaces it.
+⚠️ It also grants DMI, which the real link does not: there, every access has to cross the link and be seen doing so. Software that relies on fast paths through this stand-in will slow down when the real link replaces it. The host does not slow down: its memory is on its CPU's own die, and what it keeps on the other die it reaches a register at a time.
 
 ## The contract
 
 Any link, this stand-in included, must pass `LinkContract` (`tests/cpp/contracts/link_contract.h`). The contract allows a link to refuse DMI, and [the real link](d2d-link.md) does.
 
-The real link arrived in M5. Nothing it does needs a wire to cross: an interrupt or a reset is a message on its sideband, or it stays on its die. 💡 Swapping this stand-in for the real one is one line in a board, plus firmware to train the link — the stand-in's link is up from the start, and the real one is not.
+The real link arrived in M5. Nothing it does needs a wire to cross: an interrupt or a reset is a message on its sideband, or it stays on its die. 💡 Swapping this stand-in for the real one is one line in a board, plus firmware to train the link — the stand-in's link is up from the start, and the real one is not. The host board does exactly that when it is given a manager, `host(manager=...)`, and is this stand-in when it is not.
