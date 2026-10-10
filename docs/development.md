@@ -92,14 +92,10 @@ Some tests boot real firmware: Zephyr samples, built with the Zephyr SDK.
 firmware/build.sh        # into build/firmware
 ```
 
-- The script downloads the SDK's RISC-V toolchain (about 225 MB) and Zephyr 4.4.2 into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
-- ⚠️ The Zephyr SDK ships no macOS x86-64 toolchain, so on an Intel Mac the script stops and says so. Build the images in the devcontainer's image instead, which is Linux and has a toolchain. The images are plain RISC-V ELF files, so the tests on the Mac boot them as they are:
-
-  ```sh
-  docker build -t socpuppet-dev -f .devcontainer/Dockerfile .devcontainer
-  docker run --rm -v "$PWD":/workspace -w /workspace socpuppet-dev firmware/build.sh
-  ```
-
+- The script downloads the SDK's RISC-V toolchain (about 225 MB), Zephyr 4.4.2, and a Python for Zephyr's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one. It builds that image the first time, as `socpuppet-dev`. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
+- ⚠️ The image is not rebuilt when `.devcontainer/Dockerfile` changes. After such a change: `docker build -t socpuppet-dev -f .devcontainer/Dockerfile .devcontainer`.
+- ⚠️ The toolchain an Intel Mac ends up with in `build/firmware` is Linux's, GDB included. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
 

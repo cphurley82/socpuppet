@@ -24,9 +24,14 @@
 #   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
 #   <name>_<board>.opcodes.txt  how often each instruction appears in it
 #
-# Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself
-# and the Python packages Zephyr's build needs) stays in the output
+# Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself,
+# and a Python with the packages Zephyr's build needs) stays in the output
 # directory. A second run reuses what is there.
+#
+# The Zephyr SDK has no toolchain for an Intel Mac. There the script runs
+# itself in the devcontainer's image, which is Linux, and needs Docker for
+# that. The images come out the same: they are RISC-V programs, and do not
+# care what built them.
 set -euo pipefail
 
 zephyr_version=v4.4.2
@@ -60,9 +65,33 @@ case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) host=linux-x86_64 ;;
   Linux-aarch64) host=linux-aarch64 ;;
   Darwin-arm64) host=macos-aarch64 ;;
+  Darwin-x86_64)
+    if ! command -v docker > /dev/null; then
+      echo "The Zephyr SDK has no toolchain for an Intel Mac, so this script builds the firmware in a Linux container, and it found no Docker to do that with." >&2
+      echo "Install Docker Desktop, start it, and run this again." >&2
+      exit 1
+    fi
+    # The image is the devcontainer's, which is also what CI builds in. It
+    # is built the first time, which takes a minute, and kept.
+    image=socpuppet-dev
+    docker image inspect "${image}" > /dev/null 2>&1 ||
+      docker build --tag "${image}" \
+        --file "${repository}/.devcontainer/Dockerfile" "${repository}/.devcontainer"
+    # The repository is at /workspace in there, and an output directory
+    # inside it is at the same place under it as here, so that a path the
+    # build writes into an image (a source file's, for a debugger) is good
+    # in any container that has the repository at /workspace.
+    case ${out} in
+      "${repository}"/*) inside=/workspace/${out#"${repository}/"} ;;
+      *) inside=/firmware ;;
+    esac
+    exec docker run --rm \
+      --volume "${repository}:/workspace" --volume "${out}:${inside}" \
+      --workdir /workspace "${image}" firmware/build.sh "${inside}"
+    ;;
   *)
     echo "The Zephyr SDK has no toolchain for this machine ($(uname -s) $(uname -m))." >&2
-    echo "Build the firmware on Linux (x86-64 or arm64) or on an Apple silicon Mac." >&2
+    echo "Build the firmware on Linux (x86-64 or arm64) or on a Mac." >&2
     exit 1
     ;;
 esac
@@ -114,11 +143,17 @@ if [[ ! -d ${zephyr} ]]; then
 fi
 
 # The Python packages Zephyr's build scripts import, with CMake and Ninja,
-# in an environment of their own.
+# in an environment of their own. The Python itself is uv's, kept in the
+# output directory with the rest. An environment only points at its Python,
+# and one that pointed outside the output directory would be left pointing
+# at nothing when this runs in a container that is thrown away afterwards.
+# So an environment whose CMake no longer runs is made again.
 venv=${out}/venv
-if [[ ! -x ${venv}/bin/cmake ]]; then
+if ! "${venv}/bin/cmake" --version > /dev/null 2>&1; then
   echo "Installing what Zephyr's build needs"
-  uv venv --quiet "${venv}"
+  rm -rf "${venv}"
+  UV_PYTHON_INSTALL_DIR=${out}/python \
+    uv venv --quiet --python-preference only-managed "${venv}"
   uv pip install --quiet --python "${venv}/bin/python" \
     --requirement "${zephyr}/scripts/requirements-base.txt" cmake ninja
 fi

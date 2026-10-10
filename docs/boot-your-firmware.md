@@ -423,6 +423,15 @@ riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
 (gdb) continue
 ```
 
+💡 On an Intel Mac the Zephyr SDK has no GDB, and `firmware/build.sh` has left Linux's in `build/firmware`. Run that one in the image the firmware was built in. From in there the Mac is called `host.docker.internal`:
+
+```sh
+docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
+  build/firmware/zephyr-sdk-1.0.1/gnu/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gdb \
+  build/firmware/hello_world_socpuppet_host.elf
+(gdb) target remote host.docker.internal:1234
+```
+
 ⚠️ Start the run first and attach second, as here. The port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)).
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
