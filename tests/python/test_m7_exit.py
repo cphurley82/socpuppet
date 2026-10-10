@@ -19,7 +19,11 @@ import pytest
 
 import socpuppet as sp
 from disk_access import IMAGE, run_to_a_verdict
-from socpuppet import ucie
+from link_trace import (
+    sent_to_the_compute_die,
+    sent_to_the_io_die,
+    when_the_host_was_let_go,
+)
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
@@ -30,7 +34,6 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
-from socpuppet.regs import ucie_link
 
 GREETING = "Hello World! socpuppet_host"
 
@@ -293,31 +296,6 @@ IO_QUEUE = 1
 PCI_BAR0 = 0x10
 
 
-def sent_to_the_io_die(board):
-    """What the compute die sent across the link's mainband.
-
-    ⚠️ An address here is the IO die's own: the compute die's bus has
-    taken the start of its window off before the access crosses.
-    """
-    return [
-        each
-        for each in board.platform.trace
-        if each.source == board.link.a.peer_initiator.path
-    ]
-
-
-def sent_to_the_compute_die(board):
-    """What the IO die sent across the link's mainband.
-
-    An address here is one of the compute die's, which is the host's.
-    """
-    return [
-        each
-        for each in board.platform.trace
-        if each.source == board.link.b.peer_initiator.path
-    ]
-
-
 def dma(board, command):
     """The drive's reads, or its writes, of the host's memory."""
     return [
@@ -350,14 +328,3 @@ def submission_doorbells(board, queue=None):
             for pair in (range(QUEUES) if queue is None else [queue])
         ]
     ]
-
-
-def when_the_host_was_let_go(board):
-    """When the manager's write to the compute die's reset register crossed."""
-    return min(
-        record.time
-        for record, packet in ucie.sideband_packets(board.platform.trace)
-        if packet.opcode is ucie.Opcode.MEMORY_WRITE_32B
-        and packet.address == ucie_link.DIE_RESET
-        and not packet.data & ucie_link.DIE_RESET_ASSERTED
-    )
