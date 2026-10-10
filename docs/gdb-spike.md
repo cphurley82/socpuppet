@@ -1,6 +1,6 @@
 # The GDB spike: a debugger on each CPU at once
 
-This is the report of a spike for milestone M8 in [plan.md](plan.md), run on 2026-10-10. It ends with the decision that followed. The spike's code is in [spikes/gdb](../spikes/gdb/README.md) until M8's step 4 has rebuilt what it needs test-first.
+This is the report of a spike for milestone M8 in [plan.md](plan.md), run on 2026-10-10. It ends with the decision that followed. 🦜 The spike's code has since been deleted, when M8's step 4 had rebuilt what it found test-first (`tests/python/test_gdb.py`). The last commit that holds `spikes/gdb/` is `c664738`, and the paths in this report are from there.
 
 **In one paragraph.** DBT-RISE can give every CPU a GDB server of its own, on a port of its own, with a patch of about forty lines to its core library and three to its RISC-V library. Three debuggers then attach to the three CPUs of the host with all its firmwares, each finds its own CPU stopped where its firmware starts, each sets a breakpoint on its firmware's `main` and hits it, and the boot runs on to the disk test's verdict. The Zephyr SDK's GDB does the same as the spike's own client. ⚠️ A CPU stopped in its debugger stops the whole simulation, and the other two debuggers wait with it. That is kept, and the docs will say it. The spike also met a bug nobody was looking for: the server answered one `continue` twice, and the second answer ended the process if the debugger had hung up by then. That is patched too.
 
@@ -61,7 +61,7 @@ What this means for somebody with three GDB windows:
 | `dbt-rise-core-gdb-server-per-core.patch` | 3 files. `run_server` starts one more server each time it is called and returns it. `get(vm)` finds the server started for a core. The target description is a member of the session. |
 | `dbt-rise-riscv-gdb-server-per-core.patch` | 1 file, 3 lines. A core asks for its own server before it adds its `sysc` command. |
 | `dbt-rise-core-gdb-continue-answered-once.patch` | 2 files, 12 lines. A core that runs on is answered by its stop callback and by nothing else. |
-| socpuppet's own code | none yet. `spikes/gdb/a-port-each.patch` takes the refusal out of `dbt_rise_cpu.cpp` for the experiments, and is not applied in the tree. |
+| socpuppet's own code | none in the spike. `spikes/gdb/a-port-each.patch` took the refusal out of `dbt_rise_cpu.cpp` for the experiments, and was not applied in the tree. |
 
 With the three patches in and the refusal still there, all 624 tests pass, with the firmware images required.
 
@@ -76,7 +76,7 @@ With the three patches in and the refusal still there, all 624 tests pass, with 
 
 Decided on 2026-10-10, planning M8:
 
-- **Each CPU that asks gets its own GDB server**, by the three patches above. The platform's refusal of a second `gdb_port` goes in M8's step 4, test-first, with the spike.
+- **Each CPU that asks gets its own GDB server**, by the three patches above. The platform's refusal of a second `gdb_port` went in M8's step 4, test-first, and the spike with it.
 - **A stopped CPU stops the world, and that is the design.** One queue of work a server, as upstream has it. The docs say what it means for the order of things, and the walkthrough is written around it.
 - **`set remotetimeout` is part of the recipe** for more than one GDB.
 - **Things M8's step 4 needs to know**: a breakpoint test can be fast and exact (set it, continue, read the stop reply, ask for the program counter, which before the patch came back as `S05`). A test that hangs up after `continue` and runs on for more than a second of wall clock holds the other half of that patch. The test client's `read_memory` has to ask again after a short answer. And a test with a CPU nobody tells to continue never ends, whatever its limit in simulated time: give every debugger thread a `finally` that says continue, as `run_with_a_debugger` does.

@@ -34,26 +34,6 @@ const char* CoreType(std::uint64_t xlen) {
   }
 }
 
-// The GDB port for the CPU called `cpu`, having checked that it may have
-// one. DBT-RISE has a single GDB server for the whole process, and asking
-// it for a second ends the program. So the second CPU to ask is refused
-// here first. Called before the Core is built, as CoreType is.
-std::uint16_t GdbPortFor(const char* cpu, std::uint16_t gdb_port) {
-  static bool taken = false;
-  if (gdb_port == 0) return 0;
-  if (taken) {
-    throw std::invalid_argument(
-        std::string(
-            "Only one CPU in a simulation can have a GDB port, and \"") +
-        cpu +
-        "\" is the second to ask for one. The CPU model has a single GDB "
-        "server for the whole process. Give gdb_port to the CPU you want "
-        "to debug, and leave it out for the others.");
-  }
-  taken = true;
-  return gdb_port;
-}
-
 }  // namespace
 
 // DBT-RISE's CPU, `core_complex`, and what it takes to fit its outside to
@@ -71,7 +51,8 @@ struct DbtRiseCpu::Core {
       : cpu_(cpu) {
     complex_.core_type.set_value(core_type);
     complex_.reset_address.set_value(reset_vector);
-    // The GDB server is DBT-RISE's own. Zero means none.
+    // The GDB server is DBT-RISE's own, and each CPU that asks has one of
+    // its own, on its own port. Zero means none.
     complex_.gdb_server_port.set_value(gdb_port);
 
     for (auto* from_core : {&from_fetch_, &from_data_}) {
@@ -139,7 +120,7 @@ DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector, std::uint16_t gdb_port)
     : sc_module(name),
       core_(std::make_unique<Core>(*this, CoreType(xlen), reset_vector,
-                                   GdbPortFor(this->name(), gdb_port))) {
+                                   gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &DbtRiseCpu::invalidate_direct_mem_ptr);
 }

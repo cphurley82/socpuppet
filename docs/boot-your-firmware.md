@@ -436,7 +436,7 @@ docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 
-⚠️ One CPU per simulation can have a GDB port. On the host with the SSD, choose which: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's firmware, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. While the CPU you are debugging sits at a breakpoint the whole simulation waits, so the other CPU is not running either and will not have given up on you when you continue. 🚧 A debugger on each CPU at once is planned ([plan.md](plan.md), M8).
+On a board with more than one CPU, each can have a port of its own. On the host with the SSD, `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's firmware, `drive=functools.partial(add_ssd, gdb_port=1235)` the SSD's, and both together debug both. ⚠️ While a CPU you are debugging sits at a breakpoint the whole simulation waits, so the other CPUs are not running either, and will not have given up on you when you continue. With more than one GDB, give each `set remotetimeout 60` before `target remote`, because a GDB reads memory as it attaches and is not answered until its own CPU's turn comes. And leave with `continue`, not `detach`, which would leave the CPU stopped and the simulation with it.
 
 ## When it does not boot
 

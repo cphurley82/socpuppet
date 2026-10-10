@@ -325,8 +325,9 @@ class DbtRiseCpu(Component):
     is the address of the first instruction.
 
     With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
-    waits for one to attach before it executes anything. ⚠️ Only one CPU
-    in a simulation can have one.
+    waits for one to attach before it executes anything. Each CPU of a
+    simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
+    debugger stops the whole simulation, the other CPUs with it.
 
     It is an RV32IMAC or RV64IMAC core in machine mode only: no floating
     point, and no supervisor or user mode. Build firmware for it with

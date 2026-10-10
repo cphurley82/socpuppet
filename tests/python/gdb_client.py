@@ -46,12 +46,70 @@ class GdbClient:
         return int.from_bytes(bytes.fromhex(self.ask("p20")), "little")
 
     def read_memory(self, address, length):
-        """`length` bytes of memory starting at `address`."""
-        return bytes.fromhex(self.ask(f"m{address:x},{length:x}"))
+        """`length` bytes of memory starting at `address`.
+
+        A server may answer with fewer bytes than it was asked for, and
+        DBT-RISE's sends at most 184 at a time. So this asks again for
+        the rest, as GDB does.
+        """
+        read = b""
+        while len(read) < length:
+            reply = self.ask(f"m{address + len(read):x},{length - len(read):x}")
+            if not reply or reply.startswith("E"):
+                raise RuntimeError(
+                    f"The server would not read memory at "
+                    f"{address + len(read):#x}: {reply!r}."
+                )
+            read += bytes.fromhex(reply)
+        return read
+
+    def target_description(self):
+        """The XML a server describes its CPU with: which kind of core,
+        and which registers it has."""
+        xml = ""
+        while True:
+            # The answer comes a piece at a time. Each piece starts with
+            # `m` if there is more to come and `l` if it is the last.
+            piece = self.ask(f"qXfer:features:read:target.xml:{len(xml):x},400")
+            if piece[:1] not in ("m", "l"):
+                raise RuntimeError(
+                    f"The server gave no target description: {piece!r}."
+                )
+            xml += piece[1:]
+            if piece[0] == "l":
+                return xml
+
+    def monitor(self, command):
+        """What the server prints for GDB's `monitor <command>`.
+
+        These are commands of the server's own, outside the protocol.
+        """
+        return bytes.fromhex(
+            self.ask("qRcmd," + command.encode().hex())
+        ).decode()
+
+    def set_breakpoint(self, address, size=4):
+        """Have the CPU stop when it is about to execute what is at `address`.
+
+        `size` is how many bytes the instruction there takes: four, or two
+        for a compressed one.
+        """
+        # Z0 is a breakpoint that the debugger would write into memory on
+        # hardware.
+        reply = self.ask(f"Z0,{address:x},{size:x}")
+        if reply != "OK":
+            raise RuntimeError(f"The server refused the breakpoint: {reply!r}.")
 
     def continue_(self):
         """Let the CPU run. The server says nothing until it stops again."""
         self.send("c")
+
+    def wait_for_a_stop(self):
+        """Wait for a CPU that was told to continue to stop, at a breakpoint.
+
+        Returns what the server said of it: `S05` is "stopped by a trap".
+        """
+        return self._reply()
 
     def _reply(self):
         received = b""

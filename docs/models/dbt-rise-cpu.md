@@ -24,7 +24,7 @@ platform.run(sp.ms(100))
 - **Starts at its reset vector.** `load_elf` checks that the image starts there and was built for the same word size.
 - **Three inputs.** `irq` is the machine external interrupt, for the interrupt controller. `timer_irq` is the machine timer interrupt. `reset` holds the core while it is high and restarts it from the reset vector when it drops.
 - **Takes one clock period per instruction.** The clock is 10 MHz, so an instruction is 100 ns of simulated time, whatever it is.
-- **Can be debugged.** With `gdb_port=1234` the CPU listens for GDB on that port and waits for it to attach before the first instruction. See [boot-your-firmware.md](../boot-your-firmware.md).
+- **Can be debugged.** With `gdb_port=1234` the CPU listens for GDB on that port and waits for it to attach before the first instruction. Each CPU of a simulation can have a port of its own, and a debugger each. See [boot-your-firmware.md](../boot-your-firmware.md).
 - **Sleeps properly.** In `wfi` (wait for interrupt) the core does nothing at all until an interrupt arrives, so an idle system costs almost nothing to simulate.
 
 ## What makes it fast
@@ -40,7 +40,7 @@ platform.run(sp.ms(100))
 - **Floating point**, supervisor and user modes, and virtual memory. None of the firmware here needs them. DBT-RISE has cores with all of them, and socpuppet does not offer them yet.
 - **Cycle accuracy.** Every instruction takes the same time. Use it to find out what firmware does, not how many nanoseconds it takes.
 - **Faster backends.** DBT-RISE can also translate blocks of RISC-V code into host code. socpuppet uses its interpreter.
-- **More than one debugger.** Only one CPU in a simulation can have a GDB port: DBT-RISE has one GDB server per process.
+- **Running on while another CPU is stopped.** SystemC runs every model in turn on one thread, and a CPU stopped in its debugger keeps it. So every other CPU stops with it, and simulated time stands still. That makes debugging several CPUs repeatable, and it is not how a board on a bench behaves. It also means a debugger is answered about memory only while its own CPU is the one stopped: with the host at a breakpoint, the SSD's GDB cannot read the SSD's memory until the host continues.
 
 ## Where it comes from
 
@@ -58,4 +58,4 @@ Why this one, and what else was tried, is in the [ISS spike report](../iss-spike
 
 ### What we changed
 
-socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`) and to tests of its own (`tests/cpp/platform/cpu_test.cpp`). They found three bugs, each patched: a reset raised a second time stopped the simulation, a withdrawn DMI grant was ignored, and an interrupt handler was entered over and over. Four more patches are for compilers and build systems. All seven are written up in [upstream.md](../upstream.md).
+socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`) and to tests of its own (`tests/cpp/platform/cpu_test.cpp`). They found three bugs, each patched: a reset raised a second time stopped the simulation, a withdrawn DMI grant was ignored, and an interrupt handler was entered over and over. Four more patches are for compilers and build systems. Three are for the debugger: a GDB server for each core where there was one for the process, each core's own `sysc` command on its own server, and a `continue` that is answered once. All ten are written up in [upstream.md](../upstream.md).
