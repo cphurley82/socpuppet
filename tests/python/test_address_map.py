@@ -1,9 +1,11 @@
 """🧦 The address map of a description: what answers where, and to whom."""
 
+import re
+
 import pytest
 
 import socpuppet as sp
-from socpuppet.address_map import Window
+from socpuppet.address_map import Window, render
 
 
 def two_devices_on_a_bus():
@@ -260,3 +262,91 @@ class TestWhenAPlatformHasTwoBusMasters:
 
         with pytest.raises(ValueError, match="via="):
             platform.address_map()
+
+
+class TestWhenAnAddressMapIsRenderedForPeople:
+    def test_it_is_a_table_with_one_line_for_each_entry(self):
+        platform = two_devices_on_a_bus()
+
+        assert render(platform.address_map(), color=False) == (
+            "Address      Size     What answers  Model    Through\n"
+            "0x0000_1000  8 bytes  uart.socket   ns16550\n"
+            "0x0000_8000  1 KiB    ram.socket    memory"
+        )
+
+    @pytest.mark.parametrize(
+        ("size", "said"),
+        [
+            (1, "1 byte"),
+            (0x80, "128 bytes"),
+            (0x1_0000, "64 KiB"),
+            (0x400_0000, "64 MiB"),
+            # Not a whole number of anything bigger.
+            (0x401, "1025 bytes"),
+            (1 << 63, "8 EiB"),
+        ],
+    )
+    def test_a_size_is_in_the_biggest_unit_that_divides_it(self, size, said):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        ram = platform.add("ram", sp.Memory(size=size))
+        platform.connect(cpu.socket, ram.socket)
+
+        assert f"  {said}  " in render(platform.address_map(), color=False)
+
+    def test_a_translating_window_is_shown_with_where_it_starts(self):
+        platform = a_uart_on_another_die(window_base=0x1000_0000)
+
+        (_, line) = render(platform.address_map(), color=False).splitlines()
+
+        assert line.endswith("  compute.bus +0x1000_0000")
+
+    def test_a_window_that_does_not_translate_is_shown_with_an_equals_sign(
+        self,
+    ):
+        platform = a_uart_on_another_die(window_base=0)
+
+        (_, line) = render(platform.address_map(), color=False).splitlines()
+
+        assert line.endswith("  compute.bus =")
+
+    def test_two_windows_are_shown_in_the_order_an_access_goes_through_them(
+        self,
+    ):
+        platform = a_ram_behind_two_windows(inner_base=0x2000)
+
+        (_, line) = render(platform.address_map(), color=False).splitlines()
+
+        assert line.endswith("  near +0x0001_0000 → middle +0x0001_2000")
+
+    def test_an_entry_nothing_gives_a_size_is_shown_with_a_question_mark(self):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        root_complex = platform.add("rc", sp.PcieRootComplex())
+        platform.connect(cpu.socket, root_complex.ecam)
+
+        (_, line) = render(platform.address_map(), color=False).splitlines()
+
+        assert line.split()[1] == "?"
+
+    def test_there_are_no_color_codes_when_color_is_off(self):
+        platform = a_uart_on_another_die(window_base=0x1000_0000)
+
+        assert "\x1b[" not in render(platform.address_map(), color=False)
+
+    def test_there_are_color_codes_when_color_is_on(self):
+        platform = two_devices_on_a_bus()
+
+        assert "\x1b[" in render(platform.address_map(), color=True)
+
+    def test_the_columns_line_up_whether_or_not_there_is_color(self):
+        platform = a_uart_on_another_die(window_base=0x1000_0000)
+        colored = render(platform.address_map(), color=True)
+
+        assert ANSI_CODE.sub("", colored) == render(
+            platform.address_map(), color=False
+        )
+
+
+#: What a terminal takes as a change of color and does not show.
+ANSI_CODE = re.compile(r"\x1b\[[0-9;]*m")

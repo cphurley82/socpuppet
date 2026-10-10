@@ -9,8 +9,17 @@ so on. This walks it.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterator, Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple, overload
+
+from socpuppet._terminal import (
+    BOLD,
+    CYAN,
+    DIM,
+    MAGENTA,
+    stdout_wants_color,
+    table,
+)
 
 if TYPE_CHECKING:
     from socpuppet.placed import Port
@@ -112,6 +121,55 @@ def _group_of(path: str, groups: Collection[str]) -> str | None:
         key=len,
         default=None,
     )
+
+
+def render(entries: Sequence[MapEntry], color: bool | None = None) -> str:
+    """An address map as a table for people, one line for each entry.
+
+    The last column has the windows on the way to an entry, in the order
+    an access goes through them. `bus +0x1000_0000` is a window of `bus`
+    that starts at that address and translates; `bus =` is one that does
+    not (see `Window.translates`).
+
+    `color` defaults to whether standard output wants it.
+    """
+    if color is None:
+        color = stdout_wants_color()
+    return table(
+        ("Address", "Size", "What answers", "Model", "Through"),
+        [
+            (
+                _address(entry.address),
+                "?" if entry.size is None else _size(entry.size),
+                f"{entry.component}.{entry.port}",
+                entry.implementation,
+                " → ".join(
+                    f"{window.bus} +{_address(window.address)}"
+                    if window.translates
+                    else f"{window.bus} ="
+                    for window in entry.windows
+                ),
+            )
+            for entry in entries
+        ],
+        styles=(BOLD, "", CYAN, DIM, MAGENTA),
+        color=color,
+    )
+
+
+def _address(address: int) -> str:
+    """An address as the docs write one: `0x1000_0000`."""
+    return f"{address:#011_x}"
+
+
+def _size(size: int) -> str:
+    """A number of bytes in the biggest unit that divides it: `64 KiB`."""
+    units = ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB"]
+    unit = "byte" if size == 1 else "bytes"
+    while size % 1024 == 0 and units:
+        size //= 1024
+        unit = units.pop(0)
+    return f"{size} {unit}"
 
 
 class Reached(NamedTuple):

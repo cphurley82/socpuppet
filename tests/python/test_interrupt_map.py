@@ -1,7 +1,7 @@
 """🧦 The interrupt map of a description: whose line is which number."""
 
 import socpuppet as sp
-from socpuppet.interrupt_map import InterruptEntry
+from socpuppet.interrupt_map import InterruptEntry, render
 
 
 class TestWhenADevicesLineGoesToASourceOfAPlic:
@@ -79,3 +79,27 @@ class TestWhenALineGoesToAnInputThatHasNoNumber:
         platform.connect(dma.irq, cpu.irq)
 
         assert platform.interrupt_map() == []
+
+
+class TestWhenAnInterruptMapIsRenderedForPeople:
+    def a_map_of_two_lines(self):
+        platform = sp.Platform()
+        plic = platform.add("plic", sp.Plic())
+        cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=32, reset_vector=0))
+        dma = platform.add("dma", sp.DmaEngine())
+        platform.connect(dma.irq, plic.source4)
+        platform.connect(plic.irq, cpu.irq)
+        return platform.interrupt_map()
+
+    def test_it_is_a_table_with_one_line_for_each_interrupt(self):
+        assert render(self.a_map_of_two_lines(), color=False) == (
+            "Controller  Number  Line\n"
+            "cpu         11      plic.irq\n"
+            "plic        4       dma.irq"
+        )
+
+    def test_there_are_no_color_codes_when_color_is_off(self):
+        assert "\x1b[" not in render(self.a_map_of_two_lines(), color=False)
+
+    def test_there_are_color_codes_when_color_is_on(self):
+        assert "\x1b[" in render(self.a_map_of_two_lines(), color=True)

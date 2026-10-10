@@ -10,8 +10,10 @@ connected to which port.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Collection, Iterator
+from collections.abc import Collection, Iterator, Sequence
 from typing import TYPE_CHECKING
+
+from socpuppet._terminal import BOLD, CYAN, stdout_wants_color, table
 
 if TYPE_CHECKING:
     from socpuppet.platform import Connection
@@ -38,6 +40,24 @@ def entries(connections: Collection[Connection]) -> list[InterruptEntry]:
     return sorted(
         _lines(connections),
         key=lambda entry: (entry.controller, entry.number),
+    )
+
+
+def render(entries: Sequence[InterruptEntry], color: bool | None = None) -> str:
+    """An interrupt map as a table for people, one line for each interrupt.
+
+    `color` defaults to whether standard output wants it.
+    """
+    if color is None:
+        color = stdout_wants_color()
+    return table(
+        ("Controller", "Number", "Line"),
+        [
+            (entry.controller, str(entry.number), entry.line)
+            for entry in entries
+        ],
+        styles=(CYAN, BOLD, ""),
+        color=color,
     )
 
 
