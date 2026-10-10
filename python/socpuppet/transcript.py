@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import NamedTuple
 
 from socpuppet.placed import PlacedUart
@@ -24,9 +24,8 @@ class Line(NamedTuple):
 class Transcript:
     """What several consoles say during a run, as one story.
 
-    A transcript hears nothing by itself: `listen()` notes what is new,
-    and a run is listened to by calling it as the run goes on, from the
-    condition of `Platform.run_until`.
+    A transcript hears nothing by itself: `listen()` notes what is new.
+    Its own `run_until` runs the platform and listens as the run goes on.
 
     Lines heard by different listens are in the order they were said.
     ⚠️ Lines from two consoles heard by the same `listen` have the same
@@ -56,3 +55,18 @@ class Transcript:
                 for text in output[self._heard[who] : whole].splitlines()
             ]
             self._heard[who] = whole
+
+    def run_until(
+        self, condition: Callable[[], bool], timeout: int | None = None
+    ) -> bool:
+        """Run the platform until `condition()` is true, listening as it goes.
+
+        It is `Platform.run_until` with a `listen()` before each look at
+        the condition, so the condition can ask what has been said.
+        """
+
+        def heard() -> bool:
+            self.listen()
+            return condition()
+
+        return self._platform.run_until(heard, timeout)

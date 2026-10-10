@@ -22,9 +22,9 @@ class TestWhenTwoConsolesAreListenedToAsARunGoesOn:
             yield from pause()
             yield from say(EGGS_UART, "Eggs again.\n")
 
-        platform, transcript = two_consoles(script)
+        _, transcript = two_consoles(script)
 
-        run_listening(platform, transcript)
+        run_listening(transcript)
 
         assert [(line.who, line.text) for line in transcript.lines] == [
             ("eggs", "And eggs."),
@@ -78,11 +78,36 @@ class TestWhenAConsoleEndsItsLinesWithACarriageReturnAndALineFeed:
         def script():
             yield from say(SPAM_UART, "Lovely spam!\r\n")
 
-        platform, transcript = two_consoles(script)
+        _, transcript = two_consoles(script)
 
-        run_listening(platform, transcript)
+        run_listening(transcript)
 
         assert [line.text for line in transcript.lines] == ["Lovely spam!"]
+
+
+@pytest.mark.platform
+class TestWhenATranscriptRunsThePlatformUntilACondition:
+    def test_it_stops_when_the_condition_holds_having_heard_all_that_was_said(
+        self,
+    ):
+        def script():
+            yield from say(EGGS_UART, "And eggs.\n")
+            yield from pause()
+            yield from say(SPAM_UART, "Lovely spam!\n")
+            yield from pause()
+            yield from say(EGGS_UART, "Eggs again.\n")
+
+        _, transcript = two_consoles(script)
+
+        held = transcript.run_until(
+            lambda: "Lovely spam!" in [line.text for line in transcript.lines]
+        )
+
+        assert held
+        assert [(line.who, line.text) for line in transcript.lines] == [
+            ("eggs", "And eggs."),
+            ("spam", "Lovely spam!"),
+        ]
 
 
 def say(uart, text):
@@ -118,11 +143,6 @@ def two_consoles(script):
     return platform, sp.Transcript(platform, {"spam": spam, "eggs": eggs})
 
 
-def run_listening(platform, transcript):
-    """Run to the end of the script, listening whenever time is about to move."""
-
-    def listen_and_go_on():
-        transcript.listen()
-        return False
-
-    platform.run_until(listen_and_go_on)
+def run_listening(transcript):
+    """Run to the end of the script, listening as it goes."""
+    transcript.run_until(lambda: False)

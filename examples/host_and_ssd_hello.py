@@ -88,7 +88,8 @@ if __name__ == "__main__":
     platform.load_elf(SSD_IMAGE, via=board.drive.ssd.cpu.socket)
 
     # Who said what, and when: each whole line either console prints,
-    # noted each time the run is about to move the clock on.
+    # noted each time the run is about to move the clock on. The run is
+    # the transcript's own, which listens as it goes.
     story = sp.Transcript(
         platform, {"host": board.uart, "ssd": board.drive.ssd.cpu_kit.uart}
     )
@@ -104,15 +105,10 @@ if __name__ == "__main__":
             None,
         )
 
-    def the_host_gave_its_verdict():
-        """Listen to both consoles, and say whether the run is over."""
-        story.listen()
-        return verdict() is not None
-
     # A CPU never runs out of things to do, so the run ends at the host's
     # verdict, or after two seconds of simulated time, which is three
     # times what this takes.
-    platform.run_until(the_host_gave_its_verdict, timeout=sp.ms(2000))
+    story.run_until(lambda: verdict() is not None, timeout=sp.ms(2000))
 
     print(
         terminal.table(
