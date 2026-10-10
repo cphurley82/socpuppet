@@ -200,6 +200,7 @@ def host(
     gdb_port: int = 0,
     drive_blocks: int | None = None,
     manager: AddManager | None = None,
+    trace: bool = False,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -208,6 +209,7 @@ def host[Drive: PcieDrive](
     drive_blocks: int | None = None,
     drive: AddDrive[Drive],
     manager: AddManager | None = None,
+    trace: bool = False,
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -215,6 +217,7 @@ def host(
     drive_blocks: int | None = None,
     drive: AddDrive[Any] | None = None,
     manager: AddManager | None = None,
+    trace: bool = False,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -238,6 +241,11 @@ def host(
     `functools.partial(add_manager, script=stand_in_manager().script)`
     the manager is 🎭 a script. ⚠️ A host with a manager has two bus
     masters, so say whose: `platform.load_elf(file, via=board.cpu.socket)`.
+
+    With `trace=True`, everything that crosses the link between the dies
+    is recorded, in `platform.trace`: what each die sends the other, and
+    on the real link its management traffic, the sideband, apart from
+    that (`socpuppet.ucie` reads its packets back).
     """
     platform = Platform()
     compute = platform.group("compute")
@@ -250,11 +258,10 @@ def host(
     ram = compute.add("ram", Memory(size=RAM_SIZE))
     plic = compute.add("plic", Plic())
     timer = compute.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
+    link_model = PassThroughLink() if manager is None else D2dLink()
+    d2d = platform.link("d2d", link_model, compute, io, trace=trace)
     placed_manager = None
-    if manager is None:
-        d2d = platform.link("d2d", PassThroughLink(), compute, io)
-    else:
-        d2d = platform.link("d2d", D2dLink(), compute, io)
+    if manager is not None:
         platform.connect(d2d.a.reset, cpu.reset)
         # The manager has a bus of its own, with the link's registers on
         # it and nothing the host reaches. On the IO die's main bus it
