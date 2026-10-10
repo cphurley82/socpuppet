@@ -16,18 +16,9 @@ import functools
 import pytest
 
 import socpuppet as sp
+from disk_access import IMAGE, run_to_a_verdict
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
-
-#: What Zephyr's test framework ends with, when no test failed and when
-#: one did.
-VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
-#: The verdict comes at about half a second of simulated time, as it does
-#: with the stand-in drive, and a quarter of a second later under the
-#: slowest SSD here. 2 s leaves room and still ends a run that never
-#: gives one.
-LIMIT = sp.ms(2000)
-
 
 #: What is in the SSD's CPU's place.
 A_SCRIPT = "a script for the SSD's firmware"
@@ -44,7 +35,7 @@ def host_with_the_ssd(request, firmware):
     application in firmware/ssd on the SSD's own CPU. A test of what only
     the real thing does asks for that one alone, with `only_with_zephyr`.
     """
-    host_image = firmware("disk_access_socpuppet_host.elf")
+    host_image = firmware(IMAGE)
     ssd_image = (
         firmware("ssd_socpuppet_ssd.elf") if request.param == ZEPHYR else None
     )
@@ -163,31 +154,3 @@ class TestAFifthOfASecondAfterBothCpusStart:
         board.platform.run(A_FIFTH_OF_A_SECOND)
 
         assert board.uart.output == ""
-
-
-def run_to_a_verdict(board):
-    """Run until the host's firmware says how its tests went."""
-    gave_a_verdict = board.platform.run_until(
-        lambda: any(each in board.uart.output for each in VERDICTS),
-        timeout=LIMIT,
-    )
-    assert gave_a_verdict, no_verdict(board)
-
-
-def no_verdict(board):
-    """What to say when the host's firmware never finished.
-
-    The SSD's console is the first place to look: a host that waits for
-    ever is most often waiting for the SSD.
-    """
-    ssd = board.drive.ssd
-    return (
-        "The host's firmware gave no verdict in 2 s. It printed:\n"
-        f"{board.uart.output or '(nothing)'}\n"
-        "And the SSD's firmware printed:\n"
-        + (
-            ssd.cpu_kit.uart.output or "(nothing)"
-            if ssd.cpu_kit
-            else "(nothing: a script has no console)"
-        )
-    )
