@@ -3,6 +3,7 @@
 import pytest
 
 import socpuppet as sp
+from socpuppet.transcript import Line, render
 
 SPAM_UART = 0x1000
 EGGS_UART = 0x2000
@@ -108,6 +109,32 @@ class TestWhenATranscriptRunsThePlatformUntilACondition:
             ("eggs", "And eggs."),
             ("spam", "Lovely spam!"),
         ]
+
+
+class TestWhenATranscriptsLinesAreRendered:
+    def test_each_is_a_row_of_when_in_milliseconds_who_and_what_was_said(self):
+        lines = [
+            Line(sp.us(1500), "spam", "Lovely spam!"),
+            Line(sp.ms(20), "eggs", "And eggs."),
+        ]
+
+        header, *rows = render(lines, color=False).splitlines()
+
+        assert header.split() == ["ms", "who", "said"]
+        assert [row.split(maxsplit=2) for row in rows] == [
+            ["1.5", "spam", "Lovely spam!"],
+            ["20.0", "eggs", "And eggs."],
+        ]
+
+    def test_it_is_plain_text_where_color_is_not_wanted(self):
+        lines = [Line(sp.us(1500), "spam", "Lovely spam!")]
+
+        assert "\x1b[" not in render(lines, color=False)
+
+    def test_it_is_colored_where_color_is_wanted(self):
+        lines = [Line(sp.us(1500), "spam", "Lovely spam!")]
+
+        assert "\x1b[" in render(lines, color=True)
 
 
 def say(uart, text):

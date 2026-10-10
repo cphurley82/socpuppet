@@ -43,7 +43,6 @@ import pathlib
 import sys
 
 import socpuppet as sp
-from socpuppet import terminal
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd
 
@@ -111,16 +110,11 @@ if __name__ == "__main__":
     story.run_until(lambda: verdict() is not None, timeout=sp.ms(2000))
 
     print(
-        terminal.table(
-            ("ms", "who", "said"),
-            [
-                (f"{line.time / sp.ms(1):.1f}", line.who, line.text)
-                for line in story.lines
-                # Zephyr's test framework rules lines between its tests.
-                if line.text.strip("= -")
-            ],
-            styles=(terminal.DIM, terminal.CYAN, ""),
-            color=None,
+        sp.render_transcript(
+            line
+            for line in story.lines
+            # Zephyr's test framework rules lines between its tests.
+            if line.text.strip("= -")
         )
     )
     elapsed = platform.time / sp.ms(1)

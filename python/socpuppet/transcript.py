@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import NamedTuple
 
+from socpuppet import terminal
 from socpuppet.placed import PlacedUart
 from socpuppet.platform import Platform
+from socpuppet.time import ms
 
 
 class Line(NamedTuple):
@@ -70,3 +72,17 @@ class Transcript:
             return condition()
 
         return self._platform.run_until(heard, timeout)
+
+
+def render(lines: Iterable[Line], color: bool | None = None) -> str:
+    """Lines of a transcript as a table for people: when, who, what.
+
+    The time is in milliseconds. `color` defaults to whether standard
+    output wants it (see `terminal.wants_color`).
+    """
+    return terminal.table(
+        ("ms", "who", "said"),
+        [(f"{line.time / ms(1):.1f}", line.who, line.text) for line in lines],
+        styles=(terminal.DIM, terminal.CYAN, ""),
+        color=color,
+    )
