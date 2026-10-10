@@ -10,7 +10,7 @@
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
 die has the CPU, its RAM, the interrupt controller and the timer. The IO
 die has the UART. 🎭 The link between the dies is a stand-in that passes
-every access straight through.
+every access straight through, unless the host is given a `manager`.
 
 💡 Transactions and messages cross the link, and no wires. A real
 die-to-die link has nowhere for an interrupt line to go down, so the
@@ -37,6 +37,22 @@ the drive's interrupt vectors.
 `drive=add_ssd` as well it is the real one (`socpuppet.boards.ssd`), which
 has a CPU and firmware of its own. The host cannot tell which it has.
 
+With `manager`, the link between the dies is the real one
+(`sp.D2dLink`), which carries no traffic until it has been trained, and
+the IO die has a manager to train it:
+
+    compute die                         IO die
+    🧠 cpu ─▶ bus ─▶ link end ═════ link end ─▶ bus ─▶ uart ...
+       ▲                │             ▲  │
+       └──── reset ─────┘             │  └─ irq ─────────────▶ manager
+                                      └─ its registers ◀─ bus ◀──┘
+
+The link's end on the compute die holds the host's CPU in reset. The
+manager starts the training, waits for the link to say it is up, and lets
+the CPU go with a message to the other end. It has a bus of its own, with
+the link's registers on it and nothing the host reaches, so the host's
+firmware sees the same map with either link and is the same image.
+
 The Zephyr board is the host with no drive. Firmware for the host with
 one is built with a shield as well, `socpuppet_host_drive`. A shield is
 Zephyr's word for hardware plugged into a board, and `drive_overlay()`
@@ -59,7 +75,9 @@ from socpuppet.boards.drive import (
     BehavioralDrive,
     add_behavioral_drive,
 )
+from socpuppet.boards.io_manager import Manager
 from socpuppet.components import (
+    D2dLink,
     DbtRiseCpu,
     MachineTimer,
     Memory,
@@ -70,8 +88,8 @@ from socpuppet.components import (
     Plic,
     Router,
 )
-from socpuppet.placed import Placed, PlacedUart
-from socpuppet.platform import Group, Platform
+from socpuppet.placed import Placed, PlacedRouter, PlacedUart
+from socpuppet.platform import Group, Link, Platform
 from socpuppet.time import ms
 
 #: Where the RAM starts, and where the CPU starts executing.
@@ -127,6 +145,25 @@ class AddDrive[Drive: PcieDrive](Protocol):
         """Describe a drive of `blocks` 512-byte blocks, in `group`."""
 
 
+class AddManager(Protocol):
+    """A function that describes the IO die's manager.
+
+    `socpuppet.boards.io_manager.add_manager` is one, and with a `script`
+    filled in it is another. Which of them a host is given is how much of
+    a manager it has.
+    """
+
+    def __call__(
+        self,
+        platform: Platform,
+        place: Group,
+        bus: PlacedRouter,
+        *,
+        link_end: Placed,
+    ) -> Manager:
+        """Describe the manager on `bus`, with this die's end of the link."""
+
+
 class HostDrive[Drive: PcieDrive](NamedTuple):
     """The host's SSD, and what the host has for its sake."""
 
@@ -145,8 +182,13 @@ class Host[Drive: PcieDrive](NamedTuple):
     platform: Platform
     cpu: Placed
     uart: PlacedUart
+    #: The link between the two dies: `link.a` is the compute die's end,
+    #: `link.b` the IO die's.
+    link: Link
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
+    #: The IO die's manager, if the host was described with one.
+    manager: Manager | None = None
 
 
 # The two declarations are for a type checker. They say that the host
@@ -154,7 +196,10 @@ class Host[Drive: PcieDrive](NamedTuple):
 # `host(drive=add_ssd)` it knows `board.drive.ssd` has a CPU.
 @overload
 def host(
-    *, gdb_port: int = 0, drive_blocks: int | None = None
+    *,
+    gdb_port: int = 0,
+    drive_blocks: int | None = None,
+    manager: AddManager | None = None,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -162,12 +207,14 @@ def host[Drive: PcieDrive](
     gdb_port: int = 0,
     drive_blocks: int | None = None,
     drive: AddDrive[Drive],
+    manager: AddManager | None = None,
 ) -> Host[Drive]: ...
 def host(
     *,
     gdb_port: int = 0,
     drive_blocks: int | None = None,
     drive: AddDrive[Any] | None = None,
+    manager: AddManager | None = None,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -181,6 +228,16 @@ def host(
     `socpuppet.boards.ssd`, is the SSD with a CPU of its own, and its
     firmware is then a second image to load:
     `platform.load_elf(file, via=board.drive.ssd.cpu.socket)`.
+
+    `manager` is the function that describes the IO die's manager, and
+    with one the link between the dies is the real one, `sp.D2dLink`,
+    whose end holds the host's CPU in reset until the manager has trained
+    the link and let it go. 🎭 With none the link is the pass-through
+    stand-in and the CPU starts at once. `add_manager`, from
+    `socpuppet.boards.io_manager`, is that function, and with
+    `functools.partial(add_manager, script=stand_in_manager().script)`
+    the manager is 🎭 a script. ⚠️ A host with a manager has two bus
+    masters, so say whose: `platform.load_elf(file, via=board.cpu.socket)`.
     """
     platform = Platform()
     compute = platform.group("compute")
@@ -193,7 +250,24 @@ def host(
     ram = compute.add("ram", Memory(size=RAM_SIZE))
     plic = compute.add("plic", Plic())
     timer = compute.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
-    d2d = platform.link("d2d", PassThroughLink(), compute, io)
+    placed_manager = None
+    if manager is None:
+        d2d = platform.link("d2d", PassThroughLink(), compute, io)
+    else:
+        d2d = platform.link("d2d", D2dLink(), compute, io)
+        platform.connect(d2d.a.reset, cpu.reset)
+        # The manager has a bus of its own, with the link's registers on
+        # it and nothing the host reaches. On the IO die's main bus it
+        # would find the root complex's window at another address than
+        # the host's CPU does, which a platform refuses, and the host's
+        # devicetree would gain the link's registers.
+        management = io.group("manager")
+        placed_manager = manager(
+            platform,
+            management,
+            management.add("bus", Router()),
+            link_end=d2d.b,
+        )
     io_bus = io.add("bus", Router())
     uart = io.add("uart", Ns16550())
 
@@ -214,7 +288,9 @@ def host(
                 "Say how many 512-byte blocks it holds: "
                 "host(drive_blocks=4096, drive=...)."
             )
-        return Host(platform, cpu, uart)
+        return Host(
+            platform, cpu, uart, d2d, drive=None, manager=placed_manager
+        )
 
     msi = compute.add("msi", MsiPlicBridge(vectors=VECTORS))
     root_complex = io.add("rc", PcieRootComplex())
@@ -235,7 +311,14 @@ def host(
     ssd = (drive or add_behavioral_drive)(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
-    return Host(platform, cpu, uart, HostDrive(ssd, msi, root_complex))
+    return Host(
+        platform,
+        cpu,
+        uart,
+        d2d,
+        drive=HostDrive(ssd, msi, root_complex),
+        manager=placed_manager,
+    )
 
 
 def drive_overlay(board: Host[Any] | None = None) -> str:

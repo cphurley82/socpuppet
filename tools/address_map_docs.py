@@ -14,6 +14,7 @@ what `write` would leave. tools/lint.py runs `check`, or `write` with
 """
 
 import argparse
+import functools
 import sys
 from pathlib import Path
 
@@ -62,6 +63,13 @@ def tables():
     with_the_ssd = host.host(
         drive_blocks=ssd.DRIVE_BLOCKS_PER_NAND_BLOCK, drive=ssd.add_ssd
     ).platform
+    # 🎭 The script for a manager has no kit around it, so its map is the
+    # manager's with nothing of a CPU's in it.
+    with_a_manager = host.host(
+        manager=functools.partial(
+            io_manager.add_manager, script=io_manager.stand_in_manager().script
+        )
+    ).platform
     ssd_board = ssd.platform
     io_board = io_manager.platform
 
@@ -72,6 +80,9 @@ def tables():
         "address-map:host": address_table(host_board.address_map()),
         "address-map:host-drive": address_table(
             only_in(with_a_drive.address_map(), host_board.address_map())
+        ),
+        "address-map:host-manager": address_table(
+            seen_from(with_a_manager, "io.manager.cpu.socket")
         ),
         "address-map:ssd": address_table(
             seen_from(ssd_board, "ssd.cpu.socket")

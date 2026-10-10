@@ -257,7 +257,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 
 ## The IO manager
 
-The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero, and it is what M7 will want when the compute die becomes the real host.
+The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero. It can be done here because 🎭 this compute die has nothing of its own below its memory to be in the way.
 
 What the manager's CPU sees (`io.cpu.socket`):
 
@@ -307,6 +307,26 @@ The interrupt lines:
 - ⚠️ **The link has a second register block, and it is in no map.** Each end of the link has a register block for its own die. On this board only the IO die's is mapped, and the compute die's end is reached another way: the manager writes the sideband mailbox, which names a register by its offset in the block at the *other* end. The table shows the IO die's block in the compute die's map as well, because the window carries everything on the IO die's bus.
 - **The manager's CPU has the kit every socpuppet CPU has**, at the addresses the SSD board uses for the same things (timer `0x0200_0000`, PLIC `0x0C00_0000`, UART `0x1000_0000`, SRAM `0x2000_0000`), which is why the link's registers sit where the SSD has its frontend's and why both boards share one SoC in Zephyr. The link's interrupt is the PLIC's source 1. ⚠️ The scratch has to stay above the SRAM, for the same reason the SSD's SRAM stays below its buffer.
 - 🎭 **With a script for its firmware the manager has no CPU**, and no timer, PLIC, UART or SRAM either. The link's registers and the scratch stay where they are.
+
+## The host across the link
+
+`host(manager=...)` is the host above with the real [die-to-die link](models/d2d-link.md) between its dies, where 🎭 the pass-through was, and the IO die's manager to bring that link up. It is the host and the IO manager board put together: the host's compute die where the IO manager board has a stand-in. With `functools.partial(add_manager, script=stand_in_manager().script)` the manager is 🎭 the [script](models/io-manager.md).
+
+- **The host's CPU (`compute.cpu.socket`) sees exactly what it sees with the pass-through**: the tables under [The host](#the-host). So the firmware for it is the firmware built for `socpuppet_host`, the same image. What changes is when it runs: the link's end on the compute die holds the CPU in reset until the manager has trained the link and let it go.
+- **The manager has a bus of its own on the IO die**, and this is all that is on it for 🎭 the script (`io.manager.cpu.socket`):
+
+<!-- address-map:host-manager start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
+
+<!-- address-map:host-manager end -->
+
+- 🎓 **Why a bus of its own.** A manager on the bus the traffic goes through would see the root complex's memory window at `0x0080_0000`, where the host's CPU sees it at `0x1080_0000`, and a platform refuses to say where a port is when two bus masters find it at different addresses. The devicetree generated for the host would also gain a node for the link's registers, so there would be a second board to build firmware for. On a bus of its own the manager has nothing to disagree about, and the host's map has none of the link's registers in it. That is the usual arrangement in a chip, too: a management core sits on a small bus with what it manages, apart from the bus the traffic takes.
+- **The window still translates**, which is the difference from the IO manager board. A window that keeps the other die's addresses has to start at address 0, and to reach as far as the IO die's bus does. The host's compute die has a timer and an interrupt controller of its own down there, at `0x0200_0000` and `0x0C00_0000`, and a router refuses two ranges that overlap. So each die's map stands on its own and the window is the only thing between them.
+- ⚠️ **The compute die's end of the link has registers that are in no map**, as on the IO manager board. The manager reaches them through the sideband mailbox, which is how it lets the host's CPU out of reset.
+- **The interrupt lines are the host's**, in the tables above. 🎭 A script has one interrupt input and it has no number, so the link's line to it is in no table. A manager with a CPU has the link on source 1 of an interrupt controller of its own, as under [The IO manager](#the-io-manager).
 
 ## See it yourself
 

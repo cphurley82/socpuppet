@@ -1,5 +1,6 @@
 """The host platform and the Zephyr board that is generated from it."""
 
+import functools
 import json
 import re
 
@@ -15,6 +16,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
 )
+from socpuppet.boards.io_manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from socpuppet.components import MachineTimer
 from zephyr_module import ZEPHYR_MODULE, clock_rate
@@ -194,6 +196,71 @@ def host_with_the_ssd():
     smallest an SSD comes.
     """
     return host(drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK, drive=add_ssd)
+
+
+class TestTheHostWithAManager:
+    def test_its_cpu_takes_its_reset_from_its_end_of_the_link(self):
+        # This is that the line comes from the link and from nowhere
+        # else. What the line does can only be seen in a run.
+        board = host_with_a_manager()
+
+        connections = json.loads(board.platform.to_json())["connections"]
+
+        assert (board.link.a.reset.path, board.cpu.reset.path) in [
+            (each["source"], each["sink"]) for each in connections
+        ]
+
+    def test_its_manager_reaches_the_links_registers_and_nothing_its_cpu_does(
+        self,
+    ):
+        # The manager has a bus of its own, as the management side of a
+        # real IO die has.
+        board = host_with_a_manager()
+
+        the_managers = ports_reached(board, via=board.manager.cpu.socket)
+        the_cpus = ports_reached(board, via=board.cpu.socket)
+
+        assert board.link.b.sideband.path in the_managers
+        assert the_managers & the_cpus == set()
+
+    def test_its_cpu_sees_the_devicetree_it_sees_with_no_manager(self):
+        # Which is why firmware built for the host runs across the real
+        # link, unchanged.
+        board = host_with_a_manager()
+
+        seen = board.platform.devicetree(via=board.cpu.socket)
+
+        assert seen == host().platform.devicetree()
+
+    @pytest.mark.platform
+    def test_can_be_built_with_a_drive_that_its_cpu_then_finds(self):
+        # A root complex is told where its memory window is when the
+        # platform is built, and a platform refuses to say where a port
+        # is when two bus masters find it at different addresses.
+        board = host_with_a_manager(drive_blocks=64)
+        board.platform.build()
+
+        ids = board.platform.peek32(IO_BASE + ECAM_OFFSET, via=board.cpu.socket)
+
+        assert ids == DEVICE_ID << 16 | VENDOR_ID
+
+
+def ports_reached(board, via):
+    """The paths of the ports that answer a master: `io.uart.socket`."""
+    return {
+        f"{each.component}.{each.port}"
+        for each in board.platform.address_map(via=via)
+    }
+
+
+def host_with_a_manager(drive_blocks=None):
+    """The host with 🎭 the script for a manager on its IO die."""
+    return host(
+        drive_blocks=drive_blocks,
+        manager=functools.partial(
+            add_manager, script=stand_in_manager().script
+        ),
+    )
 
 
 class TestTheHostAskedForADriveOfNoSize:

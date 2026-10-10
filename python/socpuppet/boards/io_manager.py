@@ -82,6 +82,16 @@ class IoManagerBoard(NamedTuple):
     cpu_kit: CpuKit | None = None
 
 
+class Manager(NamedTuple):
+    """The IO die's manager, as `add_manager` describes it."""
+
+    #: The manager's CPU, or 🎭 the script in its place. Firmware is
+    #: loaded through it: `platform.load_elf(file, via=manager.cpu.socket)`.
+    cpu: Placed
+    #: What a real CPU has around it. None when a script is in its place.
+    cpu_kit: CpuKit | None = None
+
+
 def stand_in_manager() -> IoManager:
     """🎭 The manager stand-in, told where this board's link registers are.
 
@@ -99,7 +109,7 @@ def add_manager(
     link_end: Placed,
     script: Script | None = None,
     gdb_port: int = 0,
-) -> tuple[Placed, CpuKit | None]:
+) -> Manager:
     """Put the IO die's manager on `bus`, with the link's registers.
 
     `link_end` is this die's end of the die-to-die link the manager
@@ -110,9 +120,14 @@ def add_manager(
     it, and the firmware is loaded into it. `gdb_port` is where a debugger
     can attach to it. 🎭 With a `script`, that is in the CPU's place and
     there is no kit: `add_manager(..., script=stand_in_manager().script)`.
-
-    Returns the CPU, or the script in its place, and the kit if it has one.
     """
+    if script is not None and gdb_port:
+        raise ValueError(
+            f"gdb_port={gdb_port} was asked for, and a debugger attaches to "
+            "a CPU. With a script standing in for it the manager has none. "
+            "Leave out the script for a manager with a CPU, or leave out "
+            "`gdb_port`."
+        )
     bus.map(link_end.sideband, base=LINK_BASE)
     cpu_kit = None
     if script is None:
@@ -129,7 +144,7 @@ def add_manager(
         cpu = place.add("cpu", ScriptedBusMaster(script=script))
         platform.connect(link_end.irq, cpu.irq)
     platform.connect(cpu.socket, bus.target)
-    return cpu, cpu_kit
+    return Manager(cpu, cpu_kit)
 
 
 def io_manager(
@@ -161,7 +176,7 @@ def io_manager(
     # The IO die: its bus, the manager with the link's registers, and the
     # scratch the compute die reaches across the link.
     bus = io.add("bus", Router())
-    cpu, cpu_kit = add_manager(
+    placed_manager = add_manager(
         platform, io, bus, link_end=link.b, script=manager, gdb_port=gdb_port
     )
     scratch = io.add("scratch", Memory(size=SCRATCH_SIZE))
@@ -180,11 +195,11 @@ def io_manager(
 
     return IoManagerBoard(
         platform=platform,
-        manager=cpu,
+        manager=placed_manager.cpu,
         compute=compute_cpu,
         link=link,
         bus=bus,
-        cpu_kit=cpu_kit,
+        cpu_kit=placed_manager.cpu_kit,
     )
 
 

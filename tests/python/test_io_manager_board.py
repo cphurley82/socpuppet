@@ -100,6 +100,18 @@ class TestWhenTheManagerIsARealCpu:
         ]
 
 
+class TestWhenTheManagerIsAScript:
+    def test_a_gdb_port_is_refused_and_the_error_says_there_is_no_cpu(self):
+        with pytest.raises(ValueError, match=r"gdb_port=1234") as refused:
+            io_manager(
+                compute=nothing,
+                manager=stand_in_manager().script,
+                gdb_port=1234,
+            )
+
+        assert "a debugger attaches to a CPU" in str(refused.value)
+
+
 class TestTheZephyrBoardForTheManager:
     # The firmware's view is the manager's own CPU's: the compute die is
     # not in it. The command is the one that writes the file again.

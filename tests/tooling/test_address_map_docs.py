@@ -149,6 +149,16 @@ def test_the_interrupt_table_of_the_host_with_the_ssd_has_lines_of_both_interrup
     )
 
 
+def test_the_table_of_the_hosts_manager_has_the_links_registers_and_nothing_else(
+    tmp_path,
+):
+    page = a_page(tmp_path, "address-map:host-manager")
+
+    address_map_docs("write", page)
+
+    assert what_answers(page) == {"`io.d2d.sideband`"}
+
+
 def test_when_a_marker_names_a_table_there_is_none_of_check_fails_and_lists_the_ones_there_are(
     tmp_path,
 ):
@@ -201,11 +211,22 @@ def address_map_docs(command, page):
 
 def cells(page, *, starting):
     """The one row of `page`'s table for the address `starting`, by column."""
-    rows = [
+    header, *rows = table_rows(page)
+    (row,) = (row for row in rows if row[0] == f"`{format_address(starting)}`")
+    return dict(zip(header, row, strict=True))
+
+
+def what_answers(page):
+    """What is in the `What answers` column of `page`'s table."""
+    header, _rule, *rows = table_rows(page)
+    column = header.index("What answers")
+    return {row[column] for row in rows}
+
+
+def table_rows(page):
+    """The lines of `page`'s table, each as its cells."""
+    return [
         [cell.strip() for cell in line.strip().strip("|").split("|")]
         for line in page.read_text().splitlines()
         if line.startswith("|")
     ]
-    header = rows[0]
-    (row,) = (row for row in rows if row[0] == f"`{format_address(starting)}`")
-    return dict(zip(header, row, strict=True))
