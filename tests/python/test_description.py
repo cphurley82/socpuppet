@@ -66,7 +66,68 @@ class TestWhenADescriptionIsDumpedAsJson:
             "groups": [],
             "links": [],
             "quantum": sp.us(100),
+            "address_maps": {
+                "cpu.socket": [
+                    {
+                        "address": 0,
+                        "size": 0x100,
+                        "component": "ram",
+                        "port": "socket",
+                        "implementation": "memory",
+                        "group": None,
+                        "windows": [],
+                    }
+                ]
+            },
+            "interrupts": [],
         }
+
+    def test_it_has_the_address_map_of_each_bus_master(self):
+        platform = sp.Platform()
+        for name in ("cpu", "other_cpu"):
+            cpu = platform.add(name, sp.ScriptedBusMaster())
+            ram = platform.add(f"{name}_ram", sp.Memory(size=0x100))
+            platform.connect(cpu.socket, ram.socket)
+
+        maps = json.loads(platform.to_json())["address_maps"]
+
+        assert {
+            master: [entry["component"] for entry in entries]
+            for master, entries in maps.items()
+        } == {"cpu.socket": ["cpu_ram"], "other_cpu.socket": ["other_cpu_ram"]}
+
+    def test_a_window_on_the_way_says_where_it_is_and_whether_it_translates(
+        self,
+    ):
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        near = platform.add("near", sp.Router())
+        far = platform.add("far", sp.Router())
+        ram = platform.add("ram", sp.Memory(size=0x10))
+        platform.connect(cpu.socket, near.target)
+        near.map(far.target, base=0x1000, size=0x800)
+        far.map(ram.socket, base=0)
+
+        (entry,) = json.loads(platform.to_json())["address_maps"]["cpu.socket"]
+
+        assert entry["windows"] == [
+            {
+                "bus": "near",
+                "address": 0x1000,
+                "size": 0x800,
+                "translates": True,
+            }
+        ]
+
+    def test_it_has_each_interrupt_line_and_its_number(self):
+        platform = sp.Platform()
+        plic = platform.add("plic", sp.Plic())
+        dma = platform.add("dma", sp.DmaEngine())
+        platform.connect(dma.irq, plic.source5)
+
+        assert json.loads(platform.to_json())["interrupts"] == [
+            {"controller": "plic", "number": 5, "line": "dma.irq"}
+        ]
 
     def test_it_names_the_groups_and_which_endpoints_make_a_link(self):
         platform = sp.Platform()

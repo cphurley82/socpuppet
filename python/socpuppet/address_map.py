@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Collection, Iterator
-from typing import TYPE_CHECKING, NamedTuple, overload
+from typing import TYPE_CHECKING, Any, NamedTuple, overload
 
 if TYPE_CHECKING:
     from socpuppet.placed import Port
@@ -65,6 +65,15 @@ class MapEntry:
     #: The windows an access goes through to get there, the master's own
     #: bus first. Empty for what is on the master's own bus.
     windows: tuple[Window, ...]
+
+    def as_json(self) -> dict[str, Any]:
+        """The entry as JSON takes it, each window saying if it translates."""
+        return dataclasses.asdict(self) | {
+            "windows": [
+                dataclasses.asdict(window) | {"translates": window.translates}
+                for window in self.windows
+            ]
+        }
 
 
 def entries(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import sys
@@ -371,7 +372,9 @@ class Platform:
 
         Every component and every connection, the groups, which two
         endpoints make each link, and the quantum (in the unit `ns` and
-        `us` return).
+        `us` return). Then what follows from those: the address map of
+        each bus master, by the path of its socket (see `address_map`),
+        and the interrupt map (see `interrupt_map`).
 
         A scripted bus master's script is behavior, not structure, and is
         left out. A component's parameters include what it works out from
@@ -396,6 +399,16 @@ class Platform:
                     {"name": name, "a": a, "b": b} for name, a, b in self._links
                 ],
                 "quantum": self._quantum,
+                "address_maps": {
+                    master.socket.path: [
+                        entry.as_json()
+                        for entry in self.address_map(master.socket)
+                    ]
+                    for master in self.bus_masters
+                },
+                "interrupts": [
+                    dataclasses.asdict(entry) for entry in self.interrupt_map()
+                ],
             },
             indent=2,
         )
