@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with a CPU of its own. That CPU runs the SSD's firmware, a Zephyr application, and 🎭 a script can play the firmware where a CPU is not wanted. The host and the SSD have each booted with a stand-in for the other, and have yet to meet. The rest of the cast is still stand-ins or not yet written.
+As of milestone M3 there is a real CPU on stage, with a UART, a timer and an interrupt controller around it, which is enough to boot Zephyr on one board, the host. There is PCIe too, with a 🎭 stand-in NVMe drive behind it. A Python host can read and write that drive, and so can Zephyr on the host board, with its own NVMe driver. Since M4 there is also an SSD built the way a real one is, of hardware that keeps the queues and moves the data, with a CPU of its own. That CPU runs the SSD's firmware, a Zephyr application, and 🎭 a script can play the firmware where a CPU is not wanted. Since M5a the die-to-die link between the host's two dies is real as well, in the style of UCIe: it has to be trained before it carries anything, and 🎭 a script on the IO die trains it and lets the compute die out of reset, which is how a chiplet starts. The host and the SSD have each booted with a stand-in for the other, and have yet to meet. The rest of the cast is still stand-ins or not yet written.
 
 ## The picture
 
@@ -192,6 +192,20 @@ An exception must not escape a SystemC process: the kernel would flatten it into
 
 The result is that a failed `expect32`, or an exception raised in your script, comes out of `platform.run()` unchanged, with its traceback, and the platform can still be inspected afterwards.
 
+## The IO manager
+
+The host is two dies, and the link between them is not there when the power comes on. Something has to train it, and that something cannot be the compute die, whose CPU is held in reset until the link is up. So the IO die has a manager: a small CPU whose firmware trains the link, then lets the other die go by writing to a register at the far end of it, over the link's sideband.
+
+```text
+ compute die (🎭 a stand-in)          IO die
+ 🎭 master ─▶ bus ─┬─▶ d2d.a ═══ d2d.b ─▶ bus ─┬─▶ scratch
+                   └─▶ ram         ▲           └─▶ the link's registers
+                    reset ◀────────┘                 ▲
+                                        🎭 the manager ┘
+```
+
+`socpuppet.boards.io_manager` describes it, with 🎭 [a script in the manager's place](models/io-manager.md) and 🎭 another standing in for the whole compute die. `examples/io_manager_hello.py` runs it and prints [the link's](models/d2d-link.md) bring-up, packet by packet, out of the trace. 🚧 M5b puts Zephyr on the manager's CPU, and M7 puts the real host on the other die.
+
 ## Stand-ins and contracts
 
 Every block in the final platform has a *slot*: a place that a stand-in fills first and the full model fills later. Two things keep the swap honest.
@@ -202,7 +216,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | Slot | Contract | Implementations |
 |---|---|---|
 | memory | `MemoryContract` | `Memory` |
-| link endpoint | `LinkContract` | 🎭 `PassThroughLinkEndpoint` |
+| link endpoint | `LinkContract` | `D2dLinkEndpoint`, 🎭 `PassThroughLinkEndpoint` |
 | CPU | `BusMasterContract` | `DbtRiseCpu`, 🎭 `ScriptedBusMaster` |
 | UART | `UartContract` | `Ns16550` |
 | machine timer | `MachineTimerContract` | `MachineTimer` |
@@ -210,7 +224,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 
-When the real die-to-die link arrives it passes `LinkContract` too, and the platform around it does not change.
+The real die-to-die link passes `LinkContract` beside the stand-in, and the platform around it does not change. What does change is that the real one has to be trained first, so the contract's rigs say how: the stand-in's does nothing, and the real one's writes to the link's registers and waits.
 
 ### Borrowed models
 
@@ -221,6 +235,7 @@ When the real die-to-die link arrives it passes `LinkContract` too, and the plat
 Each has a page saying what real hardware it stands for and what it leaves out.
 
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
+- [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)
 - [Flash controller](models/flash-controller.md)
 - [Interrupt controller (PLIC)](models/plic.md)
@@ -234,6 +249,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [UART (16550)](models/ns16550.md)
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
 - 🎭 [Ideal NAND](models/ideal-nand.md)
+- 🎭 [IO-die manager](models/io-manager.md)
 - 🎭 [MSI receiver](models/msi-receiver.md)
 - 🎭 [NVMe host driver](models/nvme-host.md)
 - 🎭 [PCIe host](models/pcie-host.md)

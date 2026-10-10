@@ -144,9 +144,19 @@ The constants are at the top of `python/socpuppet/boards/ssd.py`.
 - ⚠️ **The SRAM has to stay below the buffer.** A devicetree tells firmware which memory is its own (`zephyr,sram`), and of two memories the generator names the one at the lower address.
 - 🎭 **With a script for its firmware the SSD has no CPU**, and no timer, PLIC, UART or SRAM either. The three register blocks and the buffer stay where they are.
 
-## 🚧 The IO manager
+## The IO manager
 
-The third board, `socpuppet.boards.io_manager`, is milestone M5 and is not built yet. What is decided is in [the plan](plan.md): the IO die gets a small CPU of its own, with a map that mirrors the SSD's, and the die-to-die link's register block at `0x1001_0000` where the SSD has its frontend. Its compute die will reach the IO die through a window that does not translate, so that both dies use the same addresses for the same things. That is the opposite of the host board above, whose window counts from zero.
+The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero, and it is what M7 will want when the compute die becomes the real host.
+
+| Address | Size | What answers | Its page |
+|---|---|---|---|
+| `0x1001_0000` | 256 bytes | The link's own registers, UCIe's Link DVSEC, on the IO die. | [Die-to-die link](models/d2d-link.md) |
+| `0x3000_0000` | 4 KiB | A scratch memory on the IO die, which is what the compute die reaches across the link. | [Memory](models/memory.md) |
+| `0x8000_0000` | 1 MiB | The compute die's own memory. Only that die can reach it. | [Memory](models/memory.md) |
+
+- **Everything below `0x8000_0000` on the compute die is the other die's.** That one window is the whole of the compute die's map apart from its memory, so the compute die can reach anything the IO die's bus has, at the IO die's own addresses.
+- ⚠️ **The link's registers are reachable from one side only.** Each end of the link shows its own die a register block, and the two blocks are not in each other's maps: what crosses is the sideband mailbox, which names a register by its offset in the block at the *other* end.
+- 🚧 **M5b adds the manager's CPU** and what goes around it, at the addresses the SSD board uses for the same things (timer `0x0200_0000`, PLIC `0x0C00_0000`, UART `0x1000_0000`, SRAM `0x2000_0000`), which is why the link's registers sit where the SSD has its frontend's. ⚠️ The scratch has to stay above the SRAM, for the same reason the SSD's SRAM stays below its buffer.
 
 ## See it yourself
 

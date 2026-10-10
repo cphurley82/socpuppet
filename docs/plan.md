@@ -182,7 +182,23 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2, M3 and M4 are done.** M5 (the IO-die manager) and M6 (the Zephyr host with the Zephyr SSD) are both open: M6 needs nothing from M5.
+**M0, M1, M2, M3, M4 and M5a are done.** M5b (Zephyr in the manager's place) and M6 (the Zephyr host with the Zephyr SSD) are both open: M6 needs nothing from M5.
+
+What M5a delivered: the real die-to-die link, and 🎭 a script in the manager's place that brings it up. The exit test is `tests/python/test_m5a_exit.py`: the manager trains the link and lets the compute die go, and the compute-side stand-in then round-trips a word through the IO die's memory across the link — and nothing of it crosses before the link has been trained. `examples/io_manager_hello.py` is the show to run by hand: it prints UCIe's whole bring-up, packet by packet, out of the trace.
+
+- **The link**, [models/d2d-link.md](models/d2d-link.md): UCIe's training state machine, its Link DVSEC registers and its sideband message format, as far as public sources say what they are, with the timing of a crossing on top. 🎭 The pass-through stand-in stays, and both pass `LinkContract`.
+- **Four plain classes behind it**, none of which needs a simulator: the sideband packet (`core/ucie_sideband.h`), the timing of one direction (`core/link_channel.h`), the state machine (`core/ucie_link_state.h`) and the registers (`core/ucie_link_registers.h`), composed by `core/d2d_link_logic.h`. The SystemC shell is 200 lines with one process in it.
+- **UCIe in Python too**, `socpuppet.ucie`: the offsets the manager drives, and the packet format, so that a traced link reads back as a capture. The test that decodes a real run is also what keeps the Python register map and the C++ one in step.
+- **🎭 The manager**, [models/io-manager.md](models/io-manager.md), and the board around it, `socpuppet.boards.io_manager`.
+- **A link comes up in 5 ms** of simulated time by default: 4 ms of that is UCIe's reset hold, which a link cannot leave sooner, and the rest is the training time the model is given.
+
+What planning M5a got wrong, or left to be found:
+
+- **PHYRETRAIN is not modelled.** The decisions listed it among the states. A retrain here starts over from RESET, so a state for retraining in place had nothing to do and no test wanted one.
+- **The mailbox is 32 bits wide, not 64.** The decisions gave it an address and data in halves. A sideband register access carries a 24-bit address and 32 bits of data, so the high halves could never have travelled.
+- **Each end holds one channel, not two.** The end a transaction leaves is the only one that knows when it set off, so that is where its time is counted; the other end has nothing to add.
+- **Two delta-cycle races, both in tests.** Firmware polling a status register sees the link up before the wire driven from it rises. `LineWatcher::WaitForLevel` and the manager's own interrupt-driven wait are how that is waited for properly. ⚠️ M5b's driver has the same trap.
+- **A debugger cannot write the link's registers**, so a test cannot inject a fault with `poke32`. What does it is a script on the die, which is what firmware would be.
 
 What M4c delivered, and with it M4: the SSD runs its own firmware. The exit test is `tests/python/test_m4_exit.py`: M2's three scenarios with Zephyr on the SSD's CPU and the host's script unchanged, and then the SSD and 🎭 the stand-in drive side by side in one platform, given the same thirty overlapping writes and read back whole. `examples/ssd_firmware_hello.py` is the show to run by hand, and [boot-your-firmware.md](boot-your-firmware.md) has a section on bringing up SSD firmware of your own.
 

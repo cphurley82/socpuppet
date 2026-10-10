@@ -40,6 +40,6 @@ Nearly everything that makes the real link interesting:
 
 ## The contract
 
-Any link, this stand-in included, must pass `LinkContract` (`tests/cpp/contracts/link_contract.h`). The contract allows a link to refuse DMI, so the real link can pass it too.
+Any link, this stand-in included, must pass `LinkContract` (`tests/cpp/contracts/link_contract.h`). The contract allows a link to refuse DMI, and [the real link](d2d-link.md) does.
 
-🚧 The real link is milestone M5. Whether interrupt wires cross the link or travel beside it is still open.
+The real link arrived in M5. Nothing it does needs a wire to cross: an interrupt or a reset is a message on its sideband, or it stays on its die. 💡 Swapping this stand-in for the real one is one line in a board, plus firmware to train the link — the stand-in's link is up from the start, and the real one is not.

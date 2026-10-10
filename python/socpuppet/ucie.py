@@ -96,6 +96,10 @@ _DATA_BYTES = {
     Opcode.MESSAGE_WITH_64B_DATA: 8,
 }
 
+#: The last word of the handshake: the two ends agreeing that the link is
+#: theirs to use, which is the end of training.
+MESSAGE_RDI_RSP_ACTIVE = (0x02, 0x01)
+
 #: The messages the two ends send each other on the way up, and after, by
 #: (code, subcode). UCIe writes a message's name in braces, and so do
 #: these.
@@ -108,7 +112,7 @@ _MESSAGES = {
     (0xA5, 0x02): "{MBINIT.CAL Done Request}",
     (0xAA, 0x02): "{MBINIT.CAL Done Response}",
     (0x01, 0x01): "{LinkMgmt.RDI.Req.Active}",
-    (0x02, 0x01): "{LinkMgmt.RDI.Rsp.Active}",
+    MESSAGE_RDI_RSP_ACTIVE: "{LinkMgmt.RDI.Rsp.Active}",
     (0x01, 0x0A): "{LinkMgmt.RDI.Req.LinkError}",
     (0x01, 0x0B): "{LinkMgmt.RDI.Req.Retrain}",
     (0x09, 0x02): "{ErrMsg Fatal}",
