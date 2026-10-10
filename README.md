@@ -109,6 +109,8 @@ The platform around it, split over two dies, is in `examples/nvme_hello.py`.
 
 And `examples/ssd_hello.py` is the same host in front of an SSD that is built like one: hardware that keeps the queues and moves the data, a NAND chip to keep it in, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write. `examples/ssd_firmware_hello.py` swaps the script for the SSD's own CPU and the real firmware, a Zephyr application in `firmware/ssd`. The host's script does not change by a line.
 
+And `examples/host_and_ssd_hello.py` takes the last script away: the host is a 64-bit CPU running Zephyr, its SSD is a 32-bit CPU running Zephyr, and the two firmware images share one simulation and one clock. It prints both consoles as one story.
+
 ## Try it
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.

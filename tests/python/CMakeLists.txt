@@ -40,3 +40,10 @@ add_test(NAME example_ssd_firmware_hello
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(example_ssd_firmware_hello
                      PROPERTIES SKIP_RETURN_CODE 77)
+
+add_test(NAME example_host_and_ssd_hello
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
+          ${SOCPUPPET_TEST_PYTHON} examples/host_and_ssd_hello.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(example_host_and_ssd_hello
+                     PROPERTIES SKIP_RETURN_CODE 77)

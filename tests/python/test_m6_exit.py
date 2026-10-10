@@ -115,8 +115,8 @@ class TestWhenTheSsdsFirmwareTakesAQuarterOfASecondToComeReady:
     kept waiting for 0.15 s.
 
     Zephyr's driver waits for a drive to say it is ready for as long as
-    the drive's own registers tell it to, which for this SSD is a second
-    and a half.
+    the drive's own registers tell it to and half a second more, which
+    for this SSD is a second and a half.
     """
 
     def test_the_host_finds_the_drive_and_its_tests_pass(

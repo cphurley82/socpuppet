@@ -13,10 +13,16 @@ from processes import run_file
 COULD_NOT_RUN = 77
 
 
-@pytest.fixture
-def host_hello(pytestconfig):
-    """The example that boots Zephyr on the host."""
-    example = pathlib.Path(pytestconfig.rootpath) / "examples/host_hello.py"
+@pytest.fixture(
+    params=[
+        "host_hello.py",
+        "ssd_firmware_hello.py",
+        "host_and_ssd_hello.py",
+    ]
+)
+def example(request, pytestconfig):
+    """An example that boots firmware: each test here is run with each."""
+    example = pathlib.Path(pytestconfig.rootpath) / "examples" / request.param
     if not example.exists():
         pytest.skip(
             "The examples are not here: these tests are being run away "
@@ -25,12 +31,12 @@ def host_hello(pytestconfig):
     return example
 
 
-class TestWhenTheHostExampleFindsNoFirmware:
+class TestWhenAnExampleThatBootsFirmwareFindsNone:
     def test_it_says_how_to_build_it_and_counts_as_not_run(
-        self, host_hello, tmp_path
+        self, example, tmp_path
     ):
         result = run_file(
-            host_hello,
+            example,
             SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
             SOCPUPPET_REQUIRE_FIRMWARE="",
         )
@@ -38,22 +44,18 @@ class TestWhenTheHostExampleFindsNoFirmware:
         assert result.returncode == COULD_NOT_RUN
         assert "firmware/build.sh" in result.stdout
 
-    def test_it_looks_where_it_is_told_the_firmware_is(
-        self, host_hello, tmp_path
-    ):
+    def test_it_looks_where_it_is_told_the_firmware_is(self, example, tmp_path):
         result = run_file(
-            host_hello,
+            example,
             SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
             SOCPUPPET_REQUIRE_FIRMWARE="",
         )
 
         assert str(tmp_path) in result.stdout
 
-    def test_it_fails_where_the_firmware_is_required(
-        self, host_hello, tmp_path
-    ):
+    def test_it_fails_where_the_firmware_is_required(self, example, tmp_path):
         result = run_file(
-            host_hello,
+            example,
             SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
             SOCPUPPET_REQUIRE_FIRMWARE="1",
         )

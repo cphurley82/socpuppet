@@ -182,6 +182,7 @@ Left for later: two GDB ports are M8's. The request timeout's entry in [upstream
 
 - Sequence under test: power-on → IO manager boots → trains D2D → releases compute die → host Zephyr boots across the link → PCIe enumeration → NVMe enable against the SSD firmware → block I/O.
 - Three-image co-debug walkthrough in the docs.
+- A debugger on each CPU at once, which was M6's and moved here when M6 was planned. It needs changes in DBT-RISE-Core and DBT-RISE-RISCV ([upstream.md](upstream.md)), and a decision of ours about the order debuggers attach in.
 
 ## Phase 4: Fidelity and validation
 
@@ -214,7 +215,39 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2, M3, M4 and M5 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. M6 (the Zephyr host with the Zephyr SSD) is next and is planned: its decisions and its six steps are under [M6](#m6--host-firmware--ssd-firmware) above. M7 (the real host across the real link) is after it.
+**M0 to M6 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2, and the first two of them now run together: the host's firmware with the SSD's. M7 (the real host across the real link) is next.
+
+What M6 delivered: two firmware images in one simulation. The exit test is `tests/python/test_m6_exit.py`: Zephyr's own disk test on the host's 64-bit CPU reads and writes an SSD whose 32-bit CPU runs the Zephyr firmware of `firmware/ssd`, each printing on its own console. It is M3b's exit test with the drive swapped, and it runs with 🎭 the firmware script in the SSD as well. `examples/host_and_ssd_hello.py` is the show to run by hand: both consoles as one story, each line with the time it was said. [boot-your-firmware.md](boot-your-firmware.md) has a section on running the two together.
+
+- **`host(drive_blocks=4096, drive=add_ssd)`**: the host takes the function that describes its drive. With none it is 🎭 the stand-in drive, as before. A host given a drive and no size says what is missing.
+- **Neither image was built again, and nothing was modelled or patched.** The host's image is M3b's and the SSD's is M4's. A test holds the shield's overlay to what the host with the SSD generates, and another holds the SSD's CPU's view under the host to the devicetree `socpuppet_ssd` was generated from.
+- **[address-map.md](address-map.md) has the host with the SSD**: no new map, and the interrupt lines of both interrupt controllers side by side.
+- **One debugger, on either CPU.** `tests/python/test_gdb.py` attaches to each of the two in turn.
+- **The quantum was measured and stays at 100 µs.** The figures are below.
+
+What M6 found:
+
+- **It worked the first time, all of it.** Two CPU kits in one kernel, Zephyr's NVMe driver against the firmware's Identify, both consoles, the wait for a slow SSD: none of the risks planning listed came to anything, and steps 2 to 4 added tests and no code. That is M2's contract suite and M4's "one suite for two firmwares" paying out. ⚠️ It also means no M6 test was seen to fail before its code existed. Each was checked with a mutation instead: a firmware script that forgets where it put a page, an SSD with no image loaded, a host given the small drive where the test wants the slow one.
+- **The host is not ready for its drive until 0.12 s**, whichever drive it has. Zephyr on the host takes that long to reach the point of enabling it. The SSD's firmware is ready 4 ms in with a 2 MiB drive. So with a small drive nobody waits for anybody, and "the host waits on `CSTS.RDY` while the SSD's firmware boots" only happens with a drive of about a gigabyte or more. The test of it uses 2 GiB, where the firmware is 0.27 s making its table and the host is kept waiting 0.15 s.
+- **A debugger on the second CPU reaches the second CPU.** Planning read DBT-RISE-RISCV's "core 0" `FIXME` as a risk to that. With one debugger it is not, and a test holds it. What the `FIXME` does spoil is smaller, and is in [upstream.md](upstream.md): both cores add their `sysc` command to the one adapter.
+- **A CPU with no program is busy, not idle.** An SSD with no image loaded runs whatever its empty memory holds and logs a warning for every access that nothing answers. Under pytest that cost over two minutes of wall time for two seconds of simulated time, where the passing test takes a fifth of a second: nearly half of the plugin's five-minute limit.
+- **The reviews changed step 1 three ways.** The host's drive was first typed as "one drive or the other", which made the docstring's own recipe, `board.drive.ssd.cpu.socket`, fail a type checker: `Host` is generic in its drive now, and `host(drive=add_ssd)` is known to have a CPU. `host(drive=add_ssd)` with no size silently gave a host with no drive. And `drive_overlay` had learned the SSD's NAND geometry to pick a size both drives take: it takes the board to write the overlay of instead.
+- **`boards/host.py` cannot import `boards/ssd.py`**, because the SSD's board has a scripted host in it that takes its addresses from the real host. Being generic in the drive is also what lets the host name no drive but its default.
+
+What M6 did not do, that the plan said or implied:
+
+- ⚠️ **The data is not checked against the behavioral device**, which is what the milestone map's exit says. Zephyr's test writes, reads back and compares. The SSD against the stand-in drive, write for write, is M4's exit test, and planning decided that was the place for it.
+- **Two GDB ports.** They are M8's, with what was found in [upstream.md](upstream.md).
+- **A quantum for each CPU.** There is one a process. Nothing measured asks for two.
+- ⚠️ **/tdd was followed by hand**, a step at a time. Both reviews ran on step 1, the test review on steps 2 to 4 together, and the design review on step 6.
+
+Things M7 and M8 should know about two firmwares together:
+
+- **Say whose.** With two bus masters `load_elf`, `peek32`, `devicetree` and `address_map` all need `via=`, and so do `socpuppet devicetree` and `socpuppet address-map` with `--via`. M7 adds no CPU. M8 adds the third.
+- **Wait for lines, not for events, and allow for 0.12 s.** M8's boot-order test has the manager's 5 ms first, and then a host that says nothing until it has started its drive.
+- **A hang is expensive** (above). Give a test of two CPUs a limit in simulated time that is close to what it needs.
+- **Who said what, and when, is in an example and not in the package.** `examples/host_and_ssd_hello.py` reads two consoles a line at a time and stamps each line with the simulated time. M8's boot-order test wants the same of three. Move it into the package then, with tests, and do not copy it.
+- **Zephyr's NVMe request timeout** is in the planning block under [M6](#m6--host-firmware--ssd-firmware): a host that is still sending commands five seconds after its first can meet it.
 
 What was measured in M6, on an Apple silicon laptop: the exit test's run at four quanta, with a 2 MiB drive, from the start to Zephyr's verdict. Every figure came out the same three runs in three, to the tenth of a millisecond of simulated time, which is what one kernel for both CPUs buys.
 

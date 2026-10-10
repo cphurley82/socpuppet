@@ -133,3 +133,50 @@ class TestWhenTheHostBoardIsGivenAGdbPort:
         )
 
         assert pc == RAM_BASE
+
+
+@pytest.mark.platform
+class TestWhenOneOfTheTwoCpusOfTheHostWithTheSsdIsGivenAGdbPort:
+    """One debugger, on whichever CPU's firmware is being debugged.
+
+    Which CPU it reaches shows in where it finds the CPU stopped: the
+    host's firmware starts in its RAM, and the SSD's in its SRAM.
+    """
+
+    def test_given_to_the_host_a_debugger_finds_the_hosts_cpu(self):
+        from socpuppet.boards.host import RAM_BASE, host
+        from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
+
+        port = free_port()
+        board = host(
+            gdb_port=port,
+            drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
+            drive=add_ssd,
+        )
+        board.platform.build()
+
+        pc = run_with_a_debugger(
+            board.platform, port, GdbClient.program_counter
+        )
+
+        assert pc == RAM_BASE
+
+    def test_given_to_the_ssd_a_debugger_finds_the_ssds_cpu(self):
+        import functools
+
+        from socpuppet.boards.cpu_kit import SRAM_BASE
+        from socpuppet.boards.host import host
+        from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
+
+        port = free_port()
+        board = host(
+            drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
+            drive=functools.partial(add_ssd, gdb_port=port),
+        )
+        board.platform.build()
+
+        pc = run_with_a_debugger(
+            board.platform, port, GdbClient.program_counter
+        )
+
+        assert pc == SRAM_BASE

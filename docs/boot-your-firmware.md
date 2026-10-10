@@ -1,6 +1,6 @@
 # Boot your firmware here 🧦
 
-How to run a Zephyr application on one of socpuppet's boards: the host, or [the SSD's controller](#the-ssds-controller). The steps are the host's, and the SSD's section says what differs. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
+How to run a Zephyr application on one of socpuppet's boards: the host, [the SSD's controller](#the-ssds-controller) or [the IO die's manager](#the-io-dies-manager), and how to run [the host's firmware and the SSD's together](#the-host-with-the-ssd). The steps are the host's, and each other section says what differs. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
 
 🚧 socpuppet is not on PyPI yet. Until it is, "install" means building it from a checkout: see [development.md](development.md).
 
@@ -85,6 +85,8 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 ```
 
 `tests/python/test_m3b_exit.py` is a complete example. It runs Zephyr's own test of its disk interface, unchanged.
+
+💡 The same image runs against the real SSD, with firmware of its own behind it: see [The host with the SSD](#the-host-with-the-ssd).
 
 ⚠️ Firmware built with the shield needs the drive. On a host described without one it stops before it prints anything: the first place it looks for the drive is an address where nothing answers.
 
@@ -225,6 +227,53 @@ print(board.ssd.cpu_kit.uart.output)
 - **Hold it to the tests.** `tests/python/test_ssd_firmware.py` is what a host may expect of an SSD's firmware, a behaviour a test, and it runs whatever `ssd_socpuppet_ssd.elf` it finds in `SOCPUPPET_FIRMWARE_DIR`. Put your image there under that name and see how far it gets.
 - 🎭 **Or do without the CPU.** [`sp.SsdFirmware`](models/ssd-firmware.md) is the same firmware as a Python script, for when the SSD's firmware is not what you are working on.
 
+## The host with the SSD
+
+Both boards above, in one simulation: the host's CPU runs the host's firmware, and its SSD's CPU runs the SSD's. Nothing is built differently for it. The host cannot tell the SSD from 🎭 the stand-in drive, and the SSD cannot tell a CPU from 🎭 a scripted host, so each image is the one you already have:
+
+```sh
+west build -d build/host -b socpuppet_host --shield socpuppet_host_drive my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+west build -d build/ssd -b socpuppet_ssd /path/to/socpuppet/firmware/ssd -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+Then tell the host which drive to have. `add_ssd` is the function that describes the SSD, and handing it to `host` puts one on the host's PCIe link:
+
+```python
+import socpuppet as sp
+from socpuppet.boards.host import host
+from socpuppet.boards.ssd import add_ssd
+
+board = host(drive_blocks=4096, drive=add_ssd)
+board.platform.build()
+board.platform.load_elf("build/host/zephyr/zephyr.elf", via=board.cpu.socket)
+board.platform.load_elf("build/ssd/zephyr/zephyr.elf", via=board.drive.ssd.cpu.socket)
+
+board.platform.run(sp.ms(1000))
+print(board.uart.output)                        # the host's console
+print(board.drive.ssd.cpu_kit.uart.output)      # the SSD's
+```
+
+`examples/host_and_ssd_hello.py` is that with Zephyr's disk test for the host, and it prints the two consoles as one story, each line with the time it was said:
+
+```text
+ms     who   said
+3.2    ssd   *** Booting Zephyr OS build v4.4.2 ***
+3.9    ssd   socpuppet SSD firmware: a drive of 512 pages of 4096 bytes
+137.2  host  *** Booting Zephyr OS build v4.4.2 ***
+137.5  host  Running TESTSUITE disk_driver
+138.6  host  Disk reports 4096 sectors
+```
+
+- ⚠️ **Say whose, every time.** There are two CPUs, so `load_elf`, `peek32`, `poke32` and `devicetree` each want `via=`, and say so if it is left out. `via=board.cpu.socket` is the host's view and `via=board.drive.ssd.cpu.socket` the SSD's. The same address is two different things in the two: [the address map](address-map.md#the-host-with-the-ssd) has both.
+- ⚠️ **Load both images.** An SSD with nothing loaded never says it is ready, and the host waits for it with nothing on its console. What you do see is the log filling with `[W] ssd.bus : target address=0x0 not found for read transaction`: a CPU with no program is busy, not idle, and it is running whatever its empty memory holds. That also makes the run slow to give up, a minute or two of wall time for two seconds of simulated time.
+- **Both CPUs start together, and the host waits for its drive.** The SSD's firmware is ready 4 ms in with a 2 MiB drive, and 0.27 s in with a 2 GiB one, because it starts by making a table of every page. A host must not assume the drive is ready when it gets there. Zephyr's NVMe driver does it properly: the drive says in its `CAP.TO` register how long a host should give it, one second for this SSD, and the driver gives it that and half a second more. A driver of your own should read it too.
+- 💡 **One clock, and the same story every time.** Both CPUs are in one simulation, so a run is deterministic: run it twice and every line comes at the same simulated time. A bug that needs the two firmwares to be in step by luck will be there again tomorrow.
+- 🎓 **Each CPU runs ahead a little, then lets the other catch up.** That stretch is the *quantum*, 100 µs by default, and it is what makes two CPUs fast: thirty times faster than taking turns after every instruction. The cost is that a CPU sees an interrupt up to a quantum late, and this run comes out 3% longer in simulated time. `board.platform.quantum = sp.us(10)` before `build()` trades speed for timing, and `0` is exact and slow.
+- 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=stand_in_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
+- `tests/python/test_m6_exit.py` is a complete example.
+
 ## The IO die's manager
 
 The third board is `socpuppet_iomgr`: the management CPU on the IO die of a chiplet host, whose firmware brings the die-to-die link up and lets the compute die start. It is the same 32-bit RISC-V machine as the SSD's controller, with one device of its own.
@@ -308,6 +357,7 @@ In pytest, mark each test that builds a platform with `@pytest.mark.platform`. A
 - `board.platform.peek32(address)` and `poke32(address, value)` read and write memory the way a debugger does, without the firmware noticing.
 - `board.platform.time` is the simulated time, in picoseconds. `sp.ms(1)`, `sp.us(1)` and `sp.ns(1)` make durations.
 - `board.platform.devicetree()` is the devicetree the board was generated from.
+- On a board with two CPUs, `peek32`, `poke32` and `devicetree` take `via=`, the CPU whose view you mean: `board.platform.peek32(address, via=board.drive.ssd.cpu.socket)`.
 
 ## Debugging with GDB
 
@@ -331,7 +381,7 @@ riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 
-⚠️ One CPU per simulation can have a GDB port.
+⚠️ One CPU per simulation can have a GDB port. On the host with the SSD, choose which: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's firmware, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. While the CPU you are debugging sits at a breakpoint the whole simulation waits, so the other CPU is not running either and will not have given up on you when you continue. 🚧 A debugger on each CPU at once is planned ([plan.md](plan.md), M8).
 
 ## When it does not boot
 

@@ -84,6 +84,8 @@ flowchart LR
 
 `socpuppet.boards.ssd` describes it. `examples/ssd_hello.py` runs it with 🎭 a script for its firmware, and `examples/ssd_firmware_hello.py` with the real thing, the Zephyr application in `firmware/ssd`. [The firmware's page](models/ssd-firmware.md) is about both.
 
+The two pictures join. `host(drive_blocks=4096, drive=add_ssd)` is the host of the first picture with this SSD where 🎭 the behavioral NVMe is, and then one SystemC kernel holds two CPUs with a firmware image each: a 64-bit one running the host's Zephyr and a 32-bit one running the SSD's. Neither image changes, because the host sees an NVMe drive either way and the SSD sees a host either way. `examples/host_and_ssd_hello.py` runs it and prints both consoles as one story. One kernel is what makes that story the same every time it is told, and it is why the two CPUs share one clock and one quantum ("Words you will meet", below).
+
 ## Words you will meet
 
 | Term | Meaning |

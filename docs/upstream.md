@@ -147,13 +147,13 @@ Each entry says:
 
 ### One GDB server per process
 
-- **Where**: `src/iss/debugger/server.h`, `server<SESSION>::run_server`, lines 50 to 56.
-- **What is wrong**: the server is a singleton. A second call logs "server already initialized" as fatal. So only one CPU in a process can have a debugger attached, whatever port each asks for. A platform with three CPUs and three firmware images wants three.
-- **How to see it**: two `core_complex` instances in one simulation, each with a `gdb_server_port`.
-- **What we do**: nothing yet. One debugger is enough until the milestone that runs two firmware images together (M6 in [plan.md](plan.md)).
-- **Upstream fix**: one server per port, owned by the core that asked for it.
+- **Where**: three places in `src/iss/debugger/`. `server.h`, `server<SESSION>::run_server`, lines 50 to 56. `cmdhandler.h`, line 92, where a session takes its target: `s.get_target(0) // FIXME: add core id`. `cmdhandler.cpp`, line 583, in the answer to `qXfer:features:read`: `static std::string buf`.
+- **What is wrong**: the server is a singleton. A second call logs "server already initialized" as fatal. So only one CPU in a process can have a debugger attached, whatever port each asks for. A platform with three CPUs and three firmware images wants three. Two more things would be in the way once it was not a singleton. A session always debugs target 0 of its server, so several cores behind one server could not be told apart. And the target description a debugger asks for is read from the target once and kept in a static that every session shares, so the second debugger to attach would be sent the first one's: a 32-bit core described as the 64-bit one, or the other way about.
+- **How to see it**: two `core_complex` instances in one simulation, each with a `gdb_server_port`. The other two were found by reading, when M6 was planned, and have not been run into.
+- **What we do**: one debugger a simulation, on whichever CPU it is given to. The platform refuses a second `gdb_port` with the reason. `tests/python/test_gdb.py` has both: the refusal, and a debugger on each CPU in turn of the host with the SSD. Two ports were M6's to do and are M8's, which wants three ([plan.md](plan.md)).
+- **Upstream fix**: one server per port, owned by the core that asked for it, with the cached target description a member of the session or the target and not a static.
 - **Kind**: missing feature.
-- **When it lands**: several CPUs can each take a `gdb_port`.
+- **When it lands**: several CPUs can each take a `gdb_port`. ⚠️ A CPU stopped in a debugger keeps the simulation's one thread, in `server_if.h`'s `check_continue`, so every other CPU stops with it. That is what makes debugging several of them deterministic, and it means each debugger has to be attached before any core runs. It is ours to design, not upstream's to fix.
 
 ## DBT-RISE-RISCV
 
@@ -231,6 +231,16 @@ Each entry says:
 - **Upstream fix**: synchronize the quantum keeper at the top of `wait_until`'s wait, after accounting for the cycles executed since the last sync.
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the test above can move into the contract that both masters pass.
+
+### Every core adds its `sysc` command to core 0's debug adapter
+
+- **Where**: `src/sysc/core_complex.cpp`, `core_complex::create_cpu`, lines 174 to 182: `tgt_adapter = srv->get_target(0); // FIXME: add core_id`.
+- **What is wrong**: a core that is created while a GDB server exists asks it for target 0's adapter and adds its own `sysc` command there (`monitor sysc print_time`, `monitor sysc break <time>`), whether or not the server is that core's. With two cores and one debugger, on the core created first, the adapter ends up with two commands called `sysc`, one for each core.
+- **How to see it**: by reading. It was found when M6 was planned. `host(gdb_port=..., drive=add_ssd)` is the arrangement that has it, and nobody has typed `monitor sysc` there to see which core answers.
+- **What we do**: nothing. socpuppet's docs do not mention the `sysc` commands, and breakpoints, stepping and memory go by the session's own target, which is right.
+- **Upstream fix**: a core adds its command to its own adapter, by its core id. It goes with "One GDB server per process" under DBT-RISE-Core above.
+- **Kind**: bug.
+- **When it lands**: nothing to delete. The `sysc` commands become safe to document.
 
 ## softvector
 
