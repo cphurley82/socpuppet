@@ -218,14 +218,18 @@ class Platform:
 
         The condition is checked each time simulated time is about to move
         on. The run also ends when nothing is left to do, or when `timeout`
-        (see `ns`, `us`) has passed.
+        (see `ns`, `us`) has passed, and the condition is checked a last
+        time then.
         """
         native = self.native()
         deadline = None if timeout is None else self.time + timeout
         while not condition():
             ahead = native.picoseconds_to_next_activity()
             if ahead is None:
-                return False  # nothing left to do
+                # Nothing is left to do. Finding that out let whatever
+                # was still to happen at this moment happen, so look once
+                # more.
+                return condition()
             if deadline is not None and self.time + ahead > deadline:
                 native.run_for(deadline - self.time)
                 return condition()

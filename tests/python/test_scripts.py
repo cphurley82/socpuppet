@@ -341,6 +341,14 @@ class TestWhenThePlatformRunsUntilACondition:
 
         assert not platform.run_until(lambda: platform.peek32(0x10) == 3)
 
+    def test_it_says_the_condition_holds_when_the_last_thing_to_happen_made_it_so(
+        self,
+    ):
+        # The one write happens at once, and nothing comes after it.
+        platform = master_with_ram(writing([(0x10, 1)]))
+
+        assert platform.run_until(lambda: platform.peek32(0x10) == 1)
+
     def test_it_gives_up_once_the_timeout_has_passed(self):
         def endless():
             while True:
