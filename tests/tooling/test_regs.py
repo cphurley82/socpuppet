@@ -1,5 +1,6 @@
 """tools/regs.py, which writes what is generated from the register maps."""
 
+import re
 import subprocess
 import sys
 import textwrap
@@ -590,3 +591,19 @@ def regs(repo, command):
         stderr=subprocess.STDOUT,
         text=True,
     )
+
+
+def test_nothing_in_the_package_imports_the_register_map_compiler():
+    # The compiler is a developer's tool, as the linters are, and is not
+    # installed with socpuppet: what it makes is checked in.
+    package = TOOL.parents[1] / "python" / "socpuppet"
+
+    importers = [
+        str(module.relative_to(package))
+        for module in package.rglob("*.py")
+        if re.search(
+            r"^\s*(?:import|from) systemrdl\b", module.read_text(), re.MULTILINE
+        )
+    ]
+
+    assert importers == []

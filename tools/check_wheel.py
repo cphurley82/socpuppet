@@ -35,6 +35,22 @@ def problems_with(names):
             "socpuppet/zephyr_module is missing or incomplete "
             "(the Zephyr boards ship inside the package)"
         )
+    # What is generated from the register maps: Python modules that the
+    # stand-ins and the board descriptions import, and the C headers that
+    # the Zephyr drivers include. Nothing in a wheel can make them again.
+    if not any(
+        n.startswith("socpuppet/regs/") and n.endswith(".py") for n in names
+    ):
+        yield (
+            "socpuppet/regs has no register map in it "
+            "(the stand-ins and the boards import them)"
+        )
+    headers = "socpuppet/zephyr_module/include/socpuppet/regs/"
+    if not any(n.startswith(headers) and n.endswith(".h") for n in names):
+        yield (
+            f"{headers} has no header in it "
+            "(the Zephyr drivers include the register maps)"
+        )
     # SystemC, SCC and friends are linked statically into _core. Their own
     # headers, libraries and CMake files must not ride along.
     allowed = ("socpuppet/", "socpuppet-")

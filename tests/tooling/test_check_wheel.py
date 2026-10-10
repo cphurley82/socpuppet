@@ -8,6 +8,8 @@ GOOD = (
     "socpuppet/_core.pyi",
     "socpuppet/zephyr_module/zephyr/module.yml",
     "socpuppet/zephyr_module/boards/socpuppet/socpuppet_host/board.yml",
+    "socpuppet/regs/dma_engine.py",
+    "socpuppet/zephyr_module/include/socpuppet/regs/dma_engine.h",
     "socpuppet-0.0.1.dist-info/licenses/THIRD_PARTY_NOTICES.md",
 )
 
@@ -36,3 +38,29 @@ def test_when_the_zephyr_boards_are_missing_the_wheel_is_refused_and_the_output_
 
     assert result.returncode != 0
     assert "zephyr_module" in result.stdout
+
+
+def test_when_the_register_maps_python_modules_are_missing_the_wheel_is_refused_and_the_output_says_so(
+    tmp_path, check_wheel
+):
+    without_modules = [
+        name for name in GOOD if not name.startswith("socpuppet/regs/")
+    ]
+
+    result = check_wheel(wheel_holding(tmp_path, without_modules))
+
+    assert result.returncode != 0
+    assert "socpuppet/regs" in result.stdout
+
+
+def test_when_the_register_maps_c_headers_are_missing_the_wheel_is_refused_and_the_output_says_so(
+    tmp_path, check_wheel
+):
+    without_headers = [
+        name for name in GOOD if "/include/socpuppet/regs/" not in name
+    ]
+
+    result = check_wheel(wheel_holding(tmp_path, without_headers))
+
+    assert result.returncode != 0
+    assert "include/socpuppet/regs" in result.stdout
