@@ -32,9 +32,9 @@ flowchart LR
         cpu --> bus
         bus --> ram
         bus --> plic
+        bus --> timer
         bus --> link --> iobus
         iobus --> uart
-        iobus --> timer
         iobus --> rc --> ep --> nvme
     end
     desc -- "build()" --> plat

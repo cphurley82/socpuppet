@@ -14,7 +14,7 @@ RISC-V has no standard block of this kind. The nearest real one is the MSI frame
 
 ```python
 msi = compute.add("msi", sp.MsiPlicBridge(vectors=2))
-bus.map(msi.socket, base=0x0200_0000)
+bus.map(msi.socket, base=0x0300_0000)
 platform.connect(msi.irq0, plic.source1)
 platform.connect(msi.irq1, plic.source2)
 ```

@@ -14,7 +14,7 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 | RAM | `0x8000_0000`, 64 MB | |
 | Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
 | UART, the console | `0x1000_0000` | `ns16550` |
-| Machine timer | `0x1001_0000`, 10 MHz | `riscv,machine-timer` |
+| Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
 
 💡 You do not have to copy this table anywhere. The board's devicetree is generated from the platform description, so Zephyr already knows all of it. `socpuppet address-map python/socpuppet/boards/host.py` prints the map straight from that description, and [the address map](address-map.md) has every board's.
 
@@ -66,7 +66,7 @@ The host can have an SSD on a PCIe link: 🎭 the [behavioral NVMe](models/behav
 |---|---|---|
 | PCIe root complex, configuration window | `0x1010_0000`, one bus | `socpuppet,pcie`, from socpuppet's module |
 | PCIe root complex, memory window | `0x1080_0000`, 1 MB | |
-| MSI-to-PLIC bridge | `0x0200_0000`, to PLIC sources 1 and 2 | (the root complex's driver uses it) |
+| MSI-to-PLIC bridge | `0x0300_0000`, to PLIC sources 1 and 2 | (the root complex's driver uses it) |
 | NVMe drive | found by the scan | `nvme-controller` |
 
 🎓 Zephyr calls hardware that is plugged into a board a *shield*. The drive, and the host's side of its link, are the shield `socpuppet_host_drive`. Name it when you build:

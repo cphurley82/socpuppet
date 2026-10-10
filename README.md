@@ -15,7 +15,7 @@ A chiplet host and an NVMe SSD, each booting its own [Zephyr](https://zephyrproj
 
 ## A first show
 
-The host boots [Zephyr](https://zephyrproject.org). It is a 64-bit RISC-V CPU with RAM and an interrupt controller on one die, and a UART and a timer on another.
+The host boots [Zephyr](https://zephyrproject.org). It is a 64-bit RISC-V CPU with RAM, a timer and an interrupt controller on one die, and a UART on another.
 
 ```python
 import socpuppet as sp

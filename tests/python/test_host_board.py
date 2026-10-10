@@ -6,7 +6,7 @@ import re
 import pytest
 
 from devicetree_compiler import dtc_errors, needs_dtc
-from socpuppet.boards.cpu_kit import TIMER_HZ
+from socpuppet.boards.cpu_kit import TIMER_BASE, TIMER_HZ
 from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
@@ -16,6 +16,7 @@ from socpuppet.boards.host import (
     host,
 )
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
+from socpuppet.components import MachineTimer
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 
@@ -29,6 +30,17 @@ class TestTheZephyrBoardForTheHost:
 
     def test_its_clock_rate_is_the_rate_the_hosts_timer_counts_at(self):
         assert clock_rate() == TIMER_HZ
+
+
+class TestTheHostsTimer:
+    def test_is_at_the_address_every_socpuppet_cpu_has_its_timer_at(self):
+        [timer] = [
+            each
+            for each in host().platform.address_map()
+            if each.implementation == MachineTimer.implementation
+        ]
+
+        assert timer.address == TIMER_BASE
 
 
 class TestTheZephyrShieldForTheHostsDrive:
@@ -112,6 +124,27 @@ class TestTheHostWithADrive:
         ids = board.platform.peek32(IO_BASE + ECAM_OFFSET)
 
         assert ids == DEVICE_ID << 16 | VENDOR_ID
+
+
+class TestTheInterruptLinesOfTheHostWithADrive:
+    def test_each_stays_on_the_die_it_starts_on(self):
+        # A die-to-die link carries transactions and messages, and no
+        # wires. The drive's interrupts have to cross it, so they are
+        # sent as messages and become lines on the compute die.
+        board = host(drive_blocks=64)
+
+        crossing = [
+            each
+            for each in board.platform.interrupt_map()
+            if die_of(each.line) != die_of(each.controller)
+        ]
+
+        assert crossing == []
+
+
+def die_of(path):
+    """The die a component or a port is on: `compute` of `compute.cpu`."""
+    return path.split(".")[0]
 
 
 class TestTheHostWithTheSsd:

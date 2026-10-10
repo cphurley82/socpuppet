@@ -41,6 +41,13 @@
 		#size-cells = <2>;
 		ranges;
 
+		compute_timer: timer@200bff8 {
+			compatible = "riscv,machine-timer";
+			reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;
+			reg-names = "mtime", "mtimecmp";
+			interrupts-extended = <&compute_cpu_intc 7>;
+		};
+
 		compute_plic: interrupt-controller@c000000 {
 			compatible = "sifive,plic-1.0.0";
 			reg = <0x0 0xc000000 0x0 0x4000000>;
@@ -57,13 +64,6 @@
 			reg = <0x0 0x10000000 0x0 0x8>;
 			reg-shift = <0>;
 			clock-frequency = <3686400>;
-		};
-
-		io_timer: timer@1001bff8 {
-			compatible = "riscv,machine-timer";
-			reg = <0x0 0x1001bff8 0x0 0x8>, <0x0 0x10014000 0x0 0x8>;
-			reg-names = "mtime", "mtimecmp";
-			interrupts-extended = <&compute_cpu_intc 7>;
 		};
 	};
 };

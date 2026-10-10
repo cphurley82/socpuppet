@@ -1,9 +1,9 @@
 """🧦 The host boots Zephyr and says hello.
 
-The host is a 64-bit RISC-V CPU with its RAM and interrupt controller on one
-die, and a UART and a timer on another (see socpuppet/boards/host.py). This
-loads Zephyr's hello_world, built for the board `socpuppet_host`, runs it
-and prints what the firmware printed.
+The host is a 64-bit RISC-V CPU with its RAM, a timer and an interrupt
+controller on one die, and a UART on another (see socpuppet/boards/host.py).
+This loads Zephyr's hello_world, built for the board `socpuppet_host`, runs
+it and prints what the firmware printed.
 
 Build the firmware first:      firmware/build.sh
 Run it:                        python examples/host_hello.py

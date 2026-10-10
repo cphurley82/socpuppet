@@ -3,13 +3,18 @@
     compute die                                IO die
     🧠 cpu ─▶ bus ─┬─▶ ram
        ▲  ▲        ├─▶ plic
-       │  │        └─▶ link endpoint ══ link endpoint ─▶ bus ─┬─▶ uart
-     plic └────────────────────────────────────────── timer ◀─┘
+       │  │        ├─▶ timer ─┐
+       │  └────────│──────────┘
+     plic          └─▶ link endpoint ══ link endpoint ─▶ bus ─▶ uart
 
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
-die has the CPU, its RAM and the interrupt controller. The IO die has the
-UART and the timer. 🎭 The link between the dies is a stand-in that passes
+die has the CPU, its RAM, the interrupt controller and the timer. The IO
+die has the UART. 🎭 The link between the dies is a stand-in that passes
 every access straight through.
+
+💡 Transactions and messages cross the link, and no wires. A real
+die-to-die link has nowhere for an interrupt line to go down, so the
+timer is on the die its CPU is on.
 
 Firmware sees one flat memory map and cannot tell where the die boundary
 is, which is the point: the split can change without the firmware changing.
@@ -48,7 +53,7 @@ import textwrap
 from typing import Any, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
-from socpuppet.boards.cpu_kit import TIMER_HZ
+from socpuppet.boards.cpu_kit import TIMER_BASE, TIMER_HZ
 from socpuppet.boards.drive import (
     VECTORS,
     BehavioralDrive,
@@ -72,13 +77,15 @@ from socpuppet.time import ms
 #: Where the RAM starts, and where the CPU starts executing.
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 64 * 1024 * 1024
+# The timer has no constant here: it is at `cpu_kit.TIMER_BASE`, where
+# every other socpuppet CPU has its timer.
+#: The interrupt controller.
 PLIC_BASE = 0x0C00_0000
 #: Everything on the IO die is inside this window of the compute die's map.
 IO_BASE = 0x1000_0000
 IO_SIZE = 0x0100_0000
 #: Where things are on the IO die, counted from the start of its window.
 UART_OFFSET = 0x0000
-TIMER_OFFSET = 0x1_0000
 #: With a drive: the PCIe root complex's configuration window and its
 #: memory window, which is where the host places the drive's registers.
 #: Both are on the IO die, counted from the start of its window. The
@@ -90,7 +97,7 @@ PCIE_WINDOW_SIZE = 0x10_0000
 #: Where the drive's interrupt messages are sent, on the compute die, and
 #: the interrupt controller's source that the first vector comes out on.
 #: The vectors after it take the sources after it.
-MSI_BASE = 0x0200_0000
+MSI_BASE = 0x0300_0000
 MSI_SOURCE = 1
 
 
@@ -185,18 +192,18 @@ def host(
     compute_bus = compute.add("bus", Router())
     ram = compute.add("ram", Memory(size=RAM_SIZE))
     plic = compute.add("plic", Plic())
+    timer = compute.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
     d2d = platform.link("d2d", PassThroughLink(), compute, io)
     io_bus = io.add("bus", Router())
     uart = io.add("uart", Ns16550())
-    timer = io.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
 
     platform.connect(cpu.socket, compute_bus.target)
     compute_bus.map(ram.socket, base=RAM_BASE)
+    compute_bus.map(timer.socket, base=TIMER_BASE)
     compute_bus.map(plic.socket, base=PLIC_BASE)
     compute_bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
     platform.connect(d2d.b.initiator, io_bus.target)
     io_bus.map(uart.socket, base=UART_OFFSET)
-    io_bus.map(timer.socket, base=TIMER_OFFSET)
 
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)

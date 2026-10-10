@@ -4,9 +4,9 @@
 	};
 
 	soc {
-		compute_msi: msi-controller@2000000 {
+		compute_msi: msi-controller@3000000 {
 			compatible = "socpuppet,msi-plic-bridge";
-			reg = <0x0 0x2000000 0x0 0x4>;
+			reg = <0x0 0x3000000 0x0 0x4>;
 			msi-controller;
 			interrupts-extended = <&compute_plic 1 1 &compute_plic 2 1>;
 		};
