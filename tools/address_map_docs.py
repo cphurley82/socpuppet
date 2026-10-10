@@ -14,9 +14,10 @@ what `write` would leave. tools/lint.py runs `check`, or `write` with
 """
 
 import argparse
-import re
 import sys
 from pathlib import Path
+
+import generated
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -26,12 +27,6 @@ sys.path.insert(0, str(REPO / "python"))
 
 from socpuppet.address_map import format_address, format_size  # noqa: E402
 from socpuppet.boards import host, io_manager, ssd  # noqa: E402
-
-#: One table's place in a page: its two markers and what is between them.
-MARKED = re.compile(
-    r"<!-- (?P<name>\S+) start -->\n.*?<!-- (?P=name) end -->\n", re.DOTALL
-)
-START = re.compile(r"<!-- (\S+) start -->")
 
 
 def main():
@@ -45,57 +40,17 @@ def main():
     args = parser.parse_args()
 
     known = tables()
-    status = 0
-    for page in args.pages:
-        was = page.read_text()
-        problem = what_is_wrong_with(was, known)
-        if problem:
-            print(f"{page}: {problem}")
-            status = 1
-            continue
-        now = with_tables(was, known)
-        if now == was:
-            continue
-        if args.command == "write":
-            page.write_text(now)
-        else:
-            print(
-                f"{page}: a table is not what the boards describe. "
-                "`uv run python tools/lint.py --fix` writes it again."
-            )
-            status = 1
-    return status
-
-
-def with_tables(page, known):
-    """A page's text with each marked table as `known` has it."""
-    return MARKED.sub(
-        lambda marked: (
-            f"<!-- {marked['name']} start -->\n\n"
-            f"{known[marked['name']]}\n\n"
-            f"<!-- {marked['name']} end -->\n"
-        ),
-        page,
-    )
-
-
-def what_is_wrong_with(page, known):
-    """What stops the tables of a page's text being written, or None."""
-    asked = START.findall(page)
-    whole = [marked["name"] for marked in MARKED.finditer(page)]
-    for name in asked:
-        if name not in known:
-            return (
-                f"there is no table called {name}. "
-                f"The tables are: {', '.join(known)}."
-            )
-        if name not in whole:
-            return (
-                f"the table {name} starts and never ends. After its start "
-                f"marker there has to be `<!-- {name} end -->`, on a line "
-                "of its own."
-            )
-    return None
+    wanted, placed, problems = generated.pages(args.pages, known)
+    problems += [
+        f"{page}: there is no table called {name}. "
+        f"The tables are: {', '.join(known)}."
+        for name, page in placed.items()
+        if name not in known
+    ]
+    for problem in problems:
+        print(problem)
+    status = generated.settle(args.command, wanted, "the boards")
+    return 1 if problems else status
 
 
 def tables():
@@ -142,7 +97,7 @@ def only_in(entries, others):
 
 def address_table(entries):
     """An address map as a Markdown table."""
-    return markdown_table(
+    return generated.markdown_table(
         ("Address", "Size", "What answers", "Its model", "Through"),
         [
             (
@@ -164,20 +119,12 @@ def address_table(entries):
 
 def interrupt_table(entries):
     """An interrupt map as a Markdown table."""
-    return markdown_table(
+    return generated.markdown_table(
         ("Controller", "Number", "Line"),
         [
             (f"`{entry.controller}`", str(entry.number), f"`{entry.line}`")
             for entry in entries
         ],
-    )
-
-
-def markdown_table(header, rows):
-    """A table in Markdown, with no line after the last."""
-    return "\n".join(
-        "|" + "".join(f" {cell} |" if cell else " |" for cell in cells)
-        for cells in (header, ["---"] * len(header), *rows)
     )
 
 

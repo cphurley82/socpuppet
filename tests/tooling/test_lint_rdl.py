@@ -35,14 +35,22 @@ addrmap spam {
 """
 
 
-def test_when_run_with_fix_the_header_of_a_register_map_is_written_and_then_passes_lint(
+def test_when_run_with_fix_what_a_register_map_gives_is_written_and_then_passes_lint(
     repo, lint, zephyrs_style
 ):
     (repo / "regs").mkdir()
     (repo / "regs/spam.rdl").write_text(SPAM)
+    (repo / "docs/models").mkdir(parents=True)
+    (repo / "docs/models/spam.md").write_text(
+        "# Spam\n\n<!-- regs:spam start -->\n<!-- regs:spam end -->\n"
+    )
 
     lint("--fix")
 
+    # A C header, a Python module and a table in the block's page: each
+    # is held to its own language's rules by the linters that come after.
     header = "python/socpuppet/zephyr_module/include/socpuppet/regs/spam.h"
-    assert "#define SPAM_HAM_DONE" in (repo / header).read_text()
+    assert (repo / header).exists()
+    assert (repo / "python/socpuppet/regs/spam.py").exists()
+    assert "| Offset |" in (repo / "docs/models/spam.md").read_text()
     assert lint().returncode == 0, lint().stdout

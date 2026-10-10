@@ -53,13 +53,24 @@ SPAM = """\
 """
 
 HEADER = "python/socpuppet/zephyr_module/include/socpuppet/regs/spam.h"
+MODULE = "python/socpuppet/regs/spam.py"
+PAGE = "docs/models/spam.md"
 
 
 @pytest.fixture
 def repo(tmp_path):
-    """A directory laid out as the repo is, with the one register map."""
+    """A directory laid out as the repo is, with the one register map.
+
+    And with the block's page, which has a place for its table.
+    """
     (tmp_path / "regs").mkdir()
     (tmp_path / "regs/spam.rdl").write_text(textwrap.dedent(SPAM))
+    (tmp_path / "docs/models").mkdir(parents=True)
+    (tmp_path / PAGE).write_text(
+        "# Spam\n\nWords before.\n\n"
+        "<!-- regs:spam start -->\n<!-- regs:spam end -->\n"
+        "\nWords after.\n"
+    )
     return tmp_path
 
 
@@ -71,7 +82,9 @@ def test_the_c_header_has_each_registers_offset_its_bits_and_what_it_is_told(
     assert (repo / HEADER).read_text() == textwrap.dedent(
         """\
         /*
-         * Spam: the registers. A block that stands for nothing.
+         * Spam: the registers.
+         *
+         * A block that stands for nothing.
          *
          * Generated from regs/spam.rdl by tools/regs.py. Do not edit: change the
          * register map and run `uv run python tools/lint.py --fix`.
@@ -115,6 +128,159 @@ def test_the_c_header_has_each_registers_offset_its_bits_and_what_it_is_told(
     )
 
 
+def test_the_python_module_has_each_registers_offset_its_bits_and_what_it_is_told_without_the_blocks_name_in_front(
+    repo,
+):
+    regs(repo, "write")
+
+    assert (repo / MODULE).read_text() == textwrap.dedent(
+        '''\
+        """Spam: the registers.
+
+        A block that stands for nothing.
+
+        Generated from regs/spam.rdl by tools/regs.py. Do not edit: change the
+        register map and run `uv run python tools/lint.py --fix`.
+        """
+
+        #: How many bytes of address space the block takes.
+        SIZE = 0x40
+
+        #: What to do. Reads as zero.
+        COMMAND = 0x00
+        #: Fry it.
+        COMMAND_FRY = 1
+        #: Bake it.
+        COMMAND_BAKE = 2
+
+        #: How it went.
+        STATUS = 0x04
+        #: It was done.
+        STATUS_DONE = 1 << 0
+        #: It is being done.
+        STATUS_BUSY = 1 << 2
+
+        #: How much there is.
+        LIMITS = 0x0C
+        #: How many eggs.
+        LIMITS_EGGS_MASK = 0x0000FFFF
+        LIMITS_EGGS_SHIFT = 0
+        #: How many slices.
+        LIMITS_SLICES_MASK = 0xFFFF0000
+        LIMITS_SLICES_SHIFT = 16
+
+        #: The order, 8 bytes.
+        ORDER = 0x20
+        ORDER_SIZE = 0x08
+        '''
+    )
+
+
+def test_the_blocks_page_gets_a_table_with_a_row_for_each_register(repo):
+    regs(repo, "write")
+
+    assert (repo / PAGE).read_text() == (
+        "# Spam\n\nWords before.\n\n"
+        "<!-- regs:spam start -->\n\n"
+        "| Offset | Name | Access | What it is |\n"
+        "| --- | --- | --- | --- |\n"
+        "| `0x00` | `COMMAND` | write | What to do. Reads as zero. "
+        "1 `FRY`: Fry it. 2 `BAKE`: Bake it. |\n"
+        "| `0x04` | `STATUS` | read, write | How it went. "
+        "Bit 0 `DONE` (write one to clear): It was done. "
+        "Bit 2 `BUSY` (read only): It is being done. |\n"
+        "| `0x0C` | `LIMITS` | read | How much there is. "
+        "Bits 15 to 0 `EGGS`: How many eggs. "
+        "Bits 31 to 16 `SLICES`: How many slices. |\n"
+        "| `0x20` | `ORDER[2]` | read | The order, 8 bytes. |\n\n"
+        "<!-- regs:spam end -->\n"
+        "\nWords after.\n"
+    )
+
+
+def test_a_register_firmware_reads_and_writes_says_so_in_its_row(repo):
+    (repo / "regs/spam.rdl").write_text(a_map_of_one_register())
+
+    regs(repo, "write")
+
+    assert "| `HAM` | read, write |" in (repo / PAGE).read_text()
+
+
+def test_a_field_with_no_description_is_in_its_registers_row_by_its_bit_and_name(
+    repo,
+):
+    (repo / "regs/spam.rdl").write_text(
+        a_map_of_one_register().replace(
+            "field { sw = rw; } VALUE[31:0] = 0;",
+            "field { sw = rw; } EGGS[3:3] = 0;",
+        )
+    )
+
+    regs(repo, "write")
+
+    assert "| Ham. Bit 3 `EGGS`. |" in (repo / PAGE).read_text()
+
+
+def test_a_block_of_more_than_256_bytes_has_its_offsets_in_three_digits(repo):
+    (repo / "regs/spam.rdl").write_text(
+        a_map_of_one_register()
+        .replace("block_size = 0x10", "block_size = 0x200")
+        .replace("HAM @ 0x0", "HAM @ 0x104")
+    )
+
+    regs(repo, "write")
+
+    assert "#define SPAM_HAM 0x104U\n" in (repo / HEADER).read_text()
+    assert "| `0x104` | `HAM` |" in (repo / PAGE).read_text()
+
+
+def test_a_place_on_the_page_for_another_generators_table_is_left_as_it_is(
+    repo,
+):
+    another = "<!-- address-map:spam start -->\n<!-- address-map:spam end -->\n"
+    (repo / PAGE).write_text((repo / PAGE).read_text() + "\n" + another)
+
+    result = regs(repo, "write")
+
+    assert result.returncode == 0, result.stdout
+    assert (repo / PAGE).read_text().endswith(another)
+
+
+def test_a_place_for_the_table_of_a_block_that_was_not_named_is_left_as_it_is(
+    repo,
+):
+    not_named = "<!-- regs:eggs start -->\n<!-- regs:eggs end -->\n"
+    (repo / PAGE).write_text((repo / PAGE).read_text() + "\n" + not_named)
+
+    result = regs(repo, "write")
+
+    assert result.returncode == 0, result.stdout
+    assert (repo / PAGE).read_text().endswith(not_named)
+
+
+def test_when_a_blocks_table_starts_and_never_ends_it_is_refused_and_the_error_says_which_marker_is_missing(
+    repo,
+):
+    (repo / PAGE).write_text("# Spam\n\n<!-- regs:spam start -->\n\nWords.\n")
+
+    result = regs(repo, "write")
+
+    assert result.returncode != 0
+    assert "<!-- regs:spam end -->" in result.stdout
+
+
+def test_when_no_page_has_a_place_for_a_blocks_table_it_is_refused_and_the_error_says_what_to_put_where(
+    repo,
+):
+    (repo / PAGE).write_text("# Spam\n\nWords.\n")
+
+    result = regs(repo, "write")
+
+    assert result.returncode != 0
+    assert "<!-- regs:spam start -->" in result.stdout
+    assert "docs/models" in result.stdout
+
+
 def test_a_description_too_long_for_one_line_is_a_comment_of_several(repo):
     (repo / "regs/spam.rdl").write_text(
         a_map_of_one_register(
@@ -134,7 +300,7 @@ def test_a_description_too_long_for_one_line_is_a_comment_of_several(repo):
     ) in (repo / HEADER).read_text()
 
 
-def test_a_file_with_no_addrmap_in_it_gives_no_header(repo):
+def test_a_file_with_no_addrmap_in_it_gives_nothing_and_needs_no_page(repo):
     (repo / "regs/shared.rdl").write_text(
         "reg shared_r { field { sw = r; } VALUE[31:0]; };\n"
     )
@@ -142,7 +308,7 @@ def test_a_file_with_no_addrmap_in_it_gives_no_header(repo):
     result = regs(repo, "write")
 
     assert result.returncode == 0, result.stdout
-    assert not (repo / HEADER).with_name("shared.h").exists()
+    assert not list((repo / "python").rglob("shared.*"))
 
 
 def test_a_register_defined_in_an_included_file_is_in_the_header_of_the_block_that_has_it(

@@ -44,7 +44,9 @@ LINTERS = [
         "systemrdl",
         # The register maps (tools/regs.py). It comes first because what
         # is generated from them is C, Python and Markdown, which the
-        # linters after it then check.
+        # linters after it then check. A file that --fix makes for the
+        # first time they see on the next run: the files are listed once,
+        # before any linter has run.
         patterns=("regs/*.rdl",),
         check=("python", str(TOOLS / "regs.py"), "check"),
         fix=("python", str(TOOLS / "regs.py"), "write"),
