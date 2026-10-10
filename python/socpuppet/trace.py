@@ -1,20 +1,22 @@
 """Transaction traces: what crossed the connections you asked to watch."""
 
 import json
-import os
-import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Self
 
-_BOLD, _DIM, _GREEN, _RED, _CYAN, _RESET = (
-    "\x1b[1m",
-    "\x1b[2m",
-    "\x1b[32m",
-    "\x1b[31m",
-    "\x1b[36m",
-    "\x1b[0m",
+from socpuppet._terminal import (
+    BOLD,
+    CYAN,
+    DIM,
+    GREEN,
+    RED,
+    RESET,
+    stdout_wants_color,
+    wants_color,
 )
+
+__all__ = ["TraceRecord", "render", "to_json_lines", "wants_color"]
 
 
 @dataclass(frozen=True)
@@ -49,38 +51,29 @@ class TraceRecord:
         )
 
 
-def wants_color(is_terminal: bool, environment: Mapping[str, str]) -> bool:
-    """Whether output should be colored.
-
-    Color suits a terminal; a file or a pipe gets plain text. A non-empty
-    NO_COLOR (https://no-color.org) turns color off everywhere.
-    """
-    return is_terminal and not environment.get("NO_COLOR")
-
-
 def render(records: Iterable[TraceRecord], color: bool | None = None) -> str:
     """The trace as text for people, one line per transaction.
 
     `color` defaults to whether standard output wants it (see `wants_color`).
     """
     if color is None:
-        color = wants_color(sys.stdout.isatty(), os.environ)
+        color = stdout_wants_color()
 
     def paint(code: str, text: str) -> str:
-        return f"{code}{text}{_RESET}" if color else text
+        return f"{code}{text}{RESET}" if color else text
 
     lines = []
     for record in records:
         command = paint(
-            _GREEN if record.command == "read" else _CYAN,
+            GREEN if record.command == "read" else CYAN,
             f"{record.command:<5}",
         )
-        time = paint(_DIM, f"{record.time / 1000:g} ns".rjust(12))
-        address = paint(_BOLD, f"{record.address:#010x}")
-        route = paint(_DIM, f"{record.source} → {record.sink}")
+        time = paint(DIM, f"{record.time / 1000:g} ns".rjust(12))
+        address = paint(BOLD, f"{record.address:#010x}")
+        route = paint(DIM, f"{record.source} → {record.sink}")
         lines.append(
             f"{time}  {command} {address}  {record.data.hex(' ')}  "
-            f"{'✅' if record.ok else paint(_RED, '❌')}  {route}"
+            f"{'✅' if record.ok else paint(RED, '❌')}  {route}"
         )
     return "\n".join(lines)
 

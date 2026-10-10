@@ -5,17 +5,17 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
-import sys
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, interrupt_map
+from socpuppet._terminal import stdout_wants_color
 from socpuppet.address_map import MapEntry, reachable_ports
 from socpuppet.components import LinkModel
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.time import us
-from socpuppet.trace import TraceRecord, wants_color
+from socpuppet.trace import TraceRecord
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -185,9 +185,7 @@ class Platform:
         }
         from socpuppet import _core  # the simulator loads here, not on import
 
-        native = _core.Platform(
-            color_log=wants_color(sys.stdout.isatty(), os.environ)
-        )
+        native = _core.Platform(color_log=stdout_wants_color())
         native.set_quantum(self._quantum)
         for path, placed in self._placed.items():
             native.add(path, placed.component.implementation, parameters[path])
