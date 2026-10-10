@@ -47,6 +47,7 @@ LINTERS = [
         # linters after it then check.
         patterns=("regs/*.rdl",),
         check=("python", str(TOOLS / "regs.py"), "check"),
+        fix=("python", str(TOOLS / "regs.py"), "write"),
     ),
     Linter(
         "clang-format",

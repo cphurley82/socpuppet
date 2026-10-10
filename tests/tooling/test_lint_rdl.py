@@ -14,3 +14,35 @@ def test_when_a_register_description_does_not_compile_lint_fails_and_names_the_l
     assert result.returncode != 0
     assert "❌ systemrdl" in result.stdout
     assert "regs/spam.rdl:2" in result.stdout
+
+
+# A register map with single bits, a field of several, and descriptions
+# short and long: what the header generated from it has to lay out.
+SPAM = """\
+property block_size { type = longint unsigned; component = addrmap; };
+
+addrmap spam {
+    name = "Spam";
+    block_size = 0x10;
+    default regwidth = 32;
+
+    reg {
+        desc = "A register whose description goes on for rather longer than one line of a header has room for, and then some.";
+        field { sw = rw; onwrite = woclr; desc = "Done."; } DONE[0:0] = 0;
+        field { sw = r; desc = "How many eggs."; } EGGS[31:16];
+    } HAM @ 0x0;
+};
+"""
+
+
+def test_when_run_with_fix_the_header_of_a_register_map_is_written_and_then_passes_lint(
+    repo, lint, zephyrs_style
+):
+    (repo / "regs").mkdir()
+    (repo / "regs/spam.rdl").write_text(SPAM)
+
+    lint("--fix")
+
+    header = "python/socpuppet/zephyr_module/include/socpuppet/regs/spam.h"
+    assert "#define SPAM_HAM_DONE" in (repo / header).read_text()
+    assert lint().returncode == 0, lint().stdout
