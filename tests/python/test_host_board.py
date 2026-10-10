@@ -263,6 +263,64 @@ def host_with_a_manager(drive_blocks=None):
     )
 
 
+class TestTheHostWithAManagerThatHasACpu:
+    def test_has_two_cpus_the_hosts_and_the_managers(self):
+        board = host(manager=add_manager)
+
+        assert {each.path for each in board.platform.bus_masters} == {
+            "compute.cpu",
+            "io.manager.cpu",
+        }
+
+    def test_its_managers_cpu_sees_the_zephyr_board_for_the_manager_less_its_scratch_memory(
+        self,
+    ):
+        # Which is why firmware built for the manager's board runs in the
+        # manager under this host, unchanged. Two things differ, and the
+        # firmware is built from neither. The board has a scratch memory
+        # for 🎭 its compute die to reach. And under the host the manager
+        # is in a group of its own, which shows in its nodes' labels.
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/socpuppet/socpuppet_iomgr/socpuppet_iomgr.dts"
+        ).read_text()
+        board = host(manager=add_manager)
+
+        seen = board.platform.devicetree(via=board.manager.cpu.socket)
+
+        assert labelled_as_in_group("io", seen, was="io_manager") == (
+            without_node("io_scratch", checked_in)
+        )
+
+
+def labelled_as_in_group(group, devicetree, was):
+    """`devicetree` as it reads with its devices in another group.
+
+    A node's label starts with the group its device is in, and nothing
+    firmware is built from says the label: it finds a device by what the
+    device is compatible with.
+    """
+    return devicetree.replace(f"{was}_", f"{group}_")
+
+
+def without_node(label, devicetree):
+    """`devicetree` with the node called `label` taken out."""
+    lines = devicetree.splitlines(keepends=True)
+    starts = [
+        at
+        for at, line in enumerate(lines)
+        if line.lstrip().startswith(f"{label}:")
+    ]
+    assert len(starts) == 1, f"There should be one node called {label}."
+    [start] = starts
+    indent = lines[start][: -len(lines[start].lstrip())]
+    end = lines.index(f"{indent}}};\n", start) + 1
+    # The empty line after a node goes with it.
+    if lines[end : end + 1] == ["\n"]:
+        end += 1
+    return "".join(lines[:start] + lines[end:])
+
+
 class TestTheHostAskedForADriveOfNoSize:
     def test_refuses_and_says_what_is_missing(self):
         with pytest.raises(ValueError, match="drive_blocks"):
