@@ -26,8 +26,8 @@
 /* Erase a block of the chip. */
 #define FLASH_CONTROLLER_COMMAND_ERASE_BLOCK  3U
 /*
- * Ask the chip what it is. The three registers from `0x20` read as zero until
- * this has been done.
+ * Ask the chip what it is. `PAGE_SIZE`, `PAGES_PER_BLOCK` and `BLOCKS` read
+ * as zero until this has been done.
  */
 #define FLASH_CONTROLLER_COMMAND_IDENTIFY     4U
 

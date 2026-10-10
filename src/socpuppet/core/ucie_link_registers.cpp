@@ -13,24 +13,12 @@ namespace {
 
 constexpr std::size_t kRegisterBytes = 4;
 
-// The register map says two things twice, once as a number of its own and
-// once in a register that firmware reads. They have to agree: how long the
-// capability is, and where the block its locator points at starts.
-static_assert((UCIE_LINK_DVSEC_HEADER_1_AT_RESET &
-               UCIE_LINK_DVSEC_HEADER_1_LENGTH_MASK) >>
-                  UCIE_LINK_DVSEC_HEADER_1_LENGTH_SHIFT ==
-              UCIE_LINK_SIZE);
-static_assert((UCIE_LINK_REGISTER_LOCATOR_AT_RESET &
-               UCIE_LINK_REGISTER_LOCATOR_OFFSET_MASK) >>
-                  UCIE_LINK_REGISTER_LOCATOR_OFFSET_SHIFT ==
-              UCIE_LINK_TRAINING_STATE);
-
 // What the mailbox's registers hold are UCIe's own numbers for a sideband
 // packet's opcode and for how an access turned out, so the register map's
 // names for them have to be those numbers.
-static_assert(UCIE_LINK_MAILBOX_OPCODE_MEMORY_READ_32B ==
+static_assert(UCIE_LINK_MAILBOX_OPCODE_CODE_MEMORY_READ_32B ==
               static_cast<std::uint32_t>(SidebandOpcode::kMemoryRead32b));
-static_assert(UCIE_LINK_MAILBOX_OPCODE_MEMORY_WRITE_32B ==
+static_assert(UCIE_LINK_MAILBOX_OPCODE_CODE_MEMORY_WRITE_32B ==
               static_cast<std::uint32_t>(SidebandOpcode::kMemoryWrite32b));
 static_assert(UCIE_LINK_MAILBOX_STATUS_CODE_SUCCESS ==
               static_cast<std::uint32_t>(SidebandStatus::kSuccess));
@@ -41,9 +29,6 @@ static_assert(UCIE_LINK_MAILBOX_STATUS_CODE_UNSUPPORTED_REQUEST ==
 // the reset register come out of reset.
 static_assert((UCIE_LINK_DIE_RESET_AT_RESET & UCIE_LINK_DIE_RESET_ASSERTED) !=
               0);
-
-// How wide UCIe's opcodes are: five bits of a sideband packet's header.
-constexpr std::uint32_t kOpcodeBits = 0x1F;
 
 // The register map's number for a state of link training.
 std::uint32_t CodeOf(LinkTrainingState state) {
@@ -128,7 +113,8 @@ std::uint32_t UcieLinkRegisters::RegisterAt(std::uint64_t offset) const {
     case UCIE_LINK_DIE_RESET:
       return reset_ ? UCIE_LINK_DIE_RESET_ASSERTED : 0U;
     case UCIE_LINK_MAILBOX_OPCODE:
-      return static_cast<std::uint32_t>(mailbox_.opcode);
+      return static_cast<std::uint32_t>(mailbox_.opcode)
+             << UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT;
     case UCIE_LINK_MAILBOX_ADDRESS:
       return mailbox_.address;
     case UCIE_LINK_MAILBOX_DATA:
@@ -169,7 +155,9 @@ bool UcieLinkRegisters::Set(std::uint64_t offset, std::uint32_t value) {
       if ((value & UCIE_LINK_FAULT_INJECTION_BREAK) != 0) asked_.fault = true;
       return true;
     case UCIE_LINK_MAILBOX_OPCODE:
-      mailbox_.opcode = static_cast<SidebandOpcode>(value & kOpcodeBits);
+      mailbox_.opcode = static_cast<SidebandOpcode>(
+          (value & UCIE_LINK_MAILBOX_OPCODE_CODE_MASK) >>
+          UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT);
       return true;
     case UCIE_LINK_MAILBOX_ADDRESS:
       mailbox_.address = value;

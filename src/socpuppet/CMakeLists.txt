@@ -60,8 +60,7 @@ target_sources(socpuppet_nvme_controller PUBLIC
     core/nvme_queues.h
     core/prp.h)
 target_link_libraries(socpuppet_nvme_controller
-  PUBLIC socpuppet_regs
-  PRIVATE spdk_nvme_spec)
+  PRIVATE socpuppet_regs spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
 

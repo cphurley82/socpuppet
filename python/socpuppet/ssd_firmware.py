@@ -265,7 +265,7 @@ class SsdFirmware:
         yield write32(
             self._frontend + nvme_frontend.COMPLETION_STATUS,
             outcome.status_type << nvme_frontend.COMPLETION_STATUS_TYPE_SHIFT
-            | outcome.status,
+            | outcome.status << nvme_frontend.COMPLETION_STATUS_CODE_SHIFT,
         )
         yield write32(
             self._frontend + nvme_frontend.COMPLETION_POST,

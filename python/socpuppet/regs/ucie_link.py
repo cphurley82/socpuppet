@@ -107,13 +107,15 @@ FAULT_INJECTION = 0x28
 #: Write a one to break the link.
 FAULT_INJECTION_BREAK = 1 << 0
 
-#: What the next access to the other end is to be. Only the low five bits are
-#: kept, which is how wide UCIe's opcodes are.
+#: What the next access to the other end is to be.
 MAILBOX_OPCODE = 0x40
+#: UCIe's opcode for it, which is five bits of a sideband packet.
+MAILBOX_OPCODE_CODE_MASK = 0x0000001F
+MAILBOX_OPCODE_CODE_SHIFT = 0
 #: Read a register of the other end.
-MAILBOX_OPCODE_MEMORY_READ_32B = 0
+MAILBOX_OPCODE_CODE_MEMORY_READ_32B = 0
 #: Write one.
-MAILBOX_OPCODE_MEMORY_WRITE_32B = 1
+MAILBOX_OPCODE_CODE_MEMORY_WRITE_32B = 1
 
 #: Which register of the other end: its offset in the block there.
 MAILBOX_ADDRESS = 0x48

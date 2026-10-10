@@ -12,15 +12,15 @@
  *
  *	uint32_t happened = nvme_frontend_wait(dev);
  *
- *	if (happened & NVME_FRONTEND_RESET) {
+ *	if (happened & NVME_FRONTEND_STATUS_DISABLED) {
  *		... forget everything from before the reset ...
- *		nvme_frontend_acknowledge(dev, NVME_FRONTEND_RESET);
+ *		nvme_frontend_acknowledge(dev, NVME_FRONTEND_STATUS_DISABLED);
  *	}
- *	if (happened & NVME_FRONTEND_ENABLED) {
- *		nvme_frontend_acknowledge(dev, NVME_FRONTEND_ENABLED);
+ *	if (happened & NVME_FRONTEND_STATUS_ENABLED) {
+ *		nvme_frontend_acknowledge(dev, NVME_FRONTEND_STATUS_ENABLED);
  *		nvme_frontend_say_ready(dev);
  *	}
- *	if (happened & NVME_FRONTEND_COMMAND_WAITING) {
+ *	if (happened & NVME_FRONTEND_STATUS_COMMAND_WAITING) {
  *		... nvme_frontend_read_command, do it, nvme_frontend_post ...
  *	}
  *
@@ -36,20 +36,21 @@
 #include <zephyr/device.h>
 
 /*
- * The frontend's registers, generated from its register map. What follows
- * that is named after one of them is that register's own bit or number,
- * under the name firmware has always had for it. How long a command is,
- * NVME_FRONTEND_COMMAND_SIZE, comes from there as it is.
+ * The frontend's registers, generated from its register map. Firmware
+ * needs none of the offsets, and four things from there are what this
+ * driver speaks in, under the register map's own names for them:
+ *
+ * - the bits of the status register, which are what nvme_frontend_wait()
+ *   reports: NVME_FRONTEND_STATUS_ENABLED (the host has enabled the
+ *   controller), NVME_FRONTEND_STATUS_DISABLED (the host has reset it, by
+ *   disabling it) and NVME_FRONTEND_STATUS_COMMAND_WAITING (a command is
+ *   waiting, until its completion is posted). The first two are to be
+ *   acknowledged.
+ * - how long a command is, NVME_FRONTEND_COMMAND_SIZE.
+ * - the two kinds of queue, NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE
+ *   and NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE.
  */
 #include <socpuppet/regs/nvme_frontend.h>
-
-/* What nvme_frontend_wait() reports, one bit each. */
-/* The host has enabled the controller. To be acknowledged. */
-#define NVME_FRONTEND_ENABLED         NVME_FRONTEND_STATUS_ENABLED
-/* The host has reset the controller, by disabling it. To be acknowledged. */
-#define NVME_FRONTEND_RESET           NVME_FRONTEND_STATUS_DISABLED
-/* A command is waiting. It stops waiting when its completion is posted. */
-#define NVME_FRONTEND_COMMAND_WAITING NVME_FRONTEND_STATUS_COMMAND_WAITING
 
 /* What the frontend has, which the firmware tells the host when asked. */
 struct nvme_frontend_limits {
@@ -70,7 +71,7 @@ uint32_t nvme_frontend_wait(const struct device *dev);
 
 /*
  * Says that the firmware has seen to what it was told of: `happened` is
- * NVME_FRONTEND_ENABLED, NVME_FRONTEND_RESET, or both.
+ * NVME_FRONTEND_STATUS_ENABLED, NVME_FRONTEND_STATUS_DISABLED, or both.
  *
  * Acknowledging a reset is a promise that the firmware holds nothing from
  * before it: no command it will still complete, and no queue it will still
@@ -103,15 +104,13 @@ uint16_t nvme_frontend_read_command(const struct device *dev,
  */
 void nvme_frontend_post(const struct device *dev, uint16_t status, uint32_t result);
 
-/* The two kinds of queue. The values are what the frontend is told. */
-enum nvme_frontend_queue_kind {
-	NVME_FRONTEND_COMPLETION_QUEUE = NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE,
-	NVME_FRONTEND_SUBMISSION_QUEUE = NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE,
-};
-
 /* A queue the firmware has agreed that the host may have. */
 struct nvme_frontend_queue {
-	enum nvme_frontend_queue_kind kind;
+	/*
+	 * Which kind: NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE or
+	 * NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE.
+	 */
+	uint32_t kind;
 	/* Its identifier, from 1 up. */
 	uint16_t id;
 	/* Where it is in the host's memory, and its last slot. */

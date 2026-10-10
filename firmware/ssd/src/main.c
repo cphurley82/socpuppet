@@ -64,20 +64,20 @@ int main(void)
 		 * drive stays. The acknowledgement comes last, because it
 		 * says the firmware has let go of everything from before.
 		 */
-		if ((happened & NVME_FRONTEND_RESET) != 0) {
+		if ((happened & NVME_FRONTEND_STATUS_DISABLED) != 0) {
 			admin_forget_the_queues();
-			nvme_frontend_acknowledge(ssd_frontend, NVME_FRONTEND_RESET);
+			nvme_frontend_acknowledge(ssd_frontend, NVME_FRONTEND_STATUS_DISABLED);
 		}
 		/*
 		 * There is nothing to start up, so the firmware is ready at
 		 * once. If the host has changed its mind again by now, the
 		 * frontend does not hear this, and says so in its own time.
 		 */
-		if ((happened & NVME_FRONTEND_ENABLED) != 0) {
-			nvme_frontend_acknowledge(ssd_frontend, NVME_FRONTEND_ENABLED);
+		if ((happened & NVME_FRONTEND_STATUS_ENABLED) != 0) {
+			nvme_frontend_acknowledge(ssd_frontend, NVME_FRONTEND_STATUS_ENABLED);
 			nvme_frontend_say_ready(ssd_frontend);
 		}
-		if ((happened & NVME_FRONTEND_COMMAND_WAITING) != 0) {
+		if ((happened & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0) {
 			deal_with_the_command();
 		}
 	}

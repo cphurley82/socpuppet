@@ -149,10 +149,10 @@ static bool is_an_io_queue(uint32_t queue_id)
  * The firmware decides whether the host may have the queue, and if so has
  * the frontend create it.
  */
-static uint16_t create_queue(const struct nvme_command *command, enum nvme_frontend_queue_kind kind)
+static uint16_t create_queue(const struct nvme_command *command, uint32_t kind)
 {
-	bool *queues =
-		kind == NVME_FRONTEND_COMPLETION_QUEUE ? completion_queues : submission_queues;
+	bool *queues = kind == NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE ? completion_queues
+									   : submission_queues;
 	struct nvme_frontend_queue queue = {
 		.kind = kind,
 		.id = nvme_dword(command, 10) & 0xFFFF,
@@ -173,7 +173,7 @@ static uint16_t create_queue(const struct nvme_command *command, enum nvme_front
 	if (queue.last_slot == 0) {
 		return NVME_INVALID_QUEUE_SIZE;
 	}
-	if (kind == NVME_FRONTEND_COMPLETION_QUEUE) {
+	if (kind == NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE) {
 		/* The vector has to be one the drive has. */
 		if (queue.link >= limits.vectors) {
 			return NVME_INVALID_INTERRUPT_VECTOR;
@@ -198,10 +198,12 @@ struct nvme_outcome admin_command(const struct nvme_command *command)
 	switch (nvme_opcode(command)) {
 	case NVME_CREATE_IO_COMPLETION_QUEUE:
 		return (struct nvme_outcome){
-			.status = create_queue(command, NVME_FRONTEND_COMPLETION_QUEUE)};
+			.status =
+				create_queue(command, NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE)};
 	case NVME_CREATE_IO_SUBMISSION_QUEUE:
 		return (struct nvme_outcome){
-			.status = create_queue(command, NVME_FRONTEND_SUBMISSION_QUEUE)};
+			.status =
+				create_queue(command, NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE)};
 	case NVME_IDENTIFY:
 		return (struct nvme_outcome){.status = identify(command)};
 	case NVME_SET_FEATURES:

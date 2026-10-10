@@ -17,7 +17,7 @@ enum flash_controller_command_e {
         desc = "Erase a block of the chip.";
     };
     IDENTIFY = 4 {
-        desc = "Ask the chip what it is. The three registers from `0x20` read as zero until this has been done.";
+        desc = "Ask the chip what it is. `PAGE_SIZE`, `PAGES_PER_BLOCK` and `BLOCKS` read as zero until this has been done.";
     };
 };
 

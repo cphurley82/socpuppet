@@ -19,8 +19,8 @@ COMMAND_READ_PAGE = 1
 COMMAND_PROGRAM_PAGE = 2
 #: Erase a block of the chip.
 COMMAND_ERASE_BLOCK = 3
-#: Ask the chip what it is. The three registers from `0x20` read as zero until
-#: this has been done.
+#: Ask the chip what it is. `PAGE_SIZE`, `PAGES_PER_BLOCK` and `BLOCKS` read
+#: as zero until this has been done.
 COMMAND_IDENTIFY = 4
 
 #: How the last command went. Giving the next command forgets it.

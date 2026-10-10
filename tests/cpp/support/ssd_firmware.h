@@ -293,7 +293,8 @@ class SsdFirmware : public sc_core::sc_module {
     Write32(map_.frontend + NVME_FRONTEND_COMPLETION_STATUS,
             std::uint32_t{outcome.status_type}
                     << NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT |
-                outcome.status);
+                std::uint32_t{outcome.status}
+                    << NVME_FRONTEND_COMPLETION_STATUS_CODE_SHIFT);
     Write32(map_.frontend + NVME_FRONTEND_COMPLETION_POST,
             NVME_FRONTEND_COMPLETION_POST_NOW);
   }

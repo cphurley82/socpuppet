@@ -38,7 +38,7 @@ Each is 32 bits wide.
 
 | Offset | Name | Access | What it is |
 | --- | --- | --- | --- |
-| `0x00` | `COMMAND` | write | Write a command to have it carried out on what the other registers say. Reads as zero. 1 `READ_PAGE`: Read a page of the chip into the SSD's own memory. 2 `PROGRAM_PAGE`: Program a page of the chip from the SSD's own memory. 3 `ERASE_BLOCK`: Erase a block of the chip. 4 `IDENTIFY`: Ask the chip what it is. The three registers from `0x20` read as zero until this has been done. |
+| `0x00` | `COMMAND` | write | Write a command to have it carried out on what the other registers say. Reads as zero. 1 `READ_PAGE`: Read a page of the chip into the SSD's own memory. 2 `PROGRAM_PAGE`: Program a page of the chip from the SSD's own memory. 3 `ERASE_BLOCK`: Erase a block of the chip. 4 `IDENTIFY`: Ask the chip what it is. `PAGE_SIZE`, `PAGES_PER_BLOCK` and `BLOCKS` read as zero until this has been done. |
 | `0x04` | `STATUS` | read, write | How the last command went. Giving the next command forgets it. Bit 0 `DONE` (write one to clear): The command was carried out. Bit 1 `ERROR` (write one to clear): The command was not carried out, or not all of it. Bit 2 `BUSY` (read only): A command has been given and is not yet carried out. No other is taken meanwhile. |
 | `0x08` | `INTERRUPT_ENABLE` | read, write | Which bits of `STATUS` raise the interrupt line while they are set. Bit 0 `DONE`. Bit 1 `ERROR`. |
 | `0x0C` | `BLOCK` | read, write | Which block of the chip. |

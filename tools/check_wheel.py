@@ -35,22 +35,30 @@ def problems_with(names):
             "socpuppet/zephyr_module is missing or incomplete "
             "(the Zephyr boards ship inside the package)"
         )
-    # What is generated from the register maps: Python modules that the
-    # stand-ins and the board descriptions import, and the C headers that
+    # What is generated from the register maps: for each block, a Python
+    # module that the stand-ins and the boards import, and a C header that
     # the Zephyr drivers include. Nothing in a wheel can make them again.
-    if not any(
-        n.startswith("socpuppet/regs/") and n.endswith(".py") for n in names
-    ):
-        yield (
-            "socpuppet/regs has no register map in it "
-            "(the stand-ins and the boards import them)"
-        )
+    modules = "socpuppet/regs/"
     headers = "socpuppet/zephyr_module/include/socpuppet/regs/"
-    if not any(n.startswith(headers) and n.endswith(".h") for n in names):
+    as_python = {
+        n.removeprefix(modules).removesuffix(".py")
+        for n in names
+        if n.startswith(modules) and n.endswith(".py")
+    } - {"__init__"}
+    as_c = {
+        n.removeprefix(headers).removesuffix(".h")
+        for n in names
+        if n.startswith(headers) and n.endswith(".h")
+    }
+    if not as_python and not as_c:
         yield (
-            f"{headers} has no header in it "
-            "(the Zephyr drivers include the register maps)"
+            "no register map is in the wheel "
+            f"(they are generated into {modules} and {headers})"
         )
+    for block in sorted(as_c - as_python):
+        yield f"{modules}{block}.py is missing (its header is there)"
+    for block in sorted(as_python - as_c):
+        yield f"{headers}{block}.h is missing (its module is there)"
     # SystemC, SCC and friends are linked statically into _core. Their own
     # headers, libraries and CMake files must not ride along.
     allowed = ("socpuppet/", "socpuppet-")

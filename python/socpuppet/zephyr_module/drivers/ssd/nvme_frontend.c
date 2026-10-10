@@ -27,7 +27,9 @@
 #include <socpuppet/drivers/nvme_frontend.h>
 
 /* Everything the status register can say, which is what can interrupt. */
-#define ANYTHING (NVME_FRONTEND_ENABLED | NVME_FRONTEND_RESET | NVME_FRONTEND_COMMAND_WAITING)
+#define ANYTHING                                                                                   \
+	(NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |                            \
+	 NVME_FRONTEND_STATUS_COMMAND_WAITING)
 
 struct nvme_frontend_config {
 	mm_reg_t base;

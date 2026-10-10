@@ -63,7 +63,7 @@ addrmap nvme_frontend {
         desc = "What the frontend has, for the firmware to tell the host.";
         field {
             sw = r;
-            desc = "How many pairs of I/O queues, which is eight.";
+            desc = "How many pairs of I/O queues.";
         } IO_QUEUE_PAIRS[15:0];
         field {
             sw = r;
@@ -104,32 +104,32 @@ addrmap nvme_frontend {
     // A queue the firmware has agreed that the host may have. A write to
     // QUEUE_CREATE creates it from what the other five say.
     reg {
-        desc = "A queue to create: which,";
+        desc = "Which queue to create: its identifier, from 1 up.";
         field { sw = rw; } VALUE[31:0] = 0;
     } QUEUE_ID @ 0x20;
 
     reg {
-        desc = "where it is in the host's memory, the low 32 bits,";
+        desc = "Where the queue to create is in the host's memory, the low 32 bits.";
         field { sw = rw; } VALUE[31:0] = 0;
     } QUEUE_BASE_LOW @ 0x24;
 
     reg {
-        desc = "and the high 32 bits,";
+        desc = "The high 32 bits of where it is.";
         field { sw = rw; } VALUE[31:0] = 0;
     } QUEUE_BASE_HIGH @ 0x28;
 
     reg {
-        desc = "its last slot, which is its size less one,";
+        desc = "The last slot of the queue to create, which is its size less one.";
         field { sw = rw; } VALUE[31:0] = 0;
     } QUEUE_LAST @ 0x2C;
 
     reg {
-        desc = "and what goes with it: a completion queue's interrupt vector, or the completion queue a submission queue's completions go to.";
+        desc = "What goes with the queue to create: a completion queue's interrupt vector, or the completion queue that a submission queue's completions go to.";
         field { sw = rw; } VALUE[31:0] = 0;
     } QUEUE_LINK @ 0x30;
 
     reg {
-        desc = "Write which kind of queue to create it. Reads as zero.";
+        desc = "Write which kind of queue, to create the one the five registers before this describe. Reads as zero.";
         field { sw = w; encode = nvme_frontend_queue_e; } VALUE[31:0] = 0;
     } QUEUE_CREATE @ 0x34;
 

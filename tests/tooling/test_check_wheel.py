@@ -8,6 +8,7 @@ GOOD = (
     "socpuppet/_core.pyi",
     "socpuppet/zephyr_module/zephyr/module.yml",
     "socpuppet/zephyr_module/boards/socpuppet/socpuppet_host/board.yml",
+    "socpuppet/regs/__init__.py",
     "socpuppet/regs/dma_engine.py",
     "socpuppet/zephyr_module/include/socpuppet/regs/dma_engine.h",
     "socpuppet-0.0.1.dist-info/licenses/THIRD_PARTY_NOTICES.md",
@@ -40,27 +41,39 @@ def test_when_the_zephyr_boards_are_missing_the_wheel_is_refused_and_the_output_
     assert "zephyr_module" in result.stdout
 
 
-def test_when_the_register_maps_python_modules_are_missing_the_wheel_is_refused_and_the_output_says_so(
+def test_when_a_register_maps_python_module_is_missing_the_wheel_is_refused_and_the_output_names_it(
     tmp_path, check_wheel
 ):
-    without_modules = [
-        name for name in GOOD if not name.startswith("socpuppet/regs/")
+    # The package's own __init__.py is still there, and is no register map.
+    without_the_module = [
+        name for name in GOOD if name != "socpuppet/regs/dma_engine.py"
     ]
 
-    result = check_wheel(wheel_holding(tmp_path, without_modules))
+    result = check_wheel(wheel_holding(tmp_path, without_the_module))
 
     assert result.returncode != 0
-    assert "socpuppet/regs" in result.stdout
+    assert "socpuppet/regs/dma_engine.py" in result.stdout
 
 
-def test_when_the_register_maps_c_headers_are_missing_the_wheel_is_refused_and_the_output_says_so(
+def test_when_a_register_maps_c_header_is_missing_the_wheel_is_refused_and_the_output_names_it(
     tmp_path, check_wheel
 ):
-    without_headers = [
-        name for name in GOOD if "/include/socpuppet/regs/" not in name
+    without_the_header = [
+        name for name in GOOD if not name.endswith("regs/dma_engine.h")
     ]
 
-    result = check_wheel(wheel_holding(tmp_path, without_headers))
+    result = check_wheel(wheel_holding(tmp_path, without_the_header))
 
     assert result.returncode != 0
-    assert "include/socpuppet/regs" in result.stdout
+    assert "include/socpuppet/regs/dma_engine.h" in result.stdout
+
+
+def test_when_there_is_no_register_map_at_all_the_wheel_is_refused_and_the_output_says_so(
+    tmp_path, check_wheel
+):
+    without_any = [name for name in GOOD if "dma_engine" not in name]
+
+    result = check_wheel(wheel_holding(tmp_path, without_any))
+
+    assert result.returncode != 0
+    assert "register map" in result.stdout

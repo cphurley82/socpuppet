@@ -6,12 +6,12 @@ import re
 import pytest
 
 from devicetree_compiler import dtc_errors, needs_dtc
+from socpuppet.boards.cpu_kit import TIMER_HZ
 from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
     MSI_SOURCE,
-    TIMER_HZ,
     drive_overlay,
     host,
 )

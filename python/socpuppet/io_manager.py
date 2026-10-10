@@ -96,7 +96,8 @@ class IoManager:
         """Writes a zero to the reset register at the other end."""
         yield write32(
             self._link + ucie_link.MAILBOX_OPCODE,
-            ucie_link.MAILBOX_OPCODE_MEMORY_WRITE_32B,
+            ucie_link.MAILBOX_OPCODE_CODE_MEMORY_WRITE_32B
+            << ucie_link.MAILBOX_OPCODE_CODE_SHIFT,
         )
         yield write32(
             self._link + ucie_link.MAILBOX_ADDRESS, ucie_link.DIE_RESET

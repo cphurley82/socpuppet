@@ -75,10 +75,11 @@ inline void AskTheOtherDie(BusDriver& bus, std::uint64_t base,
                            std::uint32_t address, std::uint32_t data = 0) {
   constexpr int kEnoughDeltaCycles = 10;
   bus.Write32(base + UCIE_LINK_MAILBOX_OPCODE,
-              static_cast<std::uint32_t>(opcode));
+              static_cast<std::uint32_t>(opcode)
+                  << UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT);
   bus.Write32(base + UCIE_LINK_MAILBOX_ADDRESS, address);
   bus.Write32(base + UCIE_LINK_MAILBOX_DATA, data);
-  bus.Write32(base + UCIE_LINK_MAILBOX_TRIGGER, 1);
+  bus.Write32(base + UCIE_LINK_MAILBOX_TRIGGER, UCIE_LINK_MAILBOX_TRIGGER_GO);
   for (int look = 0; look < kEnoughDeltaCycles; ++look) {
     if ((bus.Read32(base + UCIE_LINK_MAILBOX_STATUS) &
          UCIE_LINK_MAILBOX_STATUS_BUSY) == 0) {

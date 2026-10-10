@@ -171,14 +171,14 @@ int main(void)
 	for (;;) {
 		uint32_t happened = nvme_frontend_wait(frontend);
 
-		if (happened & NVME_FRONTEND_RESET) {
-			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_RESET);
+		if (happened & NVME_FRONTEND_STATUS_DISABLED) {
+			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_STATUS_DISABLED);
 		}
-		if (happened & NVME_FRONTEND_ENABLED) {
-			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_ENABLED);
+		if (happened & NVME_FRONTEND_STATUS_ENABLED) {
+			nvme_frontend_acknowledge(frontend, NVME_FRONTEND_STATUS_ENABLED);
 			nvme_frontend_say_ready(frontend);
 		}
-		if (happened & NVME_FRONTEND_COMMAND_WAITING) {
+		if (happened & NVME_FRONTEND_STATUS_COMMAND_WAITING) {
 			/* Read it, do it, and post how it went. Here: refuse it. */
 			nvme_frontend_post(frontend, 0x01 /* Invalid Command Opcode */, 0);
 		}

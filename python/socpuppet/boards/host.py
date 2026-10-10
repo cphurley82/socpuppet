@@ -88,9 +88,6 @@ PCIE_WINDOW_SIZE = 0x10_0000
 #: The vectors after it take the sources after it.
 MSI_BASE = 0x0200_0000
 MSI_SOURCE = 1
-# How many times a second the timer counts is `TIMER_HZ`, which is one
-# number for every socpuppet board with a CPU (`boards/cpu_kit.py`): the
-# firmware of each is told the same rate.
 
 
 class HostDrive(NamedTuple):

@@ -68,10 +68,12 @@ class OneLink {
 // Fills the mailbox in and triggers it, as firmware does.
 void AskTheOtherDie(OneLink& link, SidebandOpcode opcode, std::uint32_t address,
                     std::uint32_t data = 0) {
-  link.Write(UCIE_LINK_MAILBOX_OPCODE, static_cast<std::uint32_t>(opcode));
+  link.Write(UCIE_LINK_MAILBOX_OPCODE,
+             static_cast<std::uint32_t>(opcode)
+                 << UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT);
   link.Write(UCIE_LINK_MAILBOX_ADDRESS, address);
   link.Write(UCIE_LINK_MAILBOX_DATA, data);
-  link.Write(UCIE_LINK_MAILBOX_TRIGGER, 1);
+  link.Write(UCIE_LINK_MAILBOX_TRIGGER, UCIE_LINK_MAILBOX_TRIGGER_GO);
 }
 
 TEST(WhenFirmwareStartsTrainingThroughTheRegisters, TheLinkComesUp) {

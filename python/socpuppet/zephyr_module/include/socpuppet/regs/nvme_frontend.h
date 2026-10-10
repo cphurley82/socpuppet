@@ -42,7 +42,7 @@
 
 /* What the frontend has, for the firmware to tell the host. */
 #define NVME_FRONTEND_LIMITS                      0x0CU
-/* How many pairs of I/O queues, which is eight. */
+/* How many pairs of I/O queues. */
 #define NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_MASK  0x0000FFFFU
 #define NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_SHIFT 0U
 /* How many interrupt vectors it has for the host. */
@@ -77,25 +77,28 @@
 /* Write a one, and nothing else, to post it. */
 #define NVME_FRONTEND_COMPLETION_POST_NOW (1U << 0)
 
-/* A queue to create: which, */
+/* Which queue to create: its identifier, from 1 up. */
 #define NVME_FRONTEND_QUEUE_ID 0x20U
 
-/* where it is in the host's memory, the low 32 bits, */
+/* Where the queue to create is in the host's memory, the low 32 bits. */
 #define NVME_FRONTEND_QUEUE_BASE_LOW 0x24U
 
-/* and the high 32 bits, */
+/* The high 32 bits of where it is. */
 #define NVME_FRONTEND_QUEUE_BASE_HIGH 0x28U
 
-/* its last slot, which is its size less one, */
+/* The last slot of the queue to create, which is its size less one. */
 #define NVME_FRONTEND_QUEUE_LAST 0x2CU
 
 /*
- * and what goes with it: a completion queue's interrupt vector, or the
- * completion queue a submission queue's completions go to.
+ * What goes with the queue to create: a completion queue's interrupt vector,
+ * or the completion queue that a submission queue's completions go to.
  */
 #define NVME_FRONTEND_QUEUE_LINK 0x30U
 
-/* Write which kind of queue to create it. Reads as zero. */
+/*
+ * Write which kind of queue, to create the one the five registers before this
+ * describe. Reads as zero.
+ */
 #define NVME_FRONTEND_QUEUE_CREATE                  0x34U
 /* Create the completion queue the queue registers describe. */
 #define NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE 1U

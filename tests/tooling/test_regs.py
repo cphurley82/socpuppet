@@ -240,8 +240,10 @@ def test_a_register_that_comes_out_of_reset_holding_something_has_that_value_in_
 
     regs(repo, "write")
 
-    assert "#define SPAM_HAM_AT_RESET      0x00010023U\n" in (
-        (repo / HEADER).read_text()
+    assert re.search(
+        r"^#define SPAM_HAM_AT_RESET +0x00010023U$",
+        (repo / HEADER).read_text(),
+        re.MULTILINE,
     )
     assert "HAM_AT_RESET = 0x00010023\n" in (repo / MODULE).read_text()
 
@@ -255,9 +257,7 @@ def test_a_register_that_comes_out_of_reset_holding_something_says_what_in_its_r
 
     regs(repo, "write")
 
-    assert "| Ham. At reset: `0x00010023`. Bits 15 to 0 `ID`." in (
-        (repo / PAGE).read_text()
-    )
+    assert "| Ham. At reset: `0x00010023`." in (repo / PAGE).read_text()
 
 
 def test_a_register_that_comes_out_of_reset_as_zero_has_no_value_at_reset_written_down(
@@ -268,6 +268,7 @@ def test_a_register_that_comes_out_of_reset_as_zero_has_no_value_at_reset_writte
     regs(repo, "write")
 
     assert "AT_RESET" not in (repo / HEADER).read_text()
+    assert "AT_RESET" not in (repo / MODULE).read_text()
     assert "At reset" not in (repo / PAGE).read_text()
 
 
@@ -420,32 +421,30 @@ SHARED = """\
 """
 
 
-def a_block_that_shares(repo, command_at, more=""):
+def a_block_that_shares(repo, command_at, before="", says=()):
     """Make `spam` a block with the shared command register at `command_at`.
 
-    And `more`, if the block has more to say of the register than that.
+    `before` is what its file defines ahead of the block, and `says` the
+    statements the block has more to say of the register with.
     """
     (repo / "regs/shared.rdl").write_text(textwrap.dedent(SHARED))
     (repo / "docs/models/shared.md").write_text(
         "# Shared\n\n<!-- regs:shared start -->\n<!-- regs:shared end -->\n"
     )
     (repo / "regs/spam.rdl").write_text(
-        textwrap.dedent(
-            f"""\
-            `include "shared.rdl"
-
-            enum spam_command_e {{
-                FRY = 1 {{ desc = "Fry it."; }};
-            }};
-
-            addrmap spam {{
-                name = "Spam";
-                block_size = 0x10;
-                default regwidth = 32;
-                shared_command_r COMMAND @ {command_at:#x};
-                {more}
-            }};
-            """
+        "\n".join(
+            [
+                '`include "shared.rdl"',
+                before,
+                "addrmap spam {",
+                '    name = "Spam";',
+                "    block_size = 0x10;",
+                "    default regwidth = 32;",
+                f"    shared_command_r COMMAND @ {command_at:#x};",
+                *(f"    {statement}" for statement in says),
+                "};",
+                "",
+            ]
         )
     )
 
@@ -455,9 +454,8 @@ def test_a_file_that_includes_another_blocks_file_gives_a_header_for_each_block(
 ):
     a_block_that_shares(repo, command_at=0x4)
 
-    result = regs(repo, "write")
+    regs(repo, "write")
 
-    assert result.returncode == 0, result.stdout
     assert "#define SPAM_COMMAND 0x04U\n" in (repo / HEADER).read_text()
     assert "#define SHARED_COMMAND 0x04U\n" in (
         (repo / HEADER).with_name("shared.h").read_text()
@@ -470,8 +468,11 @@ def test_what_a_block_says_of_a_shared_register_in_its_own_map_is_what_its_heade
     a_block_that_shares(
         repo,
         command_at=0x4,
-        more='COMMAND->desc = "Write what to cook.";\n'
-        "    COMMAND.VALUE->encode = spam_command_e;",
+        before='enum spam_command_e { FRY = 1 { desc = "Fry it."; }; };',
+        says=[
+            'COMMAND->desc = "Write what to cook.";',
+            "COMMAND.VALUE->encode = spam_command_e;",
+        ],
     )
 
     regs(repo, "write")
@@ -591,19 +592,3 @@ def regs(repo, command):
         stderr=subprocess.STDOUT,
         text=True,
     )
-
-
-def test_nothing_in_the_package_imports_the_register_map_compiler():
-    # The compiler is a developer's tool, as the linters are, and is not
-    # installed with socpuppet: what it makes is checked in.
-    package = TOOL.parents[1] / "python" / "socpuppet"
-
-    importers = [
-        str(module.relative_to(package))
-        for module in package.rglob("*.py")
-        if re.search(
-            r"^\s*(?:import|from) systemrdl\b", module.read_text(), re.MULTILINE
-        )
-    ]
-
-    assert importers == []

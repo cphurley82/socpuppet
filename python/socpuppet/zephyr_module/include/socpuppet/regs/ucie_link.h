@@ -119,15 +119,15 @@
 /* Write a one to break the link. */
 #define UCIE_LINK_FAULT_INJECTION_BREAK (1U << 0)
 
-/*
- * What the next access to the other end is to be. Only the low five bits are
- * kept, which is how wide UCIe's opcodes are.
- */
-#define UCIE_LINK_MAILBOX_OPCODE                  0x40U
+/* What the next access to the other end is to be. */
+#define UCIE_LINK_MAILBOX_OPCODE                       0x40U
+/* UCIe's opcode for it, which is five bits of a sideband packet. */
+#define UCIE_LINK_MAILBOX_OPCODE_CODE_MASK             0x0000001FU
+#define UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT            0U
 /* Read a register of the other end. */
-#define UCIE_LINK_MAILBOX_OPCODE_MEMORY_READ_32B  0U
+#define UCIE_LINK_MAILBOX_OPCODE_CODE_MEMORY_READ_32B  0U
 /* Write one. */
-#define UCIE_LINK_MAILBOX_OPCODE_MEMORY_WRITE_32B 1U
+#define UCIE_LINK_MAILBOX_OPCODE_CODE_MEMORY_WRITE_32B 1U
 
 /* Which register of the other end: its offset in the block there. */
 #define UCIE_LINK_MAILBOX_ADDRESS 0x48U

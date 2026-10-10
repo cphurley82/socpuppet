@@ -60,17 +60,17 @@ Each is 32 bits wide, except the command.
 | `0x00` | `CONTROL` | read, write | What the firmware says of itself. Bit 0 `READY`: The firmware is ready for the host's commands. The host sees it as `CSTS.RDY`. |
 | `0x04` | `STATUS` | read, write | What the host has done, and whether a command is waiting. Bit 0 `ENABLED` (write one to clear): The host has enabled the controller. Bit 1 `DISABLED` (write one to clear): The host has disabled the controller, which is a reset. Writing the one says the firmware holds nothing from before it. Bit 2 `COMMAND_WAITING` (read only): A command is waiting. Set for exactly as long as one is. |
 | `0x08` | `INTERRUPT_ENABLE` | read, write | Which bits of `STATUS` raise `cpu_irq` while they are set. Bit 0 `ENABLED`. Bit 1 `DISABLED`. Bit 2 `COMMAND_WAITING`. |
-| `0x0C` | `LIMITS` | read | What the frontend has, for the firmware to tell the host. Bits 15 to 0 `IO_QUEUE_PAIRS`: How many pairs of I/O queues, which is eight. Bits 31 to 16 `VECTORS`: How many interrupt vectors it has for the host. |
+| `0x0C` | `LIMITS` | read | What the frontend has, for the firmware to tell the host. Bits 15 to 0 `IO_QUEUE_PAIRS`: How many pairs of I/O queues. Bits 31 to 16 `VECTORS`: How many interrupt vectors it has for the host. |
 | `0x10` | `COMMAND_QUEUE` | read | Which submission queue the waiting command came from. 0 is the admin queue. |
 | `0x14` | `COMPLETION_RESULT` | read, write | The first 32 bits of the completion: the command's answer, for the few that have one. |
 | `0x18` | `COMPLETION_STATUS` | read, write | How the command went, laid out as the status field of a completion is, less the phase bit. The other bits read back as zero. Bits 7 to 0 `CODE`: The status code, zero for success. Bits 10 to 8 `TYPE`: Which list of codes that is from. |
 | `0x1C` | `COMPLETION_POST` | write | Has the completion of the waiting command posted. Reads as zero. Bit 0 `NOW`: Write a one, and nothing else, to post it. |
-| `0x20` | `QUEUE_ID` | read, write | A queue to create: which, |
-| `0x24` | `QUEUE_BASE_LOW` | read, write | where it is in the host's memory, the low 32 bits, |
-| `0x28` | `QUEUE_BASE_HIGH` | read, write | and the high 32 bits, |
-| `0x2C` | `QUEUE_LAST` | read, write | its last slot, which is its size less one, |
-| `0x30` | `QUEUE_LINK` | read, write | and what goes with it: a completion queue's interrupt vector, or the completion queue a submission queue's completions go to. |
-| `0x34` | `QUEUE_CREATE` | write | Write which kind of queue to create it. Reads as zero. 1 `COMPLETION_QUEUE`: Create the completion queue the queue registers describe. 2 `SUBMISSION_QUEUE`: Create the submission queue they describe. |
+| `0x20` | `QUEUE_ID` | read, write | Which queue to create: its identifier, from 1 up. |
+| `0x24` | `QUEUE_BASE_LOW` | read, write | Where the queue to create is in the host's memory, the low 32 bits. |
+| `0x28` | `QUEUE_BASE_HIGH` | read, write | The high 32 bits of where it is. |
+| `0x2C` | `QUEUE_LAST` | read, write | The last slot of the queue to create, which is its size less one. |
+| `0x30` | `QUEUE_LINK` | read, write | What goes with the queue to create: a completion queue's interrupt vector, or the completion queue that a submission queue's completions go to. |
+| `0x34` | `QUEUE_CREATE` | write | Write which kind of queue, to create the one the five registers before this describe. Reads as zero. 1 `COMPLETION_QUEUE`: Create the completion queue the queue registers describe. 2 `SUBMISSION_QUEUE`: Create the submission queue they describe. |
 | `0x40` | `COMMAND[16]` | read | The waiting command, 64 bytes, read whole or a piece at a time. Zeros when none is waiting. |
 
 <!-- regs:nvme_frontend end -->

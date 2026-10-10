@@ -31,15 +31,6 @@
 #include <socpuppet/drivers/ucie_link.h>
 #include <socpuppet/regs/ucie_link.h>
 
-/* UCIe's Link DVSEC, and the vendor block its register locator names. */
-/* The sideband mailbox, which reaches the other end's registers. */
-
-/* Link control: both bits are an action, and clear themselves. */
-/* Link status. */
-/* Link event notification. */
-/* The mailbox's status: how the last access went, and whether it is done. */
-/* What a sideband access can be. */
-
 /*
  * How long the firmware waits for the link to come up. UCIe holds it in
  * reset for 4 ms, and training takes as long again as the link was built
@@ -128,7 +119,8 @@ static int write_at_the_other_end(const struct device *dev, uint32_t address, ui
 	const struct ucie_link_config *config = dev->config;
 	uint32_t status;
 
-	sys_write32(UCIE_LINK_MAILBOX_OPCODE_MEMORY_WRITE_32B,
+	sys_write32(UCIE_LINK_MAILBOX_OPCODE_CODE_MEMORY_WRITE_32B
+			    << UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT,
 		    config->base + UCIE_LINK_MAILBOX_OPCODE);
 	sys_write32(address, config->base + UCIE_LINK_MAILBOX_ADDRESS);
 	sys_write32(value, config->base + UCIE_LINK_MAILBOX_DATA);
@@ -141,10 +133,10 @@ static int write_at_the_other_end(const struct device *dev, uint32_t address, ui
 		return -ETIMEDOUT;
 	}
 
-	return (status & UCIE_LINK_MAILBOX_STATUS_CODE_MASK) ==
-			       UCIE_LINK_MAILBOX_STATUS_CODE_SUCCESS
-		       ? 0
-		       : -EIO;
+	status = (status & UCIE_LINK_MAILBOX_STATUS_CODE_MASK) >>
+		 UCIE_LINK_MAILBOX_STATUS_CODE_SHIFT;
+
+	return status == UCIE_LINK_MAILBOX_STATUS_CODE_SUCCESS ? 0 : -EIO;
 }
 
 /*

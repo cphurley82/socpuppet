@@ -177,8 +177,9 @@ def main():
         blocks = [
             block for file in args.files if (block := read(file)) is not None
         ]
-        for problem in (*misplaced(blocks), *named_twice(blocks)):
-            raise Refused(problem)
+        problems = [*misplaced(blocks), *named_twice(blocks)]
+        if problems:
+            raise Refused("\n".join(problems))
         wanted = generated_from(blocks)
     except RDLCompileError:
         # The compiler has said what is wrong, and where.
@@ -305,26 +306,27 @@ def misplaced(blocks):
     A register whose type another block's file defines is one that block
     shares, and it has to be where that block has it.
     """
+    # Where each block has each named type of register of its own file's.
+    shared = {
+        (Path(block.source).resolve(), register.type): (block, register)
+        for block in blocks
+        for register in block.registers
+        if register.type is not None
+    }
     for block in blocks:
         for register in block.registers:
-            for sharing in blocks:
-                if sharing.source == block.source:
-                    continue
-                if not Path(sharing.source).samefile(register.defined_in):
-                    continue
-                for shared in sharing.registers:
-                    if (
-                        shared.type == register.type
-                        and shared.offset != register.offset
-                    ):
-                        yield (
-                            f"{block.source}: {register.name} is at "
-                            f"{register.offset:#x}, and it is a "
-                            f"{register.type}, which {sharing.source} "
-                            f"shares and has at {shared.offset:#x}. A "
-                            "shared register is at the same place in every "
-                            "block that has it."
-                        )
+            sharing, theirs = shared.get(
+                (Path(register.defined_in).resolve(), register.type),
+                (block, register),
+            )
+            if sharing is not block and theirs.offset != register.offset:
+                yield (
+                    f"{block.source}: {register.name} is at "
+                    f"{register.offset:#x}, and it is a {register.type}, "
+                    f"which {sharing.source} shares and has at "
+                    f"{theirs.offset:#x}. A shared register is at the same "
+                    "place in every block that has it."
+                )
 
 
 def named_twice(blocks):

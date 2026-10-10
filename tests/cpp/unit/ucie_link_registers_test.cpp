@@ -147,10 +147,11 @@ TEST(WhenTheResetRegisterIsWrittenAZero, TheDieIsLetGo) {
 TEST(WhenFirmwareTriggersTheMailbox, ItAsksForThatRegisterOfTheOtherDie) {
   UcieLinkRegisters registers;
   Write32(registers, UCIE_LINK_MAILBOX_OPCODE,
-          static_cast<std::uint32_t>(SidebandOpcode::kMemoryRead32b));
+          static_cast<std::uint32_t>(SidebandOpcode::kMemoryRead32b)
+              << UCIE_LINK_MAILBOX_OPCODE_CODE_SHIFT);
   Write32(registers, UCIE_LINK_MAILBOX_ADDRESS, kSomewhereOnTheOtherDie);
 
-  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, 1);
+  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, UCIE_LINK_MAILBOX_TRIGGER_GO);
 
   const std::optional<MailboxRequest> request =
       registers.TakeCommands().mailbox;
@@ -161,7 +162,7 @@ TEST(WhenFirmwareTriggersTheMailbox, ItAsksForThatRegisterOfTheOtherDie) {
 TEST(WhenAMailboxRequestIsTriggered, TheStatusSaysItIsWaitingForAnAnswer) {
   UcieLinkRegisters registers;
 
-  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, 1);
+  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, UCIE_LINK_MAILBOX_TRIGGER_GO);
 
   EXPECT_EQ(Read32(registers, UCIE_LINK_MAILBOX_STATUS) &
                 UCIE_LINK_MAILBOX_STATUS_BUSY,
@@ -170,7 +171,7 @@ TEST(WhenAMailboxRequestIsTriggered, TheStatusSaysItIsWaitingForAnAnswer) {
 
 TEST(WhenAMailboxRequestIsAnswered, TheStatusStopsSayingItIsWaiting) {
   UcieLinkRegisters registers;
-  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, 1);
+  Write32(registers, UCIE_LINK_MAILBOX_TRIGGER, UCIE_LINK_MAILBOX_TRIGGER_GO);
 
   registers.MailboxAnswered(SidebandStatus::kSuccess, 0);
 
