@@ -216,6 +216,20 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 **M0, M1, M2, M3, M4 and M5 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. M6 (the Zephyr host with the Zephyr SSD) is next and is planned: its decisions and its six steps are under [M6](#m6--host-firmware--ssd-firmware) above. M7 (the real host across the real link) is after it.
 
+What was measured in M6, on an Apple silicon laptop: the exit test's run at four quanta, with a 2 MiB drive, from the start to Zephyr's verdict. Every figure came out the same three runs in three, to the tenth of a millisecond of simulated time, which is what one kernel for both CPUs buys.
+
+| Quantum | Wall time, the SSD | Simulated time, the SSD | Wall time, 🎭 the stand-in drive | Simulated time, 🎭 the stand-in drive |
+|---|---|---|---|---|
+| 0 | 5.4 s | 579 ms | 4.4 s | 489 ms |
+| 10 µs | 0.23 s | 580 ms | 0.19 s | 496 ms |
+| 100 µs, the default | 0.18 s | 598 ms | 0.15 s | 512 ms |
+| 1 ms | 0.17 s | 746 ms | 0.15 s | 653 ms |
+
+- **The default stays at 100 µs.** It is thirty times faster than no quantum and stretches the run by 3%. 10 µs costs a quarter more wall time for that 3%, and 1 ms buys no wall time at all and stretches the run by 29%: the test still passes, a sixth of a second late.
+- **A second CPU costs a fifth more wall time**, 0.18 s where one CPU takes 0.15 s. Both are asleep for most of the run, waiting for each other, so this is not a measure of two busy CPUs. M3a's counted loop is still the figure for that.
+- **The SSD's firmware costs 87 ms of simulated time, whatever the quantum.** The disk test sends 69 commands, so that is 1.3 ms a command, which is what M4c measured with a scripted host.
+- ⚠️ **What a longer quantum stretches is the host, not the pair.** Planning M6 expected two CPUs to cost two quanta a command, one for each interrupt seen late. The run grows by as much with 🎭 the stand-in drive, which has no CPU: 23 ms at 100 µs against the SSD's 19 ms. So the lateness is in the one CPU that both runs have, and a second CPU added nothing that grows with the quantum. Where in the host it goes was not chased. It is not a fixed number of quanta a command: with the stand-in drive the run grows by 6 ms at 10 µs, which is nine quanta for each of the 69, and by 164 ms at 1 ms, which is two and a half. A guess to start from is Zephyr's own timekeeping, against a timer interrupt that is itself up to a quantum late.
+
 **Decided on 2026-10-09, after M5: one source for the hardware/software interface.** The maintainer asked why the address map, and everything else firmware and hardware have to agree on, was spread over the model with no one place to look. It was two problems. The address map had one source, each board's Python description, and no catalogue: it existed only while a devicetree was being written. The register maps had no source at all: each block's offsets and bits were written out by hand in the model, the Zephyr driver, the Python stand-in, the C++ test stand-in, the tests and the docs, four to eight times a block, and only the tests that boot firmware kept them in step.
 
 - **The Python description stays the one place a platform is put together**, as [the handoff](handoff-socpuppet.md) decided. No chip-level file was added above the boards. What was added is a way to ask the description for its maps.
