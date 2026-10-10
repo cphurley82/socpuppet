@@ -1,0 +1,4 @@
+# The IO die's manager is built around socpuppet's 32-bit SoC, as the SSD's
+# controller is.
+config BOARD_SOCPUPPET_IOMGR
+	select SOC_SOCPUPPET_RV32

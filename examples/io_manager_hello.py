@@ -27,9 +27,12 @@ from socpuppet.boards.io_manager import (
     SCRATCH_BASE,
     io_manager,
     one_round_trip,
+    stand_in_manager,
 )
 
-board = io_manager(compute=one_round_trip, trace=True)
+board = io_manager(
+    compute=one_round_trip, manager=stand_in_manager().script, trace=True
+)
 board.platform.build()
 
 print("🧦 the power is on. The link is in reset and the compute die with it.")

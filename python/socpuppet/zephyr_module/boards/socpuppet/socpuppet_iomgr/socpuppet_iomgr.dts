@@ -1,0 +1,81 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	chosen {
+		zephyr,console = &io_uart;
+		zephyr,shell-uart = &io_uart;
+		zephyr,sram = &io_sram;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		io_cpu: cpu@0 {
+			device_type = "cpu";
+			compatible = "riscv";
+			reg = <0>;
+			riscv,isa-base = "rv32i";
+			riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";
+
+			io_cpu_intc: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				#address-cells = <0>;
+				#interrupt-cells = <1>;
+				interrupt-controller;
+			};
+		};
+	};
+
+	io_sram: memory@20000000 {
+		device_type = "memory";
+		reg = <0x0 0x20000000 0x0 0x40000>;
+	};
+
+	io_scratch: memory@30000000 {
+		device_type = "memory";
+		reg = <0x0 0x30000000 0x0 0x1000>;
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		io_timer: timer@200bff8 {
+			compatible = "riscv,machine-timer";
+			reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;
+			reg-names = "mtime", "mtimecmp";
+			interrupts-extended = <&io_cpu_intc 7>;
+		};
+
+		io_plic: interrupt-controller@c000000 {
+			compatible = "sifive,plic-1.0.0";
+			reg = <0x0 0xc000000 0x0 0x4000000>;
+			#address-cells = <0>;
+			#interrupt-cells = <2>;
+			interrupt-controller;
+			riscv,max-priority = <7>;
+			riscv,ndev = <32>;
+			interrupts-extended = <&io_cpu_intc 11>;
+		};
+
+		io_uart: uart@10000000 {
+			compatible = "ns16550";
+			reg = <0x0 0x10000000 0x0 0x8>;
+			reg-shift = <0>;
+			clock-frequency = <3686400>;
+		};
+
+		io_d2d: ucie-link@10010000 {
+			compatible = "socpuppet,ucie-link";
+			reg = <0x0 0x10010000 0x0 0x100>;
+			#reset-cells = <1>;
+			interrupts-extended = <&io_plic 1 1>;
+		};
+	};
+};

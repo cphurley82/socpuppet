@@ -15,6 +15,7 @@ from socpuppet.boards.io_manager import (
     SCRATCH_BASE,
     io_manager,
     one_round_trip,
+    stand_in_manager,
 )
 
 #: Longer than bring-up takes, by enough that a failure is a failure.
@@ -23,7 +24,11 @@ LONG_ENOUGH = sp.ms(20)
 
 def a_board(trace=False):
     """The board with 🎭 a compute die that does one round trip."""
-    board = io_manager(compute=one_round_trip, trace=trace)
+    board = io_manager(
+        compute=one_round_trip,
+        manager=stand_in_manager().script,
+        trace=trace,
+    )
     board.platform.build()
     return board
 

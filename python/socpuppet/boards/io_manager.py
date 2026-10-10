@@ -6,10 +6,11 @@
                reset ◀─────────────────┤                     ▲
                                   irq ─┴─▶ 🎭 the manager ───┘
 
-🚧 M5b makes this the platform behind the Zephyr board `socpuppet_iomgr`,
-and gives it the `platform` that `socpuppet devicetree` looks for; today
-the manager is 🎭 a script, so there is no firmware to write a devicetree
-for.
+This is the platform behind the Zephyr board `socpuppet_iomgr`. With 🎭 a
+script in the manager's place (`stand_in_manager()`) there is no CPU on
+the IO die at all; with none, there is a 32-bit RISC-V core with the
+usual kit around it (`boards/cpu_kit.py`), and the firmware is loaded
+into it.
 
 The IO die is the one with the management CPU on it: it trains the link
 and then lets the compute die out of reset, which is how a chiplet host
@@ -31,6 +32,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet.boards.cpu_kit import CpuKit, add_cpu_kit
 from socpuppet.components import (
     D2dLink,
     Memory,
@@ -44,11 +46,16 @@ from socpuppet.placed import Placed
 from socpuppet.platform import Link, Platform
 from socpuppet.time import ms
 
-#: Where things are on the IO die. The link's registers sit beside where
-#: the SSD board has its UART, and the scratch above them.
+#: Where things are on the IO die, at the addresses the SSD board uses for
+#: the same kinds of thing: the link's registers where the SSD has its
+#: frontend's, so that both boards can share the SoC `socpuppet_rv32`.
 LINK_BASE = 0x1001_0000
+#: ⚠️ The scratch has to stay above the manager's SRAM (0x2000_0000): a
+#: devicetree names the lower of two memories as the firmware's own.
 SCRATCH_BASE = 0x3000_0000
 SCRATCH_SIZE = 0x1000
+#: Which of the interrupt controller's sources the link's line goes to.
+LINK_SOURCE = 1
 #: The compute die's own memory, and so the top of its window onto the IO
 #: die: everything below this address is the other die's.
 RAM_BASE = 0x8000_0000
@@ -61,21 +68,42 @@ class IoManagerBoard(NamedTuple):
     """The board, and the parts of it a test or a script wants."""
 
     platform: Platform
-    #: The IO die's CPU slot: 🎭 the manager script, for now.
+    #: The IO die's CPU, or 🎭 the script in its place. Firmware is loaded
+    #: through it: `platform.load_elf(file, via=board.manager.socket)`.
     manager: Placed
     #: 🎭 The compute die's stand-in, held in reset until the link is up.
     compute: Placed
     #: The link: `link.a` is the compute die's end, `link.b` the IO die's.
     link: Link
+    #: What a real CPU has around it. None when a script is in its place.
+    cpu_kit: CpuKit | None = None
 
 
-def io_manager(*, compute: Script, trace: bool = False) -> IoManagerBoard:
+def stand_in_manager() -> IoManager:
+    """🎭 The manager stand-in, told where this board's link registers are.
+
+    Its `script` goes in the IO die's CPU slot:
+    `io_manager(..., manager=stand_in_manager().script)`.
+    """
+    return IoManager(link=LINK_BASE)
+
+
+def io_manager(
+    *,
+    compute: Script,
+    manager: Script | None = None,
+    gdb_port: int = 0,
+    trace: bool = False,
+) -> IoManagerBoard:
     """Describe the board. Nothing is simulated until `platform.build()`.
 
     `compute` is 🎭 the script in the compute die's place, which runs once
-    the manager has let that die out of reset. With `trace=True`,
-    everything that crosses the link is recorded, the sideband apart from
-    the mainband (`socpuppet.ucie` reads the packets back).
+    the manager has let that die out of reset. `manager` is 🎭 a script in
+    the IO die's CPU slot; with none, the IO die has a real CPU and the
+    firmware is loaded into it, and `gdb_port` is where a debugger can
+    attach to it. With `trace=True`, everything that crosses the link is
+    recorded, the sideband apart from the mainband (`socpuppet.ucie` reads
+    the packets back).
     """
     platform = Platform()
     compute_die = platform.group("compute")
@@ -86,18 +114,29 @@ def io_manager(*, compute: Script, trace: bool = False) -> IoManagerBoard:
     # hold, and a millisecond of training (models/d2d-link.md).
     link = platform.link("d2d", D2dLink(), compute_die, io, trace=trace)
 
-    # The IO die: the manager, its bus, the link's registers and the
-    # scratch the compute die reaches across the link.
-    manager = io.add(
-        "cpu", ScriptedBusMaster(script=IoManager(link=LINK_BASE).script)
-    )
+    # The IO die: whatever is in the CPU's place, its bus, the link's
+    # registers and the scratch the compute die reaches across the link.
     bus = io.add("bus", Router())
     scratch = io.add("scratch", Memory(size=SCRATCH_SIZE))
-    platform.connect(manager.socket, bus.target)
     bus.map(link.b.sideband, base=LINK_BASE)
     bus.map(scratch.socket, base=SCRATCH_BASE)
-    platform.connect(link.b.irq, manager.irq)
     platform.connect(link.b.initiator, bus.add_input())
+
+    cpu_kit = None
+    if manager is None:
+        cpu, cpu_kit = add_cpu_kit(
+            platform,
+            io,
+            bus,
+            sources={LINK_SOURCE: link.b.irq},
+            gdb_port=gdb_port,
+        )
+    else:
+        # 🎭 A script has one interrupt input, and the link is the only
+        # thing on this die with a line, so it goes straight to it.
+        cpu = io.add("cpu", ScriptedBusMaster(script=manager))
+        platform.connect(link.b.irq, cpu.irq)
+    platform.connect(cpu.socket, bus.target)
 
     # 🎭 The compute die: a script with a memory of its own, held in reset
     # by its end of the link until the IO die lets it go.
@@ -110,7 +149,11 @@ def io_manager(*, compute: Script, trace: bool = False) -> IoManagerBoard:
     platform.connect(link.a.reset, compute_cpu.reset)
 
     return IoManagerBoard(
-        platform=platform, manager=manager, compute=compute_cpu, link=link
+        platform=platform,
+        manager=cpu,
+        compute=compute_cpu,
+        link=link,
+        cpu_kit=cpu_kit,
     )
 
 
@@ -126,8 +169,13 @@ def one_round_trip() -> Steps[None]:
     yield expect32(SCRATCH_BASE, HELLO)
 
 
+#: What `socpuppet devicetree` looks for in a description file.
+platform = io_manager(compute=one_round_trip).platform
+
 if __name__ == "__main__":
-    board = io_manager(compute=one_round_trip)
+    board = io_manager(
+        compute=one_round_trip, manager=stand_in_manager().script
+    )
     board.platform.build()
     reached = board.platform.run_until(
         lambda: (

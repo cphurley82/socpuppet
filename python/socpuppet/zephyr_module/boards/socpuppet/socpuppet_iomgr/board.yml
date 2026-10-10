@@ -1,0 +1,5 @@
+board:
+  name: socpuppet_iomgr
+  full_name: socpuppet IO-die manager
+  socs:
+    - name: socpuppet_rv32

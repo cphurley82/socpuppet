@@ -37,6 +37,7 @@ images=(
   "samples/hello_world qemu_riscv32"
   "samples/hello_world socpuppet_host"
   "samples/hello_world socpuppet_ssd"
+  "samples/hello_world socpuppet_iomgr"
   "samples/synchronization socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
   "firmware/ssd socpuppet_ssd"
