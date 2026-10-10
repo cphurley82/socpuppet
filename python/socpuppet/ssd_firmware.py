@@ -29,7 +29,7 @@ from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
-from socpuppet.regs import command_device, dma_engine
+from socpuppet.regs import command_device, dma_engine, flash_controller
 
 # ---- The NVMe frontend's registers for its CPU.
 _CONTROL = 0x00
@@ -58,17 +58,6 @@ _READY = 1 << 0
 #: What its queue-create register is told.
 _A_COMPLETION_QUEUE = 1
 _A_SUBMISSION_QUEUE = 2
-
-# ---- The flash controller's registers, and the commands used here.
-_BLOCK = 0x0C
-_PAGE = 0x10
-_FLASH_LOCAL_ADDRESS = 0x14
-_PAGE_SIZE = 0x20
-_PAGES_PER_BLOCK = 0x24
-_BLOCKS = 0x28
-_READ_PAGE = 1
-_PROGRAM_PAGE = 2
-_IDENTIFY_THE_CHIP = 4
 
 # ---- NVMe, as its specification gives it.
 _COMMAND_SIZE = 64
@@ -228,15 +217,19 @@ class SsdFirmware:
 
     def _start_up(self) -> Steps[None]:
         # What is the chip, and what has the frontend got?
-        if not (yield from self._do(self._flash, _IDENTIFY_THE_CHIP)):
+        if not (
+            yield from self._do(self._flash, flash_controller.COMMAND_IDENTIFY)
+        ):
             raise RuntimeError(
                 "The flash controller could not identify the NAND chip, so "
                 "the firmware cannot tell what the drive is. Is a NAND "
                 "connected to the flash controller's `nand` port?"
             )
-        self._page_size = yield read32(self._flash + _PAGE_SIZE)
-        self._pages_per_block = yield read32(self._flash + _PAGES_PER_BLOCK)
-        blocks = yield read32(self._flash + _BLOCKS)
+        self._page_size = yield read32(self._flash + flash_controller.PAGE_SIZE)
+        self._pages_per_block = yield read32(
+            self._flash + flash_controller.PAGES_PER_BLOCK
+        )
+        blocks = yield read32(self._flash + flash_controller.BLOCKS)
         self._pages = self._pages_per_block * blocks
         limits = yield read32(self._frontend + _LIMITS)
         self._io_queue_pairs = limits & 0xFFFF
@@ -487,7 +480,11 @@ class SsdFirmware:
         if nand_page is None:
             yield write(self._page_buffer, bytes(self._page_size))
             return True
-        return (yield from self._flash_page(_READ_PAGE, nand_page))
+        return (
+            yield from self._flash_page(
+                flash_controller.COMMAND_READ_PAGE, nand_page
+            )
+        )
 
     def _store(self, page: int) -> Steps[bool]:
         """Program the page buffer into the NAND, as a page of the drive.
@@ -500,7 +497,11 @@ class SsdFirmware:
         collection begins.
         """
         nand_page = self._page_map.get(page, self._next_free_nand_page)
-        if not (yield from self._flash_page(_PROGRAM_PAGE, nand_page)):
+        if not (
+            yield from self._flash_page(
+                flash_controller.COMMAND_PROGRAM_PAGE, nand_page
+            )
+        ):
             return False
         # The table says so only once it is true.
         if page not in self._page_map:
@@ -599,9 +600,11 @@ class SsdFirmware:
     def _flash_page(self, command: int, nand_page: int) -> Steps[bool]:
         """Move a NAND page between the chip and the page buffer."""
         block, page = divmod(nand_page, self._pages_per_block)
-        yield write32(self._flash + _BLOCK, block)
-        yield write32(self._flash + _PAGE, page)
-        yield write32(self._flash + _FLASH_LOCAL_ADDRESS, self._page_buffer)
+        yield write32(self._flash + flash_controller.BLOCK, block)
+        yield write32(self._flash + flash_controller.PAGE, page)
+        yield write32(
+            self._flash + flash_controller.LOCAL_ADDRESS, self._page_buffer
+        )
         return (yield from self._do(self._flash, command))
 
     def _do(self, device: int, command: int) -> Steps[bool]:

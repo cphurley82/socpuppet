@@ -1,3 +1,5 @@
+#include "socpuppet/regs/flash_controller.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -20,25 +22,6 @@
 namespace socpuppet {
 
 namespace {
-
-// The controller's registers, each 32 bits wide, as
-// docs/models/flash-controller.md gives them.
-constexpr std::uint64_t kCommand = 0x00;
-constexpr std::uint64_t kStatus = 0x04;
-constexpr std::uint64_t kInterruptEnable = 0x08;
-constexpr std::uint64_t kBlock = 0x0C;
-constexpr std::uint64_t kPage = 0x10;
-constexpr std::uint64_t kLocalAddress = 0x14;
-constexpr std::uint64_t kPageSizeRegister = 0x20;
-
-// What can be written to the command register.
-constexpr std::uint32_t kReadPage = 1;
-constexpr std::uint32_t kProgramPage = 2;
-constexpr std::uint32_t kIdentify = 4;
-
-// The bits of the status register.
-constexpr std::uint32_t kDone = 1U << 0;
-constexpr std::uint32_t kBusy = 1U << 2;
 
 // A page is 16 bytes on the chip these tests use.
 constexpr std::size_t kPageSize = 16;
@@ -129,8 +112,9 @@ struct CpuWithAFlashController {
 // Gives the controller a command and waits until it says it is no longer
 // busy, the way firmware that polls would.
 void Command(BusDriver& cpu, std::uint32_t command) {
-  cpu.Write32(kCommand, command);
-  while ((cpu.Read32(kStatus) & kBusy) != 0) {
+  cpu.Write32(FLASH_CONTROLLER_COMMAND, command);
+  while ((cpu.Read32(FLASH_CONTROLLER_STATUS) & FLASH_CONTROLLER_STATUS_BUSY) !=
+         0) {
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
   }
 }
@@ -138,9 +122,9 @@ void Command(BusDriver& cpu, std::uint32_t command) {
 // The same, for a command about one page of the chip.
 void Command(BusDriver& cpu, std::uint32_t command, std::uint32_t block,
              std::uint32_t page, std::uint32_t local) {
-  cpu.Write32(kBlock, block);
-  cpu.Write32(kPage, page);
-  cpu.Write32(kLocalAddress, local);
+  cpu.Write32(FLASH_CONTROLLER_BLOCK, block);
+  cpu.Write32(FLASH_CONTROLLER_PAGE, page);
+  cpu.Write32(FLASH_CONTROLLER_LOCAL_ADDRESS, local);
   Command(cpu, command);
 }
 
@@ -149,9 +133,9 @@ void Command(BusDriver& cpu, std::uint32_t command, std::uint32_t block,
 TEST(WhenACpuHasAFlashControllerProgramAPageAndReadItBack,
      ThePageComesBackToTheSsdsMemory) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
-    Command(cpu, kIdentify);
-    Command(cpu, kProgramPage, 2, 5, 0x40);
-    Command(cpu, kReadPage, 2, 5, 0x80);
+    Command(cpu, FLASH_CONTROLLER_COMMAND_IDENTIFY);
+    Command(cpu, FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE, 2, 5, 0x40);
+    Command(cpu, FLASH_CONTROLLER_COMMAND_READ_PAGE, 2, 5, 0x80);
   }};
   fixture.PutInBuffer(0x40, SomePage());
 
@@ -169,24 +153,25 @@ TEST(WhenACpuHasJustToldAFlashControllerToDoSomething,
   std::uint32_t when_the_write_returned = 0;
   std::uint32_t afterwards = 0;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
-    cpu.Write32(kCommand, kIdentify);
-    when_the_write_returned = cpu.Read32(kStatus);
+    cpu.Write32(FLASH_CONTROLLER_COMMAND, FLASH_CONTROLLER_COMMAND_IDENTIFY);
+    when_the_write_returned = cpu.Read32(FLASH_CONTROLLER_STATUS);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
-    afterwards = cpu.Read32(kStatus);
+    afterwards = cpu.Read32(FLASH_CONTROLLER_STATUS);
   }};
 
   fixture.platform.Run();
 
-  EXPECT_EQ(when_the_write_returned, kBusy);
-  EXPECT_EQ(afterwards, kDone);
+  EXPECT_EQ(when_the_write_returned, FLASH_CONTROLLER_STATUS_BUSY);
+  EXPECT_EQ(afterwards, FLASH_CONTROLLER_STATUS_DONE);
 }
 
 TEST(WhenAFlashControllerFinishesACommandWithItsInterruptEnabled,
      ItsLineRisesAndStaysHigh) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
-    cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kIdentify);
+    cpu.Write32(FLASH_CONTROLLER_INTERRUPT_ENABLE,
+                FLASH_CONTROLLER_STATUS_DONE);
+    cpu.Write32(FLASH_CONTROLLER_COMMAND, FLASH_CONTROLLER_COMMAND_IDENTIFY);
   }};
 
   fixture.platform.Run();
@@ -200,10 +185,11 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
   CpuWithAFlashController* wired = nullptr;
   bool rose = false;
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
-    cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kIdentify);
+    cpu.Write32(FLASH_CONTROLLER_INTERRUPT_ENABLE,
+                FLASH_CONTROLLER_STATUS_DONE);
+    cpu.Write32(FLASH_CONTROLLER_COMMAND, FLASH_CONTROLLER_COMMAND_IDENTIFY);
     rose = wired->WaitForTheLineToRise();
-    cpu.Write32(kStatus, kDone);
+    cpu.Write32(FLASH_CONTROLLER_STATUS, FLASH_CONTROLLER_STATUS_DONE);
   }};
   wired = &fixture;
 
@@ -219,10 +205,11 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
 TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
      TheRunCarriesOnAndTheLineSaysWhatTheStatusDoes) {
   CpuWithAFlashController fixture{[](BusDriver& cpu) {
-    cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kCommand, kIdentify);
+    cpu.Write32(FLASH_CONTROLLER_INTERRUPT_ENABLE,
+                FLASH_CONTROLLER_STATUS_DONE);
+    cpu.Write32(FLASH_CONTROLLER_COMMAND, FLASH_CONTROLLER_COMMAND_IDENTIFY);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
-    cpu.Write32(kStatus, 0);
+    cpu.Write32(FLASH_CONTROLLER_STATUS, 0);
   }};
 
   EXPECT_NO_THROW(fixture.platform.Run());
@@ -232,10 +219,10 @@ TEST(WhenTheCpuWritesToAFlashControllerInTheDeltaCycleItsWorkIsDoneIn,
 
 TEST(WhenADebuggerLooksAtAFlashControllersRegister, ItSeesWhatTheCpuWrote) {
   CpuWithAFlashController fixture{
-      [](BusDriver& cpu) { cpu.Write32(kBlock, 3); }};
+      [](BusDriver& cpu) { cpu.Write32(FLASH_CONTROLLER_BLOCK, 3); }};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugRead32(kBlock), 3U);
+  EXPECT_EQ(fixture.DebugRead32(FLASH_CONTROLLER_BLOCK), 3U);
 }
 
 TEST(WhenADebuggerWritesToAFlashControllersRegister, TheWriteIsDeclined) {
@@ -243,19 +230,19 @@ TEST(WhenADebuggerWritesToAFlashControllersRegister, TheWriteIsDeclined) {
   CpuWithAFlashController fixture{[](BusDriver&) {}};
 
   const bool answered = fixture.platform.DebugWrite(
-      "cpu.socket", kBlock, std::as_bytes(std::span{three}));
+      "cpu.socket", FLASH_CONTROLLER_BLOCK, std::as_bytes(std::span{three}));
 
   EXPECT_FALSE(answered);
-  EXPECT_EQ(fixture.DebugRead32(kBlock), 0U);
+  EXPECT_EQ(fixture.DebugRead32(FLASH_CONTROLLER_BLOCK), 0U);
 }
 
 TEST(WhenADebuggerLooksAtAFlashControllersGeometry,
      ItSeesWhatTheChipSaidWhenItWasIdentified) {
   CpuWithAFlashController fixture{
-      [](BusDriver& cpu) { Command(cpu, kIdentify); }};
+      [](BusDriver& cpu) { Command(cpu, FLASH_CONTROLLER_COMMAND_IDENTIFY); }};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugRead32(kPageSizeRegister), 16U);
+  EXPECT_EQ(fixture.DebugRead32(FLASH_CONTROLLER_PAGE_SIZE), 16U);
 }
 
 TEST(WhenAFlashControllerRefusesAnAccess, TheCpuGetsAnAddressError) {
@@ -264,7 +251,8 @@ TEST(WhenAFlashControllerRefusesAnAccess, TheCpuGetsAnAddressError) {
   CpuWithAFlashController fixture{[&](BusDriver& cpu) {
     // 0x18 is between two registers.
     beside = cpu.Write32(0x18, 1);
-    too_narrow = cpu.Write(kBlock, std::array<std::uint8_t, 2>{1, 0});
+    too_narrow =
+        cpu.Write(FLASH_CONTROLLER_BLOCK, std::array<std::uint8_t, 2>{1, 0});
   }};
 
   fixture.platform.Run();

@@ -23,6 +23,7 @@
 #include "socpuppet/platform/transport.h"
 #include "socpuppet/regs/command_device.h"
 #include "socpuppet/regs/dma_engine.h"
+#include "socpuppet/regs/flash_controller.h"
 
 // Where the firmware finds the SSD's hardware on its bus: the three
 // devices' register blocks, and the buffer, which is the SSD's own memory.
@@ -87,19 +88,6 @@ class SsdFirmware : public sc_core::sc_module {
   static constexpr std::uint32_t kReady = 1U << 0;
   static constexpr std::uint32_t kCreateCompletionQueue = 1;
   static constexpr std::uint32_t kCreateSubmissionQueue = 2;
-
-  // ---- The flash controller's registers.
-  enum Flash : std::uint64_t {
-    kBlock = 0x0C,
-    kPage = 0x10,
-    kFlashLocalAddress = 0x14,
-    kPageSize = 0x20,
-    kPagesPerBlock = 0x24,
-    kBlocks = 0x28,
-  };
-  static constexpr std::uint32_t kReadPage = 1;
-  static constexpr std::uint32_t kProgramPage = 2;
-  static constexpr std::uint32_t kIdentify = 4;
 
   // ---- NVMe, as its specification gives it.
   static constexpr std::size_t kCommandBytes = 64;
@@ -253,9 +241,9 @@ class SsdFirmware : public sc_core::sc_module {
 
   // Moves a NAND page between the chip and the page buffer.
   bool Flash(std::uint32_t command, std::uint32_t nand_page) {
-    Write32(map_.flash + kBlock, nand_page / pages_per_block_);
-    Write32(map_.flash + kPage, nand_page % pages_per_block_);
-    Write32(map_.flash + kFlashLocalAddress,
+    Write32(map_.flash + FLASH_CONTROLLER_BLOCK, nand_page / pages_per_block_);
+    Write32(map_.flash + FLASH_CONTROLLER_PAGE, nand_page % pages_per_block_);
+    Write32(map_.flash + FLASH_CONTROLLER_LOCAL_ADDRESS,
             static_cast<std::uint32_t>(PageBuffer()));
     return Do(map_.flash, command);
   }
@@ -278,10 +266,11 @@ class SsdFirmware : public sc_core::sc_module {
   }
 
   void StartUp() {
-    Do(map_.flash, kIdentify);
-    page_size_ = Read32(map_.flash + kPageSize);
-    pages_per_block_ = Read32(map_.flash + kPagesPerBlock);
-    const std::uint32_t pages = pages_per_block_ * Read32(map_.flash + kBlocks);
+    Do(map_.flash, FLASH_CONTROLLER_COMMAND_IDENTIFY);
+    page_size_ = Read32(map_.flash + FLASH_CONTROLLER_PAGE_SIZE);
+    pages_per_block_ = Read32(map_.flash + FLASH_CONTROLLER_PAGES_PER_BLOCK);
+    const std::uint32_t pages =
+        pages_per_block_ * Read32(map_.flash + FLASH_CONTROLLER_BLOCKS);
     where_.assign(pages, std::nullopt);
     const std::uint32_t limits = Read32(map_.frontend + kLimits);
     io_queue_pairs_ = limits & 0xFFFF;
@@ -498,7 +487,7 @@ class SsdFirmware : public sc_core::sc_module {
   // as zeros if it was never written.
   bool Load(std::uint32_t page) {
     const std::optional<std::uint32_t> nand_page = where_[page];
-    if (nand_page) return Flash(kReadPage, *nand_page);
+    if (nand_page) return Flash(FLASH_CONTROLLER_COMMAND_READ_PAGE, *nand_page);
     Write(PageBuffer(), std::vector<std::uint8_t>(page_size_, 0));
     return true;
   }
@@ -523,7 +512,7 @@ class SsdFirmware : public sc_core::sc_module {
       where_[page] = nand_page;
       ++next_free_nand_page_;
     }
-    return Flash(kProgramPage, nand_page);
+    return Flash(FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE, nand_page);
   }
 
   // ---- A command's data.

@@ -7,7 +7,8 @@ add_library(socpuppet_regs INTERFACE)
 target_sources(socpuppet_regs INTERFACE
   FILE_SET HEADERS BASE_DIRS ${_socpuppet_regs} FILES
     ${_socpuppet_regs}/socpuppet/regs/command_device.h
-    ${_socpuppet_regs}/socpuppet/regs/dma_engine.h)
+    ${_socpuppet_regs}/socpuppet/regs/dma_engine.h
+    ${_socpuppet_regs}/socpuppet/regs/flash_controller.h)
 
 # core/: plain C++ with no simulator underneath. Linking only this target is
 # what keeps SystemC out of the kernel-free unit tests.

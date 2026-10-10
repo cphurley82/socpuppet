@@ -18,6 +18,7 @@ from socpuppet.boards.cpu_kit import (
 )
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import FLASH_BASE, ssd
+from socpuppet.regs import flash_controller
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512
@@ -92,15 +93,15 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
         assert banner in said
 
 
-# The flash controller's registers that these tests set
-# (docs/models/flash-controller.md), and the bits of its status.
-STATUS = 0x04
-PAGE_SIZE = 0x20
-PAGES_PER_BLOCK = 0x24
-BLOCKS = 0x28
-DONE = 1 << 0
-ERROR = 1 << 1
-BUSY = 1 << 2
+# The flash controller's registers that these tests set, and the bits of
+# its status: its register map's own names for them.
+STATUS = flash_controller.STATUS
+PAGE_SIZE = flash_controller.PAGE_SIZE
+PAGES_PER_BLOCK = flash_controller.PAGES_PER_BLOCK
+BLOCKS = flash_controller.BLOCKS
+DONE = flash_controller.STATUS_DONE
+ERROR = flash_controller.STATUS_ERROR
+BUSY = flash_controller.STATUS_BUSY
 
 
 def console_with_a_flash_controller_that_says(registers, firmware):
@@ -118,7 +119,7 @@ def console_with_a_flash_controller_that_says(registers, firmware):
     console = platform.add("uart", sp.Ns16550())
     timer = platform.add("timer", sp.MachineTimer(frequency_hz=TIMER_HZ))
     plic = platform.add("plic", sp.Plic())
-    flash = platform.add("flash", sp.Memory(size=0x30))
+    flash = platform.add("flash", sp.Memory(size=flash_controller.SIZE))
     platform.connect(cpu.socket, bus.target)
     bus.map(sram.socket, base=SRAM_BASE)
     bus.map(console.socket, base=UART_BASE)

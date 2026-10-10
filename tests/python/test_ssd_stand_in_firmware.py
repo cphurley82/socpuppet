@@ -10,6 +10,7 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.boards.ssd import stand_in_firmware
+from socpuppet.regs import flash_controller
 from ssd_on_a_bus import NVME_BASE, RAM_BASE, host_with_an_ssd
 
 
@@ -45,19 +46,20 @@ def firmware_with_a_flash_controller_whose_status_is(status):
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.ScriptedBusMaster(firmware.script))
     bus = platform.add("bus", sp.Router())
-    registers = platform.add("flash", sp.Memory(size=0x30))
+    registers = platform.add("flash", sp.Memory(size=flash_controller.SIZE))
     platform.connect(cpu.socket, bus.target)
     bus.map(registers.socket, base=flash)
     platform.build()
-    platform.poke32(flash + 0x04, status)
+    platform.poke32(flash + flash_controller.STATUS, status)
     return platform
 
 
 @pytest.mark.platform
 class TestWhenTheFlashControllerNeverFinishes:
-    # Bit 2 of its status is BUSY.
     def test_the_stand_in_gives_up_and_says_which_device(self):
-        platform = firmware_with_a_flash_controller_whose_status_is(1 << 2)
+        platform = firmware_with_a_flash_controller_whose_status_is(
+            flash_controller.STATUS_BUSY
+        )
 
         with pytest.raises(RuntimeError, match="0x3000 is still busy"):
             platform.run()
@@ -65,9 +67,11 @@ class TestWhenTheFlashControllerNeverFinishes:
 
 @pytest.mark.platform
 class TestWhenTheFlashControllerCannotIdentifyTheNand:
-    # Bit 1 of its status is ERROR. With no geometry there is no drive.
+    # With no geometry there is no drive.
     def test_the_stand_in_stops_and_says_so(self):
-        platform = firmware_with_a_flash_controller_whose_status_is(1 << 1)
+        platform = firmware_with_a_flash_controller_whose_status_is(
+            flash_controller.STATUS_ERROR
+        )
 
         with pytest.raises(RuntimeError, match="identify the NAND"):
             platform.run()

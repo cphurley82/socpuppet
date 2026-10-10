@@ -1,7 +1,9 @@
 /*
  * Zephyr's driver for the flash controller of a socpuppet SSD: what moves
  * a page between the NAND flash chip and the SSD's own memory. The
- * registers are in docs/models/flash-controller.md in socpuppet.
+ * registers are in <socpuppet/regs/flash_controller.h>, which is generated
+ * from the controller's register map, and docs/models/flash-controller.md
+ * in socpuppet says what they do.
  *
  * It is a driver of Zephyr's flash class, so firmware uses the NAND
  * through flash_read(), flash_write() and flash_erase(), as it would any
@@ -36,22 +38,11 @@
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/sys/util.h>
 
+#include <socpuppet/regs/flash_controller.h>
+
 #include "command_status.h"
 
 LOG_MODULE_REGISTER(socpuppet_flash_controller, CONFIG_FLASH_LOG_LEVEL);
-
-#define BLOCK           0x0C
-#define PAGE            0x10
-#define LOCAL_ADDRESS   0x14
-#define PAGE_SIZE       0x20
-#define PAGES_PER_BLOCK 0x24
-#define BLOCKS          0x28
-
-/* What the command register is told. */
-#define READ_PAGE    1
-#define PROGRAM_PAGE 2
-#define ERASE_BLOCK  3
-#define IDENTIFY     4
 
 struct flash_controller_config {
 	mm_reg_t base;
@@ -96,9 +87,9 @@ static int flash_controller_move_page(const struct device *dev, uint32_t command
 	const struct flash_controller_config *config = dev->config;
 	const struct flash_controller_data *data = dev->data;
 
-	sys_write32(page / data->pages_per_block, config->base + BLOCK);
-	sys_write32(page % data->pages_per_block, config->base + PAGE);
-	sys_write32((uint32_t)(uintptr_t)local, config->base + LOCAL_ADDRESS);
+	sys_write32(page / data->pages_per_block, config->base + FLASH_CONTROLLER_BLOCK);
+	sys_write32(page % data->pages_per_block, config->base + FLASH_CONTROLLER_PAGE);
+	sys_write32((uint32_t)(uintptr_t)local, config->base + FLASH_CONTROLLER_LOCAL_ADDRESS);
 
 	return ssd_device_do(config->base, command);
 }
@@ -118,7 +109,8 @@ static int flash_controller_read(const struct device *dev, off_t offset, void *b
 		size_t piece = MIN(length, data->page_size - within);
 		/* A whole page goes straight to the caller, and a part by way of our own. */
 		bool is_whole = piece == data->page_size;
-		int result = flash_controller_move_page(dev, READ_PAGE, offset / data->page_size,
+		int result = flash_controller_move_page(dev, FLASH_CONTROLLER_COMMAND_READ_PAGE,
+							offset / data->page_size,
 							is_whole ? to : data->page);
 
 		if (result != 0) {
@@ -146,7 +138,8 @@ static int flash_controller_write(const struct device *dev, off_t offset, const 
 	}
 
 	for (uint32_t page = offset / data->page_size; length != 0; ++page) {
-		int result = flash_controller_move_page(dev, PROGRAM_PAGE, page, from);
+		int result = flash_controller_move_page(dev, FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE,
+							page, from);
 
 		if (result != 0) {
 			return result;
@@ -171,8 +164,8 @@ static int flash_controller_erase(const struct device *dev, off_t offset, size_t
 	for (uint32_t block = offset / block_size; size != 0; size -= block_size, ++block) {
 		int result;
 
-		sys_write32(block, config->base + BLOCK);
-		result = ssd_device_do(config->base, ERASE_BLOCK);
+		sys_write32(block, config->base + FLASH_CONTROLLER_BLOCK);
+		result = ssd_device_do(config->base, FLASH_CONTROLLER_COMMAND_ERASE_BLOCK);
 		if (result != 0) {
 			return result;
 		}
@@ -223,7 +216,7 @@ static int flash_controller_init(const struct device *dev)
 	const struct flash_controller_config *config = dev->config;
 	struct flash_controller_data *data = dev->data;
 
-	int result = ssd_device_do(config->base, IDENTIFY);
+	int result = ssd_device_do(config->base, FLASH_CONTROLLER_COMMAND_IDENTIFY);
 
 	/*
 	 * A driver that does not start leaves its device "not ready", which
@@ -240,9 +233,9 @@ static int flash_controller_init(const struct device *dev)
 		return result;
 	}
 
-	data->page_size = sys_read32(config->base + PAGE_SIZE);
-	data->pages_per_block = sys_read32(config->base + PAGES_PER_BLOCK);
-	data->blocks = sys_read32(config->base + BLOCKS);
+	data->page_size = sys_read32(config->base + FLASH_CONTROLLER_PAGE_SIZE);
+	data->pages_per_block = sys_read32(config->base + FLASH_CONTROLLER_PAGES_PER_BLOCK);
+	data->blocks = sys_read32(config->base + FLASH_CONTROLLER_BLOCKS);
 	if (data->page_size > sizeof(data->page)) {
 		LOG_ERR("The NAND's pages are %u bytes, and this driver was built for pages of up "
 			"to %u. Build the firmware with a bigger "

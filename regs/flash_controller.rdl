@@ -1,0 +1,69 @@
+// The flash controller of an SSD's controller: docs/models/flash-controller.md.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+`include "command_device.rdl"
+
+enum flash_controller_command_e {
+    READ_PAGE = 1 {
+        desc = "Read a page of the chip into the SSD's own memory.";
+    };
+    PROGRAM_PAGE = 2 {
+        desc = "Program a page of the chip from the SSD's own memory.";
+    };
+    ERASE_BLOCK = 3 {
+        desc = "Erase a block of the chip.";
+    };
+    IDENTIFY = 4 {
+        desc = "Ask the chip what it is. The three registers from `0x20` read as zero until this has been done.";
+    };
+};
+
+addrmap flash_controller {
+    name = "Flash controller";
+    desc = "Moves a page between the NAND flash chip and the SSD's own memory, or erases a block, one command at a time.";
+    // Twelve registers' worth of room, three of them reserved.
+    block_size = 0x30;
+    default regwidth = 32;
+
+    // The three registers of a command device, with what this one's
+    // command register can be told.
+    command_r COMMAND @ 0x00;
+    COMMAND->desc = "Write a command to have it carried out on what the other registers say. Reads as zero.";
+    COMMAND.VALUE->encode = flash_controller_command_e;
+    command_status_r STATUS @ 0x04;
+    command_interrupt_enable_r INTERRUPT_ENABLE @ 0x08;
+
+    reg {
+        desc = "Which block of the chip.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } BLOCK @ 0x0C;
+
+    reg {
+        desc = "Which page of that block.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } PAGE @ 0x10;
+
+    reg {
+        desc = "Where the page is, or goes, in the SSD's own memory.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } LOCAL_ADDRESS @ 0x14;
+
+    // What the chip is, for the firmware to read.
+    reg {
+        desc = "How big a page of the chip is, in bytes.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } PAGE_SIZE @ 0x20;
+
+    reg {
+        desc = "How many pages make a block.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } PAGES_PER_BLOCK @ 0x24;
+
+    reg {
+        desc = "How many blocks the chip has.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } BLOCKS @ 0x28;
+};

@@ -32,7 +32,7 @@ from typing import (
 )
 
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
-from socpuppet.regs import dma_engine
+from socpuppet.regs import dma_engine, flash_controller
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -438,8 +438,8 @@ class FlashController(Component):
         # Firmware may poll the status register and leave the line alone.
         wire_out("irq", required=False),
     )
-    #: Twelve 32-bit registers, three of them reserved.
-    mapped_size = 0x30
+    #: What the controller's register map says it takes.
+    mapped_size = flash_controller.SIZE
 
     @override
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
