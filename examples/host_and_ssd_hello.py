@@ -66,23 +66,6 @@ board = host(drive_blocks=4096, drive=add_ssd)
 platform = board.platform
 
 
-class Console:
-    """One CPU's console, read a line at a time as the run goes on."""
-
-    def __init__(self, who, uart):
-        self.who = who
-        self._uart = uart
-        self._read = 0
-
-    def new_lines(self):
-        """The whole lines printed since the last call."""
-        text = self._uart.output
-        end = text.rfind("\n") + 1
-        lines = text[self._read : end].splitlines()
-        self._read = end
-        return lines
-
-
 if __name__ == "__main__":
     missing = next(
         (image for image in (HOST_IMAGE, SSD_IMAGE) if not image.exists()),
@@ -104,34 +87,26 @@ if __name__ == "__main__":
     platform.load_elf(HOST_IMAGE, via=board.cpu.socket)
     platform.load_elf(SSD_IMAGE, via=board.drive.ssd.cpu.socket)
 
-    consoles = [
-        Console("host", board.uart),
-        Console("ssd", board.drive.ssd.cpu_kit.uart),
-    ]
-    said = []  # (when, who, what), in the order it was said
-
-    def listen():
-        """Note what each console printed since the last look."""
-        for console in consoles:
-            said.extend(
-                (platform.time, console.who, line)
-                for line in console.new_lines()
-            )
+    # Who said what, and when: each whole line either console prints,
+    # noted each time the run is about to move the clock on.
+    story = sp.Transcript(
+        platform, {"host": board.uart, "ssd": board.drive.ssd.cpu_kit.uart}
+    )
 
     def verdict():
         """The host's verdict, once it has printed the whole line."""
         return next(
             (
-                what
-                for _, who, what in said
-                if who == "host" and what in (PASSED, FAILED)
+                line.text
+                for line in story.lines
+                if line.who == "host" and line.text in (PASSED, FAILED)
             ),
             None,
         )
 
     def the_host_gave_its_verdict():
         """Listen to both consoles, and say whether the run is over."""
-        listen()
+        story.listen()
         return verdict() is not None
 
     # A CPU never runs out of things to do, so the run ends at the host's
@@ -143,10 +118,10 @@ if __name__ == "__main__":
         terminal.table(
             ("ms", "who", "said"),
             [
-                (f"{when / sp.ms(1):.1f}", who, what)
-                for when, who, what in said
+                (f"{line.time / sp.ms(1):.1f}", line.who, line.text)
+                for line in story.lines
                 # Zephyr's test framework rules lines between its tests.
-                if what.strip("= -")
+                if line.text.strip("= -")
             ],
             styles=(terminal.DIM, terminal.CYAN, ""),
             color=None,

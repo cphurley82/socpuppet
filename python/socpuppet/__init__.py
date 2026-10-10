@@ -42,6 +42,7 @@ from socpuppet.ssd_firmware import SsdFirmware
 from socpuppet.time import ms, ns, us
 from socpuppet.trace import TraceRecord
 from socpuppet.trace import render as render_trace
+from socpuppet.transcript import Transcript
 
 __all__ = [
     "BehavioralNvme",
@@ -76,6 +77,7 @@ __all__ = [
     "SsdFirmware",
     "Steps",
     "TraceRecord",
+    "Transcript",
     "expect32",
     "ms",
     "ns",
