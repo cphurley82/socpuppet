@@ -139,6 +139,38 @@ Left for later: dropped and corrupted transactions are M10's error injection, no
 
 - Two ELF images in one simulation, reset/ready sequencing (host waits on CSTS.RDY while SSD firmware boots), two UART captures, two GDB ports, quantum tuning with two ISSs.
 
+**Decided on 2026-10-10, planning M6.**
+
+- **The drive under the host is a function handed to `host()`.** `host(drive_blocks=4096, drive=add_ssd)` puts the real SSD where 🎭 the stand-in drive is, and `add_behavioral_drive` stays the default. The SSD's hardware with 🎭 a script for its firmware is `functools.partial(add_ssd, firmware=...)`. This is M4's "a fidelity tier is a choice between two description functions" carried up a level: no flag and no second board, and a tier nobody has thought of yet is a function somebody writes. `HostDrive.ssd` becomes one drive or the other.
+- **The board, the shield and the host's image do not change.** Both drives say the same of themselves to a host: the same vendor and device numbers, two interrupt vectors, a BAR of the same size. So `socpuppet_host` with the shield `socpuppet_host_drive`, and the M3b image built for them, run against either. A test holds the shield's overlay to what the host with the SSD generates. This is the project's reuse claim in small, and M7 makes it again across a die boundary.
+- **The exit test is Zephyr's disk test, unchanged, with the drive swapped.** It is the M3b exit test on the host with the SSD, run twice: with the script for the SSD's firmware, and with Zephyr. ⚠️ The milestone map says "data checked against the behavioral device", and M6 does not do that itself. Zephyr's test writes, reads back and compares. Comparing the SSD with the stand-in drive, write for write, is M4's exit test, and the data path it checks does not depend on who the host is.
+- **Two GDB ports move to M8**, where the three-image co-debug walkthrough already is. M6 has one debugger a simulation, on either CPU: `host(gdb_port=)`, or `add_ssd` with a `gdb_port`. The reason is in the list below.
+- **The quantum is measured, not tuned by guesswork.** The exit test is timed at 0, 10 µs, 100 µs and 1 ms, the figures are written down here, and the default of 100 µs changes only if they say it should.
+
+What planning found:
+
+- **The SSD fits under the host as it is.** `add_ssd` takes the place of `add_behavioral_drive` with no clash of names, addresses, PLIC sources or devicetree labels. Each CPU has a router of its own, and the SSD's parts land in the group `ssd` under the labels the checked-in `socpuppet_ssd.dts` already has, so the SSD's image loads unchanged too. M4's exit test already puts both drives on one scripted host.
+- **Each CPU has a console already**, because what a UART printed is kept by the instance. With two bus masters the platform has to be told whose firmware an image is, `load_elf(image, via=)`, which is how the SSD board works today.
+- **Ready sequencing is there by construction.** The frontend says `CAP.TO` is one second and remembers an enable that comes while its firmware is booting, and the firmware answers it from its loop. Zephyr's driver waits a second and a half for `CSTS.RDY`. The firmware's table costs half a microsecond a page: a quarter of a millisecond for the exit test's 2 MiB drive, and a quarter of a second for 2 GiB, the largest the firmware takes. So M6 builds no sequencing. It writes the test that shows it, at the slow end.
+- ⚠️ **Two CPU kits have never run in one simulation.** Two bare cores of different widths have (`tests/cpp/platform/cpu_test.cpp`), but not two PLICs, two timers and two UARTs borrowed from VPV-Peripherals. Step 3 is the first time, and the adapters are the first place to look if it fails.
+- **Two GDB ports are three changes to someone else's code and a design question of ours.** DBT-RISE-Core's server is one a process. DBT-RISE-RISCV's wrapper always asks for core 0's debug adapter, with a `FIXME` beside it. The target description a debugger is sent is kept in a static that every session shares, so a 64-bit core and a 32-bit one would be sent the same description. And a CPU stopped in a debugger spins on the simulation's one thread, so the other CPU stops with it. That last is the handoff's deterministic co-debug, and what it asks for is that both debuggers attach before either core runs. M8 needs all of it for three images, so it is done once, there. 📮 The findings go into [upstream.md](upstream.md) with M6's docs.
+- **The quantum is one number a process.** SystemC's global quantum is set once at `build()` and both CPUs go by it, so "quantum tuning with two ISSs" cannot mean a quantum for each. What two CPUs add is that each command costs at least two quanta of simulated time that hardware would not: the SSD's CPU sees the frontend's line up to a quantum late, and the host's CPU sees the completion's interrupt up to a quantum late.
+- ⚠️ **Zephyr's NVMe request timeout is not what its name says.** `nvme_cmd.c` starts a timer of `CONFIG_NVME_REQUEST_TIMEOUT` seconds, five, at a command, and never stops it. When it fires, it compares uptime in milliseconds against the same five, so any command that has been waiting more than 5 ms is timed out. The disk test is over in half a second and never meets it. M9's sustained writes will, and that is when it gets its entry in [upstream.md](upstream.md).
+- **Two things this plan said were out of date**, and are corrected where they stand: that nothing had checked the CPU under a reset held from time zero (the bus-master contract does), and that a devicetree would want `cpu@N` once two images ran together (it does not).
+
+The steps, each one `/tdd` session. Steps 2 and 4 may go green with no code beyond step 1's. The skill says to stop and report when a new test passes first time, and both stay as configurations CI runs.
+
+| # | Step | Where the behaviour goes |
+|---|---|---|
+| M6 1 | `host(drive=)`: the host described with the real SSD. The overlay it wants is the shield's, and its SSD's CPU sees the devicetree `socpuppet_ssd` was generated from. [address-map.md](address-map.md) gains the interrupt lines of the host with the SSD, the first table with two PLICs in it | `boards/host.py`, `tools/address_map_docs.py`, `tests/python/test_host_board.py` |
+| M6 2 | Zephyr's disk test passes on the host with the SSD's hardware and 🎭 the firmware script, host image unchanged | `tests/python/test_m6_exit.py` |
+| M6 3 | **The exit test**: two ELF images, Zephyr on the host and Zephyr on the SSD. Zephyr's read and write tests pass, and each CPU prints on its own console | `tests/python/test_m6_exit.py` |
+| M6 4 | Ready sequencing: under an SSD whose firmware takes a quarter of a second to come ready, a 2 GiB drive, the host still finds it and the tests pass | `tests/python/test_m6_exit.py` |
+| M6 5 | The quantum: the exit test at 0, 10 µs, 100 µs and 1 ms, wall time and simulated time, three runs each. A measurement, not a `/tdd` step | this page |
+| M6 6 | The show and the docs: `examples/host_and_ssd_hello.py` with both consoles, "The host with the SSD" in [boot-your-firmware.md](boot-your-firmware.md), [architecture.md](architecture.md), "What M6 delivered" here, and the GDB findings in [upstream.md](upstream.md) | docs, examples |
+
+Left for later: two GDB ports are M8's. The request timeout's entry in [upstream.md](upstream.md) waits for the run that first meets it.
+
 ### M7 — Chiplet split
 
 (manager = the M5a script)
@@ -182,7 +214,7 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0, M1, M2, M3, M4 and M5 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. M6 (the Zephyr host with the Zephyr SSD) is next, and M7 (the real host across the real link) after it.
+**M0, M1, M2, M3, M4 and M5 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. M6 (the Zephyr host with the Zephyr SSD) is next and is planned: its decisions and its six steps are under [M6](#m6--host-firmware--ssd-firmware) above. M7 (the real host across the real link) is after it.
 
 **Decided on 2026-10-09, after M5: one source for the hardware/software interface.** The maintainer asked why the address map, and everything else firmware and hardware have to agree on, was spread over the model with no one place to look. It was two problems. The address map had one source, each board's Python description, and no catalogue: it existed only while a devicetree was being written. The register maps had no source at all: each block's offsets and bits were written out by hand in the model, the Zephyr driver, the Python stand-in, the C++ test stand-in, the tests and the docs, four to eight times a block, and only the tests that boot firmware kept them in step.
 
@@ -234,7 +266,7 @@ Things M6 to M8 should know about the link:
 - **A debugger's look crosses a link that is down**, and a transaction does not: it is refused with a generic error, which Zephyr sees as a bus fault with the address in `mtval`. M7's host must not touch the IO die before the manager has let it go, and cannot, because it is held in reset until then.
 - **Serialization is by the order transactions are handed over**, which under temporal decoupling is not the order of their departure times ([models/d2d-link.md](models/d2d-link.md)).
 - **The compute die's window is an identity map**, so M7's host reaches the IO die at the IO die's own addresses. The host board's window today translates, and the M3 devicetree was generated for it: M7 changes the host's map.
-- ⚠️ **Nothing has checked that the DBT-RISE core honours a reset held from time zero.** The compute die here is 🎭 a script, which does. A wire starts low, and the link raises its reset in the first delta cycle, so a core that samples its reset before any wait would start anyway. M7 has to look at this first.
+- **The DBT-RISE core honours a reset held from time zero.** This list said until 2026-10-10 that nothing had checked it, and planning M6 found that something had. The bus-master contract's `WhileResetIsHighTheMasterWaitsAndThenStarts` raises the reset as the simulation starts, and it is run against the CPU as well as the scripted master. A wire starts low and the link raises its reset in the first delta cycle, which is safe because the core waits two delta cycles before it first looks. M7 still wants a test of its own with the link holding the reset, but it does not start from a doubt.
 - **The reset hold is 4 ms of every boot**, and the link's training is a millisecond more by default. M8's test waits at least 5 ms of simulated time before the host can run an instruction.
 
 What M5a delivered: the real die-to-die link, and 🎭 a script in the manager's place that brings it up. The exit test is `tests/python/test_m5a_exit.py`: the manager trains the link and lets the compute die go, and the compute-side stand-in then round-trips a word through the IO die's memory across the link — and nothing of it crosses before the link has been trained. `examples/io_manager_hello.py` is the show to run by hand: it prints UCIe's whole bring-up, packet by packet, out of the trace.
@@ -394,7 +426,7 @@ Things later milestones should know:
 - The router takes several masters since M2 (`bus.add_input()`), all with one address map. A master that needs a different view of memory needs a router of its own.
 - `Platform.build()` finishes SystemC elaboration through a kernel call (`sc_simcontext::initialize`) that is public in the reference kernel but not in the SystemC standard.
 - SCC is built with two small patches and three other accommodations (see `cmake/Dependencies.cmake`). Each is written up in [upstream.md](upstream.md), ready to offer upstream.
-- **One GDB server per process.** DBT-RISE keeps its server in a process-wide singleton, so a second `gdb_port` is refused with the reason. M6 wants two GDB ports, and that needs a change in DBT-RISE-Core first ([upstream.md](upstream.md)).
+- **One GDB server per process.** DBT-RISE keeps its server in a process-wide singleton, so a second `gdb_port` is refused with the reason. Two GDB ports were M6's and are M8's since planning M6, which found that they need changes in DBT-RISE-RISCV as well as DBT-RISE-Core ([upstream.md](upstream.md)).
 - **A CPU sees an interrupt up to one quantum late.** That is temporal decoupling and not a fault, but a test that times an interrupt has to allow for it. M6's "quantum tuning with two ISSs" starts from the figures above.
 - **A handler that quiets its device is entered once**, because of a patch to DBT-RISE's SystemC wrapper: after a bus access the core yields for up to two delta cycles, so that a line the access lowered is seen low. A device that takes longer than that to lower its line will be seen as still asking.
 - **Both bus masters give the platform a turn after every access**, of up to two delta cycles, so that a line the access lowered is seen low before the next access. The CPU does it by the DBT-RISE patch above, and the scripted master in `LetTheAccessTakeEffect`. The bus-master contract holds both to it with a script that claims, quiets and completes at a PLIC. A device that takes longer than two delta cycles to lower its line is seen as still asking, by either.
@@ -423,7 +455,7 @@ Left out of that pass on purpose. Each belongs to the milestone named:
 | More NVMe admin commands (Get Features, the two Delete Queue commands, Get Log Page), the capability fields nobody reads yet, shutdown | when a driver sends one | Zephyr's driver, the one M3b runs, sends none of them. |
 | The UART's interrupt | when a console wants it | Zephyr's console is polled, and M3b needed none. |
 | Who sent a packet on the PCIe link, and trace records that name the sender | M5 and M7 | One device on the link so far. |
-| `cpu@N` from the CPU's index in a devicetree | M6 | A devicetree is one master's view, and there is one CPU in it until two firmware images run together. |
+| `cpu@N` from the CPU's index in a devicetree | nowhere; not needed yet | A devicetree is one master's view. Planning M6 found that this holds with two firmware images in one simulation: the host's image and the SSD's each get a view with one CPU in it, and `cpu@0` is right in both. Two cores on one bus would be the first to want it. |
 | The CPU's clock as a parameter (it is 10 MHz) | when a second CPU needs another | Nothing reads it but the CPU. |
 | Typed results from script steps (a step may send back anything) | when an operation needs it | It would make every operation a class of its own. |
 | Checking which vector woke `NvmeHost`, and how many queues it was granted | when a stand-in host uses more than vector 0 | The interrupt hook does not say which vector, and one queue pair is always granted. |
