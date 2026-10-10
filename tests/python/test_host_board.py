@@ -15,6 +15,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
 )
+from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 
@@ -40,6 +41,11 @@ class TestTheZephyrShieldForTheHostsDrive:
         # When this fails, the docstring of `drive_overlay` has the command
         # that writes the file again.
         assert checked_in.read_text() == drive_overlay()
+
+    def test_its_overlay_is_the_same_with_the_ssd_as_with_the_stand_in(self):
+        # Which is why firmware built for the host with a drive runs with
+        # either drive, unchanged.
+        assert drive_overlay(host_with_the_ssd()) == drive_overlay()
 
     def test_its_overlay_names_the_drive_as_the_drive_names_itself(self):
         overlay = drive_overlay()
@@ -106,6 +112,61 @@ class TestTheHostWithADrive:
         ids = board.platform.peek32(IO_BASE + ECAM_OFFSET)
 
         assert ids == DEVICE_ID << 16 | VENDOR_ID
+
+
+class TestTheHostWithTheSsd:
+    def test_has_two_cpus_the_hosts_and_the_ssds(self):
+        board = host_with_the_ssd()
+
+        assert {each.path for each in board.platform.bus_masters} == {
+            "compute.cpu",
+            "ssd.cpu",
+        }
+
+    def test_its_ssds_cpu_sees_the_devicetree_of_the_zephyr_board_for_the_ssd(
+        self,
+    ):
+        # Which is why firmware built for the SSD's board runs in the SSD
+        # under this host, unchanged.
+        checked_in = (
+            ZEPHYR_MODULE / "boards/socpuppet/socpuppet_ssd/socpuppet_ssd.dts"
+        )
+        board = host_with_the_ssd()
+
+        seen = board.platform.devicetree(via=board.drive.ssd.cpu.socket)
+
+        assert seen == checked_in.read_text()
+
+    def test_its_cpu_sees_the_devicetree_it_sees_with_the_stand_in_drive(self):
+        board = host_with_the_ssd()
+        with_the_stand_in = host(drive_blocks=64)
+
+        seen = board.platform.devicetree(via=board.cpu.socket)
+
+        assert seen == with_the_stand_in.platform.devicetree()
+
+    def test_its_cpu_sees_the_address_map_it_sees_with_the_stand_in_drive(self):
+        board = host_with_the_ssd()
+        with_the_stand_in = host(drive_blocks=64)
+
+        seen = board.platform.address_map(via=board.cpu.socket)
+
+        assert seen == with_the_stand_in.platform.address_map()
+
+
+def host_with_the_ssd():
+    """The host with the SSD.
+
+    No test here cares how big the SSD is, and one NAND block is the
+    smallest an SSD comes.
+    """
+    return host(drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK, drive=add_ssd)
+
+
+class TestTheHostAskedForADriveOfNoSize:
+    def test_refuses_and_says_what_is_missing(self):
+        with pytest.raises(ValueError, match="drive_blocks"):
+            host(drive=add_ssd)
 
 
 class TestTheHostWithNoDrive:

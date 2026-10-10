@@ -28,6 +28,10 @@ link onto the compute die's bus. There the MSI bridge turns each message
 into a pulse on a line of the interrupt controller, one line for each of
 the drive's interrupt vectors.
 
+🎭 That SSD is the stand-in drive, which answers the host itself. With
+`drive=add_ssd` as well it is the real one (`socpuppet.boards.ssd`), which
+has a CPU and firmware of its own. The host cannot tell which it has.
+
 The Zephyr board is the host with no drive. Firmware for the host with
 one is built with a shield as well, `socpuppet_host_drive`. A shield is
 Zephyr's word for hardware plugged into a board, and `drive_overlay()`
@@ -41,7 +45,7 @@ from __future__ import annotations
 
 import sys
 import textwrap
-from typing import NamedTuple
+from typing import Any, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
 from socpuppet.boards.cpu_kit import TIMER_HZ
@@ -62,7 +66,7 @@ from socpuppet.components import (
     Router,
 )
 from socpuppet.placed import Placed, PlacedUart
-from socpuppet.platform import Platform
+from socpuppet.platform import Group, Platform
 from socpuppet.time import ms
 
 #: Where the RAM starts, and where the CPU starts executing.
@@ -90,33 +94,86 @@ MSI_BASE = 0x0200_0000
 MSI_SOURCE = 1
 
 
-class HostDrive(NamedTuple):
+class PcieDrive(Protocol):
+    """What a host asks of whatever is on its PCIe link."""
+
+    @property
+    def endpoint(self) -> Placed | None:
+        """The drive's PCIe endpoint: what it says of itself to a host."""
+
+
+class AddDrive[Drive: PcieDrive](Protocol):
+    """A function that describes a drive on a root complex's PCIe link.
+
+    `add_behavioral_drive` is one and `socpuppet.boards.ssd.add_ssd` is
+    another. Which of them a host is given is how much of an SSD it has.
+    """
+
+    def __call__(
+        self,
+        platform: Platform,
+        root_complex: Placed,
+        *,
+        blocks: int,
+        group: Group,
+    ) -> Drive:
+        """Describe a drive of `blocks` 512-byte blocks, in `group`."""
+
+
+class HostDrive[Drive: PcieDrive](NamedTuple):
     """The host's SSD, and what the host has for its sake."""
 
-    ssd: BehavioralDrive
+    #: What the host's `drive` function returned: 🎭 the stand-in drive
+    #: unless the host was given another.
+    ssd: Drive
     #: The bridge that takes the SSD's interrupt messages.
     msi: Placed
     #: The host's end of the PCIe link the SSD is on.
     root_complex: Placed
 
 
-class Host(NamedTuple):
+class Host[Drive: PcieDrive](NamedTuple):
     """The host platform, and the parts of it a test or a script wants."""
 
     platform: Platform
     cpu: Placed
     uart: PlacedUart
     #: The SSD and its way in, if the host was described with one.
-    drive: HostDrive | None = None
+    drive: HostDrive[Drive] | None = None
 
 
-def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
+# The two declarations are for a type checker. They say that the host
+# has the kind of drive its `drive` function makes, so that after
+# `host(drive=add_ssd)` it knows `board.drive.ssd` has a CPU.
+@overload
+def host(
+    *, gdb_port: int = 0, drive_blocks: int | None = None
+) -> Host[BehavioralDrive]: ...
+@overload
+def host[Drive: PcieDrive](
+    *,
+    gdb_port: int = 0,
+    drive_blocks: int | None = None,
+    drive: AddDrive[Drive],
+) -> Host[Drive]: ...
+def host(
+    *,
+    gdb_port: int = 0,
+    drive_blocks: int | None = None,
+    drive: AddDrive[Any] | None = None,
+) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
     With a `gdb_port`, the CPU listens for a debugger on that TCP port and
     waits for one to attach before it executes anything. With
     `drive_blocks`, the host has an SSD of that many 512-byte blocks on a
     PCIe link.
+
+    `drive` is the function that describes that SSD. 🎭 With none it is
+    the stand-in drive, `add_behavioral_drive`. `drive=add_ssd`, from
+    `socpuppet.boards.ssd`, is the SSD with a CPU of its own, and its
+    firmware is then a second image to load:
+    `platform.load_elf(file, via=board.drive.ssd.cpu.socket)`.
     """
     platform = Platform()
     compute = platform.group("compute")
@@ -144,6 +201,12 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
     if drive_blocks is None:
+        if drive is not None:
+            raise ValueError(
+                "The host was given a `drive` and not told how big it is. "
+                "Say how many 512-byte blocks it holds: "
+                "host(drive_blocks=4096, drive=...)."
+            )
         return Host(platform, cpu, uart)
 
     msi = compute.add("msi", MsiPlicBridge(vectors=VECTORS))
@@ -162,13 +225,13 @@ def host(*, gdb_port: int = 0, drive_blocks: int | None = None) -> Host:
             getattr(msi, f"irq{vector}"),
             getattr(plic, f"source{MSI_SOURCE + vector}"),
         )
-    ssd = add_behavioral_drive(
+    ssd = (drive or add_behavioral_drive)(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
     return Host(platform, cpu, uart, HostDrive(ssd, msi, root_complex))
 
 
-def drive_overlay() -> str:
+def drive_overlay(board: Host[Any] | None = None) -> str:
     """The devicetree that the host with a drive has more than the board.
 
     It is the overlay of the Zephyr shield `socpuppet_host_drive`: the MSI
@@ -181,18 +244,25 @@ def drive_overlay() -> str:
       the same, to attach its driver to, and matches it to what the scan
       finds by the vendor and device numbers.
 
+    `board` is a host with a drive, and by default the host with 🎭 the
+    stand-in drive. The overlay is what the host's CPU sees, which is the
+    same with the SSD on the link, so there is one shield for both.
+
     The shield's copy is checked in, and a test holds it to this. To write
     the file again, print what this returns into it, with no newline added.
     """
-    # The devicetree does not say how big the drive is, so any size will do.
-    board = host(drive_blocks=1)
+    if board is None:
+        # The devicetree does not say how big the drive is, so any size
+        # will do.
+        board = host(drive_blocks=1)
     drive = board.drive
     assert drive is not None
-    endpoint = drive.ssd.endpoint.component
+    endpoint = drive.ssd.endpoint
+    assert endpoint is not None
     root_complex = devicetree.label(drive.root_complex.path)
     msi = devicetree.label(drive.msi.path)
     return board.platform.devicetree_overlay(
-        [drive.msi, drive.root_complex]
+        [drive.msi, drive.root_complex], via=board.cpu.socket
     ) + textwrap.dedent(
         f"""
         &{root_complex} {{
@@ -200,8 +270,8 @@ def drive_overlay() -> str:
 
         \tnvme0: nvme0 {{
         \t\tcompatible = "nvme-controller";
-        \t\tvendor-id = <{endpoint.parameters["vendor_id"]:#x}>;
-        \t\tdevice-id = <{endpoint.parameters["device_id"]:#x}>;
+        \t\tvendor-id = <{endpoint.component.parameters["vendor_id"]:#x}>;
+        \t\tdevice-id = <{endpoint.component.parameters["device_id"]:#x}>;
         \t}};
         }};
         """

@@ -225,6 +225,35 @@ The SSD's constants are at the top of `python/socpuppet/boards/ssd.py`, the ones
 - ⚠️ **The SRAM has to stay below the buffer.** A devicetree tells firmware which memory is its own (`zephyr,sram`), and of two memories the generator names the one at the lower address.
 - 🎭 **With a script for its firmware the SSD has no CPU**, and no timer, PLIC, UART or SRAM either. The three register blocks and the buffer stay where they are.
 
+## The host with the SSD
+
+`host(drive_blocks=..., drive=add_ssd)` is the host above with the SSD above where 🎭 the stand-in drive was. It is two computers in one simulation, and it adds no map of its own.
+
+- **The host's CPU (`compute.cpu.socket`) sees exactly what it sees with the stand-in drive**: the two tables under [The host](#the-host). Both drives say the same of themselves on the PCIe link, so firmware built for the host with a drive runs with either.
+- **The SSD's CPU (`ssd.cpu.socket`) sees exactly what it sees on its own board**: the first table under [The SSD](#the-ssd). Firmware built for `socpuppet_ssd` runs here unchanged.
+- ⚠️ **So every question about this board starts with "whose?"** `platform.load_elf`, `platform.peek32`, `platform.devicetree` and `socpuppet address-map` all take the CPU whose view you mean, as `via=` or `--via`.
+
+What is new is the interrupt lines side by side. There are two interrupt controllers, one for each CPU, and source 1 is a different line on each:
+
+<!-- interrupts:host-ssd start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `compute.cpu` | 7 | `io.timer.irq` |
+| `compute.cpu` | 11 | `compute.plic.irq` |
+| `compute.plic` | 1 | `compute.msi.irq0` |
+| `compute.plic` | 2 | `compute.msi.irq1` |
+| `ssd.cpu` | 7 | `ssd.timer.irq` |
+| `ssd.cpu` | 11 | `ssd.plic.irq` |
+| `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |
+| `ssd.plic` | 2 | `ssd.dma.irq` |
+| `ssd.plic` | 3 | `ssd.flash.irq` |
+
+<!-- interrupts:host-ssd end -->
+
+- **Nothing joins the two lists but the PCIe link.** The SSD interrupts its host by sending a message up the link, which the MSI bridge turns into `compute.msi.irq0` or `irq1`. The host gets the SSD's attention by writing a doorbell, which the frontend turns into `ssd.frontend.cpu_irq`. No wire runs between them.
+- 🎓 **Each CPU sees an interrupt up to one quantum late.** A command the host sends is seen by the SSD's firmware up to a quantum after the doorbell, and its completion is seen by the host up to a quantum after the message. That is temporal decoupling, the price of running each CPU for a stretch before the next has its turn.
+
 ## The IO manager
 
 The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero, and it is what M7 will want when the compute die becomes the real host.

@@ -58,6 +58,10 @@ def tables():
     host_board = host.platform
     # How big the drive is changes nothing in a map.
     with_a_drive = host.host(drive_blocks=1).platform
+    # The SSD comes in whole NAND blocks, and one is the least.
+    with_the_ssd = host.host(
+        drive_blocks=ssd.DRIVE_BLOCKS_PER_NAND_BLOCK, drive=ssd.add_ssd
+    ).platform
     ssd_board = ssd.platform
     io_board = io_manager.platform
 
@@ -85,6 +89,7 @@ def tables():
         "interrupts:host-drive": interrupt_table(
             only_in(with_a_drive.interrupt_map(), host_board.interrupt_map())
         ),
+        "interrupts:host-ssd": interrupt_table(with_the_ssd.interrupt_map()),
         "interrupts:ssd": interrupt_table(ssd_board.interrupt_map()),
         "interrupts:io-manager": interrupt_table(io_board.interrupt_map()),
     }

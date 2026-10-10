@@ -131,6 +131,24 @@ def test_an_interrupt_table_row_says_which_controller_which_number_and_which_lin
     )
 
 
+def test_the_interrupt_table_of_the_host_with_the_ssd_has_lines_of_both_interrupt_controllers(
+    tmp_path,
+):
+    page = a_page(tmp_path, "interrupts:host-ssd")
+
+    address_map_docs("write", page)
+
+    written = page.read_text()
+    assert (
+        f"| `compute.plic` | {host_board.MSI_SOURCE} | `compute.msi.irq0` |"
+        in written
+    )
+    assert (
+        f"| `ssd.plic` | {ssd_board.FRONTEND_SOURCE} | `ssd.frontend.cpu_irq` |"
+        in written
+    )
+
+
 def test_when_a_marker_names_a_table_there_is_none_of_check_fails_and_lists_the_ones_there_are(
     tmp_path,
 ):
