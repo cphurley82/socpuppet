@@ -32,7 +32,12 @@ from typing import (
 )
 
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
-from socpuppet.regs import dma_engine, flash_controller, nvme_frontend
+from socpuppet.regs import (
+    dma_engine,
+    flash_controller,
+    nvme_frontend,
+    ucie_link,
+)
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -730,8 +735,8 @@ class D2dLinkEndpoint(Component):
 
     implementation = "d2d_link_endpoint"
     #: What the register block takes, which is UCIe's Link DVSEC and the
-    #: blocks it points at.
-    REGISTERS_SIZE: ClassVar[int] = 0x100
+    #: blocks it points at: as much as its register map says.
+    REGISTERS_SIZE: ClassVar[int] = ucie_link.SIZE
     # Everything on the die's own side is optional: a die may only send,
     # only receive, or leave the link's registers unmapped. Both peer
     # sides are the other endpoint.

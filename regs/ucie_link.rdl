@@ -1,0 +1,145 @@
+// The registers one end of the die-to-die link shows the firmware on its
+// own die, and that the other die reaches through the sideband mailbox:
+// docs/models/d2d-link.md.
+//
+// They are UCIe's Link DVSEC, from public sources, and the blocks it
+// points at. A DVSEC is a designated vendor-specific extended capability,
+// of the kind PCIe defines. UCIe's capability has a link capability
+// register at 0x0C as well, which nothing here reads, so it is not here.
+// What is marked "ours" is what UCIe has and public sources do not lay
+// out, so the layout is this model's own.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+
+// Which state of UCIe's link training a link is in. The states are
+// UCIe's and the numbers are ours.
+enum ucie_link_training_state_e {
+    RESET = 0 { desc = "Held in reset, as every link is for 4 ms after power-on."; };
+    SBINIT = 1 { desc = "The sideband is being brought up."; };
+    MBINIT = 2 { desc = "The mainband's parameters are being agreed."; };
+    MBTRAIN = 3 { desc = "The mainband is being trained."; };
+    LINKINIT = 4 { desc = "The two ends are agreeing that the link is theirs to use."; };
+    ACTIVE = 5 { desc = "The link is up, and carries the dies' traffic."; };
+    TRAIN_ERROR = 6 { desc = "Training failed, or the link was broken. Only a retrain leaves this state."; };
+};
+
+// What a sideband access to the other end's registers can be. The numbers
+// are the opcodes UCIe gives the two packets.
+enum ucie_link_mailbox_opcode_e {
+    MEMORY_READ_32B = 0 { desc = "Read a register of the other end."; };
+    MEMORY_WRITE_32B = 1 { desc = "Write one."; };
+};
+
+// How a sideband access turned out, as UCIe's completion packet says it.
+enum ucie_link_mailbox_status_e {
+    SUCCESS = 0 { desc = "The other end did it."; };
+    UNSUPPORTED_REQUEST = 2 { desc = "There is no such register at the other end, or it cannot be written."; };
+};
+
+addrmap ucie_link {
+    name = "UCIe link";
+    desc = "One end of the die-to-die link: UCIe's Link DVSEC, the reset and fault registers it locates, and the sideband mailbox.";
+    block_size = 0x100;
+    default regwidth = 32;
+
+    // ---- What says whose capability this is. Firmware only reads these.
+    reg {
+        desc = "PCIe's extended capability header.";
+        field { sw = r; desc = "0x0023, which says a designated vendor-specific capability."; } CAPABILITY_ID[15:0] = 0x0023;
+        field { sw = r; desc = "The capability's version."; } VERSION[19:16] = 1;
+        field { sw = r; desc = "Where the next capability is. There is none."; } NEXT[31:20] = 0;
+    } EXTENDED_CAPABILITY_HEADER @ 0x00;
+
+    reg {
+        desc = "DVSEC header 1: whose capability it is.";
+        field { sw = r; desc = "0xD2DE, which is the vendor number UCIe registered."; } VENDOR_ID[15:0] = 0xD2DE;
+        field { sw = r; desc = "The capability's revision."; } REVISION[19:16] = 0;
+        field { sw = r; desc = "How long the capability is, in bytes: the whole block."; } LENGTH[31:20] = 0x100;
+    } DVSEC_HEADER_1 @ 0x04;
+
+    reg {
+        desc = "DVSEC header 2: which of the vendor's capabilities it is.";
+        field { sw = r; desc = "⚠️ Ours: public sources do not give UCIe's number for the link DVSEC."; } DVSEC_ID[15:0] = 0x0001;
+    } DVSEC_HEADER_2 @ 0x08;
+
+    // ---- UCIe's link control, link status and event notification.
+    reg {
+        desc = "UCIe's link control. Both bits are an action, clear themselves, and read as zero.";
+        field { sw = w; desc = "Start link training."; } START_TRAINING[0:0] = 0;
+        field { sw = w; desc = "Retrain the link, from reset."; } RETRAIN[1:1] = 0;
+    } CONTROL @ 0x10;
+
+    reg {
+        desc = "UCIe's link status.";
+        field { sw = r; desc = "The link is up."; } UP[0:0] = 0;
+        field { sw = r; desc = "The link is being trained."; } TRAINING[1:1] = 0;
+        field {
+            sw = rw; onwrite = woclr;
+            desc = "The link has gone up or come down since this was cleared.";
+        } CHANGED[2:2] = 0;
+        field {
+            sw = rw; onwrite = woclr;
+            desc = "The other die has reported an error nothing can be done about.";
+        } UNCORRECTABLE_FATAL[3:3] = 0;
+    } STATUS @ 0x14;
+
+    reg {
+        desc = "UCIe's link event notification: what raises `irq`.";
+        field { sw = rw; desc = "Interrupt while the status says the link has changed."; } STATUS_CHANGED[0:0] = 0;
+    } EVENT_NOTIFICATION @ 0x18;
+
+    reg {
+        desc = "The register locator: where the block of the link's own registers is. ⚠️ Its layout is ours.";
+        field { sw = r; desc = "Which block it is."; } BLOCK[7:0] = 1;
+        field { sw = r; desc = "Where the block starts, from the start of the capability."; } OFFSET[31:8] = 0x20;
+    } REGISTER_LOCATOR @ 0x1C;
+
+    // ---- The block the locator points at. ⚠️ Ours: UCIe says the
+    // capability's own registers are vendor-defined.
+    reg {
+        desc = "Which training state the link is in. ⚠️ The numbers are ours.";
+        field { sw = r; encode = ucie_link_training_state_e; } VALUE[31:0] = 0;
+    } TRAINING_STATE @ 0x20;
+
+    reg {
+        desc = "The reset this end drives on its own die.";
+        field { sw = rw; desc = "The die is held in reset. The other die lets it go by writing a zero here, through its mailbox."; } ASSERTED[0:0] = 1;
+    } DIE_RESET @ 0x24;
+
+    reg {
+        desc = "A way to break the link on purpose. Reads as zero.";
+        field { sw = w; desc = "Write a one to break the link."; } BREAK[0:0] = 0;
+    } FAULT_INJECTION @ 0x28;
+
+    // ---- The sideband mailbox, which reaches the other end's registers.
+    // ⚠️ Ours: UCIe has a mailbox, and its fields are not in public
+    // sources.
+    reg {
+        desc = "What the next access to the other end is to be. Only the low five bits are kept, which is how wide UCIe's opcodes are.";
+        field { sw = rw; encode = ucie_link_mailbox_opcode_e; } VALUE[31:0] = 0;
+    } MAILBOX_OPCODE @ 0x40;
+
+    reg {
+        desc = "Which register of the other end: its offset in the block there.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } MAILBOX_ADDRESS @ 0x48;
+
+    reg {
+        desc = "What to write. Reads as what the last read brought back.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } MAILBOX_DATA @ 0x50;
+
+    reg {
+        desc = "Sends the access. Reads as zero.";
+        field { sw = w; desc = "Write a one to send it."; } GO[0:0] = 0;
+    } MAILBOX_TRIGGER @ 0x58;
+
+    reg {
+        desc = "How the last access went, and whether one is still on its way.";
+        field { sw = r; encode = ucie_link_mailbox_status_e; desc = "How it went."; } CODE[2:0] = 0;
+        field { sw = r; desc = "An access has been sent and not yet answered."; } BUSY[8:8] = 0;
+    } MAILBOX_STATUS @ 0x5C;
+};

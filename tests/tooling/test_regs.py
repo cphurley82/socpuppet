@@ -239,10 +239,10 @@ def test_a_register_that_comes_out_of_reset_holding_something_has_that_value_in_
 
     regs(repo, "write")
 
-    assert "#define SPAM_HAM_RESET         0x00010023U\n" in (
+    assert "#define SPAM_HAM_AT_RESET      0x00010023U\n" in (
         (repo / HEADER).read_text()
     )
-    assert "HAM_RESET = 0x00010023\n" in (repo / MODULE).read_text()
+    assert "HAM_AT_RESET = 0x00010023\n" in (repo / MODULE).read_text()
 
 
 def test_a_register_that_comes_out_of_reset_holding_something_says_what_in_its_row(
@@ -266,8 +266,27 @@ def test_a_register_that_comes_out_of_reset_as_zero_has_no_value_at_reset_writte
 
     regs(repo, "write")
 
-    assert "RESET" not in (repo / HEADER).read_text()
+    assert "AT_RESET" not in (repo / HEADER).read_text()
     assert "At reset" not in (repo / PAGE).read_text()
+
+
+def test_when_two_things_in_a_block_would_get_the_same_name_it_is_refused_and_the_error_names_it(
+    repo,
+):
+    # A register HAM with a field EGGS, and a register HAM_EGGS.
+    (repo / "regs/spam.rdl").write_text(
+        a_map_of_one_register().replace(
+            "field { sw = rw; } VALUE[31:0] = 0;\n    } HAM @ 0x0;",
+            "field { sw = rw; } EGGS[0:0] = 0;\n    } HAM @ 0x0;\n"
+            "    reg { field { sw = rw; } VALUE[31:0] = 0; } HAM_EGGS @ 0x4;",
+        )
+    )
+
+    result = regs(repo, "write")
+
+    assert result.returncode != 0
+    assert "regs/spam.rdl" in result.stdout
+    assert "HAM_EGGS" in result.stdout
 
 
 def test_a_block_of_more_than_256_bytes_has_its_offsets_in_three_digits(repo):

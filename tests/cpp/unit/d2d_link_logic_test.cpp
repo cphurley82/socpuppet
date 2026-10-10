@@ -10,6 +10,7 @@
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/time.h"
 #include "socpuppet/core/ucie_sideband.h"
+#include "socpuppet/regs/ucie_link.h"
 #include "tests/cpp/support/sideband_pump.h"
 
 namespace socpuppet {
@@ -23,11 +24,6 @@ using std::chrono_literals::operator""ns;
 constexpr Picoseconds kLatency = 20ns;
 constexpr std::uint64_t kBytesPerNs = 16;
 constexpr Picoseconds kTraining = 1ms;
-
-// Where the registers are, and which bits are which, is the register
-// block's own business: these tests are about what the three parts do
-// together.
-using Registers = UcieLinkRegisters;
 
 // One link: an end on each die, with the pump between them. A is the die
 // whose firmware manages the link.
@@ -72,20 +68,20 @@ class OneLink {
 // Fills the mailbox in and triggers it, as firmware does.
 void AskTheOtherDie(OneLink& link, SidebandOpcode opcode, std::uint32_t address,
                     std::uint32_t data = 0) {
-  link.Write(Registers::kMailboxOpcode, static_cast<std::uint32_t>(opcode));
-  link.Write(Registers::kMailboxAddress, address);
-  link.Write(Registers::kMailboxData, data);
-  link.Write(Registers::kMailboxTrigger, 1);
+  link.Write(UCIE_LINK_MAILBOX_OPCODE, static_cast<std::uint32_t>(opcode));
+  link.Write(UCIE_LINK_MAILBOX_ADDRESS, address);
+  link.Write(UCIE_LINK_MAILBOX_DATA, data);
+  link.Write(UCIE_LINK_MAILBOX_TRIGGER, 1);
 }
 
 TEST(WhenFirmwareStartsTrainingThroughTheRegisters, TheLinkComesUp) {
   OneLink link;
 
-  link.Write(Registers::kLinkControl, Registers::kStartTraining);
+  link.Write(UCIE_LINK_CONTROL, UCIE_LINK_CONTROL_START_TRAINING);
   link.RunUntilNothingIsDue();
 
-  EXPECT_EQ(link.Read(Registers::kLinkStatusRegister) & Registers::kLinkUp,
-            Registers::kLinkUp);
+  EXPECT_EQ(link.Read(UCIE_LINK_STATUS) & UCIE_LINK_STATUS_UP,
+            UCIE_LINK_STATUS_UP);
 }
 
 TEST(WhenALinkHasNotBeenTrained, ItsMainbandCarriesNothing) {
@@ -99,8 +95,7 @@ TEST(WhenALinkHasNotBeenTrained, ItsMainbandCarriesNothing) {
 TEST(WhenTheManagerWritesTheOtherDiesResetRegister, ThatDieIsLetGo) {
   OneLink link;
 
-  AskTheOtherDie(link, SidebandOpcode::kMemoryWrite32b, Registers::kDieReset,
-                 0);
+  AskTheOtherDie(link, SidebandOpcode::kMemoryWrite32b, UCIE_LINK_DIE_RESET, 0);
 
   EXPECT_FALSE(link.B().ResetAsserted());
 }
@@ -108,12 +103,12 @@ TEST(WhenTheManagerWritesTheOtherDiesResetRegister, ThatDieIsLetGo) {
 TEST(WhenTheManagerReadsARegisterOfTheOtherDie, TheAnswerIsInItsMailbox) {
   OneLink link;
 
-  AskTheOtherDie(link, SidebandOpcode::kMemoryRead32b, Registers::kDieReset);
+  AskTheOtherDie(link, SidebandOpcode::kMemoryRead32b, UCIE_LINK_DIE_RESET);
 
   // The other die is holding its own die in reset, as it does until it is
   // let go.
-  EXPECT_EQ(link.Read(Registers::kMailboxData), 1U);
-  EXPECT_EQ(link.Read(Registers::kMailboxStatus),
+  EXPECT_EQ(link.Read(UCIE_LINK_MAILBOX_DATA), 1U);
+  EXPECT_EQ(link.Read(UCIE_LINK_MAILBOX_STATUS),
             static_cast<std::uint32_t>(SidebandStatus::kSuccess));
 }
 
@@ -121,35 +116,35 @@ TEST(WhenTheManagerAsksForARegisterTheOtherDieHasNot, TheMailboxSaysSo) {
   OneLink link;
 
   AskTheOtherDie(link, SidebandOpcode::kMemoryRead32b,
-                 static_cast<std::uint32_t>(UcieLinkRegisters::kSize));
+                 static_cast<std::uint32_t>(UCIE_LINK_SIZE));
 
-  EXPECT_EQ(link.Read(Registers::kMailboxStatus),
+  EXPECT_EQ(link.Read(UCIE_LINK_MAILBOX_STATUS),
             static_cast<std::uint32_t>(SidebandStatus::kUnsupportedRequest));
 }
 
 TEST(WhenFirmwareInjectsAFaultAndAsksForARetrainAtOnce, TheLinkComesBackUp) {
   OneLink link;
-  link.Write(Registers::kLinkControl, Registers::kStartTraining);
+  link.Write(UCIE_LINK_CONTROL, UCIE_LINK_CONTROL_START_TRAINING);
   link.RunUntilNothingIsDue();
 
-  link.WriteBoth(Registers::kFaultInjection, 1, Registers::kLinkControl,
-                 Registers::kRetrainLink);
+  link.WriteBoth(UCIE_LINK_FAULT_INJECTION, 1, UCIE_LINK_CONTROL,
+                 UCIE_LINK_CONTROL_RETRAIN);
   link.RunUntilNothingIsDue();
 
-  EXPECT_EQ(link.Read(Registers::kLinkStatusRegister) & Registers::kLinkUp,
-            Registers::kLinkUp);
+  EXPECT_EQ(link.Read(UCIE_LINK_STATUS) & UCIE_LINK_STATUS_UP,
+            UCIE_LINK_STATUS_UP);
 }
 
 TEST(WhenFirmwareInjectsAFault, TheOtherDiesStatusShowsAFatalError) {
   OneLink link;
-  link.Write(Registers::kLinkControl, Registers::kStartTraining);
+  link.Write(UCIE_LINK_CONTROL, UCIE_LINK_CONTROL_START_TRAINING);
   link.RunUntilNothingIsDue();
 
-  link.Write(Registers::kFaultInjection, 1);
+  link.Write(UCIE_LINK_FAULT_INJECTION, 1);
 
-  EXPECT_EQ(link.ReadOnB(Registers::kLinkStatusRegister) &
-                Registers::kDetectedUncorrectableFatal,
-            Registers::kDetectedUncorrectableFatal);
+  EXPECT_EQ(
+      link.ReadOnB(UCIE_LINK_STATUS) & UCIE_LINK_STATUS_UNCORRECTABLE_FATAL,
+      UCIE_LINK_STATUS_UNCORRECTABLE_FATAL);
 }
 
 TEST(WhenEachEndIsAskedWhatACrossingCosts, ItAnswersForItsOwnDirection) {

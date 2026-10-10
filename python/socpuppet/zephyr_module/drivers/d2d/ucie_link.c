@@ -1,7 +1,9 @@
 /*
  * Zephyr's driver for one end of a socpuppet die-to-die link. The
- * registers are in docs/models/d2d-link.md in socpuppet, and what
- * firmware does with the driver is in <socpuppet/drivers/ucie_link.h>.
+ * registers are in <socpuppet/regs/ucie_link.h>, which is generated from
+ * the link's register map, and docs/models/d2d-link.md in socpuppet says
+ * what they do. What firmware does with the driver is in
+ * <socpuppet/drivers/ucie_link.h>.
  *
  * Letting the other die out of reset is a register at the far end of the
  * link, so it is reached over the link's sideband, with the mailbox: fill
@@ -27,35 +29,16 @@
 #include <zephyr/sys/sys_io.h>
 
 #include <socpuppet/drivers/ucie_link.h>
+#include <socpuppet/regs/ucie_link.h>
 
 /* UCIe's Link DVSEC, and the vendor block its register locator names. */
-#define LINK_CONTROL            0x10
-#define LINK_STATUS             0x14
-#define LINK_EVENT_NOTIFICATION 0x18
-#define DIE_RESET               0x24
 /* The sideband mailbox, which reaches the other end's registers. */
-#define MAILBOX_OPCODE          0x40
-#define MAILBOX_ADDRESS         0x48
-#define MAILBOX_DATA            0x50
-#define MAILBOX_TRIGGER         0x58
-#define MAILBOX_STATUS          0x5C
 
 /* Link control: both bits are an action, and clear themselves. */
-#define START_TRAINING           BIT(0)
-#define RETRAIN_LINK             BIT(1)
 /* Link status. */
-#define LINK_UP                  BIT(0)
-#define LINK_STATUS_CHANGED      BIT(2)
 /* Link event notification. */
-#define STATUS_CHANGED_INTERRUPT BIT(0)
 /* The mailbox's status: how the last access went, and whether it is done. */
-#define MAILBOX_STATUS_CODE      0x7
-#define MAILBOX_BUSY             BIT(8)
-#define MAILBOX_SUCCESS          0
-#define MAILBOX_NO_REGISTER      2
 /* What a sideband access can be. */
-#define MEMORY_READ_32B          0x00
-#define MEMORY_WRITE_32B         0x01
 
 /*
  * How long the firmware waits for the link to come up. UCIe holds it in
@@ -85,7 +68,7 @@ bool ucie_link_is_up(const struct device *dev)
 {
 	const struct ucie_link_config *config = dev->config;
 
-	return (sys_read32(config->base + LINK_STATUS) & LINK_UP) != 0;
+	return (sys_read32(config->base + UCIE_LINK_STATUS) & UCIE_LINK_STATUS_UP) != 0;
 }
 
 static int wait_until_up(const struct device *dev)
@@ -121,19 +104,19 @@ static int train(const struct device *dev, uint32_t how)
 {
 	const struct ucie_link_config *config = dev->config;
 
-	sys_write32(how, config->base + LINK_CONTROL);
+	sys_write32(how, config->base + UCIE_LINK_CONTROL);
 
 	return wait_until_up(dev);
 }
 
 int ucie_link_train(const struct device *dev)
 {
-	return train(dev, START_TRAINING);
+	return train(dev, UCIE_LINK_CONTROL_START_TRAINING);
 }
 
 int ucie_link_retrain(const struct device *dev)
 {
-	return train(dev, RETRAIN_LINK);
+	return train(dev, UCIE_LINK_CONTROL_RETRAIN);
 }
 
 /*
@@ -145,18 +128,23 @@ static int write_at_the_other_end(const struct device *dev, uint32_t address, ui
 	const struct ucie_link_config *config = dev->config;
 	uint32_t status;
 
-	sys_write32(MEMORY_WRITE_32B, config->base + MAILBOX_OPCODE);
-	sys_write32(address, config->base + MAILBOX_ADDRESS);
-	sys_write32(value, config->base + MAILBOX_DATA);
-	sys_write32(1, config->base + MAILBOX_TRIGGER);
+	sys_write32(UCIE_LINK_MAILBOX_OPCODE_MEMORY_WRITE_32B,
+		    config->base + UCIE_LINK_MAILBOX_OPCODE);
+	sys_write32(address, config->base + UCIE_LINK_MAILBOX_ADDRESS);
+	sys_write32(value, config->base + UCIE_LINK_MAILBOX_DATA);
+	sys_write32(UCIE_LINK_MAILBOX_TRIGGER_GO, config->base + UCIE_LINK_MAILBOX_TRIGGER);
 
-	if (!WAIT_FOR(((status = sys_read32(config->base + MAILBOX_STATUS)) & MAILBOX_BUSY) == 0,
+	if (!WAIT_FOR(((status = sys_read32(config->base + UCIE_LINK_MAILBOX_STATUS)) &
+		       UCIE_LINK_MAILBOX_STATUS_BUSY) == 0,
 		      MAILBOX_PATIENCE_US,
 		      /* and asks again at once */)) {
 		return -ETIMEDOUT;
 	}
 
-	return (status & MAILBOX_STATUS_CODE) == MAILBOX_SUCCESS ? 0 : -EIO;
+	return (status & UCIE_LINK_MAILBOX_STATUS_CODE_MASK) ==
+			       UCIE_LINK_MAILBOX_STATUS_CODE_SUCCESS
+		       ? 0
+		       : -EIO;
 }
 
 /*
@@ -170,7 +158,7 @@ static int ucie_link_line_deassert(const struct device *dev, uint32_t id)
 		return -EINVAL;
 	}
 
-	return write_at_the_other_end(dev, DIE_RESET, 0);
+	return write_at_the_other_end(dev, UCIE_LINK_DIE_RESET, 0);
 }
 
 static DEVICE_API(reset, ucie_link_api) = {
@@ -182,7 +170,7 @@ static void ucie_link_isr(const struct device *dev)
 	const struct ucie_link_config *config = dev->config;
 	struct ucie_link_data *data = dev->data;
 
-	sys_write32(LINK_STATUS_CHANGED, config->base + LINK_STATUS);
+	sys_write32(UCIE_LINK_STATUS_CHANGED, config->base + UCIE_LINK_STATUS);
 	k_sem_give(&data->status_changed);
 }
 
@@ -194,7 +182,8 @@ static int ucie_link_init(const struct device *dev)
 	k_sem_init(&data->status_changed, 0, 1);
 	config->connect_interrupt();
 	/* The handler never masks the interrupt, so asking once is enough. */
-	sys_write32(STATUS_CHANGED_INTERRUPT, config->base + LINK_EVENT_NOTIFICATION);
+	sys_write32(UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED,
+		    config->base + UCIE_LINK_EVENT_NOTIFICATION);
 
 	return 0;
 }

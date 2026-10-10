@@ -12,7 +12,6 @@ it got.
 import pytest
 
 import socpuppet as sp
-from socpuppet import ucie
 from socpuppet.boards.io_manager import (
     HELLO,
     LINK_BASE,
@@ -21,6 +20,7 @@ from socpuppet.boards.io_manager import (
     one_round_trip,
 )
 from socpuppet.ops import read32, wait, write32
+from socpuppet.regs import ucie_link
 
 IMAGE = "iomgr_socpuppet_iomgr.elf"
 #: What the firmware says as it goes, in the order it says it.
@@ -39,7 +39,9 @@ LONG_ENOUGH = sp.ms(100)
 def break_the_link_before_anything_starts():
     """🎭 A test's hand on the IO die: the link is faulted at power-on,
     which leaves it where only a retrain gets it out of."""
-    yield write32(LINK_BASE + ucie.FAULT_INJECTION, 1)
+    yield write32(
+        LINK_BASE + ucie_link.FAULT_INJECTION, ucie_link.FAULT_INJECTION_BREAK
+    )
 
 
 def break_the_link_once_the_dies_are_talking():
@@ -47,7 +49,9 @@ def break_the_link_once_the_dies_are_talking():
     die has reached across it."""
     while (yield read32(SCRATCH_BASE)) != HELLO:
         yield wait(sp.us(10))
-    yield write32(LINK_BASE + ucie.FAULT_INJECTION, 1)
+    yield write32(
+        LINK_BASE + ucie_link.FAULT_INJECTION, ucie_link.FAULT_INJECTION_BREAK
+    )
 
 
 def a_round_trip_and_a_write_much_later():

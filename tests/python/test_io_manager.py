@@ -6,6 +6,7 @@ import pytest
 import socpuppet as sp
 from socpuppet import ucie
 from socpuppet.ops import expect32, read32, wait, write32
+from socpuppet.regs import ucie_link
 
 #: Where the IO die's bus has the link's registers and its scratch memory.
 LINK = 0x1001_0000
@@ -43,12 +44,14 @@ def break_the_link_once_the_dies_are_talking():
     link, once the compute die has reached across it."""
     while (yield read32(SCRATCH)) != FIRST:
         yield wait(sp.us(10))
-    yield write32(LINK + ucie.FAULT_INJECTION, 1)
+    yield write32(
+        LINK + ucie_link.FAULT_INJECTION, ucie_link.FAULT_INJECTION_BREAK
+    )
 
 
 def watch_for_anything_arriving_too_early():
     """A test's eyes on the IO die: nothing crosses before the link is up."""
-    while not (yield read32(LINK + ucie.LINK_STATUS)) & ucie.LINK_UP:
+    while not (yield read32(LINK + ucie_link.STATUS)) & ucie_link.STATUS_UP:
         yield expect32(SCRATCH, 0)
         yield wait(sp.us(10))
 
@@ -154,7 +157,7 @@ class TestWhenALinkIsTraced:
             "{MBINIT.CAL Done Response}",
             "{LinkMgmt.RDI.Req.Active}",
             "{LinkMgmt.RDI.Rsp.Active}",
-            f"MemoryWrite_32b {ucie.DIE_RESET:#x} = 0x0",
+            f"MemoryWrite_32b {ucie_link.DIE_RESET:#x} = 0x0",
             "Completion, success",
         ]
         assert said[: len(bring_up)] == bring_up

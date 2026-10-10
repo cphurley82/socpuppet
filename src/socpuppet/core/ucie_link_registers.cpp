@@ -6,16 +6,65 @@
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/ucie_link_state.h"
+#include "socpuppet/regs/ucie_link.h"
 
 namespace socpuppet {
 namespace {
 
-// PCIe's identifier for a designated vendor-specific extended capability,
-// and the identifier UCIe registered as a vendor.
-constexpr std::uint32_t kDvsecCapabilityId = 0x0023;
-constexpr std::uint32_t kUcieVendorId = 0xD2DE;
-
 constexpr std::size_t kRegisterBytes = 4;
+
+// The register map says two things twice, once as a number of its own and
+// once in a register that firmware reads. They have to agree: how long the
+// capability is, and where the block its locator points at starts.
+static_assert((UCIE_LINK_DVSEC_HEADER_1_AT_RESET &
+               UCIE_LINK_DVSEC_HEADER_1_LENGTH_MASK) >>
+                  UCIE_LINK_DVSEC_HEADER_1_LENGTH_SHIFT ==
+              UCIE_LINK_SIZE);
+static_assert((UCIE_LINK_REGISTER_LOCATOR_AT_RESET &
+               UCIE_LINK_REGISTER_LOCATOR_OFFSET_MASK) >>
+                  UCIE_LINK_REGISTER_LOCATOR_OFFSET_SHIFT ==
+              UCIE_LINK_TRAINING_STATE);
+
+// What the mailbox's registers hold are UCIe's own numbers for a sideband
+// packet's opcode and for how an access turned out, so the register map's
+// names for them have to be those numbers.
+static_assert(UCIE_LINK_MAILBOX_OPCODE_MEMORY_READ_32B ==
+              static_cast<std::uint32_t>(SidebandOpcode::kMemoryRead32b));
+static_assert(UCIE_LINK_MAILBOX_OPCODE_MEMORY_WRITE_32B ==
+              static_cast<std::uint32_t>(SidebandOpcode::kMemoryWrite32b));
+static_assert(UCIE_LINK_MAILBOX_STATUS_CODE_SUCCESS ==
+              static_cast<std::uint32_t>(SidebandStatus::kSuccess));
+static_assert(UCIE_LINK_MAILBOX_STATUS_CODE_UNSUPPORTED_REQUEST ==
+              static_cast<std::uint32_t>(SidebandStatus::kUnsupportedRequest));
+
+// The class starts with the die held in reset, as the register map has
+// the reset register come out of reset.
+static_assert((UCIE_LINK_DIE_RESET_AT_RESET & UCIE_LINK_DIE_RESET_ASSERTED) !=
+              0);
+
+// How wide UCIe's opcodes are: five bits of a sideband packet's header.
+constexpr std::uint32_t kOpcodeBits = 0x1F;
+
+// The register map's number for a state of link training.
+std::uint32_t CodeOf(LinkTrainingState state) {
+  switch (state) {
+    case LinkTrainingState::kReset:
+      return UCIE_LINK_TRAINING_STATE_RESET;
+    case LinkTrainingState::kSbinit:
+      return UCIE_LINK_TRAINING_STATE_SBINIT;
+    case LinkTrainingState::kMbinit:
+      return UCIE_LINK_TRAINING_STATE_MBINIT;
+    case LinkTrainingState::kMbtrain:
+      return UCIE_LINK_TRAINING_STATE_MBTRAIN;
+    case LinkTrainingState::kLinkinit:
+      return UCIE_LINK_TRAINING_STATE_LINKINIT;
+    case LinkTrainingState::kActive:
+      return UCIE_LINK_TRAINING_STATE_ACTIVE;
+    case LinkTrainingState::kTrainError:
+      return UCIE_LINK_TRAINING_STATE_TRAIN_ERROR;
+  }
+  return UCIE_LINK_TRAINING_STATE_TRAIN_ERROR;
+}
 
 bool IsUp(LinkTrainingState state) {
   return state == LinkTrainingState::kActive;
@@ -40,7 +89,8 @@ bool IsTraining(LinkTrainingState state) {
 
 bool UcieLinkRegisters::ReadRegister(std::uint64_t offset,
                                      std::span<std::uint8_t> out) const {
-  if (out.size() != kRegisterBytes || offset > kSize - kRegisterBytes) {
+  if (out.size() != kRegisterBytes ||
+      offset > UCIE_LINK_SIZE - kRegisterBytes) {
     return false;
   }
   StoreLittleEndian(RegisterAt(offset), out);
@@ -49,7 +99,7 @@ bool UcieLinkRegisters::ReadRegister(std::uint64_t offset,
 
 bool UcieLinkRegisters::WriteRegister(std::uint64_t offset,
                                       std::span<const std::uint8_t> in) {
-  if (in.size() != kRegisterBytes || offset > kSize - kRegisterBytes) {
+  if (in.size() != kRegisterBytes || offset > UCIE_LINK_SIZE - kRegisterBytes) {
     return false;
   }
   return Set(offset, LoadLittleEndian<std::uint32_t>(in));
@@ -57,40 +107,36 @@ bool UcieLinkRegisters::WriteRegister(std::uint64_t offset,
 
 std::uint32_t UcieLinkRegisters::RegisterAt(std::uint64_t offset) const {
   switch (offset) {
-    case kExtendedCapabilityHeader:
-      // The capability's identifier, its version, and the offset of the
-      // next capability, of which there is none.
-      return kDvsecCapabilityId | (1U << 16);
-    case kDvsecHeader1:
-      // Whose capability it is, its revision, and how long it is.
-      return kUcieVendorId | (static_cast<std::uint32_t>(kSize) << 20);
-    case kDvsecHeader2:
-      // Which of the vendor's capabilities it is. UCIe's own number for
-      // the link DVSEC is not in public sources, so this is ours.
-      return 0x0001;
-    case kLinkStatusRegister:
+    // The three headers and the locator say what the capability is, and
+    // never change: each holds what the register map has it hold at reset.
+    case UCIE_LINK_EXTENDED_CAPABILITY_HEADER:
+      return UCIE_LINK_EXTENDED_CAPABILITY_HEADER_AT_RESET;
+    case UCIE_LINK_DVSEC_HEADER_1:
+      return UCIE_LINK_DVSEC_HEADER_1_AT_RESET;
+    case UCIE_LINK_DVSEC_HEADER_2:
+      return UCIE_LINK_DVSEC_HEADER_2_AT_RESET;
+    case UCIE_LINK_STATUS:
       return LinkStatus();
-    case kNotification:
-      return status_changed_interrupt_ ? kStatusChangedInterrupt : 0;
-    case kRegisterLocator:
-      // Where the block of the link's own registers is, and which block
-      // it is. UCIe says a locator points at a block of registers; what
-      // one looks like is not in public sources, so this is ours: the
-      // offset from the start of the capability, and a block number.
-      return static_cast<std::uint32_t>(kLinkTrainingStateRegister << 8) | 1U;
-    case kLinkTrainingStateRegister:
-      return static_cast<std::uint32_t>(state_);
-    case kDieReset:
-      return reset_ ? 1U : 0U;
-    case kMailboxOpcode:
+    case UCIE_LINK_EVENT_NOTIFICATION:
+      return status_changed_interrupt_
+                 ? UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED
+                 : 0;
+    case UCIE_LINK_REGISTER_LOCATOR:
+      return UCIE_LINK_REGISTER_LOCATOR_AT_RESET;
+    case UCIE_LINK_TRAINING_STATE:
+      return CodeOf(state_);
+    case UCIE_LINK_DIE_RESET:
+      return reset_ ? UCIE_LINK_DIE_RESET_ASSERTED : 0U;
+    case UCIE_LINK_MAILBOX_OPCODE:
       return static_cast<std::uint32_t>(mailbox_.opcode);
-    case kMailboxAddress:
+    case UCIE_LINK_MAILBOX_ADDRESS:
       return mailbox_.address;
-    case kMailboxData:
+    case UCIE_LINK_MAILBOX_DATA:
       return answer_;
-    case kMailboxStatus:
-      return static_cast<std::uint32_t>(answer_status_) |
-             (mailbox_busy_ ? kMailboxBusy : 0);
+    case UCIE_LINK_MAILBOX_STATUS:
+      return (static_cast<std::uint32_t>(answer_status_)
+              << UCIE_LINK_MAILBOX_STATUS_CODE_SHIFT) |
+             (mailbox_busy_ ? UCIE_LINK_MAILBOX_STATUS_BUSY : 0);
     default:
       // Including link control, fault injection and the mailbox trigger,
       // which are actions and read back as nothing to do.
@@ -100,36 +146,38 @@ std::uint32_t UcieLinkRegisters::RegisterAt(std::uint64_t offset) const {
 
 bool UcieLinkRegisters::Set(std::uint64_t offset, std::uint32_t value) {
   switch (offset) {
-    case kLinkControl:
-      if ((value & kStartTraining) != 0) asked_.start_training = true;
-      if ((value & kRetrainLink) != 0) asked_.retrain = true;
+    case UCIE_LINK_CONTROL:
+      if ((value & UCIE_LINK_CONTROL_START_TRAINING) != 0)
+        asked_.start_training = true;
+      if ((value & UCIE_LINK_CONTROL_RETRAIN) != 0) asked_.retrain = true;
       return true;
-    case kLinkStatusRegister:
+    case UCIE_LINK_STATUS:
       // The bits that say something happened are cleared by writing a one
       // to them, so that firmware cannot lose one it has not seen.
-      if ((value & kLinkStatusChanged) != 0) status_changed_ = false;
-      if ((value & kDetectedUncorrectableFatal) != 0) fatal_ = false;
+      if ((value & UCIE_LINK_STATUS_CHANGED) != 0) status_changed_ = false;
+      if ((value & UCIE_LINK_STATUS_UNCORRECTABLE_FATAL) != 0) fatal_ = false;
       return true;
-    case kNotification:
-      status_changed_interrupt_ = (value & kStatusChangedInterrupt) != 0;
+    case UCIE_LINK_EVENT_NOTIFICATION:
+      status_changed_interrupt_ =
+          (value & UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED) != 0;
       return true;
-    case kDieReset:
-      reset_ = (value & 1U) != 0;
+    case UCIE_LINK_DIE_RESET:
+      reset_ = (value & UCIE_LINK_DIE_RESET_ASSERTED) != 0;
       return true;
-    case kFaultInjection:
-      if ((value & 1U) != 0) asked_.fault = true;
+    case UCIE_LINK_FAULT_INJECTION:
+      if ((value & UCIE_LINK_FAULT_INJECTION_BREAK) != 0) asked_.fault = true;
       return true;
-    case kMailboxOpcode:
-      mailbox_.opcode = static_cast<SidebandOpcode>(value & 0x1FU);
+    case UCIE_LINK_MAILBOX_OPCODE:
+      mailbox_.opcode = static_cast<SidebandOpcode>(value & kOpcodeBits);
       return true;
-    case kMailboxAddress:
+    case UCIE_LINK_MAILBOX_ADDRESS:
       mailbox_.address = value;
       return true;
-    case kMailboxData:
+    case UCIE_LINK_MAILBOX_DATA:
       mailbox_.data = value;
       return true;
-    case kMailboxTrigger:
-      if ((value & 1U) != 0) {
+    case UCIE_LINK_MAILBOX_TRIGGER:
+      if ((value & UCIE_LINK_MAILBOX_TRIGGER_GO) != 0) {
         asked_.mailbox = mailbox_;
         mailbox_busy_ = true;
       }
@@ -161,10 +209,10 @@ void UcieLinkRegisters::MailboxAnswered(SidebandStatus status,
 }
 
 std::uint32_t UcieLinkRegisters::LinkStatus() const {
-  return (IsUp(state_) ? kLinkUp : 0) |
-         (IsTraining(state_) ? kLinkTraining : 0) |
-         (status_changed_ ? kLinkStatusChanged : 0) |
-         (fatal_ ? kDetectedUncorrectableFatal : 0);
+  return (IsUp(state_) ? UCIE_LINK_STATUS_UP : 0) |
+         (IsTraining(state_) ? UCIE_LINK_STATUS_TRAINING : 0) |
+         (status_changed_ ? UCIE_LINK_STATUS_CHANGED : 0) |
+         (fatal_ ? UCIE_LINK_STATUS_UNCORRECTABLE_FATAL : 0);
 }
 
 bool UcieLinkRegisters::Interrupting() const {

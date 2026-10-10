@@ -29,71 +29,21 @@ struct MailboxRequest {
 // than in a configuration space: three header registers that say whose
 // capability it is, then link control, link status and the control over
 // what the link interrupts about, then a register locator that says where
-// a further block of registers is.
+// a further block of registers is. That block, and the sideband mailbox
+// after it, are ours.
 //
-//   0x00  extended capability header   0x1C  register locator
-//   0x04  DVSEC header 1 (vendor)      0x20  link training state
-//   0x08  DVSEC header 2 (id)          0x24  reset control
-//   0x10  link control                 0x28  fault injection
-//   0x14  link status                  0x40  the sideband mailbox
-//   0x18  link event notification
+// Where each register is, what its bits are and what it holds at reset
+// are in the link's register map, regs/ucie_link.rdl, and this class and
+// everything that drives it go by the names generated from that
+// (socpuppet/regs/ucie_link.h). docs/models/d2d-link.md has the table.
 //
-// UCIe's capability has a link capability register at 0x0C as well, which
-// says what the link can do. Nothing here reads one, so it is not
-// modelled: it reads as zero, as any register in the block that this model
-// has nothing for does.
-//
-// The block from 0x20 is ours: UCIe has a register locator and says the
-// capability's own registers are vendor-defined, so what is in it here is
-// what this model needs. So is the sideband mailbox's layout, which UCIe
-// has and whose fields are not in public sources.
-//
-// Every access is 32 bits wide. The registers themselves do nothing: what
-// firmware asks for by writing them is picked up with TakeCommands(), and
-// what the link is doing is put in with LinkIs(). D2dLinkLogic is what
-// joins the two.
+// Every access is 32 bits wide. A register inside the block that this
+// model has nothing for reads as zero. The registers themselves do
+// nothing: what firmware asks for by writing them is picked up with
+// TakeCommands(), and what the link is doing is put in with LinkIs().
+// D2dLinkLogic is what joins the two.
 class UcieLinkRegisters {
  public:
-  // How much room the block takes. A register inside it that this model
-  // has nothing for reads as zero.
-  static constexpr std::uint64_t kSize = 0x100;
-
-  // Where each register is. Firmware on this die, the other die's mailbox
-  // and the drivers above all go by these.
-  static constexpr std::uint64_t kExtendedCapabilityHeader = 0x00;
-  static constexpr std::uint64_t kDvsecHeader1 = 0x04;
-  static constexpr std::uint64_t kDvsecHeader2 = 0x08;
-  static constexpr std::uint64_t kLinkControl = 0x10;
-  static constexpr std::uint64_t kLinkStatusRegister = 0x14;
-  static constexpr std::uint64_t kNotification = 0x18;
-  static constexpr std::uint64_t kRegisterLocator = 0x1C;
-  // The block the locator points at, which is ours.
-  static constexpr std::uint64_t kLinkTrainingStateRegister = 0x20;
-  static constexpr std::uint64_t kDieReset = 0x24;
-  static constexpr std::uint64_t kFaultInjection = 0x28;
-  // The mailbox, also ours.
-  static constexpr std::uint64_t kMailboxOpcode = 0x40;
-  static constexpr std::uint64_t kMailboxAddress = 0x48;
-  static constexpr std::uint64_t kMailboxData = 0x50;
-  static constexpr std::uint64_t kMailboxTrigger = 0x58;
-  static constexpr std::uint64_t kMailboxStatus = 0x5C;
-
-  // Link control, which firmware writes. Both bits clear themselves: they
-  // are an action, not a setting.
-  static constexpr std::uint32_t kStartTraining = 1U << 0;
-  static constexpr std::uint32_t kRetrainLink = 1U << 1;
-  // Link status.
-  static constexpr std::uint32_t kLinkUp = 1U << 0;
-  static constexpr std::uint32_t kLinkTraining = 1U << 1;
-  static constexpr std::uint32_t kLinkStatusChanged = 1U << 2;
-  static constexpr std::uint32_t kDetectedUncorrectableFatal = 1U << 3;
-  // Link event notification.
-  static constexpr std::uint32_t kStatusChangedInterrupt = 1U << 0;
-  // The mailbox's status: how the last access turned out, and whether
-  // there is an access still waiting to be answered.
-  static constexpr std::uint32_t kMailboxStatusCode = 0x7;
-  static constexpr std::uint32_t kMailboxBusy = 1U << 8;
-
   // What firmware has asked for by writing to the registers, which it is
   // given only once.
   struct Commands {

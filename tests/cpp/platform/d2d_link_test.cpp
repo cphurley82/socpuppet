@@ -19,6 +19,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
+#include "socpuppet/regs/ucie_link.h"
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_watcher.h"
 #include "tests/cpp/support/recording_target.h"
@@ -27,8 +28,6 @@
 
 namespace socpuppet {
 namespace {
-
-using Registers = UcieLinkRegisters;
 
 // Where each die's bus has its own link registers, and where its window
 // onto the other die starts. The window is an identity map, as the board
@@ -120,7 +119,7 @@ class TwoDiesOnALink {
                     {"out0.base", 0},
                     {"out0.size", kWindowSize},
                     {"out1.base", kSideband},
-                    {"out1.size", Registers::kSize}});
+                    {"out1.size", UCIE_LINK_SIZE}});
     platform_->Add(die + ".link", "d2d_link_endpoint",
                    {{"latency_ns", kLatencyNs},
                     {"bytes_per_ns", kBytesPerNs},
@@ -243,8 +242,8 @@ TEST(WhenTheLinkComesUpAndTheInterruptIsEnabled, TheEndpointInterrupts) {
   bool interrupted = false;
 
   dies.OnTheDies([&](BusDriver& on_a) {
-    on_a.Write32(kSideband + Registers::kNotification,
-                 Registers::kStatusChangedInterrupt);
+    on_a.Write32(kSideband + UCIE_LINK_EVENT_NOTIFICATION,
+                 UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED);
     BringTheLinkUp(on_a, kSideband);
     interrupted = dies.IrqOn("a").WaitForLevel(true, BetweenLooks());
   });
@@ -257,11 +256,10 @@ TEST(WhenFirmwareClearsTheChangedBit, TheInterruptGoesAway) {
   bool still_interrupting = true;
 
   dies.OnTheDies([&](BusDriver& on_a) {
-    on_a.Write32(kSideband + Registers::kNotification,
-                 Registers::kStatusChangedInterrupt);
+    on_a.Write32(kSideband + UCIE_LINK_EVENT_NOTIFICATION,
+                 UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED);
     BringTheLinkUp(on_a, kSideband);
-    on_a.Write32(kSideband + Registers::kLinkStatusRegister,
-                 Registers::kLinkStatusChanged);
+    on_a.Write32(kSideband + UCIE_LINK_STATUS, UCIE_LINK_STATUS_CHANGED);
     still_interrupting = !dies.IrqOn("a").WaitForLevel(false, BetweenLooks());
   });
 
@@ -274,7 +272,7 @@ TEST(WhenAFaultIsInjectedIntoATrainedLink, TheMainbandStopsCarrying) {
 
   dies.OnTheDies([&](BusDriver& on_a) {
     BringTheLinkUp(on_a, kSideband);
-    on_a.Write32(kSideband + Registers::kFaultInjection, 1);
+    on_a.Write32(kSideband + UCIE_LINK_FAULT_INJECTION, 1);
     WaitUntilTheLinkIsDown(on_a, kSideband);
     response = on_a.Write(kEarsOnTheOtherDie, SixtyFourBytes());
   });
@@ -288,9 +286,9 @@ TEST(WhenAFaultedLinkIsRetrained, TheMainbandCarriesAgain) {
 
   dies.OnTheDies([&](BusDriver& on_a) {
     BringTheLinkUp(on_a, kSideband);
-    on_a.Write32(kSideband + Registers::kFaultInjection, 1);
+    on_a.Write32(kSideband + UCIE_LINK_FAULT_INJECTION, 1);
     WaitUntilTheLinkIsDown(on_a, kSideband);
-    on_a.Write32(kSideband + Registers::kLinkControl, Registers::kRetrainLink);
+    on_a.Write32(kSideband + UCIE_LINK_CONTROL, UCIE_LINK_CONTROL_RETRAIN);
     WaitUntilTheLinkIsUp(on_a, kSideband);
     response = on_a.Write(kEarsOnTheOtherDie, SixtyFourBytes());
   });

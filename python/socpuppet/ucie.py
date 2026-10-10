@@ -1,13 +1,12 @@
-"""UCIe, as far as Python needs it: a link's registers and its sideband.
+"""UCIe's sideband, as far as Python needs it: the packets two ends send.
 
 🎓 UCIe (Universal Chiplet Interconnect Express) is the open standard for
 joining two dies in one package. socpuppet's `sp.D2dLink()` is modelled on
 it, from public sources only, and is not a compliant implementation.
 
-Two things here. The register block one end of the link shows the firmware
-on its die, which is UCIe's Link DVSEC and the blocks it points at, and
-the sideband packets the two ends send each other, so that a trace of a
-link can be read as a capture of its management traffic:
+Here are the sideband packets the two ends of a link send each other, so
+that a trace of a link can be read as a capture of its management
+traffic:
 
     for record in platform.trace:
         if not record.source.endswith("sideband_peer_initiator"):
@@ -17,10 +16,14 @@ link can be read as a capture of its management traffic:
         if packet is not None:
             print(record.time, packet.description())
 
-⚠️ The offsets and the packet layout are the same ones
-`socpuppet::UcieLinkRegisters` and `socpuppet::SidebandPacket` have in
-C++. Nothing checks that the two agree: what keeps them in step is that
-the manager stand-in (`sp.IoManager`) drives the real model through them.
+The register block one end of the link shows the firmware on its die is
+in `socpuppet.regs.ucie_link`, which is generated from the link's
+register map, as the model's own names for the registers are.
+
+⚠️ The packet layout is the one `socpuppet::SidebandPacket` has in C++.
+Nothing checks that the two agree: what keeps them in step is that the
+manager stand-in (`sp.IoManager`) drives the real model, and reads its
+packets back out of a trace.
 """
 
 from __future__ import annotations
@@ -28,38 +31,6 @@ from __future__ import annotations
 import dataclasses
 import struct
 from enum import IntEnum
-
-# ---- The link's register block, as its die's bus reaches it. The block
-# ---- has more in it than this (the capability's headers, a register
-# ---- locator, the training state); these are the ones something here
-# ---- drives, so these are the ones kept honest.
-#: Starting the link, and what it is doing.
-LINK_CONTROL = 0x10
-LINK_STATUS = 0x14
-LINK_EVENT_NOTIFICATION = 0x18
-#: In the block the register locator points at: the reset this end drives
-#: on its die, and a way to break the link on purpose.
-DIE_RESET = 0x24
-FAULT_INJECTION = 0x28
-#: The sideband mailbox, which reaches the other end's registers.
-MAILBOX_OPCODE = 0x40
-MAILBOX_ADDRESS = 0x48
-MAILBOX_DATA = 0x50
-MAILBOX_TRIGGER = 0x58
-MAILBOX_STATUS = 0x5C
-
-#: Link control. Both bits clear themselves: they are an action, not a
-#: setting.
-START_TRAINING = 1 << 0
-RETRAIN_LINK = 1 << 1
-#: Link status.
-LINK_UP = 1 << 0
-LINK_STATUS_CHANGED = 1 << 2
-#: Link event notification.
-STATUS_CHANGED_INTERRUPT = 1 << 0
-#: The mailbox's status: whether there is an access still waiting to be
-#: answered.
-MAILBOX_BUSY = 1 << 8
 
 
 class Opcode(IntEnum):

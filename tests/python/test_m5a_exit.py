@@ -17,6 +17,7 @@ from socpuppet.boards.io_manager import (
     one_round_trip,
     stand_in_manager,
 )
+from socpuppet.regs import ucie_link
 
 #: Longer than bring-up takes, by enough that a failure is a failure.
 LONG_ENOUGH = sp.ms(20)
@@ -84,7 +85,7 @@ class TestWhenTheManagerBoardRuns:
             when
             for when, packet in said
             if packet.opcode is ucie.Opcode.MEMORY_WRITE_32B
-            and packet.address == ucie.DIE_RESET
+            and packet.address == ucie_link.DIE_RESET
         )
         crossed = min(
             record.time

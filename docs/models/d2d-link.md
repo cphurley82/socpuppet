@@ -78,21 +78,31 @@ The sideband handshake, as a traced run shows it (`examples/io_manager_hello.py`
 
 ### The registers
 
-UCIe's Link DVSEC: a designated vendor-specific extended capability of the kind PCIe defines, at a fixed place in memory rather than in a configuration space. `socpuppet.ucie` has the same offsets for Python, and 🎭 [`sp.IoManager`](io-manager.md) is firmware that drives them.
+UCIe's Link DVSEC: a designated vendor-specific extended capability of the kind PCIe defines, at a fixed place in memory rather than in a configuration space. Each register is 32 bits wide. `socpuppet.regs.ucie_link` has the same names for Python, and 🎭 [`sp.IoManager`](io-manager.md) is firmware that drives them.
 
-| Offset | Register |
-|---|---|
-| 0x00 | Extended capability header: ID 0x0023, a vendor-specific capability. |
-| 0x04 | DVSEC header 1: vendor 0xD2DE, which is UCIe's. |
-| 0x08 | DVSEC header 2. ⚠️ Its id is ours: public sources do not give UCIe's. |
-| 0x10 | Link control: *start link training*, *retrain link*. Both clear themselves. |
-| 0x14 | Link status: up, training, status changed (write a one to clear), uncorrectable fatal detected. |
-| 0x18 | Link event notification: interrupt on a status change. |
-| 0x1C | Register locator: where the block below is. ⚠️ Its layout is ours. |
-| 0x20 | Which training state the link is in. ⚠️ The codes are ours. |
-| 0x24 | The reset this end drives on its die. One at power-on. |
-| 0x28 | Fault injection: write a one to break the link. |
-| 0x40.. | The sideband mailbox: opcode, address, data, trigger, status. ⚠️ Ours. |
+<!-- regs:ucie_link start -->
+
+| Offset | Name | Access | What it is |
+| --- | --- | --- | --- |
+| `0x00` | `EXTENDED_CAPABILITY_HEADER` | read | PCIe's extended capability header. At reset: `0x00010023`. Bits 15 to 0 `CAPABILITY_ID`: 0x0023, which says a designated vendor-specific capability. Bits 19 to 16 `VERSION`: The capability's version. Bits 31 to 20 `NEXT`: Where the next capability is. There is none. |
+| `0x04` | `DVSEC_HEADER_1` | read | DVSEC header 1: whose capability it is. At reset: `0x1000D2DE`. Bits 15 to 0 `VENDOR_ID`: 0xD2DE, which is the vendor number UCIe registered. Bits 19 to 16 `REVISION`: The capability's revision. Bits 31 to 20 `LENGTH`: How long the capability is, in bytes: the whole block. |
+| `0x08` | `DVSEC_HEADER_2` | read | DVSEC header 2: which of the vendor's capabilities it is. At reset: `0x00000001`. Bits 15 to 0 `DVSEC_ID`: ⚠️ Ours: public sources do not give UCIe's number for the link DVSEC. |
+| `0x10` | `CONTROL` | write | UCIe's link control. Both bits are an action, clear themselves, and read as zero. Bit 0 `START_TRAINING`: Start link training. Bit 1 `RETRAIN`: Retrain the link, from reset. |
+| `0x14` | `STATUS` | read, write | UCIe's link status. Bit 0 `UP` (read only): The link is up. Bit 1 `TRAINING` (read only): The link is being trained. Bit 2 `CHANGED` (write one to clear): The link has gone up or come down since this was cleared. Bit 3 `UNCORRECTABLE_FATAL` (write one to clear): The other die has reported an error nothing can be done about. |
+| `0x18` | `EVENT_NOTIFICATION` | read, write | UCIe's link event notification: what raises `irq`. Bit 0 `STATUS_CHANGED`: Interrupt while the status says the link has changed. |
+| `0x1C` | `REGISTER_LOCATOR` | read | The register locator: where the block of the link's own registers is. ⚠️ Its layout is ours. At reset: `0x00002001`. Bits 7 to 0 `BLOCK`: Which block it is. Bits 31 to 8 `OFFSET`: Where the block starts, from the start of the capability. |
+| `0x20` | `TRAINING_STATE` | read | Which training state the link is in. ⚠️ The numbers are ours. 0 `RESET`: Held in reset, as every link is for 4 ms after power-on. 1 `SBINIT`: The sideband is being brought up. 2 `MBINIT`: The mainband's parameters are being agreed. 3 `MBTRAIN`: The mainband is being trained. 4 `LINKINIT`: The two ends are agreeing that the link is theirs to use. 5 `ACTIVE`: The link is up, and carries the dies' traffic. 6 `TRAIN_ERROR`: Training failed, or the link was broken. Only a retrain leaves this state. |
+| `0x24` | `DIE_RESET` | read, write | The reset this end drives on its own die. At reset: `0x00000001`. Bit 0 `ASSERTED`: The die is held in reset. The other die lets it go by writing a zero here, through its mailbox. |
+| `0x28` | `FAULT_INJECTION` | write | A way to break the link on purpose. Reads as zero. Bit 0 `BREAK`: Write a one to break the link. |
+| `0x40` | `MAILBOX_OPCODE` | read, write | What the next access to the other end is to be. Only the low five bits are kept, which is how wide UCIe's opcodes are. 0 `MEMORY_READ_32B`: Read a register of the other end. 1 `MEMORY_WRITE_32B`: Write one. |
+| `0x48` | `MAILBOX_ADDRESS` | read, write | Which register of the other end: its offset in the block there. |
+| `0x50` | `MAILBOX_DATA` | read, write | What to write. Reads as what the last read brought back. |
+| `0x58` | `MAILBOX_TRIGGER` | write | Sends the access. Reads as zero. Bit 0 `GO`: Write a one to send it. |
+| `0x5C` | `MAILBOX_STATUS` | read | How the last access went, and whether one is still on its way. Bits 2 to 0 `CODE`: How it went. 0 `SUCCESS`: The other end did it. 2 `UNSUPPORTED_REQUEST`: There is no such register at the other end, or it cannot be written. Bit 8 `BUSY`: An access has been sent and not yet answered. |
+
+<!-- regs:ucie_link end -->
+
+UCIe's capability has a link capability register at `0x0C` as well, which nothing here reads, so it is not modelled. It reads as zero, as every offset in the block does that has no register.
 
 The **mailbox** is how firmware reaches the other end's registers: fill in an opcode (`MemoryRead_32b` or `MemoryWrite_32b`), an address in the other end's block and the data, write a one to the trigger, and watch the status until it is no longer busy. That is how a manager die lets a compute die go, by writing a zero to the other end's register at 0x24.
 

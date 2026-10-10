@@ -8,6 +8,7 @@
 
 #include "socpuppet/core/ucie_link_registers.h"
 #include "socpuppet/core/ucie_sideband.h"
+#include "socpuppet/regs/ucie_link.h"
 #include "tests/cpp/support/bus_driver.h"
 
 // Driving a die-to-die link from a die's bus, the way its firmware does.
@@ -27,14 +28,12 @@ inline sc_core::sc_time BetweenLooks() {
 
 // Asks the link to train, which is all firmware has to do to start it.
 inline void StartTrainingTheLink(BusDriver& bus, std::uint64_t base) {
-  bus.Write32(base + socpuppet::UcieLinkRegisters::kLinkControl,
-              socpuppet::UcieLinkRegisters::kStartTraining);
+  bus.Write32(base + UCIE_LINK_CONTROL, UCIE_LINK_CONTROL_START_TRAINING);
 }
 
 // Whether the link says it is up.
 inline bool TheLinkIsUp(BusDriver& bus, std::uint64_t base) {
-  return (bus.Read32(base + socpuppet::UcieLinkRegisters::kLinkStatusRegister) &
-          socpuppet::UcieLinkRegisters::kLinkUp) != 0;
+  return (bus.Read32(base + UCIE_LINK_STATUS) & UCIE_LINK_STATUS_UP) != 0;
 }
 
 // Waits until the link says it is up, as firmware polling its status
@@ -74,16 +73,15 @@ inline bool BringTheLinkUp(BusDriver& bus, std::uint64_t base) {
 inline void AskTheOtherDie(BusDriver& bus, std::uint64_t base,
                            socpuppet::SidebandOpcode opcode,
                            std::uint32_t address, std::uint32_t data = 0) {
-  using Registers = socpuppet::UcieLinkRegisters;
   constexpr int kEnoughDeltaCycles = 10;
-  bus.Write32(base + Registers::kMailboxOpcode,
+  bus.Write32(base + UCIE_LINK_MAILBOX_OPCODE,
               static_cast<std::uint32_t>(opcode));
-  bus.Write32(base + Registers::kMailboxAddress, address);
-  bus.Write32(base + Registers::kMailboxData, data);
-  bus.Write32(base + Registers::kMailboxTrigger, 1);
+  bus.Write32(base + UCIE_LINK_MAILBOX_ADDRESS, address);
+  bus.Write32(base + UCIE_LINK_MAILBOX_DATA, data);
+  bus.Write32(base + UCIE_LINK_MAILBOX_TRIGGER, 1);
   for (int look = 0; look < kEnoughDeltaCycles; ++look) {
-    if ((bus.Read32(base + Registers::kMailboxStatus) &
-         Registers::kMailboxBusy) == 0) {
+    if ((bus.Read32(base + UCIE_LINK_MAILBOX_STATUS) &
+         UCIE_LINK_MAILBOX_STATUS_BUSY) == 0) {
       return;
     }
     bus.WaitFor(sc_core::SC_ZERO_TIME);
@@ -94,9 +92,8 @@ inline void AskTheOtherDie(BusDriver& bus, std::uint64_t base,
 // Lets the other die out of reset, which is a write of zero to the reset
 // register at the other end of the link.
 inline void LetTheOtherDieGo(BusDriver& bus, std::uint64_t base) {
-  AskTheOtherDie(
-      bus, base, socpuppet::SidebandOpcode::kMemoryWrite32b,
-      static_cast<std::uint32_t>(socpuppet::UcieLinkRegisters::kDieReset));
+  AskTheOtherDie(bus, base, socpuppet::SidebandOpcode::kMemoryWrite32b,
+                 static_cast<std::uint32_t>(UCIE_LINK_DIE_RESET));
 }
 
 #endif  // TESTS_CPP_SUPPORT_UCIE_LINK_DRIVING_H_

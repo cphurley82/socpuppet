@@ -9,7 +9,8 @@ target_sources(socpuppet_regs INTERFACE
     ${_socpuppet_regs}/socpuppet/regs/command_device.h
     ${_socpuppet_regs}/socpuppet/regs/dma_engine.h
     ${_socpuppet_regs}/socpuppet/regs/flash_controller.h
-    ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h)
+    ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h
+    ${_socpuppet_regs}/socpuppet/regs/ucie_link.h)
 
 # core/: plain C++ with no simulator underneath. Linking only this target is
 # what keeps SystemC out of the kernel-free unit tests.
@@ -89,6 +90,7 @@ target_sources(socpuppet_ucie_link PUBLIC
     core/ucie_link_registers.h
     core/ucie_link_state.h
     core/ucie_sideband.h)
+target_link_libraries(socpuppet_ucie_link PRIVATE socpuppet_regs)
 socpuppet_dev_checks(socpuppet_ucie_link)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ucie_link)
 

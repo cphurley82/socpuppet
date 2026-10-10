@@ -177,7 +177,7 @@ def main():
         blocks = [
             block for file in args.files if (block := read(file)) is not None
         ]
-        for problem in misplaced(blocks):
+        for problem in (*misplaced(blocks), *named_twice(blocks)):
             raise Refused(problem)
         wanted = generated_from(blocks)
     except RDLCompileError:
@@ -327,6 +327,27 @@ def misplaced(blocks):
                         )
 
 
+def named_twice(blocks):
+    """Yield what is wrong with each name a block would give two things.
+
+    A generated name is a register's, with a field's or a number's after
+    it, so a register can be called what another register's field comes
+    out as.
+    """
+    for block in blocks:
+        seen = set()
+        for constants in paragraphs(block):
+            for constant in constants:
+                if constant.name in seen:
+                    yield (
+                        f"{block.source}: two things would be called "
+                        f"{constant.name} in what is generated. A name is a "
+                        "register's, then a field's or a number's, so call "
+                        "one of the registers or fields something else."
+                    )
+                seen.add(constant.name)
+
+
 def said(description):
     """A description on one line, however the file laid it out."""
     return None if description is None else " ".join(description.split())
@@ -361,7 +382,7 @@ def paragraphs(block):
         if register.reset:
             constants.append(
                 Constant(
-                    f"{register.name}_RESET",
+                    f"{register.name}_AT_RESET",
                     None,
                     hexadecimal(register.reset, register.width // 4),
                 )
