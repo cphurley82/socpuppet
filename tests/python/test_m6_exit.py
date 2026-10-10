@@ -28,18 +28,32 @@ VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 LIMIT = sp.ms(2000)
 
 
-@pytest.fixture(params=["a script for the SSD's firmware"])
-def host_with_the_ssd(firmware):
-    """Builds the host with the SSD, with Zephyr's disk test loaded.
+#: What is in the SSD's CPU's place.
+A_SCRIPT = "a script for the SSD's firmware"
+ZEPHYR = "Zephyr for the SSD's firmware"
 
-    🎭 The SSD's firmware is the Python stand-in, in its CPU's place.
+
+@pytest.fixture(params=[A_SCRIPT, ZEPHYR])
+def host_with_the_ssd(request, firmware):
+    """Builds the host with the SSD, with every image loaded.
+
+    The host's image is Zephyr's disk test. Every test that asks for this
+    runs twice: once with 🎭 the Python stand-in for the SSD's firmware,
+    in its CPU's place, and once with the real thing, the Zephyr
+    application in firmware/ssd on the SSD's own CPU. A test of what only
+    the real thing does asks for that one alone, with `only_with_zephyr`.
     """
     host_image = firmware("disk_access_socpuppet_host.elf")
+    ssd_image = (
+        firmware("ssd_socpuppet_ssd.elf") if request.param == ZEPHYR else None
+    )
 
     def build(blocks):
         board = host(
             drive_blocks=blocks,
-            drive=functools.partial(
+            drive=add_ssd
+            if ssd_image
+            else functools.partial(
                 add_ssd, firmware=stand_in_firmware().script
             ),
         )
@@ -47,9 +61,16 @@ def host_with_the_ssd(firmware):
         # With two bus masters, the platform has to be told whose
         # firmware an image is.
         board.platform.load_elf(host_image, via=board.cpu.socket)
+        if ssd_image:
+            board.platform.load_elf(ssd_image, via=board.drive.ssd.cpu.socket)
         return board
 
     return build
+
+
+only_with_zephyr = pytest.mark.parametrize(
+    "host_with_the_ssd", [ZEPHYR], indirect=True
+)
 
 
 @pytest.mark.platform
@@ -58,19 +79,47 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
         # 2 MiB, as in M3b.
         board = host_with_the_ssd(blocks=4096)
 
-        gave_a_verdict = board.platform.run_until(
-            lambda: any(each in board.uart.output for each in VERDICTS),
-            timeout=LIMIT,
-        )
+        run_to_a_verdict(board)
 
-        assert gave_a_verdict, no_verdict(board)
         assert "PASS - [disk_driver.test_read]" in board.uart.output
         assert "PASS - [disk_driver.test_write]" in board.uart.output
 
+    @only_with_zephyr
+    def test_each_firmware_prints_on_its_own_console(self, host_with_the_ssd):
+        board = host_with_the_ssd(blocks=4096)
+        ssds_console = board.drive.ssd.cpu_kit.uart
+
+        run_to_a_verdict(board)
+
+        assert "socpuppet SSD firmware" in ssds_console.output
+        assert "socpuppet SSD firmware" not in board.uart.output
+        assert "disk_driver" in board.uart.output
+        assert "disk_driver" not in ssds_console.output
+
+
+def run_to_a_verdict(board):
+    """Run until the host's firmware says how its tests went."""
+    gave_a_verdict = board.platform.run_until(
+        lambda: any(each in board.uart.output for each in VERDICTS),
+        timeout=LIMIT,
+    )
+    assert gave_a_verdict, no_verdict(board)
+
 
 def no_verdict(board):
-    """What to say when the host's firmware never finished."""
+    """What to say when the host's firmware never finished.
+
+    The SSD's console is the first place to look: a host that waits for
+    ever is most often waiting for the SSD.
+    """
+    ssd = board.drive.ssd
     return (
         "The host's firmware gave no verdict in 2 s. It printed:\n"
-        f"{board.uart.output or '(nothing)'}"
+        f"{board.uart.output or '(nothing)'}\n"
+        "And the SSD's firmware printed:\n"
+        + (
+            ssd.cpu_kit.uart.output or "(nothing)"
+            if ssd.cpu_kit
+            else "(nothing: a script has no console)"
+        )
     )
