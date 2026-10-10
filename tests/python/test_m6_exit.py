@@ -19,6 +19,8 @@ import socpuppet as sp
 from disk_access import IMAGE, run_to_a_verdict
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
+from ssd_zephyr_firmware import BANNER
+from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 #: What is in the SSD's CPU's place.
 A_SCRIPT = "a script for the SSD's firmware"
@@ -36,9 +38,7 @@ def host_with_the_ssd(request, firmware):
     the real thing does asks for that one alone, with `only_with_zephyr`.
     """
     host_image = firmware(IMAGE)
-    ssd_image = (
-        firmware("ssd_socpuppet_ssd.elf") if request.param == ZEPHYR else None
-    )
+    ssd_image = firmware(SSD_IMAGE) if request.param == ZEPHYR else None
 
     def build(blocks):
         board = host(
@@ -83,8 +83,8 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
 
         run_to_a_verdict(board)
 
-        assert "socpuppet SSD firmware" in ssds_console.output
-        assert "socpuppet SSD firmware" not in board.uart.output
+        assert BANNER in ssds_console.output
+        assert BANNER not in board.uart.output
         assert "disk_driver" in board.uart.output
         assert "disk_driver" not in ssds_console.output
 

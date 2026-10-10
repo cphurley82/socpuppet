@@ -19,6 +19,8 @@ from socpuppet.boards.cpu_kit import (
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import FLASH_BASE, ssd
 from socpuppet.regs import flash_controller
+from ssd_zephyr_firmware import BANNER
+from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512
@@ -32,9 +34,7 @@ def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
     """
     board = ssd(host=idle_host, blocks=blocks)
     board.platform.build()
-    board.platform.load_elf(
-        firmware("ssd_socpuppet_ssd.elf"), via=board.ssd.cpu.socket
-    )
+    board.platform.load_elf(firmware(SSD_IMAGE), via=board.ssd.cpu.socket)
     console = board.ssd.cpu_kit.uart
     # The firmware starts by making an empty table of the drive's pages,
     # which takes it about half a microsecond of simulated time a page:
@@ -51,7 +51,7 @@ def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
 class TestWhenTheSsdsFirmwareStarts:
     def test_it_says_what_drive_it_found(self, firmware):
         # 512 blocks of 512 bytes are 64 NAND pages of 4 KiB.
-        banner = "socpuppet SSD firmware: a drive of 64 pages of 4096 bytes\r\n"
+        banner = f"{BANNER} 64 pages of 4096 bytes\r\n"
 
         assert banner in console_of_an_ssd(firmware, blocks=512, until=banner)
 
@@ -129,7 +129,7 @@ def console_with_a_flash_controller_that_says(registers, firmware):
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
     platform.build()
-    platform.load_elf(firmware("ssd_socpuppet_ssd.elf"))
+    platform.load_elf(firmware(SSD_IMAGE))
     for offset, value in registers.items():
         platform.poke32(FLASH_BASE + offset, value)
     # The firmware gives a device a tenth of a second of simulated time to

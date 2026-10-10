@@ -36,6 +36,7 @@ from socpuppet.boards.scripted_host import (
     bring_up_the_drive,
 )
 from socpuppet.boards.ssd import add_ssd, ssd
+from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 BLOCKS = 1024
 # Where the host has the second root complex's two windows: after the
@@ -66,7 +67,7 @@ def host_and_ssd(script, image):
 @pytest.fixture
 def image(firmware):
     """The SSD's firmware: the Zephyr application in firmware/ssd."""
-    return firmware("ssd_socpuppet_ssd.elf")
+    return firmware(SSD_IMAGE)
 
 
 @pytest.mark.platform

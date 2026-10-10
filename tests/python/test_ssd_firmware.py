@@ -25,6 +25,7 @@ from ssd_on_a_bus import (
     RAM_SIZE,
     host_with_an_ssd,
 )
+from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 # How many I/O queue pairs the SSD's frontend has, which its firmware
 # reads from it (docs/models/nvme-frontend.md).
@@ -57,9 +58,7 @@ def run_on_an_ssd(request, firmware):
     sees has to be the same.
     """
     image = (
-        firmware("ssd_socpuppet_ssd.elf")
-        if request.param == "Zephyr for firmware"
-        else None
+        firmware(SSD_IMAGE) if request.param == "Zephyr for firmware" else None
     )
 
     def run(script, blocks=BLOCKS):

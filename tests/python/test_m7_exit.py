@@ -34,6 +34,7 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
+from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 GREETING = "Hello World! socpuppet_host"
 
@@ -136,7 +137,7 @@ def host_across_the_link(request, firmware):
     board.platform.load_elf(firmware(IMAGE), via=board.cpu.socket)
     if request.param == THE_SSD_WITH_ZEPHYR:
         board.platform.load_elf(
-            firmware("ssd_socpuppet_ssd.elf"), via=board.drive.ssd.cpu.socket
+            firmware(SSD_IMAGE), via=board.drive.ssd.cpu.socket
         )
     return board
 
