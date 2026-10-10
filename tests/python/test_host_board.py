@@ -16,7 +16,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
 )
-from socpuppet.boards.io_manager import add_manager, stand_in_manager
+from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from socpuppet.components import MachineTimer
 from zephyr_module import ZEPHYR_MODULE, clock_rate

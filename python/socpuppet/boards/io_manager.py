@@ -32,7 +32,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
-from socpuppet.boards.cpu_kit import CpuKit, add_cpu_kit
+from socpuppet.boards.manager import Manager, add_manager, stand_in_manager
 from socpuppet.components import (
     D2dLink,
     Memory,
@@ -40,22 +40,16 @@ from socpuppet.components import (
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.io_manager import IoManager
 from socpuppet.ops import Steps, expect32, write32
 from socpuppet.placed import Placed, PlacedRouter
-from socpuppet.platform import Group, Link, Platform
+from socpuppet.platform import Link, Platform
 from socpuppet.time import ms
 
-#: Where things are on the IO die, at the addresses the SSD board uses for
-#: the same kinds of thing: the link's registers where the SSD has its
-#: frontend's, so that both boards can share the SoC `socpuppet_rv32`.
-LINK_BASE = 0x1001_0000
-#: ⚠️ The scratch has to stay above the manager's SRAM (0x2000_0000): a
-#: devicetree names the lower of two memories as the firmware's own.
+#: The scratch memory the compute die reaches across the link.
+#: ⚠️ It has to stay above the manager's SRAM (0x2000_0000): a devicetree
+#: names the lower of two memories as the firmware's own.
 SCRATCH_BASE = 0x3000_0000
 SCRATCH_SIZE = 0x1000
-#: Which of the interrupt controller's sources the link's line goes to.
-LINK_SOURCE = 1
 #: The compute die's own memory, and so the top of its window onto the IO
 #: die: everything below this address is the other die's.
 RAM_BASE = 0x8000_0000
@@ -68,9 +62,11 @@ class IoManagerBoard(NamedTuple):
     """The board, and the parts of it a test or a script wants."""
 
     platform: Platform
-    #: The IO die's CPU, or 🎭 the script in its place. Firmware is loaded
-    #: through it: `platform.load_elf(file, via=board.manager.socket)`.
-    manager: Placed
+    #: The IO die's manager: `manager.cpu` is its CPU, or 🎭 the script in
+    #: its place, and `manager.cpu_kit` what a real CPU has around it.
+    #: Firmware is loaded through the CPU:
+    #: `platform.load_elf(file, via=board.manager.cpu.socket)`.
+    manager: Manager
     #: 🎭 The compute die's stand-in, held in reset until the link is up.
     compute: Placed
     #: The link: `link.a` is the compute die's end, `link.b` the IO die's.
@@ -78,73 +74,6 @@ class IoManagerBoard(NamedTuple):
     #: The IO die's bus, which the manager reaches everything through and
     #: the compute die reaches across the link.
     bus: PlacedRouter
-    #: What a real CPU has around it. None when a script is in its place.
-    cpu_kit: CpuKit | None = None
-
-
-class Manager(NamedTuple):
-    """The IO die's manager, as `add_manager` describes it."""
-
-    #: The manager's CPU, or 🎭 the script in its place. Firmware is
-    #: loaded through it: `platform.load_elf(file, via=manager.cpu.socket)`.
-    cpu: Placed
-    #: What a real CPU has around it. None when a script is in its place.
-    cpu_kit: CpuKit | None = None
-
-
-def stand_in_manager() -> IoManager:
-    """🎭 The manager stand-in, told where this board's link registers are.
-
-    Its `script` goes in the IO die's CPU slot:
-    `io_manager(..., manager=stand_in_manager().script)`.
-    """
-    return IoManager(link=LINK_BASE)
-
-
-def add_manager(
-    platform: Platform,
-    place: Platform | Group,
-    bus: PlacedRouter,
-    *,
-    link_end: Placed,
-    script: Script | None = None,
-    gdb_port: int = 0,
-) -> Manager:
-    """Put the IO die's manager on `bus`, with the link's registers.
-
-    `link_end` is this die's end of the die-to-die link the manager
-    brings up. Its registers go on `bus` at `LINK_BASE`, and its interrupt
-    line goes to the manager.
-
-    With no `script` the manager is a 32-bit CPU with the usual kit around
-    it, and the firmware is loaded into it. `gdb_port` is where a debugger
-    can attach to it. 🎭 With a `script`, that is in the CPU's place and
-    there is no kit: `add_manager(..., script=stand_in_manager().script)`.
-    """
-    if script is not None and gdb_port:
-        raise ValueError(
-            f"gdb_port={gdb_port} was asked for, and a debugger attaches to "
-            "a CPU. With a script standing in for it the manager has none. "
-            "Leave out the script for a manager with a CPU, or leave out "
-            "`gdb_port`."
-        )
-    bus.map(link_end.sideband, base=LINK_BASE)
-    cpu_kit = None
-    if script is None:
-        cpu, cpu_kit = add_cpu_kit(
-            platform,
-            place,
-            bus,
-            sources={LINK_SOURCE: link_end.irq},
-            gdb_port=gdb_port,
-        )
-    else:
-        # 🎭 A script has one interrupt input, and the link is the only
-        # thing a manager has a line from, so it goes straight to it.
-        cpu = place.add("cpu", ScriptedBusMaster(script=script))
-        platform.connect(link_end.irq, cpu.irq)
-    platform.connect(cpu.socket, bus.target)
-    return Manager(cpu, cpu_kit)
 
 
 def io_manager(
@@ -195,11 +124,10 @@ def io_manager(
 
     return IoManagerBoard(
         platform=platform,
-        manager=placed_manager.cpu,
+        manager=placed_manager,
         compute=compute_cpu,
         link=link,
         bus=bus,
-        cpu_kit=placed_manager.cpu_kit,
     )
 
 
@@ -225,7 +153,7 @@ if __name__ == "__main__":
     board.platform.build()
     reached = board.platform.run_until(
         lambda: (
-            board.platform.peek32(SCRATCH_BASE, via=board.manager.socket)
+            board.platform.peek32(SCRATCH_BASE, via=board.manager.cpu.socket)
             == HELLO
         ),
         timeout=ms(20),

@@ -301,10 +301,10 @@ from socpuppet.boards.io_manager import io_manager, one_round_trip
 
 board = io_manager(compute=one_round_trip)
 board.platform.build()
-board.platform.load_elf("build/zephyr/zephyr.elf", via=board.manager.socket)
+board.platform.load_elf("build/zephyr/zephyr.elf", via=board.manager.cpu.socket)
 
 board.platform.run(sp.ms(100))
-print(board.cpu_kit.uart.output)
+print(board.manager.cpu_kit.uart.output)
 ```
 
 `hello_world` boots and trains nothing, so the compute die never runs. Firmware that does the job is [`firmware/iomgr`](../firmware/iomgr/README.md), which is short enough to read whole:

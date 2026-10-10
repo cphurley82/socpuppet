@@ -14,11 +14,11 @@ import pytest
 import socpuppet as sp
 from socpuppet.boards.io_manager import (
     HELLO,
-    LINK_BASE,
     SCRATCH_BASE,
     io_manager,
     one_round_trip,
 )
+from socpuppet.boards.manager import LINK_BASE
 from socpuppet.ops import read32, wait, write32
 from socpuppet.regs import ucie_link
 
@@ -82,14 +82,14 @@ def a_manager_running_its_firmware(
         )
         board.platform.connect(prober.socket, board.bus.add_input())
     board.platform.build()
-    board.platform.load_elf(firmware(IMAGE), via=board.manager.socket)
+    board.platform.load_elf(firmware(IMAGE), via=board.manager.cpu.socket)
     return board
 
 
 def console_of(board):
     """The manager's console, which is where its firmware prints."""
-    assert board.cpu_kit is not None
-    return board.cpu_kit.uart
+    assert board.manager.cpu_kit is not None
+    return board.manager.cpu_kit.uart
 
 
 def what_the_manager_said(console):
@@ -109,7 +109,7 @@ def what_the_manager_said_after(line, console):
 
 def scratch_holds(board, word):
     """Whether the IO die's scratch memory has `word` in it."""
-    seen = board.platform.peek32(SCRATCH_BASE, via=board.manager.socket)
+    seen = board.platform.peek32(SCRATCH_BASE, via=board.manager.cpu.socket)
     return seen == word
 
 

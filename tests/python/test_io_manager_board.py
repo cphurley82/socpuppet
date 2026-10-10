@@ -9,13 +9,8 @@ from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import io_manager as boards_io_manager
 from socpuppet.boards.cpu_kit import SRAM_BASE
-from socpuppet.boards.io_manager import (
-    LINK_SOURCE,
-    RAM_BASE,
-    SCRATCH_BASE,
-    io_manager,
-    stand_in_manager,
-)
+from socpuppet.boards.io_manager import RAM_BASE, SCRATCH_BASE, io_manager
+from socpuppet.boards.manager import LINK_SOURCE, stand_in_manager
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 IOMGR_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_iomgr"
@@ -56,7 +51,9 @@ class TestWhenTheBoardIsBuilt:
         board = a_board_with_a_scripted_manager()
         board.platform.build()
 
-        board.platform.poke32(SCRATCH_BASE, 0x5EED, via=board.manager.socket)
+        board.platform.poke32(
+            SCRATCH_BASE, 0x5EED, via=board.manager.cpu.socket
+        )
 
         assert (
             board.platform.peek32(SCRATCH_BASE, via=board.compute.socket)
@@ -72,14 +69,14 @@ class TestWhenTheBoardIsBuilt:
         # The window onto the IO die stops below the compute die's memory,
         # so the manager's bus has nothing at that address at all.
         with pytest.raises(LookupError):
-            board.platform.peek32(RAM_BASE, via=board.manager.socket)
+            board.platform.peek32(RAM_BASE, via=board.manager.cpu.socket)
 
 
 class TestWhenTheManagerIsARealCpu:
     def test_it_is_a_32_bit_core_that_starts_in_the_sram(self):
         board = io_manager(compute=nothing)
 
-        assert board.manager.component.parameters == {
+        assert board.manager.cpu.component.parameters == {
             "xlen": 32,
             "reset_vector": SRAM_BASE,
             "gdb_port": 0,
@@ -88,7 +85,7 @@ class TestWhenTheManagerIsARealCpu:
     def test_it_has_the_kit_every_socpuppet_cpu_has(self):
         board = io_manager(compute=nothing)
 
-        assert board.cpu_kit is not None
+        assert board.manager.cpu_kit is not None
 
     def test_the_links_line_is_on_a_source_of_its_interrupt_controller(self):
         board = io_manager(compute=nothing)
@@ -123,7 +120,7 @@ class TestTheZephyrBoardForTheManager:
         assert (IOMGR_BOARD / "socpuppet_iomgr.dts").read_text() == printed
 
     def test_its_clock_rate_is_the_rate_the_managers_timer_counts_at(self):
-        kit = io_manager(compute=nothing).cpu_kit
+        kit = io_manager(compute=nothing).manager.cpu_kit
         assert kit is not None
 
         assert clock_rate() == kit.timer.component.parameters["frequency_hz"]

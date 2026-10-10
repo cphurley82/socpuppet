@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "python"))
 
 from socpuppet.address_map import format_address, format_size  # noqa: E402
-from socpuppet.boards import host, io_manager, ssd  # noqa: E402
+from socpuppet.boards import host, io_manager, manager, ssd  # noqa: E402
 
 
 def main():
@@ -67,7 +67,7 @@ def tables():
     # manager's with nothing of a CPU's in it.
     with_a_manager = host.host(
         manager=functools.partial(
-            io_manager.add_manager, script=io_manager.stand_in_manager().script
+            manager.add_manager, script=manager.stand_in_manager().script
         )
     ).platform
     ssd_board = ssd.platform

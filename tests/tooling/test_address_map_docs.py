@@ -7,6 +7,7 @@ from pathlib import Path
 from socpuppet.address_map import format_address, format_size
 from socpuppet.boards import host as host_board
 from socpuppet.boards import io_manager as io_manager_board
+from socpuppet.boards import manager as manager_board
 from socpuppet.boards import ssd as ssd_board
 
 TOOL = Path(__file__).resolve().parents[2] / "tools" / "address_map_docs.py"
@@ -70,7 +71,7 @@ def test_an_end_of_a_link_has_the_links_page_for_its_model(tmp_path):
 
     address_map_docs("write", page)
 
-    row = cells(page, starting=io_manager_board.LINK_BASE)
+    row = cells(page, starting=manager_board.LINK_BASE)
     assert row["Its model"].endswith("](models/d2d-link.md)")
 
 

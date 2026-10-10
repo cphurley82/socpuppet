@@ -75,7 +75,7 @@ from socpuppet.boards.drive import (
     BehavioralDrive,
     add_behavioral_drive,
 )
-from socpuppet.boards.io_manager import Manager
+from socpuppet.boards.manager import Manager
 from socpuppet.components import (
     D2dLink,
     DbtRiseCpu,
@@ -148,7 +148,7 @@ class AddDrive[Drive: PcieDrive](Protocol):
 class AddManager(Protocol):
     """A function that describes the IO die's manager.
 
-    `socpuppet.boards.io_manager.add_manager` is one, and with a `script`
+    `socpuppet.boards.manager.add_manager` is one, and with a `script`
     filled in it is another. Which of them a host is given is how much of
     a manager it has.
     """
@@ -234,7 +234,7 @@ def host(
     whose end holds the host's CPU in reset until the manager has trained
     the link and let it go. 🎭 With none the link is the pass-through
     stand-in and the CPU starts at once. `add_manager`, from
-    `socpuppet.boards.io_manager`, is that function, and with
+    `socpuppet.boards.manager`, is that function, and with
     `functools.partial(add_manager, script=stand_in_manager().script)`
     the manager is 🎭 a script. ⚠️ A host with a manager has two bus
     masters, so say whose: `platform.load_elf(file, via=board.cpu.socket)`.

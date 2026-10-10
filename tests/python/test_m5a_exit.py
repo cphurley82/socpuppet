@@ -15,8 +15,8 @@ from socpuppet.boards.io_manager import (
     SCRATCH_BASE,
     io_manager,
     one_round_trip,
-    stand_in_manager,
 )
+from socpuppet.boards.manager import stand_in_manager
 from socpuppet.regs import ucie_link
 
 #: Longer than bring-up takes, by enough that a failure is a failure.
@@ -38,7 +38,7 @@ def until_the_round_trip_has_landed(board):
     """Runs until the compute die's word is in the IO die's scratch."""
     return board.platform.run_until(
         lambda: (
-            board.platform.peek32(SCRATCH_BASE, via=board.manager.socket)
+            board.platform.peek32(SCRATCH_BASE, via=board.manager.cpu.socket)
             == HELLO
         ),
         timeout=LONG_ENOUGH,

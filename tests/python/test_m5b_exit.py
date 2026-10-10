@@ -29,10 +29,10 @@ class TestWhenZephyrsHelloWorldBootsOnTheManager:
         board.platform.build()
         board.platform.load_elf(
             firmware("hello_world_socpuppet_iomgr.elf"),
-            via=board.manager.socket,
+            via=board.manager.cpu.socket,
         )
-        assert board.cpu_kit is not None
-        console = board.cpu_kit.uart
+        assert board.manager.cpu_kit is not None
+        console = board.manager.cpu_kit.uart
         greeting = "Hello World! socpuppet_iomgr/socpuppet_rv32"
 
         # The greeting comes within a few milliseconds of simulated time.
