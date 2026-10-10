@@ -175,6 +175,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: nothing to delete.
 
+### A GDB port that cannot be had ends the build with no word of which
+
+- **Where**: `src/iss/debugger/server.h`, the constructor of `server<SESSION>`, which makes its `acceptor` on the port it was given. It is reached from `core_complex::before_end_of_elaboration`.
+- **What is wrong**: if the port is taken, the acceptor's constructor throws Boost's own error, "bind: Address already in use", with a file and a line of Boost's and neither the core's name nor the port's number. Under SystemC that is the end of elaboration, and the kernel cannot be started again in the same process.
+- **How to see it**: two cores given the same `gdb_server_port`, or one given a port another program is listening on, such as an earlier run that is still there.
+- **What we do**: half of it. A platform refuses a description in which two CPUs have the same `gdb_port`, before the simulator is created, and names both and the port (`_refuse_a_shared_gdb_port` in `python/socpuppet/platform.py`, held by `TestWhenTwoCpusAreGivenTheSameGdbPort`). ⚠️ A port that something outside the simulation holds still ends the build with Boost's words.
+- **Upstream fix**: catch the error where the server is started and say which core wanted which port.
+- **Kind**: missing feature.
+- **When it lands**: nothing to delete. The check on a description is worth having either way, since it comes before the simulator exists.
+
 ### A debugger that detaches leaves its CPU stopped
 
 - **Where**: `src/iss/debugger/cmdhandler.cpp`, `cmd_handler::detach`.

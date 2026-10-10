@@ -223,6 +223,27 @@ class TestWhenTwoCpusEachHaveAGdbPort:
         ]
 
 
+@pytest.mark.platform
+class TestWhenTwoCpusAreGivenTheSameGdbPort:
+    def test_building_is_refused_and_the_error_names_both_cpus_and_the_port(
+        self,
+    ):
+        platform = sp.Platform()
+        for name in ("spam", "eggs"):
+            cpu = platform.add(
+                f"{name}_cpu",
+                sp.DbtRiseCpu(xlen=64, reset_vector=0, gdb_port=1234),
+            )
+            ram = platform.add(f"{name}_ram", sp.Memory(size=0x1000))
+            platform.connect(cpu.socket, ram.socket)
+
+        with pytest.raises(ValueError, match="1234") as error:
+            platform.build()
+
+        assert "spam_cpu" in str(error.value)
+        assert "eggs_cpu" in str(error.value)
+
+
 def two_cpus_waiting_for_debuggers(spams_port, eggs_port):
     """Two CPUs, `spam` and `eggs`, each with a program and a GDB port, built.
 

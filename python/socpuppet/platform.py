@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
-from socpuppet.components import LinkModel
+from socpuppet.components import DbtRiseCpu, LinkModel
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.terminal import stdout_wants_color
@@ -182,6 +182,7 @@ class Platform:
             path: self._parameters_of(placed)
             for path, placed in self._placed.items()
         }
+        _refuse_a_shared_gdb_port(self._placed)
         from socpuppet import _core  # the simulator loads here, not on import
 
         native = _core.Platform(color_log=stdout_wants_color())
@@ -593,3 +594,24 @@ def _refuse_a_second_connection(
                 "targets, connect it to a router (sp.Router) and map each "
                 "target onto that."
             )
+
+
+def _refuse_a_shared_gdb_port(placed: Mapping[str, Placed]) -> None:
+    """Refuse a description in which two CPUs listen for GDB on one port.
+
+    Only the first could. The second would fail to take the port while
+    the simulator was being created, and a process gets only one
+    simulator, so there would be no second try.
+    """
+    listeners: dict[int, str] = {}
+    for path, each in placed.items():
+        cpu = each.component
+        if not isinstance(cpu, DbtRiseCpu) or not cpu.gdb_port:
+            continue  # no debugger is wanted on this one
+        if cpu.gdb_port in listeners:
+            raise ValueError(
+                f'"{listeners[cpu.gdb_port]}" and "{path}" were both given '
+                f"gdb_port={cpu.gdb_port}, and a TCP port can have one "
+                "listener. Give each CPU you want to debug a port of its own."
+            )
+        listeners[cpu.gdb_port] = path
