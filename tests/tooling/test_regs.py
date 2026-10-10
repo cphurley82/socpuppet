@@ -221,6 +221,55 @@ def test_a_field_with_no_description_is_in_its_registers_row_by_its_bit_and_name
     assert "| Ham. Bit 3 `EGGS`. |" in (repo / PAGE).read_text()
 
 
+def a_register_that_comes_out_of_reset_holding_something():
+    """`HAM`, with an identifier of 0x23 in its low half and a version of 1."""
+    return a_map_of_one_register().replace(
+        "field { sw = rw; } VALUE[31:0] = 0;",
+        "field { sw = r; } ID[15:0] = 0x23;\n"
+        "        field { sw = r; } VERSION[19:16] = 1;",
+    )
+
+
+def test_a_register_that_comes_out_of_reset_holding_something_has_that_value_in_the_header_and_the_module(
+    repo,
+):
+    (repo / "regs/spam.rdl").write_text(
+        a_register_that_comes_out_of_reset_holding_something()
+    )
+
+    regs(repo, "write")
+
+    assert "#define SPAM_HAM_RESET         0x00010023U\n" in (
+        (repo / HEADER).read_text()
+    )
+    assert "HAM_RESET = 0x00010023\n" in (repo / MODULE).read_text()
+
+
+def test_a_register_that_comes_out_of_reset_holding_something_says_what_in_its_row(
+    repo,
+):
+    (repo / "regs/spam.rdl").write_text(
+        a_register_that_comes_out_of_reset_holding_something()
+    )
+
+    regs(repo, "write")
+
+    assert "| Ham. At reset: `0x00010023`. Bits 15 to 0 `ID`." in (
+        (repo / PAGE).read_text()
+    )
+
+
+def test_a_register_that_comes_out_of_reset_as_zero_has_no_value_at_reset_written_down(
+    repo,
+):
+    (repo / "regs/spam.rdl").write_text(a_map_of_one_register())
+
+    regs(repo, "write")
+
+    assert "RESET" not in (repo / HEADER).read_text()
+    assert "At reset" not in (repo / PAGE).read_text()
+
+
 def test_a_block_of_more_than_256_bytes_has_its_offsets_in_three_digits(repo):
     (repo / "regs/spam.rdl").write_text(
         a_map_of_one_register()

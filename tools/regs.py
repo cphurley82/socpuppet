@@ -90,6 +90,8 @@ class Field:
     writable: bool
     #: Whether writing a one is what clears it.
     write_one_to_clear: bool
+    #: What it holds when it comes out of reset.
+    reset: int
     told: tuple[Told, ...]
 
     @property
@@ -117,6 +119,11 @@ class Register:
     def size(self):
         """How many bytes it takes, all of it."""
         return self.count * self.width // 8
+
+    @property
+    def reset(self):
+        """What it holds when it comes out of reset, all its fields together."""
+        return sum(field.reset << field.low for field in self.fields)
 
 
 @dataclass(frozen=True)
@@ -276,6 +283,7 @@ def read(file):
                         write_one_to_clear=(
                             field.get_property("onwrite") == OnWriteType.woclr
                         ),
+                        reset=field.get_property("reset") or 0,
                         told=tuple(
                             Told(
                                 member.name, member.value, said(member.rdl_desc)
@@ -348,6 +356,14 @@ def paragraphs(block):
                     f"{register.name}_SIZE",
                     None,
                     hexadecimal(register.size, digits),
+                )
+            )
+        if register.reset:
+            constants.append(
+                Constant(
+                    f"{register.name}_RESET",
+                    None,
+                    hexadecimal(register.reset, register.width // 4),
                 )
             )
         for field in register.fields:
@@ -494,12 +510,15 @@ def access(fields):
 def sentences(register):
     """Yield what a register's row says of it, a piece at a time.
 
-    What the register is, then each of its fields by its bits, and what
-    each can be told by its number. A field says what firmware may do to
+    What the register is, what it holds at reset if that is not nothing,
+    then each of its fields by its bits, and what each can be told by its
+    number. A field says what firmware may do to
     it where that is not what the row says of the whole register.
     """
     if register.what is not None:
         yield register.what
+    if register.reset:
+        yield f"At reset: `0x{register.reset:0{register.width // 4}X}`."
     for field in register.fields:
         if field.width != register.width:
             bits = (
