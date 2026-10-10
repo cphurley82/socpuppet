@@ -323,10 +323,25 @@ The interrupt lines:
 
 <!-- address-map:host-manager end -->
 
+- **With a CPU, `host(manager=add_manager)`, the manager has its kit on that bus as well** (`io.manager.cpu.socket`):
+
+<!-- address-map:host-manager-cpu start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 64 KiB | `io.manager.timer.socket` | [Machine timer](models/machine-timer.md) | |
+| `0x0C00_0000` | 64 MiB | `io.manager.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
+| `0x1000_0000` | 8 bytes | `io.manager.uart.socket` | [UART (16550)](models/ns16550.md) | |
+| `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
+| `0x2000_0000` | 256 KiB | `io.manager.sram.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:host-manager-cpu end -->
+
+- **That is the IO manager board's map without its scratch memory**, at the same addresses, with the link on the same interrupt source. So the firmware for it is the firmware built for `socpuppet_iomgr`, the same image: `platform.load_elf(file, via=board.manager.cpu.socket)`. The scratch was there for 🎭 a compute die to have something to reach, and here the compute die is the host's, which has the IO die's UART to reach, and with a drive the root complex's windows.
 - 🎓 **Why a bus of its own.** A manager on the bus the traffic goes through would see the root complex's memory window at `0x0080_0000`, where the host's CPU sees it at `0x1080_0000`, and a platform refuses to say where a port is when two bus masters find it at different addresses. The devicetree generated for the host would also gain a node for the link's registers, so there would be a second board to build firmware for. On a bus of its own the manager has nothing to disagree about, and the host's map has none of the link's registers in it. That is the usual arrangement in a chip, too: a management core sits on a small bus with what it manages, apart from the bus the traffic takes.
 - **The window still translates**, which is the difference from the IO manager board. A window that keeps the other die's addresses has to start at address 0, and to reach as far as the IO die's bus does. The host's compute die has a timer and an interrupt controller of its own down there, at `0x0200_0000` and `0x0C00_0000`, and a router refuses two ranges that overlap. So each die's map stands on its own and the window is the only thing between them.
 - ⚠️ **The compute die's end of the link has registers that are in no map**, as on the IO manager board. The manager reaches them through the sideband mailbox, which is how it lets the host's CPU out of reset.
-- **The interrupt lines are the host's**, in the tables above. 🎭 A script has one interrupt input and it has no number, so the link's line to it is in no table. A manager with a CPU has the link on source 1 of an interrupt controller of its own, as under [The IO manager](#the-io-manager).
+- **The host's own interrupt lines are the ones in the tables above.** 🎭 A script has one interrupt input and it has no number, so the link's line to it is in no table. A manager with a CPU adds three lines of its own, the ones under [The IO manager](#the-io-manager) with `io.manager` where that board has `io`.
 
 ## See it yourself
 

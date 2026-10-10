@@ -160,6 +160,22 @@ def test_the_table_of_the_hosts_manager_has_the_links_registers_and_nothing_else
     assert what_answers(page) == {"`io.d2d.sideband`"}
 
 
+def test_the_table_of_the_hosts_manager_with_a_cpu_has_its_kit_and_the_links_registers(
+    tmp_path,
+):
+    page = a_page(tmp_path, "address-map:host-manager-cpu")
+
+    address_map_docs("write", page)
+
+    assert what_answers(page) == {
+        "`io.manager.timer.socket`",
+        "`io.manager.plic.socket`",
+        "`io.manager.uart.socket`",
+        "`io.manager.sram.socket`",
+        "`io.d2d.sideband`",
+    }
+
+
 def test_when_a_marker_names_a_table_there_is_none_of_check_fails_and_lists_the_ones_there_are(
     tmp_path,
 ):

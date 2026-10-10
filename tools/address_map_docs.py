@@ -70,6 +70,7 @@ def tables():
             manager.add_manager, script=manager.stand_in_manager().script
         )
     ).platform
+    with_a_managers_cpu = host.host(manager=manager.add_manager).platform
     ssd_board = ssd.platform
     io_board = io_manager.platform
 
@@ -83,6 +84,9 @@ def tables():
         ),
         "address-map:host-manager": address_table(
             seen_from(with_a_manager, "io.manager.cpu.socket")
+        ),
+        "address-map:host-manager-cpu": address_table(
+            seen_from(with_a_managers_cpu, "io.manager.cpu.socket")
         ),
         "address-map:ssd": address_table(
             seen_from(ssd_board, "ssd.cpu.socket")
