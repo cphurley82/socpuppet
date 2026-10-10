@@ -341,6 +341,20 @@ class TestWhenThePlatformRunsUntilACondition:
 
         assert not platform.run_until(lambda: platform.peek32(0x10) == 3)
 
+    def test_it_stops_at_the_moment_the_condition_came_to_hold_even_the_first(
+        self,
+    ):
+        def script():
+            yield sp.write32(0x10, 1)
+            yield sp.wait(sp.ns(10))
+            yield sp.write32(0x14, 1)
+
+        platform = master_with_ram(script)
+
+        platform.run_until(lambda: platform.peek32(0x10) == 1)
+
+        assert platform.time == 0
+
     def test_it_says_the_condition_holds_when_the_last_thing_to_happen_made_it_so(
         self,
     ):

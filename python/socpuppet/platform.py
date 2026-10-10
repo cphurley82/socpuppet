@@ -217,24 +217,25 @@ class Platform:
         """Run until `condition()` is true, and say whether it came true.
 
         The condition is checked each time simulated time is about to move
-        on. The run also ends when nothing is left to do, or when `timeout`
-        (see `ns`, `us`) has passed, and the condition is checked a last
-        time then.
+        on, once everything that happens at that moment has happened. The
+        run also ends when nothing is left to do, or when `timeout` (see
+        `ns`, `us`) has passed.
         """
         native = self.native()
         deadline = None if timeout is None else self.time + timeout
-        while not condition():
+        while True:
+            # Asking what comes next lets everything that happens at this
+            # moment happen first, so the condition is looked at with the
+            # moment settled, and before the clock leaves it.
             ahead = native.picoseconds_to_next_activity()
+            if condition():
+                return True
             if ahead is None:
-                # Nothing is left to do. Finding that out let whatever
-                # was still to happen at this moment happen, so look once
-                # more.
-                return condition()
+                return False  # nothing left to do
             if deadline is not None and self.time + ahead > deadline:
                 native.run_for(deadline - self.time)
-                return condition()
+                return False  # out of time, and nothing happened in it
             native.step()
-        return True
 
     @property
     def trace(self) -> list[TraceRecord]:
