@@ -1,0 +1,17 @@
+diff --git a/src/sysc/core_complex.cpp b/src/sysc/core_complex.cpp
+index 488fdbe..e9e2e46 100644
+--- a/src/sysc/core_complex.cpp
++++ b/src/sysc/core_complex.cpp
+@@ -171,9 +171,10 @@ void core_complex<BUSWIDTH, QK>::create_cpu(std::string const& type, std::string
+     } else {
+         core->set_hartid(hart_id);
+         core->set_clint_irq_count(clint_irq_i.size());
+-        auto* srv = debugger::server<debugger::gdb_session>::get();
++        // each core has a debug server of its own, so the one to ask is the one started for this core's vm
++        auto* srv = debugger::server<debugger::gdb_session>::get(dynamic_cast<iss::debugger_if*>(vm.get()));
+         if(srv)
+-            tgt_adapter = srv->get_target(0); // FIXME: add core_id
++            tgt_adapter = srv->get_target(0);
+         if(tgt_adapter)
+             tgt_adapter->add_custom_command({"sysc",
+                                              [this](int argc, char* argv[], debugger::out_func of, debugger::data_func df) -> int {

@@ -80,7 +80,7 @@ Configuring prints a note when the tree is in one of the two special modes.
 
 Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted.
 
-There is no spike in the build today. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it.
+There is no spike in the build today, and one outside it: [spikes/gdb](../spikes/gdb/README.md) asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It is two scripts and no C++, so it needed no option and no preset, and it goes when M8's step 4 has rebuilt what it found test-first. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it.
 
 💡 The next spike gets a CMake option that is off by default and a preset that turns it on, so that the everyday build, coverage and the wheel never see it. The ISS spike's, at commit `7c7c8c0`, are the pattern to copy.
 
@@ -136,6 +136,6 @@ The register maps in `regs/` are compiled by [systemrdl-compiler](https://github
 
 SCC needed a few accommodations to build inside this tree, each commented where it is made: two small patches (`cmake/patches/`), one to a configure-time probe and one so that clang-tidy can read the CCI headers it bundles, its install rules switched off, our SystemC declared as already found, and Boost.Filesystem linked explicitly.
 
-DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with seven patches and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
+DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with ten patches, to it and to the core library under it, and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
 
 📮 A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [upstream.md](upstream.md) saying what is wrong, how to see it and what to propose. That page is the list to work from when the fixes are sent upstream.

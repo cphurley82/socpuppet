@@ -103,7 +103,7 @@ Each entry says:
 
 ## DBT-RISE-Core
 
-[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model. How each of these was found is in [iss-spike.md](iss-spike.md).
+[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model. How each of these was found is in [iss-spike.md](iss-spike.md), and for its GDB server in [gdb-spike.md](gdb-spike.md).
 
 ### asio names that Boost 1.87 removed
 
@@ -148,12 +148,42 @@ Each entry says:
 ### One GDB server per process
 
 - **Where**: three places in `src/iss/debugger/`. `server.h`, `server<SESSION>::run_server`, lines 50 to 56. `cmdhandler.h`, line 92, where a session takes its target: `s.get_target(0) // FIXME: add core id`. `cmdhandler.cpp`, line 583, in the answer to `qXfer:features:read`: `static std::string buf`.
-- **What is wrong**: the server is a singleton. A second call logs "server already initialized" as fatal. So only one CPU in a process can have a debugger attached, whatever port each asks for. A platform with three CPUs and three firmware images wants three. Two more things would be in the way once it was not a singleton. A session always debugs target 0 of its server, so several cores behind one server could not be told apart. And the target description a debugger asks for is read from the target once and kept in a static that every session shares, so the second debugger to attach would be sent the first one's: a 32-bit core described as the 64-bit one, or the other way about.
-- **How to see it**: two `core_complex` instances in one simulation, each with a `gdb_server_port`. The other two were found by reading, when M6 was planned, and have not been run into.
-- **What we do**: one debugger a simulation, on whichever CPU it is given to. The platform refuses a second `gdb_port` with the reason. `tests/python/test_gdb.py` has both: the refusal, and a debugger on each CPU in turn of the host with the SSD. Two ports were M6's to do and are M8's, which wants three ([plan.md](plan.md)).
-- **Upstream fix**: one server per port, owned by the core that asked for it, with the cached target description a member of the session or the target and not a static.
+- **What is wrong**: the server is a singleton. A second call logs "server already initialized" as fatal. So only one CPU in a process can have a debugger attached, whatever port each asks for. A platform with three CPUs and three firmware images wants three. And the target description a debugger asks for is read from the target once and kept in a static that every session shares, so with more than one server the second debugger to attach is sent the first one's: a 32-bit core described as the 64-bit one, or the other way about.
+- **How to see it**: two `core_complex` instances in one simulation, each with a `gdb_server_port`. The static was found by reading, when M6 was planned, and was taken out before it could be run into. With the patch, a debugger on an RV64 core and one on an RV32 core that each ask for `qXfer:features:read:target.xml` are told `riscv:rv64` and `riscv:rv32`.
+- **What we do**: `cmake/patches/dbt-rise-core-gdb-server-per-core.patch`. `run_server` starts one more server each time it is called, and returns it. The servers are kept in a list, `get()` is the first of them, as it was, and `get(vm)` is the one started for a core. The target description is a member of the session's command handler. A session still takes target 0 of its server, which is right now that a server has one core. ⚠️ socpuppet's own CPU model still refuses a second `gdb_port`, and `tests/python/test_gdb.py` still holds it to that: M8's step 4 takes the refusal out, with tests of three debuggers at once ([plan.md](plan.md)). Until then the patch is exercised by [the spike](gdb-spike.md) and by nothing in the tree.
+- **Upstream fix**: the same, or one step further: let `run_server`'s caller own what it returns, and drop the list.
 - **Kind**: missing feature.
-- **When it lands**: several CPUs can each take a `gdb_port`. ⚠️ A CPU stopped in a debugger keeps the simulation's one thread, in `server_if.h`'s `check_continue`, so every other CPU stops with it. That is what makes debugging several of them deterministic, and it means each debugger has to be attached before any core runs. It is ours to design, not upstream's to fix.
+- **When it lands**: drop the patch. ⚠️ A CPU stopped in a debugger keeps the simulation's one thread, in `server_if.h`'s `check_continue`, so every other CPU stops with it, and a debugger's question about memory is answered only while its own CPU is the one stopped. That is what makes debugging several of them repeatable. It is ours to design around and to document, not upstream's to fix.
+
+### One `continue` is answered twice
+
+- **Where**: `src/iss/debugger/cmdhandler.cpp`, `cmd_handler::running`, from "Now we have to wait for the target" to the end, and `src/iss/debugger/gdb_session.cpp`, the `case 'c'` of `parse_n_execute`, which calls it with `blocking` false.
+- **What is wrong**: for a `continue`, `running` hands the session's stop callback to the core, which sends the stop reply when the core stops. It then also calls `wait_non_blocking`, which sleeps for a second, and answers the packet itself: `S05` if the core has stopped by then, and `OK` if it has not. So a core that stops within a second is reported twice, and a core that runs on is answered with `OK`, which is not a reply the protocol has for `continue`. A debugger that takes the first `S05` and asks its next question reads the second `S05` as the answer. ⚠️ And a debugger that hangs up within a second of saying `continue` ends the process: the late answer is written to a closed socket, the failure is logged with `CLOG(ERR, ...)`, and SCC turns a logged error into a thrown `sc_report`, on the server's thread, where nothing catches it.
+- **How to see it**: attach, set a breakpoint a few instructions on, send `c`, read the `S05`, send `p20`: the answer is `S05`. For the other half: attach, send `c`, close the socket, and keep the process alive for two seconds. It ends with "terminating due to uncaught exception of type sc_core::sc_report: Error: gdbconn: Communication error". Every test in `tests/python/test_gdb.py` says continue and hangs up, and passes because its process is gone within the second.
+- **What we do**: `cmake/patches/dbt-rise-core-gdb-continue-answered-once.patch`. `running` returns nothing for a resume that was given a stop callback, and the session sends nothing when it is given nothing, so the callback's is the only reply. A single step is answered as before: it has no callback and has finished by the time it is answered.
+- **Upstream fix**: the same. `handle_extended` already treats an empty answer from `running` as "nothing to send yet", so this looks like what was meant.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### A debugger that hangs up rudely ends the process
+
+- **Where**: `src/iss/debugger/gdb_session.cpp`: `receive_completed`, "Communication error", and the two `catch` blocks at the end of `parse_n_execute`. All three log with `CLOG(ERR, connection)`.
+- **What is wrong**: an error on a debugger's connection is logged as an error, and under SCC's reporting a logged error is thrown as an `sc_report`. These run on the server's own thread, where nothing catches it, so the process ends. A debugger that closes its connection cleanly is the one case handled apart, as a warning. One whose connection is reset is not, nor is one that closes with an answer unread, which resets it.
+- **How to see it**: attach, send `c`, set `SO_LINGER` to zero on the socket and close it. Or attach, send `p20`, wait for the answer to arrive, and close without reading it. Either way the process ends with "Communication error (Invalid argument)". Both were tried by hand in [the GDB spike](gdb-spike.md), with one CPU.
+- **What we do**: nothing. It takes a debugger that crashes or a network that drops, and the tests' client and GDB both hang up cleanly.
+- **Upstream fix**: log a connection's errors as warnings and drop the session, as is done for a clean close.
+- **Kind**: bug.
+- **When it lands**: nothing to delete.
+
+### A debugger that detaches leaves its CPU stopped
+
+- **Where**: `src/iss/debugger/cmdhandler.cpp`, `cmd_handler::detach`.
+- **What is wrong**: the answer to `D` is sent and nothing else is done. A core that was stopped stays stopped, with no debugger to tell it to go on. GDB sends `D` when it is told to `detach`. By reading, it does when it quits as well, because the server answers `qAttached` with 1. Under SystemC a stopped core holds the simulation's one thread, so the whole simulation stays where it is, and no limit in simulated time ends the run.
+- **How to see it**: attach, send `D`, hang up. The simulation makes no progress. A second debugger that attaches to the same port and sends `c` sets it going again, which is `spikes/gdb/three_debuggers.py detach`.
+- **What we do**: nothing in code. [boot-your-firmware.md](boot-your-firmware.md) is to say, when M8 writes the three-CPU walkthrough: leave with `continue`.
+- **Upstream fix**: resume the core on `D`, and when a session's connection closes, as `gdbserver` does for a process it was attached to.
+- **Kind**: bug, or at least a surprise.
+- **When it lands**: the warning can come out of the docs.
 
 ## DBT-RISE-RISCV
 
@@ -245,12 +275,12 @@ Each entry says:
 ### Every core adds its `sysc` command to core 0's debug adapter
 
 - **Where**: `src/sysc/core_complex.cpp`, `core_complex::create_cpu`, lines 174 to 182: `tgt_adapter = srv->get_target(0); // FIXME: add core_id`.
-- **What is wrong**: a core that is created while a GDB server exists asks it for target 0's adapter and adds its own `sysc` command there (`monitor sysc print_time`, `monitor sysc break <time>`), whether or not the server is that core's. With two cores and one debugger, on the core created first, the adapter ends up with two commands called `sysc`, one for each core.
-- **How to see it**: by reading. It was found when M6 was planned. `host(gdb_port=..., drive=add_ssd)` is the arrangement that has it, and nobody has typed `monitor sysc` there to see which core answers.
-- **What we do**: nothing. socpuppet's docs do not mention the `sysc` commands, and breakpoints, stepping and memory go by the session's own target, which is right.
-- **Upstream fix**: a core adds its command to its own adapter, by its core id. It goes with "One GDB server per process" under DBT-RISE-Core above.
+- **What is wrong**: a core that is created while a GDB server exists asks it for target 0's adapter and adds its own `sysc` command there (`monitor sysc print_time`, `monitor sysc break <time>`), whether or not the server is that core's. With two cores and one debugger, on the core created first, the adapter ends up with two commands called `sysc`, one for each core. With a server for each core, every core after the first would still add its command to the first one's.
+- **How to see it**: by reading, when M6 was planned. The patch is seen to work in [the GDB spike](gdb-spike.md): three cores, three debuggers, and `monitor sysc print_time` in each is answered with its own core's time, `0 s` twice and `5500 us` for the core that is let go later.
+- **What we do**: `cmake/patches/dbt-rise-riscv-gdb-server-per-core.patch`. A core asks for the server that was started for its own `vm` (`server::get(vm)`, which the patch to DBT-RISE-Core adds) and adds its command there. A core with no GDB port finds no server and adds nothing.
+- **Upstream fix**: the same. It goes with "One GDB server per process" under DBT-RISE-Core above, and needs it.
 - **Kind**: bug.
-- **When it lands**: nothing to delete. The `sysc` commands become safe to document.
+- **When it lands**: drop the patch. The `sysc` commands are safe to document once M8's step 4 has a test of them.
 
 ### A transaction's delay loses a clock cycle, and whatever is less than a whole one
 

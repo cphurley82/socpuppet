@@ -155,12 +155,15 @@ FetchContent_Declare(dbt_rise_riscv
   # access to more than the one region it had granted was ignored.
   # interrupt-after-access: a handler that quieted its device was entered
   # again and again, because the core had not yet heard the line drop.
+  # gdb-server-per-core: every core hung its `sysc` debugger command on the
+  # first core's GDB server, where each now has a server of its own.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-static-library.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-dmi-invalidate.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-interrupt-after-access.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-gdb-server-per-core.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
@@ -175,10 +178,16 @@ FetchContent_Declare(dbt_rise_core_git
   GIT_TAG 29e97c021c988370f5c5af5b5076afe8043402b6
   # asio-names: Boost 1.87 removed the names its GDB server used.
   # int128-traits: it specialized a private template of GCC's standard
-  # library, which Clang's library does not have.
+  # library, which Clang's library does not have. gdb-server-per-core: one
+  # GDB server for the whole process, where each core that asks now gets
+  # one on a port of its own. gdb-continue-answered-once: the server
+  # answered one `continue` twice, and the second answer, written to a
+  # debugger that had hung up, ended the process.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-asio-names.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-int128-traits.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-server-per-core.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-continue-answered-once.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 set(SOCPUPPET_SUPPRESS_INSTALL TRUE)

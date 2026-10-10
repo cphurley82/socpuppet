@@ -1,0 +1,101 @@
+diff --git a/src/iss/debugger/cmdhandler.cpp b/src/iss/debugger/cmdhandler.cpp
+index c60ae61..9c262d5 100644
+--- a/src/iss/debugger/cmdhandler.cpp
++++ b/src/iss/debugger/cmdhandler.cpp
+@@ -580,13 +580,12 @@ std::string cmd_handler::query(std::string const& in_buf) {
+         char* ptr = nullptr;
+         auto offset = strtoul(token[4].c_str(), &ptr, 16);
+         auto length = strtoul(ptr + 1, nullptr, 16);
+-        static std::string buf;
+-        if(buf.size() == 0)
+-            t->target_xml_query(buf);
+-        if((offset + length) > buf.size()) {
+-            return std::string("l") + buf.substr(offset);
++        if(target_xml.size() == 0)
++            t->target_xml_query(target_xml);
++        if((offset + length) > target_xml.size()) {
++            return std::string("l") + target_xml.substr(offset);
+         } else {
+-            return std::string("m") + buf.substr(offset, length);
++            return std::string("m") + target_xml.substr(offset, length);
+         }
+     }
+     if(strncmp(in_buf.c_str() + 1, "Supported", 9) == 0 && (in_buf[10] == ':' || in_buf[10] == '\0')) {
+diff --git a/src/iss/debugger/cmdhandler.h b/src/iss/debugger/cmdhandler.h
+index a56fc78..40a698d 100644
+--- a/src/iss/debugger/cmdhandler.h
++++ b/src/iss/debugger/cmdhandler.h
+@@ -154,6 +154,8 @@ public:
+     bool can_restart;
+     std::function<void(unsigned)>& stop_callback;
+     std::unordered_map<uint64_t, unsigned> bp_map;
++    // the target description, kept once asked for. Each session has its own, as each debugs a core of its own.
++    std::string target_xml;
+     std::array<const my_custom_command, 3> rp_remote_commands = {{
+         /* Table of commands */
+         GEN_ENTRY(help, "This help text"),
+diff --git a/src/iss/debugger/server.h b/src/iss/debugger/server.h
+index daf62ce..1436508 100644
+--- a/src/iss/debugger/server.h
++++ b/src/iss/debugger/server.h
+@@ -41,21 +41,40 @@
+ #include <boost/thread.hpp>
+ #include <ctime>
+ #include <util/logging.h>
++#include <vector>
+ 
+ namespace iss {
+ namespace debugger {
+ 
+ template <class SESSION> class server : public server_base {
+ public:
+-    static void run_server(iss::debugger_if* vm, unsigned int port) {
+-        if(get() != NULL) {
+-            CLOG(FATAL, dbt_rise_iss) << "server already initialized";
+-        }
++    /**
++     * start a server of its own for the given core, listening on the given port. Each call starts one more server, so
++     * that several cores in one process can each have a debugger attached.
++     * @param vm the core to be debugged
++     * @param port the TCP port to listen on
++     * @return the server started
++     */
++    static server<SESSION>* run_server(iss::debugger_if* vm, unsigned int port) {
+         CLOG(DEBUG, dbt_rise_iss) << "starting server listening on port " << port;
+-        get(new server<SESSION>(vm, port));
++        auto* srv = new server<SESSION>(vm, port);
++        servers().push_back(srv);
++        return srv;
++    }
++    /**
++     * get the first server started, if any
++     */
++    static server<SESSION>* get() { return servers().empty() ? NULL : servers().front(); }
++    /**
++     * get the server started for the given core, if any
++     * @param vm the core being debugged
++     */
++    static server<SESSION>* get(iss::debugger_if* vm) {
++        for(auto* srv : servers())
++            if(std::find(std::begin(srv->debugger_ifs), std::end(srv->debugger_ifs), vm) != std::end(srv->debugger_ifs))
++                return srv;
++        return NULL;
+     }
+-
+-    static server<SESSION>* get() { return get(NULL); }
+ 
+     unsigned short get_port_nr() { return acceptor.local_endpoint().port(); }
+ 
+@@ -69,10 +88,8 @@ public:
+     }
+ 
+ protected:
+-    static server<SESSION>* get(server<SESSION>* srv) {
+-        static server<SESSION>* s = NULL;
+-        if(srv != NULL && s == NULL)
+-            s = srv;
++    static std::vector<server<SESSION>*>& servers() {
++        static std::vector<server<SESSION>*> s;
+         return s;
+     }
+ 

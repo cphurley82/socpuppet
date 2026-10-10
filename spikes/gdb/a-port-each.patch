@@ -1,0 +1,25 @@
+diff --git a/src/socpuppet/models/dbt_rise_cpu.cpp b/src/socpuppet/models/dbt_rise_cpu.cpp
+index c4b15dc..490b6dc 100644
+--- a/src/socpuppet/models/dbt_rise_cpu.cpp
++++ b/src/socpuppet/models/dbt_rise_cpu.cpp
+@@ -39,18 +39,8 @@ const char* CoreType(std::uint64_t xlen) {
+ // it for a second ends the program. So the second CPU to ask is refused
+ // here first. Called before the Core is built, as CoreType is.
+ std::uint16_t GdbPortFor(const char* cpu, std::uint16_t gdb_port) {
+-  static bool taken = false;
+-  if (gdb_port == 0) return 0;
+-  if (taken) {
+-    throw std::invalid_argument(
+-        std::string(
+-            "Only one CPU in a simulation can have a GDB port, and \"") +
+-        cpu +
+-        "\" is the second to ask for one. The CPU model has a single GDB "
+-        "server for the whole process. Give gdb_port to the CPU you want "
+-        "to debug, and leave it out for the others.");
+-  }
+-  taken = true;
++  // The spike: every CPU that asks may have one.
++  (void)cpu;
+   return gdb_port;
+ }
+ 

@@ -1,0 +1,37 @@
+diff --git a/src/iss/debugger/cmdhandler.cpp b/src/iss/debugger/cmdhandler.cpp
+index c60ae61..1cbbee0 100644
+--- a/src/iss/debugger/cmdhandler.cpp
++++ b/src/iss/debugger/cmdhandler.cpp
+@@ -305,6 +305,12 @@ std::string cmd_handler::running(std::string const& in_buf, bool blocking, bool
+             return to_string(ret);
+     }
+ 
++    // A target resumed with a stop callback is answered by that callback, once, when it stops. An answer from here as
++    // well would be a second reply to the one packet: "OK" if the target is still running a second from now, which is
++    // no stop reply at all, and a second "S05" if it has stopped by then.
++    if(!step && !blocking)
++        return "";
++
+     /* Now we have to wait for the target */
+     /* Try a non-blocking wait first */
+     bool running = false;
+diff --git a/src/iss/debugger/gdb_session.cpp b/src/iss/debugger/gdb_session.cpp
+index ce184b2..11d41f2 100644
+--- a/src/iss/debugger/gdb_session.cpp
++++ b/src/iss/debugger/gdb_session.cpp
+@@ -241,9 +241,12 @@ void gdb_session::parse_n_execute(std::string& data) {
+         case 'C':
+         case 'S':
+         case 'c':
+-        case 's':
+-            resp << handler.running(data, false);
+-            break;
++        case 's': {
++            // a target that runs on has nothing to say yet: its stop callback answers, when it stops
++            auto answer = handler.running(data, false);
++            if(answer.size())
++                resp << answer;
++        } break;
+         case 'D':
+             resp << handler.detach(data); // TODO: pass socket handling
+             do_reinitialize = true;
