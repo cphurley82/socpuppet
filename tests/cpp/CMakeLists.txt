@@ -14,7 +14,8 @@ add_executable(unit_tests
   unit/nvme_frontend_logic_test.cpp
   unit/pcie_endpoint_registers_test.cpp
   unit/prp_test.cpp
-  unit/script_test.cpp)
+  unit/script_test.cpp
+  unit/ucie_sideband_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
 target_link_libraries(unit_tests PRIVATE
   socpuppet_core elfio::elfio GTest::gmock_main)

@@ -17,7 +17,8 @@ target_sources(socpuppet_core INTERFACE
     core/nand_port.h
     core/script.h
     core/time.h
-    core/trace.h)
+    core/trace.h
+    core/ucie_sideband.h)
 
 # Reading ELF files is ELFIO's work. Like the adapters below, the one source
 # file that uses the borrowed library is compiled on its own.
