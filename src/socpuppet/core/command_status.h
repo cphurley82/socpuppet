@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "socpuppet/regs/dma_engine.h"
+
 namespace socpuppet {
 
 // The status register of a device that is given one command at a time by
@@ -16,11 +18,16 @@ namespace socpuppet {
 // always about the last command. The CPU clears DONE or ERROR by writing a
 // one to it, and cannot clear BUSY. The device interrupts while a bit the
 // CPU has enabled is set.
+//
+// The bits are where the register maps have them. Every device that has
+// these two registers has them by the same types (regs/command_status.rdl),
+// so one device's names for the bits are every device's, and the DMA
+// engine's are the ones used here.
 class CommandStatus {
  public:
-  static constexpr std::uint32_t kDone = 1U << 0;
-  static constexpr std::uint32_t kError = 1U << 1;
-  static constexpr std::uint32_t kBusy = 1U << 2;
+  static constexpr std::uint32_t kDone = DMA_ENGINE_STATUS_DONE;
+  static constexpr std::uint32_t kError = DMA_ENGINE_STATUS_ERROR;
+  static constexpr std::uint32_t kBusy = DMA_ENGINE_STATUS_BUSY;
 
   // The device has been given a command.
   void Start() { status_ = kBusy; }

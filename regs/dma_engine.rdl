@@ -1,0 +1,52 @@
+// The DMA engine of an SSD's controller: docs/models/dma-engine.md.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+`include "command_status.rdl"
+
+enum dma_engine_command_e {
+    FROM_HOST = 1 {
+        desc = "Copy from the host's memory into the SSD's own.";
+    };
+    TO_HOST = 2 {
+        desc = "Copy from the SSD's own memory to the host's.";
+    };
+};
+
+addrmap dma_engine {
+    name = "DMA engine";
+    desc = "Copies between the host's memory and the SSD's own, one copy for each command.";
+    // Seven registers, and room for one more.
+    block_size = 0x20;
+    default regwidth = 32;
+
+    reg {
+        desc = "Write a command to start a copy of what the other registers say. Reads as zero.";
+        field { sw = w; encode = dma_engine_command_e; } VALUE[31:0] = 0;
+    } COMMAND @ 0x00;
+
+    command_status_r STATUS @ 0x04;
+    command_interrupt_enable_r INTERRUPT_ENABLE @ 0x08;
+
+    reg {
+        desc = "Where in the host's memory, the low 32 bits.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } HOST_ADDRESS_LOW @ 0x0C;
+
+    reg {
+        desc = "The high 32 bits. A host's memory can be above 4 GiB even when the SSD's CPU is a 32-bit one.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } HOST_ADDRESS_HIGH @ 0x10;
+
+    reg {
+        desc = "Where in the SSD's own memory.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } LOCAL_ADDRESS @ 0x14;
+
+    reg {
+        desc = "How many bytes.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } LENGTH @ 0x18;
+};

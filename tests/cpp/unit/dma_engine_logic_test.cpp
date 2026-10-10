@@ -11,29 +11,30 @@
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/memory_store.h"
+#include "socpuppet/regs/dma_engine.h"
 
 namespace socpuppet {
 
 namespace {
 
-// The engine's registers, each 32 bits wide, as docs/models/dma-engine.md
-// gives them.
-constexpr std::uint64_t kCommand = 0x00;
-constexpr std::uint64_t kStatus = 0x04;
-constexpr std::uint64_t kInterruptEnable = 0x08;
-constexpr std::uint64_t kHostAddressLow = 0x0C;
-constexpr std::uint64_t kHostAddressHigh = 0x10;
-constexpr std::uint64_t kLocalAddress = 0x14;
-constexpr std::uint64_t kLength = 0x18;
+// The engine's registers, each 32 bits wide, as its register map gives them
+// (regs/dma_engine.rdl).
+constexpr std::uint64_t kCommand = DMA_ENGINE_COMMAND;
+constexpr std::uint64_t kStatus = DMA_ENGINE_STATUS;
+constexpr std::uint64_t kInterruptEnable = DMA_ENGINE_INTERRUPT_ENABLE;
+constexpr std::uint64_t kHostAddressLow = DMA_ENGINE_HOST_ADDRESS_LOW;
+constexpr std::uint64_t kHostAddressHigh = DMA_ENGINE_HOST_ADDRESS_HIGH;
+constexpr std::uint64_t kLocalAddress = DMA_ENGINE_LOCAL_ADDRESS;
+constexpr std::uint64_t kLength = DMA_ENGINE_LENGTH;
 
 // What can be written to the command register.
-constexpr std::uint32_t kFromHost = 1;
-constexpr std::uint32_t kToHost = 2;
+constexpr std::uint32_t kFromHost = DMA_ENGINE_COMMAND_FROM_HOST;
+constexpr std::uint32_t kToHost = DMA_ENGINE_COMMAND_TO_HOST;
 
 // The bits of the status register.
-constexpr std::uint32_t kDone = 1U << 0;
-constexpr std::uint32_t kError = 1U << 1;
-constexpr std::uint32_t kBusy = 1U << 2;
+constexpr std::uint32_t kDone = DMA_ENGINE_STATUS_DONE;
+constexpr std::uint32_t kError = DMA_ENGINE_STATUS_ERROR;
+constexpr std::uint32_t kBusy = DMA_ENGINE_STATUS_BUSY;
 
 // Where the two memories are in these tests, 64 KiB of each. The host's is
 // above 4 GiB, so that an address of it needs both halves.

@@ -35,15 +35,19 @@ platform.connect(dma.local, bus.add_input())    # its way into the SSD's own
 
 Each is 32 bits wide.
 
-| Offset | Name | | |
-|---|---|---|---|
-| `0x00` | `COMMAND` | write | 1 copies from the host into the SSD's memory, 2 copies to the host. Reads as zero. |
-| `0x04` | `STATUS` | read, write one to clear | bit 0 `DONE`, bit 1 `ERROR`, bit 2 `BUSY`. |
-| `0x08` | `INT_ENABLE` | read, write | bits 0 and 1: which of `DONE` and `ERROR` raise `irq`. |
+<!-- regs:dma_engine start -->
+
+| Offset | Name | Access | What it is |
+| --- | --- | --- | --- |
+| `0x00` | `COMMAND` | write | Write a command to start a copy of what the other registers say. Reads as zero. 1 `FROM_HOST`: Copy from the host's memory into the SSD's own. 2 `TO_HOST`: Copy from the SSD's own memory to the host's. |
+| `0x04` | `STATUS` | read, write | How the last command went. Giving the next command forgets it. Bit 0 `DONE` (write one to clear): The command was carried out. Bit 1 `ERROR` (write one to clear): The command was not carried out, or not all of it. Bit 2 `BUSY` (read only): A command has been given and is not yet carried out. No other is taken meanwhile. |
+| `0x08` | `INTERRUPT_ENABLE` | read, write | Which bits of `STATUS` raise the interrupt line while they are set. Bit 0 `DONE`. Bit 1 `ERROR`. |
 | `0x0C` | `HOST_ADDRESS_LOW` | read, write | Where in the host's memory, the low 32 bits. |
 | `0x10` | `HOST_ADDRESS_HIGH` | read, write | The high 32 bits. A host's memory can be above 4 GiB even when the SSD's CPU is a 32-bit one. |
 | `0x14` | `LOCAL_ADDRESS` | read, write | Where in the SSD's own memory. |
 | `0x18` | `LENGTH` | read, write | How many bytes. |
+
+<!-- regs:dma_engine end -->
 
 `0x1C` is reserved, with nothing there. The first three work exactly as the [flash controller](flash-controller.md)'s do, so a driver for one is most of a driver for the other.
 

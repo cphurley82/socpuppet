@@ -1,3 +1,13 @@
+# The register maps of our own blocks, as C. tools/regs.py writes each
+# header from a SystemRDL file in regs/, and they are kept where a Zephyr
+# build finds them as well, because the drivers include the same files:
+# the model and its driver cannot then disagree about a register.
+set(_socpuppet_regs ${PROJECT_SOURCE_DIR}/python/socpuppet/zephyr_module/include)
+add_library(socpuppet_regs INTERFACE)
+target_sources(socpuppet_regs INTERFACE
+  FILE_SET HEADERS BASE_DIRS ${_socpuppet_regs} FILES
+    ${_socpuppet_regs}/socpuppet/regs/dma_engine.h)
+
 # core/: plain C++ with no simulator underneath. Linking only this target is
 # what keeps SystemC out of the kernel-free unit tests.
 #
@@ -19,6 +29,7 @@ target_sources(socpuppet_core INTERFACE
     core/script.h
     core/time.h
     core/trace.h)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_regs)
 
 # Reading ELF files is ELFIO's work. Like the adapters below, the one source
 # file that uses the borrowed library is compiled on its own.
@@ -58,6 +69,7 @@ target_sources(socpuppet_ssd_devices PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/dma_engine_logic.h
     core/flash_controller_logic.h)
+target_link_libraries(socpuppet_ssd_devices PUBLIC socpuppet_regs)
 socpuppet_dev_checks(socpuppet_ssd_devices)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
 
@@ -209,7 +221,7 @@ target_link_libraries(socpuppet_builtin_components
 socpuppet_dev_checks(socpuppet_builtin_components)
 
 socpuppet_check_headers(
-  socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
+  socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
   socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_dbt_rise_cpu socpuppet_machine_timer socpuppet_ns16550
   socpuppet_plic)

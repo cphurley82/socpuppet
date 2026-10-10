@@ -5,27 +5,30 @@
 #include <cstddef>
 
 #include "socpuppet/core/little_endian.h"
+#include "socpuppet/regs/dma_engine.h"
 
 namespace socpuppet {
 
 namespace {
 
-// Where the registers are. Each is 32 bits wide.
+// Where the registers are. Each is 32 bits wide. The numbers are the
+// register map's (regs/dma_engine.rdl), which the driver gets them from
+// too.
 constexpr std::size_t kRegisterBytes = 4;
-constexpr std::uint64_t kCommandRegister = 0x00;
-constexpr std::uint64_t kStatusRegister = 0x04;
-constexpr std::uint64_t kInterruptEnableRegister = 0x08;
-constexpr std::uint64_t kHostAddressLowRegister = 0x0C;
-constexpr std::uint64_t kHostAddressHighRegister = 0x10;
-constexpr std::uint64_t kLocalAddressRegister = 0x14;
-constexpr std::uint64_t kLengthRegister = 0x18;
+constexpr std::uint64_t kCommandRegister = DMA_ENGINE_COMMAND;
+constexpr std::uint64_t kStatusRegister = DMA_ENGINE_STATUS;
+constexpr std::uint64_t kInterruptEnableRegister = DMA_ENGINE_INTERRUPT_ENABLE;
+constexpr std::uint64_t kHostAddressLowRegister = DMA_ENGINE_HOST_ADDRESS_LOW;
+constexpr std::uint64_t kHostAddressHighRegister = DMA_ENGINE_HOST_ADDRESS_HIGH;
+constexpr std::uint64_t kLocalAddressRegister = DMA_ENGINE_LOCAL_ADDRESS;
+constexpr std::uint64_t kLengthRegister = DMA_ENGINE_LENGTH;
 
 // How many bytes the engine copies at a time.
 constexpr std::size_t kPieceBytes = 4096;
 
 // What the command register can be told.
-constexpr std::uint32_t kFromHost = 1;
-constexpr std::uint32_t kToHost = 2;
+constexpr std::uint32_t kFromHost = DMA_ENGINE_COMMAND_FROM_HOST;
+constexpr std::uint32_t kToHost = DMA_ENGINE_COMMAND_TO_HOST;
 
 // Copies `length` bytes from one memory to another, a piece at a time, so
 // that a long copy does not take as much of the simulator's memory as it
