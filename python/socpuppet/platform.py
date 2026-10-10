@@ -352,7 +352,9 @@ class Platform:
         first. `via` is the master's port, as in `peek32`. Works on a
         description; nothing needs to be built.
         """
-        return address_map.entries(self._connections, self._view(via))
+        return address_map.entries(
+            self._connections, self._view(via), self._groups
+        )
 
     def to_json(self) -> str:
         """The description as JSON.
@@ -417,12 +419,10 @@ class Platform:
         is then no one answer.
         """
         views = {
-            placed.socket.path: address
+            placed.socket.path: found.address
             for placed in self.bus_masters
-            for address, reached, _ in reachable_ports(
-                self._connections, placed.socket
-            )
-            if reached.path == port.path
+            for found in reachable_ports(self._connections, placed.socket)
+            if found.port.path == port.path
         }
         if len(set(views.values())) > 1:
             seen = ", ".join(
