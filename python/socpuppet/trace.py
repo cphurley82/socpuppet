@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Self
 
-from socpuppet._terminal import (
+from socpuppet.terminal import (
     BOLD,
     CYAN,
     DIM,
@@ -13,10 +13,7 @@ from socpuppet._terminal import (
     RED,
     RESET,
     stdout_wants_color,
-    wants_color,
 )
-
-__all__ = ["TraceRecord", "render", "to_json_lines", "wants_color"]
 
 
 @dataclass(frozen=True)
@@ -54,7 +51,8 @@ class TraceRecord:
 def render(records: Iterable[TraceRecord], color: bool | None = None) -> str:
     """The trace as text for people, one line per transaction.
 
-    `color` defaults to whether standard output wants it (see `wants_color`).
+    `color` defaults to whether standard output wants it (see
+    `terminal.wants_color`).
     """
     if color is None:
         color = stdout_wants_color()

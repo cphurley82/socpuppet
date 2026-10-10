@@ -1,12 +1,16 @@
 """The `socpuppet` command line."""
 
 import argparse
+import json
 import pathlib
 import runpy
 import sys
 import traceback
 from collections.abc import Sequence
 
+from socpuppet import address_map, interrupt_map
+from socpuppet.address_map import MapEntry
+from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
 
 
@@ -25,13 +29,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "Nothing is simulated."
         ),
     )
-    devicetree.add_argument(
-        "description",
-        help=(
-            "a Python file that leaves its Platform in a variable called "
-            "`platform`"
-        ),
-    )
+    _add_description(devicetree)
     devicetree.add_argument(
         "--via",
         metavar="PORT",
@@ -40,6 +38,31 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "such as cpu.socket. Needed when the platform has more than one "
             "bus master."
         ),
+    )
+    maps = commands.add_parser(
+        "address-map",
+        help="print what answers at which address in a platform description",
+        description=(
+            "Print the address map of each bus master in a platform "
+            "description, which is what answers at which address, and the "
+            "interrupt map, which is whose line is which number. Nothing "
+            "is simulated."
+        ),
+    )
+    _add_description(maps)
+    maps.add_argument(
+        "--via",
+        metavar="PORT",
+        help=(
+            "print only the address map of what starts accesses at this "
+            "port, such as cpu.socket. It need not be a bus master's: a "
+            "device's own port for DMA has a map too."
+        ),
+    )
+    maps.add_argument(
+        "--json",
+        action="store_true",
+        help="print the maps as JSON, for a program to read",
     )
     commands.add_parser(
         "zephyr-module",
@@ -54,8 +77,22 @@ def main(arguments: Sequence[str] | None = None) -> None:
 
     if options.command == "zephyr-module":
         print(pathlib.Path(__file__).parent / "zephyr_module")
-    else:
+    elif options.command == "address-map":
+        maps_of = _maps_as_json if options.json else _maps_as_text
+        sys.stdout.write(maps_of(*_maps(options.description, options.via)))
+    elif options.command == "devicetree":
         sys.stdout.write(_devicetree(options.description, options.via))
+
+
+def _add_description(command: argparse.ArgumentParser) -> None:
+    """Give a command the description file it works on, as an argument."""
+    command.add_argument(
+        "description",
+        help=(
+            "a Python file that leaves its Platform in a variable called "
+            "`platform`"
+        ),
+    )
 
 
 def _devicetree(path: str, via: str | None) -> str:
@@ -77,6 +114,71 @@ def _devicetree(path: str, via: str | None) -> str:
         return platform.devicetree(None if via is None else platform.port(via))
     except (ValueError, LookupError) as refused:
         sys.exit(f"{path}: {refused}")
+
+
+def _maps(
+    path: str, via: str | None
+) -> tuple[dict[str, list[MapEntry]], list[InterruptEntry]]:
+    """The maps of the platform a file describes.
+
+    Every bus master's address map by the path of its socket, or only the
+    one from the port `via`, and the interrupt map. What is wrong with the
+    file or with the description ends the command with one line that says
+    so.
+    """
+    platform = _load(path)
+    try:
+        if via is None:
+            address_maps = platform.address_maps()
+        else:
+            address_maps = {via: platform.address_map(platform.port(via))}
+    except ValueError as refused:
+        sys.exit(f"{path}: {refused}")
+    return address_maps, platform.interrupt_map()
+
+
+def _maps_as_json(
+    address_maps: dict[str, list[MapEntry]], interrupts: list[InterruptEntry]
+) -> str:
+    """The maps as the description's own JSON has them (`Platform.to_json`)."""
+    return (
+        json.dumps(
+            {
+                "address_maps": {
+                    view: [entry.as_json() for entry in entries]
+                    for view, entries in address_maps.items()
+                },
+                "interrupts": [entry.as_json() for entry in interrupts],
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+
+def _maps_as_text(
+    address_maps: dict[str, list[MapEntry]], interrupts: list[InterruptEntry]
+) -> str:
+    """The maps for people: a heading and a table for each."""
+    sections = [
+        (
+            f"🧦 The address map, as {view} sees it",
+            address_map.render(entries)
+            if entries
+            else f"Nothing answers an access that starts at {view}.",
+        )
+        for view, entries in address_maps.items()
+    ]
+    sections.append(
+        (
+            "🧦 The interrupt map",
+            interrupt_map.render(interrupts)
+            if interrupts
+            else "No line goes to a numbered input of an interrupt "
+            "controller or of a CPU.",
+        )
+    )
+    return "\n\n".join(f"{title}\n\n{body}" for title, body in sections) + "\n"
 
 
 def _load(path: str) -> Platform:

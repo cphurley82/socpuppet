@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Collection, Iterator, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from socpuppet._terminal import BOLD, CYAN, stdout_wants_color, table
+from socpuppet.terminal import BOLD, CYAN, table
 
 if TYPE_CHECKING:
     from socpuppet.platform import Connection
@@ -30,6 +30,10 @@ class InterruptEntry:
     #: The port that drives the line, such as `ssd.dma.irq`.
     line: str
 
+    def as_json(self) -> dict[str, Any]:
+        """The entry as JSON takes it."""
+        return dataclasses.asdict(self)
+
 
 def entries(connections: Collection[Connection]) -> list[InterruptEntry]:
     """The interrupt map, in order of controller and then of number.
@@ -43,18 +47,18 @@ def entries(connections: Collection[Connection]) -> list[InterruptEntry]:
     )
 
 
-def render(entries: Sequence[InterruptEntry], color: bool | None = None) -> str:
+def render(
+    interrupt_entries: Sequence[InterruptEntry], color: bool | None = None
+) -> str:
     """An interrupt map as a table for people, one line for each interrupt.
 
     `color` defaults to whether standard output wants it.
     """
-    if color is None:
-        color = stdout_wants_color()
     return table(
         ("Controller", "Number", "Line"),
         [
             (entry.controller, str(entry.number), entry.line)
-            for entry in entries
+            for entry in interrupt_entries
         ],
         styles=(CYAN, BOLD, ""),
         color=color,

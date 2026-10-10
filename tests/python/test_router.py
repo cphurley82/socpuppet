@@ -4,7 +4,7 @@ import pytest
 
 import socpuppet as sp
 from scripts import writing
-from socpuppet.trace import wants_color
+from socpuppet.terminal import wants_color
 
 RAM_BASE = 0x8000_0000
 UNMAPPED = 0x4000

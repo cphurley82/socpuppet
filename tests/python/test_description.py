@@ -174,6 +174,18 @@ class TestWhenADescriptionIsDumpedAsJson:
         connections = json.loads(platform.to_json())["connections"]
         assert all(one["trace"] for one in connections)
 
+    def test_a_description_whose_address_map_loops_is_refused(self):
+        # The JSON has each bus master's address map, and a map that leads
+        # back to where it has been has no end to write down.
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        bus = platform.add("bus", sp.Router())
+        platform.connect(cpu.socket, bus.target)
+        bus.map(bus.add_input(), base=0x1000, size=0x100)
+
+        with pytest.raises(ValueError, match=r"loops.*bus\.in1"):
+            platform.to_json()
+
     def test_it_gives_the_quantum_that_was_set(self):
         platform = sp.Platform()
         platform.quantum = sp.ns(250)

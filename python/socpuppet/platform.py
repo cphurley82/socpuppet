@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 from collections.abc import Callable, Collection
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, interrupt_map
-from socpuppet._terminal import stdout_wants_color
 from socpuppet.address_map import MapEntry, reachable_ports
 from socpuppet.components import LinkModel
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
+from socpuppet.terminal import stdout_wants_color
 from socpuppet.time import us
 from socpuppet.trace import TraceRecord
 
@@ -356,6 +355,13 @@ class Platform:
             self._connections, self._view(via), self._groups
         )
 
+    def address_maps(self) -> dict[str, list[MapEntry]]:
+        """The address map of each bus master, by the path of its socket."""
+        return {
+            master.socket.path: self.address_map(master.socket)
+            for master in self.bus_masters
+        }
+
     def interrupt_map(self) -> list[InterruptEntry]:
         """Whose interrupt line is which number, to the firmware.
 
@@ -377,7 +383,9 @@ class Platform:
         A scripted bus master's script is behavior, not structure, and is
         left out. A component's parameters include what it works out from
         the description, so a description that does not yet say enough for
-        that is refused, as it would be by `build()`.
+        that is refused, as it would be by `build()`. So is one whose
+        address map leads back to where it has been, which has no end to
+        write down.
         """
         return json.dumps(
             {
@@ -398,14 +406,11 @@ class Platform:
                 ],
                 "quantum": self._quantum,
                 "address_maps": {
-                    master.socket.path: [
-                        entry.as_json()
-                        for entry in self.address_map(master.socket)
-                    ]
-                    for master in self.bus_masters
+                    view: [entry.as_json() for entry in entries]
+                    for view, entries in self.address_maps().items()
                 },
                 "interrupts": [
-                    dataclasses.asdict(entry) for entry in self.interrupt_map()
+                    entry.as_json() for entry in self.interrupt_map()
                 ],
             },
             indent=2,
