@@ -43,7 +43,7 @@ from socpuppet.components import (
 from socpuppet.io_manager import IoManager
 from socpuppet.ops import Steps, expect32, write32
 from socpuppet.placed import Placed, PlacedRouter
-from socpuppet.platform import Link, Platform
+from socpuppet.platform import Group, Link, Platform
 from socpuppet.time import ms
 
 #: Where things are on the IO die, at the addresses the SSD board uses for
@@ -91,6 +91,47 @@ def stand_in_manager() -> IoManager:
     return IoManager(link=LINK_BASE)
 
 
+def add_manager(
+    platform: Platform,
+    place: Platform | Group,
+    bus: PlacedRouter,
+    *,
+    link_end: Placed,
+    script: Script | None = None,
+    gdb_port: int = 0,
+) -> tuple[Placed, CpuKit | None]:
+    """Put the IO die's manager on `bus`, with the link's registers.
+
+    `link_end` is this die's end of the die-to-die link the manager
+    brings up. Its registers go on `bus` at `LINK_BASE`, and its interrupt
+    line goes to the manager.
+
+    With no `script` the manager is a 32-bit CPU with the usual kit around
+    it, and the firmware is loaded into it. `gdb_port` is where a debugger
+    can attach to it. 🎭 With a `script`, that is in the CPU's place and
+    there is no kit: `add_manager(..., script=stand_in_manager().script)`.
+
+    Returns the CPU, or the script in its place, and the kit if it has one.
+    """
+    bus.map(link_end.sideband, base=LINK_BASE)
+    cpu_kit = None
+    if script is None:
+        cpu, cpu_kit = add_cpu_kit(
+            platform,
+            place,
+            bus,
+            sources={LINK_SOURCE: link_end.irq},
+            gdb_port=gdb_port,
+        )
+    else:
+        # 🎭 A script has one interrupt input, and the link is the only
+        # thing a manager has a line from, so it goes straight to it.
+        cpu = place.add("cpu", ScriptedBusMaster(script=script))
+        platform.connect(link_end.irq, cpu.irq)
+    platform.connect(cpu.socket, bus.target)
+    return cpu, cpu_kit
+
+
 def io_manager(
     *,
     compute: Script,
@@ -117,29 +158,15 @@ def io_manager(
     # hold, and a millisecond of training (models/d2d-link.md).
     link = platform.link("d2d", D2dLink(), compute_die, io, trace=trace)
 
-    # The IO die: whatever is in the CPU's place, its bus, the link's
-    # registers and the scratch the compute die reaches across the link.
+    # The IO die: its bus, the manager with the link's registers, and the
+    # scratch the compute die reaches across the link.
     bus = io.add("bus", Router())
+    cpu, cpu_kit = add_manager(
+        platform, io, bus, link_end=link.b, script=manager, gdb_port=gdb_port
+    )
     scratch = io.add("scratch", Memory(size=SCRATCH_SIZE))
-    bus.map(link.b.sideband, base=LINK_BASE)
     bus.map(scratch.socket, base=SCRATCH_BASE)
     platform.connect(link.b.initiator, bus.add_input())
-
-    cpu_kit = None
-    if manager is None:
-        cpu, cpu_kit = add_cpu_kit(
-            platform,
-            io,
-            bus,
-            sources={LINK_SOURCE: link.b.irq},
-            gdb_port=gdb_port,
-        )
-    else:
-        # 🎭 A script has one interrupt input, and the link is the only
-        # thing on this die with a line, so it goes straight to it.
-        cpu = io.add("cpu", ScriptedBusMaster(script=manager))
-        platform.connect(link.b.irq, cpu.irq)
-    platform.connect(cpu.socket, bus.target)
 
     # 🎭 The compute die: a script with a memory of its own, held in reset
     # by its end of the link until the IO die lets it go.
