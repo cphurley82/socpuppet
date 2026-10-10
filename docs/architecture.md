@@ -234,6 +234,7 @@ The real die-to-die link passes `LinkContract` beside the stand-in, and the plat
 
 Each has a page saying what real hardware it stands for and what it leaves out.
 
+- [Command device](models/command-device.md), which is what the DMA engine and the flash controller share
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
 - [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)

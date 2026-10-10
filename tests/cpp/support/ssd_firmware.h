@@ -21,6 +21,8 @@
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/transport.h"
+#include "socpuppet/regs/command_device.h"
+#include "socpuppet/regs/dma_engine.h"
 
 // Where the firmware finds the SSD's hardware on its bus: the three
 // devices' register blocks, and the buffer, which is the SSD's own memory.
@@ -85,26 +87,6 @@ class SsdFirmware : public sc_core::sc_module {
   static constexpr std::uint32_t kReady = 1U << 0;
   static constexpr std::uint32_t kCreateCompletionQueue = 1;
   static constexpr std::uint32_t kCreateSubmissionQueue = 2;
-
-  // ---- What the DMA engine and the flash controller have in common.
-  enum Device : std::uint64_t {
-    kDeviceCommand = 0x00,
-    kDeviceStatus = 0x04,
-  };
-  enum DeviceStatus : std::uint32_t {
-    kError = 1U << 1,
-    kBusy = 1U << 2,
-  };
-
-  // ---- The DMA engine's registers.
-  enum Dma : std::uint64_t {
-    kHostAddressLow = 0x0C,
-    kHostAddressHigh = 0x10,
-    kDmaLocalAddress = 0x14,
-    kLength = 0x18,
-  };
-  static constexpr std::uint32_t kFromHost = 1;
-  static constexpr std::uint32_t kToHost = 2;
 
   // ---- The flash controller's registers.
   enum Flash : std::uint64_t {
@@ -238,12 +220,12 @@ class SsdFirmware : public sc_core::sc_module {
   // Gives the DMA engine or the flash controller a command and waits for
   // it. Returns whether it was carried out.
   bool Do(std::uint64_t device, std::uint32_t command) {
-    Write32(device + kDeviceCommand, command);
-    std::uint32_t status = Read32(device + kDeviceStatus);
+    Write32(device + COMMAND_DEVICE_COMMAND, command);
+    std::uint32_t status = Read32(device + COMMAND_DEVICE_STATUS);
     // Nothing takes simulated time yet, so the device is done within a
     // delta cycle or two. The limit is there so that one that never
     // finishes fails the test and does not hang it.
-    for (int turn = 0; (status & kBusy) != 0; ++turn) {
+    for (int turn = 0; (status & COMMAND_DEVICE_STATUS_BUSY) != 0; ++turn) {
       if (turn == kPatienceInDeltaCycles) {
         ADD_FAILURE() << "The device at 0x" << std::hex << device
                       << " is still busy.";
@@ -251,21 +233,21 @@ class SsdFirmware : public sc_core::sc_module {
         return false;
       }
       wait(sc_core::SC_ZERO_TIME);
-      status = Read32(device + kDeviceStatus);
+      status = Read32(device + COMMAND_DEVICE_STATUS);
     }
-    return (status & kError) == 0;
+    return (status & COMMAND_DEVICE_STATUS_ERROR) == 0;
   }
 
   // Copies between the host's memory and the buffer.
   bool Copy(std::uint32_t direction, std::uint64_t host_address,
             std::uint64_t local_address, std::uint32_t length) {
-    Write32(map_.dma + kHostAddressLow,
+    Write32(map_.dma + DMA_ENGINE_HOST_ADDRESS_LOW,
             static_cast<std::uint32_t>(host_address));
-    Write32(map_.dma + kHostAddressHigh,
+    Write32(map_.dma + DMA_ENGINE_HOST_ADDRESS_HIGH,
             static_cast<std::uint32_t>(host_address >> 32));
-    Write32(map_.dma + kDmaLocalAddress,
+    Write32(map_.dma + DMA_ENGINE_LOCAL_ADDRESS,
             static_cast<std::uint32_t>(local_address));
-    Write32(map_.dma + kLength, length);
+    Write32(map_.dma + DMA_ENGINE_LENGTH, length);
     return Do(map_.dma, direction);
   }
 
@@ -523,8 +505,8 @@ class SsdFirmware : public sc_core::sc_module {
 
   bool ReadFromPage(std::uint32_t page, std::uint32_t offset,
                     std::uint64_t host_address, std::uint32_t length) {
-    return Load(page) &&
-           Copy(kToHost, host_address, PageBuffer() + offset, length);
+    return Load(page) && Copy(DMA_ENGINE_COMMAND_TO_HOST, host_address,
+                              PageBuffer() + offset, length);
   }
 
   // What is not being written of the page has to survive, so the page is
@@ -532,8 +514,8 @@ class SsdFirmware : public sc_core::sc_module {
   // takes the next NAND page nobody has.
   bool WriteIntoPage(std::uint32_t page, std::uint32_t offset,
                      std::uint64_t host_address, std::uint32_t length) {
-    if (!Load(page) ||
-        !Copy(kFromHost, host_address, PageBuffer() + offset, length)) {
+    if (!Load(page) || !Copy(DMA_ENGINE_COMMAND_FROM_HOST, host_address,
+                             PageBuffer() + offset, length)) {
       return false;
     }
     const std::uint32_t nand_page = where_[page].value_or(next_free_nand_page_);
@@ -568,7 +550,8 @@ class SsdFirmware : public sc_core::sc_module {
       // As much of the list as its page holds, fetched into the scratch
       // page to be read.
       const std::uint32_t list_bytes = kHostPage - PageOffset(list);
-      if (!Copy(kFromHost, list, Scratch(), list_bytes)) return std::nullopt;
+      if (!Copy(DMA_ENGINE_COMMAND_FROM_HOST, list, Scratch(), list_bytes))
+        return std::nullopt;
       std::vector<std::uint8_t> entries(list_bytes);
       Read(Scratch(), entries);
       const std::size_t count = list_bytes / 8;
@@ -600,7 +583,8 @@ class SsdFirmware : public sc_core::sc_module {
     const std::optional<std::vector<Extent>> extents = DataOf(command, length);
     if (!extents) return Generic(kDataTransferError);
     for (const Extent& extent : *extents) {
-      if (!Copy(kToHost, extent.address, local_address, extent.length)) {
+      if (!Copy(DMA_ENGINE_COMMAND_TO_HOST, extent.address, local_address,
+                extent.length)) {
         return Generic(kDataTransferError);
       }
       local_address += extent.length;

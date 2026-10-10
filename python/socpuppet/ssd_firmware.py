@@ -29,6 +29,7 @@ from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
+from socpuppet.regs import command_device, dma_engine
 
 # ---- The NVMe frontend's registers for its CPU.
 _CONTROL = 0x00
@@ -57,20 +58,6 @@ _READY = 1 << 0
 #: What its queue-create register is told.
 _A_COMPLETION_QUEUE = 1
 _A_SUBMISSION_QUEUE = 2
-
-# ---- What the DMA engine and the flash controller have in common.
-_DEVICE_COMMAND = 0x00
-_DEVICE_STATUS = 0x04
-_ERROR = 1 << 1
-_BUSY = 1 << 2
-
-# ---- The DMA engine's registers, and its two commands.
-_HOST_ADDRESS_LOW = 0x0C
-_HOST_ADDRESS_HIGH = 0x10
-_DMA_LOCAL_ADDRESS = 0x14
-_LENGTH = 0x18
-_FROM_HOST = 1
-_TO_HOST = 2
 
 # ---- The flash controller's registers, and the commands used here.
 _BLOCK = 0x0C
@@ -438,7 +425,11 @@ class SsdFirmware:
         # every piece of the command's data that is in it, and for a write
         # program it once.
         writing = command.opcode == _WRITE
-        direction = _FROM_HOST if writing else _TO_HOST
+        direction = (
+            dma_engine.COMMAND_FROM_HOST
+            if writing
+            else dma_engine.COMMAND_TO_HOST
+        )
         in_the_buffer: int | None = None
         for page, offset, address, length in self._pieces(
             first * _BLOCK_SIZE, extents
@@ -552,7 +543,10 @@ class SsdFirmware:
             list_bytes = _HOST_PAGE - pointers % _HOST_PAGE
             if not (
                 yield from self._copy(
-                    _FROM_HOST, pointers, self._scratch, list_bytes
+                    dma_engine.COMMAND_FROM_HOST,
+                    pointers,
+                    self._scratch,
+                    list_bytes,
                 )
             ):
                 return _DATA_TRANSFER_ERROR
@@ -579,7 +573,9 @@ class SsdFirmware:
         local_address = self._scratch
         for address, length in extents:
             if not (
-                yield from self._copy(_TO_HOST, address, local_address, length)
+                yield from self._copy(
+                    dma_engine.COMMAND_TO_HOST, address, local_address, length
+                )
             ):
                 return _DATA_TRANSFER_ERROR
             local_address += length
@@ -591,11 +587,14 @@ class SsdFirmware:
         self, direction: int, host_address: int, local_address: int, length: int
     ) -> Steps[bool]:
         """Copy between the host's memory and the buffer, by the DMA engine."""
-        yield write32(self._dma + _HOST_ADDRESS_LOW, host_address & 0xFFFF_FFFF)
-        yield write32(self._dma + _HOST_ADDRESS_HIGH, host_address >> 32)
-        yield write32(self._dma + _DMA_LOCAL_ADDRESS, local_address)
-        yield write32(self._dma + _LENGTH, length)
-        return (yield from self._do(self._dma, direction))
+        dma = self._dma
+        yield write32(
+            dma + dma_engine.HOST_ADDRESS_LOW, host_address & 0xFFFF_FFFF
+        )
+        yield write32(dma + dma_engine.HOST_ADDRESS_HIGH, host_address >> 32)
+        yield write32(dma + dma_engine.LOCAL_ADDRESS, local_address)
+        yield write32(dma + dma_engine.LENGTH, length)
+        return (yield from self._do(dma, direction))
 
     def _flash_page(self, command: int, nand_page: int) -> Steps[bool]:
         """Move a NAND page between the chip and the page buffer."""
@@ -611,11 +610,11 @@ class SsdFirmware:
         The device does its work a moment after the write returns, and
         says it is busy until then, so the firmware asks until it is not.
         """
-        yield write32(device + _DEVICE_COMMAND, command)
+        yield write32(device + command_device.COMMAND, command)
         for _ in range(_PATIENCE):
-            status = yield read32(device + _DEVICE_STATUS)
-            if not status & _BUSY:
-                return not status & _ERROR
+            status = yield read32(device + command_device.STATUS)
+            if not status & command_device.STATUS_BUSY:
+                return not status & command_device.STATUS_ERROR
         raise RuntimeError(
             f"The device at {device:#x} is still busy after being asked "
             f"{_PATIENCE} times whether it has finished command {command}."

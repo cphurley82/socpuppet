@@ -17,25 +17,6 @@ namespace socpuppet {
 
 namespace {
 
-// The engine's registers, each 32 bits wide, as its register map gives them
-// (regs/dma_engine.rdl).
-constexpr std::uint64_t kCommand = DMA_ENGINE_COMMAND;
-constexpr std::uint64_t kStatus = DMA_ENGINE_STATUS;
-constexpr std::uint64_t kInterruptEnable = DMA_ENGINE_INTERRUPT_ENABLE;
-constexpr std::uint64_t kHostAddressLow = DMA_ENGINE_HOST_ADDRESS_LOW;
-constexpr std::uint64_t kHostAddressHigh = DMA_ENGINE_HOST_ADDRESS_HIGH;
-constexpr std::uint64_t kLocalAddress = DMA_ENGINE_LOCAL_ADDRESS;
-constexpr std::uint64_t kLength = DMA_ENGINE_LENGTH;
-
-// What can be written to the command register.
-constexpr std::uint32_t kFromHost = DMA_ENGINE_COMMAND_FROM_HOST;
-constexpr std::uint32_t kToHost = DMA_ENGINE_COMMAND_TO_HOST;
-
-// The bits of the status register.
-constexpr std::uint32_t kDone = DMA_ENGINE_STATUS_DONE;
-constexpr std::uint32_t kError = DMA_ENGINE_STATUS_ERROR;
-constexpr std::uint32_t kBusy = DMA_ENGINE_STATUS_BUSY;
-
 // Where the two memories are in these tests, 64 KiB of each. The host's is
 // above 4 GiB, so that an address of it needs both halves.
 constexpr std::uint64_t kHost = 0x1'0000'0000;
@@ -96,14 +77,17 @@ struct Rig {
   // `local_address`.
   void Describe(std::uint64_t host_address, std::uint64_t local_address,
                 std::uint32_t length) {
-    Write32(kHostAddressLow, static_cast<std::uint32_t>(host_address));
-    Write32(kHostAddressHigh, static_cast<std::uint32_t>(host_address >> 32));
-    Write32(kLocalAddress, static_cast<std::uint32_t>(local_address));
-    Write32(kLength, length);
+    Write32(DMA_ENGINE_HOST_ADDRESS_LOW,
+            static_cast<std::uint32_t>(host_address));
+    Write32(DMA_ENGINE_HOST_ADDRESS_HIGH,
+            static_cast<std::uint32_t>(host_address >> 32));
+    Write32(DMA_ENGINE_LOCAL_ADDRESS,
+            static_cast<std::uint32_t>(local_address));
+    Write32(DMA_ENGINE_LENGTH, length);
   }
   // Gives a command and lets the engine carry it out.
   void Do(std::uint32_t command) {
-    Write32(kCommand, command);
+    Write32(DMA_ENGINE_COMMAND, command);
     engine.CarryOut();
   }
 };
@@ -115,19 +99,21 @@ TEST(WhenADmaEngineIsToldToCopyFromTheHost, TheBytesArriveInTheSsdsMemory) {
   rig.host.Write(kHost + 0x100, SomeBytes(24));
   rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
 
-  rig.Do(kFromHost);
+  rig.Do(DMA_ENGINE_COMMAND_FROM_HOST);
 
   EXPECT_EQ(rig.local.At(kLocal + 0x200, 24), SomeBytes(24));
 }
 
 TEST(WhenADmaEngineHasCarriedOutACopy, ItsStatusSaysDoneAndNotBusy) {
-  for (const std::uint32_t command : {kFromHost, kToHost}) {
+  for (const std::uint32_t command :
+       {DMA_ENGINE_COMMAND_FROM_HOST, DMA_ENGINE_COMMAND_TO_HOST}) {
     Rig rig;
     rig.Describe(kHost, kLocal, 24);
 
     rig.Do(command);
 
-    EXPECT_EQ(rig.Read32(kStatus), kDone) << "command " << command;
+    EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_DONE)
+        << "command " << command;
   }
 }
 
@@ -136,7 +122,7 @@ TEST(WhenADmaEngineIsToldToCopyToTheHost, TheBytesArriveInTheHostsMemory) {
   rig.local.Write(kLocal + 0x200, SomeBytes(24));
   rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
 
-  rig.Do(kToHost);
+  rig.Do(DMA_ENGINE_COMMAND_TO_HOST);
 
   EXPECT_EQ(rig.host.At(kHost + 0x100, 24), SomeBytes(24));
 }
@@ -151,12 +137,12 @@ TEST(WhenNothingAnswersAtAnAddressADmaEngineIsToCopyFrom,
   to_host.host.Write(kHost, SomeBytes(24));
   to_host.Describe(kHost, kLocal + kMemorySize, 24);
 
-  from_host.Do(kFromHost);
-  to_host.Do(kToHost);
+  from_host.Do(DMA_ENGINE_COMMAND_FROM_HOST);
+  to_host.Do(DMA_ENGINE_COMMAND_TO_HOST);
 
-  EXPECT_EQ(from_host.Read32(kStatus), kError);
+  EXPECT_EQ(from_host.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
   EXPECT_EQ(from_host.local.At(kLocal, 24), SomeBytes(24));
-  EXPECT_EQ(to_host.Read32(kStatus), kError);
+  EXPECT_EQ(to_host.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
   EXPECT_EQ(to_host.host.At(kHost, 24), SomeBytes(24));
 }
 
@@ -166,11 +152,11 @@ TEST(WhenNothingAnswersAtAnAddressADmaEngineIsToCopyTo, TheStatusSaysError) {
   Rig to_host;
   to_host.Describe(kHost + kMemorySize, kLocal, 24);
 
-  from_host.Do(kFromHost);
-  to_host.Do(kToHost);
+  from_host.Do(DMA_ENGINE_COMMAND_FROM_HOST);
+  to_host.Do(DMA_ENGINE_COMMAND_TO_HOST);
 
-  EXPECT_EQ(from_host.Read32(kStatus), kError);
-  EXPECT_EQ(to_host.Read32(kStatus), kError);
+  EXPECT_EQ(from_host.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
+  EXPECT_EQ(to_host.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
 }
 
 // A copy of nothing is more likely a mistake in the firmware than something
@@ -179,18 +165,18 @@ TEST(WhenADmaEngineIsToldToCopyNoBytesAtAll, TheStatusSaysError) {
   Rig rig;
   rig.Describe(kHost, kLocal, 0);
 
-  rig.Do(kFromHost);
+  rig.Do(DMA_ENGINE_COMMAND_FROM_HOST);
 
-  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
 }
 
 TEST(WhenADmaEngineHasNotYetCarriedOutACommand, ItsStatusSaysBusy) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
 
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
 
-  EXPECT_EQ(rig.Read32(kStatus), kBusy);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_BUSY);
 }
 
 // The firmware can ask for any length up to 4 GiB, and the engine cannot
@@ -201,7 +187,7 @@ TEST(WhenADmaEngineIsToldToCopyMoreThanItHoldsAtOnce, ItAllArrives) {
   rig.host.Write(kHost + 0x10, SomeBytes(10'000));
   rig.Describe(kHost + 0x10, kLocal + 0x20, 10'000);
 
-  rig.Do(kFromHost);
+  rig.Do(DMA_ENGINE_COMMAND_FROM_HOST);
 
   EXPECT_EQ(rig.local.At(kLocal + 0x20, 10'000), SomeBytes(10'000));
 }
@@ -214,9 +200,9 @@ TEST(WhenACopyRunsOffTheEndOfWhatAnswers,
   rig.host.Write(near_the_end, SomeBytes(4096));
   rig.Describe(near_the_end, kLocal, 8192);
 
-  rig.Do(kFromHost);
+  rig.Do(DMA_ENGINE_COMMAND_FROM_HOST);
 
-  EXPECT_EQ(rig.Read32(kStatus), kError);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), DMA_ENGINE_STATUS_ERROR);
   EXPECT_EQ(rig.local.At(kLocal, 4096), SomeBytes(4096));
 }
 
@@ -225,10 +211,10 @@ TEST(WhenADmaEngineIsGivenACommandWhileItIsBusy,
   Rig rig;
   rig.host.Write(kHost, SomeBytes(24));
   rig.Describe(kHost, kLocal, 24);
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
   rig.Describe(kHost + 0x100, kLocal, 24);
 
-  EXPECT_FALSE(rig.Write32(kCommand, kToHost));
+  EXPECT_FALSE(rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_TO_HOST));
   rig.engine.CarryOut();
 
   EXPECT_EQ(rig.local.At(kLocal, 24), SomeBytes(24));
@@ -239,9 +225,9 @@ TEST(WhenADmaEngineIsGivenACommandItDoesNotHave, TheWriteIsRefused) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
 
-  EXPECT_FALSE(rig.Write32(kCommand, 0));
-  EXPECT_FALSE(rig.Write32(kCommand, 3));
-  EXPECT_EQ(rig.Read32(kStatus), 0U);
+  EXPECT_FALSE(rig.Write32(DMA_ENGINE_COMMAND, 0));
+  EXPECT_FALSE(rig.Write32(DMA_ENGINE_COMMAND, 3));
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), 0U);
 }
 
 // The registers are the CPU's to write at any time. What a command is
@@ -252,7 +238,7 @@ TEST(WhenTheCpuChangesTheRegistersAfterGivingADmaEngineACommand,
   rig.host.Write(kHost + 0x100, SomeBytes(24));
   rig.host.Write(kHost + 0x300, SomeBytes(8));
   rig.Describe(kHost + 0x100, kLocal + 0x200, 24);
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
 
   rig.Describe(kHost + 0x300, kLocal + 0x400, 8);
   rig.engine.CarryOut();
@@ -263,25 +249,27 @@ TEST(WhenTheCpuChangesTheRegistersAfterGivingADmaEngineACommand,
 
 TEST(WhenTheCpuReadsBackARegisterItWroteInADmaEngine, ItReadsWhatWasWritten) {
   Rig rig;
-  rig.Write32(kInterruptEnable, kDone | kError);
-  rig.Write32(kHostAddressLow, 0x1111'1111);
-  rig.Write32(kHostAddressHigh, 0x2222'2222);
-  rig.Write32(kLocalAddress, 0x3333'3333);
-  rig.Write32(kLength, 0x4444'4444);
+  rig.Write32(DMA_ENGINE_INTERRUPT_ENABLE,
+              DMA_ENGINE_STATUS_DONE | DMA_ENGINE_STATUS_ERROR);
+  rig.Write32(DMA_ENGINE_HOST_ADDRESS_LOW, 0x1111'1111);
+  rig.Write32(DMA_ENGINE_HOST_ADDRESS_HIGH, 0x2222'2222);
+  rig.Write32(DMA_ENGINE_LOCAL_ADDRESS, 0x3333'3333);
+  rig.Write32(DMA_ENGINE_LENGTH, 0x4444'4444);
 
-  EXPECT_EQ(rig.Read32(kInterruptEnable), kDone | kError);
-  EXPECT_EQ(rig.Read32(kHostAddressLow), 0x1111'1111U);
-  EXPECT_EQ(rig.Read32(kHostAddressHigh), 0x2222'2222U);
-  EXPECT_EQ(rig.Read32(kLocalAddress), 0x3333'3333U);
-  EXPECT_EQ(rig.Read32(kLength), 0x4444'4444U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_INTERRUPT_ENABLE),
+            DMA_ENGINE_STATUS_DONE | DMA_ENGINE_STATUS_ERROR);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_HOST_ADDRESS_LOW), 0x1111'1111U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_HOST_ADDRESS_HIGH), 0x2222'2222U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_LOCAL_ADDRESS), 0x3333'3333U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_LENGTH), 0x4444'4444U);
 }
 
 // The command register is for writing: there is nothing in it to read.
 TEST(WhenTheCpuReadsTheCommandRegisterOfADmaEngine, ItReadsAsZero) {
   Rig rig;
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
 
-  EXPECT_EQ(rig.Read32(kCommand), 0U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_COMMAND), 0U);
 }
 
 TEST(WhenAnAccessToADmaEngineIsNot32BitsWide, ItIsRefused) {
@@ -289,11 +277,11 @@ TEST(WhenAnAccessToADmaEngineIsNot32BitsWide, ItIsRefused) {
   std::array<std::uint8_t, 2> two{1, 0};
   std::array<std::uint8_t, 8> eight{1, 0, 0, 0, 1, 0, 0, 0};
 
-  EXPECT_FALSE(rig.engine.ReadRegister(kStatus, two));
-  EXPECT_FALSE(rig.engine.ReadRegister(kStatus, eight));
-  EXPECT_FALSE(rig.engine.WriteRegister(kLength, two));
-  EXPECT_FALSE(rig.engine.WriteRegister(kLength, eight));
-  EXPECT_EQ(rig.Read32(kLength), 0U);
+  EXPECT_FALSE(rig.engine.ReadRegister(DMA_ENGINE_STATUS, two));
+  EXPECT_FALSE(rig.engine.ReadRegister(DMA_ENGINE_STATUS, eight));
+  EXPECT_FALSE(rig.engine.WriteRegister(DMA_ENGINE_LENGTH, two));
+  EXPECT_FALSE(rig.engine.WriteRegister(DMA_ENGINE_LENGTH, eight));
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_LENGTH), 0U);
 }
 
 // 0x1C is after the last register, and 0x02 is in the middle of one.
@@ -310,8 +298,8 @@ TEST(WhenAnAccessToADmaEngineIsBesideItsRegisters, ItIsRefused) {
 TEST(WhenACopyIsDoneAndDoneIsEnabledAsAnInterrupt, TheDmaEngineInterrupts) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
-  rig.Write32(kInterruptEnable, kDone);
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_INTERRUPT_ENABLE, DMA_ENGINE_STATUS_DONE);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
   const bool while_busy = rig.engine.Interrupting();
 
   rig.engine.CarryOut();
@@ -324,26 +312,26 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt,
      TheDmaEngineStopsInterruptingAndTheBitReadsAsClear) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
-  rig.Write32(kInterruptEnable, kDone);
-  rig.Do(kFromHost);
+  rig.Write32(DMA_ENGINE_INTERRUPT_ENABLE, DMA_ENGINE_STATUS_DONE);
+  rig.Do(DMA_ENGINE_COMMAND_FROM_HOST);
 
-  rig.Write32(kStatus, kDone);
+  rig.Write32(DMA_ENGINE_STATUS, DMA_ENGINE_STATUS_DONE);
 
   EXPECT_FALSE(rig.engine.Interrupting());
-  EXPECT_EQ(rig.Read32(kStatus), 0U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), 0U);
 }
 
 TEST(WhenADmaEngineHasNothingToDo, CarryingOutSaysSoAndChangesNothing) {
   Rig rig;
 
   EXPECT_FALSE(rig.engine.CarryOut());
-  EXPECT_EQ(rig.Read32(kStatus), 0U);
+  EXPECT_EQ(rig.Read32(DMA_ENGINE_STATUS), 0U);
 }
 
 TEST(WhenADmaEngineHasCarriedOutACommand, ThereIsNothingMoreToDo) {
   Rig rig;
   rig.Describe(kHost, kLocal, 24);
-  rig.Write32(kCommand, kFromHost);
+  rig.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
 
   EXPECT_TRUE(rig.engine.CarryOut());
   EXPECT_FALSE(rig.engine.CarryOut());

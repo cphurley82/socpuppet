@@ -329,6 +329,104 @@ def test_a_register_defined_in_an_included_file_is_in_the_header_of_the_block_th
     assert "#define SPAM_EGGS 0x08U\n" in (repo / HEADER).read_text()
 
 
+#: A block whose registers other blocks have too, by their types, and the
+#: page its own table goes on.
+SHARED = """\
+    `ifndef SHARED_RDL
+    `define SHARED_RDL
+    property block_size { type = longint unsigned; component = addrmap; };
+
+    reg shared_command_r {
+        desc = "Write a command.";
+        field { sw = w; } VALUE[31:0] = 0;
+    };
+
+    addrmap shared {
+        name = "Shared";
+        block_size = 0x8;
+        default regwidth = 32;
+        shared_command_r COMMAND @ 0x4;
+    };
+    `endif
+"""
+
+
+def a_block_that_shares(repo, command_at, more=""):
+    """Make `spam` a block with the shared command register at `command_at`.
+
+    And `more`, if the block has more to say of the register than that.
+    """
+    (repo / "regs/shared.rdl").write_text(textwrap.dedent(SHARED))
+    (repo / "docs/models/shared.md").write_text(
+        "# Shared\n\n<!-- regs:shared start -->\n<!-- regs:shared end -->\n"
+    )
+    (repo / "regs/spam.rdl").write_text(
+        textwrap.dedent(
+            f"""\
+            `include "shared.rdl"
+
+            enum spam_command_e {{
+                FRY = 1 {{ desc = "Fry it."; }};
+            }};
+
+            addrmap spam {{
+                name = "Spam";
+                block_size = 0x10;
+                default regwidth = 32;
+                shared_command_r COMMAND @ {command_at:#x};
+                {more}
+            }};
+            """
+        )
+    )
+
+
+def test_a_file_that_includes_another_blocks_file_gives_a_header_for_each_block(
+    repo,
+):
+    a_block_that_shares(repo, command_at=0x4)
+
+    result = regs(repo, "write")
+
+    assert result.returncode == 0, result.stdout
+    assert "#define SPAM_COMMAND 0x04U\n" in (repo / HEADER).read_text()
+    assert "#define SHARED_COMMAND 0x04U\n" in (
+        (repo / HEADER).with_name("shared.h").read_text()
+    )
+
+
+def test_what_a_block_says_of_a_shared_register_in_its_own_map_is_what_its_header_says(
+    repo,
+):
+    a_block_that_shares(
+        repo,
+        command_at=0x4,
+        more='COMMAND->desc = "Write what to cook.";\n'
+        "    COMMAND.VALUE->encode = spam_command_e;",
+    )
+
+    regs(repo, "write")
+
+    header = (repo / HEADER).read_text()
+    assert "/* Write what to cook. */\n#define SPAM_COMMAND " in header
+    assert "#define SPAM_COMMAND_FRY 1U\n" in header
+
+
+def test_when_a_shared_register_is_not_where_the_block_that_shares_it_has_it_it_is_refused_and_the_error_names_both_places(
+    repo,
+):
+    a_block_that_shares(repo, command_at=0x8)
+
+    result = regs(repo, "write")
+
+    assert result.returncode != 0
+    assert "regs/spam.rdl" in result.stdout
+    assert "COMMAND" in result.stdout
+    assert "0x8" in result.stdout
+    assert "regs/shared.rdl" in result.stdout
+    assert "0x4" in result.stdout
+
+
 def test_when_a_header_is_not_what_its_register_map_gives_check_fails_and_says_how_to_repair_it(
     repo,
 ):

@@ -49,7 +49,7 @@ Each is 32 bits wide.
 
 <!-- regs:dma_engine end -->
 
-`0x1C` is reserved, with nothing there. The first three work exactly as the [flash controller](flash-controller.md)'s do, so a driver for one is most of a driver for the other.
+`0x1C` is reserved, with nothing there. The first three are the registers of a [command device](command-device.md), which the [flash controller](flash-controller.md) begins with too, so a driver for one is most of a driver for the other.
 
 - **A command is about what the registers said when it was given.** The firmware may describe the next copy while this one is still busy.
 - **One command at a time.** A write to `COMMAND` while the engine is busy is refused.

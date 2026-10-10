@@ -24,24 +24,6 @@ namespace socpuppet {
 
 namespace {
 
-// The engine's registers, each 32 bits wide, as its register map gives them
-// (regs/dma_engine.rdl).
-constexpr std::uint64_t kCommand = DMA_ENGINE_COMMAND;
-constexpr std::uint64_t kStatus = DMA_ENGINE_STATUS;
-constexpr std::uint64_t kInterruptEnable = DMA_ENGINE_INTERRUPT_ENABLE;
-constexpr std::uint64_t kHostAddressLow = DMA_ENGINE_HOST_ADDRESS_LOW;
-constexpr std::uint64_t kHostAddressHigh = DMA_ENGINE_HOST_ADDRESS_HIGH;
-constexpr std::uint64_t kLocalAddress = DMA_ENGINE_LOCAL_ADDRESS;
-constexpr std::uint64_t kLength = DMA_ENGINE_LENGTH;
-
-// What can be written to the command register.
-constexpr std::uint32_t kFromHost = DMA_ENGINE_COMMAND_FROM_HOST;
-constexpr std::uint32_t kToHost = DMA_ENGINE_COMMAND_TO_HOST;
-
-// The bits of the status register.
-constexpr std::uint32_t kDone = DMA_ENGINE_STATUS_DONE;
-constexpr std::uint32_t kBusy = DMA_ENGINE_STATUS_BUSY;
-
 // `length` bytes in which no two neighbours are the same.
 std::vector<std::uint8_t> SomeBytes(std::size_t length) {
   std::vector<std::uint8_t> data(length);
@@ -129,12 +111,14 @@ struct CpuWithADmaEngine {
 // firmware that polls would.
 void Copy(BusDriver& cpu, std::uint32_t command, std::uint64_t host_address,
           std::uint32_t local_address, std::uint32_t length) {
-  cpu.Write32(kHostAddressLow, static_cast<std::uint32_t>(host_address));
-  cpu.Write32(kHostAddressHigh, static_cast<std::uint32_t>(host_address >> 32));
-  cpu.Write32(kLocalAddress, local_address);
-  cpu.Write32(kLength, length);
-  cpu.Write32(kCommand, command);
-  while ((cpu.Read32(kStatus) & kBusy) != 0) {
+  cpu.Write32(DMA_ENGINE_HOST_ADDRESS_LOW,
+              static_cast<std::uint32_t>(host_address));
+  cpu.Write32(DMA_ENGINE_HOST_ADDRESS_HIGH,
+              static_cast<std::uint32_t>(host_address >> 32));
+  cpu.Write32(DMA_ENGINE_LOCAL_ADDRESS, local_address);
+  cpu.Write32(DMA_ENGINE_LENGTH, length);
+  cpu.Write32(DMA_ENGINE_COMMAND, command);
+  while ((cpu.Read32(DMA_ENGINE_STATUS) & DMA_ENGINE_STATUS_BUSY) != 0) {
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
   }
 }
@@ -144,8 +128,8 @@ void Copy(BusDriver& cpu, std::uint32_t command, std::uint64_t host_address,
 TEST(WhenACpuHasADmaEngineCopyFromTheHostAndBackToAnotherPlace,
      TheBytesArriveThere) {
   CpuWithADmaEngine fixture{[](BusDriver& cpu) {
-    Copy(cpu, kFromHost, 0x10, 0x40, 24);
-    Copy(cpu, kToHost, 0x80, 0x40, 24);
+    Copy(cpu, DMA_ENGINE_COMMAND_FROM_HOST, 0x10, 0x40, 24);
+    Copy(cpu, DMA_ENGINE_COMMAND_TO_HOST, 0x80, 0x40, 24);
   }};
   fixture.PutInMemory("host", 0x10, SomeBytes(24));
 
@@ -164,26 +148,26 @@ TEST(WhenACpuHasJustToldADmaEngineToCopy,
   std::uint32_t when_the_write_returned = 0;
   std::uint32_t afterwards = 0;
   CpuWithADmaEngine fixture{[&](BusDriver& cpu) {
-    cpu.Write32(kLength, 24);
-    cpu.Write32(kCommand, kFromHost);
-    when_the_write_returned = cpu.Read32(kStatus);
+    cpu.Write32(DMA_ENGINE_LENGTH, 24);
+    cpu.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
+    when_the_write_returned = cpu.Read32(DMA_ENGINE_STATUS);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
     cpu.WaitFor(sc_core::SC_ZERO_TIME);
-    afterwards = cpu.Read32(kStatus);
+    afterwards = cpu.Read32(DMA_ENGINE_STATUS);
   }};
 
   fixture.platform.Run();
 
-  EXPECT_EQ(when_the_write_returned, kBusy);
-  EXPECT_EQ(afterwards, kDone);
+  EXPECT_EQ(when_the_write_returned, DMA_ENGINE_STATUS_BUSY);
+  EXPECT_EQ(afterwards, DMA_ENGINE_STATUS_DONE);
 }
 
 TEST(WhenADmaEngineFinishesACopyWithItsInterruptEnabled,
      ItsLineRisesAndStaysHigh) {
   CpuWithADmaEngine fixture{[](BusDriver& cpu) {
-    cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kLength, 24);
-    cpu.Write32(kCommand, kFromHost);
+    cpu.Write32(DMA_ENGINE_INTERRUPT_ENABLE, DMA_ENGINE_STATUS_DONE);
+    cpu.Write32(DMA_ENGINE_LENGTH, 24);
+    cpu.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
   }};
 
   fixture.platform.Run();
@@ -196,11 +180,11 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt, TheDmaEnginesLineFalls) {
   CpuWithADmaEngine* wired = nullptr;
   bool rose = false;
   CpuWithADmaEngine fixture{[&](BusDriver& cpu) {
-    cpu.Write32(kInterruptEnable, kDone);
-    cpu.Write32(kLength, 24);
-    cpu.Write32(kCommand, kFromHost);
+    cpu.Write32(DMA_ENGINE_INTERRUPT_ENABLE, DMA_ENGINE_STATUS_DONE);
+    cpu.Write32(DMA_ENGINE_LENGTH, 24);
+    cpu.Write32(DMA_ENGINE_COMMAND, DMA_ENGINE_COMMAND_FROM_HOST);
     rose = wired->WaitForTheLineToRise();
-    cpu.Write32(kStatus, kDone);
+    cpu.Write32(DMA_ENGINE_STATUS, DMA_ENGINE_STATUS_DONE);
   }};
   wired = &fixture;
 
@@ -211,10 +195,11 @@ TEST(WhenTheCpuClearsTheStatusBitThatInterruptedIt, TheDmaEnginesLineFalls) {
 }
 
 TEST(WhenADebuggerLooksAtADmaEnginesRegister, ItSeesWhatTheCpuWrote) {
-  CpuWithADmaEngine fixture{[](BusDriver& cpu) { cpu.Write32(kLength, 24); }};
+  CpuWithADmaEngine fixture{
+      [](BusDriver& cpu) { cpu.Write32(DMA_ENGINE_LENGTH, 24); }};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugRead32(kLength), 24U);
+  EXPECT_EQ(fixture.DebugRead32(DMA_ENGINE_LENGTH), 24U);
 }
 
 TEST(WhenADebuggerWritesToADmaEnginesRegister, TheWriteIsDeclined) {
@@ -222,10 +207,10 @@ TEST(WhenADebuggerWritesToADmaEnginesRegister, TheWriteIsDeclined) {
   CpuWithADmaEngine fixture{[](BusDriver&) {}};
 
   const bool answered = fixture.platform.DebugWrite(
-      "cpu.socket", kLength, std::as_bytes(std::span{some_length}));
+      "cpu.socket", DMA_ENGINE_LENGTH, std::as_bytes(std::span{some_length}));
 
   EXPECT_FALSE(answered);
-  EXPECT_EQ(fixture.DebugRead32(kLength), 0U);
+  EXPECT_EQ(fixture.DebugRead32(DMA_ENGINE_LENGTH), 0U);
 }
 
 TEST(WhenADmaEngineRefusesAnAccess, TheCpuGetsAnAddressError) {
@@ -234,7 +219,8 @@ TEST(WhenADmaEngineRefusesAnAccess, TheCpuGetsAnAddressError) {
   CpuWithADmaEngine fixture{[&](BusDriver& cpu) {
     // 0x1C is after the last register.
     beside = cpu.Write32(0x1C, 1);
-    too_narrow = cpu.Write(kLength, std::array<std::uint8_t, 2>{1, 0});
+    too_narrow =
+        cpu.Write(DMA_ENGINE_LENGTH, std::array<std::uint8_t, 2>{1, 0});
   }};
 
   fixture.platform.Run();

@@ -4,7 +4,7 @@
 // that page from this file. `uv run python tools/lint.py --fix` runs it.
 
 `include "properties.rdl"
-`include "command_status.rdl"
+`include "command_device.rdl"
 
 enum dma_engine_command_e {
     FROM_HOST = 1 {
@@ -22,11 +22,11 @@ addrmap dma_engine {
     block_size = 0x20;
     default regwidth = 32;
 
-    reg {
-        desc = "Write a command to start a copy of what the other registers say. Reads as zero.";
-        field { sw = w; encode = dma_engine_command_e; } VALUE[31:0] = 0;
-    } COMMAND @ 0x00;
-
+    // The three registers of a command device, with what this one's
+    // command register can be told.
+    command_r COMMAND @ 0x00;
+    COMMAND->desc = "Write a command to start a copy of what the other registers say. Reads as zero.";
+    COMMAND.VALUE->encode = dma_engine_command_e;
     command_status_r STATUS @ 0x04;
     command_interrupt_enable_r INTERRUPT_ENABLE @ 0x08;
 

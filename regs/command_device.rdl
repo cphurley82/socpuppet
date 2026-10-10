@@ -1,0 +1,56 @@
+// What every device has that its CPU gives one command at a time: a
+// command register, how the last command went, and which of that
+// interrupts. docs/models/command-device.md.
+//
+// It is a block of its own so that what serves every such device (the
+// models' CommandStatus, the part the Zephyr drivers share, the firmware
+// stand-ins) has names of its own for these three, and no one device's.
+// The DMA engine and the flash controller include this file and have the
+// three by their types. tools/regs.py refuses a map that has one of them
+// anywhere but where it is here, which is what lets one piece of a driver
+// serve every such device.
+
+`ifndef SOCPUPPET_COMMAND_DEVICE_RDL
+`define SOCPUPPET_COMMAND_DEVICE_RDL
+
+`include "properties.rdl"
+
+reg command_r {
+    desc = "Write a command to have it carried out. Reads as zero.";
+    field { sw = w; } VALUE[31:0] = 0;
+};
+
+reg command_status_r {
+    desc = "How the last command went. Giving the next command forgets it.";
+    field {
+        sw = rw; onwrite = woclr;
+        desc = "The command was carried out.";
+    } DONE[0:0] = 0;
+    field {
+        sw = rw; onwrite = woclr;
+        desc = "The command was not carried out, or not all of it.";
+    } ERROR[1:1] = 0;
+    field {
+        sw = r;
+        desc = "A command has been given and is not yet carried out. No other is taken meanwhile.";
+    } BUSY[2:2] = 0;
+};
+
+reg command_interrupt_enable_r {
+    desc = "Which bits of `STATUS` raise the interrupt line while they are set.";
+    field { sw = rw; } DONE[0:0] = 0;
+    field { sw = rw; } ERROR[1:1] = 0;
+};
+
+addrmap command_device {
+    name = "Command device";
+    desc = "The three registers of any device its CPU gives one command at a time.";
+    block_size = 0x0C;
+    default regwidth = 32;
+
+    command_r COMMAND @ 0x00;
+    command_status_r STATUS @ 0x04;
+    command_interrupt_enable_r INTERRUPT_ENABLE @ 0x08;
+};
+
+`endif

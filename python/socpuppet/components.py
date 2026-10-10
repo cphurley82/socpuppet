@@ -32,6 +32,7 @@ from typing import (
 )
 
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
+from socpuppet.regs import dma_engine
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -407,8 +408,8 @@ class DmaEngine(Component):
         # Firmware may poll the status register and leave the line alone.
         wire_out("irq", required=False),
     )
-    #: Seven 32-bit registers, and room for one more.
-    mapped_size = 0x20
+    #: What the engine's register map says it takes.
+    mapped_size = dma_engine.SIZE
 
     @override
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:

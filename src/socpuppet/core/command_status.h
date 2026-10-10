@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-#include "socpuppet/regs/dma_engine.h"
+#include "socpuppet/regs/command_device.h"
 
 namespace socpuppet {
 
@@ -19,23 +19,20 @@ namespace socpuppet {
 // one to it, and cannot clear BUSY. The device interrupts while a bit the
 // CPU has enabled is set.
 //
-// The bits are where the register maps have them. Every device that has
-// these two registers has them by the same types (regs/command_status.rdl),
-// so one device's names for the bits are every device's, and the DMA
-// engine's are the ones used here.
+// The bits are the register map's (regs/command_device.rdl), which every
+// such device's own map has these two registers from.
 class CommandStatus {
  public:
-  static constexpr std::uint32_t kDone = DMA_ENGINE_STATUS_DONE;
-  static constexpr std::uint32_t kError = DMA_ENGINE_STATUS_ERROR;
-  static constexpr std::uint32_t kBusy = DMA_ENGINE_STATUS_BUSY;
-
   // The device has been given a command.
-  void Start() { status_ = kBusy; }
+  void Start() { status_ = COMMAND_DEVICE_STATUS_BUSY; }
   // The device has carried the command out, or could not.
-  void Finish(bool carried_out) { status_ = carried_out ? kDone : kError; }
+  void Finish(bool carried_out) {
+    status_ =
+        carried_out ? COMMAND_DEVICE_STATUS_DONE : COMMAND_DEVICE_STATUS_ERROR;
+  }
 
   // Whether a command has been given and not yet carried out.
-  bool Busy() const { return (status_ & kBusy) != 0; }
+  bool Busy() const { return (status_ & COMMAND_DEVICE_STATUS_BUSY) != 0; }
 
   // The registers, as the CPU reads and writes them.
   std::uint32_t Status() const { return status_; }
@@ -52,7 +49,9 @@ class CommandStatus {
 
  private:
   // The bits the CPU may clear, and may be interrupted by.
-  static constexpr std::uint32_t kCanInterrupt = kDone | kError;
+  static constexpr std::uint32_t kCanInterrupt =
+      COMMAND_DEVICE_INTERRUPT_ENABLE_DONE |
+      COMMAND_DEVICE_INTERRUPT_ENABLE_ERROR;
 
   std::uint32_t status_ = 0;
   std::uint32_t interrupt_enable_ = 0;

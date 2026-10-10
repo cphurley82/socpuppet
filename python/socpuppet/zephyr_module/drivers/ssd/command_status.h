@@ -2,6 +2,10 @@
  * What the DMA engine and the flash controller of a socpuppet SSD have in
  * common: a command register, and a status register that says busy until
  * the command has been carried out, and then done or error.
+ *
+ * The registers are a command device's, <socpuppet/regs/command_device.h>,
+ * which both devices begin with. docs/models/command-device.md in
+ * socpuppet says what they do.
  */
 
 #ifndef SOCPUPPET_DRIVERS_SSD_COMMAND_STATUS_H_
@@ -15,11 +19,7 @@
 #include <zephyr/sys/sys_io.h>
 #include <zephyr/sys/util.h>
 
-#define SSD_DEVICE_COMMAND 0x00
-#define SSD_DEVICE_STATUS  0x04
-
-#define SSD_DEVICE_ERROR BIT(1)
-#define SSD_DEVICE_BUSY  BIT(2)
+#include <socpuppet/regs/command_device.h>
 
 /*
  * How long a device is given to carry a command out, in microseconds: a
@@ -41,14 +41,15 @@ static inline int ssd_device_do(mm_reg_t base, uint32_t command)
 {
 	uint32_t status;
 
-	sys_write32(command, base + SSD_DEVICE_COMMAND);
-	if (!WAIT_FOR(((status = sys_read32(base + SSD_DEVICE_STATUS)) & SSD_DEVICE_BUSY) == 0,
+	sys_write32(command, base + COMMAND_DEVICE_COMMAND);
+	if (!WAIT_FOR(((status = sys_read32(base + COMMAND_DEVICE_STATUS)) &
+		       COMMAND_DEVICE_STATUS_BUSY) == 0,
 		      SSD_DEVICE_PATIENCE,
 		      /* ask again at once */)) {
 		return -ETIMEDOUT;
 	}
 
-	return (status & SSD_DEVICE_ERROR) != 0 ? -EIO : 0;
+	return (status & COMMAND_DEVICE_STATUS_ERROR) != 0 ? -EIO : 0;
 }
 
 #endif /* SOCPUPPET_DRIVERS_SSD_COMMAND_STATUS_H_ */

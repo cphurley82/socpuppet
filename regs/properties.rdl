@@ -1,8 +1,14 @@
 // What the register maps here have that SystemRDL does not.
 //
-// A block's map includes this file once, before its `addrmap`.
+// A block's map includes this file before its `addrmap`. Including it
+// twice does no harm.
+
+`ifndef SOCPUPPET_PROPERTIES_RDL
+`define SOCPUPPET_PROPERTIES_RDL
 
 // How many bytes of address space the block takes, which is how big a
 // range a board gives it on a bus. SystemRDL works a block's size out
 // from its last register and has no word for one that keeps room spare.
 property block_size { type = longint unsigned; component = addrmap; };
+
+`endif

@@ -11,24 +11,13 @@ namespace socpuppet {
 
 namespace {
 
-// Where the registers are. Each is 32 bits wide. The numbers are the
-// register map's (regs/dma_engine.rdl), which the driver gets them from
-// too.
+// Each register is 32 bits wide. Where each one is, and what the command
+// register can be told, are the register map's names for them
+// (regs/dma_engine.rdl), which the driver and the docs go by as well.
 constexpr std::size_t kRegisterBytes = 4;
-constexpr std::uint64_t kCommandRegister = DMA_ENGINE_COMMAND;
-constexpr std::uint64_t kStatusRegister = DMA_ENGINE_STATUS;
-constexpr std::uint64_t kInterruptEnableRegister = DMA_ENGINE_INTERRUPT_ENABLE;
-constexpr std::uint64_t kHostAddressLowRegister = DMA_ENGINE_HOST_ADDRESS_LOW;
-constexpr std::uint64_t kHostAddressHighRegister = DMA_ENGINE_HOST_ADDRESS_HIGH;
-constexpr std::uint64_t kLocalAddressRegister = DMA_ENGINE_LOCAL_ADDRESS;
-constexpr std::uint64_t kLengthRegister = DMA_ENGINE_LENGTH;
 
 // How many bytes the engine copies at a time.
 constexpr std::size_t kPieceBytes = 4096;
-
-// What the command register can be told.
-constexpr std::uint32_t kFromHost = DMA_ENGINE_COMMAND_FROM_HOST;
-constexpr std::uint32_t kToHost = DMA_ENGINE_COMMAND_TO_HOST;
 
 // Copies `length` bytes from one memory to another, a piece at a time, so
 // that a long copy does not take as much of the simulator's memory as it
@@ -60,25 +49,25 @@ bool DmaEngineLogic::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
   if (out.size() != kRegisterBytes) return false;
   switch (offset) {
-    case kCommandRegister:
+    case DMA_ENGINE_COMMAND:
       StoreLittleEndian(std::uint32_t{0}, out);
       break;
-    case kStatusRegister:
+    case DMA_ENGINE_STATUS:
       StoreLittleEndian(status_.Status(), out);
       break;
-    case kInterruptEnableRegister:
+    case DMA_ENGINE_INTERRUPT_ENABLE:
       StoreLittleEndian(status_.InterruptEnable(), out);
       break;
-    case kHostAddressLowRegister:
+    case DMA_ENGINE_HOST_ADDRESS_LOW:
       StoreLittleEndian(static_cast<std::uint32_t>(host_address_), out);
       break;
-    case kHostAddressHighRegister:
+    case DMA_ENGINE_HOST_ADDRESS_HIGH:
       StoreLittleEndian(static_cast<std::uint32_t>(host_address_ >> 32), out);
       break;
-    case kLocalAddressRegister:
+    case DMA_ENGINE_LOCAL_ADDRESS:
       StoreLittleEndian(local_address_, out);
       break;
-    case kLengthRegister:
+    case DMA_ENGINE_LENGTH:
       StoreLittleEndian(length_, out);
       break;
     default:
@@ -92,8 +81,9 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
   if (in.size() != kRegisterBytes) return false;
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
-    case kCommandRegister:
-      if (status_.Busy() || (value != kFromHost && value != kToHost)) {
+    case DMA_ENGINE_COMMAND:
+      if (status_.Busy() || (value != DMA_ENGINE_COMMAND_FROM_HOST &&
+                             value != DMA_ENGINE_COMMAND_TO_HOST)) {
         return false;
       }
       job_ = Job{.command = value,
@@ -102,23 +92,23 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
                  .length = length_};
       status_.Start();
       break;
-    case kStatusRegister:
+    case DMA_ENGINE_STATUS:
       status_.WriteStatus(value);
       break;
-    case kInterruptEnableRegister:
+    case DMA_ENGINE_INTERRUPT_ENABLE:
       status_.WriteInterruptEnable(value);
       break;
-    case kHostAddressLowRegister:
+    case DMA_ENGINE_HOST_ADDRESS_LOW:
       host_address_ = (host_address_ & ~std::uint64_t{0xFFFF'FFFF}) | value;
       break;
-    case kHostAddressHighRegister:
+    case DMA_ENGINE_HOST_ADDRESS_HIGH:
       host_address_ =
           (host_address_ & 0xFFFF'FFFF) | (std::uint64_t{value} << 32);
       break;
-    case kLocalAddressRegister:
+    case DMA_ENGINE_LOCAL_ADDRESS:
       local_address_ = value;
       break;
-    case kLengthRegister:
+    case DMA_ENGINE_LENGTH:
       length_ = value;
       break;
     default:
@@ -135,7 +125,7 @@ bool DmaEngineLogic::CarryOut() {
 
 bool DmaEngineLogic::Do(const Job& job) {
   if (job.length == 0) return false;
-  return job.command == kFromHost
+  return job.command == DMA_ENGINE_COMMAND_FROM_HOST
              ? Copy(host_memory_, job.host_address, local_memory_,
                     job.local_address, job.length)
              : Copy(local_memory_, job.local_address, host_memory_,

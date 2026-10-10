@@ -6,6 +6,7 @@ set(_socpuppet_regs ${PROJECT_SOURCE_DIR}/python/socpuppet/zephyr_module/include
 add_library(socpuppet_regs INTERFACE)
 target_sources(socpuppet_regs INTERFACE
   FILE_SET HEADERS BASE_DIRS ${_socpuppet_regs} FILES
+    ${_socpuppet_regs}/socpuppet/regs/command_device.h
     ${_socpuppet_regs}/socpuppet/regs/dma_engine.h)
 
 # core/: plain C++ with no simulator underneath. Linking only this target is

@@ -18,6 +18,11 @@ named after the file, and three things come from it:
 A file with no `addrmap` holds what other files include, and nothing
 comes from it.
 
+A block's file may define a type of register for other blocks to have as
+well, by including the file. Such a register is then at the same place in
+every block that has it, or the maps are refused: that is what lets one
+piece of a driver serve all of them.
+
 `write` writes the files. `check` exits non-zero if one is not what
 `write` would leave, or if a register map does not compile. tools/lint.py
 runs `check`, or `write` with --fix. Run it from the top of the repo.
@@ -104,6 +109,9 @@ class Register:
     count: int
     what: str | None
     fields: tuple[Field, ...]
+    #: The type it is of, if that has a name, and the file that defines it.
+    type: str | None
+    defined_in: str
 
     @property
     def size(self):
@@ -159,9 +167,12 @@ def main():
     args = parser.parse_args()
 
     try:
-        wanted = generated_from(
-            [block for file in args.files if (block := read(file)) is not None]
-        )
+        blocks = [
+            block for file in args.files if (block := read(file)) is not None
+        ]
+        for problem in misplaced(blocks):
+            raise Refused(problem)
+        wanted = generated_from(blocks)
     except RDLCompileError:
         # The compiler has said what is wrong, and where.
         return 1
@@ -252,6 +263,8 @@ def read(file):
                 width=register.get_property("regwidth"),
                 count=register.array_dimensions[0] if register.is_array else 1,
                 what=said(register.get_property("desc")),
+                type=register.orig_type_name,
+                defined_in=register.inst.def_src_ref.filename,
                 fields=tuple(
                     Field(
                         name=field.inst_name,
@@ -276,6 +289,34 @@ def read(file):
             for register in top.registers(unroll=False)
         ),
     )
+
+
+def misplaced(blocks):
+    """Yield what is wrong with each shared register that is out of place.
+
+    A register whose type another block's file defines is one that block
+    shares, and it has to be where that block has it.
+    """
+    for block in blocks:
+        for register in block.registers:
+            for sharing in blocks:
+                if sharing.source == block.source:
+                    continue
+                if not Path(sharing.source).samefile(register.defined_in):
+                    continue
+                for shared in sharing.registers:
+                    if (
+                        shared.type == register.type
+                        and shared.offset != register.offset
+                    ):
+                        yield (
+                            f"{block.source}: {register.name} is at "
+                            f"{register.offset:#x}, and it is a "
+                            f"{register.type}, which {sharing.source} "
+                            f"shares and has at {shared.offset:#x}. A "
+                            "shared register is at the same place in every "
+                            "block that has it."
+                        )
 
 
 def said(description):
