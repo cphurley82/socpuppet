@@ -9,7 +9,9 @@
 
 #include <scc/router.h>
 
+#include "socpuppet/core/time.h"
 #include "socpuppet/models/behavioral_nvme.h"
+#include "socpuppet/models/d2d_link.h"
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/dma_engine.h"
 #include "socpuppet/models/flash_controller.h"
@@ -33,6 +35,7 @@ namespace socpuppet {
 
 static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
+static_assert(LinkEndpointSlot<D2dLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
 static_assert(MachineTimerSlot<MachineTimer>);
 static_assert(InterruptControllerSlot<Plic>);
@@ -47,6 +50,11 @@ namespace {
 // anything that takes its interrupt messages may. MSI-X, the capability
 // that tells the host about them, has room for 2048.
 constexpr Within kInterruptVectors{.least = 1, .most = 2048};
+
+// A number that cannot be zero, for a rate that is divided by: a link
+// carrying no bytes in a nanosecond would never carry anything. A time of
+// zero means something, so no latency or training time has a range.
+constexpr Within kAtLeastOne{.least = 1};
 
 // What a NAND chip's geometry is made of: counts that a controller reads
 // from 32-bit registers, and none of which can be nothing.
@@ -189,6 +197,29 @@ Registry BuiltinComponents() {
         TargetPort("peer_target", module->peer_target)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
+  // One end of the real link. Its mainband and sideband peer sides must
+  // be bound to the other end; everything on its own die's side is
+  // optional, because a die may only send, only receive, or leave the
+  // link's registers unmapped.
+  registry.Add(
+      "d2d_link_endpoint", [](const char* name, Parameters& parameters) {
+        auto module = std::make_unique<D2dLinkEndpoint>(
+            name, Nanoseconds(parameters.Optional("latency_ns", 20)),
+            parameters.Optional("bytes_per_ns", 16, kAtLeastOne),
+            Nanoseconds(parameters.Optional("training_ns", 1'000'000)));
+        std::vector<Port> ports{
+            TargetPort("target", module->target, /*required=*/false),
+            InitiatorPort("initiator", module->initiator, /*required=*/false),
+            InitiatorPort("peer_initiator", module->peer_initiator),
+            TargetPort("peer_target", module->peer_target),
+            TargetPort("sideband", module->sideband, /*required=*/false),
+            InitiatorPort("sideband_peer_initiator",
+                          module->sideband_peer_initiator),
+            TargetPort("sideband_peer_target", module->sideband_peer_target),
+            WireSourcePort("reset", module->reset, /*required=*/false),
+            WireSourcePort("irq", module->irq, /*required=*/false)};
+        return Instance{.module = std::move(module), .ports = std::move(ports)};
+      });
   registry.Add("pcie_endpoint", [](const char* name, Parameters& parameters) {
     const std::uint64_t vectors =
         parameters.Required("vectors", kInterruptVectors);

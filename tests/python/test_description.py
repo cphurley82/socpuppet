@@ -82,6 +82,37 @@ class TestWhenADescriptionIsDumpedAsJson:
             {"name": "d2d", "a": "compute.d2d", "b": "io.d2d"}
         ]
 
+    def test_the_real_link_joins_its_mainband_and_its_sideband(self):
+        platform = sp.Platform()
+        compute = platform.group("compute")
+        io = platform.group("io")
+
+        platform.link("d2d", sp.D2dLink(), compute, io)
+
+        connections = json.loads(platform.to_json())["connections"]
+        assert [(one["source"], one["sink"]) for one in connections] == [
+            ("compute.d2d.peer_initiator", "io.d2d.peer_target"),
+            ("io.d2d.peer_initiator", "compute.d2d.peer_target"),
+            (
+                "compute.d2d.sideband_peer_initiator",
+                "io.d2d.sideband_peer_target",
+            ),
+            (
+                "io.d2d.sideband_peer_initiator",
+                "compute.d2d.sideband_peer_target",
+            ),
+        ]
+
+    def test_a_traced_link_records_what_crosses_it_either_way(self):
+        platform = sp.Platform()
+        compute = platform.group("compute")
+        io = platform.group("io")
+
+        platform.link("d2d", sp.D2dLink(), compute, io, trace=True)
+
+        connections = json.loads(platform.to_json())["connections"]
+        assert all(one["trace"] for one in connections)
+
     def test_it_gives_the_quantum_that_was_set(self):
         platform = sp.Platform()
         platform.quantum = sp.ns(250)

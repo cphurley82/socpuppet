@@ -2,6 +2,7 @@
 
 from socpuppet.components import (
     BehavioralNvme,
+    D2dLink,
     DbtRiseCpu,
     DmaEngine,
     FlashController,
@@ -44,6 +45,7 @@ from socpuppet.trace import render as render_trace
 __all__ = [
     "BehavioralNvme",
     "BusError",
+    "D2dLink",
     "DbtRiseCpu",
     "DmaEngine",
     "ExpectationFailed",

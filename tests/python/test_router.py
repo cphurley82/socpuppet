@@ -155,6 +155,35 @@ class TestWhenAWindowOfAStatedSizeIsMappedOntoALink:
         assert platform.peek32(0x1000_2010) == 0xC0FFEE
 
 
+class TestWhenTheRealLinksRegistersAreMapped:
+    def test_they_take_the_room_the_block_needs_and_no_more(self):
+        platform = sp.Platform()
+        near = platform.group("near")
+        far = platform.group("far")
+        bus = near.add("bus", sp.Router())
+        link = platform.link("d2d", sp.D2dLink(), near, far)
+
+        bus.map(link.a.sideband, base=0x1001_0000)
+
+        # The block is 0x100 bytes: its last byte is taken, and the byte
+        # after it is free.
+        with pytest.raises(ValueError, match=r"d2d\.sideband"):
+            bus.map(
+                platform.add("on_top", sp.Memory(size=1)).socket, 0x1001_00FF
+            )
+        bus.map(platform.add("after", sp.Memory(size=1)).socket, 0x1001_0100)
+
+    def test_a_window_onto_the_other_die_still_needs_its_size(self):
+        platform = sp.Platform()
+        near = platform.group("near")
+        far = platform.group("far")
+        bus = near.add("bus", sp.Router())
+        link = platform.link("d2d", sp.D2dLink(), near, far)
+
+        with pytest.raises(ValueError, match="size"):
+            bus.map(link.a.target, base=0)
+
+
 class TestWhenAComponentWithTwoRegisterBlocksIsMapped:
     def test_each_range_is_as_long_as_its_own_block(self):
         platform = sp.Platform()

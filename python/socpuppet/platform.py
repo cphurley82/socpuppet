@@ -136,19 +136,26 @@ class Platform:
         model: LinkModel,
         a: Group | None = None,
         b: Group | None = None,
+        trace: bool = False,
     ) -> Link:
         """Place a link called `name` between group `a` and group `b`.
 
         Each group gets one endpoint. `model` says which link to use, such
-        as `PassThroughLink()`. The endpoints are named `<group>.<name>`;
-        with no groups given they are `<name>.a` and `<name>.b`.
+        as `D2dLink()` or 🎭 `PassThroughLink()`. The endpoints are named
+        `<group>.<name>`; with no groups given they are `<name>.a` and
+        `<name>.b`.
+
+        With `trace=True`, everything that crosses the link is recorded,
+        each path of it separately: a link with a sideband of its own shows
+        its management traffic apart from the dies' (see `trace`).
         """
         path_a = f"{a.path}.{name}" if a is not None else f"{name}.a"
         path_b = f"{b.path}.{name}" if b is not None else f"{name}.b"
         end_a = self.add(path_a, model.endpoint())
         end_b = self.add(path_b, model.endpoint())
-        self.connect(end_a.peer_initiator, end_b.peer_target)
-        self.connect(end_b.peer_initiator, end_a.peer_target)
+        for source, sink in model.peer_pairs():
+            self.connect(getattr(end_a, source), getattr(end_b, sink), trace)
+            self.connect(getattr(end_b, source), getattr(end_a, sink), trace)
         self._links.append((name, path_a, path_b))
         return Link(end_a, end_b)
 

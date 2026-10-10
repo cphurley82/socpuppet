@@ -45,6 +45,15 @@ class OneLink {
   }
   std::uint32_t ReadOnB(std::uint64_t offset) { return Read(b_, offset); }
 
+  // Two writes with nothing in between, as firmware running ahead of the
+  // clock makes them: the link is handed both at once.
+  void WriteBoth(std::uint64_t first, std::uint32_t first_value,
+                 std::uint64_t second, std::uint32_t second_value) {
+    a_.WriteRegister(first, LittleEndianBytes(first_value));
+    a_.WriteRegister(second, LittleEndianBytes(second_value));
+    pump_.Settle();
+  }
+
   void RunUntilNothingIsDue() { pump_.RunUntilNothingIsDue(); }
 
  private:
@@ -116,6 +125,19 @@ TEST(WhenTheManagerAsksForARegisterTheOtherDieHasNot, TheMailboxSaysSo) {
 
   EXPECT_EQ(link.Read(Registers::kMailboxStatus),
             static_cast<std::uint32_t>(SidebandStatus::kUnsupportedRequest));
+}
+
+TEST(WhenFirmwareInjectsAFaultAndAsksForARetrainAtOnce, TheLinkComesBackUp) {
+  OneLink link;
+  link.Write(Registers::kLinkControl, Registers::kStartTraining);
+  link.RunUntilNothingIsDue();
+
+  link.WriteBoth(Registers::kFaultInjection, 1, Registers::kLinkControl,
+                 Registers::kRetrainLink);
+  link.RunUntilNothingIsDue();
+
+  EXPECT_EQ(link.Read(Registers::kLinkStatusRegister) & Registers::kLinkUp,
+            Registers::kLinkUp);
 }
 
 TEST(WhenFirmwareInjectsAFault, TheOtherDiesStatusShowsAFatalError) {

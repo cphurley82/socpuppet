@@ -554,3 +554,36 @@ class TestADevicetreeOverlayForAComponentThatFillsNoRole:
         platform.connect(msi.irq0, plic.source4)
 
         assert "chosen" not in platform.devicetree_overlay([msi])
+
+
+def a_manager_die_with_the_real_link():
+    """A CPU on the IO die with the link's registers at 0x1001_0000."""
+    platform = sp.Platform()
+    compute = platform.group("compute")
+    io = platform.group("io")
+    cpu = io.add("cpu", sp.ScriptedBusMaster())
+    bus = io.add("bus", sp.Router())
+    link = platform.link("d2d", sp.D2dLink(), compute, io)
+    platform.connect(cpu.socket, bus.target)
+    bus.map(link.b.sideband, base=0x1001_0000)
+    return platform, cpu
+
+
+class TestWhenTheRealLinksRegistersAreInAFirmwaresView:
+    def test_the_link_is_a_node_firmware_can_find(self):
+        platform, cpu = a_manager_die_with_the_real_link()
+
+        assert "ucie-link@10010000 {" in platform.devicetree(via=cpu.socket)
+
+    def test_it_says_what_it_is_and_that_it_resets_one_thing(self):
+        platform, cpu = a_manager_die_with_the_real_link()
+
+        tree = platform.devicetree(via=cpu.socket)
+        assert 'compatible = "socpuppet,ucie-link";' in tree
+        assert "#reset-cells = <1>;" in tree
+
+    @needs_dtc
+    def test_the_devicetree_compiler_takes_it(self, tmp_path):
+        platform, cpu = a_manager_die_with_the_real_link()
+
+        assert dtc_errors(platform.devicetree(via=cpu.socket), tmp_path) == ""

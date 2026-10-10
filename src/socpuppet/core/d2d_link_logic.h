@@ -119,9 +119,12 @@ inline std::optional<Picoseconds> D2dLinkLogic::Advance(Picoseconds now) {
 
 inline void D2dLinkLogic::DoWhatFirmwareAsked(Picoseconds now) {
   const UcieLinkRegisters::Commands asked = registers_.TakeCommands();
+  // A fault first, then whatever firmware asked for afterwards: firmware
+  // that injects a fault and asks for a retrain in one go means the
+  // retrain to answer the fault, not the other way about.
+  if (asked.fault) state_.Fault(now);
   if (asked.start_training) state_.StartTraining(now);
   if (asked.retrain) state_.Retrain(now);
-  if (asked.fault) state_.Fault(now);
   if (asked.mailbox) {
     outgoing_.push_back(
         RegisterAccessPacket(asked.mailbox->opcode, asked.mailbox->address,

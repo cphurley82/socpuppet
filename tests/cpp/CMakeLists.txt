@@ -44,6 +44,7 @@ add_executable(kernel_tests
   contracts/uart_test.cpp
   platform/composition_test.cpp
   platform/cpu_test.cpp
+  platform/d2d_link_test.cpp
   platform/dma_engine_test.cpp
   platform/flash_controller_test.cpp
   platform/msi_plic_bridge_test.cpp

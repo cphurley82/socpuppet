@@ -24,6 +24,11 @@
 constexpr const char* kDieA = "a";
 constexpr const char* kDieB = "b";
 
+// Where each die's bus has the link's own registers, for a link that has
+// any. A rig brings the link up through this window.
+constexpr std::uint64_t kLinkControlBase = 0x1000'0000;
+constexpr std::uint64_t kLinkControlSize = 0x1000;
+
 // What every die-to-die link must do, whatever happens in between.
 //
 // A link is a pair of endpoints, one per die. Each endpoint has:
@@ -34,8 +39,10 @@ constexpr const char* kDieB = "b";
 // one transaction (a register access) and the initiator of the next (a DMA
 // write into the other die's memory).
 //
-//   a.driver ─▶ a.bus ─▶ the endpoint on a ═══▶ the endpoint on b ─▶ b.memory
-//   b.driver ─▶ b.bus ─▶ the endpoint on b ═══▶ the endpoint on a ─▶ a.memory
+//   a.driver ─▶ a.bus ─┬─▶ the endpoint on a ═══▶ the endpoint on b ─▶ b.memory
+//                      └─▶ its registers, if it has any
+//   b.driver ─▶ b.bus ─┬─▶ the endpoint on b ═══▶ the endpoint on a ─▶ a.memory
+//                      └─▶ its registers, if it has any
 //
 // Each die's window onto the other starts at zero, so an address on one die
 // is the same address in the other die's memory.
@@ -53,6 +60,9 @@ constexpr const char* kDieB = "b";
 //       that die is given to (a bus target)
 //   static std::string Initiator(const char* die);   the port traffic
 //       arriving on it comes out of (a bus source)
+//   static std::string Control(const char* die);   the port its registers
+//       are reached through, which the fixture puts at kLinkControlBase,
+//       or "" if it has none
 //   static void BringUp(BusDriver&);   trains the link, from die a, and
 //       returns once it is up. A link that is always up does nothing here.
 //   static void WaitUntilUp(BusDriver&);   the same wait, on die b, which
@@ -115,13 +125,20 @@ class LinkContract : public ::testing::Test {
 
   void AddDie(const char* die) {
     const std::string group{die};
+    const std::string control = Rig::Control(die);
+    socpuppet::Config bus{{"outputs", control.empty() ? 1 : 2},
+                          {"out0.base", 0},
+                          {"out0.size", kWindowSize}};
+    if (!control.empty()) {
+      bus["out1.base"] = kLinkControlBase;
+      bus["out1.size"] = kLinkControlSize;
+    }
     platform_->Add(group + ".driver", DriverOf(die));
-    platform_->Add(
-        group + ".bus", "router",
-        {{"outputs", 1}, {"out0.base", 0}, {"out0.size", kWindowSize}});
+    platform_->Add(group + ".bus", "router", bus);
     platform_->Add(group + ".memory", "memory", {{"size", kMemorySize}});
     platform_->Bind(group + ".driver.socket", group + ".bus.target");
     platform_->Bind(group + ".bus.out0", Rig::Target(die));
+    if (!control.empty()) platform_->Bind(group + ".bus.out1", control);
     platform_->Bind(Rig::Initiator(die), group + ".memory.socket");
   }
 

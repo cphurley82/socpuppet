@@ -30,7 +30,9 @@ using ::testing::ThrowsMessage;
 
 namespace {
 
-sc_core::sc_time Nanoseconds(double count) { return {count, sc_core::SC_NS}; }
+// As a time the kernel counts in, which is not the Picoseconds that
+// socpuppet::Nanoseconds gives back.
+sc_core::sc_time ScNanoseconds(double count) { return {count, sc_core::SC_NS}; }
 
 // What drives a master's input lines in a test. A line with no driver is
 // left unconnected.
@@ -175,9 +177,9 @@ TEST(WhenAScriptWaits, ItsNextOpHappensThatMuchLater) {
     co_await Write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.Run(Nanoseconds(9));
+  fixture.platform.Run(ScNanoseconds(9));
   const std::uint32_t before = fixture.Peek32(0x10);
-  fixture.platform.Run(Nanoseconds(2));
+  fixture.platform.Run(ScNanoseconds(2));
   const std::uint32_t after = fixture.Peek32(0x10);
 
   EXPECT_EQ(before, 0U);
@@ -222,13 +224,13 @@ TEST(WhenAScriptWaitsForTheInterrupt, ItCarriesOnOnceTheLineRises) {
                           co_await Write32(0x10, 0xC0FFEE);
                         },
                         {.irq = [](LineDriver& irq) {
-                          irq.WaitFor(Nanoseconds(10));
+                          irq.WaitFor(ScNanoseconds(10));
                           irq.Set(true);
                         }}};
 
-  fixture.platform.Run(Nanoseconds(9));
+  fixture.platform.Run(ScNanoseconds(9));
   const std::uint32_t before = fixture.Peek32(0x10);
-  fixture.platform.Run(Nanoseconds(2));
+  fixture.platform.Run(ScNanoseconds(2));
   const std::uint32_t after = fixture.Peek32(0x10);
 
   EXPECT_EQ(before, 0U);
@@ -250,7 +252,7 @@ TEST(WhenAScriptQuietsTheDeviceThatInterruptedAndWaitsAgain,
                                         device.Raise();
                                         // Later, so that the script has quieted
                                         // the first interrupt.
-                                        device.WaitFor(Nanoseconds(10));
+                                        device.WaitFor(ScNanoseconds(10));
                                         device.Raise();
                                       }};
 
@@ -263,13 +265,13 @@ TEST(WhenResetIsHeldFromTimeZero, TheScriptStartsOnlyOnceItIsReleased) {
   MasterWithRam fixture{[]() -> Script { co_await Write32(0x10, 0xC0FFEE); },
                         {.reset = [](LineDriver& reset) {
                           reset.Set(true);
-                          reset.WaitFor(Nanoseconds(10));
+                          reset.WaitFor(ScNanoseconds(10));
                           reset.Set(false);
                         }}};
 
-  fixture.platform.Run(Nanoseconds(9));
+  fixture.platform.Run(ScNanoseconds(9));
   const std::uint32_t during_reset = fixture.Peek32(0x10);
-  fixture.platform.Run(Nanoseconds(2));
+  fixture.platform.Run(ScNanoseconds(2));
   const std::uint32_t after_release = fixture.Peek32(0x10);
 
   EXPECT_EQ(during_reset, 0U);
@@ -284,15 +286,15 @@ TEST(WhenResetIsPulsedPartWayThroughAScript, TheScriptStartsOverOnRelease) {
                           co_await Write32(0x10, 0xC0FFEE);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.WaitFor(Nanoseconds(50));
+                          reset.WaitFor(ScNanoseconds(50));
                           reset.Set(true);
-                          reset.WaitFor(Nanoseconds(10));
+                          reset.WaitFor(ScNanoseconds(10));
                           reset.Set(false);
                         }}};
 
-  fixture.platform.Run(Nanoseconds(150));
+  fixture.platform.Run(ScNanoseconds(150));
   const std::uint32_t when_it_would_have_landed = fixture.Peek32(0x10);
-  fixture.platform.Run(Nanoseconds(20));
+  fixture.platform.Run(ScNanoseconds(20));
   const std::uint32_t after_the_restarted_script = fixture.Peek32(0x10);
 
   EXPECT_EQ(when_it_would_have_landed, 0U);
@@ -322,13 +324,13 @@ TEST(WhenResetIsPulsedWhileAScriptWaitsForTheInterrupt,
                         {.irq = [](LineDriver&) {},
                          .reset =
                              [](LineDriver& reset) {
-                               reset.WaitFor(Nanoseconds(10));
+                               reset.WaitFor(ScNanoseconds(10));
                                reset.Set(true);
-                               reset.WaitFor(Nanoseconds(10));
+                               reset.WaitFor(ScNanoseconds(10));
                                reset.Set(false);
                              }}};
 
-  fixture.platform.Run(Nanoseconds(30));
+  fixture.platform.Run(ScNanoseconds(30));
 
   EXPECT_EQ(fixture.Peek32(0x10), 2U);
   EXPECT_EQ(fixture.Peek32(0x20), 0U);
@@ -340,13 +342,13 @@ TEST(WhenResetIsPulsedAfterAScriptHasFinished, TheScriptPlaysAgain) {
                           co_await Write32(0x10, runs + 1);
                         },
                         {.reset = [](LineDriver& reset) {
-                          reset.WaitFor(Nanoseconds(10));
+                          reset.WaitFor(ScNanoseconds(10));
                           reset.Set(true);
-                          reset.WaitFor(Nanoseconds(10));
+                          reset.WaitFor(ScNanoseconds(10));
                           reset.Set(false);
                         }}};
 
-  fixture.platform.Run(Nanoseconds(30));
+  fixture.platform.Run(ScNanoseconds(30));
 
   EXPECT_EQ(fixture.Peek32(0x10), 2U);
 }
@@ -357,7 +359,7 @@ TEST(WhenAScriptWaitsForAnInterruptLineThatIsNotConnected, ItWaitsForever) {
     co_await Write32(0x10, 0xC0FFEE);
   }};
 
-  fixture.platform.Run(Nanoseconds(100));
+  fixture.platform.Run(ScNanoseconds(100));
 
   EXPECT_EQ(fixture.Peek32(0x10), 0U);
 }
@@ -379,7 +381,7 @@ TEST(WhenOneResetDriverIsBoundToTwoMasters, BothAreHeldInReset) {
   platform.Bind("reset_driver.line", "second.reset");
   platform.Elaborate();
 
-  platform.Run(Nanoseconds(10));
+  platform.Run(ScNanoseconds(10));
 
   std::uint32_t first = 1;
   std::uint32_t second = 1;

@@ -19,6 +19,20 @@ class LineWatcher : public sc_core::sc_module {
 
   int Rises() const { return rises_; }
 
+  // Waits, in the calling simulation thread, until the line reads
+  // `level`. Returns false if it does not within `patience`. A process
+  // that has just written a register cannot read the line the device
+  // drives from it in the same delta cycle: this is how to wait for it.
+  bool WaitForLevel(bool level, const sc_core::sc_time& patience) {
+    const sc_core::sc_time give_up = sc_core::sc_time_stamp() + patience;
+    while (line.read() != level) {
+      if (sc_core::sc_time_stamp() >= give_up) return false;
+      sc_core::wait(give_up - sc_core::sc_time_stamp(),
+                    line.value_changed_event());
+    }
+    return true;
+  }
+
   // Waits, in the calling simulation thread, until the line has risen
   // `count` times in all. Returns false if it has not within `patience`.
   bool WaitForRises(int count, const sc_core::sc_time& patience) {

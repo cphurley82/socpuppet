@@ -10,6 +10,7 @@ import pytest
 import socpuppet as sp
 from socpuppet.components import (
     Component,
+    D2dLinkEndpoint,
     PassThroughLinkEndpoint,
     PortSpec,
 )
@@ -32,6 +33,7 @@ def router_with_two_inputs():
 # the default, so that the ports are seen to follow it.
 EXAMPLES = [
     sp.BehavioralNvme(blocks=64, vectors=3),
+    D2dLinkEndpoint(),
     sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000),
     sp.DmaEngine(),
     sp.FlashController(),
