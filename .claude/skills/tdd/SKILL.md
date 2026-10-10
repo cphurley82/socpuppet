@@ -2,7 +2,6 @@
 name: tdd
 description: "Implement a change with test-driven development (Canon TDD): specify, encode each spec as a test, watch it fail, fulfill it."
 argument-hint: [specification]
-disable-model-invocation: true
 ---
 
 # Test-Driven Development
