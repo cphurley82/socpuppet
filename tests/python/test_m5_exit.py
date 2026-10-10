@@ -12,6 +12,15 @@ it got.
 import pytest
 
 import socpuppet as sp
+from manager_firmware import (
+    IMAGE,
+    LINK_UP,
+    RELEASED,
+    TRAINING,
+    WENT_DOWN,
+    WOULD_NOT_TRAIN,
+    what_the_manager_said,
+)
 from socpuppet.boards.io_manager import (
     HELLO,
     SCRATCH_BASE,
@@ -22,13 +31,6 @@ from socpuppet.boards.manager import LINK_BASE
 from socpuppet.ops import read32, wait, write32
 from socpuppet.regs import ucie_link
 
-IMAGE = "iomgr_socpuppet_iomgr.elf"
-#: What the firmware says as it goes, in the order it says it.
-TRAINING = "iomgr: training the D2D link"
-LINK_UP = "iomgr: D2D link up"
-RELEASED = "iomgr: compute die released"
-WENT_DOWN = "iomgr: the D2D link went down"
-WOULD_NOT_TRAIN = "iomgr: the D2D link would not train"
 #: What 🎭 the compute die writes the second time it reaches across.
 AGAIN = 0x0DECAF
 #: Zephyr takes a few milliseconds to start, and the link five more to
@@ -90,15 +92,6 @@ def console_of(board):
     """The manager's console, which is where its firmware prints."""
     assert board.manager.cpu_kit is not None
     return board.manager.cpu_kit.uart
-
-
-def what_the_manager_said(console):
-    """The firmware's own lines, without Zephyr's banner above them."""
-    return [
-        line
-        for line in console.output.splitlines()
-        if line.startswith("iomgr:")
-    ]
 
 
 def what_the_manager_said_after(line, console):
