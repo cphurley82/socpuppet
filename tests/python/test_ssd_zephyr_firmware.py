@@ -8,17 +8,16 @@ the same tests. A console is something only the real one has.
 import pytest
 
 import socpuppet as sp
-from socpuppet.boards.scripted_host import idle_host
-from socpuppet.boards.ssd import (
-    FLASH_BASE,
+from socpuppet.boards.cpu_kit import (
     PLIC_BASE,
     SRAM_BASE,
     SRAM_SIZE,
     TIMER_BASE,
     TIMER_HZ,
     UART_BASE,
-    ssd,
 )
+from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards.ssd import FLASH_BASE, ssd
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512

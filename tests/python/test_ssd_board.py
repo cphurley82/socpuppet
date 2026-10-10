@@ -9,13 +9,13 @@ import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import ssd as boards_ssd
+from socpuppet.boards.cpu_kit import SRAM_BASE
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
 from socpuppet.boards.scripted_host import ECAM_BASE, idle_host
 from socpuppet.boards.ssd import (
     DMA_SOURCE,
     FLASH_SOURCE,
     FRONTEND_SOURCE,
-    SRAM_BASE,
     ssd,
     stand_in_firmware,
 )

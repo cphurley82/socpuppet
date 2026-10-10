@@ -40,6 +40,10 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet.boards.cpu_kit import (
+    CpuKit,
+    add_cpu_kit,
+)
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
 from socpuppet.boards.scripted_host import (
     ScriptedHost,
@@ -47,52 +51,34 @@ from socpuppet.boards.scripted_host import (
     idle_host,
 )
 from socpuppet.components import (
-    DbtRiseCpu,
     DmaEngine,
     FlashController,
     IdealNand,
-    MachineTimer,
     Memory,
-    Ns16550,
     NvmeFrontend,
     PcieEndpoint,
-    Plic,
     Router,
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.placed import Placed, PlacedRouter, PlacedUart
+from socpuppet.placed import Placed, PlacedRouter
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
 from socpuppet.time import ms
 
 # ---- The SSD's own address map: what its CPU sees. The host sees none of
 # it, only the endpoint.
-#: The machine timer, and how many times a second it counts. The firmware
-#: has to be told the same number: CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC in
-#: Zephyr.
-TIMER_BASE = 0x0200_0000
-TIMER_HZ = 10_000_000
-#: The interrupt controller, and which of its sources each device's line
-#: goes to.
-PLIC_BASE = 0x0C00_0000
+#: Which of the interrupt controller's sources each device's line goes
+#: to. The rest of what the CPU has around it, and where it is, is the
+#: same on every board with a CPU (`boards/cpu_kit.py`).
 FRONTEND_SOURCE = 1
 DMA_SOURCE = 2
 FLASH_SOURCE = 3
-#: The UART, which is the firmware's console.
-UART_BASE = 0x1000_0000
 #: The registers of the NVMe frontend, the DMA engine and the flash
 #: controller.
 FRONTEND_BASE = 0x1001_0000
 DMA_BASE = 0x1002_0000
 FLASH_BASE = 0x1003_0000
-#: The SRAM: 256 KiB, which the firmware is loaded into and runs from. The
-#: CPU starts at its first instruction.
-#: ⚠️ It has to stay below the buffer. A devicetree tells firmware which
-#: memory is its own (`zephyr,sram`), and of two memories the generator
-#: names the one at the lower address.
-SRAM_BASE = 0x2000_0000
-SRAM_SIZE = 256 * 1024
 #: The buffer: 4 MiB of memory that data passes through on its way
 #: between the host and the NAND.
 BUFFER_BASE = 0x4000_0000
@@ -110,17 +96,6 @@ DRIVE_BLOCKS_PER_NAND_BLOCK = NAND_PAGES_PER_BLOCK * NAND_PAGE_SIZE // 512
 #: from address 0 up: the lower half of what 64 bits can say, which is more
 #: than any host has. It is how big a range to map onto an SSD's `uplink`.
 UPLINK_REACH = 1 << 63
-
-
-class CpuKit(NamedTuple):
-    """What an SSD's CPU has around it, when it is a real one."""
-
-    #: Where the firmware is loaded, and runs from.
-    sram: Placed
-    #: The firmware's console: `uart.output` is what it has printed.
-    uart: PlacedUart
-    timer: Placed
-    plic: Placed
 
 
 class Ssd(NamedTuple):
@@ -223,13 +198,15 @@ def add_ssd_function(
     # when there is work.
     cpu_kit = None
     if firmware is None:
-        cpu, cpu_kit = _add_cpu_kit(
+        cpu, cpu_kit = add_cpu_kit(
             platform,
             place,
             bus,
-            frontend=frontend,
-            dma=dma,
-            flash=flash,
+            sources={
+                FRONTEND_SOURCE: frontend.cpu_irq,
+                DMA_SOURCE: dma.irq,
+                FLASH_SOURCE: flash.irq,
+            },
             gdb_port=gdb_port,
         )
     else:
@@ -260,43 +237,6 @@ def add_ssd_function(
         uplink=uplink,
         cpu_kit=cpu_kit,
     )
-
-
-def _add_cpu_kit(
-    platform: Platform,
-    place: Platform | Group,
-    bus: PlacedRouter,
-    *,
-    frontend: Placed,
-    dma: Placed,
-    flash: Placed,
-    gdb_port: int,
-) -> tuple[Placed, CpuKit]:
-    """Put a CPU in the SSD's CPU slot, with what a CPU needs around it.
-
-    The three devices' lines go to sources of the interrupt controller: a
-    CPU has one input for all its devices, and asks the controller which
-    of them it was.
-    """
-    cpu = place.add(
-        "cpu", DbtRiseCpu(xlen=32, reset_vector=SRAM_BASE, gdb_port=gdb_port)
-    )
-    sram = place.add("sram", Memory(size=SRAM_SIZE))
-    uart = place.add("uart", Ns16550())
-    timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
-    plic = place.add("plic", Plic())
-    bus.map(timer.socket, base=TIMER_BASE)
-    bus.map(plic.socket, base=PLIC_BASE)
-    bus.map(uart.socket, base=UART_BASE)
-    bus.map(sram.socket, base=SRAM_BASE)
-    platform.connect(
-        frontend.cpu_irq, getattr(plic, f"source{FRONTEND_SOURCE}")
-    )
-    platform.connect(dma.irq, getattr(plic, f"source{DMA_SOURCE}"))
-    platform.connect(flash.irq, getattr(plic, f"source{FLASH_SOURCE}"))
-    platform.connect(plic.irq, cpu.irq)
-    platform.connect(timer.irq, cpu.timer_irq)
-    return cpu, CpuKit(sram=sram, uart=uart, timer=timer, plic=plic)
 
 
 def _add_scripted_cpu(
