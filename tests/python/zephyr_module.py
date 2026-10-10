@@ -8,15 +8,20 @@ import socpuppet
 ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
 
 
-def clock_rate():
-    """How many times a second Zephyr is told the machine timer counts.
+def kconfig_default(name):
+    """The number every socpuppet SoC gives Zephyr for a Kconfig option.
 
-    It is one number for every socpuppet SoC:
-    CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC.
+    `name` is the option without its `CONFIG_`, as the family's
+    Kconfig.defconfig has it.
     """
     defaults = (ZEPHYR_MODULE / "soc/socpuppet/Kconfig.defconfig").read_text()
-    rate = re.search(
-        r"config SYS_CLOCK_HW_CYCLES_PER_SEC\s+default (\d+)", defaults
+    default = re.search(
+        rf"^config {re.escape(name)}\s+default (\d+)$", defaults, re.MULTILINE
     )
-    assert rate is not None, "the family's Kconfig.defconfig gives no rate"
-    return int(rate.group(1))
+    assert default is not None, f"the family's Kconfig.defconfig has no {name}"
+    return int(default.group(1))
+
+
+def clock_rate():
+    """How many times a second Zephyr is told the machine timer counts."""
+    return kconfig_default("SYS_CLOCK_HW_CYCLES_PER_SEC")
