@@ -3,14 +3,14 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
-#include <optional>
-#include <vector>
+#include <ios>
 
 #include <gtest/gtest.h>
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/time.h"
 #include "socpuppet/core/ucie_sideband.h"
+#include "tests/cpp/support/sideband_pump.h"
 
 namespace socpuppet {
 namespace {
@@ -29,69 +29,35 @@ constexpr Picoseconds kTraining = 1ms;
 // together.
 using Registers = UcieLinkRegisters;
 
-// One link: an end on each die, with a sideband between them and a clock.
-// A is the die whose firmware manages the link.
+// One link: an end on each die, with the pump between them. A is the die
+// whose firmware manages the link.
 class OneLink {
  public:
   D2dLinkLogic& A() { return a_; }
   D2dLinkLogic& B() { return b_; }
 
-  // Firmware on die A reading and writing its own link registers.
+  // Firmware on die A reading and writing its own link registers, and
+  // what the far end's look like from outside.
   std::uint32_t Read(std::uint64_t offset) { return Read(a_, offset); }
   void Write(std::uint64_t offset, std::uint32_t value) {
     a_.WriteRegister(offset, LittleEndianBytes(value));
-    Settle();
+    pump_.Settle();
   }
   std::uint32_t ReadOnB(std::uint64_t offset) { return Read(b_, offset); }
 
-  // Lets the clock run on, stopping wherever either end asked to be looked
-  // at again and carrying the sideband packets between them, until there
-  // is nothing more either of them is waiting for.
-  void RunUntilNothingIsDue() {
-    while (true) {
-      Settle();
-      const std::optional<Picoseconds> next = NextMoment();
-      if (!next) return;
-      ASSERT_GT(*next, now_) << "an end asked to be looked at in the past";
-      now_ = *next;
-    }
-  }
+  void RunUntilNothingIsDue() { pump_.RunUntilNothingIsDue(); }
 
  private:
   static std::uint32_t Read(const D2dLinkLogic& end, std::uint64_t offset) {
     std::array<std::uint8_t, 4> bytes{};
-    end.ReadRegister(offset, bytes);
+    EXPECT_TRUE(end.ReadRegister(offset, bytes))
+        << "the read of 0x" << std::hex << offset << " was refused";
     return LoadLittleEndian<std::uint32_t>(bytes);
-  }
-
-  void Settle() {
-    // No exchange between the two ends is more than four messages deep (a
-    // request, its answer, the request that follows from it, and its
-    // answer), and one more look is what shows they have finished.
-    constexpr int kDeepestExchange = 4;
-    for (int pass = 0; pass <= kDeepestExchange; ++pass) {
-      a_.Advance(now_);
-      b_.Advance(now_);
-      const std::vector<SidebandPacket> from_a = a_.TakeOutgoing();
-      const std::vector<SidebandPacket> from_b = b_.TakeOutgoing();
-      if (from_a.empty() && from_b.empty()) return;
-      for (const SidebandPacket& packet : from_a) b_.Receive(packet, now_);
-      for (const SidebandPacket& packet : from_b) a_.Receive(packet, now_);
-    }
-    FAIL() << "the two ends never stopped talking at " << now_.count() << " ps";
-  }
-
-  std::optional<Picoseconds> NextMoment() {
-    const std::optional<Picoseconds> from_a = a_.Advance(now_);
-    const std::optional<Picoseconds> from_b = b_.Advance(now_);
-    if (!from_a) return from_b;
-    if (!from_b) return from_a;
-    return *from_a < *from_b ? from_a : from_b;
   }
 
   D2dLinkLogic a_{kLatency, kBytesPerNs, kTraining};
   D2dLinkLogic b_{kLatency, kBytesPerNs, kTraining};
-  Picoseconds now_{};
+  SidebandPump<D2dLinkLogic> pump_{a_, b_};
 };
 
 // Fills the mailbox in and triggers it, as firmware does.
