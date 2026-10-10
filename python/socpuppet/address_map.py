@@ -131,7 +131,7 @@ def render(map_entries: Sequence[MapEntry], color: bool | None = None) -> str:
         [
             (
                 format_address(entry.address),
-                "?" if entry.size is None else format_size(entry.size),
+                format_size(entry.size),
                 f"{entry.component}.{entry.port}",
                 entry.implementation,
                 " → ".join(
@@ -153,8 +153,13 @@ def format_address(address: int) -> str:
     return f"0x{address:09_X}"
 
 
-def format_size(size: int) -> str:
-    """A number of bytes in the biggest unit that divides it: `64 KiB`."""
+def format_size(size: int | None) -> str:
+    """A number of bytes in the biggest unit that divides it: `64 KiB`.
+
+    A size that nothing says (see `MapEntry.size`) is a question mark.
+    """
+    if size is None:
+        return "?"
     units = ["KiB", "MiB", "GiB", "TiB", "PiB", "EiB"]
     unit = "byte" if size == 1 else "bytes"
     while size % 1024 == 0 and units:

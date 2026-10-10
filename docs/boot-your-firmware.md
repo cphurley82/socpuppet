@@ -16,7 +16,7 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 | UART, the console | `0x1000_0000` | `ns16550` |
 | Machine timer | `0x1001_0000`, 10 MHz | `riscv,machine-timer` |
 
-💡 You do not have to copy this table anywhere. The board's devicetree is generated from the platform description, so Zephyr already knows all of it.
+💡 You do not have to copy this table anywhere. The board's devicetree is generated from the platform description, so Zephyr already knows all of it. `socpuppet address-map python/socpuppet/boards/host.py` prints the map straight from that description, and [the address map](address-map.md) has every board's.
 
 ## 1. Tell Zephyr where the board is
 

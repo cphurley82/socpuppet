@@ -9,7 +9,18 @@ Two things follow, and the rest of this page is pictures of them.
 - **There is more than one map.** A map belongs to whoever starts the access, which is called a *bus master*. The host's CPU has one map and the SSD's CPU has another, with different things at the same numbers.
 - **A map can have a window in it.** A window is a range of one bus that leads onto another bus, over a link. What is behind it has a map of its own.
 
-⚠️ This page is written by hand, and the board descriptions are what is true. [See it yourself](#see-it-yourself) prints the maps from them.
+💡 **The tables on this page are generated.** `tools/address_map_docs.py` writes each one from the board's description, between two marker comments, and lint fails if a table is not what the board gives. So a table here cannot drift from its board. The drawings and the words around the tables are written by hand. [See it yourself](#see-it-yourself) prints the same maps at a terminal.
+
+## How to read a table
+
+Every table has the same five columns.
+
+- **Address** and **Size** are where the thing is in this bus master's map, and how many bytes of it answer there.
+- **What answers** is a port, by its path in the description: `io.uart.socket` is the port `socket` of the component `uart` in the group `io`. It is the same name `--via` takes.
+- **Its model** is the page for the kind of thing it is.
+- **Through** is the windows an access crosses on the way, nearest first. 🎓 A *window* is a range of one bus that leads on to another bus. `compute.bus` from `0x1000_0000` is a window of `compute.bus` that starts at that address, and it *translates*: the bus behind it counts its own addresses from zero. A window marked "same addresses" starts at address 0 and does not. A cell with nothing in it is for something on the master's own bus.
+
+An interrupt table says which line is which number to the firmware. 🎓 The **Controller** is what takes the line, an interrupt controller or the CPU itself. The **Number** is all the firmware knows the device by, and the **Line** is the port that drives it.
 
 ## The host
 
@@ -56,20 +67,56 @@ flowchart LR
 
 The first two columns are a bus each, lowest address at the top. Green is memory and blue is a device's registers. The purple block is a window, and the purple box is the bus behind it. The two orange blocks are windows too, onto the orange box. The drawing is not to scale: the PLIC's 64 MiB and the UART's 8 bytes come out the same size, which flatters the UART.
 
-As one flat list, which is how the CPU and its firmware see it:
+As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware see the board with no drive:
 
-| Address | Size | What answers | Die | Its page |
-|---|---|---|---|---|
-| `0x0200_0000` | 4 bytes | The MSI bridge, where the drive's interrupt messages are sent. Only with a drive. | compute | [MSI-to-PLIC bridge](models/msi-plic-bridge.md) |
-| `0x0C00_0000` | 64 MiB | The PLIC, the interrupt controller. | compute | [PLIC](models/plic.md) |
-| `0x1000_0000` | 8 bytes | The UART, which is the console. | IO | [UART](models/ns16550.md) |
-| `0x1001_0000` | 64 KiB | The machine timer. | IO | [Machine timer](models/machine-timer.md) |
-| `0x1010_0000` | 1 MiB | The PCIe configuration window. Only with a drive. | IO | [PCIe root complex](models/pcie-root-complex.md) |
-| `0x1080_0000` | 1 MiB | The PCIe memory window, with the drive's registers somewhere in it. Only with a drive. | IO | [PCIe root complex](models/pcie-root-complex.md) |
-| `0x8000_0000` | 64 MiB | The RAM. The CPU starts executing at its first address. | compute | [Memory](models/memory.md) |
+<!-- address-map:host start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0C00_0000` | 64 MiB | `compute.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
+| `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
+| `0x1001_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | `compute.bus` from `0x1000_0000` |
+| `0x8000_0000` | 64 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:host end -->
+
+With a drive, three more things answer:
+
+<!-- address-map:host-drive start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 4 bytes | `compute.msi.socket` | [MSI-to-PLIC bridge](models/msi-plic-bridge.md) | |
+| `0x1010_0000` | 1 MiB | `io.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
+| `0x1080_0000` | 1 MiB | `io.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
+
+<!-- address-map:host-drive end -->
+
+The interrupt lines of the board with no drive:
+
+<!-- interrupts:host start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `compute.cpu` | 7 | `io.timer.irq` |
+| `compute.cpu` | 11 | `compute.plic.irq` |
+
+<!-- interrupts:host end -->
+
+And a drive adds one line for each of its interrupt vectors:
+
+<!-- interrupts:host-drive start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `compute.plic` | 1 | `compute.msi.irq0` |
+| `compute.plic` | 2 | `compute.msi.irq1` |
+
+<!-- interrupts:host-drive end -->
 
 The constants are at the top of `python/socpuppet/boards/host.py`.
 
+- **What they are for.** `io.uart` is the console. `compute.ram` is where firmware is loaded, and the CPU starts executing at its first address. `compute.msi` is where the drive's interrupt messages are sent. `io.rc.ecam` is the PCIe configuration window, and `io.rc.mmio` the PCIe memory window, with the drive's registers somewhere in it.
 - 💡 **A window translates.** A [router](models/router.md) hands a target the offset from the start of the range that matched. So the IO die's bus counts from zero: the UART is at `0` there and the timer at `0x1_0000`, and the CPU finds them at `0x1000_0000` and `0x1001_0000`. Firmware sees one flat map and cannot tell where the die boundary is, which is the point: the split can change without the firmware changing.
 - 🎓 **The two PCIe windows are two kinds of address.** The configuration window is how a host asks what is on the link. Every function a bus could hold has 4 KiB of it, laid out by bus, device and function number, so 1 MiB is one whole bus. The drive's NVMe registers are something else: 8 KiB that the host places wherever it likes in the memory window, by writing an address into the drive's *base address register* (BAR). 🎭 The scripted host puts them at the start, `0x1080_0000`.
 - **What comes back up sees the same map.** A drive reads and writes the host's memory by itself, which is DMA, and it interrupts by writing a small message to an address the host chose. Both come up the PCIe link, back across the die-to-die link, and onto the compute die's bus through an input of their own. From there the RAM is at `0x8000_0000` for the data, and the MSI bridge at `0x0200_0000` for the message.
@@ -124,19 +171,53 @@ flowchart LR
 
 The left column is the host's map and the right one is the SSD's. Nothing in one is reachable from the other. What joins them is the two blocks in the middle, which have a port on each side.
 
-| Address | Size | What answers | Its page |
-|---|---|---|---|
-| `0x0200_0000` | 64 KiB | The machine timer. | [Machine timer](models/machine-timer.md) |
-| `0x0C00_0000` | 64 MiB | The PLIC. The frontend, the DMA engine and the flash controller are its sources 1, 2 and 3. | [PLIC](models/plic.md) |
-| `0x1000_0000` | 8 bytes | The UART, the firmware's console. | [UART](models/ns16550.md) |
-| `0x1001_0000` | 128 bytes | The NVMe frontend's registers for its CPU. | [NVMe frontend](models/nvme-frontend.md) |
-| `0x1002_0000` | 32 bytes | The DMA engine's registers. | [DMA engine](models/dma-engine.md) |
-| `0x1003_0000` | 48 bytes | The flash controller's registers. | [Flash controller](models/flash-controller.md) |
-| `0x2000_0000` | 256 KiB | The SRAM, which the firmware is loaded into and runs from. The CPU starts executing at its first address. | [Memory](models/memory.md) |
-| `0x4000_0000` | 4 MiB | The buffer, which data passes through on its way between the host and the NAND. | [Memory](models/memory.md) |
+What the SSD's own CPU sees (`ssd.cpu.socket`):
 
-The constants are at the top of `python/socpuppet/boards/ssd.py`.
+<!-- address-map:ssd start -->
 
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 64 KiB | `ssd.timer.socket` | [Machine timer](models/machine-timer.md) | |
+| `0x0C00_0000` | 64 MiB | `ssd.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
+| `0x1000_0000` | 8 bytes | `ssd.uart.socket` | [UART (16550)](models/ns16550.md) | |
+| `0x1001_0000` | 128 bytes | `ssd.frontend.cpu` | [NVMe frontend](models/nvme-frontend.md) | |
+| `0x1002_0000` | 32 bytes | `ssd.dma.cpu` | [DMA engine](models/dma-engine.md) | |
+| `0x1003_0000` | 48 bytes | `ssd.flash.cpu` | [Flash controller](models/flash-controller.md) | |
+| `0x2000_0000` | 256 KiB | `ssd.sram.socket` | [Memory](models/memory.md) | |
+| `0x4000_0000` | 4 MiB | `ssd.buffer.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:ssd end -->
+
+Its interrupt lines:
+
+<!-- interrupts:ssd start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `ssd.cpu` | 7 | `ssd.timer.irq` |
+| `ssd.cpu` | 11 | `ssd.plic.irq` |
+| `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |
+| `ssd.plic` | 2 | `ssd.dma.irq` |
+| `ssd.plic` | 3 | `ssd.flash.irq` |
+
+<!-- interrupts:ssd end -->
+
+And for comparison, what 🎭 the scripted host in front of it sees (`host.cpu.socket`):
+
+<!-- address-map:ssd-host start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 4 bytes | `host.msi.socket` | [🎭 MSI receiver](models/msi-receiver.md) | |
+| `0x1010_0000` | 1 MiB | `host.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | |
+| `0x1080_0000` | 1 MiB | `host.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | |
+| `0x8000_0000` | 1 MiB | `host.ram.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:ssd-host end -->
+
+The SSD's constants are at the top of `python/socpuppet/boards/ssd.py`, the ones every board's CPU shares in `boards/cpu_kit.py`, and the scripted host's in `boards/scripted_host.py`.
+
+- **What they are for.** `ssd.uart` is the firmware's console. `ssd.sram` is what the firmware is loaded into and runs from, and the CPU starts executing at its first address. `ssd.buffer` is what data passes through on its way between the host and the NAND. The three register blocks are how the firmware works the NVMe frontend, the DMA engine and the flash controller.
 - ⚠️ **The same number is two things.** `0x1001_0000` is the timer to the host's CPU and the NVMe frontend to the SSD's. Neither is wrong. An address means nothing until you say whose map it is in, and with two firmware images in one simulation that is the first question to ask of any address in a log.
 - **The frontend has two register blocks.** The host's is the 8 KiB every NVMe drive shows, which reaches the host through the PCIe endpoint and lands wherever the host puts it in its memory window. The CPU's is the 128 bytes at `0x1001_0000`, which no host ever sees.
 - 🎓 **The DMA engine's registers hold addresses from both maps.** `HOST_ADDRESS` is 64 bits, in two registers, and is an address in the host's map. `LOCAL_ADDRESS` is 32 bits and is an address in this one, which in practice is somewhere in the buffer. The firmware reads the first out of an NVMe command and chooses the second.
@@ -148,20 +229,69 @@ The constants are at the top of `python/socpuppet/boards/ssd.py`.
 
 The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero, and it is what M7 will want when the compute die becomes the real host.
 
-| Address | Size | What answers | Its page |
-|---|---|---|---|
-| `0x1001_0000` | 256 bytes | The link's own registers, UCIe's Link DVSEC, on the IO die. | [Die-to-die link](models/d2d-link.md) |
-| `0x3000_0000` | 4 KiB | A scratch memory on the IO die, which is what the compute die reaches across the link. | [Memory](models/memory.md) |
-| `0x8000_0000` | 1 MiB | The compute die's own memory. Only that die can reach it. | [Memory](models/memory.md) |
+What the manager's CPU sees (`io.cpu.socket`):
 
+<!-- address-map:io-manager start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | |
+| `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
+| `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | |
+| `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
+| `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | |
+| `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:io-manager end -->
+
+What 🎭 the compute die sees (`compute.cpu.socket`), which is the same again through one window, and its own memory:
+
+<!-- address-map:io-manager-compute start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | `compute.bus`, same addresses |
+| `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | `compute.bus`, same addresses |
+| `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus`, same addresses |
+| `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | `compute.bus`, same addresses |
+| `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |
+| `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |
+| `0x8000_0000` | 1 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
+
+<!-- address-map:io-manager-compute end -->
+
+The interrupt lines:
+
+<!-- interrupts:io-manager start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `io.cpu` | 7 | `io.timer.irq` |
+| `io.cpu` | 11 | `io.plic.irq` |
+| `io.plic` | 1 | `io.d2d.irq` |
+
+<!-- interrupts:io-manager end -->
+
+- **What they are for.** `io.d2d.sideband` is the link's own registers, UCIe's Link DVSEC, at the IO die's end. `io.scratch` is a scratch memory, which is what the compute die reaches across the link. `compute.ram` is the compute die's own memory, and only that die can reach it.
 - **Everything below `0x8000_0000` on the compute die is the other die's.** That one window is the whole of the compute die's map apart from its memory, so the compute die can reach anything the IO die's bus has, at the IO die's own addresses.
-- ⚠️ **The link's registers are reachable from one side only.** Each end of the link shows its own die a register block, and the two blocks are not in each other's maps: what crosses is the sideband mailbox, which names a register by its offset in the block at the *other* end.
+- ⚠️ **The link has a second register block, and it is in no map.** Each end of the link has a register block for its own die. On this board only the IO die's is mapped, and the compute die's end is reached another way: the manager writes the sideband mailbox, which names a register by its offset in the block at the *other* end. The table shows the IO die's block in the compute die's map as well, because the window carries everything on the IO die's bus.
 - **The manager's CPU has the kit every socpuppet CPU has**, at the addresses the SSD board uses for the same things (timer `0x0200_0000`, PLIC `0x0C00_0000`, UART `0x1000_0000`, SRAM `0x2000_0000`), which is why the link's registers sit where the SSD has its frontend's and why both boards share one SoC in Zephyr. The link's interrupt is the PLIC's source 1. ⚠️ The scratch has to stay above the SRAM, for the same reason the SSD's SRAM stays below its buffer.
 - 🎭 **With a script for its firmware the manager has no CPU**, and no timer, PLIC, UART or SRAM either. The link's registers and the scratch stay where they are.
 
 ## See it yourself
 
-The map a description gives is printed as a devicetree, with nothing simulated:
+`socpuppet address-map` prints the maps a description gives, with nothing simulated: one address map for each bus master, and the interrupt map.
+
+```sh
+socpuppet address-map python/socpuppet/boards/host.py
+socpuppet address-map python/socpuppet/boards/ssd.py
+socpuppet address-map python/socpuppet/boards/ssd.py --via ssd.dma.host
+socpuppet address-map python/socpuppet/boards/io_manager.py --json
+```
+
+💡 `--via` names the port the accesses start from, and it need not be a CPU's. The third command prints what the SSD's DMA engine can reach on its way up to the host, which is a map too. `--json` prints the same maps for a program to read, and `Platform.address_map()`, `Platform.interrupt_map()` and `Platform.to_json()` give them to Python.
+
+The devicetree that firmware is built against is made from the same walk:
 
 ```sh
 socpuppet devicetree python/socpuppet/boards/host.py
@@ -169,4 +299,4 @@ socpuppet devicetree python/socpuppet/boards/ssd.py --via ssd.cpu.socket
 socpuppet devicetree python/socpuppet/boards/io_manager.py --via io.cpu.socket
 ```
 
-💡 The second command has to say whose map it wants, because that platform has two bus masters, and `--via` names the port the accesses start from. [Boot your own firmware](boot-your-firmware.md) has how to copy a board and move things around in it.
+💡 A devicetree is one master's view, so the second command has to say whose it wants, because that platform has two bus masters. [Boot your own firmware](boot-your-firmware.md) has how to copy a board and move things around in it.

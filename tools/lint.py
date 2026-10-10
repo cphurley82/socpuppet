@@ -19,6 +19,9 @@ from pathlib import Path
 
 GREEN, RED, RESET = "\x1b[32m", "\x1b[31m", "\x1b[0m"
 
+# Where this file is, and the repo's other tools with it.
+TOOLS = Path(__file__).resolve().parent
+
 
 @dataclass(frozen=True)
 class Linter:
@@ -68,6 +71,15 @@ LINTERS = [
         # The package, where a wrong type would reach a user.
         patterns=("python/*.py",),
         check=("mypy", "--no-error-summary"),
+    ),
+    Linter(
+        "address-map",
+        # The tables in the page are generated from the board descriptions
+        # (tools/address_map_docs.py). It comes before rumdl, which then
+        # checks what was written.
+        patterns=("docs/address-map.md",),
+        check=("python", str(TOOLS / "address_map_docs.py"), "check"),
+        fix=("python", str(TOOLS / "address_map_docs.py"), "write"),
     ),
     Linter(
         "rumdl",
