@@ -21,6 +21,7 @@ from socpuppet.components import (
     ScriptedBusMaster,
 )
 from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
+from socpuppet.io_manager import IoManager
 from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost, NvmeNamespace
 from socpuppet.ops import (
@@ -51,6 +52,7 @@ __all__ = [
     "ExpectationFailed",
     "FlashController",
     "IdealNand",
+    "IoManager",
     "MachineTimer",
     "Memory",
     "MsiHost",
