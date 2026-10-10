@@ -10,6 +10,7 @@ socpuppet is meant to be read. A learner should be able to open any file and fin
 | C, for Zephyr | [Zephyr's coding style](https://docs.zephyrproject.org/latest/contribute/style/index.html) | clang-format, Zephyr's own build |
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
 | Markdown | one paragraph per line | rumdl |
+| SystemRDL, for register maps | one block to a file, in `regs/` | `tools/regs.py`, which lint runs |
 | CI workflows, shell scripts | | actionlint, shellcheck |
 
 ```sh
@@ -95,6 +96,18 @@ The firmware in `firmware/` and the drivers in socpuppet's Zephyr module (`pytho
 ## Markdown
 
 **One paragraph is one line**, however long. Your editor wraps it for display. 💡 Hard-wrapped prose makes a one-word change look like a rewritten paragraph in a diff. rumdl checks the structure (heading levels, blank lines around lists and code blocks, a language on every code block) and has its line-length rule switched off in `.rumdl.toml`.
+
+## SystemRDL
+
+A block's register map is `regs/<block>.rdl`, and everything else that knows a register of that block is generated from it ([architecture.md](architecture.md#where-the-hardwaresoftware-interface-is-written-down) has the picture). 🎓 SystemRDL is the language the industry writes register maps in, so what you learn reading one of these is what you will meet elsewhere.
+
+- **One `addrmap` to a file, named after the file.** The name is in every generated name: `DMA_ENGINE_STATUS_BUSY` in C, and `dma_engine.STATUS_BUSY` in Python.
+- **Names are `UPPER_SNAKE`**, as a datasheet has them, and a field's generated name is its register's and then its own. A field that is the whole of its register is called `VALUE`, and is left out of the names: the register's name is enough.
+- **`block_size` says how many bytes the block takes**, which is the range a board gives it. SystemRDL has no word for that, so it is a property of ours (`regs/properties.rdl`).
+- **A description is a sentence, with its full stop.** The table on the block's page joins a register's description to its fields', so each has to stand on its own.
+- **A register two blocks share is a named type** in the file of the block that shares it, which the others include. `tools/regs.py` refuses a map that has it at another offset.
+- **Generated files are not edited.** Each says so at the top. `uv run python tools/lint.py --fix` writes them again, and lint fails while one is not what its map gives.
+- **In C++ a register is called by its generated name**, a macro, and not by a constant of ours beside it. 💡 Google style has no time for macros, and this is the one place they are used: the header is C, because the Zephyr driver includes the same file, and one name for a register in every language is what makes it possible to find everything that touches it.
 
 ## How the tooling is tested
 

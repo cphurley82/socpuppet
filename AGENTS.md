@@ -73,4 +73,5 @@ The rules for each language, and the reasons for them, are in [docs/style.md](do
 - C++ is Google style: `CamelCase()` functions, `lower_case` variables, `kCamelCase` constants, `member_` for private members, 80 columns. Names imposed by TLM, SystemC and the coroutine protocol keep their own spelling.
 - Python is formatted by ruff and fully type-annotated in the package. Docstrings follow Google's convention.
 - Markdown is one paragraph per line. Do not wrap prose by hand.
-- `uv run python tools/lint.py --fix` repairs what can be repaired, and `uv run ctest --preset dev` includes the lint check. Tools added to the repo are tested in `tests/tooling/`.
+- A register of one of our own blocks is written once, in `regs/<block>.rdl` (SystemRDL). The C header, the Python module and the table in the docs are generated from it and checked in, and everything else uses the generated names. Never write an offset or a bit of such a block anywhere else.
+- `uv run python tools/lint.py --fix` repairs what can be repaired, which includes writing what is generated again (from the register maps, and the tables in `docs/address-map.md` from the boards), and `uv run ctest --preset dev` includes the lint check. Tools added to the repo are tested in `tests/tooling/`.

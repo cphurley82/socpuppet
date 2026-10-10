@@ -81,6 +81,12 @@ And now for something completely different: the same description also gives the 
 socpuppet devicetree examples/m0_passthrough.py
 ```
 
+And its address map, which is what answers at which address and through which window:
+
+```sh
+socpuppet address-map examples/m0_passthrough.py
+```
+
 ## A show with a drive in it
 
 A script can also play the host's driver. Here it finds an NVMe drive over PCIe and uses it. 🎭 The drive is a stand-in that answers for itself, but the PCIe in between is real enough to matter: nothing can be read until the script has found the drive, given its registers a place in memory and said where its interrupts go.

@@ -108,9 +108,10 @@ src/socpuppet/bindings/   the pybind11 extension, and the bridge back into Pytho
 src/socpuppet/platform/   composing by name: ports, registry, Platform, tracer, slots
 src/socpuppet/models/     the SystemC blocks
 src/socpuppet/core/       plain C++ with no simulator: bytes, scripts, trace records
+regs/                     the register maps of our own blocks, which every layer's numbers come from
 ```
 
-Each layer only knows about the ones below it. `core/` has no SystemC in it at all, so its logic is tested without a kernel.
+Each layer only knows about the ones below it. `core/` has no SystemC in it at all, so its logic is tested without a kernel. `regs/` is beside the layers and not one of them: [what is generated from it](#where-the-hardwaresoftware-interface-is-written-down) is what the C++, the Zephyr drivers and the Python all read.
 
 ## Describe, build, run
 
@@ -205,6 +206,30 @@ The host is two dies, and the link between them is not there when the power come
 ```
 
 `socpuppet.boards.io_manager` describes it, with 🎭 a script standing in for the whole compute die. The manager's CPU runs `firmware/iomgr`, a Zephyr application, on the board `socpuppet_iomgr`; or 🎭 [a script plays the manager](models/io-manager.md) where a CPU is not wanted. `examples/io_manager_hello.py` runs it that way and prints [the link's](models/d2d-link.md) bring-up, packet by packet, out of the trace. 🚧 M7 puts the real host on the other die.
+
+## Where the hardware/software interface is written down
+
+🎓 Firmware and the hardware it runs on have to agree about a handful of numbers: which address a device answers at, which interrupt line is whose, where each register is in a device's block, and which bit of it means what. Together they are the *hardware/software interface*. A real chip project writes each of them down once and generates everything else, because two copies of a number are a bug that has not happened yet. socpuppet does the same, in two places, one for each kind of number.
+
+| What | Where it is written, once | What is made from it |
+|---|---|---|
+| Which device is at which address, on whose bus, through which window | A board's Python description: each `bus.map(...)` | The devicetree firmware is built against, `Platform.address_map()`, `socpuppet address-map`, and the tables in [address-map.md](address-map.md) |
+| Which interrupt line is which number | The same description: each `platform.connect(device.irq, plic.source3)` | The devicetree's `interrupts-extended`, `Platform.interrupt_map()`, and the same command and page |
+| Where a block's registers are, what their bits mean, what they can be told and what they hold at reset | The block's register map, `regs/<block>.rdl` | A C header that the model and its Zephyr driver both include, a Python module for the stand-ins and the boards, and the table on the block's page |
+
+```text
+                                      ┌─▶ regs/dma_engine.h ──┬─▶ the model       (C++)
+ regs/dma_engine.rdl ─▶ tools/regs.py ┤                       └─▶ the driver      (Zephyr's C)
+                                      ├─▶ regs/dma_engine.py ───▶ 🎭 the stand-in, the board (Python)
+                                      └─▶ the table in docs/models/dma-engine.md
+```
+
+- 🎓 **A register map is written in SystemRDL**, the language the industry writes them in. `regs/` has a file for each block that is socpuppet's own design: the [command device](models/command-device.md), the [DMA engine](models/dma-engine.md), the [flash controller](models/flash-controller.md), the CPU's side of the [NVMe frontend](models/nvme-frontend.md) and the [die-to-die link](models/d2d-link.md). A borrowed model (the UART, the timer, the PLIC) has its registers from its own project, and what a specification lays out (an NVMe controller's registers, PCIe's configuration space) is the specification's to describe.
+- **What is generated is checked in**, so the simulator builds with nothing but a compiler and the wheel needs no register compiler. Lint holds every generated file to its source: `uv run python tools/lint.py` fails if a header, a module or a table is not what its map gives, and `--fix` writes it again. The tables in address-map.md are held to the boards the same way.
+- 💡 **To move a register, change one line** of its `.rdl` and run `uv run python tools/lint.py --fix`. The model, the driver, the stand-ins, the tests and the docs all follow, and the firmware does when it is next built.
+- **A register that two blocks share is at the same place in both.** The DMA engine and the flash controller begin with the command device's three registers, by its types, and `tools/regs.py` refuses a map that puts one of them anywhere else. That is what lets one piece of a driver serve both.
+- **There is no file above the boards.** An address is written once, in the board's own file in `python/socpuppet/boards/`, and the Python description is the one place a platform is put together. What the maps add is a way to see the result without reading a devicetree.
+- ⚠️ **What is still written by hand**: the drawings and the prose, the gaps a register map leaves reserved, which a test of each block names, and the layout of a sideband packet, which C++ and Python each have a copy of.
 
 ## Stand-ins and contracts
 
