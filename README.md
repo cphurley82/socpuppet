@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. A fourth has opened as well: the die-to-die link between the host's two dies is real now, in the style of UCIe, and a third Zephyr on the IO die trains it and lets the compute die out of reset. The Zephyrs have met: the host's firmware reads and writes an SSD that is running its own. And the real host is across the real link, held in reset until the link has been trained. What is still to come is all three firmwares in one boot. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. A fourth has opened as well: the die-to-die link between the host's two dies is real now, in the style of UCIe, and a third Zephyr on the IO die trains it and lets the compute die out of reset. The Zephyrs have met: the host's firmware reads and writes an SSD that is running its own. And the real host is across the real link, held in reset until the link has been trained. Now the whole cast is on at once: three firmwares in one boot, the manager's bringing the link up, the host's finding its drive across it, and the SSD's being that drive, with a debugger on each CPU if you want one. What is still to come is a NAND that wears and has to be tidied, and the scenarios that make it interesting. The roadmap is in [docs/plan.md](docs/plan.md).
 
 ## What's the show?
 
@@ -112,6 +112,8 @@ And `examples/ssd_hello.py` is the same host in front of an SSD that is built li
 And `examples/host_and_ssd_hello.py` takes the last script away: the host is a 64-bit CPU running Zephyr, its SSD is a 32-bit CPU running Zephyr, and the two firmware images share one simulation and one clock. It prints both consoles as one story.
 
 And `examples/chiplet_host_hello.py` is the host starting up the way a chiplet does. The link between its two dies is the real one, which has to be trained before it carries anything, so the show opens with the IO die's manager bringing it up, packet by packet, and letting the host's CPU out of reset. Then Zephyr boots, from the same image, with every character it prints crossing the link.
+
+And `examples/full_bootchain.py` has no script left in it: every CPU is a CPU, running firmware. Three of them run three Zephyr images: the manager's firmware trains the link and lets the host go, the host's disk test finds its drive across the link, and the SSD's firmware is the drive. It prints the link coming up and then the three consoles as one story, each line with who said it and when.
 
 ## Try it
 

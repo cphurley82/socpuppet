@@ -188,10 +188,10 @@ Each entry says:
 ### A debugger that detaches leaves its CPU stopped
 
 - **Where**: `src/iss/debugger/cmdhandler.cpp`, `cmd_handler::detach`.
-- **What is wrong**: the answer to `D` is sent and nothing else is done. A core that was stopped stays stopped, with no debugger to tell it to go on. GDB sends `D` when it is told to `detach`. By reading, it does when it quits as well, because the server answers `qAttached` with 1. Under SystemC a stopped core holds the simulation's one thread, so the whole simulation stays where it is, and no limit in simulated time ends the run.
+- **What is wrong**: the answer to `D` is sent and nothing else is done. A core that was stopped stays stopped, with no debugger to tell it to go on. GDB sends `D` when it is told to `detach`, and when it quits, because the server answers `qAttached` with 1: quitting the SDK's GDB at a stopped CPU says "Inferior 1 [Remote target] will be detached" and leaves the simulation where it was. Under SystemC a stopped core holds the simulation's one thread, so the whole simulation stays where it is, and no limit in simulated time ends the run.
 - **How to see it**: attach, send `D`, hang up. The simulation makes no progress. A second debugger that attaches to the same port and sends `c` sets it going again, which the `detach` experiment of [the GDB spike](gdb-spike.md) did.
-- **What we do**: nothing in code. [boot-your-firmware.md](boot-your-firmware.md) is to say, when M8 writes the three-CPU walkthrough: leave with `continue`.
-- **Upstream fix**: resume the core on `D`, and when a session's connection closes, as `gdbserver` does for a process it was attached to.
+- **What we do**: nothing in code. [boot-your-firmware.md](boot-your-firmware.md) says to leave with `continue`, and what to do if it is too late for that.
+- **Upstream fix**: resume the core on `D`, and when a session's connection closes, as `gdbserver` does for a process it was attached to. Clear the adapter's break condition then as well as its breakpoints. `target_adapter_base::close` clears only `bp_lut`, so a `monitor sysc break <time>` left by a debugger that has gone still stops the core later, and the stop reply, written to a closed connection, ends the simulation with "write: Broken pipe".
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the warning can come out of the docs.
 
@@ -291,6 +291,16 @@ Each entry says:
 - **Upstream fix**: the same. It goes with "One GDB server per process" under DBT-RISE-Core above, and needs it.
 - **Kind**: bug.
 - **When it lands**: drop the patch.
+
+### `monitor sysc break <time>` does not stop a sleeping core
+
+- **Where**: `src/sysc/core_complex.cpp`, `cmd_sysc`, which gives the core's debug adapter a break condition, and DBT-RISE-Core's `target_adapter_base::check_break_on_pc`, the one place a break condition is looked at.
+- **What is wrong**: the condition is checked before each instruction the core executes. A core asleep in `wfi` executes none, so it does not stop when the time comes: it stops at its first instruction after that, whenever an interrupt next wakes it. A debugger told to continue until then waits with it. With several cores, where stopping all of them at one moment of a boot is the use the command is made for, the ones that are asleep at that moment are the ones that do not stop.
+- **How to see it**: the host with its three firmwares and a debugger on each CPU. Send each `monitor sysc break 150 ms` and `continue`. The SSD's stops at 150.088 ms and the host's at 151.9 ms, each at its first instruction after the time. The manager's does not stop at all: its firmware has been asleep since it let the host go at 5.6 ms, and its debugger hears nothing. Tried by hand in M8.
+- **What we do**: nothing. [boot-your-firmware.md](boot-your-firmware.md) offers `monitor sysc print_time` and does not mention `break`.
+- **Upstream fix**: have the break condition wake a sleeping core, for instance by having the wait in `core2sc_adapter.h`'s `wait_until` end at the time asked for as well as on an interrupt.
+- **Kind**: missing feature.
+- **When it lands**: the command can be documented, with a test of three cores stopped at one time.
 
 ### A transaction's delay loses a clock cycle, and whatever is less than a whole one
 

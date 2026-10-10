@@ -1,6 +1,6 @@
 # Boot your firmware here 🧦
 
-How to run a Zephyr application on one of socpuppet's boards: the host, [the SSD's controller](#the-ssds-controller) or [the IO die's manager](#the-io-dies-manager), and how to run [the host's firmware and the SSD's together](#the-host-with-the-ssd). The steps are the host's, and each other section says what differs. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
+How to run a Zephyr application on one of socpuppet's boards: the host, [the SSD's controller](#the-ssds-controller) or [the IO die's manager](#the-io-dies-manager), how to run [the host's firmware and the SSD's together](#the-host-with-the-ssd), and how to run [all three at once](#the-whole-cast-three-firmwares). The steps are the host's, and each other section says what differs. You need Python 3.12 or newer and a Zephyr workspace with the Zephyr SDK. socpuppet is tested with Zephyr 4.4.2 and SDK 1.0.1.
 
 🚧 socpuppet is not on PyPI yet. Until it is, "install" means building it from a checkout: see [development.md](development.md).
 
@@ -310,7 +310,7 @@ Nothing is built differently for it. The image is the one from step 2, and with 
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-- 🎭 **The manager is a script here.** `stand_in_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. 🚧 That firmware, on a CPU of its own under this host, is the next milestone's: three images in one simulation.
+- 🎭 **The manager is a script here.** `stand_in_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. That firmware, on a CPU of its own under this host, is [the whole cast](#the-whole-cast-three-firmwares) below.
 - ⚠️ **The host's first instruction is 5 ms late.** UCIe holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
 - ⚠️ **Say whose.** The manager's script is a bus master too, so `load_elf`, `peek32` and `devicetree` want `via=board.cpu.socket`, and say so if it is left out.
 - **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
@@ -380,6 +380,68 @@ iomgr: compute die released
 - 💡 **Break the link to see the firmware mend it.** A second 🎭 scripted master on the IO die's bus can write the link's fault-injection register, as `tests/python/test_m5_exit.py` does. The firmware says `iomgr: the D2D link went down`, trains it again, and says it is up.
 - `tests/python/test_m5b_exit.py` and `tests/python/test_m5_exit.py` are complete examples, and `examples/io_manager_hello.py` is the same boot with 🎭 a script in the firmware's place and the link's whole handshake printed out.
 
+## The whole cast: three firmwares
+
+Everything above comes together in one description: the host across the real link, with the manager's own CPU to bring the link up and the SSD's own CPU to be its drive. Three CPUs, three images, one simulation. The host's image and the SSD's are the two built [above](#the-host-with-the-ssd), and the manager's is built the same way:
+
+```sh
+west build -d build/iomgr -b socpuppet_iomgr /path/to/socpuppet/firmware/iomgr -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+```python
+import socpuppet as sp
+from socpuppet.boards.host import host
+from socpuppet.boards.manager import add_manager
+from socpuppet.boards.ssd import add_ssd
+
+board = host(drive_blocks=4096, manager=add_manager, drive=add_ssd)
+board.platform.build()
+board.platform.load_elf("build/iomgr/zephyr/zephyr.elf", via=board.manager.cpu.socket)
+board.platform.load_elf("build/host/zephyr/zephyr.elf", via=board.cpu.socket)
+board.platform.load_elf("build/ssd/zephyr/zephyr.elf", via=board.drive.ssd.cpu.socket)
+
+story = sp.Transcript(
+    board.platform,
+    {
+        "manager": board.manager.cpu_kit.uart,
+        "ssd": board.drive.ssd.cpu_kit.uart,
+        "host": board.uart,
+    },
+)
+story.run_until(
+    lambda: any(line.who == "host" and "PROJECT EXECUTION" in line.text for line in story.lines),
+    timeout=sp.ms(2000),
+)
+print(sp.render_transcript(story.lines))
+```
+
+Nothing is built differently for it. Each image is the one that boots on its own board: `socpuppet_iomgr` for the manager, `socpuppet_host` with its shield for the host, `socpuppet_ssd` for the SSD. `examples/full_bootchain.py` is that with the manager's firmware of `firmware/iomgr`, Zephyr's disk test and the SSD's firmware of `firmware/ssd`, and it prints the link's bring-up before the story:
+
+```text
+ms     who      said
+1.3    manager  *** Booting Zephyr OS build v4.4.2 ***
+1.5    manager  iomgr: training the D2D link
+3.2    ssd      *** Booting Zephyr OS build v4.4.2 ***
+3.9    ssd      socpuppet SSD firmware: a drive of 512 pages of 4096 bytes
+5.5    manager  iomgr: D2D link up
+5.6    manager  iomgr: compute die released
+142.7  host     *** Booting Zephyr OS build v4.4.2 ***
+143.0  host     Running TESTSUITE disk_driver
+144.1  host     Disk reports 4096 sectors
+...
+603.7  host     PROJECT EXECUTION SUCCESSFUL
+```
+
+- **The boot has an order, and the hardware fixes it.** The manager and the SSD start at power-on. The host cannot: the link's end on its die holds its CPU in reset until the manager's firmware has trained the link and let it go, 5.5 ms in. And the host cannot learn the size of its disk until the SSD's firmware is there to answer.
+- 💡 **`sp.Transcript` is who said what, and when.** Give it the consoles by name. `story.run_until(condition, timeout)` runs the platform and listens as it goes, noting each whole line with who said it and the simulated time it was heard, and `sp.render_transcript` prints them as a table. A test can ask it about order: the time of the manager's `compute die released` against the time of the host's first line.
+- ⚠️ **Two consoles heard at the same moment have no order.** Each CPU runs a quantum ahead before the others catch up, 100 µs by default, so lines that two firmwares print within one quantum are heard together. They get the same time and come out in the order the consoles were given. Compare times, not places in the list.
+- ⚠️ **Say whose, every time, and load all three.** `via=board.manager.cpu.socket`, `via=board.cpu.socket`, `via=board.drive.ssd.cpu.socket`. A manager with no image never lets the host go, and the host prints nothing at all. An SSD with no image never says it is ready, and the host waits for it. Each also fills the log with `target address=0x0 not found`, the mark of a CPU running an empty memory.
+- **The manager's firmware sees its own board, less the scratch memory.** Under the host the manager has a bus of its own with its kit and the link's registers on it, at the addresses `socpuppet_iomgr` has them ([the address map](address-map.md#the-host-across-the-link)). The scratch memory of that board was for 🎭 a compute die to reach, and the firmware never used it.
+- 🎭 **Take out what you are not working on.** Each of the two functions has its stand-in, and the host's image is the same with any of them: `manager=functools.partial(add_manager, script=stand_in_manager().script)` is a script for the manager, `drive=functools.partial(add_ssd, firmware=stand_in_firmware().script)` a script for the SSD's firmware, and leaving `drive` out is the stand-in drive.
+- **It costs nothing you will notice.** The manager's firmware lets the host go half a millisecond later than 🎭 the script does, the disk test's verdict comes that half millisecond later, at 603.7 ms of simulated time, and the wall time is the same as with the script: under half a second.
+- `tests/python/test_m8_exit.py` is a complete example.
+
 ## Waiting for something to happen
 
 A test usually wants to run until the firmware says something, with a limit in case it never does:
@@ -432,11 +494,56 @@ docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
 (gdb) target remote host.docker.internal:1234
 ```
 
+⚠️ Leave with `continue`, not `detach` or `quit`. A debugger that detaches leaves its CPU stopped, and quitting GDB at a breakpoint detaches. A stopped CPU stops the whole simulation, with no limit in simulated time able to end the run. So say `continue` and let the run finish, which hangs up on GDB, or stop the simulation yourself. If it is too late for that, attach to the same port again and say `continue`.
+
 ⚠️ Start the run first and attach second, as here. The port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)).
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 
-On a board with more than one CPU, each can have a port of its own. On the host with the SSD, `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's firmware, `drive=functools.partial(add_ssd, gdb_port=1235)` the SSD's, and both together debug both. ⚠️ While a CPU you are debugging sits at a breakpoint the whole simulation waits, so the other CPUs are not running either, and will not have given up on you when you continue. With more than one GDB, give each `set remotetimeout 60` before `target remote`, because a GDB reads memory as it attaches and is not answered until its own CPU's turn comes. And leave with `continue`, not `detach`, which would leave the CPU stopped and the simulation with it.
+On a board with more than one CPU, give the port to the one whose firmware you are debugging: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. The other CPU runs without waiting for anybody, and while yours sits at a breakpoint it waits too, so it will not have given up on you when you continue.
+
+### Debugging three CPUs at once
+
+Each CPU of a board can have a port of its own, and a GDB each:
+
+```python
+import functools
+
+import socpuppet as sp
+from socpuppet.boards.host import host
+from socpuppet.boards.manager import add_manager
+from socpuppet.boards.ssd import add_ssd
+
+board = host(
+    gdb_port=1234,
+    drive_blocks=4096,
+    manager=functools.partial(add_manager, gdb_port=1235),
+    drive=functools.partial(add_ssd, gdb_port=1236),
+)
+board.platform.build()
+board.platform.load_elf("build/iomgr/zephyr/zephyr.elf", via=board.manager.cpu.socket)
+board.platform.load_elf("build/host/zephyr/zephyr.elf", via=board.cpu.socket)
+board.platform.load_elf("build/ssd/zephyr/zephyr.elf", via=board.drive.ssd.cpu.socket)
+board.platform.run(sp.ms(1000))     # waits here until each GDB has said continue
+```
+
+Then, each in a terminal of its own:
+
+```sh
+riscv64-zephyr-elf-gdb -ex "set remotetimeout 600" -ex "target remote :1235" build/iomgr/zephyr/zephyr.elf
+riscv64-zephyr-elf-gdb -ex "set remotetimeout 600" -ex "target remote :1236" build/ssd/zephyr/zephyr.elf
+riscv64-zephyr-elf-gdb -ex "set remotetimeout 600" -ex "target remote :1234" build/host/zephyr/zephyr.elf
+```
+
+The same GDB program debugs both kinds of CPU: each server tells its debugger whether its core is 32-bit or 64-bit. Any one or two of the ports can be left out, and a CPU without one runs without waiting for anybody.
+
+- ⚠️ **A stopped CPU stops the world.** The simulation has one thread, and a CPU stopped in its debugger keeps it. So while one CPU sits at a breakpoint the other two are frozen with it, at whatever instruction they had reached, and simulated time stands still. Nothing runs on behind your back, which is what makes a session with three CPUs repeatable. It is not how a board on a bench behaves, where the other two would carry on and time out.
+- ⚠️ **`set remotetimeout`, before `target remote`.** A GDB reads memory as it attaches, and it is answered only while its own CPU is the one that is stopped. The CPUs stop one at a time, each when the one before has been told to continue, so a GDB waits for its turn, and gives up after two seconds unless it is told to be patient. The time it is given is yours to spend: ten minutes here, in which to set breakpoints in the first GDB and continue it. Or attach each GDB only when you are ready to let the one before it go.
+- **Each CPU has to be told to continue once**, because each stops before its first instruction. The manager's and the SSD's stop at power-on. The host's stops at 5.5 ms, when the link lets it go, which cannot come until the manager's is running.
+- **Look at one CPU at a time.** While one CPU is at a breakpoint, another's GDB gets no answer about memory, so `x` and `backtrace` there wait until the stopped one continues. To see what the SSD is doing while the host waits for it, set a breakpoint in the SSD's firmware and continue the host.
+- 💡 **`monitor sysc print_time` asks a CPU the simulated time.** At a breakpoint it says when in the boot you are, on the clock all three share.
+- **Two CPUs cannot share a port**, and a platform says so by name when it is built.
+- `tests/python/test_gdb.py` drives three debuggers from one test, with a small client of its own in place of GDB.
 
 ## When it does not boot
 
