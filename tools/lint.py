@@ -41,6 +41,14 @@ class Linter:
 # that only check the same files, so that --fix leaves them something clean.
 LINTERS = [
     Linter(
+        "systemrdl",
+        # The register maps (tools/regs.py). It comes first because what
+        # is generated from them is C, Python and Markdown, which the
+        # linters after it then check.
+        patterns=("regs/*.rdl",),
+        check=("python", str(TOOLS / "regs.py"), "check"),
+    ),
+    Linter(
         "clang-format",
         # C++, and the C that is written for Zephyr, which has a style of
         # its own: a .clang-format in a directory speaks for what is under

@@ -56,6 +56,7 @@ dev = [
     "ruff>=0.16",
     "rumdl==0.2.78",
     "shellcheck-py>=0.11.0.1",
+    "systemrdl-compiler>=1.33.0",
 ]
 
 [tool.uv]
