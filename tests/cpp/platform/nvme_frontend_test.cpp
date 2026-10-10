@@ -1,3 +1,5 @@
+#include "socpuppet/regs/nvme_frontend.h"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -34,25 +36,6 @@ enum HostRegister : std::uint64_t {
   kAdminTailDoorbell = 0x1000,
   kAdminHeadDoorbell = 0x1004,
 };
-
-// The registers the SSD's CPU sees, as docs/models/nvme-frontend.md gives
-// them.
-enum CpuRegister : std::uint64_t {
-  kControl = 0x00,
-  kStatus = 0x04,
-  kInterruptEnable = 0x08,
-  kCompletionStatus = 0x18,
-  kCompletionPost = 0x1C,
-  kCommand = 0x40,
-};
-
-// The bits of the CPU's status register, and the one bit of its control
-// register.
-enum StatusBit : std::uint32_t {
-  kEnabled = 1U << 0,
-  kCommandWaiting = 1U << 2,
-};
-constexpr std::uint32_t kReady = 1U << 0;
 
 // Where the host of these tests keeps its admin queues, of four entries
 // each, in a memory of 64 KiB.
@@ -186,11 +169,14 @@ bool HostEnables(BusDriver& host) {
 // What firmware does when the host enables the controller: it notices,
 // acknowledges, and says it is ready.
 bool FirmwareComesReady(BusDriver& cpu) {
-  if (!WaitUntil(cpu, [&] { return (cpu.Read32(kStatus) & kEnabled) != 0; })) {
+  if (!WaitUntil(cpu, [&] {
+        return (cpu.Read32(NVME_FRONTEND_STATUS) &
+                NVME_FRONTEND_STATUS_ENABLED) != 0;
+      })) {
     return false;
   }
-  cpu.Write32(kStatus, kEnabled);
-  cpu.Write32(kControl, kReady);
+  cpu.Write32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
+  cpu.Write32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
   return true;
 }
 
@@ -199,14 +185,16 @@ bool FirmwareComesReady(BusDriver& cpu) {
 // if none came.
 std::vector<std::uint8_t> FirmwareDealsWithACommand(BusDriver& cpu,
                                                     std::uint32_t status) {
-  if (!WaitUntil(
-          cpu, [&] { return (cpu.Read32(kStatus) & kCommandWaiting) != 0; })) {
+  if (!WaitUntil(cpu, [&] {
+        return (cpu.Read32(NVME_FRONTEND_STATUS) &
+                NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0;
+      })) {
     return {};
   }
   std::vector<std::uint8_t> command(kCommandBytes);
-  cpu.Read(kCommand, command);
-  cpu.Write32(kCompletionStatus, status);
-  cpu.Write32(kCompletionPost, 1);
+  cpu.Read(NVME_FRONTEND_COMMAND, command);
+  cpu.Write32(NVME_FRONTEND_COMPLETION_STATUS, status);
+  cpu.Write32(NVME_FRONTEND_COMPLETION_POST, 1);
   return command;
 }
 
@@ -248,10 +236,10 @@ TEST(WhenAHostHasJustRungADoorbellOfAnNvmeFrontend,
       [&](BusDriver& host) {
         HostEnables(host);
         host.Write32(kAdminTailDoorbell, 1);
-        when_the_write_returned = wired->DebugReadCpu32(kStatus);
+        when_the_write_returned = wired->DebugReadCpu32(NVME_FRONTEND_STATUS);
         host.WaitFor(sc_core::SC_ZERO_TIME);
         host.WaitFor(sc_core::SC_ZERO_TIME);
-        afterwards = wired->DebugReadCpu32(kStatus);
+        afterwards = wired->DebugReadCpu32(NVME_FRONTEND_STATUS);
       },
       [](BusDriver& cpu) { FirmwareComesReady(cpu); }};
   wired = &fixture;
@@ -260,7 +248,7 @@ TEST(WhenAHostHasJustRungADoorbellOfAnNvmeFrontend,
   fixture.platform.Run();
 
   EXPECT_EQ(when_the_write_returned, 0U);
-  EXPECT_EQ(afterwards, kCommandWaiting);
+  EXPECT_EQ(afterwards, NVME_FRONTEND_STATUS_COMMAND_WAITING);
 }
 
 // One rise for each command: the line falls when the firmware has dealt
@@ -274,7 +262,8 @@ TEST(WhenTwoCommandsComeAndTheCpuAskedToBeInterruptedForACommand,
         host.Write32(kAdminTailDoorbell, 2);
       },
       [](BusDriver& cpu) {
-        cpu.Write32(kInterruptEnable, kCommandWaiting);
+        cpu.Write32(NVME_FRONTEND_INTERRUPT_ENABLE,
+                    NVME_FRONTEND_STATUS_COMMAND_WAITING);
         FirmwareComesReady(cpu);
         FirmwareDealsWithACommand(cpu, /*status=*/0);
         FirmwareDealsWithACommand(cpu, /*status=*/0);
@@ -334,7 +323,8 @@ TEST(WhenTheHostAndTheCpuWriteToAnNvmeFrontendInTheSameDeltaCycle,
       [](BusDriver& cpu) {
         for (int turn = 0; turn < 4; ++turn) {
           const std::uint32_t enabled = turn % 2 == 0 ? 1U : 0U;
-          cpu.Write32(kInterruptEnable, enabled * kEnabled);
+          cpu.Write32(NVME_FRONTEND_INTERRUPT_ENABLE,
+                      enabled * NVME_FRONTEND_STATUS_ENABLED);
           cpu.WaitFor(sc_core::SC_ZERO_TIME);
         }
       }};
@@ -347,22 +337,26 @@ TEST(WhenADebuggerLooksAtARegisterOfAnNvmeFrontendsCpu, ItSeesWhatTheCpuWould) {
       [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(NVME_FRONTEND_STATUS),
+            NVME_FRONTEND_STATUS_ENABLED);
 }
 
 // A debugger can look and cannot touch: a completion posted this way, or a
 // status acknowledged, would be something the firmware never did.
 TEST(WhenADebuggerWritesToARegisterOfAnNvmeFrontendsCpu, TheWriteIsDeclined) {
-  const std::array<std::uint8_t, 4> acknowledgement{kEnabled, 0, 0, 0};
+  const std::array<std::uint8_t, 4> acknowledgement{
+      NVME_FRONTEND_STATUS_ENABLED, 0, 0, 0};
   HostAndCpuWithAnNvmeFrontend fixture{
       [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
   fixture.platform.Run();
 
-  const bool answered = fixture.platform.DebugWrite(
-      "cpu.socket", kStatus, std::as_bytes(std::span{acknowledgement}));
+  const bool answered =
+      fixture.platform.DebugWrite("cpu.socket", NVME_FRONTEND_STATUS,
+                                  std::as_bytes(std::span{acknowledgement}));
 
   EXPECT_FALSE(answered);
-  EXPECT_EQ(fixture.DebugReadCpu32(kStatus), kEnabled);
+  EXPECT_EQ(fixture.DebugReadCpu32(NVME_FRONTEND_STATUS),
+            NVME_FRONTEND_STATUS_ENABLED);
 }
 
 TEST(WhenAnNvmeFrontendRefusesAnAccess, WhoeverMadeItGetsAnAddressError) {
@@ -372,7 +366,9 @@ TEST(WhenAnNvmeFrontendRefusesAnAccess, WhoeverMadeItGetsAnAddressError) {
       // The doorbell of a queue that does not exist: nothing is enabled.
       [&](BusDriver& host) { hosts = host.Write32(kAdminTailDoorbell, 1); },
       // A completion, with no command waiting.
-      [&](BusDriver& cpu) { cpus = cpu.Write32(kCompletionPost, 1); }};
+      [&](BusDriver& cpu) {
+        cpus = cpu.Write32(NVME_FRONTEND_COMPLETION_POST, 1);
+      }};
 
   fixture.platform.Run();
 

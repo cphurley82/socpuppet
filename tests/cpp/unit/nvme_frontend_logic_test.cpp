@@ -12,6 +12,7 @@
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/memory_store.h"
+#include "socpuppet/regs/nvme_frontend.h"
 
 namespace socpuppet {
 
@@ -30,39 +31,6 @@ enum HostRegister : std::uint64_t {
   kDoorbells = 0x1000,
 };
 
-// The registers the SSD's CPU sees, as docs/models/nvme-frontend.md gives
-// them. Each is 32 bits wide, and the command is 64 bytes.
-enum CpuRegister : std::uint64_t {
-  kControl = 0x00,
-  kStatus = 0x04,
-  kInterruptEnable = 0x08,
-  kLimits = 0x0C,
-  kCommandQueue = 0x10,
-  kCompletionResult = 0x14,
-  kCompletionStatus = 0x18,
-  kCompletionPost = 0x1C,
-  kQueueId = 0x20,
-  kQueueBaseLow = 0x24,
-  kQueueBaseHigh = 0x28,
-  kQueueLast = 0x2C,
-  kQueueLink = 0x30,
-  kQueueCreate = 0x34,
-  kCommand = 0x40,
-};
-
-// The bits of the CPU's status register.
-enum StatusBit : std::uint32_t {
-  // The host has enabled the controller, or disabled it. Each stays set
-  // until the CPU writes a one to it.
-  kEnabled = 1U << 0,
-  kDisabled = 1U << 1,
-  // A command is waiting for the CPU. It is set for as long as one is.
-  kCommandWaiting = 1U << 2,
-};
-
-// The bit of the control register by which firmware says it is ready.
-constexpr std::uint32_t kReady = 1U << 0;
-
 // Where the host of these tests keeps its admin queues, and the first pair
 // of I/O queues it asks for. Every queue has four entries.
 constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
@@ -70,12 +38,6 @@ constexpr std::uint64_t kAdminCompletionQueue = 0x2000;
 constexpr std::uint64_t kIoSubmissionQueue = 0x3000;
 constexpr std::uint64_t kIoCompletionQueue = 0x4000;
 constexpr std::uint16_t kLastSlot = 3;
-
-// What is written to the queue-create register.
-enum QueueKind : std::uint32_t {
-  kCompletionQueue = 1,
-  kSubmissionQueue = 2,
-};
 
 // How long a command is, and where in it the host puts the identifier it
 // gives the command.
@@ -213,25 +175,28 @@ struct Rig {
   // queue the completion queue its commands' completions go to.
   bool CpuCreates(std::uint32_t kind, std::uint32_t queue_id,
                   std::uint64_t base, std::uint32_t link) {
-    CpuWrite32(kQueueId, queue_id);
-    CpuWrite32(kQueueBaseLow, static_cast<std::uint32_t>(base));
-    CpuWrite32(kQueueBaseHigh, static_cast<std::uint32_t>(base >> 32));
-    CpuWrite32(kQueueLast, kLastSlot);
-    CpuWrite32(kQueueLink, link);
-    return CpuWrite32(kQueueCreate, kind);
+    CpuWrite32(NVME_FRONTEND_QUEUE_ID, queue_id);
+    CpuWrite32(NVME_FRONTEND_QUEUE_BASE_LOW, static_cast<std::uint32_t>(base));
+    CpuWrite32(NVME_FRONTEND_QUEUE_BASE_HIGH,
+               static_cast<std::uint32_t>(base >> 32));
+    CpuWrite32(NVME_FRONTEND_QUEUE_LAST, kLastSlot);
+    CpuWrite32(NVME_FRONTEND_QUEUE_LINK, link);
+    return CpuWrite32(NVME_FRONTEND_QUEUE_CREATE, kind);
   }
   // The first pair of I/O queues, with the second interrupt vector.
   void CpuCreatesIoQueues() {
     // Completion queue 1 on vector 1, and submission queue 1, whose
     // completions go to it.
-    CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, /*link=*/1);
-    CpuCreates(kSubmissionQueue, 1, kIoSubmissionQueue, /*link=*/1);
+    CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 1,
+               kIoCompletionQueue, /*link=*/1);
+    CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 1,
+               kIoSubmissionQueue, /*link=*/1);
   }
 
   // The command that is waiting for the CPU, as the CPU reads it.
   std::vector<std::uint8_t> CommandWaiting() const {
     std::vector<std::uint8_t> command(kCommandBytes, 0xA5);
-    EXPECT_TRUE(frontend.ReadCpuRegister(kCommand, command));
+    EXPECT_TRUE(frontend.ReadCpuRegister(NVME_FRONTEND_COMMAND, command));
     return command;
   }
 
@@ -239,9 +204,10 @@ struct Rig {
   // what the completion is to say, and has it posted. The status is the
   // code in its low byte, and which list the code is from above that.
   bool CpuPosts(std::uint32_t status = 0, std::uint32_t result = 0) {
-    CpuWrite32(kCompletionResult, result);
-    CpuWrite32(kCompletionStatus, status);
-    return CpuWrite32(kCompletionPost, 1);
+    CpuWrite32(NVME_FRONTEND_COMPLETION_RESULT, result);
+    CpuWrite32(NVME_FRONTEND_COMPLETION_STATUS, status);
+    return CpuWrite32(NVME_FRONTEND_COMPLETION_POST,
+                      NVME_FRONTEND_COMPLETION_POST_NOW);
   }
 
   // What the host finds in a slot of a completion queue.
@@ -263,7 +229,9 @@ struct Rig {
   }
 
   // Whether a bit of the status register is set, as the CPU reads it.
-  bool CpuSees(StatusBit bit) const { return (CpuRead32(kStatus) & bit) != 0; }
+  bool CpuSees(std::uint32_t bit) const {
+    return (CpuRead32(NVME_FRONTEND_STATUS) & bit) != 0;
+  }
 
   // Whether the host sees the controller as ready: CSTS.RDY.
   bool HostSeesReady() const { return (HostRead32(kCsts) & 1U) != 0; }
@@ -297,7 +265,7 @@ TEST(WhenTheFirmwareOfAnNvmeFrontendSaysItIsReady, TheHostSeesReady) {
   Rig rig;
   rig.HostEnables();
 
-  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
   EXPECT_TRUE(rig.HostSeesReady());
 }
@@ -306,9 +274,9 @@ TEST(WhenTheFirmwareOfAnNvmeFrontendSaysItIsNoLongerReady,
      TheHostSeesNotReady) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
-  rig.CpuWrite32(kControl, 0);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, 0);
 
   EXPECT_FALSE(rig.HostSeesReady());
 }
@@ -318,17 +286,17 @@ TEST(WhenTheHostEnablesAnNvmeFrontend, ItsCpuIsToldSo) {
 
   rig.HostEnables();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_STATUS), NVME_FRONTEND_STATUS_ENABLED);
 }
 
 TEST(WhenTheHostDisablesAnNvmeFrontend, ItsCpuIsToldSo) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kEnabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
 
   rig.HostDisables();
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kDisabled);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_STATUS), NVME_FRONTEND_STATUS_DISABLED);
 }
 
 // A host that disables the controller and enables it again before the
@@ -339,9 +307,9 @@ TEST(WhenTheCpuAcknowledgesOneOfTwoThingsTheHostHasDone,
   rig.HostEnables();
   rig.HostDisables();
 
-  rig.CpuWrite32(kStatus, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
-  EXPECT_EQ(rig.CpuRead32(kStatus), kEnabled);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_STATUS), NVME_FRONTEND_STATUS_ENABLED);
 }
 
 TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
@@ -351,7 +319,7 @@ TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
+  EXPECT_TRUE(rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING));
   EXPECT_EQ(rig.CommandWaiting(), SomeCommand(7));
 }
 
@@ -377,9 +345,9 @@ TEST(WhenTheCpuWritesAOneToTheCommandWaitingBitOfAnNvmeFrontend,
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  rig.CpuWrite32(kStatus, kCommandWaiting);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_COMMAND_WAITING);
 
-  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
+  EXPECT_TRUE(rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING));
 }
 
 TEST(WhenNoCommandIsWaitingForTheCpuOfAnNvmeFrontend, TheCommandReadsAsZeros) {
@@ -394,7 +362,7 @@ TEST(WhenACommandFromTheAdminQueueIsWaiting, TheCpuIsToldItCameFromQueueZero) {
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  EXPECT_EQ(rig.CpuRead32(kCommandQueue), 0U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_COMMAND_QUEUE), 0U);
 }
 
 // The completion says which command it is for and where it came from,
@@ -428,7 +396,8 @@ TEST(WhenTheCpuPostsAStatusFromTheCommandsOwnList,
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  rig.CpuPosts(/*status=*/1U << 8 | 0x01);
+  rig.CpuPosts(/*status=*/1U << NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT |
+               0x01);
   rig.frontend.Step();
 
   const Completion posted = rig.HostReadsCompletion(kAdminCompletionQueue, 0);
@@ -448,7 +417,7 @@ TEST(WhenTheCpuHasJustAskedForACompletionToBePosted,
 
   rig.CpuPosts();
 
-  EXPECT_FALSE(rig.CpuSees(kCommandWaiting));
+  EXPECT_FALSE(rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING));
   EXPECT_EQ(rig.HostReadsCompletion(kAdminCompletionQueue, 0), Completion{});
 }
 
@@ -512,7 +481,7 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAPairOfIoQueues,
   rig.HostSubmitsIo(SomeCommand(9));
   rig.frontend.Step();
   const std::vector<std::uint8_t> waiting = rig.CommandWaiting();
-  const std::uint32_t from_queue = rig.CpuRead32(kCommandQueue);
+  const std::uint32_t from_queue = rig.CpuRead32(NVME_FRONTEND_COMMAND_QUEUE);
   rig.CpuPosts();
   rig.frontend.Step();
 
@@ -550,8 +519,10 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateItsEighthPairOfIoQueues,
   Rig rig;
   rig.HostEnables();
 
-  EXPECT_TRUE(rig.CpuCreates(kCompletionQueue, 8, 0x5000, 1));
-  EXPECT_TRUE(rig.CpuCreates(kSubmissionQueue, 8, 0x6000, 8));
+  EXPECT_TRUE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 8,
+                             0x5000, 1));
+  EXPECT_TRUE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 8,
+                             0x6000, 8));
 }
 
 TEST(WhenFirmwareHasAnNvmeFrontendCreateANinthPairOfIoQueues,
@@ -560,8 +531,10 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateANinthPairOfIoQueues,
   rig.HostEnables();
   rig.CpuCreatesIoQueues();
 
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 9, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 9, 0x6000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 9,
+                              0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 9,
+                              0x6000, 1));
 }
 
 // The admin queues are the frontend's own.
@@ -569,8 +542,10 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateQueueZero, TheWriteIsRefused) {
   Rig rig;
   rig.HostEnables();
 
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 0, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 0, 0x6000, 0));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 0,
+                              0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 0,
+                              0x6000, 0));
 }
 
 TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueThatExists, TheWriteIsRefused) {
@@ -578,8 +553,10 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueThatExists, TheWriteIsRefused) {
   rig.HostEnables();
   rig.CpuCreatesIoQueues();
 
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 1));
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x6000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 1,
+                              0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 1,
+                              0x6000, 1));
 }
 
 // Its commands' completions would have nowhere to go.
@@ -588,7 +565,8 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateASubmissionQueueWithNoCompletionQueue,
   Rig rig;
   rig.HostEnables();
 
-  EXPECT_FALSE(rig.CpuCreates(kSubmissionQueue, 1, 0x6000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, 1,
+                              0x6000, 1));
 }
 
 // The rig's frontend has two interrupt vectors, 0 and 1.
@@ -597,7 +575,8 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateACompletionQueueOnAVectorItLacks,
   Rig rig;
   rig.HostEnables();
 
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 2));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 1,
+                              0x5000, 2));
 }
 
 TEST(WhenFirmwareHasAnNvmeFrontendCreateAKindOfQueueThereIsNot,
@@ -614,7 +593,8 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueAndTheHostHasNotEnabledIt,
      TheWriteIsRefused) {
   Rig rig;
 
-  EXPECT_FALSE(rig.CpuCreates(kCompletionQueue, 1, 0x5000, 1));
+  EXPECT_FALSE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 1,
+                              0x5000, 1));
 }
 
 // A queue's last slot is a 16-bit number, as its size is in the command
@@ -623,11 +603,12 @@ TEST(WhenFirmwareHasAnNvmeFrontendCreateAQueueLongerThanAQueueCanBe,
      TheWriteIsRefused) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kQueueId, 1);
-  rig.CpuWrite32(kQueueLast, 0x1'0000);
-  rig.CpuWrite32(kQueueLink, 1);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_ID, 1);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_LAST, 0x1'0000);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_LINK, 1);
 
-  EXPECT_FALSE(rig.CpuWrite32(kQueueCreate, kCompletionQueue));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_QUEUE_CREATE,
+                              NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE));
 }
 
 // How many I/O queue pairs it has is in the low half, and how many
@@ -637,7 +618,9 @@ TEST(WhenFirmwareAsksAnNvmeFrontendWhatItHas,
      ItSaysEightIoQueuePairsAndItsVectors) {
   const Rig rig;
 
-  EXPECT_EQ(rig.CpuRead32(kLimits), 2U << 16 | 8U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_LIMITS),
+            2U << NVME_FRONTEND_LIMITS_VECTORS_SHIFT |
+                8U << NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_SHIFT);
 }
 
 // Clearing CC.EN is a controller reset. The frontend carries out its part
@@ -652,7 +635,7 @@ TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting, TheCommandIsGone) {
 
   rig.HostDisables();
 
-  EXPECT_FALSE(rig.CpuSees(kCommandWaiting));
+  EXPECT_FALSE(rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING));
   EXPECT_EQ(rig.CommandWaiting(), std::vector<std::uint8_t>(kCommandBytes, 0));
 }
 
@@ -661,12 +644,12 @@ TEST(WhenTheHostResetsAnNvmeFrontendWithACommandWaiting, TheCommandIsGone) {
 TEST(WhenTheHostResetsAnNvmeFrontendThatWasReady, ItIsNoLongerReady) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
   rig.HostDisables();
 
   EXPECT_FALSE(rig.HostSeesReady());
-  EXPECT_EQ(rig.CpuRead32(kControl), 0U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_CONTROL), 0U);
 }
 
 // Between the reset and the firmware's acknowledgement of it, the firmware
@@ -705,9 +688,9 @@ TEST(WhenTheHostSubmitsACommandBeforeFirmwareHasAcknowledgedAReset,
   rig.HostEnables();
   rig.HostSubmits(SomeCommand(8));
   const bool fetched_before = rig.frontend.Step();
-  const bool waiting_before = rig.CpuSees(kCommandWaiting);
+  const bool waiting_before = rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING);
 
-  rig.CpuWrite32(kStatus, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
   rig.frontend.Step();
 
   EXPECT_FALSE(fetched_before);
@@ -724,12 +707,14 @@ TEST(WhenFirmwareHasAQueueCreatedBeforeItHasAcknowledgedAReset,
   rig.HostDisables();
   rig.HostEnables();
 
-  const bool taken = rig.CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, 1);
-  rig.CpuWrite32(kStatus, kDisabled);
+  const bool taken = rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE,
+                                    1, kIoCompletionQueue, 1);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
   EXPECT_TRUE(taken);
   // It can be created now, which it could not if it existed.
-  EXPECT_TRUE(rig.CpuCreates(kCompletionQueue, 1, kIoCompletionQueue, 1));
+  EXPECT_TRUE(rig.CpuCreates(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, 1,
+                             kIoCompletionQueue, 1));
 }
 
 // What the firmware says of being ready is about the controller the host
@@ -740,7 +725,7 @@ TEST(WhenFirmwareSaysItIsReadyBeforeItHasAcknowledgedAReset, ItIsNotReady) {
   rig.HostDisables();
   rig.HostEnables();
 
-  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
   EXPECT_FALSE(rig.HostSeesReady());
 }
@@ -751,10 +736,10 @@ TEST(WhenFirmwareSaysItIsReadyAndTheHostDoesNotHaveTheControllerEnabled,
   Rig disabled;
   disabled.HostEnables();
   disabled.HostDisables();
-  disabled.CpuWrite32(kStatus, kDisabled);
+  disabled.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
-  never_enabled.CpuWrite32(kControl, kReady);
-  disabled.CpuWrite32(kControl, kReady);
+  never_enabled.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
+  disabled.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
   EXPECT_FALSE(never_enabled.HostSeesReady());
   EXPECT_FALSE(disabled.HostSeesReady());
@@ -766,9 +751,9 @@ TEST(WhenFirmwareHasAcknowledgedAResetAndTheHostHasEnabledTheControllerAgain,
   rig.HostEnables();
   rig.HostDisables();
   rig.HostEnables();
-  rig.CpuWrite32(kStatus, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
-  rig.CpuWrite32(kControl, kReady);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
 
   EXPECT_TRUE(rig.HostSeesReady());
 }
@@ -782,7 +767,7 @@ TEST(WhenFirmwareHasACompletionPostedAfterAcknowledgingAResetWithNoCommand,
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
   rig.HostDisables();
-  rig.CpuWrite32(kStatus, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
   EXPECT_FALSE(rig.CpuPosts());
 }
@@ -841,7 +826,7 @@ TEST(WhenTheHostEnablesAnNvmeFrontendAgainAfterAReset,
   rig.CpuPosts();
   rig.frontend.Step();
   rig.HostDisables();
-  rig.CpuWrite32(kStatus, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
   rig.HostEnables();
   rig.HostSubmits(SomeCommand(8));
@@ -863,7 +848,8 @@ TEST(WhenACommandWaitsAndTheCpuAskedToBeInterruptedForOne,
      TheNvmeFrontendInterruptsItsCpuUntilTheCommandIsDealtWith) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kInterruptEnable, kCommandWaiting);
+  rig.CpuWrite32(NVME_FRONTEND_INTERRUPT_ENABLE,
+                 NVME_FRONTEND_STATUS_COMMAND_WAITING);
   const bool before = rig.frontend.CpuInterrupting();
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
@@ -879,11 +865,11 @@ TEST(WhenACommandWaitsAndTheCpuAskedToBeInterruptedForOne,
 TEST(WhenTheHostEnablesAnNvmeFrontendAndTheCpuAskedToBeInterruptedForThat,
      TheFrontendInterruptsItsCpuUntilTheCpuAcknowledges) {
   Rig rig;
-  rig.CpuWrite32(kInterruptEnable, kEnabled);
+  rig.CpuWrite32(NVME_FRONTEND_INTERRUPT_ENABLE, NVME_FRONTEND_STATUS_ENABLED);
   rig.HostEnables();
   const bool until_acknowledged = rig.frontend.CpuInterrupting();
 
-  rig.CpuWrite32(kStatus, kEnabled);
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
 
   EXPECT_TRUE(until_acknowledged);
   EXPECT_FALSE(rig.frontend.CpuInterrupting());
@@ -892,7 +878,7 @@ TEST(WhenTheHostEnablesAnNvmeFrontendAndTheCpuAskedToBeInterruptedForThat,
 TEST(WhenSomethingHappensThatTheCpuDidNotAskToBeInterruptedFor,
      TheNvmeFrontendDoesNotInterruptItsCpu) {
   Rig rig;
-  rig.CpuWrite32(kInterruptEnable, kDisabled);
+  rig.CpuWrite32(NVME_FRONTEND_INTERRUPT_ENABLE, NVME_FRONTEND_STATUS_DISABLED);
 
   rig.HostEnables();
   rig.HostSubmits(SomeCommand(7));
@@ -906,33 +892,34 @@ TEST(WhenTheCpuEnablesInterruptsAnNvmeFrontendDoesNotHave,
      TheRegisterReadsBackWithoutThem) {
   Rig rig;
 
-  rig.CpuWrite32(kInterruptEnable, 0xFFFF'FFFF);
+  rig.CpuWrite32(NVME_FRONTEND_INTERRUPT_ENABLE, 0xFFFF'FFFF);
 
-  EXPECT_EQ(rig.CpuRead32(kInterruptEnable),
-            kEnabled | kDisabled | kCommandWaiting);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_INTERRUPT_ENABLE),
+            NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |
+                NVME_FRONTEND_STATUS_COMMAND_WAITING);
 }
 
 TEST(WhenTheCpuReadsBackARegisterItWroteInAnNvmeFrontend,
      ItReadsWhatWasWritten) {
   Rig rig;
   rig.HostEnables();
-  rig.CpuWrite32(kControl, kReady);
-  rig.CpuWrite32(kCompletionResult, 0x1111'1111);
-  rig.CpuWrite32(kCompletionStatus, 0x0000'0102);
-  rig.CpuWrite32(kQueueId, 5);
-  rig.CpuWrite32(kQueueBaseLow, 0x2222'2222);
-  rig.CpuWrite32(kQueueBaseHigh, 0x3333'3333);
-  rig.CpuWrite32(kQueueLast, 0x4444);
-  rig.CpuWrite32(kQueueLink, 0x5555);
+  rig.CpuWrite32(NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
+  rig.CpuWrite32(NVME_FRONTEND_COMPLETION_RESULT, 0x1111'1111);
+  rig.CpuWrite32(NVME_FRONTEND_COMPLETION_STATUS, 0x0000'0102);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_ID, 5);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_BASE_LOW, 0x2222'2222);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_BASE_HIGH, 0x3333'3333);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_LAST, 0x4444);
+  rig.CpuWrite32(NVME_FRONTEND_QUEUE_LINK, 0x5555);
 
-  EXPECT_EQ(rig.CpuRead32(kControl), kReady);
-  EXPECT_EQ(rig.CpuRead32(kCompletionResult), 0x1111'1111U);
-  EXPECT_EQ(rig.CpuRead32(kCompletionStatus), 0x0000'0102U);
-  EXPECT_EQ(rig.CpuRead32(kQueueId), 5U);
-  EXPECT_EQ(rig.CpuRead32(kQueueBaseLow), 0x2222'2222U);
-  EXPECT_EQ(rig.CpuRead32(kQueueBaseHigh), 0x3333'3333U);
-  EXPECT_EQ(rig.CpuRead32(kQueueLast), 0x4444U);
-  EXPECT_EQ(rig.CpuRead32(kQueueLink), 0x5555U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_CONTROL), NVME_FRONTEND_CONTROL_READY);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_COMPLETION_RESULT), 0x1111'1111U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_COMPLETION_STATUS), 0x0000'0102U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_ID), 5U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_BASE_LOW), 0x2222'2222U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_BASE_HIGH), 0x3333'3333U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_LAST), 0x4444U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_LINK), 0x5555U);
 }
 
 // The two registers that are written to make something happen have
@@ -941,8 +928,8 @@ TEST(WhenTheCpuReadsARegisterOfAnNvmeFrontendThatIsOnlyForWriting,
      ItReadsAsZero) {
   const Rig rig;
 
-  EXPECT_EQ(rig.CpuRead32(kCompletionPost), 0U);
-  EXPECT_EQ(rig.CpuRead32(kQueueCreate), 0U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_COMPLETION_POST), 0U);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_CREATE), 0U);
 }
 
 // A 32-bit CPU reads the 64 bytes four at a time.
@@ -955,7 +942,7 @@ TEST(WhenTheCpuReadsTheWaitingCommandAWordAtATime, ItReadsTheWholeCommand) {
   std::vector<std::uint8_t> read(kCommandBytes);
   for (std::size_t offset = 0; offset < kCommandBytes; offset += 4) {
     ASSERT_TRUE(rig.frontend.ReadCpuRegister(
-        kCommand + offset, std::span{read}.subspan(offset, 4)));
+        NVME_FRONTEND_COMMAND + offset, std::span{read}.subspan(offset, 4)));
   }
 
   EXPECT_EQ(read, SomeCommand(7));
@@ -970,8 +957,8 @@ TEST(WhenAReadOfTheWaitingCommandRunsPastItsEnd, ItIsRefused) {
   std::array<std::uint8_t, 8> eight{};
   std::array<std::uint8_t, 4> four{};
 
-  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kCommand + 60, eight));
-  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kCommand + 64, four));
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(NVME_FRONTEND_COMMAND + 60, eight));
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(NVME_FRONTEND_COMMAND + 64, four));
 }
 
 TEST(WhenAnAccessToARegisterOfAnNvmeFrontendsCpuIsNot32BitsWide, ItIsRefused) {
@@ -979,11 +966,11 @@ TEST(WhenAnAccessToARegisterOfAnNvmeFrontendsCpuIsNot32BitsWide, ItIsRefused) {
   std::array<std::uint8_t, 2> two{1, 0};
   std::array<std::uint8_t, 8> eight{1, 0, 0, 0, 1, 0, 0, 0};
 
-  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kStatus, two));
-  EXPECT_FALSE(rig.frontend.ReadCpuRegister(kStatus, eight));
-  EXPECT_FALSE(rig.frontend.WriteCpuRegister(kQueueId, two));
-  EXPECT_FALSE(rig.frontend.WriteCpuRegister(kQueueId, eight));
-  EXPECT_EQ(rig.CpuRead32(kQueueId), 0U);
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(NVME_FRONTEND_STATUS, two));
+  EXPECT_FALSE(rig.frontend.ReadCpuRegister(NVME_FRONTEND_STATUS, eight));
+  EXPECT_FALSE(rig.frontend.WriteCpuRegister(NVME_FRONTEND_QUEUE_ID, two));
+  EXPECT_FALSE(rig.frontend.WriteCpuRegister(NVME_FRONTEND_QUEUE_ID, eight));
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_QUEUE_ID), 0U);
 }
 
 // 0x38 is between the last register and the command, and 0x02 is in the
@@ -1004,9 +991,9 @@ TEST(WhenTheCpuWritesToARegisterOfAnNvmeFrontendThatOnlySaysSomething,
      ItIsRefused) {
   Rig rig;
 
-  EXPECT_FALSE(rig.CpuWrite32(kLimits, 1));
-  EXPECT_FALSE(rig.CpuWrite32(kCommandQueue, 1));
-  EXPECT_FALSE(rig.CpuWrite32(kCommand, 1));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_LIMITS, 1));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_COMMAND_QUEUE, 1));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_COMMAND, 1));
 }
 
 // A one has the completion posted. Anything else is not something the
@@ -1018,9 +1005,9 @@ TEST(WhenTheCpuWritesSomethingOtherThanOneToHaveACompletionPosted,
   rig.HostSubmits(SomeCommand(7));
   rig.frontend.Step();
 
-  EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 0));
-  EXPECT_FALSE(rig.CpuWrite32(kCompletionPost, 2));
-  EXPECT_TRUE(rig.CpuSees(kCommandWaiting));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_COMPLETION_POST, 0));
+  EXPECT_FALSE(rig.CpuWrite32(NVME_FRONTEND_COMPLETION_POST, 2));
+  EXPECT_TRUE(rig.CpuSees(NVME_FRONTEND_STATUS_COMMAND_WAITING));
 }
 
 // The host's register block is an NVMe controller's, and behaves as the
@@ -1066,9 +1053,11 @@ TEST(WhenTheCpuWritesMoreThanAStatusCodeAndItsTypeToAnNvmeFrontend,
      TheRegisterReadsBackWithoutTheRest) {
   Rig rig;
 
-  rig.CpuWrite32(kCompletionStatus, 0xFFFF'FFFF);
+  rig.CpuWrite32(NVME_FRONTEND_COMPLETION_STATUS, 0xFFFF'FFFF);
 
-  EXPECT_EQ(rig.CpuRead32(kCompletionStatus), 0x7FFU);
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_COMPLETION_STATUS),
+            NVME_FRONTEND_COMPLETION_STATUS_CODE_MASK |
+                NVME_FRONTEND_COMPLETION_STATUS_TYPE_MASK);
 }
 
 }  // namespace socpuppet

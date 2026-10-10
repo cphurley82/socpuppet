@@ -1,0 +1,140 @@
+// The NVMe frontend of an SSD's controller, as the SSD's own CPU has it:
+// docs/models/nvme-frontend.md. What the host has of the frontend is an
+// NVMe controller's registers, which the NVMe specification lays out and
+// this file has nothing to say about.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+
+enum nvme_frontend_queue_e {
+    COMPLETION_QUEUE = 1 {
+        desc = "Create the completion queue the queue registers describe.";
+    };
+    SUBMISSION_QUEUE = 2 {
+        desc = "Create the submission queue they describe.";
+    };
+};
+
+addrmap nvme_frontend {
+    name = "NVMe frontend";
+    desc = "The CPU's side of the frontend: what the host has done, the command that is waiting, how it went, and the queues the firmware has agreed to.";
+    // Fourteen registers, room for two more, and the 64 bytes of the
+    // command that is waiting.
+    block_size = 0x80;
+    default regwidth = 32;
+
+    reg {
+        desc = "What the firmware says of itself.";
+        field {
+            sw = rw;
+            desc = "The firmware is ready for the host's commands. The host sees it as `CSTS.RDY`.";
+        } READY[0:0] = 0;
+    } CONTROL @ 0x00;
+
+    // STATUS and INTERRUPT_ENABLE are where a command device has its own
+    // (regs/command_device.rdl), and work as those do. The bits are this
+    // block's.
+    reg {
+        desc = "What the host has done, and whether a command is waiting.";
+        field {
+            sw = rw; onwrite = woclr;
+            desc = "The host has enabled the controller.";
+        } ENABLED[0:0] = 0;
+        field {
+            sw = rw; onwrite = woclr;
+            desc = "The host has disabled the controller, which is a reset. Writing the one says the firmware holds nothing from before it.";
+        } DISABLED[1:1] = 0;
+        field {
+            sw = r;
+            desc = "A command is waiting. Set for exactly as long as one is.";
+        } COMMAND_WAITING[2:2] = 0;
+    } STATUS @ 0x04;
+
+    reg {
+        desc = "Which bits of `STATUS` raise `cpu_irq` while they are set.";
+        field { sw = rw; } ENABLED[0:0] = 0;
+        field { sw = rw; } DISABLED[1:1] = 0;
+        field { sw = rw; } COMMAND_WAITING[2:2] = 0;
+    } INTERRUPT_ENABLE @ 0x08;
+
+    reg {
+        desc = "What the frontend has, for the firmware to tell the host.";
+        field {
+            sw = r;
+            desc = "How many pairs of I/O queues, which is eight.";
+        } IO_QUEUE_PAIRS[15:0];
+        field {
+            sw = r;
+            desc = "How many interrupt vectors it has for the host.";
+        } VECTORS[31:16];
+    } LIMITS @ 0x0C;
+
+    reg {
+        desc = "Which submission queue the waiting command came from. 0 is the admin queue.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } COMMAND_QUEUE @ 0x10;
+
+    reg {
+        desc = "The first 32 bits of the completion: the command's answer, for the few that have one.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } COMPLETION_RESULT @ 0x14;
+
+    reg {
+        desc = "How the command went, laid out as the status field of a completion is, less the phase bit. The other bits read back as zero.";
+        field {
+            sw = rw;
+            desc = "The status code, zero for success.";
+        } CODE[7:0] = 0;
+        field {
+            sw = rw;
+            desc = "Which list of codes that is from.";
+        } TYPE[10:8] = 0;
+    } COMPLETION_STATUS @ 0x18;
+
+    reg {
+        desc = "Has the completion of the waiting command posted. Reads as zero.";
+        field {
+            sw = w;
+            desc = "Write a one, and nothing else, to post it.";
+        } NOW[0:0] = 0;
+    } COMPLETION_POST @ 0x1C;
+
+    // A queue the firmware has agreed that the host may have. A write to
+    // QUEUE_CREATE creates it from what the other five say.
+    reg {
+        desc = "A queue to create: which,";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } QUEUE_ID @ 0x20;
+
+    reg {
+        desc = "where it is in the host's memory, the low 32 bits,";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } QUEUE_BASE_LOW @ 0x24;
+
+    reg {
+        desc = "and the high 32 bits,";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } QUEUE_BASE_HIGH @ 0x28;
+
+    reg {
+        desc = "its last slot, which is its size less one,";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } QUEUE_LAST @ 0x2C;
+
+    reg {
+        desc = "and what goes with it: a completion queue's interrupt vector, or the completion queue a submission queue's completions go to.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } QUEUE_LINK @ 0x30;
+
+    reg {
+        desc = "Write which kind of queue to create it. Reads as zero.";
+        field { sw = w; encode = nvme_frontend_queue_e; } VALUE[31:0] = 0;
+    } QUEUE_CREATE @ 0x34;
+
+    reg {
+        desc = "The waiting command, 64 bytes, read whole or a piece at a time. Zeros when none is waiting.";
+        field { sw = r; } WORD[31:0] = 0;
+    } COMMAND[16] @ 0x40 += 4;
+};

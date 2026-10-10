@@ -1,7 +1,9 @@
 /*
  * Zephyr's driver for the NVMe frontend of a socpuppet SSD. The registers
- * are in docs/models/nvme-frontend.md in socpuppet, and what firmware does
- * with the driver is in <socpuppet/drivers/nvme_frontend.h>.
+ * are in <socpuppet/regs/nvme_frontend.h>, which is generated from the
+ * frontend's register map, and docs/models/nvme-frontend.md in socpuppet
+ * says what they do. What firmware does with the driver is in
+ * <socpuppet/drivers/nvme_frontend.h>.
  *
  * The frontend's interrupt is a level: its line is high for as long as a
  * status bit the firmware asked about is set. That is how nothing gets
@@ -24,25 +26,6 @@
 
 #include <socpuppet/drivers/nvme_frontend.h>
 
-#define CONTROL           0x00
-#define STATUS            0x04
-#define INTERRUPT_ENABLE  0x08
-#define LIMITS            0x0C
-#define COMMAND_QUEUE     0x10
-#define COMPLETION_RESULT 0x14
-#define COMPLETION_STATUS 0x18
-#define COMPLETION_POST   0x1C
-#define QUEUE_ID          0x20
-#define QUEUE_BASE_LOW    0x24
-#define QUEUE_BASE_HIGH   0x28
-#define QUEUE_LAST        0x2C
-#define QUEUE_LINK        0x30
-#define QUEUE_CREATE      0x34
-#define COMMAND           0x40
-
-/* The one bit of the control register. */
-#define READY BIT(0)
-
 /* Everything the status register can say, which is what can interrupt. */
 #define ANYTHING (NVME_FRONTEND_ENABLED | NVME_FRONTEND_RESET | NVME_FRONTEND_COMMAND_WAITING)
 
@@ -59,10 +42,12 @@ struct nvme_frontend_data {
 void nvme_frontend_get_limits(const struct device *dev, struct nvme_frontend_limits *limits)
 {
 	const struct nvme_frontend_config *config = dev->config;
-	uint32_t both = sys_read32(config->base + LIMITS);
+	uint32_t both = sys_read32(config->base + NVME_FRONTEND_LIMITS);
 
-	limits->io_queue_pairs = both & 0xFFFF;
-	limits->vectors = both >> 16;
+	limits->io_queue_pairs = (both & NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_MASK) >>
+				 NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_SHIFT;
+	limits->vectors =
+		(both & NVME_FRONTEND_LIMITS_VECTORS_MASK) >> NVME_FRONTEND_LIMITS_VECTORS_SHIFT;
 }
 
 uint32_t nvme_frontend_wait(const struct device *dev)
@@ -71,7 +56,7 @@ uint32_t nvme_frontend_wait(const struct device *dev)
 	struct nvme_frontend_data *data = dev->data;
 
 	for (;;) {
-		uint32_t happened = sys_read32(config->base + STATUS) & ANYTHING;
+		uint32_t happened = sys_read32(config->base + NVME_FRONTEND_STATUS) & ANYTHING;
 
 		if (happened != 0) {
 			return happened;
@@ -81,7 +66,7 @@ uint32_t nvme_frontend_wait(const struct device *dev)
 		 * and this write, the line is high as soon as it is written,
 		 * and the handler runs before the thread can sleep.
 		 */
-		sys_write32(ANYTHING, config->base + INTERRUPT_ENABLE);
+		sys_write32(ANYTHING, config->base + NVME_FRONTEND_INTERRUPT_ENABLE);
 		k_sem_take(&data->something_happened, K_FOREVER);
 	}
 }
@@ -91,7 +76,7 @@ static void nvme_frontend_isr(const struct device *dev)
 	const struct nvme_frontend_config *config = dev->config;
 	struct nvme_frontend_data *data = dev->data;
 
-	sys_write32(0, config->base + INTERRUPT_ENABLE);
+	sys_write32(0, config->base + NVME_FRONTEND_INTERRUPT_ENABLE);
 	k_sem_give(&data->something_happened);
 }
 
@@ -99,14 +84,14 @@ void nvme_frontend_acknowledge(const struct device *dev, uint32_t happened)
 {
 	const struct nvme_frontend_config *config = dev->config;
 
-	sys_write32(happened, config->base + STATUS);
+	sys_write32(happened, config->base + NVME_FRONTEND_STATUS);
 }
 
 void nvme_frontend_say_ready(const struct device *dev)
 {
 	const struct nvme_frontend_config *config = dev->config;
 
-	sys_write32(READY, config->base + CONTROL);
+	sys_write32(NVME_FRONTEND_CONTROL_READY, config->base + NVME_FRONTEND_CONTROL);
 }
 
 uint16_t nvme_frontend_read_command(const struct device *dev,
@@ -115,33 +100,34 @@ uint16_t nvme_frontend_read_command(const struct device *dev,
 	const struct nvme_frontend_config *config = dev->config;
 
 	for (size_t at = 0; at < NVME_FRONTEND_COMMAND_SIZE; at += sizeof(uint32_t)) {
-		uint32_t word = sys_read32(config->base + COMMAND + at);
+		uint32_t word = sys_read32(config->base + NVME_FRONTEND_COMMAND + at);
 
 		memcpy(&command[at], &word, sizeof(word));
 	}
 
-	return (uint16_t)sys_read32(config->base + COMMAND_QUEUE);
+	return (uint16_t)sys_read32(config->base + NVME_FRONTEND_COMMAND_QUEUE);
 }
 
 void nvme_frontend_post(const struct device *dev, uint16_t status, uint32_t result)
 {
 	const struct nvme_frontend_config *config = dev->config;
 
-	sys_write32(result, config->base + COMPLETION_RESULT);
-	sys_write32(status, config->base + COMPLETION_STATUS);
-	sys_write32(1, config->base + COMPLETION_POST);
+	sys_write32(result, config->base + NVME_FRONTEND_COMPLETION_RESULT);
+	sys_write32(status, config->base + NVME_FRONTEND_COMPLETION_STATUS);
+	sys_write32(NVME_FRONTEND_COMPLETION_POST_NOW,
+		    config->base + NVME_FRONTEND_COMPLETION_POST);
 }
 
 void nvme_frontend_create_queue(const struct device *dev, const struct nvme_frontend_queue *queue)
 {
 	const struct nvme_frontend_config *config = dev->config;
 
-	sys_write32(queue->id, config->base + QUEUE_ID);
-	sys_write32((uint32_t)queue->base, config->base + QUEUE_BASE_LOW);
-	sys_write32((uint32_t)(queue->base >> 32), config->base + QUEUE_BASE_HIGH);
-	sys_write32(queue->last_slot, config->base + QUEUE_LAST);
-	sys_write32(queue->link, config->base + QUEUE_LINK);
-	sys_write32(queue->kind, config->base + QUEUE_CREATE);
+	sys_write32(queue->id, config->base + NVME_FRONTEND_QUEUE_ID);
+	sys_write32((uint32_t)queue->base, config->base + NVME_FRONTEND_QUEUE_BASE_LOW);
+	sys_write32((uint32_t)(queue->base >> 32), config->base + NVME_FRONTEND_QUEUE_BASE_HIGH);
+	sys_write32(queue->last_slot, config->base + NVME_FRONTEND_QUEUE_LAST);
+	sys_write32(queue->link, config->base + NVME_FRONTEND_QUEUE_LINK);
+	sys_write32(queue->kind, config->base + NVME_FRONTEND_QUEUE_CREATE);
 }
 
 static int nvme_frontend_init(const struct device *dev)

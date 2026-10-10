@@ -53,33 +53,31 @@ It is an NVMe controller, and what the [stand-in drive's page](behavioral-nvme.m
 
 Each is 32 bits wide, except the command.
 
-| Offset | Name | | |
-|---|---|---|---|
-| `0x00` | `CONTROL` | read, write | Bit 0 `READY`: the host sees it as `CSTS.RDY`. |
-| `0x04` | `STATUS` | read, write one to clear | See below. |
-| `0x08` | `INT_ENABLE` | read, write | Bits 0 to 2: which of the status bits raise `cpu_irq`. |
-| `0x0C` | `LIMITS` | read | How many I/O queue pairs the frontend has, in the low half, which is eight, and how many interrupt vectors, in the high half. |
+<!-- regs:nvme_frontend start -->
+
+| Offset | Name | Access | What it is |
+| --- | --- | --- | --- |
+| `0x00` | `CONTROL` | read, write | What the firmware says of itself. Bit 0 `READY`: The firmware is ready for the host's commands. The host sees it as `CSTS.RDY`. |
+| `0x04` | `STATUS` | read, write | What the host has done, and whether a command is waiting. Bit 0 `ENABLED` (write one to clear): The host has enabled the controller. Bit 1 `DISABLED` (write one to clear): The host has disabled the controller, which is a reset. Writing the one says the firmware holds nothing from before it. Bit 2 `COMMAND_WAITING` (read only): A command is waiting. Set for exactly as long as one is. |
+| `0x08` | `INTERRUPT_ENABLE` | read, write | Which bits of `STATUS` raise `cpu_irq` while they are set. Bit 0 `ENABLED`. Bit 1 `DISABLED`. Bit 2 `COMMAND_WAITING`. |
+| `0x0C` | `LIMITS` | read | What the frontend has, for the firmware to tell the host. Bits 15 to 0 `IO_QUEUE_PAIRS`: How many pairs of I/O queues, which is eight. Bits 31 to 16 `VECTORS`: How many interrupt vectors it has for the host. |
 | `0x10` | `COMMAND_QUEUE` | read | Which submission queue the waiting command came from. 0 is the admin queue. |
 | `0x14` | `COMPLETION_RESULT` | read, write | The first 32 bits of the completion: the command's answer, for the few that have one. |
-| `0x18` | `COMPLETION_STATUS` | read, write | How the command went, laid out as the status field of a completion is, less the phase bit: the status code in the low byte, zero for success, and in bits 8 to 10 which list of codes it is from. The other bits read back as zero. |
-| `0x1C` | `COMPLETION_POST` | write | Write 1 to have the completion posted. |
+| `0x18` | `COMPLETION_STATUS` | read, write | How the command went, laid out as the status field of a completion is, less the phase bit. The other bits read back as zero. Bits 7 to 0 `CODE`: The status code, zero for success. Bits 10 to 8 `TYPE`: Which list of codes that is from. |
+| `0x1C` | `COMPLETION_POST` | write | Has the completion of the waiting command posted. Reads as zero. Bit 0 `NOW`: Write a one, and nothing else, to post it. |
 | `0x20` | `QUEUE_ID` | read, write | A queue to create: which, |
-| `0x24` | `QUEUE_BASE_LOW` | read, write | where it is in the host's memory, |
-| `0x28` | `QUEUE_BASE_HIGH` | read, write | |
+| `0x24` | `QUEUE_BASE_LOW` | read, write | where it is in the host's memory, the low 32 bits, |
+| `0x28` | `QUEUE_BASE_HIGH` | read, write | and the high 32 bits, |
 | `0x2C` | `QUEUE_LAST` | read, write | its last slot, which is its size less one, |
 | `0x30` | `QUEUE_LINK` | read, write | and what goes with it: a completion queue's interrupt vector, or the completion queue a submission queue's completions go to. |
-| `0x34` | `QUEUE_CREATE` | write | Write 1 to create that completion queue, 2 for a submission queue. |
-| `0x40` | `COMMAND` | read | The waiting command, 64 bytes, read whole or a piece at a time. Zeros when none is waiting. |
+| `0x34` | `QUEUE_CREATE` | write | Write which kind of queue to create it. Reads as zero. 1 `COMPLETION_QUEUE`: Create the completion queue the queue registers describe. 2 `SUBMISSION_QUEUE`: Create the submission queue they describe. |
+| `0x40` | `COMMAND[16]` | read | The waiting command, 64 bytes, read whole or a piece at a time. Zeros when none is waiting. |
 
-`0x38` and `0x3C` are reserved, with nothing there. `STATUS` and `INT_ENABLE` are where the [DMA engine](dma-engine.md) and the [flash controller](flash-controller.md) have theirs.
+<!-- regs:nvme_frontend end -->
 
-`STATUS` has two kinds of bit:
+`0x38` and `0x3C` are reserved, with nothing there. `STATUS` and `INTERRUPT_ENABLE` are where a [command device](command-device.md) has its own, and work the same way: a bit of `STATUS` that can be cleared is cleared by writing a one to it, and `cpu_irq` is high while a bit that is enabled is set.
 
-| Bit | Name | |
-|---|---|---|
-| 0 | `ENABLED` | The host has enabled the controller. Stays set until the CPU writes a one to it. |
-| 1 | `DISABLED` | The host has disabled it, which is a controller reset. Stays set until the CPU writes a one to it, and that write means something: see "A reset" below. |
-| 2 | `COMMAND_WAITING` | A command is waiting. Set for exactly as long as one is. |
+`STATUS` has two kinds of bit. `ENABLED` and `DISABLED` say what the host has done, and each stays set until the CPU writes a one to it. For `DISABLED` that write means something: see "A reset" below. `COMMAND_WAITING` is the frontend's to say, and is set for exactly as long as a command is waiting.
 
 ### One command at a time
 

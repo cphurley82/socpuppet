@@ -34,18 +34,22 @@
 #include <stdint.h>
 
 #include <zephyr/device.h>
-#include <zephyr/sys/util.h>
+
+/*
+ * The frontend's registers, generated from its register map. What follows
+ * that is named after one of them is that register's own bit or number,
+ * under the name firmware has always had for it. How long a command is,
+ * NVME_FRONTEND_COMMAND_SIZE, comes from there as it is.
+ */
+#include <socpuppet/regs/nvme_frontend.h>
 
 /* What nvme_frontend_wait() reports, one bit each. */
 /* The host has enabled the controller. To be acknowledged. */
-#define NVME_FRONTEND_ENABLED         BIT(0)
+#define NVME_FRONTEND_ENABLED         NVME_FRONTEND_STATUS_ENABLED
 /* The host has reset the controller, by disabling it. To be acknowledged. */
-#define NVME_FRONTEND_RESET           BIT(1)
+#define NVME_FRONTEND_RESET           NVME_FRONTEND_STATUS_DISABLED
 /* A command is waiting. It stops waiting when its completion is posted. */
-#define NVME_FRONTEND_COMMAND_WAITING BIT(2)
-
-/* How long a command is. */
-#define NVME_FRONTEND_COMMAND_SIZE 64
+#define NVME_FRONTEND_COMMAND_WAITING NVME_FRONTEND_STATUS_COMMAND_WAITING
 
 /* What the frontend has, which the firmware tells the host when asked. */
 struct nvme_frontend_limits {
@@ -101,8 +105,8 @@ void nvme_frontend_post(const struct device *dev, uint16_t status, uint32_t resu
 
 /* The two kinds of queue. The values are what the frontend is told. */
 enum nvme_frontend_queue_kind {
-	NVME_FRONTEND_COMPLETION_QUEUE = 1,
-	NVME_FRONTEND_SUBMISSION_QUEUE = 2,
+	NVME_FRONTEND_COMPLETION_QUEUE = NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE,
+	NVME_FRONTEND_SUBMISSION_QUEUE = NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE,
 };
 
 /* A queue the firmware has agreed that the host may have. */

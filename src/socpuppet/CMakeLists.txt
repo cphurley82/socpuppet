@@ -8,7 +8,8 @@ target_sources(socpuppet_regs INTERFACE
   FILE_SET HEADERS BASE_DIRS ${_socpuppet_regs} FILES
     ${_socpuppet_regs}/socpuppet/regs/command_device.h
     ${_socpuppet_regs}/socpuppet/regs/dma_engine.h
-    ${_socpuppet_regs}/socpuppet/regs/flash_controller.h)
+    ${_socpuppet_regs}/socpuppet/regs/flash_controller.h
+    ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h)
 
 # core/: plain C++ with no simulator underneath. Linking only this target is
 # what keeps SystemC out of the kernel-free unit tests.
@@ -57,7 +58,9 @@ target_sources(socpuppet_nvme_controller PUBLIC
     core/nvme_host_registers.h
     core/nvme_queues.h
     core/prp.h)
-target_link_libraries(socpuppet_nvme_controller PRIVATE spdk_nvme_spec)
+target_link_libraries(socpuppet_nvme_controller
+  PUBLIC socpuppet_regs
+  PRIVATE spdk_nvme_spec)
 socpuppet_dev_checks(socpuppet_nvme_controller)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_nvme_controller)
 

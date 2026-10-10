@@ -29,38 +29,14 @@ from collections.abc import Iterator
 from typing import NamedTuple
 
 from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
-from socpuppet.regs import command_device, dma_engine, flash_controller
-
-# ---- The NVMe frontend's registers for its CPU.
-_CONTROL = 0x00
-_STATUS = 0x04
-_INTERRUPT_ENABLE = 0x08
-_LIMITS = 0x0C
-_COMMAND_QUEUE = 0x10
-_COMPLETION_RESULT = 0x14
-_COMPLETION_STATUS = 0x18
-_COMPLETION_POST = 0x1C
-_QUEUE_ID = 0x20
-_QUEUE_BASE_LOW = 0x24
-_QUEUE_BASE_HIGH = 0x28
-_QUEUE_LAST = 0x2C
-_QUEUE_LINK = 0x30
-_QUEUE_CREATE = 0x34
-_COMMAND = 0x40
-
-#: The frontend's status bits: the host has enabled the controller, the
-#: host has reset it, and a command is waiting.
-_ENABLED = 1 << 0
-_DISABLED = 1 << 1
-_COMMAND_WAITING = 1 << 2
-#: The one bit of its control register: the firmware is ready.
-_READY = 1 << 0
-#: What its queue-create register is told.
-_A_COMPLETION_QUEUE = 1
-_A_SUBMISSION_QUEUE = 2
+from socpuppet.regs import (
+    command_device,
+    dma_engine,
+    flash_controller,
+    nvme_frontend,
+)
 
 # ---- NVMe, as its specification gives it.
-_COMMAND_SIZE = 64
 #: The drive's block, and the page of the host's memory that a command's
 #: data pointers count in.
 _BLOCK_SIZE = 512
@@ -205,14 +181,14 @@ class SsdFirmware:
         yield from self._start_up()
         while True:
             yield wait_irq()
-            status = yield read32(self._frontend + _STATUS)
+            status = yield read32(self._frontend + nvme_frontend.STATUS)
             # The reset first: what the host enabled is the controller as
             # it is after it.
-            if status & _DISABLED:
+            if status & nvme_frontend.STATUS_DISABLED:
                 yield from self._the_host_reset_the_controller()
-            if status & _ENABLED:
+            if status & nvme_frontend.STATUS_ENABLED:
                 yield from self._the_host_enabled_the_controller()
-            if status & _COMMAND_WAITING:
+            if status & nvme_frontend.STATUS_COMMAND_WAITING:
                 yield from self._deal_with_the_command()
 
     def _start_up(self) -> Steps[None]:
@@ -231,13 +207,19 @@ class SsdFirmware:
         )
         blocks = yield read32(self._flash + flash_controller.BLOCKS)
         self._pages = self._pages_per_block * blocks
-        limits = yield read32(self._frontend + _LIMITS)
-        self._io_queue_pairs = limits & 0xFFFF
-        self._vectors = limits >> 16
+        limits = yield read32(self._frontend + nvme_frontend.LIMITS)
+        self._io_queue_pairs = (
+            limits & nvme_frontend.LIMITS_IO_QUEUE_PAIRS_MASK
+        ) >> nvme_frontend.LIMITS_IO_QUEUE_PAIRS_SHIFT
+        self._vectors = (
+            limits & nvme_frontend.LIMITS_VECTORS_MASK
+        ) >> nvme_frontend.LIMITS_VECTORS_SHIFT
         # From here on the frontend's line says when there is work.
         yield write32(
-            self._frontend + _INTERRUPT_ENABLE,
-            _ENABLED | _DISABLED | _COMMAND_WAITING,
+            self._frontend + nvme_frontend.INTERRUPT_ENABLE,
+            nvme_frontend.INTERRUPT_ENABLE_ENABLED
+            | nvme_frontend.INTERRUPT_ENABLE_DISABLED
+            | nvme_frontend.INTERRUPT_ENABLE_COMMAND_WAITING,
         )
 
     def _the_host_reset_the_controller(self) -> Steps[None]:
@@ -246,32 +228,49 @@ class SsdFirmware:
         # go of everything from before the reset.
         self._completion_queues.clear()
         self._submission_queues.clear()
-        yield write32(self._frontend + _STATUS, _DISABLED)
+        yield write32(
+            self._frontend + nvme_frontend.STATUS, nvme_frontend.STATUS_DISABLED
+        )
 
     def _the_host_enabled_the_controller(self) -> Steps[None]:
         # There is nothing to start up, so the firmware is ready at once.
         # If the host has changed its mind again by now, the frontend does
         # not hear this, and says so in its own time.
-        yield write32(self._frontend + _STATUS, _ENABLED)
-        yield write32(self._frontend + _CONTROL, _READY)
+        yield write32(
+            self._frontend + nvme_frontend.STATUS, nvme_frontend.STATUS_ENABLED
+        )
+        yield write32(
+            self._frontend + nvme_frontend.CONTROL, nvme_frontend.CONTROL_READY
+        )
 
     def _deal_with_the_command(self) -> Steps[None]:
         command = _Command.from_bytes(
-            (yield read(self._frontend + _COMMAND, _COMMAND_SIZE))
+            (
+                yield read(
+                    self._frontend + nvme_frontend.COMMAND,
+                    nvme_frontend.COMMAND_SIZE,
+                )
+            )
         )
         # Queue 0 is the admin queue. The same opcode means one thing
         # there and another on an I/O queue.
-        from_queue = yield read32(self._frontend + _COMMAND_QUEUE)
+        from_queue = yield read32(self._frontend + nvme_frontend.COMMAND_QUEUE)
         if from_queue == 0:
             outcome = yield from self._admin(command)
         else:
             outcome = yield from self._io(command)
-        yield write32(self._frontend + _COMPLETION_RESULT, outcome.result)
         yield write32(
-            self._frontend + _COMPLETION_STATUS,
-            outcome.status_type << 8 | outcome.status,
+            self._frontend + nvme_frontend.COMPLETION_RESULT, outcome.result
         )
-        yield write32(self._frontend + _COMPLETION_POST, 1)
+        yield write32(
+            self._frontend + nvme_frontend.COMPLETION_STATUS,
+            outcome.status_type << nvme_frontend.COMPLETION_STATUS_TYPE_SHIFT
+            | outcome.status,
+        )
+        yield write32(
+            self._frontend + nvme_frontend.COMPLETION_POST,
+            nvme_frontend.COMPLETION_POST_NOW,
+        )
 
     # ---- Admin commands.
 
@@ -313,7 +312,11 @@ class SsdFirmware:
         if vector >= self._vectors:
             return _INVALID_INTERRUPT_VECTOR
         yield from self._have_it_created(
-            _A_COMPLETION_QUEUE, queue_id, command.data, last_slot, vector
+            nvme_frontend.QUEUE_CREATE_COMPLETION_QUEUE,
+            queue_id,
+            command.data,
+            last_slot,
+            vector,
         )
         self._completion_queues.add(queue_id)
         return _SUCCESS
@@ -336,7 +339,7 @@ class SsdFirmware:
         ):
             return _COMPLETION_QUEUE_INVALID
         yield from self._have_it_created(
-            _A_SUBMISSION_QUEUE,
+            nvme_frontend.QUEUE_CREATE_SUBMISSION_QUEUE,
             queue_id,
             command.data,
             last_slot,
@@ -349,12 +352,16 @@ class SsdFirmware:
         self, kind: int, queue_id: int, base: int, last_slot: int, link: int
     ) -> Steps[None]:
         """Tell the frontend about a queue the firmware has agreed to."""
-        yield write32(self._frontend + _QUEUE_ID, queue_id)
-        yield write32(self._frontend + _QUEUE_BASE_LOW, base & 0xFFFF_FFFF)
-        yield write32(self._frontend + _QUEUE_BASE_HIGH, base >> 32)
-        yield write32(self._frontend + _QUEUE_LAST, last_slot)
-        yield write32(self._frontend + _QUEUE_LINK, link)
-        yield write32(self._frontend + _QUEUE_CREATE, kind)
+        yield write32(self._frontend + nvme_frontend.QUEUE_ID, queue_id)
+        yield write32(
+            self._frontend + nvme_frontend.QUEUE_BASE_LOW, base & 0xFFFF_FFFF
+        )
+        yield write32(
+            self._frontend + nvme_frontend.QUEUE_BASE_HIGH, base >> 32
+        )
+        yield write32(self._frontend + nvme_frontend.QUEUE_LAST, last_slot)
+        yield write32(self._frontend + nvme_frontend.QUEUE_LINK, link)
+        yield write32(self._frontend + nvme_frontend.QUEUE_CREATE, kind)
 
     def _identify(self, command: _Command) -> Steps[_Outcome]:
         """Identify: a 4 KiB page that describes something of the drive."""

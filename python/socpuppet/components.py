@@ -32,7 +32,7 @@ from typing import (
 )
 
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
-from socpuppet.regs import dma_engine, flash_controller
+from socpuppet.regs import dma_engine, flash_controller, nvme_frontend
 
 if TYPE_CHECKING:
     from socpuppet import _core
@@ -647,9 +647,8 @@ class NvmeFrontend(Component):
     #: The host's register block: the controller registers take the first
     #: 4 KiB, and the doorbells come after them.
     BAR0_SIZE: ClassVar[int] = 0x2000
-    #: The CPU's register block: fourteen registers, then the 64 bytes of
-    #: the command that is waiting.
-    CPU_SIZE: ClassVar[int] = 0x80
+    #: The CPU's register block, which is as big as its register map says.
+    CPU_SIZE: ClassVar[int] = nvme_frontend.SIZE
 
     vectors: int = 2
 

@@ -24,6 +24,7 @@
 #include "socpuppet/regs/command_device.h"
 #include "socpuppet/regs/dma_engine.h"
 #include "socpuppet/regs/flash_controller.h"
+#include "socpuppet/regs/nvme_frontend.h"
 
 // Where the firmware finds the SSD's hardware on its bus: the three
 // devices' register blocks, and the buffer, which is the SSD's own memory.
@@ -62,33 +63,6 @@ class SsdFirmware : public sc_core::sc_module {
   }
 
  private:
-  // ---- The frontend's registers for its CPU.
-  enum Frontend : std::uint64_t {
-    kControl = 0x00,
-    kStatus = 0x04,
-    kInterruptEnable = 0x08,
-    kLimits = 0x0C,
-    kCommandQueue = 0x10,
-    kCompletionResult = 0x14,
-    kCompletionStatus = 0x18,
-    kCompletionPost = 0x1C,
-    kQueueId = 0x20,
-    kQueueBaseLow = 0x24,
-    kQueueBaseHigh = 0x28,
-    kQueueLast = 0x2C,
-    kQueueLink = 0x30,
-    kQueueCreate = 0x34,
-    kCommand = 0x40,
-  };
-  enum FrontendStatus : std::uint32_t {
-    kEnabled = 1U << 0,
-    kDisabled = 1U << 1,
-    kCommandWaiting = 1U << 2,
-  };
-  static constexpr std::uint32_t kReady = 1U << 0;
-  static constexpr std::uint32_t kCreateCompletionQueue = 1;
-  static constexpr std::uint32_t kCreateSubmissionQueue = 2;
-
   // ---- NVMe, as its specification gives it.
   static constexpr std::size_t kCommandBytes = 64;
   // The drive's block, and the page of the host's memory that a command's
@@ -253,12 +227,15 @@ class SsdFirmware : public sc_core::sc_module {
     StartUp();
     while (!stopped_) {
       while (!irq.read()) wait(irq.posedge_event());
-      const std::uint32_t status = Read32(map_.frontend + kStatus);
+      const std::uint32_t status = Read32(map_.frontend + NVME_FRONTEND_STATUS);
       // The reset first: what the host enabled is the controller as it is
       // after it.
-      if ((status & kDisabled) != 0) TheHostResetTheController();
-      if ((status & kEnabled) != 0) TheHostEnabledTheController();
-      if ((status & kCommandWaiting) != 0) DealWithTheCommand();
+      if ((status & NVME_FRONTEND_STATUS_DISABLED) != 0)
+        TheHostResetTheController();
+      if ((status & NVME_FRONTEND_STATUS_ENABLED) != 0)
+        TheHostEnabledTheController();
+      if ((status & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0)
+        DealWithTheCommand();
       // What was just done may have lowered the line, which shows a delta
       // cycle later.
       wait(sc_core::SC_ZERO_TIME);
@@ -272,14 +249,17 @@ class SsdFirmware : public sc_core::sc_module {
     const std::uint32_t pages =
         pages_per_block_ * Read32(map_.flash + FLASH_CONTROLLER_BLOCKS);
     where_.assign(pages, std::nullopt);
-    const std::uint32_t limits = Read32(map_.frontend + kLimits);
-    io_queue_pairs_ = limits & 0xFFFF;
-    vectors_ = limits >> 16;
+    const std::uint32_t limits = Read32(map_.frontend + NVME_FRONTEND_LIMITS);
+    io_queue_pairs_ = (limits & NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_MASK) >>
+                      NVME_FRONTEND_LIMITS_IO_QUEUE_PAIRS_SHIFT;
+    vectors_ = (limits & NVME_FRONTEND_LIMITS_VECTORS_MASK) >>
+               NVME_FRONTEND_LIMITS_VECTORS_SHIFT;
     // By identifier, and identifiers count from 1.
     completion_queues_.assign(io_queue_pairs_ + 1, false);
     submission_queues_.assign(io_queue_pairs_ + 1, false);
-    Write32(map_.frontend + kInterruptEnable,
-            kEnabled | kDisabled | kCommandWaiting);
+    Write32(map_.frontend + NVME_FRONTEND_INTERRUPT_ENABLE,
+            NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |
+                NVME_FRONTEND_STATUS_COMMAND_WAITING);
   }
 
   // A controller reset: the queues are gone, and what is on the drive
@@ -288,26 +268,31 @@ class SsdFirmware : public sc_core::sc_module {
   void TheHostResetTheController() {
     completion_queues_.assign(completion_queues_.size(), false);
     submission_queues_.assign(submission_queues_.size(), false);
-    Write32(map_.frontend + kStatus, kDisabled);
+    Write32(map_.frontend + NVME_FRONTEND_STATUS,
+            NVME_FRONTEND_STATUS_DISABLED);
   }
 
   // There is nothing to start up, so the firmware is ready at once. If
   // the host has changed its mind again by now, the frontend does not
   // hear it, and says so in its own time.
   void TheHostEnabledTheController() {
-    Write32(map_.frontend + kStatus, kEnabled);
-    Write32(map_.frontend + kControl, kReady);
+    Write32(map_.frontend + NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
+    Write32(map_.frontend + NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
   }
 
   void DealWithTheCommand() {
     Command command;
-    Read(map_.frontend + kCommand, command.bytes);
-    const bool is_admin = Read32(map_.frontend + kCommandQueue) == 0;
+    Read(map_.frontend + NVME_FRONTEND_COMMAND, command.bytes);
+    const bool is_admin =
+        Read32(map_.frontend + NVME_FRONTEND_COMMAND_QUEUE) == 0;
     const Outcome outcome = is_admin ? Admin(command) : Io(command);
-    Write32(map_.frontend + kCompletionResult, outcome.result);
-    Write32(map_.frontend + kCompletionStatus,
-            std::uint32_t{outcome.status_type} << 8 | outcome.status);
-    Write32(map_.frontend + kCompletionPost, 1);
+    Write32(map_.frontend + NVME_FRONTEND_COMPLETION_RESULT, outcome.result);
+    Write32(map_.frontend + NVME_FRONTEND_COMPLETION_STATUS,
+            std::uint32_t{outcome.status_type}
+                    << NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT |
+                outcome.status);
+    Write32(map_.frontend + NVME_FRONTEND_COMPLETION_POST,
+            NVME_FRONTEND_COMPLETION_POST_NOW);
   }
 
   // ---- Admin commands.
@@ -343,14 +328,14 @@ class SsdFirmware : public sc_core::sc_module {
 
   void HaveItCreated(std::uint32_t kind, const Command& command,
                      std::uint32_t link) {
-    Write32(map_.frontend + kQueueId, QueueId(command));
-    Write32(map_.frontend + kQueueBaseLow,
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_ID, QueueId(command));
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_BASE_LOW,
             static_cast<std::uint32_t>(command.Prp1()));
-    Write32(map_.frontend + kQueueBaseHigh,
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_BASE_HIGH,
             static_cast<std::uint32_t>(command.Prp1() >> 32));
-    Write32(map_.frontend + kQueueLast, LastSlot(command));
-    Write32(map_.frontend + kQueueLink, link);
-    Write32(map_.frontend + kQueueCreate, kind);
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_LAST, LastSlot(command));
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_LINK, link);
+    Write32(map_.frontend + NVME_FRONTEND_QUEUE_CREATE, kind);
   }
 
   Outcome CreateCompletionQueue(const Command& command) {
@@ -362,7 +347,7 @@ class SsdFirmware : public sc_core::sc_module {
     if (LastSlot(command) == 0) return OfTheCommand(kInvalidQueueSize);
     const std::uint32_t vector = command.Dword(11) >> 16;
     if (vector >= vectors_) return OfTheCommand(kInvalidInterruptVector);
-    HaveItCreated(kCreateCompletionQueue, command, vector);
+    HaveItCreated(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, command, vector);
     completion_queues_[queue_id] = true;
     return {};
   }
@@ -380,7 +365,8 @@ class SsdFirmware : public sc_core::sc_module {
         completion_queue == 0 ||
         (IsAnIoQueue(completion_queue) && completion_queues_[completion_queue]);
     if (!is_there) return OfTheCommand(kCompletionQueueInvalid);
-    HaveItCreated(kCreateSubmissionQueue, command, completion_queue);
+    HaveItCreated(NVME_FRONTEND_QUEUE_CREATE_SUBMISSION_QUEUE, command,
+                  completion_queue);
     submission_queues_[queue_id] = true;
     return {};
   }
