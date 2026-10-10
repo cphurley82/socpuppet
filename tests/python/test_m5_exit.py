@@ -19,6 +19,7 @@ from manager_firmware import (
     TRAINING,
     WENT_DOWN,
     WOULD_NOT_TRAIN,
+    console_of,
     what_the_manager_said,
 )
 from socpuppet.boards.io_manager import (
@@ -86,12 +87,6 @@ def a_manager_running_its_firmware(
     board.platform.build()
     board.platform.load_elf(firmware(IMAGE), via=board.manager.cpu.socket)
     return board
-
-
-def console_of(board):
-    """The manager's console, which is where its firmware prints."""
-    assert board.manager.cpu_kit is not None
-    return board.manager.cpu_kit.uart
 
 
 def what_the_manager_said_after(line, console):

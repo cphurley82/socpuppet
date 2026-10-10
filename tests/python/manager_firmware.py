@@ -14,6 +14,12 @@ WENT_DOWN = "iomgr: the D2D link went down"
 WOULD_NOT_TRAIN = "iomgr: the D2D link would not train"
 
 
+def console_of(board):
+    """The manager's console, which is where its firmware prints."""
+    assert board.manager.cpu_kit is not None
+    return board.manager.cpu_kit.uart
+
+
 def what_the_manager_said(console):
     """The firmware's own lines, without Zephyr's banner above them."""
     return [
