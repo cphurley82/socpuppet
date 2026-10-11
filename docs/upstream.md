@@ -332,6 +332,26 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### A core with supervisor mode drops the instruction an interrupt arrives at, if it reads memory or a CSR
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `check_interrupt`: `this->reg.pending_trap = 0x80ULL << 24 | res << 16 | 1;`. The same line in `riscv_hart_m_p.h` and `riscv_hart_mu_p.h` is `res << 16 | 1`, under the same comment. And the check that follows every access to memory, to a CSR or to a reservation in the interpreters of `src/vm/interp/`: `if(this->core.reg.trap_state>=0x80000000UL) throw memory_access_exception();`.
+- **What is wrong**: 🎓 an interrupt is taken between two instructions: the one it arrives at runs to its end, and the handler returns to the next. The interpreter does that by copying `pending_trap` into `trap_state` after each instruction, executing the next one, and then taking the trap with the address after it. Bit 31 of `trap_state` means something else: the instruction being executed has faulted, and an instruction looks for it after each access and stops if it is set. This hart sets that bit on a pending interrupt. So an instruction that begins with a read stops there: a load has read the bus and never writes its register, a CSR instruction that reads first (`csrr`, `csrs`, `csrc`, `csrrw` with a destination) changes nothing, and neither does an LR, an SC or an AMO. The interrupt is then taken with the address of the instruction after, so the one that stopped is never executed. A plain store is not lost, because its write comes before the check and nothing follows it. ⚠️ `csrrc a0, mstatus, 8` is among the lost, and that is how an operating system takes its interrupt lock. The two harts without supervisor mode leave the bit clear, which is why nothing had met this.
+- **How to see it**: `WhenAnInterruptArrivesAtALoadOnTheCoreWithSupervisorMode` in `tests/cpp/platform/cpu_test.cpp`: a program sleeps until its interrupt line is high, switches interrupts on, and loads a word with its next instruction. The register it loaded into still holds what it held before. 🧦 It was met as something much stranger. Zephyr's disk test, the image unchanged, took a load fault at address 0x108 on `rv64gc_msu` and passed on `rv64imac_mp`: a timer interrupt had arrived at the `ld ra, 40(sp)` of a function's epilogue, so the function returned to an older return address and ran part of itself again with the wrong registers. The two cores' instruction traces are alike for 1.3 million instructions and part at that return.
+- **What we do**: `cmake/patches/dbt-rise-riscv-interrupt-drops-instruction.patch`, which takes the bit off, as the other two harts have it. Nothing else reads it there: `enter_trap` takes the trap's kind from the low 16 bits and its cause from the 15 above.
+- **Upstream fix**: the same line.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### A trap that `sret` raises is thrown away, and an interrupt can be taken inside an exception's handler
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `leave_trap`, and `enter_trap` in all three harts.
+- **What is wrong**: two things, both ⚠️ found by reading while the entry above was checked, and neither run. `leave_trap` sets an illegal-instruction trap in `trap_state` when supervisor mode executes `sret` with `mstatus.TSR` set, and then ends with `trap_state = pending_trap` whichever branch it took, which overwrites it, with `NEXT_PC` left at `0xffffffff`. And `enter_trap` clears `pending_trap` only when what it is taking is an interrupt. If an interrupt is pending and the instruction it arrives at raises an exception of its own (an `ecall`, a fault), the exception is taken, the interpreter copies the old `pending_trap` back, and the interrupt is taken one instruction into the exception's handler, with interrupts off, over the top of `mepc` and `mcause`.
+- **How to see it**: by reading. For the second, an `ecall` at the instruction a pending and enabled interrupt arrives at.
+- **What we do**: nothing. Zephyr on the host makes no `ecall` and never runs in supervisor mode. Linux under OpenSBI does both, in M20.
+- **Upstream fix**: return from `leave_trap` after raising the trap. And have `enter_trap` work `pending_trap` out again (`check_interrupt`) once it has changed `mstatus`, whatever it took.
+- **Kind**: bug.
+- **When it lands**: nothing to delete.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

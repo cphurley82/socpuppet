@@ -237,6 +237,49 @@ inline Program SleepUntilTheExternalInterruptThenStoreWord(
   return program;
 }
 
+// A program that has the external interrupt arrive at a load, and stores
+// what the load got as its result.
+//
+// It enables the interrupt, sleeps with interrupts as a whole switched off
+// until the line is high, and then switches them on. So the interrupt
+// arrives at the very next instruction, which loads the program's own
+// first word: the load runs to its end, and then the trap is taken. Its
+// handler quiets the device at `device` (an address as for
+// StoreWordThenSleep) by writing to it, and returns to the store after the
+// load.
+inline Program TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
+    std::uint64_t device) {
+  constexpr Word kT3 = 28;
+  Program program;
+  program.push_back(Auipc(kT3, 0));
+  // t2 = the address of the handler, worked out from where we are now.
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(kWfi);
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  // What the load would leave untouched, if it did not happen.
+  program.push_back(Li(kT0, 0));
+  program.push_back(Csrs(kMstatus, kT1));
+  program.push_back(Lw(kT0, kT3, 0));
+  program.push_back(Sw(kT0, kT3, kResultOffset));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Lui(kT1, static_cast<Word>(device >> 12)));
+  program.push_back(Sw(kZero, kT1, 0));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
+  return program;
+}
+
 // A program that counts down from `iterations` (a multiple of 4096) and
 // then sleeps. Each time round the loop is two instructions, and all it
 // asks of the bus is to fetch them.

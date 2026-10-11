@@ -360,6 +360,30 @@ TEST(WhenTheExternalInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
   EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
 }
 
+TEST(WhenAnInterruptArrivesAtALoadOnTheCoreWithSupervisorMode,
+     TheLoadIsStillExecuted) {
+  CpuPlatformWithAnInterruptSource with_device{
+      "irq",
+      [](InterruptSource& device) {
+        // The program is asleep, waiting for this, after eight
+        // instructions.
+        device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+        device.Raise();
+      },
+      TheCoreWithSupervisorMode()};
+  const riscv::Program program =
+      riscv::TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
+          CpuPlatformWithAnInterruptSource::kDeviceBase);
+  with_device.Load(program);
+
+  // A dozen instructions before the interrupt and six after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.ResultWord(0), program.front());
+  // And the interrupt was taken, which is what made this a test of it.
+  EXPECT_EQ(with_device.TimesTheHandlerRan(), 1);
+}
+
 // Raises the line once a program has got to supervisor mode and gone to
 // sleep: twenty instructions, at 100 ns each.
 void RaiseOnceTheSupervisorSleeps(InterruptSource& device) {

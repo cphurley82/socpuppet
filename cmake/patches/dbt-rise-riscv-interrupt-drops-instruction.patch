@@ -1,0 +1,17 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index 9f63ce1..7d4f273 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -600,7 +600,11 @@ template <typename BASE, features_e FEAT> void riscv_hart_msu_vp<BASE, FEAT>::ch
+         int res = 0;
+         while((enabled_interrupts & 1) == 0)
+             enabled_interrupts >>= 1, res++;
+-        this->reg.pending_trap = 0x80ULL << 24 | res << 16 | 1; // 0x80 << 24 | (cause << 16) | trap_id
++        // No 0x80 << 24 here. That bit says the instruction being executed has faulted, and an instruction that reads
++        // memory or a CSR stops when it sees it, before writing its result. An interrupt waits for the instruction to
++        // finish, and is taken with the address of the next one, so an instruction that stopped for it would never be
++        // executed at all.
++        this->reg.pending_trap = res << 16 | 1; // (cause << 16) | trap_id
+     }
+ }
+ 
