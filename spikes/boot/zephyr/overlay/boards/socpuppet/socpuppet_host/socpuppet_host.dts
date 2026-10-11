@@ -1,0 +1,111 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	aliases {
+		watchdog0 = &compute_wdt;
+	};
+
+	chosen {
+		zephyr,console = &io_uart;
+		zephyr,shell-uart = &io_uart;
+		zephyr,sram = &compute_ram;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		compute_cpu: cpu@0 {
+			device_type = "cpu";
+			compatible = "riscv";
+			reg = <0>;
+			riscv,isa-base = "rv64i";
+			riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", "zifencei", "smcsrind";
+
+			compute_cpu_intc: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				#address-cells = <0>;
+				#interrupt-cells = <1>;
+				interrupt-controller;
+			};
+		};
+	};
+
+	compute_ram: memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x4000000>;
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		compute_syscon: syscon@100000 {
+			compatible = "socpuppet,system-controller", "syscon";
+			reg = <0x0 0x100000 0x0 0x1000>;
+			reg-io-width = <4>;
+		};
+
+		compute_wdt: watchdog@101000 {
+			compatible = "sifive,wdt";
+			reg = <0x0 0x101000 0x0 0x1000>;
+			interrupt-parent = <&compute_aplic>;
+			interrupts = <17 1 4>;
+		};
+
+		compute_aplic: interrupt-controller@c000000 {
+			compatible = "socpuppet,aplic", "riscv,aplic";
+			reg = <0x0 0xc000000 0x0 0x8000>;
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			riscv,num-sources = <31>;
+			msi-parent = <&compute_imsic>;
+			socpuppet,sources = <17>;
+		};
+
+		compute_timer: timer@200bff8 {
+			compatible = "riscv,machine-timer";
+			reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;
+			reg-names = "mtime", "mtimecmp";
+			interrupts-extended = <&compute_cpu_intc 7>;
+		};
+
+		io_uart: uart@10000000 {
+			compatible = "ns16550";
+			reg = <0x0 0x10000000 0x0 0x8>;
+			reg-shift = <0>;
+			clock-frequency = <3686400>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <16 1 4>;
+		};
+
+		io_aplic: interrupt-controller@100c0000 {
+			compatible = "socpuppet,aplic", "riscv,aplic";
+			socpuppet,sources = <16>;
+			reg = <0x0 0x100c0000 0x0 0x8000>;
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			riscv,num-sources = <31>;
+			msi-parent = <&compute_imsic>;
+		};
+
+		compute_imsic: interrupt-controller@24000000 {
+			compatible = "riscv,imsic";
+			reg = <0x0 0x24000000 0x0 0x1000>;
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			msi-controller;
+			riscv,num-ids = <63>;
+			riscv,hart-id = <0>;
+			interrupts-extended = <&compute_cpu_intc 11>;
+		};
+	};
+};

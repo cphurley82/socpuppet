@@ -1,0 +1,14 @@
+description: |
+  An APLIC of a socpuppet platform. It is Zephyr's riscv,aplic, and says
+  one thing more: which of its sources have a device's line on them. A
+  board can have more than one APLIC, and an interrupt's number does not
+  say whose source it is.
+
+compatible: "socpuppet,aplic"
+
+include: riscv,aplic.yaml
+
+properties:
+  socpuppet,sources:
+    type: array
+    description: The sources that have a device's interrupt line on them.
