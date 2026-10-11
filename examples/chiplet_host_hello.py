@@ -41,7 +41,6 @@ import pathlib
 import sys
 
 import socpuppet as sp
-from socpuppet import ucie
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager, stand_in_manager
 
@@ -60,16 +59,6 @@ board = host(
 )
 #: What `socpuppet devicetree` and `socpuppet address-map` look for.
 platform = board.platform
-
-
-def microseconds(picoseconds):
-    """A time of the simulation's, as a trace line shows it."""
-    return f"{picoseconds / sp.us(1):.3f} us"
-
-
-def die_of(record):
-    """Which die sent what a trace record saw."""
-    return "io" if record.source.startswith("io.") else "compute"
 
 
 if __name__ == "__main__":
@@ -98,11 +87,7 @@ if __name__ == "__main__":
     platform.run(sp.ms(1))  # let the line finish
 
     print("\n📻 what the two ends said to each other on the sideband:")
-    for record, packet in ucie.sideband_packets(platform.trace):
-        print(
-            f"  {microseconds(record.time):>12}  {die_of(record):>7} ─▶ "
-            f"{packet.description()}"
-        )
+    print(sp.render_sideband(platform.trace))
 
     crossings = [
         record
@@ -119,7 +104,7 @@ if __name__ == "__main__":
     print(
         f"\n✅ Zephyr booted across the link in {elapsed:.1f} ms of "
         f"simulated time. {len(crossings)} accesses crossed it, the first "
-        f"{microseconds(crossings[0].time)} after power-on. 💡 The "
+        f"{crossings[0].time / sp.ms(1):.3f} ms after power-on. 💡 The "
         "first 4 ms is UCIe's reset hold and the next is this link's "
         "training time: the host's CPU does not run an instruction before "
         "the manager's write to its reset register."

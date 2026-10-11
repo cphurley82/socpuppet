@@ -60,20 +60,21 @@ UCIe's link training state machine, as far as this model has it:
 
 A link is held in RESET for at least 4 ms after power-on, which is UCIe's figure. The die whose firmware writes *start link training* then sends UCIe's requests, a state at a time, and the other die hears that it has left reset and walks the same states beside it, answering. Each of the four states takes a quarter of `training_ns`. A state nobody answers within 8 ms, UCIe's figure again, ends in TRAINERROR, and so does a fault; the far die is told, and nothing crosses the mainband until firmware asks for a retrain, which starts over from RESET.
 
-The sideband handshake, as a traced run shows it. `ucie.sideband_packets(platform.trace)` reads the packets back, and `examples/io_manager_hello.py` prints them:
+The sideband handshake, as a traced run shows it. `ucie.sideband_packets(platform.trace)` reads the packets back, `sp.render_sideband(platform.trace)` is a table of them, and `examples/io_manager_hello.py` prints it:
 
 ```text
- 4000.000 us       io ─▶ {SBINIT Out of Reset}
- 4000.000 us       io ─▶ {SBINIT Done Request}
- 4000.000 us  compute ─▶ {SBINIT Done Response}
- 4250.000 us       io ─▶ {MBINIT.PARAM configuration request}
- 4250.000 us  compute ─▶ {MBINIT.PARAM configuration response}
- 4250.000 us       io ─▶ {MBINIT.CAL Done Request}
- 4250.000 us  compute ─▶ {MBINIT.CAL Done Response}
- 4750.000 us       io ─▶ {LinkMgmt.RDI.Req.Active}
- 4750.000 us  compute ─▶ {LinkMgmt.RDI.Rsp.Active}
- 5000.000 us       io ─▶ MemoryWrite_32b 0x24 = 0x0      ← lets the other die go
- 5000.000 us  compute ─▶ Completion, success
+ms     from         packet
+4.000  io.d2d       {SBINIT Out of Reset}
+4.000  io.d2d       {SBINIT Done Request}
+4.000  compute.d2d  {SBINIT Done Response}
+4.250  io.d2d       {MBINIT.PARAM configuration request}
+4.250  compute.d2d  {MBINIT.PARAM configuration response}
+4.250  io.d2d       {MBINIT.CAL Done Request}
+4.250  compute.d2d  {MBINIT.CAL Done Response}
+4.750  io.d2d       {LinkMgmt.RDI.Req.Active}
+4.750  compute.d2d  {LinkMgmt.RDI.Rsp.Active}
+5.000  io.d2d       MemoryWrite_32b 0x24 = 0x0      ← lets the other die go
+5.000  compute.d2d  Completion, success
 ```
 
 ### The registers

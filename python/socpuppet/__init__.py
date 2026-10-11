@@ -45,6 +45,7 @@ from socpuppet.trace import TraceRecord
 from socpuppet.trace import render as render_trace
 from socpuppet.transcript import Transcript
 from socpuppet.transcript import render as render_transcript
+from socpuppet.ucie import render_sideband
 
 __all__ = [
     "Aplic",
@@ -87,6 +88,7 @@ __all__ = [
     "read",
     "read32",
     "read64",
+    "render_sideband",
     "render_trace",
     "render_transcript",
     "us",

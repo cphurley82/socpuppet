@@ -333,11 +333,12 @@ Nothing is built differently for it. The image is the one from step 2, and with 
 `examples/chiplet_host_hello.py` is that with Zephyr's `hello_world`. It prints the link's bring-up out of the trace, and then the host's console:
 
 ```text
-   4000.000 us       io ─▶ {SBINIT Out of Reset}
-   ...
-   4750.000 us  compute ─▶ {LinkMgmt.RDI.Rsp.Active}
-   5000.000 us       io ─▶ MemoryWrite_32b 0x24 = 0x0
-   5000.000 us  compute ─▶ Completion, success
+ms     from         packet
+4.000  io.d2d       {SBINIT Out of Reset}
+...
+4.750  compute.d2d  {LinkMgmt.RDI.Rsp.Active}
+5.000  io.d2d       MemoryWrite_32b 0x24 = 0x0
+5.000  compute.d2d  Completion, success
 
 *** Booting Zephyr OS build v4.4.2 ***
 Hello World! socpuppet_host/socpuppet_rv64
@@ -347,7 +348,7 @@ Hello World! socpuppet_host/socpuppet_rv64
 - ⚠️ **The host's first instruction is 5 ms late.** UCIe holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
 - ⚠️ **Say whose.** The manager's script is a bus master too, so `load_elf`, `peek32` and `devicetree` want `via=board.cpu.socket`, and say so if it is left out.
 - **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
-- 💡 **Watch it cross.** `host(manager=..., trace=True)` records every crossing in `board.platform.trace`, each with the port it left by: `compute.d2d.peer_initiator` for what the compute die sent and `io.d2d.peer_initiator` for what came back. ⚠️ An address in a record is the receiving die's own. What the compute die sends has had the start of its window taken off, so the UART is at `0x0` there and not at `0x1000_0000`. `ucie.sideband_packets(board.platform.trace)` reads the link's own management traffic back.
+- 💡 **Watch it cross.** `host(manager=..., trace=True)` records every crossing in `board.platform.trace`, each with the port it left by: `compute.d2d.peer_initiator` for what the compute die sent and `io.d2d.peer_initiator` for what came back. ⚠️ An address in a record is the receiving die's own. What the compute die sends has had the start of its window taken off, so the UART is at `0x0` there and not at `0x1000_0000`. `sp.render_sideband(board.platform.trace)` is the link's own management traffic as a table, and `ucie.sideband_packets` the packets themselves.
 - **It costs nothing you will notice.** Zephyr's disk test finishes 5 ms later than with the stand-in link, which is the late start and nothing more, and in the same wall time. ⚠️ That is not the whole truth about the link. A crossing takes [the link's](models/d2d-link.md) `latency_ns`, 20 ns by default, and its bytes at `bytes_per_ns`, and the host's CPU counts in whole cycles of 100 ns: a crossing of less than 200 ns does not show on its clock at all ([upstream.md](upstream.md) has why). The trace is where to look for the link's own timing. 🚧 `host()` has no way to be given a link of your own yet: copy the board to try a slow one.
 - `tests/python/test_m7_exit.py` is a complete example: `hello_world`, Zephyr's disk test against all three drives, and what the trace shows of each command.
 

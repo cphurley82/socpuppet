@@ -11,6 +11,8 @@ traffic:
     for record, packet in ucie.sideband_packets(platform.trace):
         print(record.time, packet.description())
 
+or, as a table for people, `print(sp.render_sideband(platform.trace))`.
+
 The register block one end of the link shows the firmware on its die is
 in `socpuppet.regs.ucie_link`, which is generated from the link's
 register map, as the model's own names for the registers are.
@@ -28,6 +30,8 @@ import struct
 from collections.abc import Iterable
 from enum import IntEnum
 
+from socpuppet import terminal
+from socpuppet.time import ms
 from socpuppet.trace import TraceRecord
 
 
@@ -222,3 +226,28 @@ def sideband_packets(
             )
         found.append((record, packet))
     return found
+
+
+def render_sideband(
+    trace: Iterable[TraceRecord], color: bool | None = None
+) -> str:
+    """The sideband packets in a trace as a table for people.
+
+    A row for each: when it crossed, in milliseconds, which end of the
+    link sent it, and what it was. `color` defaults to whether standard
+    output wants it (see `terminal.wants_color`).
+    """
+    return terminal.table(
+        ("ms", "from", "packet"),
+        [
+            (
+                f"{record.time / ms(1):.3f}",
+                # The end of the link the port is on.
+                record.source.rpartition(".")[0],
+                packet.description(),
+            )
+            for record, packet in sideband_packets(trace)
+        ],
+        styles=(terminal.DIM, terminal.CYAN, ""),
+        color=color,
+    )

@@ -15,13 +15,12 @@ a stand-in on the compute die that does one thing once it is let go, which
 is to reach across the link into the IO die's memory.
 
 The link is traced, so the show below is UCIe's own bring-up, packet by
-packet, as `socpuppet.ucie` reads them back.
+packet, as `sp.render_sideband` prints it.
 
 Run it:    python examples/io_manager_hello.py
 """
 
 import socpuppet as sp
-from socpuppet import ucie
 from socpuppet.boards.io_manager import (
     HELLO,
     SCRATCH_BASE,
@@ -45,10 +44,7 @@ reached = board.platform.run_until(
 )
 
 print("\n📻 what the two ends said to each other on the sideband:")
-for record, packet in ucie.sideband_packets(board.platform.trace):
-    die = "io" if record.source.startswith("io") else "compute"
-    when = record.time / 1_000_000
-    print(f"  {when:9.3f} us  {die:>7} ─▶ {packet.description()}")
+print(sp.render_sideband(board.platform.trace))
 
 print("\n🚌 and what then crossed the mainband:")
 crossings = [
@@ -57,9 +53,11 @@ crossings = [
     if record.source.endswith("d2d.peer_initiator")
 ]
 for record in crossings:
-    die = "io" if record.source.startswith("io") else "compute"
+    # In microseconds, where the table above has milliseconds: a crossing
+    # takes 20 ns, which three places of a millisecond would not show.
+    sender = record.source.rpartition(".")[0]
     print(
-        f"  {record.time / 1_000_000:9.3f} us  {die:>7} ─▶ "
+        f"  {record.time / sp.us(1):9.3f} us  {sender} ─▶ "
         f"{record.command} {record.address:#x} = {record.data.hex()}"
     )
 
@@ -67,7 +65,7 @@ if not reached:
     raise SystemExit("🧦 ❌ the compute die never reached the IO die")
 print(
     f"\n🧦 ✅ the compute die read {HELLO:#x} back across the link, "
-    f"{crossings[-1].time / 1_000_000:.3f} us after power-on. 💡 The 4 ms of "
+    f"{crossings[-1].time / sp.us(1):.3f} us after power-on. 💡 The 4 ms of "
     "that is UCIe's reset hold, and the millisecond after it is this "
     "link's training time."
 )

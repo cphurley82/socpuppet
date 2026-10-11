@@ -4,6 +4,7 @@ import struct
 
 import pytest
 
+import socpuppet as sp
 from socpuppet import ucie
 from socpuppet.trace import TraceRecord
 
@@ -127,10 +128,65 @@ class TestWhenATraceIsReadForItsSidebandPackets:
             ucie.sideband_packets([short])
 
 
-def a_record(source: str, data: bytes) -> TraceRecord:
+#: The headers of two messages the ends of a link send on the way up.
+OUT_OF_RESET = 0x12 | (0x91 << 14)
+DONE_REQUEST = 0x12 | (0x95 << 14) | (0x01 << 32)
+
+
+class TestWhenTheSidebandInATraceIsRenderedForATerminal:
+    def test_each_packet_is_a_row_with_when_it_crossed_who_sent_it_and_what_it_was(
+        self,
+    ):
+        trace = [
+            a_record(
+                "compute.d2d.sideband_peer_initiator",
+                a_packet(OUT_OF_RESET),
+                time=sp.us(4000),
+            ),
+            a_record(
+                "io.d2d.sideband_peer_initiator",
+                a_packet(DONE_REQUEST),
+                time=sp.us(4250),
+            ),
+        ]
+
+        header, *rows = sp.render_sideband(trace, color=False).splitlines()
+
+        assert header.split() == ["ms", "from", "packet"]
+        assert [row.split(maxsplit=2) for row in rows] == [
+            ["4.000", "compute.d2d", "{SBINIT Out of Reset}"],
+            ["4.250", "io.d2d", "{SBINIT Done Request}"],
+        ]
+
+    def test_what_crossed_the_mainband_is_left_out(self):
+        trace = [
+            a_record("io.d2d.peer_initiator", a_packet(OUT_OF_RESET)),
+            a_record("io.d2d.sideband_peer_initiator", a_packet(DONE_REQUEST)),
+        ]
+
+        _, row = sp.render_sideband(trace, color=False).splitlines()
+
+        assert "{SBINIT Done Request}" in row
+
+    def test_it_is_plain_text_where_color_is_not_wanted(self):
+        trace = [
+            a_record("io.d2d.sideband_peer_initiator", a_packet(OUT_OF_RESET))
+        ]
+
+        assert "\x1b[" not in sp.render_sideband(trace, color=False)
+
+    def test_it_is_colored_where_color_is_wanted(self):
+        trace = [
+            a_record("io.d2d.sideband_peer_initiator", a_packet(OUT_OF_RESET))
+        ]
+
+        assert "\x1b[" in sp.render_sideband(trace, color=True)
+
+
+def a_record(source: str, data: bytes, time: int = 0) -> TraceRecord:
     """A write of `data` seen leaving the port `source`."""
     return TraceRecord(
-        time=0,
+        time=time,
         source=source,
         sink="the other end",
         command="write",

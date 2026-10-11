@@ -55,7 +55,6 @@ import pathlib
 import sys
 
 import socpuppet as sp
-from socpuppet import ucie
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
@@ -79,11 +78,6 @@ FAILED = "PROJECT EXECUTION FAILED"
 board = host(drive_blocks=4096, manager=add_manager, drive=add_ssd, trace=True)
 #: What `socpuppet devicetree` and `socpuppet address-map` look for.
 platform = board.platform
-
-
-def die_of(record):
-    """Which die sent what a trace record saw."""
-    return "io" if record.source.startswith("io.") else "compute"
 
 
 if __name__ == "__main__":
@@ -141,11 +135,7 @@ if __name__ == "__main__":
     story.run_until(lambda: verdict() is not None, timeout=sp.ms(2000))
 
     print("\n📻 what the two ends of the link said on the sideband:")
-    for record, packet in ucie.sideband_packets(platform.trace):
-        print(
-            f"  {record.time / sp.ms(1):>8.3f} ms  {die_of(record):>7} ─▶ "
-            f"{packet.description()}"
-        )
+    print(sp.render_sideband(platform.trace))
 
     print("\n🖥️  and what the three firmwares said, as one story:")
     print(
