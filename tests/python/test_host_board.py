@@ -9,6 +9,7 @@ from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
     COMPUTE_DIE,
+    PLIC_BASE,
     SYSCON_BASE,
     TIMER_BASE,
     TIMER_HZ,
@@ -129,22 +130,67 @@ class TestTheHostsConsole:
             in board.platform.interrupt_map()
         )
 
-    def test_the_aplic_is_on_the_io_die_and_so_in_its_window(self):
-        [aplic] = [
-            each
-            for each in host().platform.address_map()
-            if each.implementation == Aplic.implementation
-        ]
+    def test_its_aplic_is_on_the_io_die_and_so_in_its_window(self):
+        aplic = the_hosts_aplic_on("io")
 
-        assert aplic.group == "io"
         assert IO_BASE <= aplic.address < IO_BASE + IO_SIZE
 
-    def test_the_devicetree_names_the_imsic_as_where_the_aplics_messages_go(
+
+class TestTheHostsAplics:
+    """🎓 A wire stays on its die, so each die with a device that only has
+    a wire has an APLIC of its own to send a message for it."""
+
+    def test_there_is_one_on_each_die(self):
+        assert sorted(each.group for each in the_hosts_aplics()) == [
+            "compute",
+            "io",
+        ]
+
+    def test_the_compute_dies_is_at_the_address_a_socpuppet_cpu_has_its_wired_interrupt_controller_at(
+        self,
+    ):
+        # Which is where QEMU's `virt` machine has its APLIC, and where a
+        # 32-bit socpuppet CPU has its PLIC.
+        assert the_hosts_aplic_on("compute").address == PLIC_BASE
+
+    def test_the_devicetree_names_the_imsic_as_where_the_messages_of_each_go(
         self,
     ):
         # It names where they go only if they get there, and at the
         # address the CPU has the page at.
-        assert "msi-parent = <&compute_imsic>;" in host().platform.devicetree()
+        devicetree = host().platform.devicetree()
+
+        for label in ("compute_aplic", "io_aplic"):
+            assert "msi-parent = <&compute_imsic>;" in node_of(
+                label, devicetree
+            )
+
+    def test_no_number_is_a_source_with_a_line_on_it_at_both(self):
+        # Firmware knows an interrupt by one number, and finds the APLIC
+        # for a number by which one has a device's line at that source.
+        aplics = {each.component for each in the_hosts_aplics()}
+        wired = [
+            entry.number
+            for entry in host().platform.interrupt_map()
+            if entry.controller in aplics
+        ]
+
+        assert sorted(wired) == sorted(set(wired))
+
+
+def the_hosts_aplics():
+    """The host's APLICs, as its CPU's address map has them."""
+    return [
+        each
+        for each in host().platform.address_map()
+        if each.implementation == Aplic.implementation
+    ]
+
+
+def the_hosts_aplic_on(die):
+    """The one APLIC the host has on a die, as its CPU's address map has it."""
+    [aplic] = [each for each in the_hosts_aplics() if each.group == die]
+    return aplic
 
 
 class TestTheZephyrShieldForTheHostsDrive:
@@ -451,6 +497,21 @@ def labelled_as_in_group(group, devicetree, was):
 
 def without_node(label, devicetree):
     """`devicetree` with the node called `label` taken out."""
+    lines, start, end = _span_of_node(label, devicetree)
+    # The empty line after a node goes with it.
+    if lines[end : end + 1] == ["\n"]:
+        end += 1
+    return "".join(lines[:start] + lines[end:])
+
+
+def node_of(label, devicetree):
+    """The node called `label` in `devicetree`, from its label to its brace."""
+    lines, start, end = _span_of_node(label, devicetree)
+    return "".join(lines[start:end])
+
+
+def _span_of_node(label, devicetree):
+    """The lines of `devicetree`, and where the node called `label` is in them."""
     lines = devicetree.splitlines(keepends=True)
     starts = [
         at
@@ -461,10 +522,7 @@ def without_node(label, devicetree):
     [start] = starts
     indent = lines[start][: -len(lines[start].lstrip())]
     end = lines.index(f"{indent}}};\n", start) + 1
-    # The empty line after a node goes with it.
-    if lines[end : end + 1] == ["\n"]:
-        end += 1
-    return "".join(lines[:start] + lines[end:])
+    return lines, start, end
 
 
 class TestTheHostAskedForADriveOfNoSize:

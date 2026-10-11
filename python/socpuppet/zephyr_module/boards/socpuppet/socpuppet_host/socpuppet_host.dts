@@ -53,6 +53,16 @@
 			interrupts-extended = <&compute_cpu_intc 7>;
 		};
 
+		compute_aplic: interrupt-controller@c000000 {
+			compatible = "riscv,aplic";
+			reg = <0x0 0xc000000 0x0 0x8000>;
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			riscv,num-sources = <31>;
+			msi-parent = <&compute_imsic>;
+		};
+
 		io_uart: uart@10000000 {
 			compatible = "ns16550";
 			reg = <0x0 0x10000000 0x0 0x8>;

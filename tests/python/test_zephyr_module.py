@@ -128,9 +128,10 @@ class TestTheInterruptNumbersZephyrIsToldOfASocWithAnImsic:
     def test_no_identity_of_the_hosts_drive_is_a_number_of_an_aplic_source(
         self,
     ):
-        # The module takes every number up to the APLIC's last source for
-        # a source, and would set one up at the APLIC for the drive's
-        # vector, which is not there.
+        # The numbers up to an APLIC's last source are kept for devices
+        # with a wire, on whichever die's APLIC. The module takes a number
+        # for a source when a device has it at one, and would then set a
+        # source up for the drive's vector, which is no line at all.
         assert min(the_identities_of_the_hosts_drive()) > Aplic.SOURCES
 
     def test_every_source_of_the_aplic_has_an_identity_of_its_own_number(self):

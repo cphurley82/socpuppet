@@ -75,6 +75,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `compute.syscon.socket` | [System controller](models/system-controller.md) | |
 | `0x0200_0000` | 64 KiB | `compute.timer.socket` | [Machine timer](models/machine-timer.md) | |
+| `0x0C00_0000` | 32 KiB | `compute.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
 | `0x100C_0000` | 32 KiB | `io.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | `compute.bus` from `0x1000_0000` |
 | `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |

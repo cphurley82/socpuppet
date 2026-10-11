@@ -31,6 +31,8 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     """
     master = view.placed
     nodes = _nodes(connections, view)
+    addresses = _addresses(connections, view)
+    _refuse_one_number_for_two_lines(nodes, connections)
     lines = [
         "/dts-v1/;",
         "",
@@ -48,7 +50,7 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     for each in _devices(
         nodes,
         connections,
-        _addresses(connections, view),
+        addresses,
         soc_properties=(
             'compatible = "simple-bus";',
             "#address-cells = <2>;",
@@ -74,13 +76,15 @@ def overlay(
     of what `generate` describes.
     """
     nodes = _nodes(connections, view)
+    addresses = _addresses(connections, view)
+    _refuse_one_number_for_two_lines(nodes, connections)
     roles = {
         role: placed for role, placed in _roles(nodes).items() if placed in only
     }
     blocks = _devices(
         [(placed, node) for placed, node in nodes if placed in only],
         connections,
-        _addresses(connections, view),
+        addresses,
     )
     if roles:
         blocks.insert(0, _chosen(roles))
@@ -237,6 +241,39 @@ def _node(
         if taker is not None:
             lines += [f"{indent}\tmsi-parent = <&{label(taker.path)}>;"]
     return [*lines, f"{indent}}};"]
+
+
+def _refuse_one_number_for_two_lines(
+    nodes: list[tuple[Placed, DeviceNode]],
+    connections: Collection[Connection],
+) -> None:
+    """Raise if two controllers that send messages have a line of one number.
+
+    A controller that interrupts with messages on its devices' behalf, an
+    APLIC, has numbered inputs, and a platform may have several, each
+    with an input of every number. Firmware that knows an interrupt by
+    one number, as Zephyr does, has each line sent as the identity of its
+    input's number, and finds the controller for a number by which one
+    has a line there. Two with a line at the same number it could not
+    tell apart.
+    """
+    lines: dict[int, Port] = {}
+    controllers = {placed for placed, node in nodes if node.messages}
+    for source, sink, _ in connections:
+        if sink.placed not in controllers:
+            continue
+        number = sink.placed.component.interrupt_number(sink.name)
+        if number is None:
+            continue
+        other = lines.setdefault(number, source)
+        if other is not source:
+            raise ValueError(
+                f"{other.path} and {source.path} are both interrupt "
+                f"{number}: each is at source {number} of a controller of "
+                "its own, and firmware that knows an interrupt by one "
+                "number could not tell them apart. Connect one of them to "
+                "a source of another number."
+            )
 
 
 def _message_taker(

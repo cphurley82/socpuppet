@@ -592,6 +592,47 @@ class TestWhenAnAplicsMessagesReachAnImsic:
         assert "interrupts = <16 1 4>;" in devicetree
 
 
+class TestWhenTwoAplicsOfOneCpuHaveALineAtTheSameSource:
+    def test_the_devicetree_is_refused_and_the_error_names_both_lines(self):
+        # Firmware that knows an interrupt by one number finds its APLIC by
+        # that number, and could not tell these two apart.
+        platform = cpu_with_an_aplic()
+        bus = platform.port("bus.target").placed
+        eggs_aplic = platform.add("eggs_aplic", sp.Aplic())
+        eggs = platform.add("eggs", sp.Ns16550())
+        bus.map(eggs_aplic.socket, base=0x0D00_0000)
+        platform.connect(eggs_aplic.msi, bus.add_input())
+        platform.connect(eggs.irq, eggs_aplic.source16)
+
+        with pytest.raises(ValueError, match="interrupt 16") as refused:
+            platform.devicetree()
+
+        assert "uart.irq" in str(refused.value)
+        assert "eggs.irq" in str(refused.value)
+
+
+class TestWhenTwoAplicsOfOneCpuHaveLinesAtDifferentSources:
+    def test_each_devices_node_names_its_own_aplic_and_source(self):
+        platform = cpu_with_an_aplic()
+        bus = platform.port("bus.target").placed
+        eggs_aplic = platform.add("eggs_aplic", sp.Aplic())
+        eggs = platform.add("eggs", sp.Ns16550())
+        bus.map(eggs_aplic.socket, base=0x0D00_0000)
+        bus.map(eggs.socket, base=0x1000_1000)
+        platform.connect(eggs_aplic.msi, bus.add_input())
+        platform.connect(eggs.irq, eggs_aplic.source17)
+
+        devicetree = platform.devicetree()
+
+        assert "interrupt-parent = <&aplic>;\n\t\t\tinterrupts = <16 1 4>;" in (
+            devicetree
+        )
+        assert (
+            "interrupt-parent = <&eggs_aplic>;\n\t\t\tinterrupts = <17 1 4>;"
+            in devicetree
+        )
+
+
 class TestWhenAnAplicsMessagesReachNoPageForMachineMode:
     def test_its_node_names_nowhere_for_them_to_go(self):
         # The devicetree is machine mode's, and an IMSIC that mode cannot

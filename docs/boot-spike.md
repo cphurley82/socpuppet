@@ -72,4 +72,4 @@ All three images built. `spikes/boot/two_aplics.py` then ran the shell image on 
 
 ## What changes in the plan
 
-Nothing in the order or the scope. The steps gain what is marked ⚠️ above: step 8's adapter refuses a timed write and an access past its size, and takes SCC's SPI headers without the library. Step 10's `build.sh` passes `-T` to gcc, and its ROM copies words. Step 6 decides how an APLIC with no sources is written.
+Nothing in the order or the scope. One thing changed in the doing: step 6 kept the two APLICs and dropped `socpuppet,sources` and its binding. The glue reads which APLIC a number is a source of from each device's own `interrupt-parent`, which the devicetree had all along. The steps gain what is marked ⚠️ above: step 8's adapter refuses a timed write and an access past its size, and takes SCC's SPI headers without the library. Step 10's `build.sh` passes `-T` to gcc, and its ROM copies words. Step 6 decides how an APLIC with no sources is written.

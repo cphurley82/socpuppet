@@ -81,6 +81,8 @@ io_aplic: interrupt-controller@100c0000 {
 
 `msi-parent` is the IMSIC that the APLIC's messages reach. It is found by following the `msi` socket's connections, the way an address map is, so it is there only if the platform really does lead there. ⚠️ The APLIC has to find the page at the address the CPU does, because firmware reads the address from the IMSIC's node and tells the APLIC to send there. If the two differ, `platform.devicetree()` refuses and gives both. A device at one of the sources names it with three numbers, `16 1 4`: the source, a priority, and 4, the devicetree's number for a line that asks while it is high. The host's UART has them as `interrupt-parent = <&io_aplic>` and `interrupts = <16 1 4>`.
 
+💡 **A platform can have more than one.** A wire stays on its die, so a platform with wired devices on two dies has two APLICs, as [the host](../address-map.md) has: one on the compute die and one on the IO die. Each has a source of every number. Zephyr knows an interrupt by one number, so socpuppet's module finds which APLIC a number is a source of from the devices' own nodes, each of which names its APLIC. ⚠️ So no number may be a source with a line on it at two APLICs that one CPU has, and `platform.devicetree()` refuses a platform where one is, naming both lines.
+
 ## Under the hood
 
 💡 This one is borrowed. The model is the APLIC from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), written at Qualcomm, which delivered over a line only. Delivery by message is added by `cmake/patches/vpv-peripherals-aplic-msi-mode.patch`, which is written up in [upstream.md](../upstream.md) as a feature to offer.

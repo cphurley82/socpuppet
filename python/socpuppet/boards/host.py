@@ -5,13 +5,14 @@
        ▲  ▲        ├─▶ imsic ◀─── messages ────────────────────┐
        │  │        ├─▶ timer ─┐                                │
        │  └────────│──────────┘                                │
-     imsic         └─▶ link endpoint ══ link endpoint ─▶ bus ─┬─▶ aplic
+     imsic         ├─▶ aplic ─▶ messages, onto this bus        │
+                   └─▶ link endpoint ══ link endpoint ─▶ bus ─┬─▶ aplic
                                                               └─▶ uart ─irq─▲
 
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
-die has the CPU, its RAM, the interrupt controller, the timer and the
-system controller, which drives the CPU's reset. The IO die has the UART,
-and an APLIC that the UART's interrupt line goes to.
+die has the CPU, its RAM, the interrupt controller, the timer, the system
+controller, which drives the CPU's reset, and an APLIC of its own. The IO
+die has the UART, and an APLIC that the UART's interrupt line goes to.
 🎭 The link between the dies is a stand-in that passes every access
 straight through, unless the host is given a `manager`.
 
@@ -21,7 +22,9 @@ timer is on the die its CPU is on, and the interrupt controller is one
 that is sent messages: an IMSIC. A device interrupts by writing a number
 to the IMSIC's page, from whichever die it is on. A UART only has a
 wire, so the APLIC beside it does the writing for it, and the message
-goes back across the link the way a drive's does.
+goes back across the link the way a drive's does. A wire stays on its
+die, so the compute die has an APLIC of its own, for a device there that
+only has a wire.
 
 Firmware sees one flat memory map and cannot tell where the die boundary
 is, which is the point: the split can change without the firmware changing.
@@ -80,6 +83,7 @@ from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
     COMPUTE_DIE,
     HOST_IMAGE_OFFSET,
+    PLIC_BASE,
     TIMER_BASE,
     TIMER_HZ,
     add_system_controller,
@@ -124,12 +128,17 @@ IO_SIZE = 0x0100_0000
 UART_OFFSET = 0x0000
 #: The IO die's interrupt controller, which sends a message for each
 #: device there that only has a wire. (On QEMU's `virt` machine an APLIC
-#: is at 0x0C00_0000. Here it has to be on the IO die, so it has the same
+#: is at 0x0C00_0000. This one has to be on the IO die, so it has the same
 #: digits inside the window.)
 APLIC_OFFSET = 0x0C_0000
-#: Which of the APLIC's sources the UART's line is. The first 15 numbers
-#: are kept clear, as they are the CPU's own lines to Zephyr, which knows
-#: an interrupt by one number.
+#: The compute die's own, for a device there that only has a wire: an
+#: interrupt line does not cross to another die, so each die that has such
+#: a device has an APLIC. It is where `virt` has its APLIC, which is also
+#: where a 32-bit socpuppet CPU has its PLIC.
+COMPUTE_APLIC_BASE = PLIC_BASE
+#: Which source of the IO die's APLIC the UART's line is. The first 15
+#: numbers are kept clear, as they are the CPU's own lines to Zephyr, which
+#: knows an interrupt by one number.
 UART_SOURCE = 16
 #: How much address space lies behind the link for what the IO die sends
 #: up: all a 64-bit address can say but its top bit, which is more than
@@ -378,6 +387,9 @@ def _compute_die(
     ram = place.add("ram", Memory(size=RAM_SIZE))
     imsic = place.add("imsic", Imsic())
     timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
+    # For a device on this die that only has a wire. Its messages go onto
+    # this die's own bus, where the IMSIC's page is.
+    aplic = place.add("aplic", Aplic())
     platform.connect(cpu.socket, bus.target)
     syscon = add_system_controller(
         platform,
@@ -391,6 +403,8 @@ def _compute_die(
     bus.map(timer.socket, base=TIMER_BASE)
     bus.map(imsic.machine, base=IMSIC_BASE)
     bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
+    bus.map(aplic.socket, base=COMPUTE_APLIC_BASE)
+    platform.connect(aplic.msi, bus.add_input())
     platform.connect(imsic.irq, cpu.irq)
     platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
     # The IMSIC's registers are the CPU's to reach, and not on the bus.
