@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable, Collection, Mapping
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
-from socpuppet import address_map, devicetree, interrupt_map
+from socpuppet import address_map, devicetree, elf, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
 from socpuppet.components import DbtRiseCpu, LinkModel
 from socpuppet.interrupt_map import InterruptEntry
@@ -321,15 +321,15 @@ class Platform:
         """
         view = self._view(via)
         self.native()  # refuse if there is no memory to load into yet
-        file = self._file_to_load(path)
-        from socpuppet import _core  # the simulator is loaded by now
-
-        xlen, entry, segments = _core.read_elf(file)
+        program = elf.read(path)
         view.placed.component.refuse_image(
-            image=file, xlen=xlen, entry=entry, path=view.placed.path
+            image=program.file,
+            xlen=program.xlen,
+            entry=program.entry,
+            path=view.placed.path,
         )
-        for address, data in segments:
-            self._poke_from(file, address, data, view)
+        for address, data in program.segments:
+            self._poke_from(program.file, address, data, view)
 
     def load_binary(
         self, path: str | os.PathLike[str], at: int, via: Port | None = None
@@ -344,25 +344,9 @@ class Platform:
         does, for the image a CPU starts in.
         """
         view = self._view(via)
-        file = self._file_to_load(path)
+        file = elf.existing(path)
         with open(file, "rb") as opened:
             self._poke_from(file, at, opened.read(), view)
-
-    @staticmethod
-    def _file_to_load(path: str | os.PathLike[str]) -> str:
-        """The name of the file at `path`, refusing if there is none.
-
-        The ELF reader cannot tell a missing file from one that is not
-        ELF, so this looks first, and every loader refuses a missing file
-        in the same words.
-        """
-        file = os.fspath(path)
-        if not os.path.exists(file):
-            raise FileNotFoundError(
-                f"There is no file at {file}. Build the firmware first, or "
-                "check the path."
-            )
-        return file
 
     def _poke_from(
         self, file: str, address: int, data: bytes, view: Port

@@ -1,0 +1,74 @@
+// The header in front of an image a boot ROM starts: docs/models/boot-image.md.
+//
+// A header is a file format and not a block's registers. It is still a
+// list of named 32-bit words at offsets, read by C and written by Python,
+// which is what this language and its generator are for.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+
+// What says a header is one. The bytes are "SOCP", in the order a hex dump
+// shows them.
+enum boot_image_header_magic_e {
+    NUMBER = 0x50434F53 { desc = "The four bytes `SOCP`, which as a little-endian number is 0x50434F53."; };
+};
+
+enum boot_image_header_xlen_e {
+    RV32 = 32 { desc = "A program for a 32-bit CPU."; };
+    RV64 = 64 { desc = "A program for a 64-bit CPU."; };
+};
+
+addrmap boot_image_header {
+    name = "Boot image header";
+    desc = "What a boot image starts with: what the program after it is, where it goes, and a sum to check it by.";
+    // The program's bytes start where the header ends.
+    block_size = 0x40;
+    default regwidth = 32;
+
+    reg {
+        desc = "What says this is an image at all.";
+        field { sw = r; encode = boot_image_header_magic_e; } VALUE[31:0] = 0;
+    } MAGIC @ 0x00;
+
+    reg {
+        desc = "Which kind of CPU the program was built for, by the width of its registers in bits.";
+        field { sw = r; encode = boot_image_header_xlen_e; } VALUE[31:0] = 0;
+    } XLEN @ 0x04;
+
+    reg {
+        desc = "Where in memory the program's first byte goes, the low 32 bits.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } LOAD_ADDRESS_LOW @ 0x08;
+
+    reg {
+        desc = "The high 32 bits, which are zero for a 32-bit CPU.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } LOAD_ADDRESS_HIGH @ 0x0C;
+
+    reg {
+        desc = "Where the CPU starts executing once the program is in memory, the low 32 bits.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } ENTRY_LOW @ 0x10;
+
+    reg {
+        desc = "The high 32 bits.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } ENTRY_HIGH @ 0x14;
+
+    reg {
+        desc = "How many bytes the program is: what follows the header.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } LENGTH @ 0x18;
+
+    reg {
+        desc = "The CRC-32 of the program's bytes, as zlib and Ethernet compute it. The header is not in it.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } CRC @ 0x1C;
+
+    reg {
+        desc = "The image's name, as text, for a boot ROM to say which image it could not start. Up to 32 bytes of UTF-8, with zeros after a shorter one. A name of all 32 bytes has no zero after it.";
+        field { sw = r; } BYTES[31:0] = 0;
+    } NAME[8] @ 0x20 += 4;
+};

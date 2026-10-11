@@ -8,7 +8,7 @@ import sys
 import traceback
 from collections.abc import Sequence
 
-from socpuppet import address_map, interrupt_map
+from socpuppet import address_map, boot_image, interrupt_map
 from socpuppet.address_map import MapEntry
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
@@ -64,6 +64,25 @@ def main(arguments: Sequence[str] | None = None) -> None:
         action="store_true",
         help="print the maps as JSON, for a program to read",
     )
+    image = commands.add_parser(
+        "boot-image",
+        help="wrap a firmware ELF file as an image a boot ROM can start",
+        description=(
+            "Wrap the program in an ELF file as a boot image: its bytes as "
+            "they will be in memory, behind a header that says where they "
+            "go, where the CPU starts, and a CRC to check them by. The "
+            "image is what a platform's flash is filled with: "
+            "platform.load_binary(image, at=<where the flash is>)."
+        ),
+    )
+    image.add_argument("elf", help="the firmware, as a linker wrote it")
+    image.add_argument(
+        "-o",
+        "--output",
+        required=True,
+        metavar="FILE",
+        help="where to write the image",
+    )
     commands.add_parser(
         "zephyr-module",
         help="print where socpuppet's Zephyr boards are",
@@ -77,6 +96,8 @@ def main(arguments: Sequence[str] | None = None) -> None:
 
     if options.command == "zephyr-module":
         print(pathlib.Path(__file__).parent / "zephyr_module")
+    elif options.command == "boot-image":
+        print(_boot_image(options.elf, options.output))
     elif options.command == "address-map":
         maps_of = _maps_as_json if options.json else _maps_as_text
         sys.stdout.write(maps_of(*_maps(options.description, options.via)))
@@ -92,6 +113,28 @@ def _add_description(command: argparse.ArgumentParser) -> None:
             "a Python file that leaves its Platform in a variable called "
             "`platform`"
         ),
+    )
+
+
+def _boot_image(elf: str, output: str) -> str:
+    """Write the boot image of an ELF file, and say what was written.
+
+    A file that is not there or is no program, or an image that cannot be
+    written where it was asked for, ends the command with one line that
+    says so.
+    """
+    try:
+        image = boot_image.from_elf(elf)
+    except (FileNotFoundError, ValueError) as refused:
+        sys.exit(str(refused))
+    try:
+        pathlib.Path(output).write_bytes(image.to_bytes())
+    except OSError as unwritable:
+        sys.exit(f"Cannot write {output}: {unwritable.strerror}.")
+    return (
+        f"{output}: the boot image `{image.name}`, {len(image.payload)} "
+        f"bytes for a {image.xlen}-bit CPU, to load at "
+        f"{image.load_address:#x} and start at {image.entry:#x}."
     )
 
 
