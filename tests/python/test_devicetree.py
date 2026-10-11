@@ -355,6 +355,62 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
         assert "interrupts-extended = <&plic 5 1>;" in platform.devicetree()
 
 
+def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
+    """A CPU with an IMSIC that has both its lines to the CPU.
+
+    The page for the supervisor's messages is on the CPU's bus. The one
+    for machine mode's is too, unless `machine_page_at` is None.
+    `described` is what to describe the IMSIC with.
+    """
+    platform = sp.Platform()
+    cpu = platform.add(
+        "cpu",
+        sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000, isa="gc", modes="msu"),
+    )
+    bus = platform.add("bus", sp.Router())
+    imsic = platform.add("imsic", sp.Imsic(**described))
+    platform.connect(cpu.socket, bus.target)
+    if machine_page_at is not None:
+        bus.map(imsic.machine, base=machine_page_at)
+    bus.map(imsic.supervisor, base=0x2800_0000)
+    platform.connect(imsic.irq, cpu.irq)
+    platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
+    return platform
+
+
+class TestWhenAnImsicsPageForMachineModeIsOnTheCpusBus:
+    def test_its_node_is_of_that_page_and_that_modes_line_and_exactly_this(
+        self,
+    ):
+        # Machine mode is where the firmware of a devicetree runs, so the
+        # supervisor's page and line are not in it.
+        platform = cpu_with_an_imsic(identities=127)
+
+        node = textwrap.dedent(
+            """\
+            imsic: interrupt-controller@24000000 {
+            \tcompatible = "riscv,imsic";
+            \treg = <0x0 0x24000000 0x0 0x1000>;
+            \t#address-cells = <0>;
+            \t#interrupt-cells = <1>;
+            \tinterrupt-controller;
+            \tmsi-controller;
+            \triscv,num-ids = <127>;
+            \triscv,hart-id = <0>;
+            \tinterrupts-extended = <&cpu_intc 11>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
+class TestWhenOnlyAnImsicsPageForTheSupervisorIsOnTheCpusBus:
+    def test_the_devicetree_has_no_node_for_it(self):
+        platform = cpu_with_an_imsic(machine_page_at=None)
+
+        assert "imsic" not in platform.devicetree()
+
+
 class TestWhenAnMsiBridgesLinesGoToPlicSources:
     def test_its_node_is_exactly_this(self):
         platform, bus, plic = cpu_with_its_peripherals()

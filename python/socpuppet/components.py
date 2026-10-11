@@ -70,6 +70,10 @@ class DeviceNode(NamedTuple):
     on_bus: bool = True
     #: The `chosen` properties this node can fill, such as `zephyr,console`.
     chosen: tuple[str, ...] = ()
+    #: Which of the component's output lines are this node's interrupts, by
+    #: port. None means all of them, which is right for a component that is
+    #: one device.
+    interrupts: tuple[str, ...] | None = None
 
 
 def cells(value: int) -> str:
@@ -532,6 +536,74 @@ class IdealNand(Component):
     blocks: int
     pages_per_block: int = 64
     page_size: int = 4096
+
+
+class Imsic(Component):
+    """A RISC-V IMSIC: the interrupt controller a CPU is sent messages at.
+
+    🎓 An IMSIC (incoming message-signalled interrupt controller) is half
+    of RISC-V's Advanced Interrupt Architecture. A device interrupts by
+    writing a number, an interrupt identity, to an address, and no wire
+    runs from the device to the CPU. A PCIe device's interrupt is such a
+    message already.
+
+    It keeps a file of pending identities for machine mode and another for
+    supervisor mode, each with a page of 4 KiB for its messages: map
+    `machine` and `supervisor` onto the CPU's bus, where the devices that
+    send can reach them. Connect `irq` to the CPU's `irq` and
+    `supervisor_irq` to its `supervisor_irq`. The files' registers are not
+    on the bus at all: firmware reaches them through the CPU, which is
+    what `csr` is for.
+
+    `identities` is the highest identity each file has: 63, or 127, and so
+    on up to 2047. The first is 1.
+    """
+
+    implementation = "imsic"
+    port_specs = (
+        target("machine"),
+        target("supervisor", required=False),
+        target("csr", required=False),
+        wire_out("irq"),
+        wire_out("supervisor_irq", required=False),
+    )
+    #: Each file's page.
+    mapped_size = 0x1000
+
+    identities: int = 63
+
+    def __post_init__(self) -> None:
+        # A file's registers hold 64 identities each and identity 0 is
+        # none, so a file ends one short of a whole register.
+        if self.identities % 64 != 63 or self.identities > 2047:
+            raise ValueError(
+                f"An IMSIC's highest identity is 63, 127 and so on up to "
+                f"2047, one short of a multiple of 64, and "
+                f"{self.identities} was given."
+            )
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+        # The page for machine mode's messages and that mode's line. Machine
+        # mode is where the firmware a devicetree is generated for runs.
+        if "machine" not in reached:
+            return None
+        return DeviceNode(
+            "interrupt-controller",
+            ((reached["machine"].address, self.mapped_size),),
+            (
+                'compatible = "riscv,imsic";',
+                "#address-cells = <0>;",
+                # An interrupt is named by one number: its identity.
+                "#interrupt-cells = <1>;",
+                "interrupt-controller;",
+                "msi-controller;",
+                f"riscv,num-ids = <{self.identities}>;",
+                # The one hart a socpuppet CPU is.
+                "riscv,hart-id = <0>;",
+            ),
+            interrupts=("irq",),
+        )
 
 
 class MachineTimer(Component):

@@ -232,6 +232,8 @@ INSTANTIATE_TEST_SUITE_P(
                    {{"xlen", 32}, {"reset_vector", 0}, {"gdb_port", 65536}},
                    "gdb_port",
                    "65536"},
+        OutOfRange{"imsic", {{"identities", 62}}, "identities", "62"},
+        OutOfRange{"imsic", {{"identities", 2048}}, "identities", "2048"},
         OutOfRange{"behavioral_nvme",
                    {{"blocks", 16}, {"vectors", 0}},
                    "vectors",

@@ -38,6 +38,7 @@ EXAMPLES = [
     sp.DmaEngine(),
     sp.FlashController(),
     sp.IdealNand(blocks=4),
+    sp.Imsic(),
     sp.MachineTimer(),
     sp.Memory(size=0x100),
     sp.MsiPlicBridge(vectors=3),
@@ -96,6 +97,13 @@ class TestAPcieEndpointWithANumberOfVectorsMsixCannotHave:
                 function_size=0x2000,
                 vectors=vectors,
             )
+
+
+class TestAnImsicWithANumberOfIdentitiesTheSpecificationDoesNotAllow:
+    @pytest.mark.parametrize("identities", [0, 5, 64, 2048, 2111])
+    def test_is_refused_and_the_error_says_which_it_allows(self, identities):
+        with pytest.raises(ValueError, match="63, 127"):
+            sp.Imsic(identities=identities)
 
 
 class TestTheCatalogue:

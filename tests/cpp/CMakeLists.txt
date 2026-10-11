@@ -40,6 +40,7 @@ add_executable(kernel_tests
   contracts/link_test.cpp
   contracts/machine_timer_test.cpp
   contracts/memory_test.cpp
+  contracts/message_controller_test.cpp
   contracts/nand_test.cpp
   contracts/nvme_test.cpp
   contracts/uart_test.cpp

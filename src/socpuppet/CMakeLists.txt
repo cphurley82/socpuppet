@@ -198,7 +198,9 @@ target_sources(socpuppet_models INTERFACE
     models/d2d_link.h
     models/dma_engine.h
     models/flash_controller.h
+    models/hart_registers.h
     models/ideal_nand.h
+    models/imsic.h
     models/interrupt_lines.h
     models/memory.h
     models/msi_plic_bridge.h

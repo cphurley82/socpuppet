@@ -16,6 +16,7 @@
 #include "socpuppet/models/dma_engine.h"
 #include "socpuppet/models/flash_controller.h"
 #include "socpuppet/models/ideal_nand.h"
+#include "socpuppet/models/imsic.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/msi_plic_bridge.h"
@@ -50,6 +51,10 @@ namespace {
 // anything that takes its interrupt messages may. MSI-X, the capability
 // that tells the host about them, has room for 2048.
 constexpr Within kInterruptVectors{.least = 1, .most = 2048};
+
+// The highest interrupt identity an IMSIC's files may have. The AIA
+// specification starts at 63 and stops at 2047.
+constexpr Within kInterruptIdentities{.least = 63, .most = 2047};
 
 // A number that cannot be zero, for a rate that is divided by: a link
 // carrying no bytes in a nanosecond would never carry anything. A time of
@@ -140,6 +145,24 @@ Registry BuiltinComponents() {
                      .blocks = static_cast<std::uint32_t>(
                          parameters.Required("blocks", kNandCount))});
     std::vector<Port> ports{TargetPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("imsic", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<Imsic>(
+        name, static_cast<std::uint32_t>(
+                  parameters.Required("identities", kInterruptIdentities)));
+    // Only the page for machine mode's messages and its line have to go
+    // somewhere. A platform whose firmware never leaves machine mode has
+    // no use for the supervisor's. Mind that a file can only be switched
+    // on through `csr`: with nothing connected there, no message ever
+    // interrupts.
+    std::vector<Port> ports{
+        TargetPort("machine", module->machine),
+        TargetPort("supervisor", module->supervisor, /*required=*/false),
+        TargetPort("csr", module->csr, /*required=*/false),
+        WireSourcePort("irq", module->irq),
+        WireSourcePort("supervisor_irq", module->supervisor_irq,
+                       /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("machine_timer", [](const char* name, Parameters& parameters) {

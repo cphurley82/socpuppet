@@ -87,6 +87,28 @@ concept InterruptControllerSlot =
       { controller.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
     };
 
+// An interrupt controller that is sent messages, where the one above has
+// lines: RISC-V's IMSIC. It is built from a name and the highest interrupt
+// identity it has, and keeps an interrupt file for machine mode and one
+// for supervisor mode. Each file has a target socket for the page a device
+// writes its message to, and an interrupt output for the hart. The hart
+// reaches the files' registers through a third target socket, `csr`, as
+// socpuppet/models/hart_registers.h has it.
+template <typename T>
+concept MessageControllerSlot =
+    std::constructible_from<T, sc_core::sc_module_name, std::uint32_t> &&
+    requires(T controller) {
+      { controller.machine } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      {
+        controller.supervisor
+      } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { controller.csr } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { controller.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
+      {
+        controller.supervisor_irq
+      } -> std::convertible_to<sc_core::sc_out<bool>&>;
+    };
+
 // A UART: built from a name, reached through one TLM target socket, and
 // keeping what was transmitted through it as text.
 template <typename T>

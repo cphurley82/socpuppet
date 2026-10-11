@@ -159,7 +159,12 @@ def _node(
     # finds an interrupt by its place in the list.
     ports = placed.component.ports
     for each in sorted(
-        (each for each in connections if each.source.placed is placed),
+        (
+            each
+            for each in connections
+            if each.source.placed is placed
+            and (node.interrupts is None or each.source.name in node.interrupts)
+        ),
         key=lambda each: ports.index(each.source.name),
     ):
         sink = each.sink.placed
