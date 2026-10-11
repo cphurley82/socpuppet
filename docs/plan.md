@@ -41,7 +41,7 @@ Changes from the handoff's step order:
 | M16 | **SHRM and the two-socket board** | none | scripted SHRM firmware → RV32 + Zephyr; pass-through → link between sockets | M13 | Two hosts in one simulation: one writes a message into memory the other's SHRM lent it, across the board, and the other reads it on its console |
 | M17 | **Ethernet** | none | none (Python is the far end of the cable) | M13 | Zephyr's `echo_server` answers a datagram that Python sends down the cable; the run's capture opens in Wireshark |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC, TRNG | none | none | M13 | Zephyr's own sample or test for each class passes, with Python at the far end of the pins |
-| M19 | **AI processor** | none | whatever M12's gate leaves standing in | M12, M13, M14, M15 | An inference whose weights are in flash, its data moved through an IOMMU, its completion an interrupt message, its answer checked from Python |
+| M19 | **AI processor** | none | none | M12, M13, M14, M15 | An inference whose weights are in flash, its data moved through an IOMMU, its completion an interrupt message, its answer checked from Python |
 | M9 | Realistic NAND + garbage collection | 7 | ideal NAND → realistic NAND | M4 | M4/M6 tests pass under sustained writes |
 | M10 | Validation scenarios | 9 | none | M8, M9 | Scenario suite (below) |
 | M11 | Stretch: RTL block, power/telemetry | 10 | none | M8 | To be defined |
@@ -321,7 +321,7 @@ And where each block comes from. Borrowing counts for as much here as it did in 
 | Ethernet MAC | VPV-Peripherals, `minres/ethmac` | a driver, in Zephyr or anywhere |
 | GPIO, SPI | VPV-Peripherals, `sifive/gpio` and `sifive/spi` | |
 | I2C, RTC, TRNG | ours, each laid out as a device Linux already has a driver for | |
-| AI processor | M12 decides | |
+| AI processor | ours, 🎭 behavioral, its arithmetic a Python function (numpy's, for now) | |
 
 ⚠️ VCML has a complete RISC-V IOMMU and an APLIC with MSI mode, and neither is borrowed. M2's spike found that VCML ends the process with `abort()` on an error ([upstream.md](upstream.md)), and a Python interpreter that vanishes is not a price a teaching tool can pay. They are good things to read beside the specifications.
 
@@ -463,10 +463,11 @@ What Linux will ask: nothing more. Choosing layouts it already drives is the who
 
 ### M19 — AI processor
 
-Whatever M12's gate chose, placed where it said. The exit is the same either way, and so is what the host's firmware has to do: describe the work, ring a doorbell, and wait for an interrupt.
+M12's gate chose 🎭 the behavioral NPU of ours, on the compute die, with its arithmetic in Python ([npu-spike.md](npu-spike.md), under Decisions). What the host's firmware has to do is what it would do with any NPU: describe the work, ring a doorbell, and wait for an interrupt.
 
-- **If it is 🎭 the behavioral NPU**: a register map of ours, a queue of descriptors in memory (an operation, where its operands are, their shapes and their type), a handful of operations (multiply matrices, add, clamp at zero, perhaps convolve), its data moved by DMA through an IOMMU of its own, and its completion a message to the IMSIC. A Zephyr driver, and `firmware/mlp`, which runs a small multi-layer perceptron on an input both sides know.
-- **If it is QBox's Hexagon**: an optional component built from source, its program compiled with the open toolchain, the same doorbell, and the same exit test.
+- **The block**: a register map of ours, a queue of descriptors in memory (an operation, where its operands are, their shapes and their type), a handful of operations (multiply matrices, add, clamp at zero, perhaps convolve), its data moved by DMA through an IOMMU of its own, and its completion a message to the IMSIC. A Zephyr driver, and `firmware/mlp`, which runs a small multi-layer perceptron on an input both sides know.
+- 🧵 **The arithmetic is a Python callable, and the library behind it is interchangeable.** The block hands each operation's operands to Python as buffers and takes the product back as one; numpy is what the default callable is written with, and torch or another library is a different callable, not a C++ change. Planning M19 says where the callable is set (on the board, or from the strings at run time) and whether numpy is a dependency of the wheel or an extra. The spike's `Multiplier` seam in C++ is the draft of it.
+- 🦜 **Not QBox's Hexagon**, which the spike also ran. It stays a candidate for an optional, from-source component later, behind the same doorbell.
 
 Exit: an inference whose weights were read from flash, whose data went through the IOMMU, whose completion was an interrupt message, and whose answer Python checks against numpy's.
 
@@ -507,12 +508,11 @@ Exit: a shell prompt on the console, a `ping` answered by Python, and the infere
 | Decision | Must be settled by | Default until then |
 |---|---|---|
 | `native_sim` firmware tier | Optional, any time after M3 | not built |
-| What the AI processor is, and which die it is on | M12's gate | 🎭 a behavioral one of ours, on the compute die |
 | Does the boot ROM check an image's signature, which is what makes a boot secure? | After M14 | a CRC and nothing more |
 | A protocol between sockets, CXL or one like it, where M16 has memory-mapped TLM | After M16 | none |
 | A die of its own for the AI processor; host DRAM on the IO die | After M16 | one compute die a socket, DRAM on the compute die |
 
-Settled on 2026-10-10, planning Phase 4, having been left open until after M8: the bootchain has a ROM stage for each image ([M14](#m14--boot-rom-flash-system-controller-watchdog)), and a second SoC, which is more than the second compute die this table used to ask about, comes with [M16](#m16--shrm-and-the-two-socket-board).
+Settled on 2026-10-10, planning Phase 4, having been left open until after M8: the bootchain has a ROM stage for each image ([M14](#m14--boot-rom-flash-system-controller-watchdog)), and a second SoC, which is more than the second compute die this table used to ask about, comes with [M16](#m16--shrm-and-the-two-socket-board). Settled the same day at M12's gate: the AI processor is 🎭 a behavioral one of ours, on the compute die, with its arithmetic a Python function written with numpy for now and the library interchangeable ([npu-spike.md](npu-spike.md), under Decisions). The row about a die of its own stays open: the gate kept it on the compute die for want of a reason to move it, not for good.
 
 ## Verification
 
@@ -523,7 +523,7 @@ Settled on 2026-10-10, planning Phase 4, having been left open until after M8: t
 
 ## Status
 
-**M0 to M8 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. All three now boot together, which was Phase 3: the manager's firmware trains the die-to-die link and lets the host go, the host's firmware finds its drive across the link, and the SSD's firmware is the drive. Each CPU can have a debugger of its own. Phase 4 is next, the cast of a real SoC, which was added on 2026-10-10 and starts with M12's spike. **M12's spike has run**: both candidates took the exit test's multiply from a descriptor and raised the host's interrupt, and the report with its recommendation is [npu-spike.md](npu-spike.md). It is stopped there, for the decision. M9 (a NAND that behaves like one) can still be pulled forward at any time, as it could since M4.
+**M0 to M8 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. All three now boot together, which was Phase 3: the manager's firmware trains the die-to-die link and lets the host go, the host's firmware finds its drive across the link, and the SSD's firmware is the drive. Each CPU can have a debugger of its own. Phase 4 is next, the cast of a real SoC, which was added on 2026-10-10 and starts with M12's spike. **M12 is done**: both candidates took the exit test's multiply from a descriptor and raised the host's interrupt, the report is [npu-spike.md](npu-spike.md), and the gate chose 🎭 the behavioral NPU on the compute die, with its arithmetic in Python (numpy for now, the library interchangeable). M13 is next. M9 (a NAND that behaves like one) can still be pulled forward at any time, as it could since M4.
 
 What M8 delivered: the full bootchain, with no script in it: every CPU is a CPU running its firmware. 🎭 The NAND is the stand-in that is left, and M9's. The exit test is `tests/python/test_m8_exit.py`. On `host(drive_blocks=4096, manager=add_manager, drive=add_ssd)`, with the images M5, M3b and M4 built, the three consoles are heard as one story: the manager says the link is up and the compute die released before the host's first line, the SSD says its drive is up before the host reports the disk's size, and Zephyr's disk test passes its read and write tests against the SSD's firmware. `examples/full_bootchain.py` is the show to run by hand: the link's bring-up out of the trace, and then who said what, and when. [boot-your-firmware.md](boot-your-firmware.md) has "The whole cast: three firmwares" and "Debugging three CPUs at once".
 
