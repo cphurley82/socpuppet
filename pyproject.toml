@@ -42,6 +42,9 @@ socpuppet = "socpuppet.cli:main"
 "socpuppet.pytest_plugin" = "socpuppet.pytest_plugin"
 
 [dependency-groups]
+# What the NPU spike's numpy flavour needs (spikes/npu). Not a dependency
+# of socpuppet.
+spike = ["numpy>=2.3"]
 dev = [
     "actionlint-py>=1.7.12.25",
     "clang-format==23.1.2",

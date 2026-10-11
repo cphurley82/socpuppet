@@ -616,3 +616,27 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: test `PCI_COMMAND_BUS_MASTER`, for messages and for DMA.
 - **Kind**: bug.
 - **When it lands**: nothing to delete here.
+
+## QBox
+
+[qualcomm/qbox](https://github.com/qualcomm/qbox), which the NPU spike builds at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `spikes/npu/hexagon/build.sh`. Not part of socpuppet's build: it is QEMU underneath (GPL-2.0), so users build it from source in a container.
+
+### The lock file pins a libqemu tag that is not published
+
+- **Where**: `package-lock.cmake`, the `libqemu` entry, from commit `0e4bdfd1` ("Adjust for new libqemu", 2026-10-05) on.
+- **What is wrong**: it pins `GIT_TAG libqemu-v11.0.50-v0.1`, and [qualcomm/qemu](https://github.com/qualcomm/qemu) has no such tag (its newest in that series is `libqemu-v11.0-v0.15`). A clean build from the head of `main` cannot fetch QEMU.
+- **How to see it**: `cmake --preset gcc` at that commit ends with `fatal: invalid reference: libqemu-v11.0.50-v0.1`, before anything is compiled.
+- **What we do**: build the commit before it, `4d63017c`, whose tag is there. The ISS spike's recipe (`spikes/iss/qbox/build.sh`) names a later commit and would fail the same way today.
+- **Upstream fix**: publish the tag, or pin one that is published.
+- **Kind**: build.
+- **When it lands**: the two recipes can move to the head again.
+
+### The Hexagon components do not compile as C++20
+
+- **Where**: `qemu-components/cpu_hexagon/include/hexagon.h` line 103 and `qemu-components/hexagon_globalreg/include/hexagon_globalreg.h` line 68, `SCP_FATAL(())("Unrecognized Architecture Revision: " + dsp_arch)`.
+- **What is wrong**: `SCP_FATAL` is `fmt::format` underneath, and from C++20 on fmt checks its format string at compile time, so a string built at run time is refused: `the value of 'dsp_arch' is not usable in a constant expression`. QBox builds itself as C++17 and never sees it; a program that links QBox with C++20 code (socpuppet is C++20, and SystemC only links with code built to the same standard) has to build QBox as C++20 too.
+- **How to see it**: `cmake --preset gcc -DLIBQEMU_TARGETS=hexagon -DCMAKE_CXX_STANDARD=20`, then build `hexagon_globalreg`.
+- **What we do**: `spikes/npu/hexagon/build.sh` rewrites both lines to `("Unrecognized Architecture Revision: {}", dsp_arch)` before configuring, as it does for the ISS spike's two C++20 patches.
+- **Upstream fix**: the same two-word change; it is what the macro expects and it reads the same in C++17.
+- **Kind**: portability.
+- **When it lands**: the third `sed` in the recipe.

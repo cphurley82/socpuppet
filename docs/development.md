@@ -80,9 +80,16 @@ Configuring prints a note when the tree is in one of the two special modes.
 
 Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted.
 
-There is no spike in the build today. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it.
+One spike is in the build today, behind an option that is off by default. The NPU spike ([spikes/npu](../spikes/npu/README.md), report in [npu-spike.md](npu-spike.md)) asks what should sit in the accelerator slot. `SOCPUPPET_BUILD_SPIKES` turns it on, and the `spike` preset is the `dev` preset with that set, so that the everyday build, coverage and the wheel never see it:
 
-💡 The next spike gets a CMake option that is off by default and a preset that turns it on, so that the everyday build, coverage and the wheel never see it. The ISS spike's, at commit `7c7c8c0`, are the pattern to copy.
+```sh
+uv sync --group spike                  # what the spike needs beyond the dev tools (numpy)
+uv run cmake --preset spike
+uv run cmake --build --preset spike
+uv run ctest --preset spike            # only the tests labelled `spike`
+```
+
+The earlier spikes have gone. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it.
 
 ## Firmware
 

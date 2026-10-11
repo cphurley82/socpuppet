@@ -40,4 +40,6 @@ docker run --rm -v socpuppet-qbox:/qbox -v "$PWD:/workspace" socpuppet-qbox sh -
   ctest --test-dir /qbox/integration'
 ```
 
+⚠️ The commit `build.sh` names pins a QEMU tag that is not published, so this recipe fails at configure time today (see [docs/upstream.md](../../docs/upstream.md), under QBox). The NPU spike's recipe, [spikes/npu/hexagon/build.sh](../npu/hexagon/build.sh), builds the commit before it.
+
 💡 `QBOX_CXX_STANDARD=20` matters. QBox builds itself as C++17, socpuppet is C++20, and SystemC only links with code built to the same standard. What else that rebuild needs is in the report.
