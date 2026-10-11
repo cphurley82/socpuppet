@@ -275,15 +275,78 @@ def host(
     on the real link its management traffic, the sideband, apart from
     that (`socpuppet.ucie` reads its packets back).
     """
+    if drive is not None and drive_blocks is None:
+        raise ValueError(
+            "The host was given a `drive` and not told how big it is. "
+            "Say how many 512-byte blocks it holds: "
+            "host(drive_blocks=4096, drive=...)."
+        )
     platform = Platform()
-    compute = platform.group("compute")
-    io = platform.group("io")
+    compute_group = platform.group("compute")
+    io_group = platform.group("io")
+    compute = _compute_die(platform, compute_group, gdb_port=gdb_port)
+    link_model = PassThroughLink() if manager is None else D2dLink()
+    d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
+    placed_manager = None
+    if manager is not None:
+        platform.connect(d2d.a.reset, compute.cpu.reset)
+        # The manager has a bus of its own, with the link's registers on
+        # it and nothing the host reaches. On the IO die's main bus it
+        # would find the root complex's window at another address than
+        # the host's CPU does, which a platform refuses, and the host's
+        # devicetree would gain the link's registers.
+        management = io_group.group("manager")
+        placed_manager = manager(
+            platform,
+            management,
+            management.add("bus", Router()),
+            link_end=d2d.b,
+        )
+    io = _io_die(platform, io_group)
+    # Down the link: the compute die sees the IO die's bus in a window.
+    compute.bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
+    platform.connect(d2d.b.initiator, io.bus.target)
+    # And up it: what the IO die sends comes onto the compute die's bus.
+    io.up.map(d2d.b.target, base=0, size=UPLINK_REACH)
+    platform.connect(d2d.a.initiator, compute.bus.add_input())
+    return Host(
+        platform,
+        compute.cpu,
+        io.uart,
+        compute.imsic,
+        d2d,
+        drive=(
+            None
+            if drive_blocks is None
+            else _drive(
+                platform,
+                io_group,
+                io,
+                blocks=drive_blocks,
+                add=drive or add_behavioral_drive,
+            )
+        ),
+        manager=placed_manager,
+    )
 
+
+class _ComputeDie(NamedTuple):
+    """What the rest of the host wants of its compute die."""
+
+    cpu: Placed
+    bus: PlacedRouter
+    imsic: Placed
+
+
+def _compute_die(
+    platform: Platform, place: Group, *, gdb_port: int
+) -> _ComputeDie:
+    """Describe the die the CPU is on, up to its end of the link."""
     # RV64GC with supervisor and user mode: the core an application
     # processor has, and the one Linux needs. Zephyr runs on it in machine
     # mode and leaves floating point and the other two modes alone. This
     # core has no PMP, which the RV64IMAC one had.
-    cpu = compute.add(
+    cpu = place.add(
         "cpu",
         DbtRiseCpu(
             xlen=64,
@@ -293,51 +356,15 @@ def host(
             modes="msu",
         ),
     )
-    compute_bus = compute.add("bus", Router())
-    ram = compute.add("ram", Memory(size=RAM_SIZE))
-    imsic = compute.add("imsic", Imsic())
-    timer = compute.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
-    link_model = PassThroughLink() if manager is None else D2dLink()
-    d2d = platform.link("d2d", link_model, compute, io, trace=trace)
-    placed_manager = None
-    if manager is not None:
-        platform.connect(d2d.a.reset, cpu.reset)
-        # The manager has a bus of its own, with the link's registers on
-        # it and nothing the host reaches. On the IO die's main bus it
-        # would find the root complex's window at another address than
-        # the host's CPU does, which a platform refuses, and the host's
-        # devicetree would gain the link's registers.
-        management = io.group("manager")
-        placed_manager = manager(
-            platform,
-            management,
-            management.add("bus", Router()),
-            link_end=d2d.b,
-        )
-    io_bus = io.add("bus", Router())
-    uart = io.add("uart", Ns16550())
-    aplic = io.add("aplic", Aplic())
-    # The way up to the compute die, for what the IO die sends of its own
-    # accord: the APLIC's messages, and with a drive what the drive sends.
-    up = io.add("up", Router())
-
-    platform.connect(cpu.socket, compute_bus.target)
-    compute_bus.map(ram.socket, base=RAM_BASE)
-    compute_bus.map(timer.socket, base=TIMER_BASE)
-    compute_bus.map(imsic.machine, base=IMSIC_BASE)
-    compute_bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
-    compute_bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
-    platform.connect(d2d.b.initiator, io_bus.target)
-    io_bus.map(uart.socket, base=UART_OFFSET)
-    io_bus.map(aplic.socket, base=APLIC_OFFSET)
-    # The UART's interrupt is a wire as far as the APLIC, on its own die,
-    # and a message from there: it crosses the die-to-die link the other
-    # way and comes onto the compute die's bus, where the IMSIC's page is.
-    platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
-    platform.connect(aplic.msi, up.target)
-    up.map(d2d.b.target, base=0, size=UPLINK_REACH)
-    platform.connect(d2d.a.initiator, compute_bus.add_input())
-
+    bus = place.add("bus", Router())
+    ram = place.add("ram", Memory(size=RAM_SIZE))
+    imsic = place.add("imsic", Imsic())
+    timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
+    platform.connect(cpu.socket, bus.target)
+    bus.map(ram.socket, base=RAM_BASE)
+    bus.map(timer.socket, base=TIMER_BASE)
+    bus.map(imsic.machine, base=IMSIC_BASE)
+    bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
     platform.connect(imsic.irq, cpu.irq)
     platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
     # The IMSIC's registers are the CPU's to reach, and not on the bus.
@@ -345,43 +372,56 @@ def host(
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
-    if drive_blocks is None:
-        if drive is not None:
-            raise ValueError(
-                "The host was given a `drive` and not told how big it is. "
-                "Say how many 512-byte blocks it holds: "
-                "host(drive_blocks=4096, drive=...)."
-            )
-        return Host(
-            platform,
-            cpu,
-            uart,
-            imsic,
-            d2d,
-            drive=None,
-            manager=placed_manager,
-        )
+    return _ComputeDie(cpu, bus, imsic)
 
-    root_complex = io.add("rc", PcieRootComplex())
-    io_bus.map(root_complex.ecam, base=ECAM_OFFSET, size=ECAM_SIZE)
-    io_bus.map(
+
+class _IoDie(NamedTuple):
+    """What the rest of the host wants of its IO die."""
+
+    bus: PlacedRouter
+    uart: PlacedUart
+    #: The way up to the compute die, for what the IO die sends of its own
+    #: accord: the APLIC's messages, and with a drive what the drive sends.
+    up: PlacedRouter
+
+
+def _io_die(platform: Platform, place: Group) -> _IoDie:
+    """Describe the die the devices are on, up to its end of the link."""
+    bus = place.add("bus", Router())
+    uart = place.add("uart", Ns16550())
+    aplic = place.add("aplic", Aplic())
+    up = place.add("up", Router())
+    bus.map(uart.socket, base=UART_OFFSET)
+    bus.map(aplic.socket, base=APLIC_OFFSET)
+    # The UART's interrupt is a wire as far as the APLIC, on its own die,
+    # and a message from there: it crosses the die-to-die link the other
+    # way and comes onto the compute die's bus, where the IMSIC's page is.
+    platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
+    platform.connect(aplic.msi, up.target)
+    return _IoDie(bus, uart, up)
+
+
+def _drive[Drive: PcieDrive](
+    platform: Platform,
+    place: Group,
+    io: _IoDie,
+    *,
+    blocks: int,
+    add: AddDrive[Drive],
+) -> HostDrive[Drive]:
+    """Describe a PCIe root complex on the IO die, and the SSD on its link."""
+    root_complex = place.add("rc", PcieRootComplex())
+    io.bus.map(root_complex.ecam, base=ECAM_OFFSET, size=ECAM_SIZE)
+    io.bus.map(
         root_complex.mmio, base=PCIE_WINDOW_OFFSET, size=PCIE_WINDOW_SIZE
     )
     # What the drive sends up goes the way the APLIC's messages do: its
     # DMA to the RAM, and its interrupt messages to the IMSIC's page.
-    platform.connect(root_complex.dma, up.add_input())
-    ssd = (drive or add_behavioral_drive)(
-        platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
+    platform.connect(root_complex.dma, io.up.add_input())
+    ssd = add(
+        platform, root_complex, blocks=blocks, group=platform.group("ssd")
     )
-    return Host(
-        platform,
-        cpu,
-        uart,
-        imsic,
-        d2d,
-        drive=HostDrive(ssd, root_complex),
-        manager=placed_manager,
-    )
+    return HostDrive(ssd, root_complex)
 
 
 def drive_overlay(board: Host[Any] | None = None) -> str:
