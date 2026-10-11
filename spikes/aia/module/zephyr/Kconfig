@@ -1,0 +1,91 @@
+# The driver for a socpuppet platform's PCIe root complex. It is built
+# whenever the devicetree has one and the application wants PCIe.
+config SOCPUPPET_PCIE
+	bool "socpuppet PCIe root complex"
+	default y
+	depends on DT_HAS_SOCPUPPET_PCIE_ENABLED
+	depends on PCIE_CONTROLLER
+	# A device's interrupt handler is connected when its driver starts,
+	# not when the image is built.
+	select DYNAMIC_INTERRUPTS if PCIE_MSI
+	help
+	  The root complex of a socpuppet platform: its configuration
+	  window, its memory window, and interrupt messages that an
+	  MSI-to-PLIC bridge puts on sources of the PLIC.
+
+# Zephyr's MSI-X code maps a device's table with a kernel function that
+# only a kernel with an MMU has (see docs/upstream.md in socpuppet). A
+# socpuppet SoC has none, and there an address is already the address.
+config SOCPUPPET_MAP_WITHOUT_MMU
+	bool
+	default y
+	depends on SOC_FAMILY_SOCPUPPET && PCIE_MSI_X && !MMU
+
+# The three devices an SSD's firmware drives. Each driver is built
+# whenever the devicetree has its device.
+config SOCPUPPET_NVME_FRONTEND
+	bool "socpuppet SSD NVMe frontend"
+	default y
+	depends on DT_HAS_SOCPUPPET_NVME_FRONTEND_ENABLED
+	help
+	  The NVMe frontend of a socpuppet SSD: the hardware that keeps the
+	  host's queues, hands each command to the firmware and posts the
+	  completion the firmware gives it. The driver's functions are in
+	  <socpuppet/drivers/nvme_frontend.h>.
+
+config SOCPUPPET_DMA_ENGINE
+	bool "socpuppet SSD DMA engine"
+	default y
+	depends on DT_HAS_SOCPUPPET_DMA_ENGINE_ENABLED
+	help
+	  The DMA engine of a socpuppet SSD, which copies between the host's
+	  memory and the SSD's own. The driver's functions are in
+	  <socpuppet/drivers/dma_engine.h>.
+
+# The flash controller is a driver of Zephyr's flash class, so it is built
+# when the application has asked for flash drivers at all.
+config SOCPUPPET_FLASH_CONTROLLER
+	bool "socpuppet SSD flash controller"
+	default y
+	depends on DT_HAS_SOCPUPPET_FLASH_CONTROLLER_ENABLED
+	depends on FLASH
+	select FLASH_HAS_DRIVER_ENABLED
+	select FLASH_HAS_PAGE_LAYOUT
+	select FLASH_HAS_EXPLICIT_ERASE
+	help
+	  The flash controller of a socpuppet SSD, which moves pages between
+	  the NAND flash chip and the SSD's own memory. Firmware uses it
+	  through Zephyr's flash API.
+
+config SOCPUPPET_FLASH_CONTROLLER_LARGEST_PAGE
+	int "Largest NAND page the flash controller's driver can read part of"
+	default 4096
+	depends on SOCPUPPET_FLASH_CONTROLLER
+	help
+	  The driver learns the size of a NAND page from the chip. To read
+	  part of a page it has to fetch the whole of it, into memory of its
+	  own, and this is how many bytes it sets aside.
+
+# One end of a socpuppet die-to-die link. It is a driver of Zephyr's reset
+# class, whose one line is the CPU of the die at the other end, so it is
+# built when the application has asked for reset drivers at all. The
+# training is functions of its own.
+config SOCPUPPET_UCIE_LINK
+	bool "socpuppet die-to-die link"
+	default y
+	depends on DT_HAS_SOCPUPPET_UCIE_LINK_ENABLED
+	depends on RESET
+	help
+	  One end of the die-to-die link of a socpuppet chiplet platform, in
+	  the style of UCIe. The firmware on one die trains the link and
+	  lets the other die out of reset. The driver's functions are in
+	  <socpuppet/drivers/ucie_link.h>, and letting the other die go is
+	  Zephyr's reset API.
+
+# Zephyr's irq_enable() on RISC-V knows the CPU's lines and a PLIC's
+# sources, and not an IMSIC's identities (see docs/upstream.md in
+# socpuppet).
+config SOCPUPPET_AIA_IRQ
+	bool
+	default y
+	depends on SOC_FAMILY_SOCPUPPET && RISCV_IMSIC

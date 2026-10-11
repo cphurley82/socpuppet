@@ -1,0 +1,49 @@
+if SOC_FAMILY_SOCPUPPET
+
+# How many times a second the machine timer counts. The timer in each
+# board's platform description counts at the same rate, and the board's
+# tests keep the two from drifting apart (tests/python/test_host_board.py
+# and test_ssd_board.py).
+config SYS_CLOCK_HW_CYCLES_PER_SEC
+	default 10000000
+
+config RISCV_SOC_INTERRUPT_INIT
+	default y
+
+if RISCV_HAS_PLIC
+
+# Zephyr numbers interrupts in two levels. The first level is the CPU's
+# own, of which number 11 is the external interrupt that the PLIC drives.
+# The PLIC's sources are the second level, and get the numbers from 12 up.
+config 2ND_LVL_ISR_TBL_OFFSET
+	default 12
+
+config 2ND_LVL_INTR_00_OFFSET
+	default 11
+
+# The PLIC has 31 sources, and source 0, which means "none".
+config MAX_IRQ_PER_AGGREGATOR
+	default 32
+
+config NUM_IRQS
+	default 44
+
+endif # RISCV_HAS_PLIC
+
+if RISCV_IMSIC
+
+# Zephyr's IMSIC driver takes an identity as an interrupt's number, in one
+# table with the CPU's own sixteen. The IMSIC has identities 1 to 63.
+config NUM_IRQS
+	default 64
+
+endif # RISCV_IMSIC
+
+# Zephyr's PCIe bus scan keeps its place in an array of 3 KB on the stack,
+# and it runs before the kernel has threads, on the stack that interrupts
+# use. With the usual 2 KB of that it runs off the end, into whatever the
+# linker put next, and says nothing (see docs/upstream.md in socpuppet).
+config ISR_STACK_SIZE
+	default 8192 if PCIE_CONTROLLER
+
+endif # SOC_FAMILY_SOCPUPPET

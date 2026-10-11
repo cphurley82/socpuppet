@@ -1,0 +1,24 @@
+# C written for Zephyr follows Zephyr's own style, and not the C++ code's:
+# tabs, braces as the Linux kernel has them, 100 columns. These are the
+# settings of the .clang-format at the top of the Zephyr tree that decide
+# how plain C is laid out. See docs/style.md.
+BasedOnStyle: LLVM
+AlignConsecutiveMacros: AcrossComments
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+BitFieldColonSpacing: After
+BreakBeforeBraces: Linux
+ColumnLimit: 100
+ContinuationIndentWidth: 8
+IndentCaseLabels: false
+IndentGotoLabels: false
+IndentWidth: 8
+InsertBraces: true
+InsertNewlineAtEOF: true
+SortIncludes: Never
+SpaceBeforeParens: ControlStatementsExceptControlMacros
+UseTab: ForContinuationAndIndentation
