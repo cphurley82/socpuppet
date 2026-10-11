@@ -56,6 +56,14 @@ struct CpuPlatform {
   // they need.
   void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
 
+  // The word a program run from the reset vector left as its result.
+  std::uint32_t ResultWord() {
+    std::array<std::uint8_t, 4> word{};
+    platform.DebugRead("cpu.socket", kResetVector + riscv::kResultOffset,
+                       std::as_writable_bytes(std::span{word}));
+    return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+  }
+
   // The byte a program run from the reset vector left as its result.
   std::uint8_t Result() {
     std::byte result{};
@@ -66,6 +74,22 @@ struct CpuPlatform {
 
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
 };
+
+// The word that a program loaded at `start` left `offset` bytes into its
+// result, read through the CPU's own view of memory.
+std::uint32_t ResultWordOf(socpuppet::Platform& platform, std::uint64_t start,
+                           std::uint64_t offset) {
+  std::array<std::uint8_t, 4> word{};
+  platform.DebugRead("cpu.socket", start + riscv::kResultOffset + offset,
+                     std::as_writable_bytes(std::span{word}));
+  return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+}
+
+// The one core with supervisor mode is also the one with floating point.
+// socpuppet offers the two together or neither, so both are asked for.
+socpuppet::Config TheCoreWithSupervisorMode() {
+  return {{"floating_point", 1}, {"supervisor_mode", 1}};
+}
 
 }  // namespace
 
@@ -100,10 +124,7 @@ TEST(WhenXlenIs64, TheCpusRegistersAre64BitsWide) {
 
 TEST(WhenA64BitCpuHasFloatingPointAndSupervisorMode,
      AValueGoesThroughAFloatingPointRegisterAndComesBack) {
-  // The one core with floating point is also the one with supervisor mode.
-  // socpuppet offers the two together or neither, so both are asked for.
-  CpuPlatform with_cpu{/*xlen=*/64,
-                       {{"floating_point", 1}, {"supervisor_mode", 1}}};
+  CpuPlatform with_cpu{/*xlen=*/64, TheCoreWithSupervisorMode()};
   with_cpu.Load(riscv::MoveByteThroughAFloatingPointRegisterThenSleep(0x5A));
 
   with_cpu.RunUntilAsleep();
@@ -269,17 +290,21 @@ TEST(WhenA64BitAndA32BitCpuShareASimulation, EachComputesInItsOwnWordSize) {
 }
 
 // A platform with a CPU, a RAM for its program, and a device that
-// interrupts it on the line `cpu_input` ("irq" or "timer_irq").
+// interrupts it on the line `cpu_input` ("irq", "timer_irq" or
+// "supervisor_irq").
 struct CpuPlatformWithAnInterruptSource {
   static constexpr std::uint64_t kRamBase = 0x8000'0000;
   static constexpr std::uint64_t kDeviceBase = 0x1000'0000;
 
+  // `more` is any parameters of the CPU beyond its word size and where it
+  // starts.
   CpuPlatformWithAnInterruptSource(
       const std::string& cpu_input,
-      const std::function<void(InterruptSource&)>& interrupts)
+      const std::function<void(InterruptSource&)>& interrupts,
+      socpuppet::Config more = {})
       : platform{WithAnInterruptSource(interrupts)} {
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", 64}, {"reset_vector", kRamBase}});
+    more.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
+    platform.Add("cpu", "dbt_rise_cpu", more);
     platform.Add("bus", "router",
                  {{"outputs", 2},
                   {"out0.base", kRamBase},
@@ -302,6 +327,11 @@ struct CpuPlatformWithAnInterruptSource {
 
   int TimesTheHandlerRan() {
     return platform.ModuleAt<InterruptSource>("device").TimesQuieted();
+  }
+
+  // The word a program left `offset` bytes into its result.
+  std::uint32_t ResultWord(std::uint64_t offset) {
+    return ResultWordOf(platform, kRamBase, offset);
   }
 
   static socpuppet::Registry WithAnInterruptSource(
@@ -328,6 +358,68 @@ TEST(WhenTheExternalInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
   with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
 
   EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
+}
+
+// Raises the line once a program has got to supervisor mode and gone to
+// sleep: twenty instructions, at 100 ns each.
+void RaiseOnceTheSupervisorSleeps(InterruptSource& device) {
+  device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+  device.Raise();
+}
+
+// Long enough for any program here to have got to supervisor mode, taken
+// its interrupt and gone back to sleep. They are a few dozen instructions.
+const sc_core::sc_time kUntilTheSupervisorSleepsAgain{1, sc_core::SC_MS};
+
+TEST(WhenAnInterruptHandedDownToSupervisorModeArrivesWhileTheCpuSleepsThere,
+     TheSupervisorsHandlerRunsOnce) {
+  CpuPlatformWithAnInterruptSource with_device{"supervisor_irq",
+                                               RaiseOnceTheSupervisorSleeps,
+                                               TheCoreWithSupervisorMode()};
+  with_device.Load(riscv::HandleTheSupervisorExternalInterruptByWritingTo(
+      CpuPlatformWithAnInterruptSource::kDeviceBase));
+
+  with_device.platform.Run(kUntilTheSupervisorSleepsAgain);
+
+  EXPECT_EQ(with_device.TimesTheHandlerRan(), 1);
+}
+
+TEST(WhenAnInterruptHandedDownToSupervisorModeArrivesWhileTheCpuSleepsThere,
+     SupervisorModeSeesItEnabledAndPendingInItsOwnRegisters) {
+  CpuPlatformWithAnInterruptSource with_device{"supervisor_irq",
+                                               RaiseOnceTheSupervisorSleeps,
+                                               TheCoreWithSupervisorMode()};
+  with_device.Load(riscv::StoreSieThenSipOnTheSupervisorExternalInterrupt(
+      CpuPlatformWithAnInterruptSource::kDeviceBase));
+
+  with_device.platform.Run(kUntilTheSupervisorSleepsAgain);
+
+  const std::uint32_t supervisor_external =
+      1U << riscv::kSupervisorExternalInterrupt;
+  const std::uint32_t sie = with_device.ResultWord(0);
+  const std::uint32_t sip = with_device.ResultWord(4);
+  EXPECT_EQ(sie, supervisor_external);
+  EXPECT_EQ(sip, supervisor_external);
+}
+
+TEST(WhenSupervisorModeEnablesInterruptsThatWereNotHandedDownToIt,
+     OnlyTheOneThatWasBecomesEnabled) {
+  CpuPlatform with_cpu{/*xlen=*/64, TheCoreWithSupervisorMode()};
+  with_cpu.Load(riscv::EnableEverySupervisorInterruptThenStoreSie());
+
+  with_cpu.RunUntilAsleep();
+
+  EXPECT_EQ(with_cpu.ResultWord(), 1U << riscv::kSupervisorExternalInterrupt);
+}
+
+TEST(WhenSupervisorModeSetsItsOwnSoftwareInterruptPending, ItsHandlerRunsOnce) {
+  CpuPlatform with_cpu{/*xlen=*/64, TheCoreWithSupervisorMode()};
+  with_cpu.Load(riscv::TakeASupervisorSoftwareInterruptOfItsOwnAsking());
+
+  with_cpu.RunUntilAsleep();
+
+  // The program's result is how many times its handler ran.
+  EXPECT_EQ(with_cpu.ResultWord(), 1U);
 }
 
 TEST(WhenTheTimerInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
@@ -453,10 +545,7 @@ struct CpuPlatformWithATimer {
 
   // The word a program left `offset` bytes into its result.
   std::uint32_t ResultWord(std::uint64_t offset = 0) {
-    std::array<std::uint8_t, 4> word{};
-    platform.DebugRead("cpu.socket", kRamBase + riscv::kResultOffset + offset,
-                       std::as_writable_bytes(std::span{word}));
-    return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+    return ResultWordOf(platform, kRamBase, offset);
   }
 
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};

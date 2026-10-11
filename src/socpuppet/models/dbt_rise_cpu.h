@@ -47,6 +47,10 @@ class DbtRiseCpu : public sc_core::sc_module {
   // The machine timer interrupt: what a platform's timer drives. Left
   // unconnected, it is tied low.
   sc_core::sc_in<bool> timer_irq{"timer_irq"};
+  // The supervisor external interrupt, for a core that has supervisor
+  // mode: what an interrupt controller's output for that mode drives. Left
+  // unconnected, it is tied low.
+  sc_core::sc_in<bool> supervisor_irq{"supervisor_irq"};
 
   // `xlen` is the width of its registers in bits, 32 or 64 (XLEN is the
   // RISC-V specification's name for it). `reset_vector` is the address of

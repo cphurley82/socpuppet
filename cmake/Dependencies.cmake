@@ -157,6 +157,8 @@ FetchContent_Declare(dbt_rise_riscv
   # again and again, because the core had not yet heard the line drop.
   # gdb-server-per-core: every core hung its `sysc` debugger command on the
   # first core's GDB server, where each now has a server of its own.
+  # supervisor-interrupts: a core with supervisor mode could not enable an
+  # interrupt handed down to that mode, so it never took one.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -164,6 +166,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-dmi-invalidate.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-interrupt-after-access.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-gdb-server-per-core.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-supervisor-interrupts.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

@@ -99,12 +99,14 @@ Registry BuiltinComponents() {
         DbtRiseCpuExtras{
             .floating_point = parameters.Optional("floating_point", 0) != 0,
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0});
-    std::vector<Port> ports{InitiatorPort("socket", module->socket),
-                            InitiatorPort("time", module->time,
-                                          /*required=*/false),
-                            WireSinkPort("irq", module->irq),
-                            WireSinkPort("timer_irq", module->timer_irq),
-                            WireSinkPort("reset", module->reset)};
+    std::vector<Port> ports{
+        InitiatorPort("socket", module->socket),
+        InitiatorPort("time", module->time,
+                      /*required=*/false),
+        WireSinkPort("irq", module->irq),
+        WireSinkPort("timer_irq", module->timer_irq),
+        WireSinkPort("supervisor_irq", module->supervisor_irq),
+        WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("dma_engine", [](const char* name, Parameters&) {

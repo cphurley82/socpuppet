@@ -38,6 +38,20 @@ class TestWhenLinesGoToACpusOwnInputs:
             in interrupts
         )
 
+    def test_a_line_to_the_supervisors_input_is_at_number_9(self):
+        # 9 is the supervisor external interrupt's bit.
+        platform = sp.Platform()
+        cpu = platform.add(
+            "cpu",
+            sp.DbtRiseCpu(xlen=64, reset_vector=0, isa="gc", modes="msu"),
+        )
+        dma = platform.add("dma", sp.DmaEngine())
+        platform.connect(dma.irq, cpu.supervisor_irq)
+
+        assert platform.interrupt_map() == [
+            InterruptEntry(controller="cpu", number=9, line="dma.irq")
+        ]
+
 
 class TestWhenTwoControllersHaveLines:
     def test_the_map_is_in_order_of_controller_and_then_of_number(self):

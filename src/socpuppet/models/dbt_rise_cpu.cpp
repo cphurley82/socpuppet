@@ -44,6 +44,10 @@ const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
       xlen, extras.floating_point ? 1 : 0, extras.supervisor_mode ? 1 : 0));
 }
 
+// Which of the core's interrupt inputs is the supervisor external
+// interrupt. DBT-RISE names the machine-mode ones and not this one.
+constexpr unsigned kSupervisorExternalInterrupt = 9;
+
 // The number of the register a hart reads the machine timer's count from,
 // and of the one a 32-bit hart reads the upper half of it from.
 constexpr unsigned kTimeCsr = 0xC01;
@@ -67,8 +71,9 @@ struct CoreComplex : sysc::riscv::core_complex<> {
 //   - It is clocked by a signal that carries the clock period, which says
 //     how much simulated time one instruction takes.
 //   - It has 32 interrupt inputs, numbered as RISC-V numbers the bits of
-//     its interrupt-pending register. The machine external and machine
-//     timer interrupts are ours to connect, and the rest are tied low.
+//     its interrupt-pending register. The machine external, machine timer
+//     and supervisor external interrupts are ours to connect, and the rest
+//     are tied low.
 struct DbtRiseCpu::Core {
   Core(DbtRiseCpu& cpu, std::uint64_t xlen, const char* core_type,
        std::uint64_t reset_vector, std::uint16_t gdb_port)
@@ -94,6 +99,8 @@ struct DbtRiseCpu::Core {
         complex_.clint_irq_i[line].bind(cpu_.irq);
       } else if (line == sysc::riscv::TIMER_IRQ) {
         complex_.clint_irq_i[line].bind(cpu_.timer_irq);
+      } else if (line == kSupervisorExternalInterrupt) {
+        complex_.clint_irq_i[line].bind(cpu_.supervisor_irq);
       } else {
         complex_.clint_irq_i[line].bind(cpu_.tied_low_);
       }
@@ -193,6 +200,7 @@ void DbtRiseCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(reset, tied_low_);
   TieLowIfUnconnected(irq, tied_low_);
   TieLowIfUnconnected(timer_irq, tied_low_);
+  TieLowIfUnconnected(supervisor_irq, tied_low_);
 }
 
 }  // namespace socpuppet

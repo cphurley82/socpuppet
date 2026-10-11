@@ -86,6 +86,10 @@ constexpr Word Csrs(Word csr, Word rs1) {
 constexpr Word Csrr(Word rd, Word csr) {
   return (csr << 20) | (2 << 12) | (rd << 7) | 0x73;
 }
+// Clear, in a control and status register, the bits that are set in rs1.
+constexpr Word Csrc(Word csr, Word rs1) {
+  return (csr << 20) | (rs1 << 15) | (3 << 12) | 0x73;
+}
 // Write rs1 to a control and status register.
 constexpr Word Csrw(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (1 << 12) | 0x73;
@@ -113,6 +117,11 @@ inline constexpr Word kInterruptsOn = 3;
 // registers are in. While the field is zero, as after reset, they are
 // switched off and a floating-point instruction is an illegal one.
 inline constexpr Word kFloatingPointOn = 13;
+// Its two-bit field that says which mode `mret` returns to, by the place
+// of its low bit: 1 there is supervisor mode, and 3 is machine mode.
+inline constexpr Word kPreviousMode = 11;
+// Its bit that switches interrupts on for supervisor mode.
+inline constexpr Word kSupervisorInterruptsOn = 1;
 // The register a hart reads the machine timer's count from, read-only.
 inline constexpr Word kTime = 0xC01;
 // The upper half of the count, which a 32-bit hart has in a register of
@@ -120,8 +129,25 @@ inline constexpr Word kTime = 0xC01;
 inline constexpr Word kTimeh = 0xC81;
 // The register that holds the address a trap jumps to.
 inline constexpr Word kMtvec = 0x305;
+// The register that holds the address `mret` returns to.
+inline constexpr Word kMepc = 0x341;
+// The register that says which interrupts are handed down to supervisor
+// mode, and the bit, there and among the enables, of the supervisor
+// external interrupt.
+inline constexpr Word kMideleg = 0x303;
+inline constexpr Word kSupervisorExternalInterrupt = 9;
+// The bit of the supervisor software interrupt, which software asks for.
+inline constexpr Word kSupervisorSoftwareInterrupt = 1;
+// Supervisor mode's own view of the interrupt enables, and the register
+// that holds the address a trap taken in supervisor mode jumps to.
+inline constexpr Word kSie = 0x104;
+inline constexpr Word kStvec = 0x105;
+// And its view of which interrupts are pending.
+inline constexpr Word kSip = 0x144;
 // Return from a trap handler to where the trap was taken.
 inline constexpr Word kMret = 0x3020'0073;
+// The same, from a handler in supervisor mode.
+inline constexpr Word kSret = 0x1020'0073;
 // Wait for an interrupt.
 inline constexpr Word kWfi = 0x1050'0073;
 
@@ -301,6 +327,120 @@ inline Program HandleInterruptsByWritingTo(std::uint64_t device,
   program[addi_at] =
       Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
   return program;
+}
+
+// A program that runs `body` in supervisor mode with `handler` as that
+// mode's trap handler, as an operating system under a machine-mode monitor
+// runs. In machine mode it hands the interrupt numbered `interrupt` down to
+// supervisor mode, enables it, and drops to supervisor mode with interrupts
+// on. Both parts find the program's own first address in t3, which is
+// kResultOffset short of where a result goes.
+inline Program InSupervisorMode(Word interrupt, const Program& body,
+                                const Program& handler) {
+  constexpr Word kT3 = 28;
+  Program program;
+  program.push_back(Auipc(kT3, 0));
+  // t2 = the address of the handler, worked out from where we are now.
+  const std::size_t handler_auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t handler_addi_at = program.size();
+  program.push_back(0);  // filled in below
+  program.push_back(Csrw(kStvec, kT2));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, interrupt));
+  program.push_back(Csrs(kMideleg, kT1));
+  program.push_back(Csrs(kSie, kT1));
+  program.push_back(Li(kT1, 1 << kSupervisorInterruptsOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  // The mode to return to is supervisor: clear both bits of the field,
+  // then set it to 1.
+  program.push_back(Li(kT1, 3));
+  program.push_back(Slli(kT1, kT1, kPreviousMode));
+  program.push_back(Csrc(kMstatus, kT1));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kPreviousMode));
+  program.push_back(Csrs(kMstatus, kT1));
+  // And where: the body below.
+  const std::size_t body_auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t body_addi_at = program.size();
+  program.push_back(0);  // filled in below
+  program.push_back(Csrw(kMepc, kT2));
+  program.push_back(kMret);
+
+  const std::size_t body_at = program.size();
+  program.insert(program.end(), body.begin(), body.end());
+  const std::size_t handler_at = program.size();
+  program.insert(program.end(), handler.begin(), handler.end());
+
+  program[handler_addi_at] = Addi(
+      kT2, kT2, static_cast<std::int32_t>((handler_at - handler_auipc_at) * 4));
+  program[body_addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((body_at - body_auipc_at) * 4));
+  return program;
+}
+
+// A program that takes the supervisor external interrupt in supervisor
+// mode, where it sleeps. Its handler, which a trap reaches only if it is
+// taken in supervisor mode, quiets the device at `device` (an address as
+// for StoreWordThenSleep) by writing to it, and returns to sleep.
+inline Program HandleTheSupervisorExternalInterruptByWritingTo(
+    std::uint64_t device) {
+  Program sleep;
+  AppendSleepForEver(sleep);
+  return InSupervisorMode(
+      kSupervisorExternalInterrupt, sleep,
+      {Lui(kT0, static_cast<Word>(device >> 12)), Sw(kZero, kT0, 0), kSret});
+}
+
+// The same, whose handler first stores what supervisor mode sees of the
+// interrupt as the program's result: its enables (`sie`), and a word after
+// them what is pending (`sip`).
+inline Program StoreSieThenSipOnTheSupervisorExternalInterrupt(
+    std::uint64_t device) {
+  constexpr Word kT3 = 28;
+  Program sleep;
+  AppendSleepForEver(sleep);
+  return InSupervisorMode(
+      kSupervisorExternalInterrupt, sleep,
+      {Csrr(kT1, kSie), Sw(kT1, kT3, kResultOffset), Csrr(kT1, kSip),
+       Sw(kT1, kT3, kResultOffset + 4),
+       Lui(kT0, static_cast<Word>(device >> 12)), Sw(kZero, kT0, 0), kSret});
+}
+
+// A program that, with only the supervisor external interrupt handed down
+// to it, tries in supervisor mode to enable all three of the supervisor's
+// interrupts: software, timer and external, which are bits 1, 5 and 9. It
+// stores what `sie` then reads as its result, and sleeps.
+inline Program EnableEverySupervisorInterruptThenStoreSie() {
+  constexpr Word kT3 = 28;
+  Program body{
+      Li(kT1, 0x222),
+      Csrs(kSie, kT1),
+      Csrr(kT1, kSie),
+      Sw(kT1, kT3, kResultOffset),
+  };
+  AppendSleepForEver(body);
+  return InSupervisorMode(kSupervisorExternalInterrupt, body, {kSret});
+}
+
+// A program that, in supervisor mode, asks for the supervisor software
+// interrupt itself, by setting it pending in `sip`, and sleeps. Its handler
+// takes the request back, adds one to the program's result, which is a
+// count of the times it has run, and returns to sleep.
+inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  Program ask_then_sleep{
+      Li(kT1, 1 << kSupervisorSoftwareInterrupt),
+      Csrs(kSip, kT1),
+  };
+  AppendSleepForEver(ask_then_sleep);
+  return InSupervisorMode(
+      kSupervisorSoftwareInterrupt, ask_then_sleep,
+      {Li(kT1, 1 << kSupervisorSoftwareInterrupt), Csrc(kSip, kT1),
+       Lw(kT4, kT3, kResultOffset), Addi(kT4, kT4, 1),
+       Sw(kT4, kT3, kResultOffset), kSret});
 }
 
 // A program that asks the machine timer for one interrupt and takes it.

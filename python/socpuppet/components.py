@@ -358,6 +358,8 @@ class DbtRiseCpu(Component):
         *_CPU_PORTS,
         # Where its `time` register is read from: a machine timer's `time`.
         initiator("time", required=False),
+        # The supervisor external interrupt, for a core with that mode.
+        wire_in("supervisor_irq"),
     )
     is_bus_master = True
 
@@ -423,8 +425,8 @@ class DbtRiseCpu(Component):
     def interrupt_number(self, port: str) -> int | None:
         # RISC-V numbers a CPU's interrupts by their bit in its
         # interrupt-pending register: 7 is the machine timer, 11 the
-        # machine external interrupt.
-        return {"timer_irq": 7, "irq": 11}.get(port)
+        # machine external interrupt and 9 the supervisor's.
+        return {"timer_irq": 7, "irq": 11, "supervisor_irq": 9}.get(port)
 
     @override
     def interrupt_input(self, port: str, label: str) -> str | None:
