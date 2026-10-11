@@ -44,7 +44,7 @@ class InterruptFile {
   // The specification has a file end on 63, 127 and so on up to 2047, one
   // short of a whole register. Nothing here holds a caller to that.
   explicit InterruptFile(std::uint32_t identities)
-      : has_(identities / kBitsInARegister + 1),
+      : has_((identities / kBitsInARegister) + 1),
         pending_(has_.size()),
         enabled_(has_.size()) {
     for (std::uint32_t identity = 1; identity <= identities; ++identity) {
@@ -103,7 +103,7 @@ class InterruptFile {
       const std::uint64_t waiting = pending_[index] & enabled_[index];
       if (waiting == 0) continue;
       const std::uint32_t lowest =
-          static_cast<std::uint32_t>(index) * kBitsInARegister +
+          (static_cast<std::uint32_t>(index) * kBitsInARegister) +
           static_cast<std::uint32_t>(std::countr_zero(waiting));
       return threshold_ != 0 && lowest >= threshold_ ? 0 : lowest;
     }
@@ -143,7 +143,7 @@ class InterruptFile {
   // is, if it is one of them. They are numbered in twos.
   static std::optional<std::size_t> IndexFrom(std::uint32_t first,
                                               std::uint32_t reg) {
-    if (reg < first || reg >= first + 2 * kRegistersOfAKind) {
+    if (reg < first || reg >= first + (2 * kRegistersOfAKind)) {
       return std::nullopt;
     }
     if ((reg - first) % 2 != 0) return std::nullopt;

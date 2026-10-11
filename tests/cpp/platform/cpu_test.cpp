@@ -394,7 +394,7 @@ void RaiseOnceTheSupervisorSleeps(InterruptSource& device) {
 
 // Long enough for any program here to have got to supervisor mode, taken
 // its interrupt and gone back to sleep. They are a few dozen instructions.
-const sc_core::sc_time kUntilTheSupervisorSleepsAgain{1, sc_core::SC_MS};
+sc_core::sc_time UntilTheSupervisorSleepsAgain() { return {1, sc_core::SC_MS}; }
 
 TEST(WhenAnInterruptHandedDownToSupervisorModeArrivesWhileTheCpuSleepsThere,
      TheSupervisorsHandlerRunsOnce) {
@@ -404,7 +404,7 @@ TEST(WhenAnInterruptHandedDownToSupervisorModeArrivesWhileTheCpuSleepsThere,
   with_device.Load(riscv::HandleTheSupervisorExternalInterruptByWritingTo(
       CpuPlatformWithAnInterruptSource::kDeviceBase));
 
-  with_device.platform.Run(kUntilTheSupervisorSleepsAgain);
+  with_device.platform.Run(UntilTheSupervisorSleepsAgain());
 
   EXPECT_EQ(with_device.TimesTheHandlerRan(), 1);
 }
@@ -417,7 +417,7 @@ TEST(WhenAnInterruptHandedDownToSupervisorModeArrivesWhileTheCpuSleepsThere,
   with_device.Load(riscv::StoreSieThenSipOnTheSupervisorExternalInterrupt(
       CpuPlatformWithAnInterruptSource::kDeviceBase));
 
-  with_device.platform.Run(kUntilTheSupervisorSleepsAgain);
+  with_device.platform.Run(UntilTheSupervisorSleepsAgain());
 
   const std::uint32_t supervisor_external =
       1U << riscv::kSupervisorExternalInterrupt;
