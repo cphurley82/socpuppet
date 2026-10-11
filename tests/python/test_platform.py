@@ -2,6 +2,7 @@ import pytest
 
 import socpuppet as sp
 from scripts import writing
+from socpuppet.regs import system_controller
 
 
 def thin_platform(writes):
@@ -350,3 +351,24 @@ class TestWhenAnEarlierBuildFailedPartWay:
 
         assert "earlier build() failed part-way" in str(error.value)
         assert "new process" in str(error.value)
+
+
+@pytest.mark.platform
+class TestWhenASystemControllerIsPoked:
+    def test_the_poke_is_refused_and_the_error_names_it_and_says_why(self):
+        # Its one register that can be written asks for a reset, and a
+        # debugger looks and does not touch.
+        platform = sp.Platform()
+        cpu = platform.add("cpu", sp.ScriptedBusMaster())
+        bus = platform.add("bus", sp.Router())
+        syscon = platform.add("syscon", sp.SystemController())
+        platform.connect(cpu.socket, bus.target)
+        bus.map(syscon.socket, base=0x10_0000)
+        platform.connect(syscon.reset, cpu.reset)
+        platform.build()
+
+        with pytest.raises(PermissionError) as refused:
+            platform.poke32(0x10_0000 + system_controller.RESET_REQUEST, 1)
+
+        assert '"syscon"' in str(refused.value)
+        assert "reset" in str(refused.value)

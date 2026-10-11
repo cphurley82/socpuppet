@@ -21,6 +21,7 @@ from socpuppet.components import (
     Rom,
     Router,
     ScriptedBusMaster,
+    SystemController,
 )
 from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
 from socpuppet.io_manager import IoManager
@@ -82,6 +83,7 @@ __all__ = [
     "ScriptedBusMaster",
     "SsdFirmware",
     "Steps",
+    "SystemController",
     "TraceRecord",
     "Transcript",
     "expect32",

@@ -359,6 +359,23 @@ class TestWhenACpuHasARomBelowItsRam:
         assert platform.devicetree() == without
 
 
+class TestWhenACpuHasASystemControllerOnItsBus:
+    def test_its_node_is_exactly_this(self):
+        platform, bus, _ = cpu_with_its_peripherals()
+        syscon = platform.add("syscon", sp.SystemController())
+        bus.map(syscon.socket, base=0x0010_0000)
+
+        node = textwrap.dedent(
+            """\
+            syscon: syscon@100000 {
+            \tcompatible = "socpuppet,system-controller", "syscon";
+            \treg = <0x0 0x100000 0x0 0x20>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
 class TestWhenADevicesInterruptGoesToAPlicSource:
     def test_its_node_names_the_plic_and_the_source(self):
         platform, bus, plic = cpu_with_its_peripherals()

@@ -10,6 +10,7 @@ target_sources(socpuppet_regs INTERFACE
     ${_socpuppet_regs}/socpuppet/regs/dma_engine.h
     ${_socpuppet_regs}/socpuppet/regs/flash_controller.h
     ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h
+    ${_socpuppet_regs}/socpuppet/regs/system_controller.h
     ${_socpuppet_regs}/socpuppet/regs/ucie_link.h)
 
 # core/: plain C++ with no simulator underneath. Linking only this target is
@@ -32,6 +33,7 @@ target_sources(socpuppet_core INTERFACE
     core/nand_geometry.h
     core/nand_port.h
     core/script.h
+    core/system_controller_logic.h
     core/time.h
     core/trace.h)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_regs)
@@ -231,6 +233,7 @@ target_sources(socpuppet_models INTERFACE
     models/rom.h
     models/scripted_bus_master.h
     models/socket_memory.h
+    models/system_controller.h
     models/tie_low.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu

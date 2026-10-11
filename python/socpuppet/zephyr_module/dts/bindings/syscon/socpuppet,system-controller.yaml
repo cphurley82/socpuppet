@@ -1,0 +1,12 @@
+description: |
+  The system controller of a socpuppet CPU: which die the CPU is on, where
+  its boot ROM finds the image to start, why it was last reset, and a
+  register that asks for a reset.
+
+  It is a `syscon` as well, which is Zephyr's name for a block of registers
+  that other code reaches into, and what Zephyr's syscon driver is for:
+  `syscon_read_reg()` with an offset from socpuppet/regs/system_controller.h.
+
+compatible: "socpuppet,system-controller"
+
+include: syscon.yaml

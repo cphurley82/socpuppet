@@ -29,6 +29,7 @@
 #include "socpuppet/models/plic.h"
 #include "socpuppet/models/rom.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/system_controller.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/slots.h"
@@ -309,6 +310,20 @@ Registry BuiltinComponents() {
                             WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
+  registry.Add(
+      "system_controller", [](const char* name, Parameters& parameters) {
+        auto module = std::make_unique<SystemController>(
+            name,
+            static_cast<std::uint32_t>(
+                parameters.Optional("die", 0, kFitsIn32Bits)),
+            static_cast<std::uint32_t>(
+                parameters.Optional("boot_address", 0, kFitsIn32Bits)));
+        std::vector<Port> ports{TargetPort("socket", module->socket),
+                                WireSinkPort("hold", module->hold),
+                                WireSinkPort("bite", module->bite),
+                                WireSourcePort("reset", module->reset)};
+        return Instance{.module = std::move(module), .ports = std::move(ports)};
+      });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter
   // sizes it and loads its address map from the parameters:
   //   inputs               how many masters it takes; one if left out

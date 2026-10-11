@@ -36,6 +36,7 @@ struct Within {
 // What fits in a register field of so many bits.
 inline constexpr Within kFitsIn16Bits{.most = 0xFFFF};
 inline constexpr Within kFitsIn24Bits{.most = 0xFF'FFFF};
+inline constexpr Within kFitsIn32Bits{.most = 0xFFFF'FFFF};
 
 // What a factory reads its parameters from. It knows which implementation
 // is asking, so that an error can say, and it notes each name asked for,

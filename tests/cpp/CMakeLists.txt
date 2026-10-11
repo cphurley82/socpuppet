@@ -18,6 +18,7 @@ add_executable(unit_tests
   unit/pcie_endpoint_registers_test.cpp
   unit/prp_test.cpp
   unit/script_test.cpp
+  unit/system_controller_logic_test.cpp
   unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp)
@@ -58,6 +59,7 @@ add_executable(kernel_tests
   platform/pcie_test.cpp
   platform/router_test.cpp
   platform/scripted_master_test.cpp
+  platform/system_controller_test.cpp
   platform/tracer_test.cpp
   platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE

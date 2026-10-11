@@ -274,6 +274,12 @@ INSTANTIATE_TEST_SUITE_P(
                    "4294967296"},
         OutOfRange{"nvme_frontend", {{"vectors", 0}}, "vectors", "0"},
         OutOfRange{"nvme_frontend", {{"vectors", 2049}}, "vectors", "2049"},
+        OutOfRange{
+            "system_controller", {{"die", 0x1'0000'0000}}, "die", "4294967296"},
+        OutOfRange{"system_controller",
+                   {{"boot_address", 0x1'0000'0000}},
+                   "boot_address",
+                   "4294967296"},
         OutOfRange{"pcie_endpoint", PcieEndpointWith("vendor_id", 0x1'0000),
                    "vendor_id", "65536"},
         OutOfRange{"pcie_endpoint", PcieEndpointWith("device_id", 0x1'0000),

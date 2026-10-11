@@ -42,6 +42,7 @@ from socpuppet.regs import (
     dma_engine,
     flash_controller,
     nvme_frontend,
+    system_controller,
     ucie_link,
 )
 
@@ -766,6 +767,66 @@ class Rom(Component):
             f'"{path}" is a ROM, and its bus master has already come to '
             "it. A ROM is loaded before the first run and not after: a "
             "debugger cannot patch one on a board either."
+        )
+
+
+class SystemController(Component):
+    """A CPU's system controller: it answers for the CPU, and owns its reset.
+
+    Its registers tell firmware which die its CPU is on (`die`), where its
+    boot ROM finds the image to start (`boot_address`) and why the CPU was
+    last reset, and one of them asks for a reset.
+
+    🎓 A wire has one driver, and a CPU's reset has more than one reason to
+    rise. So connect `reset` to the CPU's `reset`, and each reason to an
+    input here. `hold` keeps the CPU in reset for as long as it is high,
+    which is how a die-to-die link holds the other die until the link is
+    up. `bite` is a watchdog's line, and a rise of it resets the CPU. Either
+    may be left unconnected.
+    """
+
+    implementation = "system_controller"
+    port_specs = (
+        target("socket"),
+        wire_in("hold"),
+        wire_in("bite"),
+        wire_out("reset"),
+    )
+    #: What the controller's register map says it takes.
+    mapped_size = system_controller.SIZE
+
+    die: int = 0
+    boot_address: int = 0
+
+    def __post_init__(self) -> None:
+        for name in ("die", "boot_address"):
+            if not 0 <= getattr(self, name) < 1 << 32:
+                raise ValueError(
+                    f"A system controller's `{name}` is a register of 32 "
+                    f"bits, and {getattr(self, name):#x} does not fit in "
+                    "one."
+                )
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "syscon",
+            ((reached["socket"].address, self.mapped_size),),
+            # `syscon` is the name Zephyr and Linux both have for a block
+            # of registers that other drivers reach into. Ours comes first,
+            # for a driver that knows which registers these are.
+            ('compatible = "socpuppet,system-controller", "syscon";',),
+            # `reset` is not an interrupt.
+            interrupts=(),
+        )
+
+    @override
+    def why_a_poke_was_refused(self, path: str) -> str:
+        return (
+            f'"{path}" is a system controller, and a debugger looks at '
+            "one and does not touch: the one register that can be written "
+            "asks for a reset of the CPU. To reset the CPU, have firmware "
+            "write RESET_REQUEST."
         )
 
 

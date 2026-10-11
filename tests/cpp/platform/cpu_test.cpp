@@ -291,7 +291,8 @@ struct CpuWithItsResetInATestsHands {
 
 // A reset is a pulse, and a real one is a few ticks of the clock long. A
 // CPU model that is busy looks at its inputs once a quantum, so the whole
-// pulse can come and go between two looks. It has still been reset.
+// pulse can come and go between two looks. It has still been reset. Here
+// the looks are 100 us apart, and the pulse is 1 us long and comes at 250.
 TEST(WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock,
      TheCpuStartsOverAtItsResetVector) {
   CpuWithItsResetInATestsHands with_cpu{[](LineDriver& reset) {

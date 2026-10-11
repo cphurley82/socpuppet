@@ -59,6 +59,7 @@ EXAMPLES = [
     router_with_one_output(),
     router_with_two_inputs(),
     sp.ScriptedBusMaster(),
+    sp.SystemController(die=1, boot_address=0x1020_0000),
 ]
 
 
@@ -105,6 +106,16 @@ class TestAnImsicWithANumberOfIdentitiesTheSpecificationDoesNotAllow:
     def test_is_refused_and_the_error_says_which_it_allows(self, identities):
         with pytest.raises(ValueError, match="63, 127"):
             sp.Imsic(identities=identities)
+
+
+class TestASystemControllerWithANumberItsRegisterCannotHold:
+    @pytest.mark.parametrize("register", ["die", "boot_address"])
+    @pytest.mark.parametrize("number", [-1, 1 << 32])
+    def test_is_refused_and_the_error_names_the_register(
+        self, register, number
+    ):
+        with pytest.raises(ValueError, match=rf"`{register}`.*32 bits"):
+            sp.SystemController(**{register: number})
 
 
 class TestTheCatalogue:
