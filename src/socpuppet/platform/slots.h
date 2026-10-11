@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <systemc>
 #include <tlm>
@@ -109,14 +110,19 @@ concept MessageControllerSlot =
       } -> std::convertible_to<sc_core::sc_out<bool>&>;
     };
 
-// A UART: built from a name, reached through one TLM target socket, and
-// keeping what was transmitted through it as text.
+// A UART: built from a name and reached through one TLM target socket.
+// Whoever is at the other end of its serial line is the test or the script
+// that holds it: what the UART transmitted is kept as text, and bytes are
+// handed to it to receive, which show in its registers a delta cycle on.
 template <typename T>
-concept UartSlot =
-    std::constructible_from<T, sc_core::sc_module_name> && requires(T uart) {
-      { uart.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
-      { uart.Output() } -> std::convertible_to<std::string>;
-    };
+concept UartSlot = std::constructible_from<T, sc_core::sc_module_name> &&
+                   requires(T uart, std::string_view received) {
+                     {
+                       uart.socket
+                     } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+                     { uart.Output() } -> std::convertible_to<std::string>;
+                     uart.Write(received);
+                   };
 
 // An NVMe function: an NVMe controller as the PCIe endpoint around it sees
 // it, with no PCIe of its own. It has a register block to be put behind

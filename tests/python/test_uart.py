@@ -23,21 +23,69 @@ PRINT_OK_THEN_SLEEP = b"".join(
 )
 
 
+def a_cpu_running(program):
+    """A CPU, a RAM that holds `program` and a UART, built.
+
+    Returns the platform and the UART.
+    """
+    platform = sp.Platform()
+    cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=64, reset_vector=RAM_BASE))
+    bus = platform.add("bus", sp.Router())
+    ram = platform.add("ram", sp.Memory(size=0x1000))
+    uart = platform.add("uart", sp.Ns16550())
+    platform.connect(cpu.socket, bus.target)
+    bus.map(ram.socket, base=RAM_BASE)
+    bus.map(uart.socket, base=UART_BASE)
+    platform.build()
+    platform.poke(RAM_BASE, program)
+    return platform, uart
+
+
 @pytest.mark.platform
 class TestWhenFirmwarePrintsThroughTheUart:
     def test_the_uarts_output_is_what_it_printed(self):
-        platform = sp.Platform()
-        cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=64, reset_vector=RAM_BASE))
-        bus = platform.add("bus", sp.Router())
-        ram = platform.add("ram", sp.Memory(size=0x1000))
-        uart = platform.add("uart", sp.Ns16550())
-        platform.connect(cpu.socket, bus.target)
-        bus.map(ram.socket, base=RAM_BASE)
-        bus.map(uart.socket, base=UART_BASE)
-        platform.build()
-        platform.poke(RAM_BASE, PRINT_OK_THEN_SLEEP)
+        platform, uart = a_cpu_running(PRINT_OK_THEN_SLEEP)
 
         # Seven instructions: ten microseconds is far more than they need.
         platform.run(sp.us(10))
 
         assert uart.output == "OK"
+
+
+# A program that sends back whatever comes in: it waits for the UART's line
+# status to say a byte is ready, reads the byte and transmits it, for ever.
+ECHO = b"".join(
+    word.to_bytes(4, "little")
+    for word in (
+        0x100002B7,  # lui   t0, 0x10000        t0 = UART_BASE
+        0x0052C303,  # lbu   t1, 5(t0)          the line status
+        0x00137313,  # andi  t1, t1, 1          its "data ready" bit
+        0xFE030CE3,  # beqz  t1, -8             not yet: look again
+        0x0002C303,  # lbu   t1, 0(t0)          the receive register
+        0x00628023,  # sb    t1, 0(t0)          the transmit register
+        0xFEDFF06F,  # j     -20                and wait for the next
+    )
+)
+
+
+@pytest.mark.platform
+class TestWhenPythonTypesAtAUart:
+    def test_firmware_receives_what_was_typed(self):
+        platform, uart = a_cpu_running(ECHO)
+
+        uart.write("spam\n")
+        # Five bytes at six instructions each: a hundred microseconds is
+        # far more than they need.
+        platform.run(sp.us(100))
+
+        assert uart.output == "spam\n"
+
+    def test_what_is_typed_between_two_runs_is_received_in_the_second(self):
+        # As a script does that waits for a prompt before it answers.
+        platform, uart = a_cpu_running(ECHO)
+        platform.run(sp.us(100))
+
+        uart.write("eggs\n")
+        platform.run(sp.us(100))
+
+        assert uart.output == "eggs\n"

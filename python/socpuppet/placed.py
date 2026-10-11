@@ -97,3 +97,18 @@ class PlacedUart(Placed):
         """
         native = self._platform.native()
         return native.uart_output(self.path).decode(errors="replace")
+
+    def write(self, typed: str | bytes) -> None:
+        """Type at the UART: the firmware receives `typed`, a byte at a time.
+
+        🧵 This is the other end of the serial line, the keyboard of
+        whoever sits at the console. Text is sent as UTF-8. The bytes wait
+        in the UART until the firmware reads them, and nothing happens
+        until the platform next runs.
+
+        ⚠️ They arrive all at once, with no baud rate to pace them. The
+        UART loses none, and firmware that reads them into a buffer of
+        its own may: Zephyr's shell keeps 64 bytes.
+        """
+        received = typed.encode() if isinstance(typed, str) else typed
+        self._platform.native().uart_write(self.path, received)

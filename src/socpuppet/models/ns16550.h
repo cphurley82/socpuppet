@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <systemc>
 #include <tlm>
@@ -18,8 +19,10 @@ namespace socpuppet {
 //   - Its registers are the 16550's eight, one byte each at offsets 0 to 7,
 //     as on the original chip. (The borrowed model spaces them four bytes
 //     apart. The adapter does the arithmetic.)
-//   - What the firmware transmits is kept, to be read with Output().
-// Nothing is ever received, and the interrupt is not connected yet.
+//   - What the firmware transmits is kept, to be read with Output(), and
+//     what it is to receive is handed over with Write(). Whoever holds
+//     the UART is the other end of its serial line.
+// The interrupt is not connected yet.
 class Ns16550 : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<Ns16550> socket{"socket"};
@@ -30,6 +33,12 @@ class Ns16550 : public sc_core::sc_module {
   // Everything transmitted so far.
   const std::string& Output() const;
 
+  // Bytes that come in on the serial line, as if typed at the other end.
+  // Firmware reads them from the receive register, in order. They show in
+  // the registers a delta cycle later, and all at once: there is no baud
+  // rate to pace them, and no overrun, since they wait here until read.
+  void Write(std::string_view received);
+
  private:
   struct Model;
 
@@ -38,8 +47,11 @@ class Ns16550 : public sc_core::sc_module {
   // Debug transport: a register as a debugger sees it, in no simulated
   // time. Returns the bytes transferred.
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction);
+  // Has the registers show that bytes have come in.
+  void ShowWhatCameIn();
 
   std::unique_ptr<Model> model_;
+  sc_core::sc_event came_in_;
 };
 
 }  // namespace socpuppet

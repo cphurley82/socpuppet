@@ -465,6 +465,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: a surprise more than a bug.
 - **When it lands**: the adapters can stop doing it.
 
+### The PULPino UART's line status says "data ready" until it is told otherwise
+
+- **Where**: `pulpino/uart.h`, `b_transport_ext`, and the read callback of `rbr_thr_dll_`.
+- **What is wrong**: 🎓 a 16550's line status has a bit that says a received byte is waiting, which clears when the byte is read. Here the bit is set and cleared only by `b_transport_ext`, a socket whose one message is "a byte is waiting" or "none is". Reading the receive register asks the serial line's socket for the byte and leaves the bit as it was. So whoever is on the serial line has to say "none is" after the last byte, and "one is" again after each of the others, or firmware that reads until the bit clears reads for ever. And `b_transport_ext` reads four bytes of the payload whatever length the payload says it has.
+- **How to see it**: `UartContract.AByteThatComesInIsReadFromTheReceiveRegisterAndThenThereIsNone` in `tests/cpp/contracts/uart_contract.h`, with the adapter's telling after a read taken out: the line status still says "data ready" with nothing left.
+- **What we do**: no patch. The adapter (`ns16550.cpp`) keeps the bytes that have come in, answers the model's request for each, and tells the model after every one whether another waits, in a payload of four bytes.
+- **Upstream fix**: keep a count, or a FIFO, of what has come in, and clear the bit when the last is read. Read as many bytes of a payload as it has.
+- **Kind**: bug.
+- **When it lands**: the adapter's telling after each read can go.
+
 ### `pulpino/uart.h` does not include what it uses
 
 - **Where**: `pulpino/uart.h`, lines 80 to 82.

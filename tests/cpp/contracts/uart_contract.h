@@ -22,8 +22,10 @@
 template <socpuppet::UartSlot UartType>
 class UartContract : public ::testing::Test {
  protected:
-  // The 16550's registers, one byte each, by their offset.
+  // The 16550's registers, one byte each, by their offset. The first is
+  // two: a write is a byte to transmit, and a read is a byte received.
   static constexpr std::uint64_t kTransmitHolding = 0;
+  static constexpr std::uint64_t kReceiveBuffer = 0;
   // With the divisor latch open, the first two registers are the divisor
   // that sets the baud rate, low byte first.
   static constexpr std::uint64_t kDivisorLow = 0;
@@ -63,6 +65,12 @@ class UartContract : public ::testing::Test {
     std::array<std::uint8_t, 1> value{kUnanswered};
     bus.Read(offset, value);
     return value[0];
+  }
+
+  // Lets a byte that was handed to the UART reach its registers, which it
+  // does a delta cycle after it is handed over.
+  static void Settle(BusDriver& bus) {
+    bus.WaitFor(sc_core::sc_time{1, sc_core::SC_NS});
   }
 
   // The same, the way a debugger looks: in no simulated time.
@@ -165,6 +173,66 @@ TYPED_TEST_P(UartContract, WithNothingReceivedTheLineStatusShowsNoDataReady) {
   EXPECT_EQ(status & this->kDataReady, 0);
 }
 
+// What comes in on the serial line: whoever is at the other end has typed
+// something. `Write` is the other end.
+TYPED_TEST_P(UartContract,
+             AByteThatComesInIsReadFromTheReceiveRegisterAndThenThereIsNone) {
+  std::uint8_t status_before = 0;
+  std::uint8_t byte = 0;
+  std::uint8_t status_after = this->kDataReady;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->uart_.Write("A");
+    this->Settle(bus);
+    status_before = this->ReadRegister(bus, this->kLineStatus);
+    byte = this->ReadRegister(bus, this->kReceiveBuffer);
+    status_after = this->ReadRegister(bus, this->kLineStatus);
+  });
+
+  EXPECT_EQ(status_before & this->kDataReady, this->kDataReady);
+  EXPECT_EQ(byte, 'A');
+  EXPECT_EQ(status_after & this->kDataReady, 0);
+}
+
+TYPED_TEST_P(
+    UartContract,
+    BytesThatComeInAreReadInTheOrderTheyCameWithDataReadyUntilTheLast) {
+  std::uint8_t first = 0;
+  std::uint8_t status_between = 0;
+  std::uint8_t second = 0;
+  std::uint8_t status_after = this->kDataReady;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->uart_.Write("OK");
+    this->Settle(bus);
+    first = this->ReadRegister(bus, this->kReceiveBuffer);
+    status_between = this->ReadRegister(bus, this->kLineStatus);
+    second = this->ReadRegister(bus, this->kReceiveBuffer);
+    status_after = this->ReadRegister(bus, this->kLineStatus);
+  });
+
+  EXPECT_EQ(first, 'O');
+  EXPECT_EQ(status_between & this->kDataReady, this->kDataReady);
+  EXPECT_EQ(second, 'K');
+  EXPECT_EQ(status_after & this->kDataReady, 0);
+}
+
+TYPED_TEST_P(UartContract, BytesThatComeInWhileOthersWaitAreReadAfterThem) {
+  std::uint8_t first = 0;
+  std::uint8_t second = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->uart_.Write("O");
+    this->uart_.Write("K");
+    this->Settle(bus);
+    first = this->ReadRegister(bus, this->kReceiveBuffer);
+    second = this->ReadRegister(bus, this->kReceiveBuffer);
+  });
+
+  EXPECT_EQ(first, 'O');
+  EXPECT_EQ(second, 'K');
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     UartContract, BytesWrittenToTheTransmitRegisterBecomeTheOutput,
     AfterAByteIsWrittenTheLineStatusShowsTheTransmitterReady,
@@ -172,6 +240,9 @@ REGISTER_TYPED_TEST_SUITE_P(
     WithTheDivisorLatchOpenNothingIsTransmitted,
     TheControlAndScratchRegistersReadBackWhatWasWritten,
     TheScratchRegisterIsSeenByADebugAccess,
-    WithNothingReceivedTheLineStatusShowsNoDataReady);
+    WithNothingReceivedTheLineStatusShowsNoDataReady,
+    AByteThatComesInIsReadFromTheReceiveRegisterAndThenThereIsNone,
+    BytesThatComeInAreReadInTheOrderTheyCameWithDataReadyUntilTheLast,
+    BytesThatComeInWhileOthersWaitAreReadAfterThem);
 
 #endif  // TESTS_CPP_CONTRACTS_UART_CONTRACT_H_

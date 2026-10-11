@@ -179,6 +179,14 @@ PYBIND11_MODULE(_core, m) {
              return py::bytes(
                  self.platform.ModuleAt<socpuppet::Ns16550>(path).Output());
            })
+      // Hands the UART at `path` bytes to receive, as if they had come in on
+      // its serial line.
+      .def("uart_write",
+           [](NativePlatform& self, const std::string& path,
+              const py::bytes& received) {
+             self.platform.ModuleAt<socpuppet::Ns16550>(path).Write(
+                 std::string_view{received});
+           })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",
            [](NativePlatform& self, const std::string& path) {
