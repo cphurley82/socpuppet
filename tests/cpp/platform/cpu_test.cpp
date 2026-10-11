@@ -746,8 +746,7 @@ INSTANTIATE_TEST_SUITE_P(
     TheThree, WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
     ::testing::Values(ImsicRegisterOfAHart{riscv::kMiselect, "miselect"},
                       ImsicRegisterOfAHart{riscv::kMireg, "mireg"},
-                      ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"}),
-    [](const auto& info) { return std::string{info.param.name}; });
+                      ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"}));
 
 // An IMSIC's files can only be switched on through its hart.
 TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
