@@ -1,0 +1,16 @@
+diff --git a/src/iss/debugger/gdb_session.cpp b/src/iss/debugger/gdb_session.cpp
+index 11d41f2..8ffdb46 100644
+--- a/src/iss/debugger/gdb_session.cpp
++++ b/src/iss/debugger/gdb_session.cpp
+@@ -181,7 +181,10 @@ void gdb_session::receive_completed(const boost::system::error_code& e, std::str
+         handler.t->close();
+         return;
+     } else if(e) {
+-        CLOG(ERR, connection) << "Communication error (" << e.message() << ")";
++        // A debugger that has gone is the debugger's trouble and not the target's: one that crashed, one whose network
++        // dropped, one that closed with an answer unread. Under SystemC, SCC's report handler throws a logged error as
++        // an sc_report: on this thread, where nothing catches it.
++        CLOG(WARN, connection) << "Communication error (" << e.message() << ")";
+         handler.t->close();
+         return;
+     }

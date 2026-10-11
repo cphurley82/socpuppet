@@ -182,12 +182,15 @@ FetchContent_Declare(dbt_rise_core_git
   # GDB server for the whole process, where each core that asks now gets
   # one on a port of its own. gdb-continue-answered-once: the server
   # answered one `continue` twice, and the second answer, written to a
-  # debugger that had hung up, ended the process.
+  # debugger that had hung up, ended the process. gdb-rude-hangup: so did
+  # a debugger whose connection was reset, which is what closing it with
+  # an answer unread does.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-asio-names.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-int128-traits.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-server-per-core.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-continue-answered-once.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-rude-hangup.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 set(SOCPUPPET_SUPPRESS_INSTALL TRUE)

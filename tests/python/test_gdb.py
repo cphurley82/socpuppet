@@ -57,25 +57,26 @@ def cpu_waiting_for_a_debugger(port):
     return platform
 
 
-def run_with_a_debugger(platform, port, session):
+def run_with_a_debugger(platform, port, session, hang_up=GdbClient.close):
     """Run `platform` with a debugger attached, and return what it found.
 
     `session` is what the debugger does: it is called with a GdbClient, on
     a thread of its own, because the CPU waits for the debugger while the
     platform runs. Whatever it does, the CPU is told to continue
-    afterwards, so that the run always ends.
+    afterwards, so that the run always ends. `hang_up` is how the debugger
+    leaves after that.
     """
-    return run_with_debuggers(platform, {port: session})[port]
+    return run_with_debuggers(platform, {port: session}, hang_up=hang_up)[port]
 
 
-def run_with_debuggers(platform, sessions, run=None):
+def run_with_debuggers(platform, sessions, run=None, hang_up=GdbClient.close):
     """Run `platform` with a debugger on each port, and return what each found.
 
     `sessions` is what the debugger on each port does, as for
     `run_with_a_debugger`, and what comes back is by port too. Each
     debugger has a thread of its own, and waits for its own CPU to stop
     before its session starts. Each says continue when its session is
-    over, and hangs up.
+    over, and hangs up, with `hang_up`.
 
     `run` is how the platform is run meanwhile. With none it runs for ten
     microseconds, which is enough for the short program here once the
@@ -95,7 +96,7 @@ def run_with_debuggers(platform, sessions, run=None):
             # ⚠️ A CPU nobody tells to continue holds the whole run where
             # it is, and no limit in simulated time ends that.
             debugger.continue_()
-            debugger.close()
+            hang_up(debugger)
 
     threads = [
         threading.Thread(target=debug, args=each) for each in sessions.items()
@@ -175,6 +176,25 @@ class TestWhenADebuggerSaysContinueAndHangsUp:
         # answer to a debugger that had gone ended the whole process. Two
         # seconds of wall clock is long enough for that to have happened.
         time.sleep(2)
+
+        assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
+
+
+@pytest.mark.platform
+class TestWhenADebuggerHangsUpWithAnAnswerUnread:
+    def test_the_simulation_is_still_there_afterwards(self):
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port)
+
+        run_with_a_debugger(
+            platform,
+            port,
+            lambda debugger: None,
+            hang_up=GdbClient.close_with_an_answer_unread,
+        )
+        # The server hears of it on a thread of its own. Half a second of
+        # wall clock is long enough for it to have ended the process.
+        time.sleep(0.5)
 
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
 

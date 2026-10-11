@@ -17,6 +17,19 @@ class GdbClient:
     def close(self):
         self._socket.close()
 
+    def close_with_an_answer_unread(self):
+        """Hang up once something has come from the server, without reading it.
+
+        The server acknowledges each packet with a `+`, so the last packet
+        sent is enough to be answered. 💡 A connection closed with
+        something unread is not closed politely: the server is told it was
+        reset.
+        """
+        # A peek waits for the answer and leaves it unread.
+        if not self._socket.recv(1, socket.MSG_PEEK):
+            raise ConnectionError("The GDB server closed the connection.")
+        self._socket.close()
+
     def send(self, body):
         """Send one packet, without waiting for what comes back."""
         checksum = sum(body.encode()) % 256
@@ -101,7 +114,11 @@ class GdbClient:
             raise RuntimeError(f"The server refused the breakpoint: {reply!r}.")
 
     def continue_(self):
-        """Let the CPU run. The server says nothing until it stops again."""
+        """Let the CPU run.
+
+        The server acknowledges it, and says nothing more until the CPU
+        stops again.
+        """
         self.send("c")
 
     def wait_for_a_stop(self):
