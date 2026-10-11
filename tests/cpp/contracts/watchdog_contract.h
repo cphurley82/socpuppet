@@ -482,7 +482,7 @@ TYPED_TEST_P(WatchdogContract, ToldToCountWhileTheCpuIsAwakeItCounts) {
 }
 
 TYPED_TEST_P(WatchdogContract, WhatIsComparedIsTheCountShiftedByTheScale) {
-  constexpr std::uint32_t scale = 3;
+  constexpr std::uint32_t kScale = 3;
   std::uint32_t count = 0;
   std::uint32_t scaled = 0;
   int just_before = -1;
@@ -490,7 +490,7 @@ TYPED_TEST_P(WatchdogContract, WhatIsComparedIsTheCountShiftedByTheScale) {
 
   this->OnTheBus([&](BusDriver& bus) {
     // Ten, three bits up: eighty ticks.
-    this->Start(bus, 10, this->kResetWhenItRunsOut | scale);
+    this->Start(bus, 10, this->kResetWhenItRunsOut | kScale);
     this->WaitToJustBefore(bus, 80);
     count = bus.Read32(this->kCount);
     scaled = bus.Read32(this->kScaledCount);
@@ -560,10 +560,10 @@ TYPED_TEST_P(WatchdogContract, OutOfResetItsPeriodIsTheLongestItsCompareHas) {
 // hours.
 TYPED_TEST_P(WatchdogContract,
              GivenTheLongestPeriodThereIsItDoesNotBiteInAnHour) {
-  constexpr std::uint32_t highest_scale = 0xF;
+  constexpr std::uint32_t kHighestScale = 0xF;
 
   this->OnTheBus([&](BusDriver& bus) {
-    this->Start(bus, 0xFFFF, this->kResetWhenItRunsOut | highest_scale);
+    this->Start(bus, 0xFFFF, this->kResetWhenItRunsOut | kHighestScale);
     bus.WaitFor(sc_core::sc_time{3600, sc_core::SC_SEC});
   });
 

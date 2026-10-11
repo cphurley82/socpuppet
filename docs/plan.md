@@ -707,7 +707,7 @@ What M14 did not do, that the plan said or implied:
 - **/tdd was run by its workflow, with the maintainer away**, as M13 was: the approval stops were passed on the strength of "implement the plan using auto mode", and each step had both reviews, by a second reader with no stake in the code, whose findings were taken or answered in the commit.
 - ⚠️ **A decision the maintainer may want to look at again**: the watchdog is the borrowed SiFive one, with its behaviour written by us as a patch of some 150 lines. That was read from the answer "an APLIC on the compute die" and the rule to borrow first, and Zephyr's driver for it needed nothing. A watchdog of ours from a register map would have been about as much code, with a driver to write.
 - ⚠️ **One test failed once and was not found.** During step 7, `pytest` failed inside `ctest`'s eight parallel jobs and passed alone and on every run since. Which test is not known.
-- **Nothing was pushed.** clang-tidy, the header check and a build in the devcontainer's image have not been run on M14's C++, and the Linux build tree's copies of the dependencies are stale after the two new patches.
+- **Nothing was pushed.** clang-tidy and the header check were run at the end and pass: clang-tidy had six findings in the tests of steps 3 and 7, which CI would have failed on and the local test run does not see. A build in the devcontainer's image, with GCC, has not been run on M14's C++, and the Linux build tree's copies of the dependencies are stale after the two new patches.
 
 Things M15 should know:
 

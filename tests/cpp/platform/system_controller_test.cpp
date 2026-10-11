@@ -33,20 +33,21 @@ sc_core::sc_time Nanoseconds(double count) { return {count, sc_core::SC_NS}; }
 
 // A CPU's clock on a socpuppet board ticks every 100 ns, and a reset
 // shorter than a tick is one a CPU need not see.
-const sc_core::sc_time kOneTickOfACpu = Nanoseconds(100);
+sc_core::sc_time OneTickOfACpu() { return Nanoseconds(100); }
 // Long enough for a program of a few instructions to have run, been reset
 // and run again, whatever reset it.
-const sc_core::sc_time kTimeToStartTwice{1, sc_core::SC_MS};
+sc_core::sc_time TimeToStartTwice() { return {1, sc_core::SC_MS}; }
 // Far longer than any pulse: a reset still high by then is stuck.
-const sc_core::sc_time kLongAfter{1, sc_core::SC_MS};
+sc_core::sc_time LongAfter() { return {1, sc_core::SC_MS}; }
 
 // A system controller with its three lines in a test's hands, and a test's
 // thread on its bus. The thread drives `hold` and `bite` and reads `reset`.
 struct Rig {
-  explicit Rig(std::function<void(Rig&, BusDriver&)> body)
-      : driver{"driver", [this, body = std::move(body)](BusDriver& bus) {
-                 body(*this, bus);
-               }} {
+  explicit Rig(const std::function<void(Rig&, BusDriver&)>& body)
+      // clang-tidy's analyzer loses track of the body's storage on its way
+      // through two std::functions, and reports a leak there is not.
+      // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
+      : driver{"driver", [this, body](BusDriver& bus) { body(*this, bus); }} {
     controller.hold.bind(hold);
     controller.bite.bind(bite);
     controller.reset.bind(reset);
@@ -146,7 +147,7 @@ TEST(WhenACpuAsksItsSystemControllerForAReset, ItStartsOverAtItsResetVector) {
       /*sleep=*/true, CpuUnderASystemController::kController +
                           SYSTEM_CONTROLLER_RESET_REQUEST));
 
-  board.platform.Run(kTimeToStartTwice);
+  board.platform.Run(TimeToStartTwice());
 
   EXPECT_EQ(board.Starts(), 2U);
 }
@@ -168,7 +169,7 @@ TEST_P(WhenTheWatchdogBitesACpu, ItStartsOverAtItsResetVector) {
                                   /*quantum=*/{100, sc_core::SC_US}};
   board.Load(riscv::CountStartsThen(asleep));
 
-  board.platform.Run(kTimeToStartTwice);
+  board.platform.Run(TimeToStartTwice());
 
   EXPECT_EQ(board.Starts(), 2U);
 }
@@ -204,9 +205,9 @@ TEST(WhenTheWatchdogsLineRises, ASystemControllerPulsesItsResetLine) {
     lines.bite.write(true);
     Rig::LetItSettle();
     at_once = lines.reset.read();
-    sc_core::wait(kOneTickOfACpu);
+    sc_core::wait(OneTickOfACpu());
     a_tick_later = lines.reset.read();
-    sc_core::wait(kLongAfter);
+    sc_core::wait(LongAfter());
     long_after = lines.reset.read();
   }};
 
@@ -232,7 +233,7 @@ TEST(WhenTheWatchdogsLineFalls, ASystemControllerResetsNothing) {
 
   Rig rig{[&](Rig& lines, BusDriver&) {
     lines.bite.write(true);
-    sc_core::wait(kLongAfter);
+    sc_core::wait(LongAfter());
     lines.bite.write(false);
     Rig::LetItSettle();
     after_the_fall = lines.reset.read();
@@ -251,9 +252,9 @@ TEST(WhenACpuWritesAOneToTheResetRequest, ASystemControllerPulsesItsResetLine) {
                 SYSTEM_CONTROLLER_RESET_REQUEST_RESET);
     Rig::LetItSettle();
     at_once = lines.reset.read();
-    sc_core::wait(kOneTickOfACpu);
+    sc_core::wait(OneTickOfACpu());
     a_tick_later = lines.reset.read();
-    sc_core::wait(kLongAfter);
+    sc_core::wait(LongAfter());
     long_after = lines.reset.read();
   }};
 
