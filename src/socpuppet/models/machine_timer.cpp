@@ -55,7 +55,7 @@ struct MachineTimer::Model {
   PoweredOn<vpvper::minres::aclint> timer_{"timer", /*num_cpus=*/1};
 
  public:
-  RegistersOf registers{timer_.socket};
+  BorrowedSocket registers{timer_.socket};
 };
 
 MachineTimer::MachineTimer(const sc_core::sc_module_name& name,

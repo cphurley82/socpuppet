@@ -87,6 +87,16 @@ Each entry says:
 - **Kind**: limitation.
 - **When it lands**: both adapters can forward every debug access.
 
+### SCC's SPI sockets are in a library that does not compile here
+
+- **Where**: `src/interfaces/CMakeLists.txt`, the `interfaces` library (`scc::busses`), which has `spi/spi_tlm.h` beside AHB, AXI and CHI, and `third_party/axi_chi/chi/lwtr/chi_lwtr.cpp`.
+- **What is wrong**: the SPI sockets are headers, and the only target that puts them on an include path is the whole `interfaces` library. Linking it compiles the AXI and CHI transaction recorders, and with Apple's Clang `chi_lwtr.cpp` fails: a call to `record` is ambiguous between three templates.
+- **How to see it**: link `scc::busses` into anything, on a Mac.
+- **What we do**: `src/socpuppet/CMakeLists.txt` adds `${scc_SOURCE_DIR}/src/interfaces` to the flash model's include path and links nothing new.
+- **Upstream fix**: an interface target for the header-only protocols, and the ambiguity in `chi_lwtr.cpp` mended, which is the same one as in "LWTR4SC's `record` is ambiguous" above.
+- **Kind**: build.
+- **When it lands**: link the target, and drop the include path.
+
 ## SystemC CCI
 
 [accellera-official/cci](https://github.com/accellera-official/cci). socpuppet gets it as the copy SCC bundles in `third_party/cci-1.0.1`, so the fix belongs to Accellera, and SCC would pick it up from there.
@@ -540,6 +550,36 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: the patch as it is, as an offer of a feature. It leaves the rest of the block alone: the real-time clock and the power manager are still registers and nothing more. `rst_o` now has one process that writes it, where the button's callback wrote it directly. Two things it does not do, to say when offering it: the count goes by the simulation's clock and ignores how far ahead of it an accessing CPU is, where the ACLINT counts that in, and it does not wrap at 31 bits.
 - **Kind**: missing feature.
 - **When it lands**: drop the patch.
+
+### The flash chip ends the process at an access past its 256 MB
+
+- **Where**: `generic/spi_mem.h`, `scc::memory<256_MB, scc::LT> mem`, reached through `spi_t`'s blocking and debug transport, and so through `minres/qspi`'s `xip_sck`.
+- **What is wrong**: the chip is 256 MB whatever a platform wants, with no parameter for it, and an access that starts past the end does not come back with an address error. The process ends: "pointer being freed was not allocated".
+- **How to see it**: a read at `0x1000_0000` through `xip_sck`. M14's spike did it ([boot-spike.md](boot-spike.md)). In socpuppet, `AnAccessThroughAFlashsWindowFarPastItsSize` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own check taken out.
+- **What we do**: no patch. The adapter (`src/socpuppet/models/spi_flash.cpp`) has a size of its own and turns an access past it away before the chip sees it.
+- **Upstream fix**: a size parameter for the chip, and an address-error response past it.
+- **Kind**: bug.
+- **When it lands**: the adapter's check can go, with its size given to the chip.
+
+### The flash's memory window takes a write
+
+- **Where**: `minres/qspi.cpp`, the `xip_sck` socket, and `generic/spi_mem.cpp`, which hands what arrives to its memory.
+- **What is wrong**: 🎓 a flash mapped for execute in place is read through that window, and written by erase and program commands to its controller. The model's window passes a write on to the chip's memory, which takes it, so firmware that stores to its flash by mistake changes it and is told nothing.
+- **How to see it**: a write through `xip_sck` and a read of the same address. In socpuppet, `ABusWriteThroughAFlashsWindow` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own check taken out.
+- **What we do**: no patch. The adapter answers a write through its window with a command error. A debugger's write is passed on, on purpose: it is how a platform fills the flash.
+- **Upstream fix**: refuse a write command in `xip_sck`'s blocking transport.
+- **Kind**: bug.
+- **When it lands**: the adapter's check can go.
+
+### The flash's memory window says direct access is allowed, and cannot grant it
+
+- **Where**: `minres/qspi.cpp`, `xip_sck`, which registers a blocking and a debug transport and no `get_direct_mem_ptr`, and `generic/spi_mem.h`, whose `scc::memory` sets the DMI-allowed hint on what it answers.
+- **What is wrong**: 🎓 a target that sets the hint on a transaction is telling its initiator that a pointer to its memory is worth asking for. The chip's memory sets it, the hint rides back out through the window, and a CPU model that then asks is refused: neither the window nor an SPI socket has a way to pass the request on. A CPU asks again at every access.
+- **How to see it**: a read through `xip_sck`, the hint on the transaction that comes back, and a request for direct memory access that is then refused. In socpuppet, `AFlashsWindow.GrantsNoDirectMemoryAccess` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own line taken out.
+- **What we do**: no patch. The adapter clears the hint on what comes back through its window. socpuppet wants no direct access there in any case: a boot ROM's reads are meant to show in a trace.
+- **Upstream fix**: clear the hint in `xip_sck`'s blocking transport, or pass a request for direct memory access on to the chip.
+- **Kind**: bug.
+- **When it lands**: nothing to delete. The adapter keeps its line, for the trace's sake.
 
 ### `pulpino/uart.h` does not include what it uses
 

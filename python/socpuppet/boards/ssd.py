@@ -42,6 +42,7 @@ from typing import NamedTuple
 
 from socpuppet.boards.cpu_kit import (
     CpuKit,
+    add_boot_flash,
     add_cpu_kit,
 )
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
@@ -116,6 +117,9 @@ class Ssd(NamedTuple):
     uplink: PlacedRouter
     #: What a real CPU has around it. None when a script is in its place.
     cpu_kit: CpuKit | None = None
+    #: The flash the SSD's CPU boots from, which is its own. None when a
+    #: script is in the CPU's place.
+    boot_flash: Placed | None = None
     #: Its PCIe endpoint, if it has one (see `add_ssd_function`).
     endpoint: Placed | None = None
 
@@ -197,7 +201,9 @@ def add_ssd_function(
     # Whatever is in the CPU's place, with the frontend's line to tell it
     # when there is work.
     cpu_kit = None
+    boot_flash = None
     if firmware is None:
+        boot_flash = add_boot_flash(place, bus)
         cpu, cpu_kit = add_cpu_kit(
             platform,
             place,
@@ -236,6 +242,7 @@ def add_ssd_function(
         buffer=buffer,
         uplink=uplink,
         cpu_kit=cpu_kit,
+        boot_flash=boot_flash,
     )
 
 

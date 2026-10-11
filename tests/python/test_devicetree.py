@@ -359,6 +359,20 @@ class TestWhenACpuHasARomBelowItsRam:
         assert platform.devicetree() == without
 
 
+class TestWhenACpuHasAFlashOnItsBus:
+    def test_the_devicetree_is_the_one_without_the_flash(self):
+        # 🚧 Nothing in firmware reads the flash yet: a boot ROM is told
+        # where it is by its system controller. A driver that speaks SPI
+        # to it, and the node that driver wants, come with M18.
+        platform, bus, _ = cpu_with_its_peripherals()
+        without = platform.devicetree()
+        flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
+        bus.map(flash.xip, base=0x1020_0000)
+        bus.map(flash.socket, base=0x100D_0000)
+
+        assert platform.devicetree() == without
+
+
 class TestWhenACpuHasASystemControllerOnItsBus:
     def test_its_node_is_exactly_this(self):
         platform, bus, _ = cpu_with_its_peripherals()

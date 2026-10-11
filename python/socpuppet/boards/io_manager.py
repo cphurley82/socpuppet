@@ -32,6 +32,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet.boards.cpu_kit import add_boot_flash
 from socpuppet.boards.manager import Manager, add_manager, stand_in_manager
 from socpuppet.components import (
     D2dLink,
@@ -74,6 +75,9 @@ class IoManagerBoard(NamedTuple):
     #: The IO die's bus, which the manager reaches everything through and
     #: the compute die reaches across the link.
     bus: PlacedRouter
+    #: The flash the manager's CPU boots from. None when a script is in
+    #: the CPU's place.
+    boot_flash: Placed | None = None
 
 
 def io_manager(
@@ -108,6 +112,8 @@ def io_manager(
     placed_manager = add_manager(
         platform, io, bus, link_end=link.b, script=manager, gdb_port=gdb_port
     )
+    # A CPU boots from a flash, and a script from nothing.
+    boot_flash = add_boot_flash(io, bus) if manager is None else None
     scratch = io.add("scratch", Memory(size=SCRATCH_SIZE))
     bus.map(scratch.socket, base=SCRATCH_BASE)
     platform.connect(link.b.initiator, bus.add_input())
@@ -128,6 +134,7 @@ def io_manager(
         compute=compute_cpu,
         link=link,
         bus=bus,
+        boot_flash=boot_flash,
     )
 
 

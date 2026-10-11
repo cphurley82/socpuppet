@@ -25,6 +25,10 @@ The host's CPU is a 64-bit one with other things around it, and has the
 system controller and the watchdog in common with these:
 `add_system_controller()` and `add_watchdog()` are the parts of the kit
 it takes.
+
+The flash a CPU boots from is not in the kit, because the host's two CPUs
+share one: `add_boot_flash()` is for a board whose CPU has a flash to
+itself.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from socpuppet.components import (
     Memory,
     Ns16550,
     Plic,
+    SpiFlash,
     SystemController,
     Watchdog,
 )
@@ -51,9 +56,12 @@ SYSCON_BASE = 0x0010_0000
 WATCHDOG_BASE = 0x0010_1000
 #: The flash a CPU boots from, which its system controller's boot address
 #: is inside. It is one address for every socpuppet CPU, so that a boot ROM
-#: finds its flash in the same place on every board. 🚧 No board has a
-#: flash there yet: until one has, a boot address names where one will be.
+#: finds its flash in the same place on every board. 4 MiB is room for two
+#: images, which the IO die's flash holds.
 BOOT_FLASH_BASE = 0x1020_0000
+BOOT_FLASH_SIZE = 4 * 1024 * 1024
+#: The registers of the flash's SPI controller, which no firmware uses yet.
+BOOT_FLASH_CONTROLLER_BASE = 0x100D_0000
 #: The dies of the chiplet host, by the number each one's system
 #: controller gives its CPU. A board of one die, as the SSD is, is die 0.
 COMPUTE_DIE = 0
@@ -202,3 +210,19 @@ def add_watchdog(
     platform.connect(wdt.bite, syscon.bite)
     platform.connect(wdt.irq, irq)
     return wdt
+
+
+def add_boot_flash(place: Platform | Group, bus: PlacedRouter) -> Placed:
+    """Put the flash a CPU boots from on `bus`, for a CPU with one to itself.
+
+    It is read like memory at `BOOT_FLASH_BASE`, where the CPU's system
+    controller says its image is, and its controller's registers are at
+    `BOOT_FLASH_CONTROLLER_BASE`. Fill it before the first run:
+    `platform.load_binary(image, at=BOOT_FLASH_BASE, via=cpu.socket)`.
+
+    The host's two CPUs share one flash, and the host places that itself.
+    """
+    flash = place.add("boot_flash", SpiFlash(size=BOOT_FLASH_SIZE))
+    bus.map(flash.xip, base=BOOT_FLASH_BASE)
+    bus.map(flash.socket, base=BOOT_FLASH_CONTROLLER_BASE)
+    return flash

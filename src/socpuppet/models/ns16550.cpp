@@ -120,7 +120,7 @@ struct Ns16550::Model {
       // base address, size in bytes, interrupts, registers
       scc::tlm_target_bfs_params{0, kRegisters * kRegisterSpacing, 1,
                                  kRegisters}};
-  RegistersOf registers_{*uart_.sock_t_.get()};
+  BorrowedSocket registers_{*uart_.sock_t_.get()};
   tlm_utils::simple_target_socket<Model> serial_line_{"serial_line"};
   tlm_utils::simple_initiator_socket<Model> byte_waiting_{"byte_waiting"};
 };

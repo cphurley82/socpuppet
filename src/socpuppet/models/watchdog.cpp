@@ -40,7 +40,7 @@ struct Watchdog::Model {
   PoweredOn<vpvper::sifive::aon> block_{"block"};
 
  public:
-  RegistersOf registers{block_.socket};
+  BorrowedSocket registers{block_.socket};
 };
 
 Watchdog::Watchdog(const sc_core::sc_module_name& name)

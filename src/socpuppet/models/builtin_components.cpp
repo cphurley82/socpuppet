@@ -29,6 +29,7 @@
 #include "socpuppet/models/plic.h"
 #include "socpuppet/models/rom.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
 #include "socpuppet/models/watchdog.h"
 #include "socpuppet/platform/port.h"
@@ -70,6 +71,9 @@ constexpr Within kAtLeastOne{.least = 1};
 // What a NAND chip's geometry is made of: counts that a controller reads
 // from 32-bit registers, and none of which can be nothing.
 constexpr Within kNandCount{.least = 1, .most = 0xFFFF'FFFF};
+// A flash holds a byte at the least, and at the most what the borrowed
+// chip has: 256 MiB.
+constexpr Within kFlashSize{.least = 1, .most = 0x1000'0000};
 
 // Adds a port for each of a component's numbered lines: `prefix` and a
 // number, counting up from `first`. `make_port` turns a name and a line
@@ -326,6 +330,13 @@ Registry BuiltinComponents() {
                                 WireSourcePort("reset", module->reset)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
+  registry.Add("spi_flash", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<SpiFlash>(
+        name, parameters.Required("size", kFlashSize));
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            TargetPort("xip", module->xip)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("watchdog", [](const char* name, Parameters&) {
     auto module = std::make_unique<Watchdog>(name);
     std::vector<Port> ports{

@@ -59,6 +59,7 @@ EXAMPLES = [
     router_with_one_output(),
     router_with_two_inputs(),
     sp.ScriptedBusMaster(),
+    sp.SpiFlash(size=0x1000),
     sp.SystemController(die=1, boot_address=0x1020_0000),
     sp.Watchdog(),
 ]
@@ -117,6 +118,13 @@ class TestASystemControllerWithANumberItsRegisterCannotHold:
     ):
         with pytest.raises(ValueError, match=rf"`{register}`.*32 bits"):
             sp.SystemController(**{register: number})
+
+
+class TestASpiFlashOfASizeTheChipCannotBe:
+    @pytest.mark.parametrize("size", [0, (256 << 20) + 1])
+    def test_is_refused_and_the_error_gives_the_most_it_can_hold(self, size):
+        with pytest.raises(ValueError, match="256 MiB"):
+            sp.SpiFlash(size=size)
 
 
 class TestTheCatalogue:

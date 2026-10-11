@@ -47,7 +47,7 @@ struct Plic::Model {
   PoweredOn<vpvper::rvi::plic<kSources, 1>> plic_{"plic"};
 
  public:
-  RegistersOf registers{plic_.socket};
+  BorrowedSocket registers{plic_.socket};
 };
 
 Plic::Plic(const sc_core::sc_module_name& name)

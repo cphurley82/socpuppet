@@ -60,6 +60,7 @@ add_executable(kernel_tests
   platform/pcie_test.cpp
   platform/router_test.cpp
   platform/scripted_master_test.cpp
+  platform/spi_flash_test.cpp
   platform/system_controller_test.cpp
   platform/tracer_test.cpp
   platform/transport_test.cpp)

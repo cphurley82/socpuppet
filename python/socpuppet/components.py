@@ -830,6 +830,46 @@ class SystemController(Component):
         )
 
 
+class SpiFlash(Component):
+    """A flash of `size` bytes and its SPI controller: where firmware is kept.
+
+    🎓 A boot ROM cannot be changed, so the firmware it starts is kept
+    somewhere that can: a flash chip. The chip is on an SPI bus, behind a
+    controller, and the controller also shows it to the CPU as if it were
+    memory (execute in place, XIP), which is how a boot ROM reads it.
+
+    Map `xip` where the CPU is to find the flash, and `socket`, the
+    controller's own registers, somewhere else. Fill it before the first
+    run with `platform.load_binary(image, at=<where xip is>)`. A write from
+    the bus through `xip` fails: a flash is written by commands to its
+    controller, and 🚧 nothing here speaks those yet.
+
+    Both halves are borrowed from VPV-Peripherals. It has no devicetree
+    node: nothing in firmware reads it yet.
+    """
+
+    implementation = "spi_flash"
+    port_specs = (target("socket"), target("xip"))
+    #: The most the borrowed chip holds.
+    LARGEST = 256 << 20
+    #: The controller's registers take a page.
+    mapped_size = 0x1000
+
+    size: int
+
+    def __post_init__(self) -> None:
+        if not 0 < self.size <= self.LARGEST:
+            raise ValueError(
+                f"A flash holds from one byte to 256 MiB, which is what the "
+                f"borrowed chip has, and {self.size:#x} bytes were asked "
+                "for."
+            )
+
+    @override
+    def size_at(self, port: str) -> int | None:
+        return self.size if port == "xip" else self.mapped_size
+
+
 class Watchdog(Component):
     """A watchdog timer: it resets the CPU when firmware stops feeding it.
 

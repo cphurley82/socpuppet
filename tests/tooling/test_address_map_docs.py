@@ -145,17 +145,19 @@ def test_the_interrupt_table_of_the_host_with_the_ssd_has_the_lines_of_the_host_
     assert "`ssd.frontend.cpu_irq`" in written
 
 
-def test_the_table_of_the_hosts_manager_has_the_links_registers_and_nothing_else(
+def test_the_table_of_the_hosts_manager_has_the_links_registers_and_the_flash_and_nothing_else(
     tmp_path,
 ):
     page = a_page(tmp_path, "address-map:host-manager")
 
     address_map_docs("write", page)
 
-    assert what_answers(page) == {"`io.d2d.sideband`"}
+    # And the flash the die's two CPUs boot from, which a script in the
+    # manager's place can read as its CPU would.
+    assert what_answers(page) == {"`io.d2d.sideband`", "`io.boot_flash.xip`"}
 
 
-def test_the_table_of_the_hosts_manager_with_a_cpu_has_its_kit_and_the_links_registers(
+def test_the_table_of_the_hosts_manager_with_a_cpu_has_its_kit_the_links_registers_and_the_flash(
     tmp_path,
 ):
     page = a_page(tmp_path, "address-map:host-manager-cpu")
@@ -170,6 +172,7 @@ def test_the_table_of_the_hosts_manager_with_a_cpu_has_its_kit_and_the_links_reg
         "`io.manager.uart.socket`",
         "`io.manager.sram.socket`",
         "`io.d2d.sideband`",
+        "`io.boot_flash.xip`",
     }
 
 

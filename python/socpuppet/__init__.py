@@ -21,6 +21,7 @@ from socpuppet.components import (
     Rom,
     Router,
     ScriptedBusMaster,
+    SpiFlash,
     SystemController,
     Watchdog,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "Rom",
     "Router",
     "ScriptedBusMaster",
+    "SpiFlash",
     "SsdFirmware",
     "Steps",
     "SystemController",

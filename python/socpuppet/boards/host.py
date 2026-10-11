@@ -12,7 +12,8 @@
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
 die has the CPU, its RAM, the interrupt controller, the timer, the system
 controller, which drives the CPU's reset, and an APLIC of its own. The IO
-die has the UART, and an APLIC that the UART's interrupt line goes to.
+die has the UART, an APLIC that the UART's interrupt line goes to, and
+the flash the host boots from.
 🎭 The link between the dies is a stand-in that passes every access
 straight through, unless the host is given a `manager`.
 
@@ -60,8 +61,9 @@ The link's end on the compute die holds the host's CPU in reset, by a
 line to the CPU's system controller, which is what drives the reset. The
 manager starts the training, waits for the link to say it is up, and lets
 the CPU go with a message to the other end. It has a bus of its own, with
-the link's registers on it and nothing the host reaches, so the host's
-firmware sees the same map with either link and is the same image.
+the link's registers on it and, but for the flash both of them boot from,
+nothing the host reaches. So the host's firmware sees the same map with
+either link and is the same image.
 
 The Zephyr board is the host with no drive. Firmware for the host with
 one is built with a shield as well, `socpuppet_host_drive`. A shield is
@@ -81,6 +83,8 @@ from typing import Any, NamedTuple, Protocol, overload
 from socpuppet import devicetree
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
+    BOOT_FLASH_CONTROLLER_BASE,
+    BOOT_FLASH_SIZE,
     COMPUTE_DIE,
     HOST_IMAGE_OFFSET,
     PLIC_BASE,
@@ -106,6 +110,7 @@ from socpuppet.components import (
     PassThroughLink,
     PcieRootComplex,
     Router,
+    SpiFlash,
 )
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
@@ -242,6 +247,10 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: The watchdog, which has the system controller reset the CPU when
     #: firmware stops feeding it.
     wdt: Placed
+    #: The flash on the IO die that the host boots from, and with a manager
+    #: the manager too. Fill it through the CPU:
+    #: `platform.load_binary(image, at=BOOT_FLASH_BASE, via=board.cpu.socket)`.
+    boot_flash: Placed
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -316,6 +325,7 @@ def host(
     compute = _compute_die(platform, compute_group, gdb_port=gdb_port)
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
+    io = _io_die(platform, io_group)
     placed_manager = None
     if manager is not None:
         # The link's end holds the host's CPU until the manager lets it
@@ -323,18 +333,23 @@ def host(
         # line goes to that.
         platform.connect(d2d.a.reset, compute.syscon.hold)
         # The manager has a bus of its own, with the link's registers on
-        # it and nothing the host reaches. On the IO die's main bus it
-        # would find the root complex's window at another address than
-        # the host's CPU does, which a platform refuses, and the host's
-        # devicetree would gain the link's registers.
+        # it and, but for the flash, nothing the host reaches. On the IO
+        # die's main bus it would find the root complex's window at
+        # another address than the host's CPU does, which a platform
+        # refuses, and the host's devicetree would gain the link's
+        # registers.
         management = io_group.group("manager")
+        management_bus = management.add("bus", Router())
         placed_manager = manager(
-            platform,
-            management,
-            management.add("bus", Router()),
-            link_end=d2d.b,
+            platform, management, management_bus, link_end=d2d.b
         )
-    io = _io_die(platform, io_group)
+        # The one thing on both buses: the flash both CPUs boot from, which
+        # the manager finds where the host's CPU does.
+        management_bus.map(
+            io.boot_flash_bus.add_input(),
+            base=BOOT_FLASH_BASE,
+            size=BOOT_FLASH_SIZE,
+        )
     # Down the link: the compute die sees the IO die's bus in a window.
     compute.bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
     platform.connect(d2d.b.initiator, io.bus.target)
@@ -349,6 +364,7 @@ def host(
         d2d,
         compute.syscon,
         compute.wdt,
+        io.boot_flash,
         drive=(
             None
             if drive_blocks is None
@@ -439,6 +455,11 @@ class _IoDie(NamedTuple):
     #: The way up to the compute die, for what the IO die sends of its own
     #: accord: the APLIC's messages, and with a drive what the drive sends.
     up: PlacedRouter
+    boot_flash: Placed
+    #: The way to the flash's window. A socket takes one connection, and
+    #: the flash has two readers when the die has a manager, so each comes
+    #: in by an input of this.
+    boot_flash_bus: PlacedRouter
 
 
 def _io_die(platform: Platform, place: Group) -> _IoDie:
@@ -447,14 +468,25 @@ def _io_die(platform: Platform, place: Group) -> _IoDie:
     uart = place.add("uart", Ns16550())
     aplic = place.add("aplic", Aplic())
     up = place.add("up", Router())
+    boot_flash = place.add("boot_flash", SpiFlash(size=BOOT_FLASH_SIZE))
+    boot_flash_bus = place.add("boot_flash_bus", Router())
     bus.map(uart.socket, base=UART_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
+    # The flash is where every socpuppet CPU has its own, which for this
+    # die's devices is a place in the window the compute die sees them in.
+    bus.map(boot_flash.socket, base=BOOT_FLASH_CONTROLLER_BASE - IO_BASE)
+    bus.map(
+        boot_flash_bus.target,
+        base=BOOT_FLASH_BASE - IO_BASE,
+        size=BOOT_FLASH_SIZE,
+    )
+    boot_flash_bus.map(boot_flash.xip, base=0)
     # The UART's interrupt is a wire as far as the APLIC, on its own die,
     # and a message from there: it crosses the die-to-die link the other
     # way and comes onto the compute die's bus, where the IMSIC's page is.
     platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
     platform.connect(aplic.msi, up.target)
-    return _IoDie(bus, uart, up)
+    return _IoDie(bus, uart, up, boot_flash, boot_flash_bus)
 
 
 def _drive[Drive: PcieDrive](

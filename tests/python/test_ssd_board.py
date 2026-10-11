@@ -123,6 +123,22 @@ class TestAnSsdWithNoScriptForItsFirmware:
         ]
         assert syscon.address == SYSCON_BASE
 
+    def test_has_a_flash_of_its_own_where_its_system_controller_says_to_boot_from(
+        self,
+    ):
+        board = ssd(host=idle_host)
+        [window] = [
+            each
+            for each in board.platform.address_map(via=board.ssd.cpu.socket)
+            if each.component == board.ssd.boot_flash.path
+            and each.port == "xip"
+        ]
+
+        assert window.group == "ssd"
+        assert window.address == (
+            board.ssd.cpu_kit.syscon.component.boot_address
+        )
+
     def test_tells_its_boot_rom_to_look_where_every_socpuppet_cpu_has_its_flash(
         self,
     ):

@@ -105,7 +105,7 @@ struct Aplic::Model {
   tlm_utils::simple_target_socket<Model, scc::LT> messages_{"messages"};
 
  public:
-  RegistersOf registers{aplic_.socket};
+  BorrowedSocket registers{aplic_.socket};
 };
 
 Aplic::Aplic(const sc_core::sc_module_name& name)

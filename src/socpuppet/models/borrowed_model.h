@@ -26,15 +26,16 @@ struct PoweredOn : Borrowed {
   }
 };
 
-// An adapter's way to a borrowed model's registers. The model takes its
-// accesses on a socket with a bus width of zero, SCC's mark for "loosely
-// timed", and such a socket only binds to its like. This holds the
-// initiator of that kind and passes a transaction through it.
-class RegistersOf {
+// An adapter's way into a socket of a borrowed model: its registers, most
+// often. The model takes its accesses on a socket with a bus width of
+// zero, SCC's mark for "loosely timed", and such a socket only binds to
+// its like. This holds the initiator of that kind and passes a transaction
+// through it.
+class BorrowedSocket {
  public:
   template <typename TargetSocket>
-  explicit RegistersOf(TargetSocket& registers) {
-    socket_.bind(registers);
+  explicit BorrowedSocket(TargetSocket& borrowed) {
+    socket_.bind(borrowed);
   }
 
   void Access(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay) {
@@ -47,8 +48,8 @@ class RegistersOf {
   }
 
  private:
-  tlm_utils::simple_initiator_socket<RegistersOf, scc::LT> socket_{
-      "to_registers"};
+  tlm_utils::simple_initiator_socket<BorrowedSocket, scc::LT> socket_{
+      "to_borrowed"};
 };
 
 }  // namespace socpuppet

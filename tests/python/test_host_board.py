@@ -8,6 +8,7 @@ import pytest
 from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
+    BOOT_FLASH_CONTROLLER_BASE,
     COMPUTE_DIE,
     PLIC_BASE,
     SYSCON_BASE,
@@ -135,6 +136,55 @@ class TestTheHostsWatchdog:
             InterruptEntry("compute.aplic", WATCHDOG_SOURCE, "compute.wdt.irq")
             in board.platform.interrupt_map()
         )
+
+
+class TestTheHostsBootFlash:
+    def test_is_on_the_io_die_and_so_in_its_window(self):
+        board = host()
+        window = the_boot_flash_as_seen_by(board.cpu.socket, board)
+
+        assert window.group == "io"
+        assert IO_BASE <= window.address < IO_BASE + IO_SIZE
+
+    def test_is_at_the_address_every_socpuppet_cpu_has_its_boot_flash_at(self):
+        board = host()
+
+        assert (
+            the_boot_flash_as_seen_by(board.cpu.socket, board).address
+            == BOOT_FLASH_BASE
+        )
+
+    def test_is_read_where_the_cpus_system_controller_says_to_boot_from(self):
+        board = host()
+        window = the_boot_flash_as_seen_by(board.cpu.socket, board)
+
+        assert (
+            window.address
+            <= board.syscon.component.boot_address
+            < (window.address + window.size)
+        )
+
+    def test_has_its_controllers_registers_where_every_socpuppet_cpu_has_them(
+        self,
+    ):
+        board = host()
+        [registers] = [
+            each
+            for each in board.platform.address_map()
+            if each.component == board.boot_flash.path and each.port == "socket"
+        ]
+
+        assert registers.address == BOOT_FLASH_CONTROLLER_BASE
+
+
+def the_boot_flash_as_seen_by(master, board):
+    """The window of the host's boot flash in a bus master's address map."""
+    [window] = [
+        each
+        for each in board.platform.address_map(via=master)
+        if each.component == board.boot_flash.path and each.port == "xip"
+    ]
+    return window
 
 
 class TestTheHostsInterruptController:
@@ -417,18 +467,29 @@ class TestTheHostWithAManager:
             board.syscon.reset.path
         ]
 
-    def test_its_manager_reaches_the_links_registers_and_nothing_its_cpu_does(
+    def test_its_manager_reaches_the_links_registers_and_shares_only_the_flash_with_its_cpu(
         self,
     ):
         # The manager has a bus of its own, as the management side of a
-        # real IO die has.
+        # real IO die has. The one thing on both is the flash the two of
+        # them boot from.
         board = host_with_a_manager()
 
         the_managers = ports_reached(board, via=board.manager.cpu.socket)
         the_cpus = ports_reached(board, via=board.cpu.socket)
 
         assert board.link.b.sideband.path in the_managers
-        assert the_managers & the_cpus == set()
+        assert the_managers & the_cpus == {board.boot_flash.xip.path}
+
+    def test_its_manager_finds_the_flash_where_its_cpu_does(self):
+        # One flash, two CPUs, one address: each one's boot ROM looks in
+        # the same place, further in or not.
+        board = host_with_a_manager()
+
+        assert (
+            the_boot_flash_as_seen_by(board.manager.cpu.socket, board).address
+            == the_boot_flash_as_seen_by(board.cpu.socket, board).address
+        )
 
     def test_its_cpu_sees_the_devicetree_it_sees_with_no_manager(self):
         # Which is why firmware built for the host runs across the real
@@ -486,6 +547,13 @@ class TestTheHostWithAManagerThatHasACpu:
             board.syscon.component.die
             != board.manager.cpu_kit.syscon.component.die
         )
+
+    def test_its_manager_is_told_to_boot_from_inside_the_flash_too(self):
+        board = host(manager=add_manager)
+        window = the_boot_flash_as_seen_by(board.manager.cpu.socket, board)
+        boot_address = board.manager.cpu_kit.syscon.component.boot_address
+
+        assert window.address <= boot_address < window.address + window.size
 
     def test_its_manager_boots_from_further_into_the_flash_than_its_cpu(self):
         # One flash holds both images, the host's first.

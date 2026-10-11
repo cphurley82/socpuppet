@@ -97,6 +97,18 @@ class TestWhenTheManagerIsARealCpu:
 
         assert syscon.die == IO_DIE
 
+    def test_it_boots_from_a_flash_on_its_own_die(self):
+        board = io_manager(compute=nothing)
+        [window] = [
+            each
+            for each in board.platform.address_map(via=board.manager.cpu.socket)
+            if each.component == board.boot_flash.path and each.port == "xip"
+        ]
+        boot_address = board.manager.cpu_kit.syscon.component.boot_address
+
+        assert window.group == "io"
+        assert window.address <= boot_address < window.address + window.size
+
     def test_its_watchdog_bites_its_system_controller(self):
         board = io_manager(compute=nothing)
         kit = board.manager.cpu_kit

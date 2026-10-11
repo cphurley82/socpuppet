@@ -274,6 +274,8 @@ INSTANTIATE_TEST_SUITE_P(
                    "4294967296"},
         OutOfRange{"nvme_frontend", {{"vectors", 0}}, "vectors", "0"},
         OutOfRange{"nvme_frontend", {{"vectors", 2049}}, "vectors", "2049"},
+        OutOfRange{"spi_flash", {{"size", 0}}, "size", "0"},
+        OutOfRange{"spi_flash", {{"size", 0x1000'0001}}, "size", "268435457"},
         OutOfRange{
             "system_controller", {{"die", 0x1'0000'0000}}, "die", "4294967296"},
         OutOfRange{"system_controller",
