@@ -19,14 +19,13 @@ host's are the ones M3's tests run.
 import pytest
 
 import socpuppet as sp
-from disk_access import IMAGE as DISK_TEST
+from cast import DISK_TEST, GREETING, HELLO_WORLD, MANAGER, SSD, boot
 from disk_access import LIMIT, VERDICTS, no_verdict
 from link_trace import (
     sent_to_the_compute_die,
     sent_to_the_io_die,
     when_the_host_was_let_go,
 )
-from manager_firmware import IMAGE as MANAGER_IMAGE
 from manager_firmware import (
     LINK_UP,
     RELEASED,
@@ -38,9 +37,7 @@ from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
 from ssd_zephyr_firmware import BANNER as SSD_BANNER
-from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
-GREETING = "Hello World! socpuppet_host"
 #: Zephyr takes a millisecond or two to start on the manager, the link
 #: five more to come up, and the host's greeting a millisecond after
 #: that. This leaves room and still ends a run that never prints.
@@ -92,21 +89,7 @@ def bootchain(firmware):
     """
     # 2 MiB of drive, as in M3b, M6 and M7.
     board = host(drive_blocks=4096, manager=add_manager, drive=add_ssd)
-    board.platform.build()
-    # ⚠️ There are three CPUs, so say whose firmware each image is.
-    board.platform.load_elf(firmware(DISK_TEST), via=board.cpu.socket)
-    board.platform.load_elf(
-        firmware(MANAGER_IMAGE), via=board.manager.cpu.socket
-    )
-    board.platform.load_elf(firmware(SSD_IMAGE), via=board.drive.ssd.cpu.socket)
-    story = sp.Transcript(
-        board.platform,
-        {
-            "manager": console_of(board),
-            "ssd": board.drive.ssd.cpu_kit.uart,
-            "host": board.uart,
-        },
-    )
+    story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
     gave_a_verdict = story.run_until(
         lambda: any(
             line.who == "host" and line.text in VERDICTS for line in story.lines
@@ -197,17 +180,12 @@ class TestWhenTheLinkIsTracedWhileTheManagersFirmwareLetsTheHostGo:
         assert when_the_host_was_let_go(board) < first_crossing
 
 
-def host_with_a_manager_running(firmware, managers=MANAGER_IMAGE, trace=False):
+def host_with_a_manager_running(firmware, managers=MANAGER, trace=False):
     """The host with Zephyr's `hello_world`, and its manager with an image.
 
     The manager's is the firmware that brings the link up, unless a test
     gives it another.
     """
     board = host(manager=add_manager, trace=trace)
-    board.platform.build()
-    # ⚠️ There are two CPUs, so say whose firmware each image is.
-    board.platform.load_elf(
-        firmware("hello_world_socpuppet_host.elf"), via=board.cpu.socket
-    )
-    board.platform.load_elf(firmware(managers), via=board.manager.cpu.socket)
+    boot(board, firmware, host=HELLO_WORLD, manager=managers)
     return board

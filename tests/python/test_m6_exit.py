@@ -16,11 +16,11 @@ import functools
 import pytest
 
 import socpuppet as sp
-from disk_access import IMAGE, run_to_a_verdict
+from cast import DISK_TEST, SSD, boot
+from disk_access import run_to_a_verdict
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
 from ssd_zephyr_firmware import BANNER
-from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 #: What is in the SSD's CPU's place.
 A_SCRIPT = "a script for the SSD's firmware"
@@ -37,24 +37,18 @@ def host_with_the_ssd(request, firmware):
     application in firmware/ssd on the SSD's own CPU. A test of what only
     the real thing does asks for that one alone, with `only_with_zephyr`.
     """
-    host_image = firmware(IMAGE)
-    ssd_image = firmware(SSD_IMAGE) if request.param == ZEPHYR else None
+    zephyr = request.param == ZEPHYR
 
     def build(blocks):
         board = host(
             drive_blocks=blocks,
             drive=add_ssd
-            if ssd_image
+            if zephyr
             else functools.partial(
                 add_ssd, firmware=stand_in_firmware().script
             ),
         )
-        board.platform.build()
-        # With two bus masters, the platform has to be told whose
-        # firmware an image is.
-        board.platform.load_elf(host_image, via=board.cpu.socket)
-        if ssd_image:
-            board.platform.load_elf(ssd_image, via=board.drive.ssd.cpu.socket)
+        boot(board, firmware, host=DISK_TEST, ssd=SSD if zephyr else None)
         return board
 
     return build

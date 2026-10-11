@@ -18,7 +18,8 @@ import struct
 import pytest
 
 import socpuppet as sp
-from disk_access import IMAGE, run_to_a_verdict
+from cast import DISK_TEST, GREETING, HELLO_WORLD, SSD, boot
+from disk_access import run_to_a_verdict
 from link_trace import (
     sent_to_the_compute_die,
     sent_to_the_io_die,
@@ -34,9 +35,6 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
-from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
-
-GREETING = "Hello World! socpuppet_host"
 
 
 def a_scripted_manager():
@@ -48,12 +46,7 @@ def a_scripted_manager():
 class TestWhenZephyrsHelloWorldBootsOnTheHostAcrossTheRealLink:
     def test_it_prints_its_greeting_with_the_boards_name(self, firmware):
         board = host(manager=a_scripted_manager())
-        board.platform.build()
-        # With two bus masters, the platform has to be told whose
-        # firmware an image is.
-        board.platform.load_elf(
-            firmware("hello_world_socpuppet_host.elf"), via=board.cpu.socket
-        )
+        boot(board, firmware, host=HELLO_WORLD)
 
         # The link takes 5 ms to come up and the greeting a millisecond
         # more. 50 ms leaves room and still ends a run that never prints.
@@ -81,8 +74,7 @@ class TestFourMillisecondsAfterPowerOn:
         self, firmware
     ):
         board = host()
-        board.platform.build()
-        board.platform.load_elf(firmware("hello_world_socpuppet_host.elf"))
+        boot(board, firmware, host=HELLO_WORLD)
 
         board.platform.run(THE_RESET_HOLD)
 
@@ -90,10 +82,7 @@ class TestFourMillisecondsAfterPowerOn:
 
     def test_a_host_across_the_real_link_has_printed_nothing(self, firmware):
         board = host(manager=a_scripted_manager())
-        board.platform.build()
-        board.platform.load_elf(
-            firmware("hello_world_socpuppet_host.elf"), via=board.cpu.socket
-        )
+        boot(board, firmware, host=HELLO_WORLD)
 
         board.platform.run(THE_RESET_HOLD)
 
@@ -133,12 +122,12 @@ def host_across_the_link(request, firmware):
         manager=a_scripted_manager(),
         **drives[request.param],
     )
-    board.platform.build()
-    board.platform.load_elf(firmware(IMAGE), via=board.cpu.socket)
-    if request.param == THE_SSD_WITH_ZEPHYR:
-        board.platform.load_elf(
-            firmware(SSD_IMAGE), via=board.drive.ssd.cpu.socket
-        )
+    boot(
+        board,
+        firmware,
+        host=DISK_TEST,
+        ssd=SSD if request.param == THE_SSD_WITH_ZEPHYR else None,
+    )
     return board
 
 
@@ -163,10 +152,7 @@ class TestWhenTheLinkIsTracedWhileZephyrsHelloWorldBoots:
         # tenth of a second getting to the other die, so it would show
         # nothing here.
         board = host(manager=a_scripted_manager(), trace=True)
-        board.platform.build()
-        board.platform.load_elf(
-            firmware("hello_world_socpuppet_host.elf"), via=board.cpu.socket
-        )
+        boot(board, firmware, host=HELLO_WORLD)
 
         # The manager lets the host go 5 ms after power-on, and the host
         # has said all it has to say a millisecond after it starts. In
@@ -191,8 +177,7 @@ def traced_disk_test(firmware):
     die-to-die link. An SSD cuts the data at other places.
     """
     board = host(drive_blocks=4096, manager=a_scripted_manager(), trace=True)
-    board.platform.build()
-    board.platform.load_elf(firmware(IMAGE), via=board.cpu.socket)
+    boot(board, firmware, host=DISK_TEST)
     run_to_a_verdict(board)
     return board
 

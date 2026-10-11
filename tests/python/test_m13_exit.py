@@ -22,11 +22,11 @@ import functools
 import pytest
 
 import socpuppet as sp
+from cast import SHELL, boot
 from link_trace import sent_to_the_compute_die
 from socpuppet.boards.host import IMSIC_BASE, UART_SOURCE, host
 from socpuppet.boards.manager import add_manager, stand_in_manager
 
-SHELL = "shell_module_socpuppet_host.elf"
 PROMPT = "uart:~$ "
 #: How the shell's answer to `kernel version` starts.
 VERSION = "Zephyr version"
@@ -38,9 +38,7 @@ LONG_ENOUGH = sp.ms(200)
 def a_host_running_the_shell(firmware, **described):
     """The host with Zephyr's shell loaded, run until the shell prompts."""
     board = host(**described)
-    board.platform.build()
-    # A host with a manager has two bus masters, so say whose image it is.
-    board.platform.load_elf(firmware(SHELL), via=board.cpu.socket)
+    boot(board, firmware, host=SHELL)
     board.platform.run_until(
         lambda: PROMPT in board.uart.output, timeout=LONG_ENOUGH
     )

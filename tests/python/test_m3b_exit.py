@@ -20,6 +20,7 @@ NVMe driver does not erase.
 import pytest
 
 import socpuppet as sp
+from cast import DISK_TEST, boot
 from socpuppet.boards.host import host
 
 #: What Zephyr's test framework ends with, when no test failed and when
@@ -33,8 +34,7 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithADrive:
         # 2 MiB. The firmware works in runs of up to 31 sectors, so any
         # drive of more than a few dozen would do.
         board = host(drive_blocks=4096)
-        board.platform.build()
-        board.platform.load_elf(firmware("disk_access_socpuppet_host.elf"))
+        boot(board, firmware, host=DISK_TEST)
 
         # The verdict comes at about half a second of simulated time. 2 s
         # leaves room and still ends a run that never gives one.

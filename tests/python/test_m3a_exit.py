@@ -8,6 +8,7 @@ platform description, and the firmware here was built for it by
 import pytest
 
 import socpuppet as sp
+from cast import GREETING, HELLO_WORLD, SYNCHRONIZATION, boot
 from socpuppet.boards.host import host
 
 
@@ -15,17 +16,16 @@ from socpuppet.boards.host import host
 class TestWhenZephyrsHelloWorldBootsOnTheHostBoard:
     def test_it_prints_its_greeting_with_the_boards_name(self, firmware):
         board = host()
-        board.platform.build()
-        board.platform.load_elf(firmware("hello_world_socpuppet_host.elf"))
+        boot(board, firmware, host=HELLO_WORLD)
 
         # The greeting comes within a few milliseconds of simulated time.
         # 50 ms leaves room and still ends a run that never prints.
         board.platform.run_until(
-            lambda: "Hello World! socpuppet_host" in board.uart.output,
+            lambda: GREETING in board.uart.output,
             timeout=sp.ms(50),
         )
 
-        assert "Hello World! socpuppet_host" in board.uart.output
+        assert GREETING in board.uart.output
 
 
 @pytest.mark.platform
@@ -38,8 +38,7 @@ class TestWhenZephyrsSynchronizationSampleRunsOnTheHostBoard:
 
     def test_its_two_threads_take_turns(self, firmware):
         board = host()
-        board.platform.build()
-        board.platform.load_elf(firmware("synchronization_socpuppet_host.elf"))
+        boot(board, firmware, host=SYNCHRONIZATION)
 
         # Each turn is 100 ms of work and 500 ms of sleep, so the fourth
         # greeting comes at 1.8 s and the fifth at 2.4 s.
@@ -54,8 +53,7 @@ class TestWhenZephyrsSynchronizationSampleRunsOnTheHostBoard:
 
     def test_a_turn_takes_six_hundred_milliseconds(self, firmware):
         board = host()
-        board.platform.build()
-        board.platform.load_elf(firmware("synchronization_socpuppet_host.elf"))
+        boot(board, firmware, host=SYNCHRONIZATION)
 
         def greetings():
             return board.uart.output.count("Hello World")
