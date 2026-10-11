@@ -191,6 +191,38 @@ inline Program StoreByteThenSleep(std::uint8_t value) {
   return program;
 }
 
+// A program that counts how many times it has been started, in its result
+// word, and then spins or sleeps for ever. It only ever stops by being
+// reset, and what was in memory before a reset is still there after it, so
+// the count is the number of times the CPU came out of reset.
+//
+// The first time, it first writes a one to the word at `ask_at` if that is
+// not zero (`ask_at` is as `address` is for StoreWordThenSleep): a program
+// that asks for its own reset.
+inline Program CountStartsThen(bool sleep, std::uint64_t ask_at = 0) {
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Lw(kT1, kT0, kResultOffset));
+  program.push_back(Addi(kT1, kT1, 1));
+  program.push_back(Sw(kT1, kT0, kResultOffset));
+  if (ask_at != 0) {
+    const auto page = static_cast<Word>(ask_at >> 12);
+    const auto within = static_cast<std::int32_t>(ask_at & 0xFFF);
+    program.push_back(Li(kT2, 1));
+    // Past the three instructions that ask, to where the waiting starts.
+    program.push_back(Bne(kT1, kT2, 4 * 4));
+    program.push_back(Lui(kT0, page));
+    program.push_back(Li(kT1, 1));
+    program.push_back(Sw(kT1, kT0, within));
+  }
+  if (sleep) {
+    AppendSleepForEver(program);
+  } else {
+    program.push_back(Jal(kZero, 0));
+  }
+  return program;
+}
+
 // A program that switches floating point on, moves `value` into a
 // floating-point register and back out, stores what came out as its result
 // and sleeps. On a core with no floating point the move is an illegal

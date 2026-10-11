@@ -21,6 +21,7 @@
 #include "socpuppet/platform/registry.h"
 #include "tests/cpp/support/counting_probe.h"
 #include "tests/cpp/support/interrupt_source.h"
+#include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/recording_target.h"
 #include "tests/cpp/support/riscv_program.h"
 #include "tests/cpp/support/test_components.h"
@@ -256,6 +257,59 @@ TEST(WhenAMemoryWithdrawsDirectAccess, TheCpuGoesBackToTheBus) {
 
   // A millisecond is 10,000 instructions, each now fetched over the bus.
   EXPECT_GE(probe.Transactions() - before, 10'000U);
+}
+
+// A CPU whose reset line a test drives, with a RAM for its program, which
+// it runs up to 100 us ahead of the clock.
+struct CpuWithItsResetInATestsHands {
+  static constexpr std::uint64_t kResetVector = 0x8000'0000;
+
+  explicit CpuWithItsResetInATestsHands(const Drive& reset)
+      : platform{WithALineDriver(reset)} {
+    platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
+    platform.Add("cpu", "dbt_rise_cpu",
+                 {{"xlen", 64}, {"reset_vector", kResetVector}});
+    platform.Add(
+        "bus", "router",
+        {{"outputs", 1}, {"out0.base", kResetVector}, {"out0.size", 0x1000}});
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    platform.Add("reset", "line_driver");
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("reset.line", "cpu.reset");
+    platform.Elaborate();
+  }
+
+  static socpuppet::Registry WithALineDriver(const Drive& reset) {
+    socpuppet::Registry registry = socpuppet::BuiltinComponents();
+    AddLineDriver(registry, "line_driver", reset);
+    return registry;
+  }
+
+  socpuppet::Platform platform;
+};
+
+// A reset is a pulse, and a real one is a few ticks of the clock long. A
+// CPU model that is busy looks at its inputs once a quantum, so the whole
+// pulse can come and go between two looks. It has still been reset.
+TEST(WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock,
+     TheCpuStartsOverAtItsResetVector) {
+  CpuWithItsResetInATestsHands with_cpu{[](LineDriver& reset) {
+    reset.WaitFor(sc_core::sc_time{250, sc_core::SC_US});
+    reset.Set(true);
+    reset.WaitFor(sc_core::sc_time{1, sc_core::SC_US});
+    reset.Set(false);
+  }};
+  const riscv::Program program = riscv::CountStartsThen(/*sleep=*/false);
+  with_cpu.platform.DebugWrite("cpu.socket",
+                               CpuWithItsResetInATestsHands::kResetVector,
+                               std::as_bytes(std::span{program}));
+
+  with_cpu.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(ResultWordOf(with_cpu.platform,
+                         CpuWithItsResetInATestsHands::kResetVector, 0),
+            2U);
 }
 
 TEST(WhenA64BitAndA32BitCpuShareASimulation, EachComputesInItsOwnWordSize) {

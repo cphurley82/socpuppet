@@ -1,0 +1,49 @@
+diff --git a/src/sysc/core_complex.cpp b/src/sysc/core_complex.cpp
+--- a/src/sysc/core_complex.cpp
++++ b/src/sysc/core_complex.cpp
+@@ -357,6 +357,10 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::s
+
+ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::rst_cb() {
+     if(rst_i.read()) {
++        // A busy core looks at its reset once a quantum, and a reset is a pulse a few clock ticks long, so the whole
++        // pulse can come and go between two looks. This method does see it rise, and says so to the thread, which
++        // would otherwise find the line low again, take the interruption for the end of the program and stop.
++        reset_seen = true;
+         core->set_interrupt_execution(true);
+         vm->get_arch()->cancel_wait();
+     }
+@@ -378,9 +382,11 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::r
+     wait(SC_ZERO_TIME); // separate from elaboration phase
+     do {
+         wait(SC_ZERO_TIME);
+-        if(rst_i.read()) {
++        if(rst_i.read() || reset_seen) {
+             reset(GET_PROP_VALUE(reset_address));
+-            wait(rst_i.negedge_event());
++            if(rst_i.read())
++                wait(rst_i.negedge_event());
++            reset_seen = false;
+             reset(GET_PROP_VALUE(reset_address)); // in case it has changed during reset
+         }
+         while(curr_clk.read() == SC_ZERO_TIME) {
+@@ -390,7 +396,7 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::r
+         last_sync_cycle = vm->get_arch()->get_instrumentation_if()->get_total_cycles();
+         core->set_interrupt_execution(false);
+         run_iss();
+-    } while(!core->get_interrupt_execution() || rst_i.read());
++    } while(!core->get_interrupt_execution() || rst_i.read() || reset_seen);
+     if(finish_evt_inuse)
+         finish_evt.notify();
+     else {
+diff --git a/src/sysc/core_complex.h b/src/sysc/core_complex.h
+--- a/src/sysc/core_complex.h
++++ b/src/sysc/core_complex.h
+@@ -316,6 +316,8 @@ protected:
+     //
+     ///////////////////////////////////////////////////////////////////////////////
+     uint64_t last_sync_cycle = 0;
++    // Whether reset has risen since the thread last acted on one.
++    bool reset_seen{false};
+     uint64_t qk_preaccounted_cycles{0};
+     util::range_lut<tlm_dmi_ext> fetch_lut{tlm_dmi_ext()};
+     util::range_lut<tlm_dmi_ext>& get_read_lut(unsigned space) {

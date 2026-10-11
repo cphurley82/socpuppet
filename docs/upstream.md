@@ -222,6 +222,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### A reset shorter than a busy core's lead stops the simulation
+
+- **Where**: `src/sysc/core_complex.cpp`, the reset callback and the run loop.
+- **What is wrong**: a core that is executing runs ahead of the simulation's clock and looks at its inputs when it next waits, which with a quantum of 100 µs is up to 100 µs later. `rst_cb`, a method, sees reset rise and interrupts the core. If the line has fallen again by the time the core's thread wakes, the loop condition `!core->get_interrupt_execution() || rst_i.read()` is false, the loop ends, and `sc_stop()` ends the simulation. 🎓 A reset is a pulse a few clock ticks long, which is far shorter than a quantum, so this is what any reset from a watchdog or a reset controller does to a busy core. A core asleep in `wfi` is woken at once and is not caught.
+- **How to see it**: raise `rst_i` for 1 µs on a core that is spinning, with a quantum of 100 µs. In socpuppet that is `WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock` in `tests/cpp/platform/cpu_test.cpp`, and with a watchdog's line and a system controller between, `WhenTheWatchdogBitesACpu` in `tests/cpp/platform/system_controller_test.cpp`, each run with the patch taken out.
+- **What we do**: `cmake/patches/dbt-rise-riscv-reset-pulse.patch`. The callback notes that reset has risen (`reset_seen`). The thread restarts the core when either the line is high or one was noted, waits for the line to fall only if it is still high, and the loop goes round again while one is noted.
+- **Upstream fix**: the patch as it is, with the scenario above as the test. It builds on the reset-restart change above.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### The library is `SHARED` whatever the build asks for
 
 - **Where**: `CMakeLists.txt` line 175, `add_library(${PROJECT_NAME} SHARED ${LIB_SOURCES})`, and line 187, `target_force_link_libraries(${PROJECT_NAME} PRIVATE dbt-rise-core)`.
