@@ -1,13 +1,18 @@
 """The host platform and the Zephyr board that is generated from it."""
 
 import functools
-import json
 import re
 
 import pytest
 
 from devicetree_compiler import dtc_errors, needs_dtc
-from socpuppet.boards.cpu_kit import TIMER_BASE, TIMER_HZ
+from socpuppet.boards.cpu_kit import (
+    BOOT_FLASH_BASE,
+    COMPUTE_DIE,
+    SYSCON_BASE,
+    TIMER_BASE,
+    TIMER_HZ,
+)
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
@@ -19,8 +24,14 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
-from socpuppet.components import Aplic, Imsic, MachineTimer
+from socpuppet.components import (
+    Aplic,
+    Imsic,
+    MachineTimer,
+    SystemController,
+)
 from socpuppet.interrupt_map import InterruptEntry
+from wiring import what_drives
 from zephyr_module import (
     ZEPHYR_MODULE,
     clock_rate,
@@ -56,6 +67,41 @@ class TestTheHostsTimer:
         ]
 
         assert timer.address == TIMER_BASE
+
+
+class TestTheHostsSystemController:
+    def test_is_at_the_address_every_socpuppet_cpu_has_its_system_controller_at(
+        self,
+    ):
+        [syscon] = [
+            each
+            for each in host().platform.address_map()
+            if each.implementation == SystemController.implementation
+        ]
+
+        assert syscon.address == SYSCON_BASE
+
+    def test_is_all_that_drives_the_cpus_reset(self):
+        board = host()
+
+        assert what_drives(board.platform, board.cpu.reset) == [
+            board.syscon.reset.path
+        ]
+
+    def test_holds_the_cpu_for_nothing_when_the_host_has_no_manager(self):
+        # 🎭 The stand-in link is up from the start, so there is nothing
+        # to wait for.
+        board = host()
+
+        assert what_drives(board.platform, board.syscon.hold) == []
+
+    def test_says_its_cpu_is_on_the_compute_die(self):
+        assert host().syscon.component.die == COMPUTE_DIE
+
+    def test_tells_the_boot_rom_to_look_where_every_socpuppet_cpu_has_its_flash(
+        self,
+    ):
+        assert host().syscon.component.boot_address == BOOT_FLASH_BASE
 
 
 class TestTheHostsInterruptController:
@@ -277,15 +323,20 @@ def host_with_the_ssd():
 
 
 class TestTheHostWithAManager:
-    def test_its_cpu_takes_its_reset_from_its_end_of_the_link(self):
-        # This is that the line comes from the link and from nowhere
-        # else. What the line does can only be seen in a run.
+    def test_its_end_of_the_link_holds_its_cpu_through_the_system_controller(
+        self,
+    ):
+        # A wire has one driver, and the CPU's reset has the system
+        # controller for its own. So the link's end holds the CPU by a
+        # line to the controller. What the line does can only be seen in
+        # a run.
         board = host_with_a_manager()
 
-        connections = json.loads(board.platform.to_json())["connections"]
-
-        assert (board.link.a.reset.path, board.cpu.reset.path) in [
-            (each["source"], each["sink"]) for each in connections
+        assert what_drives(board.platform, board.syscon.hold) == [
+            board.link.a.reset.path
+        ]
+        assert what_drives(board.platform, board.cpu.reset) == [
+            board.syscon.reset.path
         ]
 
     def test_its_manager_reaches_the_links_registers_and_nothing_its_cpu_does(
@@ -349,6 +400,23 @@ class TestTheHostWithAManagerThatHasACpu:
             "compute.cpu",
             "io.manager.cpu",
         }
+
+    def test_its_two_cpus_are_told_they_are_on_different_dies(self):
+        board = host(manager=add_manager)
+
+        assert (
+            board.syscon.component.die
+            != board.manager.cpu_kit.syscon.component.die
+        )
+
+    def test_its_manager_boots_from_further_into_the_flash_than_its_cpu(self):
+        # One flash holds both images, the host's first.
+        board = host(manager=add_manager)
+
+        assert (
+            board.manager.cpu_kit.syscon.component.boot_address
+            > board.syscon.component.boot_address
+        )
 
     def test_its_managers_cpu_sees_the_zephyr_board_for_the_manager_less_its_scratch_memory(
         self,

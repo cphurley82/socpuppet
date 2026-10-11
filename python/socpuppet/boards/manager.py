@@ -20,7 +20,13 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from socpuppet.boards.cpu_kit import CpuKit, add_cpu_kit
+from socpuppet.boards.cpu_kit import (
+    BOOT_FLASH_BASE,
+    IO_DIE,
+    MANAGER_IMAGE_OFFSET,
+    CpuKit,
+    add_cpu_kit,
+)
 from socpuppet.components import Script, ScriptedBusMaster
 from socpuppet.io_manager import IoManager
 from socpuppet.placed import Placed, PlacedRouter
@@ -89,6 +95,8 @@ def add_manager(
             bus,
             sources={LINK_SOURCE: link_end.irq},
             gdb_port=gdb_port,
+            die=IO_DIE,
+            boot_address=BOOT_FLASH_BASE + MANAGER_IMAGE_OFFSET,
         )
     else:
         # 🎭 A script has one interrupt input, and the link is the only

@@ -9,7 +9,7 @@ import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import ssd as boards_ssd
-from socpuppet.boards.cpu_kit import SRAM_BASE
+from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, SRAM_BASE, SYSCON_BASE
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
 from socpuppet.boards.scripted_host import ECAM_BASE, idle_host
 from socpuppet.boards.ssd import (
@@ -20,6 +20,7 @@ from socpuppet.boards.ssd import (
     stand_in_firmware,
 )
 from socpuppet.pcie_host import PcieFunction
+from wiring import what_drives
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 SSD_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_ssd"
@@ -103,6 +104,32 @@ class TestAnSsdWithNoScriptForItsFirmware:
         assert isinstance(kit.timer.component, sp.MachineTimer)
         assert isinstance(kit.plic.component, sp.Plic)
 
+    def test_has_a_system_controller_that_is_all_that_drives_its_cpus_reset(
+        self,
+    ):
+        board = ssd(host=idle_host)
+
+        assert what_drives(board.platform, board.ssd.cpu.reset) == [
+            board.ssd.cpu_kit.syscon.reset.path
+        ]
+
+    def test_has_its_system_controller_where_every_socpuppet_cpu_has_one(self):
+        board = ssd(host=idle_host)
+
+        [syscon] = [
+            each
+            for each in board.platform.address_map(via=board.ssd.cpu.socket)
+            if each.implementation == sp.SystemController.implementation
+        ]
+        assert syscon.address == SYSCON_BASE
+
+    def test_tells_its_boot_rom_to_look_where_every_socpuppet_cpu_has_its_flash(
+        self,
+    ):
+        syscon = ssd(host=idle_host).ssd.cpu_kit.syscon.component
+
+        assert syscon.boot_address == BOOT_FLASH_BASE
+
     def test_gives_each_of_its_three_devices_a_plic_source_of_its_own(self):
         board = ssd(host=idle_host)
 
@@ -121,17 +148,12 @@ class TestAnSsdWithNoScriptForItsFirmware:
 
     def test_sends_the_plic_and_the_timer_to_the_cpu(self):
         board = ssd(host=idle_host)
+        cpu, kit = board.ssd.cpu, board.ssd.cpu_kit
 
-        connections = json.loads(board.platform.to_json())["connections"]
-
-        assert {
-            each["sink"]: each["source"]
-            for each in connections
-            if each["sink"].startswith("ssd.cpu.")
-        } == {
-            "ssd.cpu.irq": "ssd.plic.irq",
-            "ssd.cpu.timer_irq": "ssd.timer.irq",
-        }
+        assert what_drives(board.platform, cpu.irq) == [kit.plic.irq.path]
+        assert what_drives(board.platform, cpu.timer_irq) == [
+            kit.timer.irq.path
+        ]
 
 
 class TestAnSsdWithAScriptForItsFirmware:

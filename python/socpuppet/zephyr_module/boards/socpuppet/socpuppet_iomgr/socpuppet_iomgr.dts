@@ -46,6 +46,11 @@
 		#size-cells = <2>;
 		ranges;
 
+		io_syscon: syscon@100000 {
+			compatible = "socpuppet,system-controller", "syscon";
+			reg = <0x0 0x100000 0x0 0x20>;
+		};
+
 		io_timer: timer@200bff8 {
 			compatible = "riscv,machine-timer";
 			reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;

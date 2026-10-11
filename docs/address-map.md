@@ -73,6 +73,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
+| `0x0010_0000` | 32 bytes | `compute.syscon.socket` | [System controller](models/system-controller.md) | |
 | `0x0200_0000` | 64 KiB | `compute.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
 | `0x100C_0000` | 32 KiB | `io.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | `compute.bus` from `0x1000_0000` |
@@ -172,6 +173,7 @@ What the SSD's own CPU sees (`ssd.cpu.socket`):
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
+| `0x0010_0000` | 32 bytes | `ssd.syscon.socket` | [System controller](models/system-controller.md) | |
 | `0x0200_0000` | 64 KiB | `ssd.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `ssd.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `ssd.uart.socket` | [UART (16550)](models/ns16550.md) | |
@@ -259,6 +261,7 @@ What the manager's CPU sees (`io.cpu.socket`):
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
+| `0x0010_0000` | 32 bytes | `io.syscon.socket` | [System controller](models/system-controller.md) | |
 | `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | |
@@ -274,6 +277,7 @@ What 🎭 the compute die sees (`compute.cpu.socket`), which is the same again t
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
+| `0x0010_0000` | 32 bytes | `io.syscon.socket` | [System controller](models/system-controller.md) | `compute.bus`, same addresses |
 | `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | `compute.bus`, same addresses |
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | `compute.bus`, same addresses |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus`, same addresses |
@@ -323,6 +327,7 @@ The interrupt lines:
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
+| `0x0010_0000` | 32 bytes | `io.manager.syscon.socket` | [System controller](models/system-controller.md) | |
 | `0x0200_0000` | 64 KiB | `io.manager.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `io.manager.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.manager.uart.socket` | [UART (16550)](models/ns16550.md) | |

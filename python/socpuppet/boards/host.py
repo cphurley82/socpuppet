@@ -9,8 +9,9 @@
                                                               └─▶ uart ─irq─▲
 
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
-die has the CPU, its RAM, the interrupt controller and the timer. The IO
-die has the UART, and an APLIC that the UART's interrupt line goes to.
+die has the CPU, its RAM, the interrupt controller, the timer and the
+system controller, which drives the CPU's reset. The IO die has the UART,
+and an APLIC that the UART's interrupt line goes to.
 🎭 The link between the dies is a stand-in that passes every access
 straight through, unless the host is given a `manager`.
 
@@ -49,10 +50,11 @@ the IO die has a manager to train it:
     compute die                         IO die
     🧠 cpu ─▶ bus ─▶ link end ═════ link end ─▶ bus ─▶ uart ...
        ▲                │             ▲  │
-       └──── reset ─────┘             │  └─ irq ─────────────▶ manager
+       └ reset ─ syscon ◀─ hold       │  └─ irq ─────────────▶ manager
                                       └─ its registers ◀─ bus ◀──┘
 
-The link's end on the compute die holds the host's CPU in reset. The
+The link's end on the compute die holds the host's CPU in reset, by a
+line to the CPU's system controller, which is what drives the reset. The
 manager starts the training, waits for the link to say it is up, and lets
 the CPU go with a message to the other end. It has a bus of its own, with
 the link's registers on it and nothing the host reaches, so the host's
@@ -74,7 +76,14 @@ import textwrap
 from typing import Any, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
-from socpuppet.boards.cpu_kit import TIMER_BASE, TIMER_HZ
+from socpuppet.boards.cpu_kit import (
+    BOOT_FLASH_BASE,
+    COMPUTE_DIE,
+    HOST_IMAGE_OFFSET,
+    TIMER_BASE,
+    TIMER_HZ,
+    add_system_controller,
+)
 from socpuppet.boards.drive import (
     VECTORS,
     BehavioralDrive,
@@ -100,8 +109,9 @@ from socpuppet.time import ms
 #: Where the RAM starts, and where the CPU starts executing.
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 64 * 1024 * 1024
-# The timer has no constant here: it is at `cpu_kit.TIMER_BASE`, where
-# every other socpuppet CPU has its timer.
+# The timer and the system controller have no constants here: they are at
+# `cpu_kit.TIMER_BASE` and `cpu_kit.SYSCON_BASE`, where every other
+# socpuppet CPU has its own.
 #: The interrupt controller's two pages, which are where messages are sent:
 #: the one for machine mode, and the one for supervisor mode. They are
 #: where QEMU's `virt` machine has them.
@@ -213,6 +223,9 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: The link between the two dies: `link.a` is the compute die's end,
     #: `link.b` the IO die's.
     link: Link
+    #: The system controller, which drives the CPU's reset and tells its
+    #: boot ROM where the host's image is.
+    syscon: Placed
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -289,7 +302,10 @@ def host(
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
     placed_manager = None
     if manager is not None:
-        platform.connect(d2d.a.reset, compute.cpu.reset)
+        # The link's end holds the host's CPU until the manager lets it
+        # go. The CPU's reset is its system controller's to drive, so the
+        # line goes to that.
+        platform.connect(d2d.a.reset, compute.syscon.hold)
         # The manager has a bus of its own, with the link's registers on
         # it and nothing the host reaches. On the IO die's main bus it
         # would find the root complex's window at another address than
@@ -315,6 +331,7 @@ def host(
         io.uart,
         compute.imsic,
         d2d,
+        compute.syscon,
         drive=(
             None
             if drive_blocks is None
@@ -336,6 +353,7 @@ class _ComputeDie(NamedTuple):
     cpu: Placed
     bus: PlacedRouter
     imsic: Placed
+    syscon: Placed
 
 
 def _compute_die(
@@ -361,6 +379,14 @@ def _compute_die(
     imsic = place.add("imsic", Imsic())
     timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
     platform.connect(cpu.socket, bus.target)
+    syscon = add_system_controller(
+        platform,
+        place,
+        bus,
+        cpu,
+        die=COMPUTE_DIE,
+        boot_address=BOOT_FLASH_BASE + HOST_IMAGE_OFFSET,
+    )
     bus.map(ram.socket, base=RAM_BASE)
     bus.map(timer.socket, base=TIMER_BASE)
     bus.map(imsic.machine, base=IMSIC_BASE)
@@ -372,7 +398,7 @@ def _compute_die(
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
-    return _ComputeDie(cpu, bus, imsic)
+    return _ComputeDie(cpu, bus, imsic, syscon)
 
 
 class _IoDie(NamedTuple):

@@ -8,9 +8,10 @@ import pytest
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import io_manager as boards_io_manager
-from socpuppet.boards.cpu_kit import SRAM_BASE
+from socpuppet.boards.cpu_kit import IO_DIE, SRAM_BASE
 from socpuppet.boards.io_manager import RAM_BASE, SCRATCH_BASE, io_manager
 from socpuppet.boards.manager import LINK_SOURCE, stand_in_manager
+from wiring import what_drives
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 IOMGR_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_iomgr"
@@ -83,6 +84,18 @@ class TestWhenTheManagerIsARealCpu:
         board = io_manager(compute=nothing)
 
         assert board.manager.cpu_kit is not None
+
+    def test_its_system_controller_is_all_that_drives_its_reset(self):
+        board = io_manager(compute=nothing)
+
+        assert what_drives(board.platform, board.manager.cpu.reset) == [
+            board.manager.cpu_kit.syscon.reset.path
+        ]
+
+    def test_its_system_controller_says_it_is_on_the_io_die(self):
+        syscon = io_manager(compute=nothing).manager.cpu_kit.syscon.component
+
+        assert syscon.die == IO_DIE
 
     def test_the_links_line_is_on_a_source_of_its_interrupt_controller(self):
         board = io_manager(compute=nothing)

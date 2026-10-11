@@ -163,6 +163,7 @@ def test_the_table_of_the_hosts_manager_with_a_cpu_has_its_kit_and_the_links_reg
     address_map_docs("write", page)
 
     assert what_answers(page) == {
+        "`io.manager.syscon.socket`",
         "`io.manager.timer.socket`",
         "`io.manager.plic.socket`",
         "`io.manager.uart.socket`",

@@ -18,9 +18,9 @@ one is built the way a real one is:
   **NAND**, which is where the data is kept.
 
 The CPU is a 32-bit RISC-V core, with an SRAM to run from, a UART, a
-timer and an interrupt controller, and firmware is loaded into it as an
-ELF file. 🎭 Or a script stands in for the firmware (`sp.SsdFirmware`), in
-the CPU's place, and then there is no CPU at all.
+timer, an interrupt controller and a system controller, and firmware is
+loaded into it as an ELF file. 🎭 Or a script stands in for the firmware
+(`sp.SsdFirmware`), in the CPU's place, and then there is no CPU at all.
 
 To use an SSD from a Python host, with nothing else to build:
 
