@@ -490,6 +490,32 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The APLIC delivers over a line only
+
+- **Where**: `rvi/aplic.cpp`, `rvi/aplic.h`, and the registers in `rvi/aplic.rdl` and `rvi/gen/aplic_regs.h`.
+- **What is missing**: 🎓 an APLIC has two ways to deliver an interrupt, and firmware chooses with the DM bit of `domaincfg`. Over a line to the hart, where the hart claims the interrupt at the APLIC, as with a PLIC. Or by message (MSI), where the APLIC writes the interrupt's identity to the page of the hart's IMSIC and forgets it. The model has the first, and says so at the top of the file. A platform whose harts have IMSICs needs the second, and so does any Linux or Zephyr that is built for one.
+- **How to see it**: `AplicContract` in `tests/cpp/contracts/aplic_contract.h`, which is the second way and nothing else. Without the patch the adapter does not compile, since the model has no socket for a message to leave by.
+- **What we do**: `cmake/patches/vpv-peripherals-aplic-msi-mode.patch`. It adds:
+  - `mmsiaddrcfg` and `mmsiaddrcfgh`, and the address of a hart's page worked out from them as the specification has it;
+  - the MSI form of `target`, hart and identity, when DM is set;
+  - `msi_o`, a socket the messages leave by, and one thread that sends them, since a wire changes in a method and a register is written in the caller's thread and whatever is on the way to the hart may wait;
+  - `setipnum_le`, which sets a level-sensitive source pending only while its input is asking. In MSI mode that is how software has a source looked at again after its handler, and Linux's driver uses it;
+  - `clrienum`, which the model had as a register that did nothing;
+  - a source that is made level-sensitive while its input is already asking is pending at once, and one that is made inactive is no longer pending or enabled. The model keeps each wire's level to know the first.
+- **Upstream fix**: offer the patch. Three of its points change the direct way of delivering too: `setipnum_le`, `clrienum`, and what a write to `sourcecfg` does to the pending and enable bits. And `msi_o` is a socket that every user of the model now has to bind, which one that only delivers over a line should not have to: offer it with a way to leave it unbound. It was written against the build with `SC_SIGNAL_IF`, and is tested there only. There is still no domain for supervisor mode, no `genmsi`, no `setipnum`, `clripnum` or `setipnum_be`, and no lock bit in `mmsiaddrcfgh`. `setip` and `in_clrip` do not follow the rules for a level-sensitive source in MSI mode, `domaincfg` does not read `0x80` in its top byte, and `target` is not read-only while its source is inactive.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
+### The APLIC has an input for each of 1,022 sources, and wants every one bound
+
+- **Where**: `rvi/aplic.h`, `num_irq`, and the constructor in `rvi/aplic.cpp`.
+- **What is wrong**: the number of sources is a CCI parameter that is read as the model is constructed, with 1023 as its default, and with `SC_SIGNAL_IF` each source is an `sc_in<bool>`, which SystemC insists be bound. That makes 1,023 inputs, numbered from 0, for sources 1 to 1,022: input 0 is never looked at, and source 1,023, which the register map has room for, has no input (its `sourcecfg` can be written, and the model then indexes one past its inputs). A platform with three devices binds 1,020 inputs to nothing. To have fewer, a preset value has to be in the CCI broker before the model exists. And two things are easy to miss beside it: a write to `target` whose low byte is zero is dropped without a word in the direct way of delivering, and a source in the "detached" mode is still listened to on its wire.
+- **How to see it**: construct the model and bind three inputs.
+- **What we do**: no patch. The adapter (`aplic.cpp`) brings out 31 sources, binds the other inputs to one signal that nothing writes, and answers itself for the registers of the sources it does not bring out, so that none of them can be set up.
+- **Upstream fix**: make the inputs optional (`sc_in_opt`, as the ACLINT's are), or the number of sources a constructor argument.
+- **Kind**: a surprise more than a bug.
+- **When it lands**: the adapter can stop binding what it does not use.
+
 ### `pulpino/uart.h` does not include what it uses
 
 - **Where**: `pulpino/uart.h`, lines 80 to 82.

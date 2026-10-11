@@ -110,6 +110,21 @@ concept MessageControllerSlot =
       } -> std::convertible_to<sc_core::sc_out<bool>&>;
     };
 
+// An interrupt controller that takes devices' lines and sends messages:
+// RISC-V's APLIC, delivering by message. It is built from a name, reached
+// through one TLM target socket, and has a vector of interrupt inputs
+// called `sources` and an initiator socket its messages go out of, each a
+// write to the page of a hart's message controller.
+template <typename T>
+concept AplicSlot =
+    std::constructible_from<T, sc_core::sc_module_name> && requires(T aplic) {
+      { aplic.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      {
+        aplic.sources
+      } -> std::convertible_to<sc_core::sc_vector<sc_core::sc_in<bool>>&>;
+      { aplic.msi } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
+    };
+
 // A UART: built from a name and reached through one TLM target socket.
 // Whoever is at the other end of its serial line is the test or the script
 // that holds it: what the UART transmitted is kept as text, and bytes are

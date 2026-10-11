@@ -1,0 +1,399 @@
+diff --git a/rvi/aplic.cpp b/rvi/aplic.cpp
+index 57d4085..05a1253 100644
+--- a/rvi/aplic.cpp
++++ b/rvi/aplic.cpp
+@@ -4,17 +4,21 @@
+  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ 
+- /* This model supports only the Direct delivery mode.
+-  * It has been tested for a single hart (index:0) implementing only M-mode, with a single machine-level interrupt domain for that hart,
+-  * and for level-triggered interrupts using source and target TLM signals.
++ /* This model supports the Direct delivery mode, and the MSI delivery mode for a machine-level interrupt domain.
++  * Direct delivery has been tested for a single hart (index:0) implementing only M-mode, with a single machine-level interrupt domain
++  * for that hart, and for level-triggered interrupts using source and target TLM signals.
+   * It also supports edge-triggered interrupts and SystemC signals, however, these features have not yet been validated.
+-  * Additionally, functionality for the pendingnum, clripnum registers is not implemented.
++  * MSI delivery has been tested for level-triggered interrupts using SystemC signals. Its messages leave by msi_o, and there
++  * is no supervisor-level domain, no genmsi and no setipnum_be.
++  * Additionally, functionality for the pendingnum, clripnum registers is not implemented: of the registers that set a pending
++  * bit by number there is setipnum_le.
+  */
+ 
+ #include "aplic.h"
+ #include "gen/aplic_regs.h"
+ #include "tlm/scc/tlm_signal_gp.h"
+ 
++#include <array>
+ #include <scc/report.h>
+ #include <scc/utilities.h>
+ #include <tlm_core/tlm_2/tlm_generic_payload/tlm_phase.h>
+@@ -26,7 +30,8 @@ aplic::aplic(sc_core::sc_module_name nm)
+ : sc_core::sc_module(nm)
+ , tlm_target<>(clk_period)
+ , NAMEDD(regs, aplic_regs)
+-, external_global_interrupts_i("external_global_interrupts_i", num_irq.get_value()){
++, external_global_interrupts_i("external_global_interrupts_i", num_irq.get_value())
++, wire_level(num_irq.get_value() + 1, false){
+ 
+     SCCDEBUG(this->name()) << "Initialize Aplic Model with " << external_global_interrupts_i.size() << " interrupts";
+ 
+@@ -51,7 +56,19 @@ aplic::aplic(sc_core::sc_module_name nm)
+         if(irq > external_global_interrupts_i.size()) {
+             SCCDEBUG(this->name()) << "sourcecfg: The interrupt number " << irq << " exceeds the maximum value " << external_global_interrupts_i.size()<< " supported by the current configuration";
+         }else {
++            bool was_high = is_level_sensitive(irq) && rectified_input(irq);
+             regs->r_sourcecfg[index] = data;
++            // a source that is made level-sensitive while its wire is at that level is pending at once: its
++            // rectified input has gone from low to high
++            if(is_level_sensitive(irq) && rectified_input(irq) && !was_high) {
++                regs->r_pending[get_reg_index(irq)] |= (0x1 << get_bit_pos(irq));
++                handle_pending_int();
++            }
++            // a source that is made inactive is no longer pending or enabled
++            if(!is_source_active(irq)) {
++                regs->r_pending[get_reg_index(irq)] &= ~(0x1 << get_bit_pos(irq));
++                regs->r_enabled[get_reg_index(irq)] &= ~(0x1 << get_bit_pos(irq));
++            }
+         }
+         return true;
+     });
+@@ -60,6 +77,8 @@ aplic::aplic(sc_core::sc_module_name nm)
+         uint32_t irq = index + 1;
+         if(irq > external_global_interrupts_i.size()) {
+             SCCDEBUG(this->name()) << "target: The interrupt number " << irq << " exceeds the maximum value " << external_global_interrupts_i.size() << " supported by the current configuration";
++        }else if(regs->r_domaincfg.deliverymode == 1) {
++            regs->r_targetcfg[index] = data & TARGET_MSI_MASK;
+         }else {
+             uint32_t irq_priority = data & INTERRUPT_PRIO_MASk;
+             if(irq_priority > num_irq_prio.get_value()) {
+@@ -94,6 +113,22 @@ aplic::aplic(sc_core::sc_module_name nm)
+         return true;
+     });
+ 
++    // on a write to clrienum, the interrupt-enable bit for that source is cleared
++    regs->clrenablednum.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        auto irq = data;
++        if(irq > external_global_interrupts_i.size()) {
++            SCCDEBUG(this->name()) << "clrienum: The interrupt number " << irq << " exceeds the maximum value " << external_global_interrupts_i.size() << " supported by the current configuration";
++        }else {
++            regs->r_enabled[get_reg_index(irq)] &= ~(0x1 << get_bit_pos(irq));
++        }
++        return true;
++    });
++
++    regs->pendingnumle.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        set_pending_by_number(data);
++        return true;
++    });
++
+     // if the source mode is Level1 or Level0 and the interrupt domain is configured in direct delivery mode
+     // (domaincfg.DM = 0): The pending bit is not cleared by a claim of the interrupt at the APLIC.
+     regs->claim.set_read_cb([this](const scc::sc_register<uint32_t>& reg, uint32_t& data, sc_core::sc_time d) -> bool {
+@@ -171,6 +206,8 @@ aplic::aplic(sc_core::sc_module_name nm)
+     SC_METHOD(reset_cb);
+     sensitive << rst_i;
+     dont_initialize();
++
++    SC_THREAD(msi_thread);
+ }
+ 
+ aplic::~aplic() = default;
+@@ -266,6 +303,35 @@ bool aplic::register_clrenabled_callback(size_t index, scc::sc_register<uint32_t
+     return true;
+ }
+ 
++bool aplic::is_level_sensitive(uint32_t irq) {
++    uint8_t source_mode = get_source_mode(irq);
++    return (source_mode == SourceMode::LEVELHIGH) || (source_mode == SourceMode::LEVELLOW);
++}
++
++// the rectified input value of a level-sensitive source: its wire, inverted if the source is configured for a low
++// level (mode Level0)
++bool aplic::rectified_input(uint32_t irq) {
++    return wire_level[irq] ^ (get_source_mode(irq) == SourceMode::LEVELLOW);
++}
++
++// the pending bit of a level-sensitive source is set by a write to setipnum when the rectified input value is high,
++// but not when low. In MSI delivery mode this is how software has a source looked at again after its handler: the
++// bit was cleared when the MSI was sent, and a wire that is still high has no transition to set it again.
++void aplic::set_pending_by_number(uint32_t irq) {
++    if(irq == 0 || irq >= external_global_interrupts_i.size()) {
++        SCCDEBUG(this->name()) << "setipnum: there is no interrupt number " << irq << " in the current configuration";
++        return;
++    }
++    if(!is_source_active(irq)) {
++        return;
++    }
++    if(is_level_sensitive(irq) && !rectified_input(irq)) {
++        return;
++    }
++    regs->r_pending[get_reg_index(irq)] |= (0x1 << get_bit_pos(irq));
++    handle_pending_int();
++}
++
+ bool aplic::is_source_active(uint32_t index) {
+     uint8_t source_mode = get_source_mode(index);
+ 
+@@ -332,6 +398,7 @@ void aplic::external_global_interrupts_cb(uint32_t irq, uint32_t value) {
+ bool aplic::external_global_interrupts_handling(uint32_t irq, uint32_t value, bool &handle_pending) {
+ 
+     SCCDEBUG(this->name()) << "triggered the source interrupt callback for interrupt " << irq << " with value " << value;
++    wire_level[irq] = (value ? true : false);
+     uint8_t source_mode = get_source_mode(irq);
+     if(source_mode == SourceMode::INACTIVE) {
+         return false;
+@@ -372,7 +439,76 @@ bool aplic::external_global_interrupts_handling(uint32_t irq, uint32_t value, bo
+     return handle_pending;
+ }
+ 
++// in MSI delivery mode an interrupt that is pending and enabled is forwarded as an MSI, and its pending bit is
++// cleared. The MSIs are sent by a thread of the model's own: whoever is on the way to the hart may wait, and this
++// is reached from a method when a wire changes and from the caller's thread when a register is written.
++void aplic::forward_pending_by_msi() {
++    if(regs->r_domaincfg.interruptenable != 1) {
++        return;
++    }
++    for(size_t irq = 1; irq < external_global_interrupts_i.size(); irq++) {
++        auto reg_idx = get_reg_index(irq);
++        auto bit_ofs = get_bit_pos(irq);
++        auto pending = (regs->r_pending[reg_idx] & (0x1 << bit_ofs)) ? true : false;
++        auto enable = (regs->r_enabled[reg_idx] & (0x1 << bit_ofs)) ? true : false;
++        if(enable && pending) {
++            SCCDEBUG(this->name()) << "forwarding interrupt " << irq << " by MSI";
++            regs->r_pending[reg_idx] &= ~(0x1 << bit_ofs);
++            msi_queue.push_back(regs->r_targetcfg[irq - 1]);
++            msi_queued.notify(sc_core::SC_ZERO_TIME);
++        }
++    }
++}
++
++void aplic::msi_thread() {
++    while(true) {
++        if(msi_queue.empty()) {
++            wait(msi_queued);
++        }
++        while(!msi_queue.empty()) {
++            auto target = msi_queue.front();
++            msi_queue.pop_front();
++            send_msi(target);
++        }
++    }
++}
++
++// the address for a hart is built from mmsiaddrcfg and mmsiaddrcfgh:
++//   g = (hart index >> LHXW) & (2^HHXW - 1)
++//   h = hart index & (2^LHXW - 1)
++//   address = (base PPN | (g << (HHXS + 12)) | (h << LHXS)) << 12
++void aplic::send_msi(uint32_t target) {
++    uint64_t hart_index = target >> TARGET_HART_INDEX_SHIFT;
++    uint32_t eiid = target & TARGET_EIID_MASK;
++    uint64_t base_ppn = (static_cast<uint64_t>(regs->r_mmsiaddrcfgh.highbaseppn) << 32) | regs->r_mmsiaddrcfg;
++    uint64_t g = (hart_index >> regs->r_mmsiaddrcfgh.lhxw) & ((1ULL << regs->r_mmsiaddrcfgh.hhxw) - 1);
++    uint64_t h = hart_index & ((1ULL << regs->r_mmsiaddrcfgh.lhxw) - 1);
++    uint64_t address = (base_ppn | (g << (regs->r_mmsiaddrcfgh.hhxs + 12)) | (h << regs->r_mmsiaddrcfgh.lhxs)) << 12;
++
++    // the interrupt identity, little-endian
++    std::array<uint8_t, 4> data{static_cast<uint8_t>(eiid), static_cast<uint8_t>(eiid >> 8), 0, 0};
++    tlm::tlm_generic_payload gp;
++    gp.set_command(tlm::TLM_WRITE_COMMAND);
++    gp.set_address(address);
++    gp.set_data_ptr(data.data());
++    gp.set_data_length(data.size());
++    gp.set_streaming_width(data.size());
++    gp.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
++    sc_core::sc_time delay{sc_core::SC_ZERO_TIME};
++    msi_o->b_transport(gp, delay);
++    if(gp.get_response_status() != tlm::TLM_OK_RESPONSE) {
++        SCCWARN(this->name()) << "the MSI for interrupt identity " << eiid << " was not taken at address 0x" << std::hex << address;
++    }
++    if(delay != sc_core::SC_ZERO_TIME) {
++        wait(delay);
++    }
++}
++
+ void aplic::handle_pending_int() {
++    if(regs->r_domaincfg.deliverymode == 1) {
++        forward_pending_by_msi();
++        return;
++    }
+     auto claim_int = 0U;  // claim interrupt
+     auto claim_prio = 0U; // related priority (highest prio interrupt wins the race)
+     auto raise_int = false;
+diff --git a/rvi/aplic.h b/rvi/aplic.h
+index 72cfcf0..e404a77 100644
+--- a/rvi/aplic.h
++++ b/rvi/aplic.h
+@@ -10,6 +10,9 @@
+ #include <scc/register.h>
+ #include <scc/tlm_target.h>
+ #include <scc/clock_if_mixins.h>
++#include <tlm/scc/initiator_mixin.h>
++#include <deque>
++#include <vector>
+ #ifndef SC_SIGNAL_IF
+ #include <tlm/scc/signal_initiator_mixin.h>
+ #include <tlm/scc/signal_target_mixin.h>
+@@ -37,6 +40,9 @@ public:
+     tlm::scc::tlm_signal_bool_out core_interrupt_o{"core_interrupt_o"};
+     sc_core::sc_vector<tlm::scc::tlm_signal_bool_opt_in> external_global_interrupts_i;
+ #endif
++    // in MSI delivery mode (domaincfg.DM = 1) each interrupt leaves here, as a 32-bit write of its
++    // interrupt identity to the page of the target hart's IMSIC
++    tlm::scc::initiator_mixin<tlm::tlm_initiator_socket<scc::LT>> msi_o{"msi_o"};
+ 
+ 
+     aplic(sc_core::sc_module_name nm);
+@@ -55,6 +61,12 @@ protected:
+     bool external_global_interrupts_handling(uint32_t irq, uint32_t value, bool &handle_pending);
+     void write_irq(bool irq);
+     void handle_pending_int();
++    void forward_pending_by_msi();
++    void msi_thread();
++    void send_msi(uint32_t target);
++    bool is_level_sensitive(uint32_t irq);
++    bool rectified_input(uint32_t irq);
++    void set_pending_by_number(uint32_t irq);
+     void reset_pending_int(uint32_t irq);
+     bool is_source_active(uint32_t index);
+     uint8_t get_source_mode(uint32_t irq);
+@@ -69,11 +81,21 @@ protected:
+     sc_core::sc_time clk_period;
+     std::unique_ptr<aplic_regs> regs;
+     std::function<bool(scc::sc_register<uint32_t>, uint32_t)> m_domaincfg_write_cb;
++    // the level of each source's wire, by interrupt number, whatever the source's mode
++    std::vector<bool> wire_level;
++    // the target of each interrupt that is to be sent as an MSI, oldest first
++    std::deque<uint32_t> msi_queue;
++    sc_core::sc_event msi_queued;
+ 
+     static constexpr uint32_t REG_SIZE = 32;
+     static constexpr uint32_t REG_INDEX_SHIFT = 5;
+     static constexpr uint32_t BIT_POS_MASK = 0x1F;
+     static constexpr uint32_t INTERRUPT_PRIO_MASk = 0xFF;
++    // target in MSI delivery mode: the hart index and the interrupt identity. There are no guest interrupt
++    // files, so the guest index reads as zero, as the reserved bits do.
++    static constexpr uint32_t TARGET_HART_INDEX_SHIFT = 18;
++    static constexpr uint32_t TARGET_EIID_MASK = 0x7FF;
++    static constexpr uint32_t TARGET_MSI_MASK = 0xFFFC07FF;
+ 
+     using aplic_tc = scc::ticking_clock<aplic>;
+     using aplic_tl = scc::tickless_clock<aplic>;
+diff --git a/rvi/aplic.rdl b/rvi/aplic.rdl
+index ae3427e..00736ec 100644
+--- a/rvi/aplic.rdl
++++ b/rvi/aplic.rdl
+@@ -12,6 +12,20 @@ addrmap aplic_block {
+             desc = "Source Configuration Register";
+             field {} sourcemode[2:0];
+         } sourcecfg[1023] @0x4;
++        reg {
++            name = "mmsiaddrcfg";
++            desc = "Machine MSI Address Configuration Register";
++            field {} lowbaseppn[31:0];
++        } mmsiaddrcfg @0x1BC0;
++        reg {
++            name = "mmsiaddrcfgh";
++            desc = "Machine MSI Address Configuration Register, high half";
++            field {} highbaseppn[11:0];
++            field {} lhxw[15:12];
++            field {} hhxw[18:16];
++            field {} lhxs[22:20];
++            field {} hhxs[28:24];
++        } mmsiaddrcfgh @0x1BC4;
+         reg {
+             name = "setip";
+             desc = "Set Interrupt Pending Register";
+@@ -52,6 +66,11 @@ addrmap aplic_block {
+             desc = "Clear Interrupt Enable by Number Register";
+             field {} clrenablednum[31:0];
+         } clrienum @0x1FDC;
++        reg {
++            name = "setipnum_le";
++            desc = "Set Interrupt Pending by Number Register, little-endian";
++            field {} pendingnumle[31:0];
++        } setipnum_le @0x2000;
+         reg {
+             name = "target";
+             desc = " Target Register";
+diff --git a/rvi/gen/aplic_regs.h b/rvi/gen/aplic_regs.h
+index 0acf31d..5b9bf55 100644
+--- a/rvi/gen/aplic_regs.h
++++ b/rvi/gen/aplic_regs.h
+@@ -33,6 +33,16 @@ public:
+         END_BF_DECL();
+         std::array<sourcecfg_t, 1023> r_sourcecfg; 
+     
++        uint32_t r_mmsiaddrcfg;
++    
++        BEGIN_BF_DECL(mmsiaddrcfgh_t, uint32_t);
++        BF_FIELD(highbaseppn, 0, 12);
++        BF_FIELD(lhxw, 12, 4);
++        BF_FIELD(hhxw, 16, 3);
++        BF_FIELD(lhxs, 20, 3);
++        BF_FIELD(hhxs, 24, 5);
++        END_BF_DECL() r_mmsiaddrcfgh;
++    
+         std::array<uint32_t, 32> r_pending; 
+     
+         uint32_t r_pendingnum;
+@@ -49,6 +59,8 @@ public:
+     
+         uint32_t r_clrenablednum;
+     
++        uint32_t r_pendingnumle;
++    
+         BEGIN_BF_DECL(targetcfg_t, uint32_t);
+         BF_FIELD(interruptpriority, 0, 8);
+         END_BF_DECL();
+@@ -75,6 +87,8 @@ public:
+     
+         scc::sc_register<domaincfg_t> domaincfg;
+             scc::sc_register_indexed<sourcecfg_t, 1023> sourcecfg; 
++        scc::sc_register<uint32_t> mmsiaddrcfg;
++        scc::sc_register<mmsiaddrcfgh_t> mmsiaddrcfgh;
+             scc::sc_register_indexed<uint32_t, 32> pending; 
+         scc::sc_register<uint32_t> pendingnum;
+             scc::sc_register_indexed<uint32_t, 32> clrpending; 
+@@ -83,6 +97,7 @@ public:
+         scc::sc_register<uint32_t> enablednum;
+             scc::sc_register_indexed<uint32_t, 32> clrenabled; 
+         scc::sc_register<uint32_t> clrenablednum;
++        scc::sc_register<uint32_t> pendingnumle;
+             scc::sc_register_indexed<targetcfg_t, 1023> targetcfg; 
+         scc::sc_register<uint32_t> delivery;
+         scc::sc_register<uint32_t> threshold;
+@@ -103,6 +118,8 @@ inline aplic_regs::aplic_regs(sc_core::sc_module_name nm)
+ : sc_core::sc_module(nm)
+ , NAMED(domaincfg, r_domaincfg, 0, *this)
+ , NAMED(sourcecfg, r_sourcecfg, 0, *this)
++, NAMED(mmsiaddrcfg, r_mmsiaddrcfg, 0, *this)
++, NAMED(mmsiaddrcfgh, r_mmsiaddrcfgh, 0, *this)
+ , NAMED(pending, r_pending, 0, *this)
+ , NAMED(pendingnum, r_pendingnum, 0, *this)
+ , NAMED(clrpending, r_clrpending, 0, *this)
+@@ -111,6 +128,7 @@ inline aplic_regs::aplic_regs(sc_core::sc_module_name nm)
+ , NAMED(enablednum, r_enablednum, 0, *this)
+ , NAMED(clrenabled, r_clrenabled, 0, *this)
+ , NAMED(clrenablednum, r_clrenablednum, 0, *this)
++, NAMED(pendingnumle, r_pendingnumle, 0, *this)
+ , NAMED(targetcfg, r_targetcfg, 0, *this)
+ , NAMED(delivery, r_delivery, 0, *this)
+ , NAMED(threshold, r_threshold, 0, *this)
+@@ -120,6 +138,8 @@ inline aplic_regs::aplic_regs(sc_core::sc_module_name nm)
+ template <unsigned BUSWIDTH> inline void aplic_regs::registerResources(scc::tlm_target<BUSWIDTH> &target) {
+     target.addResource(domaincfg, 0x0UL);
+     target.addResource(sourcecfg, 0x4UL);
++    target.addResource(mmsiaddrcfg, 0x1bc0UL);
++    target.addResource(mmsiaddrcfgh, 0x1bc4UL);
+     target.addResource(pending, 0x1c00UL);
+     target.addResource(pendingnum, 0x1cdcUL);
+     target.addResource(clrpending, 0x1d00UL);
+@@ -128,6 +148,7 @@ template <unsigned BUSWIDTH> inline void aplic_regs::registerResources(scc::tlm_
+     target.addResource(enablednum, 0x1edcUL);
+     target.addResource(clrenabled, 0x1f00UL);
+     target.addResource(clrenablednum, 0x1fdcUL);
++    target.addResource(pendingnumle, 0x2000UL);
+     target.addResource(targetcfg, 0x3004UL);
+     target.addResource(delivery, 0x4000UL);
+     target.addResource(threshold, 0x4008UL);

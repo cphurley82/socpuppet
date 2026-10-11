@@ -1,6 +1,7 @@
 """socpuppet: a whole SoC in SystemC, with Python pulling the strings."""
 
 from socpuppet.components import (
+    Aplic,
     BehavioralNvme,
     D2dLink,
     DbtRiseCpu,
@@ -46,6 +47,7 @@ from socpuppet.transcript import Transcript
 from socpuppet.transcript import render as render_transcript
 
 __all__ = [
+    "Aplic",
     "BehavioralNvme",
     "BusError",
     "D2dLink",

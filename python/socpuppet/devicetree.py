@@ -7,7 +7,7 @@ the two from drifting apart. No simulation is needed to do it.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING
 
 from socpuppet.address_map import Reached, reachable_ports
@@ -48,6 +48,7 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     for each in _devices(
         nodes,
         connections,
+        _addresses(connections, view),
         soc_properties=(
             'compatible = "simple-bus";',
             "#address-cells = <2>;",
@@ -79,6 +80,7 @@ def overlay(
     blocks = _devices(
         [(placed, node) for placed, node in nodes if placed in only],
         connections,
+        _addresses(connections, view),
     )
     if roles:
         blocks.insert(0, _chosen(roles))
@@ -123,9 +125,28 @@ def _nodes(
     ]
 
 
+def _addresses(
+    connections: Collection[Connection], view: Port
+) -> dict[tuple[Placed, str], int]:
+    """Where each port reachable from `view` is, for a master there.
+
+    A port that is reachable at more than one address is at its lowest, as
+    it is in its node.
+    """
+    addresses: dict[tuple[Placed, str], int] = {}
+    for found in sorted(
+        reachable_ports(connections, view), key=lambda found: found.address
+    ):
+        addresses.setdefault(
+            (found.port.placed, found.port.name), found.address
+        )
+    return addresses
+
+
 def _devices(
     nodes: list[tuple[Placed, DeviceNode]],
     connections: Collection[Connection],
+    addresses: Mapping[tuple[Placed, str], int],
     soc_properties: tuple[str, ...] = (),
 ) -> list[list[str]]:
     """The nodes where they go: memory at the top, the rest under `soc`.
@@ -135,7 +156,7 @@ def _devices(
     have the node yet.
     """
     devices = [
-        _node(placed, node, connections, depth=1)
+        _node(placed, node, connections, addresses, depth=1)
         for placed, node in nodes
         if not node.on_bus
     ]
@@ -145,7 +166,7 @@ def _devices(
         for placed, node in on_bus:
             if len(soc) > 1:
                 soc.append("")
-            soc += _node(placed, node, connections, depth=2)
+            soc += _node(placed, node, connections, addresses, depth=2)
         devices.append([*soc, "\t};"])
     return devices
 
@@ -154,9 +175,13 @@ def _node(
     placed: Placed,
     node: DeviceNode,
     connections: Collection[Connection],
+    addresses: Mapping[tuple[Placed, str], int],
     depth: int,
 ) -> list[str]:
-    """One device's node, with its interrupt read off the wire connections."""
+    """One device's node, with its interrupt read off the wire connections.
+
+    `addresses` is where each port is for the master the tree is for.
+    """
     indent = "\t" * depth
     reg = ", ".join(
         f"<{cells(address)} {cells(size)}>" for address, size in node.reg
@@ -187,7 +212,47 @@ def _node(
             interrupts.append(found)
     if interrupts:
         lines += [f"{indent}\tinterrupts-extended = <{' '.join(interrupts)}>;"]
+    if node.messages is not None:
+        taker = _message_taker(
+            getattr(placed, node.messages), connections, addresses
+        )
+        if taker is not None:
+            lines += [f"{indent}\tmsi-parent = <&{label(taker.path)}>;"]
     return [*lines, f"{indent}}};"]
+
+
+def _message_taker(
+    sender: Port,
+    connections: Collection[Connection],
+    addresses: Mapping[tuple[Placed, str], int],
+) -> Placed | None:
+    """What takes the interrupt messages sent from `sender`, for firmware.
+
+    It is found the way an address map is, by following the sender's own
+    accesses, so it is there only if the messages can get there. None if
+    they reach nothing that takes messages and has a node in this tree.
+    `addresses` is where each port is for the master the tree is for.
+    """
+    for found in reachable_ports(connections, sender):
+        taker = found.port.placed
+        if not taker.component.takes_messages(found.port.name):
+            continue
+        for_firmware = addresses.get((taker, found.port.name))
+        if for_firmware is None:
+            continue
+        if for_firmware != found.address:
+            # Firmware reads the address from the taker's node and tells
+            # the sender to send there.
+            raise ValueError(
+                f'"{sender.placed.path}" sends its interrupt messages to '
+                f'"{taker.path}", and finds it at {found.address:#x}, where '
+                f"the devicetree has it at {for_firmware:#x}. Firmware "
+                f"tells the sender the devicetree's address, so the messages "
+                f"would go astray. Map the way from {sender.path} so that "
+                f"it has the same addresses as the CPU's bus."
+            )
+        return taker
+    return None
 
 
 def _cpus(cpu: tuple[str, ...]) -> list[str]:

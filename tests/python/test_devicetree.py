@@ -412,6 +412,121 @@ class TestWhenAnImsicsPageForMachineModeIsOnTheCpusBus:
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
 
+def cpu_with_an_aplic(
+    *,
+    imsic_page_at=0x2400_0000,
+    messages_shifted_by=0,
+    own_way_to_the_page=False,
+):
+    """A CPU with an IMSIC, and an APLIC with a UART's line at source 16.
+
+    The APLIC's messages go onto the CPU's bus. The IMSIC's page for the
+    supervisor's messages is there, and the one for machine mode's is too
+    unless `imsic_page_at` is None.
+
+    With `messages_shifted_by`, the messages go through a router first
+    that has the CPU's bus that far up, so that the APLIC finds everything
+    at a higher address than the CPU does. With `own_way_to_the_page`, the
+    APLIC has the page for machine mode on a router of its own, at
+    0x2400_0000, whether or not the CPU has it.
+    """
+    platform = sp.Platform()
+    cpu = platform.add(
+        "cpu",
+        sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000, isa="gc", modes="msu"),
+    )
+    bus = platform.add("bus", sp.Router())
+    imsic = platform.add("imsic", sp.Imsic())
+    aplic = platform.add("aplic", sp.Aplic())
+    uart = platform.add("uart", sp.Ns16550())
+    platform.connect(cpu.socket, bus.target)
+    if imsic_page_at is not None:
+        bus.map(imsic.machine, base=imsic_page_at)
+    bus.map(imsic.supervisor, base=0x2800_0000)
+    bus.map(aplic.socket, base=0x0C00_0000)
+    bus.map(uart.socket, base=0x1000_0000)
+    platform.connect(imsic.irq, cpu.irq)
+    platform.connect(cpu.csr, imsic.csr)
+    if messages_shifted_by or own_way_to_the_page:
+        up = platform.add("up", sp.Router())
+        platform.connect(aplic.msi, up.target)
+        if own_way_to_the_page:
+            up.map(imsic.machine, base=0x2400_0000)
+        else:
+            up.map(
+                bus.add_input(), base=messages_shifted_by, size=0x1_0000_0000
+            )
+    else:
+        platform.connect(aplic.msi, bus.add_input())
+    platform.connect(uart.irq, aplic.source16)
+    return platform
+
+
+class TestWhenAnAplicsMessagesReachAnImsic:
+    def test_its_node_names_the_imsic_as_where_they_go_and_is_exactly_this(
+        self,
+    ):
+        platform = cpu_with_an_aplic()
+
+        node = textwrap.dedent(
+            """\
+            aplic: interrupt-controller@c000000 {
+            \tcompatible = "riscv,aplic";
+            \treg = <0x0 0xc000000 0x0 0x8000>;
+            \t#address-cells = <0>;
+            \t#interrupt-cells = <3>;
+            \tinterrupt-controller;
+            \triscv,num-sources = <31>;
+            \tmsi-parent = <&imsic>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_a_device_at_one_of_its_sources_names_it_the_source_and_its_level(
+        self,
+    ):
+        # The source's number, a priority, and how the line asks: 4 is the
+        # devicetree's number for "while it is high".
+        platform = cpu_with_an_aplic()
+
+        assert "interrupts-extended = <&aplic 16 1 4>;" in platform.devicetree()
+
+
+class TestWhenAnAplicsMessagesReachNoPageForMachineMode:
+    def test_its_node_names_nowhere_for_them_to_go(self):
+        # The devicetree is machine mode's, and an IMSIC that mode cannot
+        # be sent messages at has no node in it to name.
+        devicetree = cpu_with_an_aplic(imsic_page_at=None).devicetree()
+
+        assert 'compatible = "riscv,aplic";' in devicetree
+        assert "msi-parent" not in devicetree
+
+
+class TestWhenAnAplicsMessagesReachAnImsicsPageThatTheCpuDoesNot:
+    def test_its_node_names_nowhere_for_them_to_go(self):
+        # The IMSIC has no node in the CPU's devicetree to name.
+        devicetree = cpu_with_an_aplic(
+            imsic_page_at=None, own_way_to_the_page=True
+        ).devicetree()
+
+        assert 'compatible = "riscv,aplic";' in devicetree
+        assert "msi-parent" not in devicetree
+
+
+class TestWhenAnAplicFindsTheImsicsPageAtAnotherAddressThanTheCpuDoes:
+    def test_the_devicetree_is_refused_and_the_error_gives_both_addresses(self):
+        # Firmware reads where the page is from the CPU's devicetree and
+        # tells the APLIC to send there.
+        platform = cpu_with_an_aplic(messages_shifted_by=0x1_0000_0000)
+
+        with pytest.raises(ValueError, match="0x124000000") as error:
+            platform.devicetree()
+
+        assert "0x24000000" in str(error.value)
+        assert '"aplic"' in str(error.value)
+
+
 class TestWhenACpusCsrGoesToAnImsic:
     def test_its_node_lists_the_extension_that_reaches_one(self):
         # Smcsrind is the window onto another block's registers (`miselect`

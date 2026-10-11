@@ -80,6 +80,10 @@ class DeviceNode(NamedTuple):
     #: port. None means all of them, which is right for a component that is
     #: one device.
     interrupts: tuple[str, ...] | None = None
+    #: The port the device's interrupt messages leave by, if it interrupts
+    #: with messages on behalf of other devices. The node then names what
+    #: takes them, as `msi-parent`.
+    messages: str | None = None
 
 
 def cells(value: int) -> str:
@@ -271,6 +275,16 @@ class Component(ABC):
         `port` is not an interrupt input.
         """
         return None
+
+    def takes_messages(self, port: str) -> bool:
+        """Whether `port` is where firmware's hart is sent its interrupts.
+
+        True of the page of a message controller. A device that sends
+        interrupt messages and can reach that page gets
+        `msi-parent = <&label>` in its devicetree node, with this
+        component's label.
+        """
+        return False
 
     def routes(self, port: str) -> Iterable[tuple[str, int, int | None]]:
         """Where an access arriving at `port` can go next.
@@ -631,6 +645,11 @@ class Imsic(Component):
             ),
             interrupts=("irq",),
         )
+
+    @override
+    def takes_messages(self, port: str) -> bool:
+        # Machine mode's page, as the node is machine mode's.
+        return port == "machine"
 
 
 class MachineTimer(Component):
@@ -1112,6 +1131,68 @@ class PcieRootComplex(Component):
             ),
             chosen=("zephyr,pcie-controller",),
         )
+
+
+class Aplic(Component):
+    """A RISC-V APLIC: it turns devices' interrupt lines into messages.
+
+    🎓 The APLIC (advanced platform-level interrupt controller) is the
+    other half of RISC-V's Advanced Interrupt Architecture, beside the
+    `Imsic`. A device that only has a wire connects it here, to one of
+    `source1` to `source31`. When the line asks, the APLIC writes an
+    interrupt identity to the page of the CPU's IMSIC, as a device that
+    interrupts with messages would have done itself. So it can sit with
+    its devices, on another die than the CPU, with nothing but a bus
+    between them.
+
+    Connect `msi` to a bus that the IMSIC's `machine` page is on, or to
+    something that leads to one. Firmware says where the page is and which
+    identity each source sends. This APLIC only delivers by message: it
+    has no line to a CPU. The model is borrowed from VPV-Peripherals, with
+    delivery by message added.
+    """
+
+    implementation = "aplic"
+    #: The APLIC numbers its sources from 1. 0 means "no interrupt".
+    SOURCES = 31
+    port_specs = (
+        target("socket"),
+        initiator("msi"),
+        *(wire_in(f"source{number}") for number in range(1, SOURCES + 1)),
+    )
+    #: The APLIC's registers, as far as the lines to harts it does not have.
+    mapped_size = 0x8000
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "interrupt-controller",
+            ((reached["socket"].address, self.mapped_size),),
+            (
+                'compatible = "riscv,aplic";',
+                "#address-cells = <0>;",
+                # An interrupt is named by three numbers: the source, a
+                # priority, and how its line asks.
+                "#interrupt-cells = <3>;",
+                "interrupt-controller;",
+                f"riscv,num-sources = <{self.SOURCES}>;",
+            ),
+            messages="msi",
+        )
+
+    @override
+    def interrupt_number(self, port: str) -> int | None:
+        if not port.startswith("source"):
+            return None
+        return int(port.removeprefix("source"))
+
+    @override
+    def interrupt_input(self, port: str, label: str) -> str | None:
+        number = self.interrupt_number(port)
+        # The source's number, a priority, which only counts when an APLIC
+        # interrupts over a line, and 4, the devicetree's number for a line
+        # that asks while it is high, as every line in socpuppet does.
+        return None if number is None else f"&{label} {number} 1 4"
 
 
 class Plic(Component):

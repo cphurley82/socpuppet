@@ -35,6 +35,7 @@ gtest_discover_tests(unit_tests PROPERTIES LABELS cpp)
 # runs each one in its own process.
 add_executable(kernel_tests
   kernel_test_main.cpp
+  contracts/aplic_test.cpp
   contracts/bus_master_test.cpp
   contracts/interrupt_controller_test.cpp
   contracts/link_test.cpp
@@ -44,6 +45,7 @@ add_executable(kernel_tests
   contracts/nand_test.cpp
   contracts/nvme_test.cpp
   contracts/uart_test.cpp
+  platform/aplic_test.cpp
   platform/composition_test.cpp
   platform/cpu_test.cpp
   platform/d2d_link_test.cpp

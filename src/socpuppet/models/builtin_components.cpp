@@ -10,6 +10,7 @@
 #include <scc/router.h>
 
 #include "socpuppet/core/time.h"
+#include "socpuppet/models/aplic.h"
 #include "socpuppet/models/behavioral_nvme.h"
 #include "socpuppet/models/d2d_link.h"
 #include "socpuppet/models/dbt_rise_cpu.h"
@@ -33,6 +34,7 @@
 
 namespace socpuppet {
 
+static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(LinkEndpointSlot<D2dLinkEndpoint>);
@@ -80,6 +82,13 @@ void AddNumberedPorts(std::vector<Port>& ports, const std::string& prefix,
 
 Registry BuiltinComponents() {
   Registry registry;
+  registry.Add("aplic", [](const char* name, Parameters&) {
+    auto module = std::make_unique<Aplic>(name);
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            InitiatorPort("msi", module->msi)};
+    AddNumberedPorts(ports, "source", 1, module->sources, WireSinkPort);
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   registry.Add("behavioral_nvme", [](const char* name, Parameters& parameters) {
     const std::uint64_t vectors =
         parameters.Required("vectors", kInterruptVectors);

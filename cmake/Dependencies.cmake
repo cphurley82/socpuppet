@@ -272,6 +272,8 @@ FetchContent_Declare(vpv_peripherals
   # from a queue of events and came out wrong for a driver that enables an
   # interrupt whose cause is already there, as every driver does to start
   # transmitting.
+  # aplic-msi-mode: the APLIC delivered over a line only. This adds
+  # delivery by message, which a platform whose harts have IMSICs needs.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-last-source.patch
@@ -279,6 +281,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-level-sources.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-edge-while-claimed.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-uart-interrupt-from-state.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aplic-msi-mode.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)
