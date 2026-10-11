@@ -96,4 +96,6 @@ def add_cpu_kit(
         platform.connect(line, getattr(plic, f"source{source}"))
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
+    # The CPU's `time` register is the timer's count.
+    platform.connect(cpu.time, timer.time)
     return cpu, CpuKit(sram=sram, uart=uart, timer=timer, plic=plic)

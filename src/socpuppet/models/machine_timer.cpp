@@ -10,8 +10,16 @@
 #include <tlm_utils/simple_initiator_socket.h>
 
 #include "socpuppet/models/borrowed_model.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
+
+namespace {
+
+// Where the count is among the registers, as on SiFive's CLINT.
+constexpr std::uint64_t kMtime = 0xBFF8;
+
+}  // namespace
 
 // The borrowed timer and what it needs around it. It learns its tick from a
 // signal that carries the tick's period. It has one more interrupt output,
@@ -55,6 +63,7 @@ MachineTimer::MachineTimer(const sc_core::sc_module_name& name,
     : sc_module(name), model_(std::make_unique<Model>(frequency_hz)) {
   socket.register_b_transport(this, &MachineTimer::b_transport);
   socket.register_transport_dbg(this, &MachineTimer::transport_dbg);
+  time.register_b_transport(this, &MachineTimer::ReadTime);
   SC_METHOD(DriveTheLine);
   sensitive << model_->Interrupt();
 }
@@ -69,6 +78,18 @@ MachineTimer::~MachineTimer() = default;
 
 void MachineTimer::b_transport(tlm::tlm_generic_payload& transaction,
                                sc_core::sc_time& delay) {
+  model_->registers.Access(transaction, delay);
+}
+
+void MachineTimer::ReadTime(tlm::tlm_generic_payload& transaction,
+                            sc_core::sc_time& delay) {
+  if (!transaction.is_read()) {
+    transaction.set_response_status(tlm::TLM_COMMAND_ERROR_RESPONSE);
+    return;
+  }
+  // The count is the `mtime` register, so the borrowed model is asked for
+  // that, at the time the hart has got to.
+  const AtAddress of_the_register{transaction, kMtime};
   model_->registers.Access(transaction, delay);
 }
 

@@ -21,6 +21,10 @@ namespace socpuppet {
 class MachineTimer : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<MachineTimer> socket{"socket"};
+  // Where a hart reads the count from, with no bus in between: RISC-V's
+  // `time` register is `mtime` brought to the hart. A read of it is the
+  // count, whatever the address, and a write is refused.
+  tlm_utils::simple_target_socket<MachineTimer> time{"time"};
   // The machine timer interrupt, for a CPU's `timer_irq`.
   sc_core::sc_out<bool> irq{"irq"};
 
@@ -36,6 +40,8 @@ class MachineTimer : public sc_core::sc_module {
   // Debug transport: a register as a debugger sees it, in no simulated
   // time. Returns the bytes transferred.
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction);
+  // An access through `time`.
+  void ReadTime(tlm::tlm_generic_payload& transaction, sc_core::sc_time& delay);
   // The only process that writes `irq`.
   void DriveTheLine();
 

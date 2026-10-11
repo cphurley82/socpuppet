@@ -354,7 +354,11 @@ class DbtRiseCpu(Component):
     """
 
     implementation = "dbt_rise_cpu"
-    port_specs = _CPU_PORTS
+    port_specs = (
+        *_CPU_PORTS,
+        # Where its `time` register is read from: a machine timer's `time`.
+        initiator("time", required=False),
+    )
     is_bus_master = True
 
     xlen: int
@@ -536,10 +540,19 @@ class MachineTimer(Component):
     for as long as the counter is at or past the compare value: connect it
     to a CPU's `timer_irq`. The registers are where SiFive's CLINT has them.
     The model is borrowed from VPV-Peripherals (the Minres ACLINT).
+
+    A RISC-V CPU also has the count as a register of its own, `time`, which
+    it reads with no bus access. Connect the CPU's `time` to the timer's
+    `time` for that. Left unconnected, the CPU's `time` reads zero.
     """
 
     implementation = "machine_timer"
-    port_specs = (target("socket"), wire_out("irq"))
+    port_specs = (
+        target("socket"),
+        # Where a CPU reads the count from as its own `time` register.
+        target("time", required=False),
+        wire_out("irq"),
+    )
     #: As on the CLINT: `mtimecmp` at 0x4000 and `mtime` at 0xBFF8.
     mapped_size = 0x1_0000
 

@@ -312,6 +312,16 @@ Each entry says:
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the link's default latency starts to cost simulated time, and the M7 figures in [plan.md](plan.md) want measuring again.
 
+### The `time` register is read from a signal, which cannot say how far ahead its reader is
+
+- **Where**: `src/sysc/core2sc_adapter.h`, `read_time`: `owner->mtime_i.get_interface() ? owner->mtime_i.read() : 0`. And `src/sysc/core_complex.h`, where `quantum_keeper` is `protected`.
+- **What is wrong**: 🎓 a core runs ahead of the simulation's clock, by up to a quantum, and stamps each bus access with how far ahead it is, so that a target answers for the core's own time. `time` is read from an input signal, `mtime_i`, and a signal has the value it had when the simulation's clock last got there. So `time` lags the `mtime` register that the same core reads over the bus one instruction later, by up to a quantum: 1,000 ticks with socpuppet's 100 µs and a 10 MHz timer. Firmware that compares the two, or takes a time from one and a deadline from the other, sees the clock jump. A wrapper that wants to answer `time` properly needs the core's lead, and the quantum keeper that has it cannot be reached from outside.
+- **How to see it**: `WhenACpusTimeIsConnectedToItsTimer` in `tests/cpp/platform/cpu_test.cpp`, with the read made with no lead: `time` reads 8000 where the timer's own register, read by the next instruction, reads 8196.
+- **What we do**: no patch. The adapter (`dbt_rise_cpu.cpp`) answers `time` itself, and `timeh` on a 32-bit core, with `register_csr_rd`: a read of eight bytes from the timer through a socket of its own, carrying the lead as a bus access does. It gets the lead by deriving from `core_complex` (`CoreComplex::Lead`), which is all the derived class is for. `mtime_i` is left unbound.
+- **Upstream fix**: give `read_time` a hook that is handed the core's local time, or make the quantum keeper's local time readable, so that a wrapper need not derive from the class to ask.
+- **Kind**: bug, or at least a surprise.
+- **When it lands**: `CoreComplex` can go.
+
 ### A core with supervisor mode can never take a supervisor's interrupt
 
 - **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, in `read_ie`, `write_ie`, `read_ip` and `write_ip`, and `check_interrupt`. The masks they start from are `mie_mip_mask` in `src/iss/arch/riscv_hart_common.h`.
@@ -354,6 +364,26 @@ Two more things read in the same file and not acted on:
 
 - `const int lfclk_mutiplier = 10; // hardcoded for unit test` is declared and never used.
 - The write callbacks for `mtimecmp` and `msip` call `wait()` when the access arrives with a delay, so they only work when the write comes from a SystemC thread. A write from a method would be a SystemC error.
+
+### The ACLINT wakes for every tick once anything reads its count as a signal
+
+- **Where**: `minres/aclint.cpp`, the end of `update_mtime`: `if(mtime_o.get_interface()) { mtime_evt.notify(mtime_clk_period); }`.
+- **What is wrong**: `mtime_o` is the count as a 64-bit output, for a core's `time` register. With nothing bound to it the model sleeps until the next compare value is due. With something bound it wakes itself every tick to write the new count: ten million times a simulated second at 10 MHz, and with each a delta cycle of the kernel's. On the host's disk test that would be six million wakes for a run that takes under half a second of wall clock today.
+- **How to see it**: by reading. It has not been measured, because socpuppet does not bind the output.
+- **What we do**: no patch. The timer's adapter (`machine_timer.cpp`) has a second target socket, `time`, and a CPU reads the count through it when its firmware reads `time`. That is the `mtime` register read with the reader's lead, which a signal could not carry either (see DBT-RISE-RISCV above).
+- **Upstream fix**: a way to ask for the count at a given time, such as a TLM socket or a function, beside the signal. Or write the signal only when it is read, which SystemC has no hook for.
+- **Kind**: efficiency.
+- **When it lands**: nothing to delete. The socket carries the reader's lead, which the signal never can.
+
+### A write to the ACLINT's `mtime` adds the time since its last update
+
+- **Where**: `minres/aclint.cpp`, the write callback of `mtime`: `reg.put(data); this->update_mtime();`.
+- **What is wrong**: `update_mtime` adds the ticks that have passed since it last ran to whatever the register holds. Run straight after a write, it adds them to the value just written. So a count written as N, 5 µs after the model last updated itself, reads back as N + 50.
+- **How to see it**: `MachineTimerContract.AWriteThroughTheTimeSocketIsRefusedAndTheCountGoesOn` in `tests/cpp/contracts/machine_timer_contract.h`, with the refusal taken out of `MachineTimer::ReadTime`: a write of 1,000,000 at 5 µs is read back as 1,000,050.
+- **What we do**: nothing. Zephyr never writes `mtime`, and no test of socpuppet's sets the count to a value it then relies on.
+- **Upstream fix**: bring `last_updt` up to now before the written value is stored, so that nothing is owed.
+- **Kind**: bug.
+- **When it lands**: nothing to delete.
 
 ### The PLIC reads its last source's priority from past the end of an array
 

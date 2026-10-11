@@ -60,12 +60,16 @@ concept CpuSlot = requires(T cpu) {
 };
 
 // A RISC-V machine timer: built from a name and how many times a second it
-// counts, reached through one TLM target socket, with one interrupt output.
+// counts, with its registers reached through one TLM target socket, and
+// with one interrupt output. A second target socket, `time`, is where a
+// hart reads the count from with no bus in between: RISC-V's `time`
+// register.
 template <typename T>
 concept MachineTimerSlot =
     std::constructible_from<T, sc_core::sc_module_name, std::uint64_t> &&
     requires(T timer) {
       { timer.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { timer.time } -> std::convertible_to<tlm::tlm_target_socket<>&>;
       { timer.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
     };
 

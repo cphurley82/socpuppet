@@ -29,6 +29,9 @@ class MachineTimerContract : public ::testing::Test {
   // Where the registers are, as on SiFive's CLINT. Each is 64 bits wide.
   static constexpr std::uint64_t kMtimecmp = 0x4000;
   static constexpr std::uint64_t kMtime = 0xBFF8;
+  // The `time` socket holds the count and nothing else, so an address
+  // means nothing there. A hart sends zero.
+  static constexpr std::uint64_t kTime = 0;
 
   MachineTimerContract() { timer_.irq.bind(interrupt_); }
 
@@ -36,13 +39,18 @@ class MachineTimerContract : public ::testing::Test {
     return {count, sc_core::SC_US};
   }
 
-  // Runs `body` in a simulation thread wired to the timer, and then lets
-  // the simulation run on until `end`.
+  // Runs `body` in a simulation thread wired to the timer's registers, and
+  // then lets the simulation run on until `end`.
   void OnTheBus(std::function<void(BusDriver&)> body,
                 const sc_core::sc_time& end) {
-    BusDriver driver{"driver", std::move(body)};
-    driver.socket.bind(timer_.socket);
-    sc_core::sc_start(end);
+    Run(std::move(body), [](BusDriver&) {}, end);
+  }
+
+  // The same, with the thread wired to the timer's `time` socket, which is
+  // where a hart reads the count from.
+  void AsAHart(std::function<void(BusDriver&)> body,
+               const sc_core::sc_time& end) {
+    Run([](BusDriver&) {}, std::move(body), end);
   }
 
   // Reads `mtime` the way a debugger looks: in no simulated time.
@@ -58,6 +66,20 @@ class MachineTimerContract : public ::testing::Test {
     bus.WaitFor(when - sc_core::sc_time_stamp());
   }
 
+ private:
+  void Run(std::function<void(BusDriver&)> on_the_bus,
+           std::function<void(BusDriver&)> as_a_hart,
+           const sc_core::sc_time& end) {
+    // Both sockets are bound, whichever a test uses: SystemC does not
+    // start with a target socket that nothing is bound to.
+    BusDriver bus{"bus", std::move(on_the_bus)};
+    BusDriver hart{"hart", std::move(as_a_hart)};
+    bus.socket.bind(timer_.socket);
+    hart.socket.bind(timer_.time);
+    sc_core::sc_start(end);
+  }
+
+ protected:
   TimerType timer_{"timer", kFrequency};
   // A wire takes one driver, so a timer drives its line from one process
   // of its own, whether its count reached the compare value or it was
@@ -110,6 +132,42 @@ TYPED_TEST_P(MachineTimerContract, MtimeCountsTheTimeAReaderIsAheadByAsWell) {
       this->Microseconds(10));
 
   EXPECT_EQ(mtime, 7 * this->kTicksPerMicrosecond);
+}
+
+// RISC-V's `time` register is the timer's count as a hart sees it with no
+// bus between them. A read of eight bytes from the `time` socket is that.
+TYPED_TEST_P(MachineTimerContract,
+             AHartAheadOfTheClockReadsTheCountAtItsOwnTimeFromTheTimeSocket) {
+  std::uint64_t time = 0;
+
+  this->AsAHart(
+      [&](BusDriver& hart) {
+        hart.WaitFor(this->Microseconds(5));
+        time = hart.Read64(this->kTime, this->Microseconds(2));
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(time, 7 * this->kTicksPerMicrosecond);
+}
+
+// `time` is read-only to a hart.
+TYPED_TEST_P(MachineTimerContract,
+             AWriteThroughTheTimeSocketIsRefusedAndTheCountGoesOn) {
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  std::uint64_t time = 0;
+
+  this->AsAHart(
+      [&](BusDriver& hart) {
+        hart.WaitFor(this->Microseconds(5));
+        // A value nowhere near the count, so that a write that landed
+        // would show.
+        response = hart.Write64(this->kTime, 1'000'000);
+        time = hart.Read64(this->kTime);
+      },
+      this->Microseconds(10));
+
+  EXPECT_EQ(response, tlm::TLM_COMMAND_ERROR_RESPONSE);
+  EXPECT_EQ(time, 5 * this->kTicksPerMicrosecond);
 }
 
 TYPED_TEST_P(MachineTimerContract,
@@ -217,6 +275,8 @@ REGISTER_TYPED_TEST_SUITE_P(
     MachineTimerContract, LeftAloneItNeverInterrupts,
     MtimeCountsSimulatedTimeInTicks, MtimeIsSeenByADebugAccess,
     MtimeCountsTheTimeAReaderIsAheadByAsWell,
+    AHartAheadOfTheClockReadsTheCountAtItsOwnTimeFromTheTimeSocket,
+    AWriteThroughTheTimeSocketIsRefusedAndTheCountGoesOn,
     TheInterruptRisesWhenMtimeReachesTheCompareValue,
     ACompareValueSetAtTheVeryStartIsHonoured,
     MovingTheCompareValueAheadEndsTheInterrupt,

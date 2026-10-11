@@ -100,6 +100,8 @@ Registry BuiltinComponents() {
             .floating_point = parameters.Optional("floating_point", 0) != 0,
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0});
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
+                            InitiatorPort("time", module->time,
+                                          /*required=*/false),
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),
                             WireSinkPort("reset", module->reset)};
@@ -142,6 +144,10 @@ Registry BuiltinComponents() {
     auto module = std::make_unique<MachineTimer>(
         name, parameters.Required("frequency_hz", {.least = 1}));
     std::vector<Port> ports{TargetPort("socket", module->socket),
+                            // A hart that never reads `time` has no use
+                            // for it.
+                            TargetPort("time", module->time,
+                                       /*required=*/false),
                             WireSourcePort("irq", module->irq)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });

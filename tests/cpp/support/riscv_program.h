@@ -82,6 +82,10 @@ constexpr Word Jal(Word rd, std::int32_t offset) {
 constexpr Word Csrs(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (2 << 12) | 0x73;
 }
+// rd = a control and status register.
+constexpr Word Csrr(Word rd, Word csr) {
+  return (csr << 20) | (2 << 12) | (rd << 7) | 0x73;
+}
 // Write rs1 to a control and status register.
 constexpr Word Csrw(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (1 << 12) | 0x73;
@@ -109,6 +113,11 @@ inline constexpr Word kInterruptsOn = 3;
 // registers are in. While the field is zero, as after reset, they are
 // switched off and a floating-point instruction is an illegal one.
 inline constexpr Word kFloatingPointOn = 13;
+// The register a hart reads the machine timer's count from, read-only.
+inline constexpr Word kTime = 0xC01;
+// The upper half of the count, which a 32-bit hart has in a register of
+// its own.
+inline constexpr Word kTimeh = 0xC81;
 // The register that holds the address a trap jumps to.
 inline constexpr Word kMtvec = 0x305;
 // Return from a trap handler to where the trap was taken.
@@ -210,6 +219,56 @@ inline Program CountDownThenSleep(Word iterations) {
   program.push_back(Lui(kT2, iterations >> 12));
   program.push_back(Addi(kT2, kT2, -1));
   program.push_back(Bne(kT2, kZero, -4));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that counts down from `iterations` (as for
+// CountDownThenSleep), then reads the `time` register and, with its very
+// next instruction, the low word of the machine timer's count where the
+// timer has it on the bus, at `mtime` (an address below 0x8000'0000). It
+// stores the two as its result, `time` first and the timer's own a word
+// after, and sleeps.
+inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
+                                                      Word iterations) {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  // The address in two parts: what Lui can load, and what is left for the
+  // load's offset, which is signed and of 12 bits.
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const auto lower =
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Lui(kT3, upper));
+  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Addi(kT2, kT2, -1));
+  program.push_back(Bne(kT2, kZero, -4));
+  program.push_back(Csrr(kT1, kTime));
+  program.push_back(Lw(kT4, kT3, lower));
+  program.push_back(Sw(kT1, kT0, kResultOffset));
+  program.push_back(Sw(kT4, kT0, kResultOffset + 4));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program for a 32-bit core that writes `value` to the upper half of
+// the machine timer's count, where the timer has the count on the bus, at
+// `mtime` (as for ReadTimeThenTheTimersOwnCountThenSleep), then reads its
+// `timeh` register, stores what it read as its result, and sleeps.
+inline Program WriteTheUpperHalfOfTheTimersCountThenStoreTimeh(
+    std::uint64_t mtime, std::int32_t value) {
+  constexpr Word kT3 = 28;
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const auto lower =
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Lui(kT3, upper));
+  program.push_back(Li(kT1, value));
+  program.push_back(Sw(kT1, kT3, lower + 4));
+  program.push_back(Csrr(kT1, kTimeh));
+  program.push_back(Sw(kT1, kT0, kResultOffset));
   AppendSleepForEver(program);
   return program;
 }

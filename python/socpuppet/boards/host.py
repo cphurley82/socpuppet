@@ -288,6 +288,8 @@ def host(
 
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
+    # The CPU's `time` register is the timer's count.
+    platform.connect(cpu.time, timer.time)
     if drive_blocks is None:
         if drive is not None:
             raise ValueError(

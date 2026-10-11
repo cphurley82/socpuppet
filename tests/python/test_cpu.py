@@ -5,6 +5,10 @@ import re
 import pytest
 
 import socpuppet as sp
+from socpuppet.boards.host import host
+from socpuppet.boards.io_manager import io_manager
+from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards.ssd import ssd
 
 RESET_VECTOR = 0x100
 
@@ -139,3 +143,64 @@ class TestWhenACpuIsDescribedAsACoreThereIsNot:
 
         assert 'isa="imac", modes="m" with xlen=32 or 64' in str(error.value)
         assert 'isa="gc", modes="msu" with xlen=64' in str(error.value)
+
+
+# A program that goes 4,096 times round a loop of two instructions, reads
+# its `time` register, stores what it read at 0x200 bytes past its own
+# first instruction, and sleeps.
+READ_TIME_AFTER_A_LOOP_THEN_SLEEP = b"".join(
+    word.to_bytes(4, "little")
+    for word in (
+        0x00000297,  # auipc  t0, 0
+        0x000013B7,  # lui    t2, 1          t2 = 4096
+        0xFFF38393,  # addi   t2, t2, -1
+        0xFE039EE3,  # bnez   t2, -4
+        0xC0102373,  # rdtime t1             t1 = the `time` register
+        0x2062A023,  # sw     t1, 0x200(t0)
+        0x10500073,  # wfi
+        0xFFDFF06F,  # j      -4
+    )
+)
+
+
+def the_hosts_cpu():
+    """The host board and its CPU."""
+    board = host()
+    return board.platform, board.cpu
+
+
+def the_ssds_cpu():
+    """The SSD board and its controller's CPU."""
+    board = ssd(host=idle_host)
+    return board.platform, board.ssd.cpu
+
+
+def the_io_managers_cpu():
+    """The IO manager board and the manager's CPU."""
+
+    def nothing():
+        """🎭 A compute die that does nothing at all."""
+        yield from ()
+
+    board = io_manager(compute=nothing)
+    return board.platform, board.manager.cpu
+
+
+@pytest.mark.platform
+class TestWhenTheCpuOfABoardReadsItsTimeRegister:
+    @pytest.mark.parametrize(
+        "the_cpu_of", [the_hosts_cpu, the_ssds_cpu, the_io_managers_cpu]
+    )
+    def test_it_reads_what_its_timer_has_counted(self, the_cpu_of):
+        platform, cpu = the_cpu_of()
+        start = cpu.component.parameters["reset_vector"]
+        platform.build()
+        platform.poke(start, READ_TIME_AFTER_A_LOOP_THEN_SLEEP, via=cpu.socket)
+
+        # 8,200 instructions take 820 us.
+        platform.run(sp.ms(1))
+
+        # Unconnected, `time` reads zero. The loop is there so that a
+        # connected timer has counted well past that by the time the
+        # program looks.
+        assert platform.peek32(start + 0x200, via=cpu.socket) > 0

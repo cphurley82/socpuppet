@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -12,6 +13,7 @@
 #include <gtest/gtest.h>
 #include <systemc>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/port.h"
@@ -406,6 +408,107 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   const sc_core::sc_time due{100, sc_core::SC_US};
   EXPECT_GE(probed.front().Time(), due);
   EXPECT_LE(probed.front().Time(), due + quantum);
+}
+
+// A platform with a CPU, a RAM for its program and a machine timer, whose
+// count the CPU can read two ways: from the timer's register on the bus,
+// and, if the two are connected, from its own `time` register.
+struct CpuPlatformWithATimer {
+  static constexpr std::uint64_t kRamBase = 0x8000'0000;
+  static constexpr std::uint64_t kTimerBase = 0x0200'0000;
+  // Where the timer has its count.
+  static constexpr std::uint64_t kMtime = kTimerBase + 0xBFF8;
+
+  CpuPlatformWithATimer(std::uint64_t xlen, bool time_is_connected) {
+    // The CPU runs up to 100 us ahead of the clock that the timer counts
+    // by.
+    platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
+    platform.Add("cpu", "dbt_rise_cpu",
+                 {{"xlen", xlen}, {"reset_vector", kRamBase}});
+    platform.Add("bus", "router",
+                 {{"outputs", 2},
+                  {"out0.base", kRamBase},
+                  {"out0.size", 0x1000},
+                  {"out1.base", kTimerBase},
+                  {"out1.size", 0x1'0000}});
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    // The timer counts once for each instruction the CPU executes: both
+    // go at 10 MHz.
+    platform.Add("timer", "machine_timer", {{"frequency_hz", 10'000'000}});
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("bus.out1", "timer.socket");
+    platform.Bind("timer.irq", "cpu.timer_irq");
+    if (time_is_connected) platform.Bind("cpu.time", "timer.time");
+    platform.Elaborate();
+  }
+
+  void Load(const riscv::Program& program) {
+    platform.DebugWrite("cpu.socket", kRamBase,
+                        std::as_bytes(std::span{program}));
+  }
+
+  // Any program here is asleep after 820 us.
+  void RunUntilAsleep() { platform.Run(sc_core::sc_time{2, sc_core::SC_MS}); }
+
+  // The word a program left `offset` bytes into its result.
+  std::uint32_t ResultWord(std::uint64_t offset = 0) {
+    std::array<std::uint8_t, 4> word{};
+    platform.DebugRead("cpu.socket", kRamBase + riscv::kResultOffset + offset,
+                       std::as_writable_bytes(std::span{word}));
+    return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+  }
+
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+};
+
+// What reads the count both ways. Its loop is two instructions each time
+// round, 819 us of them, so that the look comes eight quanta in and part of
+// the way through a ninth, with the simulation's clock near 800 us and the
+// CPU some 19 us ahead of it. A `time` that left the CPU's lead out, or
+// counted the clock twice, would then show.
+riscv::Program ReadTimeThenTheTimersOwnCount() {
+  return riscv::ReadTimeThenTheTimersOwnCountThenSleep(
+      CpuPlatformWithATimer::kMtime, /*iterations=*/4096);
+}
+
+TEST(WhenACpusTimeIsConnectedToItsTimer,
+     TheTimeRegisterReadsOneTickBehindTheTimersOwnCountReadAnInstructionLater) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/64, /*time_is_connected=*/true};
+  with_timer.Load(ReadTimeThenTheTimersOwnCount());
+
+  with_timer.RunUntilAsleep();
+
+  const std::uint32_t time = with_timer.ResultWord(0);
+  const std::uint32_t the_timers_own_count = with_timer.ResultWord(4);
+  EXPECT_EQ(time + 1, the_timers_own_count);
+}
+
+TEST(WhenACpusTimeIsNotConnected, TheTimeRegisterReadsZero) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/64, /*time_is_connected=*/false};
+  with_timer.Load(ReadTimeThenTheTimersOwnCount());
+
+  with_timer.RunUntilAsleep();
+
+  const std::uint32_t time = with_timer.ResultWord(0);
+  const std::uint32_t the_timers_own_count = with_timer.ResultWord(4);
+  EXPECT_EQ(time, 0U);
+  // The program did run, and the timer did count.
+  EXPECT_GT(the_timers_own_count, 0U);
+}
+
+// A 32-bit CPU has the 64-bit count in two registers, `time` and `timeh`.
+TEST(WhenA32BitCpusTimeIsConnectedToItsTimer,
+     ItsTimehRegisterReadsTheUpperHalfOfTheCount) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/32, /*time_is_connected=*/true};
+  // The upper half of a count that started at zero would take seven
+  // minutes to be anything else, so the program writes it first.
+  with_timer.Load(riscv::WriteTheUpperHalfOfTheTimersCountThenStoreTimeh(
+      CpuPlatformWithATimer::kMtime, 0x5A));
+
+  with_timer.RunUntilAsleep();
+
+  EXPECT_EQ(with_timer.ResultWord(), 0x5AU);
 }
 
 TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {

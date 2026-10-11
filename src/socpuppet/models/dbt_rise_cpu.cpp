@@ -1,5 +1,6 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 
+#include <array>
 #include <cstdint>
 #include <format>
 #include <memory>
@@ -11,7 +12,9 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/tie_low.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -41,6 +44,20 @@ const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
       xlen, extras.floating_point ? 1 : 0, extras.supervisor_mode ? 1 : 0));
 }
 
+// The number of the register a hart reads the machine timer's count from,
+// and of the one a 32-bit hart reads the upper half of it from.
+constexpr unsigned kTimeCsr = 0xC01;
+constexpr unsigned kTimehCsr = 0xC81;
+
+// DBT-RISE's CPU. It keeps to itself how far ahead of the simulation's
+// clock it has run, which an access it makes outside the bus has to carry
+// as a bus access does. This lets that out.
+struct CoreComplex : sysc::riscv::core_complex<> {
+  using core_complex::core_complex;
+
+  sc_core::sc_time Lead() { return quantum_keeper.get_local_time(); }
+};
+
 }  // namespace
 
 // DBT-RISE's CPU, `core_complex`, and what it takes to fit its outside to
@@ -53,9 +70,9 @@ const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
 //     its interrupt-pending register. The machine external and machine
 //     timer interrupts are ours to connect, and the rest are tied low.
 struct DbtRiseCpu::Core {
-  Core(DbtRiseCpu& cpu, const char* core_type, std::uint64_t reset_vector,
-       std::uint16_t gdb_port)
-      : cpu_(cpu) {
+  Core(DbtRiseCpu& cpu, std::uint64_t xlen, const char* core_type,
+       std::uint64_t reset_vector, std::uint16_t gdb_port)
+      : cpu_(cpu), xlen_(xlen) {
     complex_.core_type.set_value(core_type);
     complex_.reset_address.set_value(reset_vector);
     // The GDB server is DBT-RISE's own, and each CPU that asks has one of
@@ -81,6 +98,23 @@ struct DbtRiseCpu::Core {
         complex_.clint_irq_i[line].bind(cpu_.tied_low_);
       }
     }
+  }
+
+  // Has the core read its `time` register from the machine timer, through
+  // `time`. DBT-RISE reads it from a 64-bit input, which would not do, for
+  // two reasons. A signal cannot say how far ahead of the clock its reader
+  // is, so `time` would lag the timer's own register by up to a quantum.
+  // And a timer that drove one would have to wake for every tick, where a
+  // read costs nothing until the firmware asks.
+  void AnswerTimeFromTheTimer() {
+    // DBT-RISE wants an lvalue, and copies it.
+    sysc::sc2core_if::rd_csr_f read_time = [this](unsigned csr,
+                                                  std::uint64_t& value) {
+      value = csr == kTimehCsr ? Time() >> 32 : Time();
+      return iss::Ok;
+    };
+    complex_.register_csr_rd(kTimeCsr, read_time);
+    if (xlen_ == 32) complex_.register_csr_rd(kTimehCsr, read_time);
   }
 
   void InvalidateDirectMemory(sc_dt::uint64 start, sc_dt::uint64 end) {
@@ -111,7 +145,20 @@ struct DbtRiseCpu::Core {
     return cpu_.socket->transport_dbg(transaction);
   }
 
+  // The timer's count at the time the core has got to, or zero if there
+  // is no timer at the other end of `time`.
+  std::uint64_t Time() {
+    std::array<std::uint8_t, 8> count{};
+    sc_core::sc_time lead = complex_.Lead();
+    const tlm::tlm_response_status response =
+        Transport(cpu_.time, tlm::TLM_READ_COMMAND, 0, count, lead);
+    return response == tlm::TLM_OK_RESPONSE
+               ? LoadLittleEndian<std::uint64_t>(count)
+               : 0;
+  }
+
   DbtRiseCpu& cpu_;
+  std::uint64_t xlen_;
   // One instruction takes one clock period of simulated time. 10 MHz is
   // the clock Zephyr's boards for QEMU are told they have.
   sc_core::sc_signal<sc_core::sc_time> clock_period_{
@@ -120,15 +167,15 @@ struct DbtRiseCpu::Core {
   FromCore from_data_{"from_data"};
   // Its settings are CCI parameters, which need a broker to exist first.
   // InitLogging() creates one, and every entry point calls it.
-  sysc::riscv::core_complex<> complex_{"core"};
+  CoreComplex complex_{"core"};
 };
 
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector, std::uint16_t gdb_port,
                        DbtRiseCpuExtras extras)
     : sc_module(name),
-      core_(std::make_unique<Core>(*this, CoreType(xlen, extras), reset_vector,
-                                   gdb_port)) {
+      core_(std::make_unique<Core>(*this, xlen, CoreType(xlen, extras),
+                                   reset_vector, gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &DbtRiseCpu::invalidate_direct_mem_ptr);
 }
@@ -139,6 +186,8 @@ void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
                                            sc_dt::uint64 end) {
   core_->InvalidateDirectMemory(start, end);
 }
+
+void DbtRiseCpu::end_of_elaboration() { core_->AnswerTimeFromTheTimer(); }
 
 void DbtRiseCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(reset, tied_low_);
