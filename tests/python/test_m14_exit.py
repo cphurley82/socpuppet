@@ -10,6 +10,10 @@ in the flash is that ELF file, wrapped (`socpuppet.boot_image`). The ROM
 is `firmware/rom`, which `firmware/build.sh` builds for each kind of CPU.
 """
 
+import dataclasses
+import re
+import zlib
+
 import pytest
 
 import socpuppet as sp
@@ -26,9 +30,15 @@ from cast import (
 )
 from link_trace import sent_to_the_io_die
 from socpuppet import boot_image
-from socpuppet.boards.boot import from_rom
+from socpuppet.boards.boot import ROM_BASE, ROM_SIZE, from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE
-from socpuppet.boards.host import IO_BASE, RAM_BASE, UART_OFFSET, host
+from socpuppet.boards.host import (
+    IO_BASE,
+    RAM_BASE,
+    RAM_SIZE,
+    UART_OFFSET,
+    host,
+)
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
 from socpuppet.regs import boot_image_header
@@ -36,9 +46,22 @@ from socpuppet.regs import boot_image_header
 SSD_HELLO_WORLD = "hello_world_socpuppet_ssd.elf"
 SSD_GREETING = "Hello World! socpuppet_ssd"
 #: The ROM copies `hello_world`, which is 12 KiB, in about a millisecond
-#: and a half of its CPU's time, and Zephyr greets a millisecond after
-#: that. This leaves room and still ends a run that never prints.
+#: and a half of its CPU's time, and is 23 more checking its CRC. Zephyr
+#: greets a millisecond after that. This leaves room and still ends a run
+#: that never prints.
 LONG_ENOUGH = sp.ms(200)
+#: Zephyr's disk test is 58 KiB, which a ROM is 110 ms checking, and the
+#: host's ROM starts on it only when the manager, which is 26 ms loading
+#: its own image, has the link up, at 29 ms. It speaks at 146 ms.
+LONG_ENOUGH_FOR_THE_DISK_TEST = sp.ms(400)
+#: A ROM that will not start what it found says so within a tenth of a
+#: millisecond. The rest is to see that it then says nothing more.
+LONG_ENOUGH_TO_SAY_NO = sp.ms(10)
+#: How far a CPU may run ahead of the clock, as a platform has it unless
+#: it is told otherwise.
+QUANTUM = sp.us(100)
+#: The first address past the host's RAM, where it has nothing.
+NOWHERE = RAM_BASE + RAM_SIZE
 
 
 def a_host_with_a_rom(firmware, **described):
@@ -153,23 +176,69 @@ class TestWhenTheHostBootsFromItsRomWithNothingInItsFlash:
     def test_the_rom_says_there_is_no_image_and_where_it_looked(self, firmware):
         board = a_host_with_a_rom(firmware)
 
-        # The ROM has spoken within microseconds. The rest is to see that
-        # it then says nothing more.
-        board.platform.run(sp.ms(10))
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
 
         assert board.uart.output == f"rom: no image at {BOOT_FLASH_BASE:#x}\n"
+
+
+@pytest.mark.platform
+class TestWhenTheLastByteOfTheProgramInTheHostsFlashIsNotWhatItWas:
+    def test_the_rom_says_the_crc_is_bad_and_starts_nothing(self, firmware):
+        image = boot_image.from_elf(firmware(HELLO_WORLD))
+        board = a_host_with_in_its_flash(image, firmware)
+        spoiled = spoil_the_last_byte_of_the_program_in_the_flash(board, image)
+
+        board.platform.run(LONG_ENOUGH)
+
+        assert board.uart.output == (
+            f"rom: {image.name}: bad CRC: its header says "
+            f"{zlib.crc32(image.payload):#010x}, and its bytes come to "
+            f"{zlib.crc32(spoiled):#010x}\n"
+        )
+
+
+def spoil_the_last_byte_of_the_program_in_the_flash(board, image):
+    """Change one bit of an image's last byte, and return the program now."""
+    spoiled = image.payload[:-1] + bytes([image.payload[-1] ^ 0x01])
+    board.platform.poke(
+        BOOT_FLASH_BASE + boot_image_header.SIZE, spoiled, via=board.cpu.socket
+    )
+    return spoiled
+
+
+#: A program that is no program, for a ROM to load and not to run.
+SPAM = boot_image.BootImage(
+    name="spam",
+    xlen=64,
+    load_address=RAM_BASE,
+    entry=RAM_BASE,
+    payload=b"spam, spam, spam, eggs and spam",
+)
+
+
+@pytest.mark.platform
+class TestWhenTheCrcInAnImagesHeaderIsASmallNumber:
+    def test_the_rom_says_it_with_all_eight_of_its_digits(self, firmware):
+        board = a_host_with_in_its_flash(SPAM, firmware)
+        board.platform.poke32(
+            BOOT_FLASH_BASE + boot_image_header.CRC, 1, via=board.cpu.socket
+        )
+
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
+
+        assert "its header says 0x00000001, " in board.uart.output
 
 
 #: A program of an odd number of bytes, none of them zero, so that the last
 #: few are not a whole register's worth, and a name that fills its place in
 #: the header, with no zero after it. No CPU could run it: where it is
-#: "entered" is an address of the host's with nothing at it, and the ROM's
-#: CPU stops there.
+#: "entered" is an address of the host's with nothing at it, and the CPU
+#: stops there.
 AN_AWKWARD_IMAGE = boot_image.BootImage(
     name="a_name_that_fills_all_32_bytes__",
     xlen=64,
     load_address=RAM_BASE + 0x1000,
-    entry=0x4000_0000,
+    entry=NOWHERE,
     payload=bytes(1 + each % 251 for each in range(0x123)),
 )
 
@@ -193,6 +262,50 @@ class TestWhenTheHostsRomLoadsAnImageOfAnOddLengthWithANameThatFillsItsPlace:
         board.platform.run(sp.ms(10))
 
         assert board.uart.output.startswith(f"rom: {image.name}: ")
+
+
+@pytest.mark.platform
+class TestWhenAnImageIsToBeLoadedWhereTheHostHasNoMemory:
+    def test_the_rom_says_it_was_stopped_by_a_trap_and_which_and_where(
+        self, firmware
+    ):
+        image = dataclasses.replace(SPAM, load_address=NOWHERE)
+        board = a_host_with_in_its_flash(image, firmware)
+
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
+
+        # 🎓 A CPU says three things of a trap, each in a register: why
+        # (mcause, where 7 is a write that nothing took), which instruction
+        # (mepc), and for a refused access which address (mtval).
+        said = re.fullmatch(
+            r"rom: stopped by a trap: mcause 0x7, mepc (0x[0-9a-f]+), "
+            rf"mtval {NOWHERE:#x}\n",
+            board.uart.output,
+        )
+        assert said, board.uart.output
+        assert ROM_BASE <= int(said[1], 16) < ROM_BASE + ROM_SIZE
+
+
+#: Two instructions: `li sp, 0`, which loses the stack, and then four
+#: bytes of zeros, which RISC-V keeps as an instruction no CPU has.
+LOSE_THE_STACK_AND_TRAP = bytes.fromhex("13010000") + bytes(4)
+
+
+@pytest.mark.platform
+class TestWhenAProgramTheRomStartedTrapsWithNoHandlerAndNoStackOfItsOwn:
+    def test_the_rom_still_says_which_trap_and_where(self, firmware):
+        image = dataclasses.replace(SPAM, payload=LOSE_THE_STACK_AND_TRAP)
+        board = a_host_with_in_its_flash(image, firmware)
+
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
+
+        # mcause 2 is an instruction the CPU does not have, and it was the
+        # program's second.
+        _, after_the_jump = board.uart.output.split("\n", 1)
+        assert after_the_jump == (
+            "rom: stopped by a trap: mcause 0x2, "
+            f"mepc {image.entry + 4:#x}, mtval 0x0\n"
+        )
 
 
 def an_ssd_with_in_its_flash(image_file, firmware):
@@ -355,10 +468,10 @@ class TestWhenTheHostsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
             if line.text.startswith(ROM_SAYS)
         ]
 
-        # To within the time it takes to say a line, and the tenth of a
-        # millisecond a console's times come in.
+        # Each of the three times is good to a quantum: a line is timed
+        # by the clock, which a CPU may be that far ahead of.
         assert loaded_again - last_fed - rom_takes == pytest.approx(
-            PERIOD, abs=sp.us(200)
+            PERIOD, abs=3 * QUANTUM
         )
 
 
@@ -386,6 +499,33 @@ class TestWhenAnSsdsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
         self, the_ssds_story
     ):
         assert RAN_OUT_AND_INTERRUPTED in said_in(the_ssds_story)
+
+
+@pytest.mark.platform
+class TestWhenTheImageInAFlashIsForTheOtherKindOfCpu:
+    def test_a_64_bit_cpus_rom_says_it_is_a_32_bit_image_and_starts_nothing(
+        self, firmware
+    ):
+        image = boot_image.from_elf(firmware(SSD_HELLO_WORLD))
+        board = a_host_with_in_its_flash(image, firmware)
+
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
+
+        assert board.uart.output == (
+            f"rom: {image.name} is a 32-bit image, and this is a 64-bit CPU\n"
+        )
+
+    def test_a_32_bit_cpus_rom_says_it_is_a_64_bit_image_and_starts_nothing(
+        self, firmware
+    ):
+        image = boot_image.from_elf(firmware(HELLO_WORLD))
+        board = an_ssd_with_in_its_flash(HELLO_WORLD, firmware)
+
+        board.platform.run(LONG_ENOUGH_TO_SAY_NO)
+
+        assert board.ssd.cpu_kit.uart.output == (
+            f"rom: {image.name} is a 64-bit image, and this is a 32-bit CPU\n"
+        )
 
 
 @pytest.fixture
@@ -427,11 +567,10 @@ class TestWhenAllThreeCpusOfAHostBootFromTheirRoms:
         everyone = {"host": DISK_TEST, "manager": MANAGER, "ssd": SSD}
 
         # The host is the last to speak: it is held until the link is up,
-        # five milliseconds in, and its image is the largest and the only
-        # one copied across the link. It is a few milliseconds more.
+        # and its image is the largest.
         all_spoke = story.run_until(
             lambda: {line.who for line in story.lines} == set(everyone),
-            timeout=LONG_ENOUGH,
+            timeout=LONG_ENOUGH_FOR_THE_DISK_TEST,
         )
 
         assert all_spoke, said_in(story)

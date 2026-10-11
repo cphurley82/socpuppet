@@ -164,7 +164,7 @@ for each in "rv64 rv64imac_zicsr lp64" "rv32 rv32imac_zicsr ilp32"; do
     -Os -g -Wall -Wextra -Werror -ffreestanding -nostdlib -nostartfiles \
     -I "${module}/include" -include "${rom}/board_${kind}.h" \
     -T "${rom}/rom.ld" \
-    "${rom}/start.S" "${rom}/main.c" -o "${image}.elf"
+    "${rom}/start.S" "${rom}"/*.c -o "${image}.elf"
   "${toolchain}/bin/riscv64-zephyr-elf-objcopy" -O binary "${image}.elf" "${image}.bin"
   "${toolchain}/bin/riscv64-zephyr-elf-readelf" --file-header "${image}.elf" |
     grep --extended-regexp "Class|Entry point"

@@ -17,6 +17,8 @@
 #include <socpuppet/regs/boot_image_header.h>
 #include <socpuppet/regs/system_controller.h>
 
+#include "crc32.h"
+
 /*
  * Where the UART, the system controller and the top of RAM are comes from
  * board_rv64.h or board_rv32.h, which the build includes ahead of this.
@@ -46,18 +48,30 @@ static void say(const char *text)
 	}
 }
 
+/* "0x" and a number's hex digits, from the one `shift` bits up, down. */
+static void say_digits(uintptr_t number, int shift)
+{
+	say("0x");
+	for (; shift >= 0; shift -= 4) {
+		put("0123456789abcdef"[(number >> shift) & 0xF]);
+	}
+}
+
 /* A number as "0x" and its digits, with no zeros in front. */
 static void say_hex(uintptr_t number)
 {
 	int shift = 8 * sizeof(number) - 4;
 
-	say("0x");
 	while (shift > 0 && ((number >> shift) & 0xF) == 0) {
 		shift -= 4;
 	}
-	for (; shift >= 0; shift -= 4) {
-		put("0123456789abcdef"[(number >> shift) & 0xF]);
-	}
+	say_digits(number, shift);
+}
+
+/* A CRC, which is always written with all eight of its digits. */
+static void say_crc(uint32_t crc)
+{
+	say_digits(crc, 28);
 }
 
 static void say_decimal(uint32_t number)
@@ -116,6 +130,25 @@ static void copy(uintptr_t to, uintptr_t from, uint32_t length)
 	}
 }
 
+/*
+ * What start.S calls when the CPU traps, with the three registers a
+ * RISC-V CPU says of a trap in: why (mcause), the address of the
+ * instruction it was at (mepc), and one more thing that depends on why
+ * (mtval), which for an access that was refused is the address of it. An
+ * image that is to be loaded where there is no memory comes here, and so
+ * does one that traps before it has a handler of its own.
+ */
+void rom_trapped(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
+{
+	say("rom: stopped by a trap: mcause ");
+	say_hex(mcause);
+	say(", mepc ");
+	say_hex(mepc);
+	say(", mtval ");
+	say_hex(mtval);
+	say("\n");
+}
+
 /* Returns only if there is nothing to jump to, and the CPU then stops. */
 void rom_main(void)
 {
@@ -128,11 +161,43 @@ void rom_main(void)
 		return;
 	}
 
+	uint32_t xlen = read32(header + BOOT_IMAGE_HEADER_XLEN);
+
+	if (xlen != __riscv_xlen) {
+		say("rom: ");
+		say_name(header);
+		say(" is a ");
+		say_decimal(xlen);
+		say("-bit image, and this is a ");
+		say_decimal(__riscv_xlen);
+		say("-bit CPU\n");
+		return;
+	}
+
 	uint32_t length = read32(header + BOOT_IMAGE_HEADER_LENGTH);
 	uintptr_t load_address = address_at(header + BOOT_IMAGE_HEADER_LOAD_ADDRESS_LOW);
 	uintptr_t entry = address_at(header + BOOT_IMAGE_HEADER_ENTRY_LOW);
 
 	copy(load_address, header + BOOT_IMAGE_HEADER_SIZE, length);
+
+	/*
+	 * The sum is of what is now in RAM, which is what would run: a byte
+	 * that went wrong on the way is caught as one that was wrong in the
+	 * flash is.
+	 */
+	uint32_t expected = read32(header + BOOT_IMAGE_HEADER_CRC);
+	uint32_t found = crc32(load_address, length);
+
+	if (found != expected) {
+		say("rom: ");
+		say_name(header);
+		say(": bad CRC: its header says ");
+		say_crc(expected);
+		say(", and its bytes come to ");
+		say_crc(found);
+		say("\n");
+		return;
+	}
 
 	say("rom: ");
 	say_name(header);
