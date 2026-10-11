@@ -12,12 +12,12 @@
 			#size-cells = <2>;
 			bus-range = <0 0>;
 			ranges = <0x2000000 0x0 0x10800000 0x0 0x10800000 0x0 0x100000>;
+			msi-parent = <&compute_imsic>;
 		};
 	};
 };
 
 &io_rc {
-	msi-parent = <&compute_imsic>;
 	socpuppet,msi-identities = <32 33>;
 
 	nvme0: nvme0 {

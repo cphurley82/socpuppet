@@ -428,9 +428,11 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
     """The devicetree that the host with a drive has more than the board.
 
     It is the overlay of the Zephyr shield `socpuppet_host_drive`: the PCIe
-    root complex, and in its node what only this board can say of it.
+    root complex, with where a device's interrupt messages go (`msi-parent`,
+    which the root complex's own description finds: it is whatever takes
+    messages that its `dma` reaches). And in its node, what only this board
+    can say of it.
 
-    - Where a device's interrupt messages go: `msi-parent`, the IMSIC.
     - Which identities are set aside there for the device's vectors. A
       message is an identity and nothing more, and no device comes with
       one: the driver writes one into the device for each vector, and that
@@ -456,14 +458,12 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
     endpoint = drive.ssd.endpoint
     assert endpoint is not None
     root_complex = devicetree.label(drive.root_complex.path)
-    imsic = devicetree.label(board.imsic.path)
     identities = " ".join(str(each) for each in DRIVE_IDENTITIES)
     return board.platform.devicetree_overlay(
         [drive.root_complex], via=board.cpu.socket
     ) + textwrap.dedent(
         f"""
         &{root_complex} {{
-        \tmsi-parent = <&{imsic}>;
         \tsocpuppet,msi-identities = <{identities}>;
 
         \tnvme0: nvme0 {{

@@ -1139,6 +1139,9 @@ class PcieRootComplex(Component):
                 f"{cells(mmio.address)} {cells(mmio.limit)}>;",
             ),
             chosen=("zephyr,pcie-controller",),
+            # A PCIe device's interrupt is a message, which comes out of
+            # `dma` with the device's other writes.
+            messages="dma",
         )
 
 
