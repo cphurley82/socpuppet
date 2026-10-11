@@ -1,8 +1,8 @@
 """What crossed the host's die-to-die link, read out of a trace.
 
-For a host built with `trace=True` and a manager, so that the link is
-the real one. The mainband carries what each die sends the other, and
-the sideband the link's own management traffic.
+For a host built with `trace=True`. The mainband carries what each die
+sends the other. With a manager the link is the real one, and has a
+sideband too, with its own management traffic.
 """
 
 from socpuppet import ucie

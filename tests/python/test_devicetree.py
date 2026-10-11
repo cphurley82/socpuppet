@@ -5,6 +5,7 @@ import pytest
 import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
+from socpuppet.components import wire_out
 
 
 def ram_behind_a_link_and_a_router():
@@ -354,11 +355,78 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
 
         assert "interrupts-extended = <&plic 5 1>;" in platform.devicetree()
 
-    def test_a_uart_is_such_a_device(self):
+
+class UartWithTwoLines(sp.Ns16550):
+    """A UART with a second interrupt line, which no UART here has.
+
+    It is for what a node that names its controller once does with more
+    than one interrupt.
+    """
+
+    port_specs = (*sp.Ns16550.port_specs, wire_out("irq2", required=False))
+
+
+def cpu_with_a_uart_of_two_lines():
+    """A CPU with two PLICs and a UART that has two interrupt lines.
+
+    Returns the platform, the UART and the two PLICs.
+    """
+    platform, bus, plic = cpu_with_its_peripherals()
+    other_plic = platform.add("other_plic", sp.Plic())
+    bus.map(other_plic.socket, base=0x4000_0000)
+    uart = platform.add("serial", UartWithTwoLines())
+    bus.map(uart.socket, base=0x1100_0000)
+    return platform, uart, plic, other_plic
+
+
+class TestWhenAUartsTwoInterruptsGoToOneController:
+    def test_its_node_names_the_controller_once_and_both_interrupts(self):
+        platform, uart, plic, _ = cpu_with_a_uart_of_two_lines()
+        platform.connect(uart.irq, plic.source10)
+        platform.connect(uart.irq2, plic.source11)
+
+        devicetree = platform.devicetree()
+
+        assert "interrupt-parent = <&plic>;" in devicetree
+        assert "interrupts = <10 1 11 1>;" in devicetree
+
+
+class TestWhenAUartsTwoInterruptsGoToTwoControllers:
+    def test_the_devicetree_is_refused_and_the_error_names_both(self):
+        # A node that names its controller once has no way to say it.
+        platform, uart, plic, other_plic = cpu_with_a_uart_of_two_lines()
+        platform.connect(uart.irq, plic.source10)
+        platform.connect(uart.irq2, other_plic.source11)
+
+        with pytest.raises(ValueError, match="&other_plic") as error:
+            platform.devicetree()
+
+        assert "&plic" in str(error.value)
+        assert '"serial"' in str(error.value)
+
+
+class TestWhenAUartsInterruptGoesToAPlicSource:
+    def test_its_node_names_the_plic_and_the_source_the_short_way(self):
+        # `interrupt-parent` and `interrupts` say what `interrupts-extended`
+        # does. Zephyr's Kconfig asks whether a 16550 can interrupt by
+        # looking for a property called `interrupts`, and cannot see the
+        # other at all.
         platform, _, plic = cpu_with_its_peripherals()
         platform.connect(platform.port("uart.irq"), plic.source10)
 
-        assert "interrupts-extended = <&plic 10 1>;" in platform.devicetree()
+        node = textwrap.dedent(
+            """\
+            uart: uart@10000000 {
+            \tcompatible = "ns16550";
+            \treg = <0x0 0x10000000 0x0 0x8>;
+            \treg-shift = <0>;
+            \tclock-frequency = <3686400>;
+            \tinterrupt-parent = <&plic>;
+            \tinterrupts = <10 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
 
 def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
@@ -488,9 +556,10 @@ class TestWhenAnAplicsMessagesReachAnImsic:
     ):
         # The source's number, a priority, and how the line asks: 4 is the
         # devicetree's number for "while it is high".
-        platform = cpu_with_an_aplic()
+        devicetree = cpu_with_an_aplic().devicetree()
 
-        assert "interrupts-extended = <&aplic 16 1 4>;" in platform.devicetree()
+        assert "interrupt-parent = <&aplic>;" in devicetree
+        assert "interrupts = <16 1 4>;" in devicetree
 
 
 class TestWhenAnAplicsMessagesReachNoPageForMachineMode:

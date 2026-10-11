@@ -37,9 +37,9 @@ platform.connect(aplic.msi, up.add_input())   # a bus that leads to the IMSIC's 
 2. For each source it wants to hear of, it writes a mode to **`sourcecfg`** (6, "asks while its line is high", for every device in socpuppet), an identity to **`target`**, and the source's number to **`setienum`** to enable it.
 3. The line rises. The source becomes pending, and since it is enabled the APLIC sends its identity and clears the pending bit. That is the whole interrupt, as far as the APLIC goes: there is no claim and no "complete". The handler runs because the IMSIC interrupts the CPU.
 
-💡 **Which identity a source sends is firmware's choice.** It need not be the source's number.
+💡 **Which identity a source sends is firmware's choice.** It need not be the source's number. socpuppet's module for Zephyr gives source N identity N, because Zephyr knows an interrupt by one number.
 
-⚠️ **A level is sent once, when it rises.** With a wire to a [PLIC](plic.md), a device that is still asking when its handler returns interrupts again at once, because the level is still there. A message is a moment, and a line that never fell has nothing to rise. Take a UART with a received byte waiting and room to transmit. The handler sees to the byte and returns, the line is still high for the transmitter, and no message follows. So after a handler, firmware asks the APLIC to look at the source again by writing its number to **`setipnum_le`**: if the line is still asking, the source is pending and is sent again. Linux's driver does this, and Zephyr 4.4's does not.
+⚠️ **A level is sent once, when it rises.** With a wire to a [PLIC](plic.md), a device that is still asking when its handler returns interrupts again at once, because the level is still there. A message is a moment, and a line that never fell has nothing to rise. Take a UART with a received byte waiting and room to transmit. The handler sees to the byte and returns, the line is still high for the transmitter, and no message follows. So after a handler, firmware asks the APLIC to look at the source again by writing its number to **`setipnum_le`**: if the line is still asking, the source is pending and is sent again. Linux's driver does this. Zephyr 4.4's does not, and socpuppet's module does it for it (see [upstream.md](../upstream.md)).
 
 💡 **A source set up while its line is already asking is pending at once.** A byte typed at a console while the firmware was still booting is not lost.
 
@@ -79,7 +79,7 @@ io_aplic: interrupt-controller@100c0000 {
 };
 ```
 
-`msi-parent` is the IMSIC that the APLIC's messages reach. It is found by following the `msi` socket's connections, the way an address map is, so it is there only if the platform really does lead there. ⚠️ The APLIC has to find the page at the address the CPU does, because firmware reads the address from the IMSIC's node and tells the APLIC to send there. If the two differ, `platform.devicetree()` refuses and gives both. A device at one of the sources gets `interrupts-extended = <&io_aplic 16 1 4>`: the source, a priority, and 4, the devicetree's number for a line that asks while it is high.
+`msi-parent` is the IMSIC that the APLIC's messages reach. It is found by following the `msi` socket's connections, the way an address map is, so it is there only if the platform really does lead there. ⚠️ The APLIC has to find the page at the address the CPU does, because firmware reads the address from the IMSIC's node and tells the APLIC to send there. If the two differ, `platform.devicetree()` refuses and gives both. A device at one of the sources names it with three numbers, `16 1 4`: the source, a priority, and 4, the devicetree's number for a line that asks while it is high. The host's UART has them as `interrupt-parent = <&io_aplic>` and `interrupts = <16 1 4>`.
 
 ## Under the hood
 

@@ -80,6 +80,13 @@ class DeviceNode(NamedTuple):
     #: port. None means all of them, which is right for a component that is
     #: one device.
     interrupts: tuple[str, ...] | None = None
+    #: Whether the node gives its interrupt the short way, as
+    #: `interrupt-parent` and `interrupts`, where it would otherwise have
+    #: `interrupts-extended`. The two say the same of a device whose
+    #: interrupts go to one controller. ⚠️ Zephyr's Kconfig can see the
+    #: short one only, and some drivers' asks it whether their device can
+    #: interrupt at all (docs/upstream.md).
+    short_interrupts: bool = False
     #: The port the device's interrupt messages leave by, if it interrupts
     #: with messages on behalf of other devices. The node then names what
     #: takes them, as `msi-parent`.
@@ -773,6 +780,8 @@ class Ns16550(Component):
                 "clock-frequency = <3686400>;",
             ),
             chosen=("zephyr,console", "zephyr,shell-uart"),
+            # Zephyr's 16550 driver is one that asks.
+            short_interrupts=True,
         )
 
 

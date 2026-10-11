@@ -12,12 +12,14 @@ from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
+    IO_SIZE,
+    UART_SOURCE,
     drive_overlay,
     host,
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
-from socpuppet.components import Imsic, MachineTimer
+from socpuppet.components import Aplic, Imsic, MachineTimer
 from socpuppet.interrupt_map import InterruptEntry
 from zephyr_module import (
     ZEPHYR_MODULE,
@@ -68,6 +70,35 @@ class TestTheHostsInterruptController:
 
         # VIRT_IMSIC_M and VIRT_IMSIC_S in QEMU's hw/riscv/virt.c.
         assert pages == {"machine": 0x2400_0000, "supervisor": 0x2800_0000}
+
+
+class TestTheHostsConsole:
+    def test_its_interrupt_line_goes_to_an_aplic_on_its_own_die(self):
+        # A wire cannot cross to the compute die, so the UART's stops at
+        # an APLIC beside it, which sends a message for it.
+        board = host()
+
+        assert (
+            InterruptEntry("io.aplic", UART_SOURCE, "io.uart.irq")
+            in board.platform.interrupt_map()
+        )
+
+    def test_the_aplic_is_on_the_io_die_and_so_in_its_window(self):
+        [aplic] = [
+            each
+            for each in host().platform.address_map()
+            if each.implementation == Aplic.implementation
+        ]
+
+        assert aplic.group == "io"
+        assert IO_BASE <= aplic.address < IO_BASE + IO_SIZE
+
+    def test_the_devicetree_names_the_imsic_as_where_the_aplics_messages_go(
+        self,
+    ):
+        # It names where they go only if they get there, and at the
+        # address the CPU has the page at.
+        assert "msi-parent = <&compute_imsic>;" in host().platform.devicetree()
 
 
 class TestTheZephyrShieldForTheHostsDrive:

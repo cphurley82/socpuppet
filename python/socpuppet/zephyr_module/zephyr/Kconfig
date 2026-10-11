@@ -89,3 +89,6 @@ config SOCPUPPET_IMSIC_IRQ
 	bool
 	default y
 	depends on SOC_FAMILY_SOCPUPPET && RISCV_IMSIC
+	# With an APLIC, a source's handler is put behind one of this
+	# module's when the source is enabled, which is while the image runs.
+	select DYNAMIC_INTERRUPTS if RISCV_APLIC

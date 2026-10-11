@@ -2,21 +2,25 @@
 
     compute die                                IO die
     🧠 cpu ─▶ bus ─┬─▶ ram
-       ▲  ▲        ├─▶ imsic
-       │  │        ├─▶ timer ─┐
-       │  └────────│──────────┘
-     imsic         └─▶ link endpoint ══ link endpoint ─▶ bus ─▶ uart
+       ▲  ▲        ├─▶ imsic ◀─── messages ────────────────────┐
+       │  │        ├─▶ timer ─┐                                │
+       │  └────────│──────────┘                                │
+     imsic         └─▶ link endpoint ══ link endpoint ─▶ bus ─┬─▶ aplic
+                                                              └─▶ uart ─irq─▲
 
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
 die has the CPU, its RAM, the interrupt controller and the timer. The IO
-die has the UART. 🎭 The link between the dies is a stand-in that passes
-every access straight through, unless the host is given a `manager`.
+die has the UART, and an APLIC that the UART's interrupt line goes to.
+🎭 The link between the dies is a stand-in that passes every access
+straight through, unless the host is given a `manager`.
 
 💡 Transactions and messages cross the link, and no wires. A real
 die-to-die link has nowhere for an interrupt line to go down, so the
 timer is on the die its CPU is on, and the interrupt controller is one
 that is sent messages: an IMSIC. A device interrupts by writing a number
-to the IMSIC's page, from whichever die it is on.
+to the IMSIC's page, from whichever die it is on. A UART only has a
+wire, so the APLIC beside it does the writing for it, and the message
+goes back across the link the way a drive's does.
 
 Firmware sees one flat memory map and cannot tell where the die boundary
 is, which is the point: the split can change without the firmware changing.
@@ -78,6 +82,7 @@ from socpuppet.boards.drive import (
 )
 from socpuppet.boards.manager import Manager
 from socpuppet.components import (
+    Aplic,
     D2dLink,
     DbtRiseCpu,
     Imsic,
@@ -107,6 +112,19 @@ IO_BASE = 0x1000_0000
 IO_SIZE = 0x0100_0000
 #: Where things are on the IO die, counted from the start of its window.
 UART_OFFSET = 0x0000
+#: The IO die's interrupt controller, which sends a message for each
+#: device there that only has a wire. (On QEMU's `virt` machine an APLIC
+#: is at 0x0C00_0000. Here it has to be on the IO die, so it has the same
+#: digits inside the window.)
+APLIC_OFFSET = 0x0C_0000
+#: Which of the APLIC's sources the UART's line is. The first 15 numbers
+#: are kept clear, as they are the CPU's own lines to Zephyr, which knows
+#: an interrupt by one number.
+UART_SOURCE = 16
+#: How much address space lies behind the link for what the IO die sends
+#: up: all a 64-bit address can say but its top bit, which is more than
+#: the compute die has anything at.
+UPLINK_REACH = 1 << 63
 #: With a drive: the PCIe root complex's configuration window and its
 #: memory window, which is where the host places the drive's registers.
 #: Both are on the IO die, counted from the start of its window. The
@@ -298,6 +316,10 @@ def host(
         )
     io_bus = io.add("bus", Router())
     uart = io.add("uart", Ns16550())
+    aplic = io.add("aplic", Aplic())
+    # The way up to the compute die, for what the IO die sends of its own
+    # accord: the APLIC's messages, and with a drive what the drive sends.
+    up = io.add("up", Router())
 
     platform.connect(cpu.socket, compute_bus.target)
     compute_bus.map(ram.socket, base=RAM_BASE)
@@ -307,6 +329,14 @@ def host(
     compute_bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
     platform.connect(d2d.b.initiator, io_bus.target)
     io_bus.map(uart.socket, base=UART_OFFSET)
+    io_bus.map(aplic.socket, base=APLIC_OFFSET)
+    # The UART's interrupt is a wire as far as the APLIC, on its own die,
+    # and a message from there: it crosses the die-to-die link the other
+    # way and comes onto the compute die's bus, where the IMSIC's page is.
+    platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
+    platform.connect(aplic.msi, up.target)
+    up.map(d2d.b.target, base=0, size=UPLINK_REACH)
+    platform.connect(d2d.a.initiator, compute_bus.add_input())
 
     platform.connect(imsic.irq, cpu.irq)
     platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
@@ -323,7 +353,13 @@ def host(
                 "host(drive_blocks=4096, drive=...)."
             )
         return Host(
-            platform, cpu, uart, imsic, d2d, drive=None, manager=placed_manager
+            platform,
+            cpu,
+            uart,
+            imsic,
+            d2d,
+            drive=None,
+            manager=placed_manager,
         )
 
     root_complex = io.add("rc", PcieRootComplex())
@@ -331,11 +367,9 @@ def host(
     io_bus.map(
         root_complex.mmio, base=PCIE_WINDOW_OFFSET, size=PCIE_WINDOW_SIZE
     )
-    # What the drive sends up crosses the die-to-die link the other way and
-    # comes onto the compute die's bus: its DMA to the RAM, and its
-    # interrupt messages to the IMSIC's page.
-    platform.connect(root_complex.dma, d2d.b.target)
-    platform.connect(d2d.a.initiator, compute_bus.add_input())
+    # What the drive sends up goes the way the APLIC's messages do: its
+    # DMA to the RAM, and its interrupt messages to the IMSIC's page.
+    platform.connect(root_complex.dma, up.add_input())
     ssd = (drive or add_behavioral_drive)(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )

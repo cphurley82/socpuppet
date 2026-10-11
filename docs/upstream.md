@@ -630,6 +630,46 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: nothing to delete. The host could use identity 63, and an IMSIC of more than 63.
 
+### Nothing sets an APLIC's source up, and `irq_enable` knows no APLIC either
+
+- **Where**: `drivers/interrupt_controller/intc_riscv_aplic.c` and `intc_riscv_aplic_msi.c`, which have `riscv_aplic_config_src`, `riscv_aplic_msi_route` and `riscv_aplic_enable_src`, and `soc/common/riscv-privileged/soc_common_irq.c`, which calls none of them.
+- **What is wrong**: 🎓 a device with an interrupt line at an APLIC needs three things done there before it can interrupt: its source given a mode, a target (which hart, and which identity to send), and its enable bit. The driver has a function for each and nothing in the tree calls them: no board has an APLIC node, and `irq_enable` does not know of one. A driver that does `IRQ_CONNECT` and `irq_enable` for a source of an APLIC, as the 16550's does, gets a bit set in `mie` and no interrupt, ever.
+- **How to see it**: build `samples/subsys/shell/shell_module` for `socpuppet_host` with the call that sets the source up taken out of the module's glue. The shell never prompts, since it waits for an interrupt to transmit as well as to receive, and all six tests of `tests/python/test_m13_exit.py` fail. It was tried, once.
+- **What we do**: the same file as for the IMSIC, `drivers/interrupt_controller/imsic_irq.c` in the module. A number that is one of the APLIC's sources is that source: `irq_enable` gives it the mode "asks while its line is high", routes it to hart 0 as the identity of its own number, and enables it at the IMSIC and then at the APLIC, in that order, so that a line already asking is heard. So one number is the interrupt all the way, which is what Zephyr's flat table of interrupts wants. `tests/python/test_zephyr_module.py` holds the board's numbers to that.
+- **Upstream fix**: with the branch for an IMSIC in `soc_common_irq.c` (the entry above), one for an APLIC's sources, and the mode taken from the interrupt's flags in the devicetree.
+- **Kind**: missing feature.
+- **When it lands**: the APLIC's part of `imsic_irq.c` goes.
+
+### The APLIC driver sends a level once, and never looks again
+
+- **Where**: `drivers/interrupt_controller/intc_riscv_imsic.c`, `imsic_mext_isr`, and the APLIC driver, which has nothing for it.
+- **What is wrong**: 🎓 with an APLIC that delivers by message, a level-sensitive source is sent when its line rises, and its pending bit is cleared as the message goes. If the device is still asking when its handler returns, nothing rises, and no second message follows. The specification's answer is a register, `setipnum`: written with the source's number, it makes the source pending again if its line is still asking. Linux's driver writes it after every handler of a level-sensitive source. Zephyr's handler calls the device's routine and returns. A 16550 shows it at once: with a received byte waiting and room to transmit, its handler sees to one and the line stays high for the other. From then on the console neither hears nor speaks.
+- **How to see it**: build the shell with the write of `setipnum_le` taken out of the module's glue. It prompts, and then is deaf: every test in `tests/python/test_m13_exit.py` that types fails, a single command among them, and not only the one that types while the shell is printing. It was tried, once.
+- **What we do**: in the module's `imsic_irq.c`. When a source of the APLIC is enabled, its place in Zephyr's interrupt table is taken by a routine of the module's, with the driver's own behind it: it runs the driver's and then writes the source's number to `setipnum_le`. The table has to be one that can be written while the image runs, which is `CONFIG_DYNAMIC_INTERRUPTS`, and the module selects it when there is an APLIC. 💡 Zephyr's 16550 driver has an answer of its own for a controller that only hears edges, `CONFIG_UART_NS16550_WA_ISR_REENABLE_INTERRUPT`, which switches the UART's interrupts off and on again at the end of its handler. It was tried once in place of the module's write, and carried the exit test just as well. But it is for that one driver, and the next device with a wire would be deaf in the same way, so the module does it where the specification does, at the APLIC.
+- **Upstream fix**: in `imsic_mext_isr`, after the routine, the write for an identity that an APLIC's level-sensitive source sends. Or a hook the APLIC driver can register.
+- **Kind**: bug.
+- **When it lands**: the routine and the saved handlers go.
+
+### The APLIC driver never asks for delivery by message, and sets a bit the specification keeps
+
+- **Where**: `drivers/interrupt_controller/intc_riscv_aplic.c`, `riscv_aplic_domain_enable` ("Do not modify DM bit"), and `intc_riscv_aplic_msi.c`, `riscv_aplic_msi_route` (`APLIC_TARGET_MSI_DEL`, bit 11).
+- **What is wrong**: two things, by reading. 🎓 An APLIC that can deliver both ways comes out of reset delivering over a line, and firmware chooses messages by setting the DM bit of `domaincfg`. The driver in MSI mode sets IE and leaves DM as it finds it, so on such an APLIC it routes every source for messages and none is ever sent. And it sets bit 11 of every `target` it writes, calling it "MSI_DEL". The ratified specification has no such bit: with messages, bits 11 and 17 to 12 of `target` are the guest index or reserved.
+- **How to see it**: by reading. `AplicContract.OutOfResetTheDomainDeliversByMessage` and `ABitTheSpecificationKeepsInATargetIsNotSent` in `tests/cpp/contracts/aplic_contract.h` are what socpuppet's APLIC does about each.
+- **What we do**: nothing in firmware. socpuppet's APLIC delivers by message only, so its DM bit is one and cannot be cleared, which the specification allows, and it ignores bit 11.
+- **Upstream fix**: set DM in `aplic_msi_init`, and drop bit 11.
+- **Kind**: bug.
+- **When it lands**: nothing to delete.
+
+### Kconfig cannot see `interrupts-extended`, and the 16550 driver asks it whether the UART can interrupt
+
+- **Where**: `drivers/serial/Kconfig.ns16550`, `select SERIAL_SUPPORT_INTERRUPT if $(dt_compat_any_has_prop,$(DT_COMPAT_NS16550),interrupts)`, and `scripts/dts/python-devicetree/src/devicetree/edtlib.py`, where a property of the type `compound` gets no `Property` object.
+- **What is wrong**: 🎓 a devicetree node says where its interrupt goes with `interrupts` and an `interrupt-parent`, or with `interrupts-extended`, which names the controller in the same property. They mean the same, and Zephyr's C macros (`DT_IRQN` and the rest) read either. Kconfig's devicetree functions do not: `interrupts-extended` is declared `compound`, the library makes no object for a property of that type, and so `dt_compat_any_has_prop(..., interrupts-extended)` is never true and `(..., interrupts)` is true only of the first spelling. The 16550's Kconfig asks exactly that to decide whether the UART can interrupt. With the second spelling the answer is no, the shell falls back to polling the UART, and nothing says why. ⚠️ The machine timer's binding goes the other way and requires `interrupts-extended`, so a generator cannot pick one spelling for every node.
+- **How to see it**: build `samples/subsys/shell/shell_module` for a board whose UART node has `interrupts-extended`. `CONFIG_SHELL_BACKEND_SERIAL_API_POLLING=y` is in the `.config`, and `TestWhenPythonTypesACommandAtTheHostsShell.test_what_was_typed_reached_the_cpu_as_messages_from_the_io_die` fails: the shell answers, and no interrupt was sent.
+- **What we do**: a UART's node is generated with `interrupt-parent` and `interrupts` (`DeviceNode.short_interrupts` in `python/socpuppet/components.py`). Every other node keeps `interrupts-extended`.
+- **Upstream fix**: have `dt_compat_any_has_prop` and its siblings answer for `interrupts` when the node has either spelling, or give the drivers a function that asks whether a node has an interrupt.
+- **Kind**: bug.
+- **When it lands**: `short_interrupts` can go, and every node can be written the same way.
+
 ## SPDK
 
 [spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.

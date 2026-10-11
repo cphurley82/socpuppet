@@ -5,9 +5,10 @@ import re
 
 import socpuppet as sp
 from processes import run_socpuppet
-from socpuppet.boards.host import host
+from socpuppet.boards.host import UART_SOURCE, host
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
+from socpuppet.components import Aplic
 from zephyr_module import (
     ZEPHYR_MODULE,
     kconfig_default,
@@ -115,6 +116,25 @@ class TestTheInterruptNumbersZephyrIsToldOfASocWithAnImsic:
 
         for identity in the_identities_of_the_hosts_drive():
             assert first <= identity < highest
+
+    def test_the_hosts_console_has_a_number_of_its_own_among_them(self):
+        # The UART's line is a source of the APLIC, and the module has the
+        # APLIC send the identity of the source's own number. So that
+        # number has to be an identity, and not one of the drive's.
+        first = the_first_number_that_is_an_identity()
+
+        assert first <= UART_SOURCE <= Aplic.SOURCES
+
+    def test_no_identity_of_the_hosts_drive_is_a_number_of_an_aplic_source(
+        self,
+    ):
+        # The module takes every number up to the APLIC's last source for
+        # a source, and would set one up at the APLIC for the drive's
+        # vector, which is not there.
+        assert min(the_identities_of_the_hosts_drive()) > Aplic.SOURCES
+
+    def test_every_source_of_the_aplic_has_an_identity_of_its_own_number(self):
+        assert host().imsic.component.identities > Aplic.SOURCES
 
 
 def the_first_number_that_is_an_identity():

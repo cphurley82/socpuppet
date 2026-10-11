@@ -210,7 +210,25 @@ def _node(
         found = sink.component.interrupt_input(each.sink.name, label(sink.path))
         if found is not None:
             interrupts.append(found)
-    if interrupts:
+    if interrupts and node.short_interrupts:
+        # Each is "&controller" and then the numbers.
+        controllers = sorted({each.split()[0] for each in interrupts})
+        if len(controllers) > 1:
+            raise ValueError(
+                f'The devicetree node of "{placed.path}" names its interrupt '
+                f"controller once, and its interrupt lines go to "
+                f"{' and '.join(controllers)}. Connect them all to one "
+                f"controller."
+            )
+        [controller] = controllers
+        numbers = " ".join(
+            each.removeprefix(controller + " ") for each in interrupts
+        )
+        lines += [
+            f"{indent}\tinterrupt-parent = <{controller}>;",
+            f"{indent}\tinterrupts = <{numbers}>;",
+        ]
+    elif interrupts:
         lines += [f"{indent}\tinterrupts-extended = <{' '.join(interrupts)}>;"]
     if node.messages is not None:
         taker = _message_taker(

@@ -75,6 +75,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | --- | --- | --- | --- | --- |
 | `0x0200_0000` | 64 KiB | `compute.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
+| `0x100C_0000` | 32 KiB | `io.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | `compute.bus` from `0x1000_0000` |
 | `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x2800_0000` | 4 KiB | `compute.imsic.supervisor` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x8000_0000` | 64 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
@@ -101,6 +102,7 @@ The interrupt lines of the board with no drive:
 | `compute.cpu` | 7 | `compute.timer.irq` |
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
+| `io.aplic` | 16 | `io.uart.irq` |
 
 <!-- interrupts:host end -->
 
@@ -235,6 +237,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 | `compute.cpu` | 7 | `compute.timer.irq` |
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
+| `io.aplic` | 16 | `io.uart.irq` |
 | `ssd.cpu` | 7 | `ssd.timer.irq` |
 | `ssd.cpu` | 11 | `ssd.plic.irq` |
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |

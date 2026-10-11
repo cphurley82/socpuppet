@@ -53,6 +53,18 @@
 			reg = <0x0 0x10000000 0x0 0x8>;
 			reg-shift = <0>;
 			clock-frequency = <3686400>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <16 1 4>;
+		};
+
+		io_aplic: interrupt-controller@100c0000 {
+			compatible = "riscv,aplic";
+			reg = <0x0 0x100c0000 0x0 0x8000>;
+			#address-cells = <0>;
+			#interrupt-cells = <3>;
+			interrupt-controller;
+			riscv,num-sources = <31>;
+			msi-parent = <&compute_imsic>;
 		};
 
 		compute_imsic: interrupt-controller@24000000 {

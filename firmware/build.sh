@@ -6,6 +6,8 @@
 #                     socpuppet_iomgr, socpuppet's own boards: the host,
 #                     the SSD's controller, and the IO die's manager
 #   synchronization   for socpuppet_host
+#   shell_module      for socpuppet_host: Zephyr's shell, which is typed
+#                     at, and is woken by the console's interrupt
 #   disk_access       for socpuppet_host with its SSD: Zephyr's test of its
 #                     disk interface, which here drives its NVMe driver
 #   iomgr             for socpuppet_iomgr: the IO die's manager firmware,
@@ -47,6 +49,7 @@ images=(
   "samples/hello_world socpuppet_ssd"
   "samples/hello_world socpuppet_iomgr"
   "samples/synchronization socpuppet_host"
+  "samples/subsys/shell/shell_module socpuppet_host"
   "tests/drivers/disk/disk_access socpuppet_host socpuppet_host_drive"
   "firmware/iomgr socpuppet_iomgr"
   "firmware/ssd socpuppet_ssd"
