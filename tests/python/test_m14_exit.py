@@ -185,18 +185,21 @@ class TestWhenTheHostsRomLoadsAnImageOfAnOddLengthWithANameThatFillsItsPlace:
         assert board.uart.output.startswith(f"rom: {image.name}: ")
 
 
-def an_ssd_with_hello_world_in_its_flash(firmware):
-    """The SSD board with a ROM, and Zephyr's `hello_world` in its flash."""
+def an_ssd_with_in_its_flash(image_file, firmware):
+    """The SSD board with a ROM, and the image of an ELF file in its flash."""
     board = ssd(host=idle_host, boot=from_rom)
     board.platform.build()
     cpu = board.ssd.cpu
     board.platform.load_elf(firmware(ROM_FOR_A_32_BIT_CPU), via=cpu.socket)
     board.platform.poke(
-        BOOT_FLASH_BASE,
-        boot_image.wrap(firmware(SSD_HELLO_WORLD)),
-        via=cpu.socket,
+        BOOT_FLASH_BASE, boot_image.wrap(firmware(image_file)), via=cpu.socket
     )
     return board
+
+
+def an_ssd_with_hello_world_in_its_flash(firmware):
+    """The SSD board with a ROM, and Zephyr's `hello_world` in its flash."""
+    return an_ssd_with_in_its_flash(SSD_HELLO_WORLD, firmware)
 
 
 @pytest.mark.platform
@@ -224,3 +227,152 @@ class TestWhenAnSsdBootsFromItsRomWithZephyrsHelloWorldInItsFlash:
             )
             == empty
         )
+
+
+WATCHDOG_ON_THE_HOST = "watchdog_socpuppet_host.elf"
+WATCHDOG_ON_THE_SSD = "watchdog_socpuppet_ssd.elf"
+#: What the watchdog firmware says (firmware/watchdog): why it started,
+#: each time it does, and what it does between.
+RESET_CAUSE = "reset cause: "
+RAN_OUT_AND_INTERRUPTED = "watchdog: ran out, and interrupted"
+FED = "watchdog: fed "
+NO_MORE_FEEDING = "watchdog: no more feeding"
+#: What every line of a boot ROM starts with (firmware/rom).
+ROM_SAYS = "rom: "
+#: How long that firmware's watchdog gives it between feeds, and how many
+#: times it is fed: for twice that long, a third of it apart.
+PERIOD = sp.ms(90)
+FEEDS = 6
+#: Three starts, with two periods of feeding and one of waiting in the
+#: second. This leaves room and still ends a run that hangs.
+LONG_ENOUGH_FOR_THREE_STARTS = sp.ms(1000)
+
+
+def three_starts_of(console, platform):
+    """The story a console tells, run until its firmware has started thrice."""
+    story = sp.Transcript(platform, {"cpu": console})
+    story.run_until(
+        lambda: len(the_causes_in(story)) == 3,
+        timeout=LONG_ENOUGH_FOR_THREE_STARTS,
+    )
+    return story
+
+
+def the_causes_in(story):
+    """Why the firmware says it started, each time it has so far."""
+    return [
+        line.text.removeprefix(RESET_CAUSE)
+        for line in story.lines
+        if line.text.startswith(RESET_CAUSE)
+    ]
+
+
+def the_loads_and_starts_in(story):
+    """Each time a ROM loaded an image and each time the firmware started."""
+    return [
+        "load" if line.text.startswith(ROM_SAYS) else "start"
+        for line in story.lines
+        if line.text.startswith((ROM_SAYS, RESET_CAUSE))
+    ]
+
+
+def said_in(story):
+    """Every line of a story, without its time."""
+    return [line.text for line in story.lines]
+
+
+@pytest.fixture
+def the_hosts_story(firmware):
+    """The host's console while its firmware gets itself reset twice."""
+    board = a_host_with_in_its_flash(
+        boot_image.from_elf(firmware(WATCHDOG_ON_THE_HOST)), firmware
+    )
+    return three_starts_of(board.uart, board.platform)
+
+
+@pytest.mark.platform
+class TestWhenTheHostsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
+    def test_it_starts_three_times_and_reads_why_each_time(
+        self, the_hosts_story
+    ):
+        assert the_causes_in(the_hosts_story) == [
+            "power-on",
+            "software",
+            "watchdog",
+        ]
+
+    def test_a_watchdog_told_to_interrupt_and_not_reset_interrupts_it_when_it_runs_out(
+        self, the_hosts_story
+    ):
+        # The watchdog is on the compute die, and its line goes to that
+        # die's own APLIC. The firmware says this only when the interrupt
+        # has come.
+        assert RAN_OUT_AND_INTERRUPTED in said_in(the_hosts_story)
+
+    def test_its_rom_loads_it_from_the_flash_again_before_each_start(
+        self, the_hosts_story
+    ):
+        assert the_loads_and_starts_in(the_hosts_story) == ["load", "start"] * 3
+
+    def test_the_watchdog_does_not_bite_while_it_is_fed(self, the_hosts_story):
+        # It is fed for two periods, so one that took no notice of a feed
+        # would have bitten half way.
+        said = said_in(the_hosts_story)
+
+        while_fed = said[
+            said.index(RESET_CAUSE + "software") : said.index(NO_MORE_FEEDING)
+        ]
+        assert [text for text in while_fed if text.startswith(FED)] == [
+            f"{FED}{fed}" for fed in range(1, FEEDS + 1)
+        ]
+        assert not [text for text in while_fed if text.startswith(ROM_SAYS)]
+
+    def test_the_watchdog_bites_one_period_after_it_was_last_fed(
+        self, the_hosts_story
+    ):
+        lines = the_hosts_story.lines
+        # The ROM says its line when it has copied the image, which takes
+        # it as long each time: as long as the first, from power-on at 0.
+        rom_takes, *_ = (
+            line.time for line in lines if line.text.startswith(ROM_SAYS)
+        )
+        [last_fed] = [
+            line.time for line in lines if line.text == f"{FED}{FEEDS}"
+        ]
+        [loaded_again] = [
+            line.time
+            for line in lines[said_in(the_hosts_story).index(NO_MORE_FEEDING) :]
+            if line.text.startswith(ROM_SAYS)
+        ]
+
+        # To within the time it takes to say a line, and the tenth of a
+        # millisecond a console's times come in.
+        assert loaded_again - last_fed - rom_takes == pytest.approx(
+            PERIOD, abs=sp.us(200)
+        )
+
+
+@pytest.fixture
+def the_ssds_story(firmware):
+    """An SSD's console while its firmware gets itself reset twice."""
+    board = an_ssd_with_in_its_flash(WATCHDOG_ON_THE_SSD, firmware)
+    return three_starts_of(board.ssd.cpu_kit.uart, board.platform)
+
+
+@pytest.mark.platform
+class TestWhenAnSsdsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
+    # A 32-bit CPU, whose watchdog interrupts at a PLIC and not an APLIC.
+
+    def test_it_starts_three_times_and_reads_why_each_time(
+        self, the_ssds_story
+    ):
+        assert the_causes_in(the_ssds_story) == [
+            "power-on",
+            "software",
+            "watchdog",
+        ]
+
+    def test_a_watchdog_told_to_interrupt_and_not_reset_interrupts_it_when_it_runs_out(
+        self, the_ssds_story
+    ):
+        assert RAN_OUT_AND_INTERRUPTED in said_in(the_ssds_story)

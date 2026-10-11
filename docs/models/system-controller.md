@@ -50,7 +50,9 @@ syscon: syscon@100000 {
 };
 ```
 
-🎓 `syscon` is what Zephyr and Linux both call a block of registers that other code reaches into. Zephyr has a driver for any node of that name, so firmware should need none of ours: `syscon_read_reg()` with an offset from `socpuppet/regs/system_controller.h`. 🚧 No firmware has read it that way yet. M14's watchdog test is the first.
+🎓 `syscon` is what Zephyr and Linux both call a block of registers that other code reaches into. Zephyr has a driver for any node of that name, so firmware needs none of ours: `syscon_read_reg()` with an offset from `socpuppet/regs/system_controller.h`. [`firmware/watchdog`](../../firmware/watchdog/README.md) reads why it was reset that way.
+
+💡 Zephyr's `sys_reboot()` ends here too. RISC-V has no common way to reset a system, so Zephyr leaves the last step, `sys_arch_reboot()`, to the SoC, and socpuppet's SoC writes `RESET_REQUEST` (`soc/socpuppet/reboot.c` in the Zephyr module, built when `CONFIG_REBOOT` is on and the devicetree has a system controller).
 
 ## What it leaves out
 

@@ -9,3 +9,12 @@ config SOC_FAMILY_SOCPUPPET
 	select RISCV_PRIVILEGED
 	select RISCV_HAS_PLIC if DT_HAS_SIFIVE_PLIC_1_0_0_ENABLED
 	select RISCV_SOC_HAS_GP_RELATIVE_ADDRESSING
+
+# sys_reboot() ends in a write to the system controller (reboot.c). A
+# board whose devicetree has none keeps Zephyr's own ending, which is to
+# do nothing and say that the reboot failed.
+config SOCPUPPET_REBOOT
+	bool
+	default y
+	depends on SOC_FAMILY_SOCPUPPET && REBOOT
+	depends on DT_HAS_SOCPUPPET_SYSTEM_CONTROLLER_ENABLED

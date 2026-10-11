@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the firmware the tests boot. Most of it is Zephyr's own, two
-# samples and two of its tests, and two images are socpuppet's:
+# Builds the firmware the tests boot. Most of it is Zephyr's own, three
+# samples and two of its tests, and three applications are socpuppet's:
 #   hello_world       for the stock qemu_riscv64 and qemu_riscv32 boards
 #   hello_world       for socpuppet_host, socpuppet_ssd and
 #                     socpuppet_iomgr, socpuppet's own boards: the host,
@@ -18,6 +18,10 @@
 #                     which here is the driver for the SSD's NAND. The
 #                     application in firmware/flash_test says how to build
 #                     it for the board, and adds nothing to it
+#   watchdog          for socpuppet_host and socpuppet_ssd: the application
+#                     in firmware/watchdog, which asks for a reset and
+#                     then stops feeding its watchdog, and says why it
+#                     started each time
 #
 # And one thing that is no Zephyr at all: the boot ROM in firmware/rom,
 # which is what a CPU that boots from a flash runs first. It is built with
@@ -59,6 +63,8 @@ images=(
   "firmware/iomgr socpuppet_iomgr"
   "firmware/ssd socpuppet_ssd"
   "firmware/flash_test socpuppet_ssd"
+  "firmware/watchdog socpuppet_host"
+  "firmware/watchdog socpuppet_ssd"
 )
 # socpuppet's boards, shields and drivers are in a Zephyr module that ships
 # inside the Python package (`socpuppet zephyr-module` prints where). Here
