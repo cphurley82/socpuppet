@@ -312,6 +312,16 @@ Each entry says:
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the link's default latency starts to cost simulated time, and the M7 figures in [plan.md](plan.md) want measuring again.
 
+### A core with supervisor mode can never take a supervisor's interrupt
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, in `read_ie`, `write_ie`, `read_ip` and `write_ip`, and `check_interrupt`. The masks they start from are `mie_mip_mask` in `src/iss/arch/riscv_hart_common.h`.
+- **What is wrong**: each of the four takes the mask for the privilege level of the CSR and then clears `0x777` from it, with the comment "clear H, S & U mode bits" (or `0x666` when user-level interrupts are on, which clears the supervisor's bits just the same). So bits 1, 5 and 9, the supervisor's software, timer and external interrupts, cannot be set in `mie`, and a write to `sie` changes nothing below bit 16. `sie` and `sip` are also variables of their own (`sie_csr`, `sip_csr`) and not views of `mie` and `mip`, and `check_interrupt` looks at `mip_csr & mie_csr` and nothing else. The rest is there: `mideleg` takes the three bits, an input line sets its bit of `mip`, and a delegated interrupt would trap into supervisor mode. But one can be pending and can never be enabled, so none is ever taken.
+- **How to see it**: ⚠️ by reading, and nothing has run it. It was found planning M13 ([plan.md](plan.md#m13--aia-interrupts-as-messages)), and socpuppet compiles `rv64gc_msu` and does not use it yet. The test to write when M13 brings the core in: delegate bit 9 in `mideleg`, set it in `sie`, drop to supervisor mode with `sstatus.SIE` set and raise input line 9. `sie` reads back as zero and no trap comes.
+- **What we do**: nothing yet. Zephyr on the host runs in machine mode, where bits 3, 7 and 11 are all it wants. Linux is the first to need this, in M20.
+- **Upstream fix**: in a core that has supervisor mode, leave the supervisor's bits in the mask, and make `sie` and `sip` views of `mie` and `mip` through `mideleg`, as the privileged specification has them.
+- **Kind**: bug.
+- **When it lands**: Linux can take a timer or an external interrupt, and M20's note of this goes.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

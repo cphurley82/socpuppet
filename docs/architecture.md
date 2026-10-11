@@ -305,4 +305,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: a NAND that wears out and has to be tidied, and the scenarios that put the whole platform through faults and resets. See [plan.md](plan.md).
+🚧 Not built yet: the rest of a real SoC's cast (interrupts as messages, a boot ROM and its flash, an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [plan.md](plan.md).

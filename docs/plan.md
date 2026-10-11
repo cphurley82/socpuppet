@@ -9,7 +9,11 @@ This plan keeps the handoff's Decisions and reorders its suggested steps around 
 1. **Foundation**: infrastructure and stand-ins, no CPUs.
 2. **Standalone subsystem boot**: three independent tracks, one per firmware image.
 3. **Full bootchain**: combine the images, swapping one stand-in per milestone.
-4. **Fidelity and validation.**
+4. **The cast of a real SoC**: the blocks a firmware developer expects to find on one, with Zephyr still the firmware that boots.
+5. **Fidelity and validation.**
+6. **Linux.**
+
+Phases 4 and 6 were added on 2026-10-10, after M8. The handoff ruled out Linux on the host, and Ethernet and CXL, "for now", and the maintainer has ruled them in: the long-term goal is to boot Linux on the host and run an AI workload on it. Phase 4 is the hardware that needs, and Phase 6 is the boot.
 
 Changes from the handoff's step order:
 
@@ -30,9 +34,20 @@ Changes from the handoff's step order:
 | M6 | Host firmware ↔ SSD firmware | 6 (milestone) | behavioral NVMe → full SSD, under the Zephyr host | M3, M4 | Zephyr host ↔ Zephyr SSD block I/O, data checked against the behavioral device |
 | M7 | Chiplet split | 8 (hardware) | pass-through → D2D link, under the real host | M5a, M6 | M6 test passes with the host app unchanged; trace shows every NVMe command, DMA and MSI crossing D2D |
 | M8 | **Full bootchain, three firmwares** | 8 (firmware) | scripted manager → Zephyr manager firmware | M5b, M7 | One test asserts boot order across three UARTs, then end-to-end data integrity |
+| M12 | AI processor spike (decision gate) | none | none | M8 | Report + recommendation; each candidate takes one matrix multiply from a descriptor in memory and raises the host's interrupt |
+| M13 | **AIA: interrupts as messages** | none | MSI-to-PLIC bridge → IMSIC; the host's PLIC → APLIC | M8 | Zephyr's disk test with every interrupt message landing in the IMSIC; Zephyr's shell on a console whose interrupt is a message from the APLIC; no PLIC in the host's devicetree |
+| M14 | **Boot ROM, flash, system controller, watchdog** | none | Python's ELF loader → a ROM and a flash | M8 | M8's three firmwares boot from flash with nothing loaded into RAM; a bad image is refused on the console; a watchdog that is not fed resets its CPU |
+| M15 | **IOMMU** | none | none | M13 | Zephyr's disk test through a device context the firmware programmed; DMA to a page that is not mapped is a fault record and an interrupt, and the host's memory is untouched |
+| M16 | **SHRM and the two-socket board** | none | scripted SHRM firmware → RV32 + Zephyr; pass-through → link between sockets | M13 | Two hosts in one simulation: one writes a message into memory the other's SHRM lent it, across the board, and the other reads it on its console |
+| M17 | **Ethernet** | none | none (Python is the far end of the cable) | M13 | Zephyr's `echo_server` answers a datagram that Python sends down the cable; the run's capture opens in Wireshark |
+| M18 | The small essentials: GPIO, SPI, I2C, RTC, TRNG | none | none | M13 | Zephyr's own sample or test for each class passes, with Python at the far end of the pins |
+| M19 | **AI processor** | none | whatever M12's gate leaves standing in | M12, M13, M14, M15 | An inference whose weights are in flash, its data moved through an IOMMU, its completion an interrupt message, its answer checked from Python |
 | M9 | Realistic NAND + garbage collection | 7 | ideal NAND → realistic NAND | M4 | M4/M6 tests pass under sustained writes |
 | M10 | Validation scenarios | 9 | none | M8, M9 | Scenario suite (below) |
 | M11 | Stretch: RTL block, power/telemetry | 10 | none | M8 | To be defined |
+| M20 | **Linux boots** | none | Zephyr on the host → OpenSBI + Linux | M13 to M19 | A shell prompt on the console, a `ping` answered by Python, and M19's inference run from user space |
+
+The numbers are the order milestones were planned in, and from M12 on that is not the order they are done in. M12 to M19 are Phase 4 and come before M9 to M11, which keep their numbers so that nothing already written about them changes its meaning.
 
 ```text
 M0 ─┬─ M1 (ISS gate) ── M3 host ──────────────┐
@@ -41,6 +56,19 @@ M0 ─┬─ M1 (ISS gate) ── M3 host ────────────�
 ```
 
 M3, M4 and M5 are independent of each other apart from the shared CPU kit, so they can run in parallel or in any order. Suggested serial order: M3, M4, M5.
+
+Phase 4, from M8:
+
+```text
+M8 ─┬─ M12 (NPU gate) ───────────────────────────────────┐
+    ├─ M13 AIA (a core, b IMSIC, c APLIC) ─┬─ M15 IOMMU ─┼─ M19 NPU ── M20 Linux
+    │                                      ├─ M16 SHRM, two sockets
+    │                                      ├─ M17 Ethernet
+    │                                      └─ M18 the small essentials
+    └─ M14 ROM, flash, system controller ────────────────┘
+```
+
+M12 goes first because its gate can move the AI processor to a die of its own, and that is cheaper to know before the IOMMU and the second socket are planned. M14 depends on nothing in M13 and can run beside it. Suggested serial order: M12, M13, M14, M15, M16, M17, M18, M19. M20 wants all of them.
 
 ## Phase 1: Foundation
 
@@ -249,7 +277,202 @@ Order: 1, 2, 3, 4, 5. Step 4 depends only on the spike, so it can come sooner if
 
 Left for later: a stopped core that answers every debugger, so that one CPU's memory can be read while another sits at a breakpoint. And upstream's two loose ends, a debugger that hangs up rudely and one that detaches ([upstream.md](upstream.md)).
 
-## Phase 4: Fidelity and validation
+## Phase 4: The cast of a real SoC
+
+Phases 1 to 3 built a platform that boots three firmwares, and its cast is still a small one: a CPU, a timer, an interrupt controller and a console on each die, PCIe, and a drive. A firmware developer who opens the address map of a server SoC finds more on stage than that. This phase puts it there: the interrupt architecture RISC-V servers use, a ROM that boots from flash, an IOMMU, memory that the SoCs on one board lend each other, Ethernet, an AI processor, and the small parts every board has.
+
+**Decided on 2026-10-10, planning Phase 4.**
+
+- **Two lines of the handoff are reversed.** It put Linux on the host, and Ethernet and CXL, out of scope "for now". The maintainer's long-term goal is to boot Linux on the host and run an AI workload on it, and this phase is the hardware that takes.
+- **What a block does matters, and how long it takes does not, yet.** Phase 4 is the platform as firmware sees it: registers, interrupts, DMA and faults. Latencies come with Phase 5, where the NAND gets its own.
+- **Linux-ready, boot later.** Zephyr stays the firmware that boots all through this phase. Each block is built to what Linux's own driver for it will ask of it, each milestone below ends with that list, and booting Linux is Phase 6. The lists are the checklist M20 starts from.
+- **AIA replaces the PLIC on the host, and does not sit beside it.** There is one board `socpuppet_host` and one devicetree for it, as M7 decided, so the host has one interrupt architecture at a time. The 32-bit kits (the SSD's, the manager's, SHRM's) keep their PLIC: a microcontroller-sized core with a PLIC is what those are on real parts too.
+- **Every block arrives the way the others did.** A slot and its contract suite first. A borrowed model where an open one fits, behind an adapter of ours. A register map in `regs/` for a block of our own. A stand-in before the thing it stands in for, and both kept. A driver in socpuppet's Zephyr module, a page under `docs/models/`, and a section in [boot-your-firmware.md](boot-your-firmware.md).
+- **A fidelity tier is still a choice between two description functions.** Booting from flash or having Python load the image, an IOMMU in the DMA path or none, one socket or two: each is a function handed to a board, as the drive and the manager are.
+- **The step tables come later.** Each milestone below has its decisions, what planning found and its exit test. Its steps are written when it is planned, one `/tdd` session each, as M5 to M8's were.
+
+What Phase 4 adds, by the path it is on:
+
+```text
+ an interrupt     UART, MAC, GPIO ... ─▶ APLIC ══ a message, across the link ══▶ IMSIC ─▶ the host's CPU
+                  the SSD (MSI-X) ─▶ root complex ══ a message, across the link ══▶ IMSIC ─▶ the host's CPU
+
+ DMA              the SSD ─▶ root complex ─▶ IOMMU ══ across the link ══▶ the host's DRAM
+                  the AI processor ─▶ IOMMU ─▶ the host's DRAM
+
+ a boot           reset ─▶ boot ROM ─▶ reads the flash ─▶ copies the image to RAM ─▶ jumps to it
+
+ lent memory      the host ─▶ SHRM's decoders ══ across the board ══▶ the other SoC's pool
+```
+
+And where each block comes from. Borrowing counts for as much here as it did in M3a:
+
+| Block | From | What it lacks |
+|---|---|---|
+| A host CPU with supervisor mode, floating point and paging | DBT-RISE-RISCV's `rv64gc_msu`, which the build already compiles | a way to take a supervisor's interrupt, before Linux ([upstream.md](upstream.md)) |
+| IMSIC | ours | nothing open was found: VPV-Peripherals and VCML have none |
+| APLIC | VPV-Peripherals, `rvi/aplic` | MSI mode, which is a feature to add and offer |
+| Boot ROM | ours, a memory that refuses writes | |
+| Boot flash | VPV-Peripherals, `minres/qspi` and `generic/spi_mem` | loading a plain binary file |
+| System controller | ours | |
+| Watchdog | VPV-Peripherals, `sifive/aon`, which has the registers | everything behind the registers |
+| IOMMU | ours, written to be offered to VPV-Peripherals | |
+| SHRM | ours | |
+| Ethernet MAC | VPV-Peripherals, `minres/ethmac` | a driver, in Zephyr or anywhere |
+| GPIO, SPI | VPV-Peripherals, `sifive/gpio` and `sifive/spi` | |
+| I2C, RTC, TRNG | ours, each laid out as a device Linux already has a driver for | |
+| AI processor | M12 decides | |
+
+⚠️ VCML has a complete RISC-V IOMMU and an APLIC with MSI mode, and neither is borrowed. M2's spike found that VCML ends the process with `abort()` on an error ([upstream.md](upstream.md)), and a Python interpreter that vanishes is not a price a teaching tool can pay. They are good things to read beside the specifications.
+
+### M12 — AI processor spike (time-boxed; only M19 waits on it)
+
+An AI processor, or NPU (neural processing unit), is the block an SoC hands its matrix arithmetic to: firmware describes the work, the block does it against memory, and an interrupt says it is done. No open model was found that fits as it stands, so M12 is a spike in the shape of M1's and M2's: two candidates behind one slot, a report, and a stop for a decision.
+
+- **QBox's Hexagon.** Hexagon is Qualcomm's DSP, the processor its NPUs are built on, and QBox has a model of it (`cpu_hexagon`). It would be a real programmable accelerator: the work is a program somebody compiles for it.
+- 🎭 **A behavioral NPU of our own that does its arithmetic on the machine running the simulation.** Its registers, its queue of work in memory, its DMA and its interrupt are modelled, and the multiplying is plain C++ with nothing of a processor in it. A second flavour hands the arrays to numpy through the Python executor, which is Python pulling the strings quite literally.
+- **Both sit behind one accelerator slot** (a bus master, a register block, an interrupt line) **and share one block of ours**, a doorbell with a status register, because a Hexagon core has an interrupt controller for what comes in and nothing that raises a line on somebody else.
+- **The criteria**: does it fit behind the slot, in-process. The licence. What the build costs on macOS and Linux. What the firmware's side looks like, a program for the accelerator or descriptors a driver writes. What Linux would need. And speed, on a 256 by 256 matrix multiply of 8-bit integers.
+- **The report also deals with what was set aside without a build**: NVDLA, TVM's VTA and Gemmini. They were passed over on an impression (too big, too quiet, tied to a core of its own), and an impression is not a finding.
+
+What planning found:
+
+- **QBox is BSD around GPL.** The wrapper is BSD-3-Clause and the QEMU it links is GPL-2.0, so a Hexagon from QBox is an optional component that users build from source and that is never in the wheel. That is what M1 decided of QBox as a CPU, and the to-do list still has that item.
+- ⚠️ **QBox may be a release behind what its Hexagon needs.** QEMU's Hexagon gained system mode (a whole machine, where it used to run only Linux programs) in 11.1 as far as planning could tell, and QBox pins a fork of 11.0. QBox's own tests do run bare-metal Hexagon code. It is the first thing the spike checks.
+- **QBox has the core and no machine around it.** None of its example platforms has a Hexagon in it. Its Hexagon tests are assembled with LLVM alone, and Qualcomm publishes an open toolchain for the core, without QuRT, the operating system Hexagon firmware is normally written against.
+
+What Linux will ask: of a Hexagon, FastRPC, whose kernel half is in mainline and whose half on the DSP is not open. Of an NPU of ours, one memory region and one interrupt, which is what a user-space driver (UIO) needs and no more.
+
+Exit: a report, `docs/npu-spike.md`, with a recommendation, and each candidate behind the draft slot taking one matrix multiply from a descriptor in memory, writing the product back and raising the host's interrupt. Then a stop. The decision also says which die the AI processor is on: the compute die, or a die of its own behind a second link.
+
+### M13 — AIA: interrupts as messages
+
+AIA is RISC-V's Advanced Interrupt Architecture, and it has two parts. An **IMSIC** (incoming message-signalled interrupt controller) belongs to one hart, RISC-V's word for a CPU as software sees it. A device interrupts by writing a number to the IMSIC's address, and the IMSIC keeps what is pending in an *interrupt file*, one for machine mode and one for supervisor mode. An **APLIC** (advanced platform-level interrupt controller) is for the devices that only have a wire: it takes their lines, as a PLIC does, and in its MSI mode it sends each as a message to an IMSIC. It is what RISC-V server designs use, and QEMU's `virt` machine with `aia=aplic-imsic` is the one to compare with.
+
+socpuppet has wanted this since M5 decided that no wire crosses the die-to-die link. A PCIe device's interrupt is already a message, and today the MSI-to-PLIC bridge, a block of ours that no real SoC has, turns it back into a wire for the PLIC. With an IMSIC a message stays a message from the device to the CPU, and the IO die's wired devices get to interrupt the host at all, which none can today.
+
+- **a) The host's core is `rv64gc_msu`**: machine, supervisor and user mode, floating point, and an MMU. Zephyr runs on it unchanged, in machine mode. The ISA a devicetree names becomes a parameter of `sp.DbtRiseCpu`, where today the list is fixed. Exit: M8's exit test passes on the new core, images unchanged.
+- **b) The IMSIC**, ours: a plain class for an interrupt file and a thin model around two of them, each with the page a message is written to. Firmware reaches a file through the hart's indirect CSRs (`miselect` and `mireg`, and `mtopei` to claim), which the CPU's adapter answers from the IMSIC. PCIe's messages go straight to it. 🦜 `sp.MsiPlicBridge` leaves the host, and nothing else uses it: whether it leaves the package too is this step's to decide. Exit: Zephyr's disk test, every message of it landing in the IMSIC.
+- **c) The APLIC, and a console that listens.** VPV-Peripherals' APLIC behind an adapter, with MSI mode added to it. It sits on the IO die and sends its messages across the mainband as writes to the IMSIC's address on the compute die, the way the drive's DMA already travels. Its first line is the UART's: the adapter gains the receive half (🧵 Python types, `uart.write(...)`) and the interrupt line, both of which the borrowed model has and the adapter never brought out. Then the host's PLIC goes. Exit: Zephyr's shell on the host answers a command Python types, on an interrupt that was an APLIC's message, and the host's devicetree has no PLIC in it.
+- **The interrupt controller contract gains a second kind**, a controller that is sent messages, with the IMSIC as its first implementation. The APLIC is held to a contract of its own.
+- **The addresses are QEMU `virt`'s**, as the rest of the map is.
+
+What planning found:
+
+- **DBT-RISE lets a wrapper answer a CSR.** `core_complex` has `register_csr_rd` and `register_csr_wr`, usable once elaboration has made the core. A CSR nobody answers is an illegal instruction, which is what every AIA CSR is today: they are names in the debugger's table and nothing else. So the indirect CSRs can be the IMSIC's, and no generated core has to change.
+- ⚠️ **A DBT-RISE core with supervisor mode can never take a supervisor's interrupt.** The handlers of `mie` and `sie` mask the supervisor's three enable bits away, so an interrupt delegated to supervisor mode is pending for ever. Zephyr in machine mode never meets it and Linux meets it at once. It is in [upstream.md](upstream.md), found by reading, with the test to write in step a.
+- **The `time` CSR reads zero, and that one is ours.** DBT-RISE reads it from an input our adapter never connects. Zephyr reads the timer's own register and never noticed. Step a connects it.
+- ⚠️ **`rv64gc_msu` has no physical memory protection.** DBT-RISE builds cores with supervisor mode or with PMP, and none with both. The host's core today has it. Step a first checks that nothing in the host's Zephyr images uses it.
+- **Zephyr 4.4.2 has an IMSIC driver and an APLIC driver for MSI mode, and no board in its tree that uses either.** Its IMSIC driver goes entirely through the CSRs, and is switched on by `smcsrind` in the devicetree's ISA list. ⚠️ Two things are missing around them. Zephyr's `irq_enable` on RISC-V knows the PLIC and the CPU's own lines and nothing else, and its PCIe code has no way to deliver a message on RISC-V at all, which M3b found and socpuppet's driver for the root complex already supplies for the bridge. Both are glue in socpuppet's Zephyr module, and entries for [upstream.md](upstream.md) when written. Zephyr's APLIC driver for direct mode is a stub, so MSI mode is the only one firmware can use.
+- **MSI mode is a feature to add to the borrowed APLIC, not a fault to fix.** The model does direct delivery only: it has no register that says where messages go, and no socket to send one from, since in direct mode an APLIC drives a wire. The patch adds both, and its entry in [upstream.md](upstream.md) is an offer of a feature.
+- **Nothing on the IO die interrupts the host by wire today.** The drive's interrupts are messages and the link's line goes to the manager. So an APLIC would have had nothing to carry, and the console's interrupt, left out since M3 because nothing wanted it, is what gives it a job.
+
+If Zephyr's AIA drivers turn out too thin to carry the disk test, the fallback is one more milestone with the PLIC and the IMSIC side by side, and the reasons in [upstream.md](upstream.md).
+
+What Linux will ask: the supervisor's interrupt file and its CSRs (`siselect`, `sireg`, `stopei`), which its IMSIC driver cannot do without, and `ssaia` in the ISA list. An APLIC domain for supervisor mode. The fix to supervisor interrupts above, and a `time` CSR that counts.
+
+### M14 — Boot ROM, flash, system controller, watchdog
+
+Until now a CPU has woken up with its firmware already in RAM, because Python put it there. No silicon boots that way. A real CPU's reset vector points into a small **boot ROM**, written when the chip is made, whose code finds the next stage in a **flash**, copies it to RAM and jumps to it. That first stage is often called a ZSBL, a zero-stage bootloader. This settles a decision the plan had left open since M0: the bootchain has a ROM stage. 🎭 Python's loader stays, as the stand-in for it, and is still the quickest way to try an image.
+
+- **ROM and flash, copy and jump.** The ROM does no more than that, and it checks a CRC so that a bad image is a sentence on the console and not a leap into the dark. Checking a signature, which is what makes a boot a secure one, is left open below.
+- **a) The ROM, the system controller and the watchdog, on one CPU.** `sp.Rom` is a memory that refuses a write, and `platform.load_rom` fills it. The **system controller** is a small block of ours with a register map: which die this is, where to boot from, why the last reset happened, and a register that asks for one. The **watchdog** resets its CPU when firmware stops feeding it. The ROM's code is `firmware/rom`, a little assembly and C built by `firmware/build.sh`, once for each kind of CPU. Exit: `hello_world` on the host with its ROM in front of it, and a host that stops feeding its watchdog starts again and can read why.
+- **b) The flash and the image header, on all three CPUs.** `sp.SpiFlash` is VPV-Peripherals' SPI controller and its flash chip behind one adapter, mapped so that the flash reads like memory (execute in place, or XIP), and `platform.load_flash` fills it from a file. An image starts with a header: a magic number, where to load it, where to enter it, how long it is, and a CRC. Exit: M8's exit test with nothing loaded into RAM, a flash with a damaged image refused by name on the console, and M8's exit test still passing the old way.
+- **The system controller owns each CPU's reset.** A wire takes one driver, and the host's reset has one already: the link's end on the compute die, since M7. A watchdog wants the same wire. So the link's release and the watchdog's bite both become inputs to the system controller, which drives the CPU. M7's wiring changes, and M7's test that the release comes over the sideband is what holds it.
+- **The header is written once, as the sideband packet is**, in a C header that the ROM and Python share with a test that keeps them in step. It is a file format and not a register map, so SystemRDL has nothing to say about it.
+- **The host and the manager boot from one flash on the IO die, and the SSD has its own.** The manager boots first, then lets the host go, and the host's ROM reads its image across the link. The system controller's boot register says where in the flash each CPU's image is.
+
+What planning found:
+
+- **`Memory` has no read-only kind and nothing loads a file into one.** Its page has said "no ROM variant yet" since M0.
+- ⚠️ **A ROM cannot tell loading from simulating by asking the kernel.** `Platform.build()` finishes elaboration, so the simulation has in SystemC's eyes started before anything is loaded. A ROM takes a debugger's write until simulated time first moves and refuses it afterwards, which also means GDB cannot patch a ROM, as it cannot on a board.
+- ⚠️ **A ROM must not be a `memory` node in the devicetree.** The generator gives `zephyr,sram` to the lowest memory, and a ROM at a reset vector is below everything.
+- **The borrowed flash maps cleanly and loads fussily.** The controller's XIP socket hands a read straight to the chip, with no SPI command in between, so a ROM that reads the flash as memory needs nothing more of it. But the chip preloads only a 32-bit ELF or an Intel HEX file and silently ignores a plain binary, and that is the one patch. It has no read command either, which only a driver that speaks SPI to it would miss (M18).
+- ⚠️ **One flash, two CPUs, one address.** A platform refuses a port that two bus masters reach at different addresses, which is what M7 ran into. The host sees the IO die behind a window and the manager does not, so the manager's bus maps the flash where the host sees it, not where the IO die's own bus has it.
+- **The borrowed watchdog is registers and nothing else.** VPV-Peripherals' `sifive/aon` has the SiFive watchdog's registers with no behaviour behind them, and Zephyr has a driver for that layout (`wdt_sifive`). The first answer is to give the borrowed block its behaviour and offer it. A watchdog of our own is the second.
+- **A CPU can be reset twice**, by a patch to DBT-RISE ([upstream.md](upstream.md)). Nothing has reset one in the middle of a run with its devices in whatever state they were left, and what a reset reaches besides the CPU is step a's to decide.
+
+What Linux will ask: the system controller as a `syscon` with `syscon-reboot` on top, so that `reboot` works. The boot ROM's next stage becomes OpenSBI, and the image after it a kernel and its devicetree.
+
+### M15 — IOMMU
+
+A device that does DMA writes wherever it is told to, and a driver with a bug, or a device with a grudge, tells it wrong. An **IOMMU** is to a device what the MMU is to a program: every address a device uses goes through page tables that the operating system owns, and an access that is not mapped is refused and reported. This one follows the RISC-V IOMMU specification. A **device context** says which page table a device's addresses go through, a table of them is found by the device's ID, and two rings in memory carry commands to the IOMMU and fault records from it.
+
+- **Ours, and written to go upstream.** It is a plain class with a thin model around it, as the NVMe frontend is, with its contract suite first. It is also shaped for VPV-Peripherals' `rvi/` directory, beside the APLIC and the PLIC: the registers in SystemRDL the way that project writes them, and its register classes. socpuppet uses it through an adapter like any other borrowed model. 📮 The offer is an entry in [upstream.md](upstream.md).
+- ⚠️ **This bends a rule, on purpose.** "Only socpuppet's own blocks have a register map, not what a specification lays out" was decided on 2026-10-09. A block laid out by a specification and written for another project has one in that project's style, and nothing of ours is generated from it.
+- **The subset is what the drivers touch**: the capabilities, the device directory with one to three levels, the command queue with its three commands, the fault queue, the interrupt registers, and translation through one stage of Sv39, the three-level page table a RISC-V CPU's own MMU uses. No second stage for virtual machines, no ATS, no page requests, no remapping of interrupt messages.
+- **It sits on the IO die between the root complex and the link**, with its registers on the IO die's bus and its own interrupt a wire to the APLIC. A second one sits on the compute die in front of the AI processor, in M19.
+- **A device says who it is.** A PCIe endpoint knows its own bus, device and function numbers once the host has enumerated it, and marks its DMA with them in the link's extension. A master with no PCIe behind it is given an ID as a parameter.
+- **Zephyr has no IOMMU subsystem, so the driver's interface is our own**, as the frontend's and the DMA engine's are: let a device through untranslated, map a page for it, read a fault. An IOMMU in the DMA path is a function handed to the host.
+
+What planning found:
+
+- ⚠️ **Nothing on the PCIe link says which device sent an access.** M2 wrote that down and M7 worked round it by telling traffic apart by address. An IOMMU cannot: the device's ID is the first thing it looks up. The root complex sees one way up and cannot supply it, so the endpoint has to.
+- **The page tables are in the host's memory, a die away.** Every walk the IOMMU makes is a read across the link, through a bus master of its own, and shows in the link's trace. That is true of the hardware too, and it is why a real IOMMU caches what it walked.
+- **The Ethernet MAC is not a customer.** It moves frames through its registers and does no DMA (M17). The drive is the only one until the AI processor, so the contract suite is run with a scripted DMA master as well.
+
+Exit: Zephyr's disk test with the drive behind a device context the host's firmware programmed, first untranslated and then through a page table. And a transfer aimed at a page that is not mapped: a record in the fault queue, an interrupt, and the host's memory as it was.
+
+What Linux will ask: the registers and commands its driver uses, which is where the subset above comes from. A `riscv,iommu` node and an `iommu-map` on the root complex's. And the IOMMU's own interrupts as messages, where Zephyr is given a wire.
+
+### M16 — SHRM and the two-socket board
+
+**SHRM** is the shared-memory subsystem: memory on one SoC that another SoC on the same board can use as if it were its own. It is how a server with several sockets, or a tray of AI accelerators, pools memory, and a real one is a small computer in its own right, with a controller core and firmware that decide who is lent what. Here it is a pool of memory on the IO die, a set of decoders that put pieces of the pool into somebody's address map, a port to the other SoC, a mailbox between the two controllers, and a 32-bit core with its kit.
+
+It also brings a second SoC into the simulation, which the plan had left open as "a second compute die".
+
+- **a) One SoC's SHRM, with 🎭 a script for its firmware.** The decoders have the shape of CXL's for host-managed device memory: a base, a size, a target and an enable, in a register map of ours. `sp.ShrmFirmware` is the stand-in, as `sp.SsdFirmware` was for the SSD. Exit: the host maps a piece of its own SHRM's pool and uses it.
+- **b) Two sockets on a board, over 🎭 the pass-through.** `host()` becomes a function that adds a host to a platform under a name, as `add_ssd` and `add_manager` are, in a change of its own with no change in behaviour. Then `two_socket_board()` places two. The port between sockets is the link slot again, with the stand-in link first. Exit: one host writes into the piece of the other's pool it was lent, and the other reads it.
+- **c) The firmware, and a link that has to be brought up.** `firmware/shrm`, a Zephyr image on the board `socpuppet_shrm`, lends and publishes, and the two of them agree over the mailbox. The real link between sockets is `sp.D2dLink` with a board's latency. Exit: the message crosses the board with every CPU running its own firmware, and `sp.Transcript` tells all their consoles as one story.
+- ⚠️ **No protocol is modelled between the sockets.** What crosses is memory-mapped TLM, as on the die-to-die mainband. A real board would speak CXL or something like it there, and the model's page says that this one does not. Whether it ever should is in the open decisions below.
+
+What planning found:
+
+- ⚠️ **A decoder must hide what is behind it.** The walk that makes a devicetree does not clip to a window's size, which M7 found, so a host would be told about everything on the other SoC's bus. The decoder describes itself as one memory and stops the walk, as the root complex does for what is beyond it.
+- ⚠️ **Six to eight CPUs in one kernel.** Two sockets, each with a host, a manager and a SHRM, and a drive or two. M8 measured three. The quantum's figures and the wall time are measured again in step b, not guessed at.
+
+What Linux will ask: the lent memory as a reserved-memory node it can map, and the mailbox as a mailbox controller.
+
+### M17 — Ethernet
+
+VPV-Peripherals has an Ethernet MAC, the block that sends and receives frames, and it is the simplest kind: firmware pushes a frame into a register a word at a time, length first, and pulls a received one out the same way. There are no rings of descriptors and no DMA. It follows RTL of Minres's own.
+
+- **The borrowed MAC, behind an adapter and held to a contract written first**, as the UART, the timer and the PLIC were in M3a.
+- 🧵 **Python is the far end of the cable.** `sp.EthernetCable` hands Python each frame the MAC sends and takes frames to deliver. The model can write what it carried to a capture file that Wireshark opens. 🚧 A bridge to the host machine's own network is a tier for later: the one VPV-Peripherals has is Linux-only.
+- **The driver is ours**, in socpuppet's Zephyr module, since no driver for this MAC was found anywhere. Zephyr's driver for the Stellaris MAC is the nearest in shape, a FIFO with the length in its first word. The MAC's management registers store what is written and do nothing, so there is no PHY to talk to, and the driver says the link is fixed.
+- **Its interrupt is a line to the APLIC**, which is why this waits for M13.
+
+What planning found: SCC's library of interfaces has the Ethernet sockets the MAC uses, and nothing in socpuppet's build links that library yet. Only the first of the MAC's two interrupt outputs is ever driven.
+
+Exit: Zephyr's `echo_server` sample on the host answers a datagram Python sends down the cable, having answered Python's ARP request first, and the capture of the run opens in Wireshark.
+
+What Linux will ask: a driver, which will be ours as well, and is offered upstream with the Zephyr one. 📮
+
+### M18 — The small essentials
+
+The parts every board has and no milestone has needed. Each is one `/tdd` session: a contract or unit tests first, a model page, a Zephyr sample that passes, and Python at the far end of the wires.
+
+- **GPIO and SPI**: VPV-Peripherals' SiFive blocks behind adapters. Zephyr and Linux both have drivers for them already. With a driver that speaks SPI, the boot flash gets the read command it lacks.
+- **I2C**: ours and small, with the registers of the OpenCores controller, which Linux drives. 🎭 A Python script plays the device at the other end of the bus.
+- **RTC**: ours, with the registers of the Goldfish clock, which Linux drives. It tells the time Python gives it.
+- **TRNG**, a true random number generator: one register, read through Linux's driver for a random number in a memory-mapped register. It is seeded from Python, so that a run can be had again.
+
+For each of ours, look for a Zephyr driver of that layout before writing one.
+
+What Linux will ask: nothing more. Choosing layouts it already drives is the whole of the plan for these.
+
+### M19 — AI processor
+
+Whatever M12's gate chose, placed where it said. The exit is the same either way, and so is what the host's firmware has to do: describe the work, ring a doorbell, and wait for an interrupt.
+
+- **If it is 🎭 the behavioral NPU**: a register map of ours, a queue of descriptors in memory (an operation, where its operands are, their shapes and their type), a handful of operations (multiply matrices, add, clamp at zero, perhaps convolve), its data moved by DMA through an IOMMU of its own, and its completion a message to the IMSIC. A Zephyr driver, and `firmware/mlp`, which runs a small multi-layer perceptron on an input both sides know.
+- **If it is QBox's Hexagon**: an optional component built from source, its program compiled with the open toolchain, the same doorbell, and the same exit test.
+
+Exit: an inference whose weights were read from flash, whose data went through the IOMMU, whose completion was an interrupt message, and whose answer Python checks against numpy's.
+
+What Linux will ask: one memory region and one interrupt, so that a user-space driver can run the same inference. That is M20's last line.
+
+## Phase 5: Fidelity and validation
 
 ### M9 — Realistic NAND
 
@@ -263,13 +486,33 @@ Boot-sequencing variants and failures, link down/retrain during I/O, cross-die d
 
 Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the IO die.
 
+## Phase 6: Linux
+
+### M20 — Linux boots
+
+The host's firmware becomes what a RISC-V server runs: OpenSBI, the machine-mode firmware that sits under a RISC-V kernel and answers its calls, and then Linux in supervisor mode. Everything Linux needs was built in Phase 4 with Zephyr as its first user, and each milestone there ends with what Linux will ask of it. Those lists are where this milestone's plan starts.
+
+- The boot ROM loads OpenSBI from flash, and OpenSBI starts the kernel that sits after it with its devicetree.
+- Interrupts through AIA, with the supervisor's interrupt file. This is the first thing to need the fix to supervisor interrupts in DBT-RISE ([upstream.md](upstream.md)).
+- A root filesystem on the NVMe drive, its DMA through the IOMMU under Linux's own driver.
+- Ethernet up, with a driver of ours.
+- The AI processor from user space, running M19's inference.
+
+Exit: a shell prompt on the console, a `ping` answered by Python, and the inference's answer.
+
+🚧 Not planned yet beyond this. Two things to settle when it is: which kernel to pin, as Zephyr was pinned in M3a, and whether the default CPU is fast enough to boot it in a time a test can wait for. QBox as an optional CPU is in the to-do list, about ten times faster.
+
 ## Decisions deliberately left open
 
 | Decision | Must be settled by | Default until then |
 |---|---|---|
-| Does "bootchain" include a ROM/bootloader stage per image? (not in handoff; ELFs are loaded from Python) | After M8 | no bootloader |
 | `native_sim` firmware tier | Optional, any time after M3 | not built |
-| Second compute die; host DRAM on the IO die | After M8 | one compute die, DRAM on compute die |
+| What the AI processor is, and which die it is on | M12's gate | 🎭 a behavioral one of ours, on the compute die |
+| Does the boot ROM check an image's signature, which is what makes a boot secure? | After M14 | a CRC and nothing more |
+| A protocol between sockets, CXL or one like it, where M16 has memory-mapped TLM | After M16 | none |
+| A die of its own for the AI processor; host DRAM on the IO die | After M16 | one compute die a socket, DRAM on the compute die |
+
+Settled on 2026-10-10, planning Phase 4, having been left open until after M8: the bootchain has a ROM stage for each image ([M14](#m14--boot-rom-flash-system-controller-watchdog)), and a second SoC, which is more than the second compute die this table used to ask about, comes with [M16](#m16--shrm-and-the-two-socket-board).
 
 ## Verification
 
@@ -280,7 +523,7 @@ Verilator RTL block behind a TLM-to-signal adapter; power/telemetry model on the
 
 ## Status
 
-**M0 to M8 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. All three now boot together, which was Phase 3: the manager's firmware trains the die-to-die link and lets the host go, the host's firmware finds its drive across the link, and the SSD's firmware is the drive. Each CPU can have a debugger of its own. M9 (a NAND that behaves like one) is next.
+**M0 to M8 are done.** Every subsystem has booted its own firmware standalone, which was Phase 2. All three now boot together, which was Phase 3: the manager's firmware trains the die-to-die link and lets the host go, the host's firmware finds its drive across the link, and the SSD's firmware is the drive. Each CPU can have a debugger of its own. Phase 4 is next, the cast of a real SoC, which was added on 2026-10-10 and starts with M12's spike. M9 (a NAND that behaves like one) can still be pulled forward at any time, as it could since M4.
 
 What M8 delivered: the full bootchain, with no script in it: every CPU is a CPU running its firmware. 🎭 The NAND is the stand-in that is left, and M9's. The exit test is `tests/python/test_m8_exit.py`. On `host(drive_blocks=4096, manager=add_manager, drive=add_ssd)`, with the images M5, M3b and M4 built, the three consoles are heard as one story: the manager says the link is up and the compute die released before the host's first line, the SSD says its drive is up before the host reports the disk's size, and Zephyr's disk test passes its read and write tests against the SSD's firmware. `examples/full_bootchain.py` is the show to run by hand: the link's bring-up out of the trace, and then who said what, and when. [boot-your-firmware.md](boot-your-firmware.md) has "The whole cast: three firmwares" and "Debugging three CPUs at once".
 
@@ -306,7 +549,7 @@ What M8 did not do, that the plan said or implied:
 - **A real GDB in CI.** The spike attached three of the Zephyr SDK's GDBs by hand, from a container, and the tests speak the protocol themselves. The command lines in [boot-your-firmware.md](boot-your-firmware.md) have what the spike's had: `set remotetimeout`, then `target remote`, once for each CPU.
 - **"The verdict is the last line of all"** and **"the host has printed nothing 5 ms after power-on"**, which planning listed for the exit test. The first is true by construction and the second follows from the order that is asserted.
 - **The three upstream loose ends**: a debugger whose connection is reset, one that detaches, and a register read answered off the simulation's thread. Each is in the known bugs below with the test to write first.
-- ⚠️ **The two decisions this page left open until after M8 are still open**: a ROM or bootloader stage for each image, and a second compute die. They are the maintainer's.
+- ⚠️ **The two decisions this page left open until after M8 are still open**: a ROM or bootloader stage for each image, and a second compute die. They are the maintainer's. 🦜 Both were settled on 2026-10-10, planning Phase 4: see the note under [the open decisions](#decisions-deliberately-left-open).
 - **/tdd was run through the skill for step 1 and by its workflow for steps 2 to 4**, with both reviews on every step, and with the maintainer away: the approval stops were passed on the strength of "complete the plan", and each review's findings were taken or answered in the commit that followed.
 
 Things M9 should know:
@@ -686,15 +929,14 @@ Small things that are nobody's milestone. Tick them off or delete them.
 - [ ] Reserve the `socpuppet` name on PyPI (free as of 2026-10-04; needs Chris's PyPI account). Do it before the first wheels are published. M3 is done, so nothing but the name stands in the way.
 - [ ] Send the fixes and accommodations we carry to the projects they belong to: SCC, CCI, DBT-RISE-Core, DBT-RISE-RISCV, softvector, VPV-Peripherals, SPDK and VCML so far. Each has an entry in [upstream.md](upstream.md) with what is wrong, how to see it and what to propose.
 - [ ] Run the C++ NVMe contract against the SSD with its Zephyr firmware. The rig `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes. A second rig wants the CPU kit and the ELF loader, which the registry has, and the firmware image, which CI's C++ tests are not given today. Until then the firmware's share of the contract is held by `tests/python/test_ssd_firmware.py`.
-- [ ] Enable QBox as an optional CPU. It is about ten times faster than the default and is QEMU underneath (GPL-2.0), so users build it from source and it is never in the wheel. The recipe and a wrapper that passes the spike's CPU suite are in `spikes/iss/qbox/`, which nothing builds automatically ([its README](../spikes/iss/README.md) has the commands). What is left: the timer interrupt input that `CpuSlot` has gained since, and a pass through the bus-master contract suite (`tests/cpp/contracts/bus_master_contract.h`), which is what a CPU is held to now; a supported way to build it outside that container (it wants its own SystemC as a shared library, a C++20 build that takes two patches, and about a dozen system packages); a registry entry and a Python class so that a platform can name it; macOS, which was not tried; its sleeping CPU, which keeps the kernel waiting so that `Platform.run()` with no time limit never returns; and a page saying what it is and what it costs. See [iss-spike.md](iss-spike.md).
+- [ ] Enable QBox as an optional CPU. M12's spike looks at QBox again, for its Hexagon, and M20 may want it for its speed. It is about ten times faster than the default and is QEMU underneath (GPL-2.0), so users build it from source and it is never in the wheel. The recipe and a wrapper that passes the spike's CPU suite are in `spikes/iss/qbox/`, which nothing builds automatically ([its README](../spikes/iss/README.md) has the commands). What is left: the timer interrupt input that `CpuSlot` has gained since, and a pass through the bus-master contract suite (`tests/cpp/contracts/bus_master_contract.h`), which is what a CPU is held to now; a supported way to build it outside that container (it wants its own SystemC as a shared library, a C++20 build that takes two patches, and about a dozen system packages); a registry entry and a Python class so that a platform can name it; macOS, which was not tried; its sleeping CPU, which keeps the kernel waiting so that `Platform.run()` with no time limit never returns; and a page saying what it is and what it costs. See [iss-spike.md](iss-spike.md).
 - [ ] Try DBT-RISE-RISCV's other backends. The spike built only its interpreter (31 to 44 million instructions a second on a counted loop). asmjit, LLVM and TinyCC translate blocks of guest code into host code and should be faster. For each: run the bus-master contract suite and the CPU tests (`tests/cpp/platform/cpu_test.cpp`), measure a counted loop against the interpreter's 44 million instructions a second, and write down what it adds to the build and to the wheel. TinyCC is LGPL, so settle whether it may ship before turning it on. On macOS the helper the backends share declares a function called `wait()`, which collides with POSIX: the build leaves that file out, and a backend needs it back ([upstream.md](upstream.md)).
 - [ ] Let whichever CPU is stopped in its debugger answer every debugger. Today a debugger is answered about memory only while its own CPU is the one stopped, so with the host at a breakpoint the SSD's GDB cannot look at the SSD's memory until the host continues. Everything would still happen on the simulation's one thread, so nothing races. It wants three things in DBT-RISE-Core: a registry of servers, so that the loop in `server_if.h`'s `check_continue` can look in every server's queue; another way for a single step to know its core has stopped again than the flag only that loop's blocking wait sets; and a decision about stepping a core that is not the one holding the thread, which cannot run until the holder lets go. [gdb-spike.md](gdb-spike.md) has the reasoning. Write the tests first, in `tests/python/test_gdb.py`: with one CPU held stopped, another's debugger reads its own firmware back.
 - [ ] Print a link's sideband from one place. `examples/io_manager_hello.py`, `examples/chiplet_host_hello.py` and `examples/full_bootchain.py` each have the loop that prints `ucie.sideband_packets(trace)` a line a packet, and two have the same `die_of`. `sp.render_trace` and `sp.render_transcript` are the pattern: a `ucie` function with tests, and the three examples use it. The design review of M8's last step asked for it.
 - [ ] Have `build()` refuse an address map that loops, as `Platform.address_map()` and `to_json()` do: a router with an output mapped onto one of its own inputs builds today, and an access into that range would go round for ever. The walk that finds it is `socpuppet.address_map`, and the test to write first is in `tests/python/test_platform.py`.
 - [ ] 🚧 An idea, not a decision: write a board's hardware as data, and have Python load it. The maintainer asked on 2026-10-10 whether addresses and interrupt numbers could live in pure data files that Python reads and a devicetree is converted from, where today they are in each board's Python and the devicetree is made by walking that description. Moving the numbers alone would not do it: a devicetree also says what each device is and reaches it through the windows, so the file has to hold the devices, the buses, the links between dies and the interrupt lines, which makes it a platform description format and reverses the handoff's "platforms are described in Python only". How it would work: a TOML file a board (TOML has `0x8000_0000`, and Python reads it with `tomllib`), with `[components]` (path to class and parameters), `[links]` (model, and the two groups it joins), a `[buses."<path>"]` table a bus with its `masters` and a `map` of `{ at, size, to, across }` rows, and `[interrupts]` (input to line). A `Platform.load(file)` makes the same `add`, `map`, `connect` and `link` calls a board's Python makes now, so `build()`, the devicetree generator, `socpuppet address-map`, the docs tables and `to_json()` are untouched, C++ still never reads a description, and a platform written in Python still works. A variant is a second file laid over the first (`host_drive.toml` over `host.toml`, as Zephyr lays the shield over the board), and a shared piece (`cpu_kit`) is a file with relative names, loaded under a group. Python keeps the scripts, the options of a run (debugger port, drive size, tracing), the choice of files, and running the result; a stand-in or a test looks an address up in the loaded map where it imports a constant today. ⚠️ What gets awkward: a script in the CPU's place changes the hardware (no SRAM, UART, timer or PLIC, and the device's line goes straight to the script), so the SSD and the IO manager each split into the devices and the CPU with its interrupt numbers; four boards become about eight files; and files name each other's components, so a typo is found by the loader and its messages matter. The host converts cleanly and would read better as data; the SSD and the IO manager would likely be harder to follow than the one Python file each is. If it is tried, convert the host alone first, with its checked-in `.dts` unchanged as the proof that nothing moved, and decide the rest from how that reads. --- I'd also consider JSON and YAML in addition to TOML. I think a flow where Python generates JSON for the description and that JSON is read into either the simulaiton python or tools to generate device tree for firmware could be good. We could even have this description replace RDL. I still wouldn't want to loose the ability to do things in python alone without the conversion to/from json.
-- [ ] Model an IOMMU on the IO die's CXL/PCIe root complex path: translation-table walks, protection and faults, with a contract suite written first (borrow before building: check for an open model to put behind an adapter before writing one).
-- [ ] Model SHRM (CXL shared/host-managed device memory) on the IO die: an HDM decoder that resolves a fabric-shared range, plus a minimal fabric-manager stand-in that carves it up. Sits downstream of the IOMMU item above in the request path.
-- [ ] Model RISC-V's AIA: IMSIC on the compute die (per-hart, receives MSIs), APLIC on the IO die (aggregates wired/device interrupts into MSIs for IMSIC). Likely replaces or sits alongside the PLIC once a milestone needs MSI-based interrupts instead of wired ones.
+
+Three items left this list on 2026-10-10 for milestones of their own in Phase 4: the IOMMU is [M15](#m15--iommu), SHRM is [M16](#m16--shrm-and-the-two-socket-board) and RISC-V's AIA is [M13](#m13--aia-interrupts-as-messages).
 
 ## Known bugs
 
