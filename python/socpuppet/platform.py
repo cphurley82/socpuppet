@@ -321,13 +321,7 @@ class Platform:
         """
         view = self._view(via)
         self.native()  # refuse if there is no memory to load into yet
-        file = os.fspath(path)
-        # The reader cannot tell a missing file from one that is not ELF.
-        if not os.path.exists(file):
-            raise FileNotFoundError(
-                f"There is no file at {file}. Build the firmware first, or "
-                "check the path."
-            )
+        file = self._file_to_load(path)
         from socpuppet import _core  # the simulator is loaded by now
 
         xlen, entry, segments = _core.read_elf(file)
@@ -335,16 +329,58 @@ class Platform:
             image=file, xlen=xlen, entry=entry, path=view.placed.path
         )
         for address, data in segments:
-            try:
-                self.poke(address, data, view)
-            except LookupError as nothing_there:
-                raise LookupError(
-                    f"{file} has {len(data)} bytes to load at {address:#x}, "
-                    f"and no memory takes all of them, as seen from "
-                    f"{view.path}. Check the firmware's memory layout "
-                    "against the platform's: where the RAM starts and how "
-                    "big it is."
-                ) from nothing_there
+            self._poke_from(file, address, data, view)
+
+    def load_binary(
+        self, path: str | os.PathLike[str], at: int, via: Port | None = None
+    ) -> None:
+        """Put the bytes of the file at `path` into memory, from `at` on.
+
+        Unlike an ELF file, these do not say where they belong: what a
+        flash holds, a kernel's image, a devicetree blob. The bytes are
+        written as `poke` would write them, and `via` works as in `peek32`.
+
+        💡 Nothing here asks whether a CPU could run them. `load_elf`
+        does, for the image a CPU starts in.
+        """
+        view = self._view(via)
+        file = self._file_to_load(path)
+        with open(file, "rb") as opened:
+            self._poke_from(file, at, opened.read(), view)
+
+    @staticmethod
+    def _file_to_load(path: str | os.PathLike[str]) -> str:
+        """The name of the file at `path`, refusing if there is none.
+
+        The ELF reader cannot tell a missing file from one that is not
+        ELF, so this looks first, and every loader refuses a missing file
+        in the same words.
+        """
+        file = os.fspath(path)
+        if not os.path.exists(file):
+            raise FileNotFoundError(
+                f"There is no file at {file}. Build the firmware first, or "
+                "check the path."
+            )
+        return file
+
+    def _poke_from(
+        self, file: str, address: int, data: bytes, view: Port
+    ) -> None:
+        """Poke `data`, which came from `file`.
+
+        If nothing takes all of it, the error names the file.
+        """
+        try:
+            self.poke(address, data, view)
+        except LookupError as nothing_there:
+            raise LookupError(
+                f"{file} has {len(data)} bytes to load at {address:#x}, "
+                f"and nothing there takes all of them, as seen from "
+                f"{view.path}. Check where the file puts them against "
+                "the platform's memory map: where the memory meant for "
+                "them starts, and how big it is."
+            ) from nothing_there
 
     def devicetree(self, via: Port | None = None) -> str:
         """The devicetree source for what a bus master can reach.
