@@ -66,6 +66,30 @@ uv run ctest --preset asan
 
 🎓 The tools are AddressSanitizer and UndefinedBehaviorSanitizer, which the compiler builds into the test programs. On Linux they also report memory that was never freed. Only our two C++ test programs are built this way. The Python extension is not, because Python itself is not, and a sanitized module cannot be loaded into a program that is not sanitized.
 
+## Before you push
+
+⚠️ CI checks three things that the loop above does not, and each has turned a push red that passed every test here:
+
+```sh
+uv run cmake --build --preset dev --target tidy            # clang-tidy, a few minutes
+uv run cmake --build --preset dev --target check_headers   # each header compiles alone
+```
+
+- **clang-tidy**, with its warnings as errors. It reads the same code the compiler did and finds what a compiler lets through: arithmetic that mixes `*` and `+` with no brackets, a multiplication done in 32 bits and then widened, a constant at namespace scope whose constructor could throw.
+- **The header check**, which compiles each of our headers on its own, so that one that leans on what another file happened to include is found.
+- **GCC, on Linux.** On a Mac the compiler is Apple's clang, and GCC has warnings it lacks. To have them here, keep a second build tree in the devcontainer's image, which is what CI builds in. The first build is long and later ones are incremental:
+
+```sh
+docker run --rm -v "$PWD":/workspace -w /workspace \
+  -e UV_PROJECT_ENVIRONMENT=/workspace/build/linux-venv -e UV_LINK_MODE=copy \
+  socpuppet-dev bash -c 'uv sync --quiet &&
+    uv run cmake -S . -B build/linux -G Ninja \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSOCPUPPET_DEVELOPER_MODE=ON &&
+    uv run cmake --build build/linux'
+```
+
+💡 `firmware/build.sh` builds that image the first time it runs on an Intel Mac. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says.
+
 ## One build tree, three kinds of build
 
 ⚠️ The `dev`, `coverage` and `asan` presets share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage or sanitizer run, go back with:
@@ -139,6 +163,6 @@ The register maps in `regs/` are compiled by [systemrdl-compiler](https://github
 
 SCC needed a few accommodations to build inside this tree, each commented where it is made: two small patches (`cmake/patches/`), one to a configure-time probe and one so that clang-tidy can read the CCI headers it bundles, its install rules switched off, our SystemC declared as already found, and Boost.Filesystem linked explicitly.
 
-DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with ten patches, to it and to the core library under it, and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
+DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with thirteen patches, to it and to the core library under it, and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
 
 📮 A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [upstream.md](upstream.md) saying what is wrong, how to see it and what to propose. That page is the list to work from when the fixes are sent upstream.

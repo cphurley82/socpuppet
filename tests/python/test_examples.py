@@ -20,6 +20,7 @@ COULD_NOT_RUN = 77
         "host_and_ssd_hello.py",
         "chiplet_host_hello.py",
         "full_bootchain.py",
+        "shell_from_python.py",
     ]
 )
 def example(request, pytestconfig):

@@ -13,7 +13,8 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 | CPU | RV64GC, with machine, supervisor and user mode. Starts at `0x8000_0000`, in machine mode, which is where Zephyr stays. ⚠️ No PMP | |
 | RAM | `0x8000_0000`, 64 MB | |
 | Interrupt controller ([IMSIC](models/imsic.md)) | `0x2400_0000` for machine mode's messages, `0x2800_0000` for the supervisor's. 63 identities | `riscv,imsic`, Zephyr's own, and socpuppet's module for `irq_enable` |
-| UART, the console | `0x1000_0000` | `ns16550` |
+| UART, the console | `0x1000_0000`. Its interrupt line is source 16 of the APLIC | `ns16550` |
+| Interrupt controller for wired devices ([APLIC](models/aplic.md)) | `0x100C_0000`. 31 sources, each sent on to the IMSIC as a message | `riscv,aplic`, Zephyr's own, and socpuppet's module for `irq_enable` |
 | Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
 
 💡 You do not have to copy this table anywhere. The board's devicetree is generated from the platform description, so Zephyr already knows all of it. `socpuppet address-map python/socpuppet/boards/host.py` prints the map straight from that description, and [the address map](address-map.md) has every board's.
@@ -57,6 +58,39 @@ Hello World! socpuppet_host/socpuppet_rv64
 ```
 
 Or, for a first look, `python -m socpuppet.boards.host build/zephyr/zephyr.elf` does the same.
+
+## Typing on the console
+
+🧵 Whoever holds the UART is the other end of its serial line. `uart.output` is the screen, and `uart.write` is the keyboard:
+
+```sh
+west build -b socpuppet_host samples/subsys/shell/shell_module -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+```python
+board = host()
+board.platform.build()
+board.platform.load_elf("build/zephyr/zephyr.elf")
+
+board.platform.run_until(lambda: "uart:~$ " in board.uart.output, timeout=sp.ms(200))
+board.uart.write("kernel version\n")
+board.platform.run_until(lambda: "Zephyr version" in board.uart.output, timeout=sp.ms(200))
+board.platform.run(sp.ms(1))        # let the line finish
+print(board.uart.output)
+```
+
+```text
+uart:~$ kernel version
+Zephyr version 4.4.2
+```
+
+`examples/shell_from_python.py` is that with a few more commands, and it counts the console's interrupts at the end.
+
+- 🧵 **Type before a run or between two.** What is typed waits in the UART until the firmware reads it, and arrives all at once: there is no baud rate. ⚠️ The UART loses none of it, but firmware may. Zephyr's shell reads into a buffer of 64 bytes and drops what does not fit, so type a line at a time.
+- 💡 **The shell is woken by the console's interrupt**, and Zephyr works that out for itself: the UART's node in the board's devicetree has an interrupt, so the shell asks to be interrupted and does not poll. With a UART that could not interrupt it would poll, and answer all the same.
+- 🎓 **The interrupt is a wire for an inch and a message from there.** The UART is on the IO die and the CPU on the compute die, and the link between them has nowhere for a wire to go. So the UART's line stops at the [APLIC](models/aplic.md) beside it, which writes the interrupt's identity across the link to the CPU's [IMSIC](models/imsic.md). Every interrupt on this board but the timer's arrives that way.
+- 💡 **`irq_enable` is all a driver calls.** Zephyr knows an interrupt by one number, and on this board a number from 16 to 31 is a source of the APLIC. socpuppet's module sets the source up when a driver enables it. Wire a device of your own to a free source in the platform description, and its node in the devicetree has the number.
 
 ## With a drive
 

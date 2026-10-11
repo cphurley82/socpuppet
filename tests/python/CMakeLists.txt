@@ -55,6 +55,13 @@ add_test(NAME example_chiplet_host_hello
 set_tests_properties(example_chiplet_host_hello
                      PROPERTIES SKIP_RETURN_CODE 77)
 
+add_test(NAME example_shell_from_python
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
+          ${SOCPUPPET_TEST_PYTHON} examples/shell_from_python.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(example_shell_from_python
+                     PROPERTIES SKIP_RETURN_CODE 77)
+
 add_test(NAME example_full_bootchain
   COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
           ${SOCPUPPET_TEST_PYTHON} examples/full_bootchain.py

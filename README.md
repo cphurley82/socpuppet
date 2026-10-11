@@ -115,6 +115,8 @@ And `examples/chiplet_host_hello.py` is the host starting up the way a chiplet d
 
 And `examples/full_bootchain.py` has no script left in it: every CPU is a CPU, running firmware. Three of them run three Zephyr images: the manager's firmware trains the link and lets the host go, the host's disk test finds its drive across the link, and the SSD's firmware is the drive. It prints the link coming up and then the three consoles as one story, each line with who said it and when.
 
+And in `examples/shell_from_python.py` the puppet answers back. The host runs Zephyr's shell, Python types commands at its console and reads what it says. The console's interrupt starts as a wire on one die and arrives as a message on the other, and the show counts how many crossed.
+
 ## Try it
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.

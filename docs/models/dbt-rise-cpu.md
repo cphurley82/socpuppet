@@ -19,10 +19,12 @@ platform.load_elf("zephyr.elf")
 platform.run(sp.ms(100))
 ```
 
-- **RV32IMAC or RV64IMAC**, chosen by `xlen`: the base integer instructions, multiply and divide, atomics and compressed instructions, with the control registers (`zicsr`) and `fence.i` (`zifencei`). Build firmware with `-march=rv64imac_zicsr_zifencei`, or `rv32imac...`.
-- **Machine mode**, with physical memory protection (PMP), which is what Zephyr uses on small cores.
-- **Starts at its reset vector.** `load_elf` checks that the image starts there and was built for the same word size.
-- **Three inputs.** `irq` is the machine external interrupt, for the interrupt controller. `timer_irq` is the machine timer interrupt. `reset` holds the core while it is high and restarts it from the reset vector when it drops.
+- **RV32IMAC or RV64IMAC**, chosen by `xlen`: the base integer instructions, multiply and divide, atomics and compressed instructions, with the control registers (`zicsr`) and `fence.i` (`zifencei`). Build firmware with `-march=rv64imac_zicsr_zifencei`, or `rv32imac...`. It has **machine mode**, with physical memory protection (PMP), which is what Zephyr uses on small cores.
+- **Or RV64GC with supervisor and user mode**: `sp.DbtRiseCpu(xlen=64, isa="gc", modes="msu", ...)`. 🎓 G is IMA with single and double floating point (F and D), and with C it is what an application processor has and what Linux needs. This is the host's core. ⚠️ It has no PMP. The two are the cores socpuppet offers, and any other combination is refused by name.
+- **Starts at its reset vector**, in machine mode. `load_elf` checks that the image starts there and was built for the same word size.
+- **Four inputs.** `irq` is the machine external interrupt, for the interrupt controller. `timer_irq` is the machine timer interrupt. `supervisor_irq` is the supervisor external interrupt, which a core with supervisor mode takes when machine mode has handed it down (`mideleg`). `reset` holds the core while it is high and restarts it from the reset vector when it drops.
+- **Reads the timer's count as its own `time` register**, if its `time` is connected to a [machine timer](machine-timer.md)'s. Left unconnected, `time` reads as zero.
+- **Reaches an IMSIC's registers through its own**, if its `csr` is connected to an [IMSIC](imsic.md)'s. 🎓 An IMSIC's registers are not on the bus. Firmware selects one by writing its number to the CPU's `miselect` register and then finds it at `mireg`, and claims an interrupt at `mtopei`. Unconnected, those three are illegal instructions, as on a core with no IMSIC, and the devicetree's `cpu` node lists `smcsrind` only when it is connected.
 - **Takes one clock period per instruction.** The clock is 10 MHz, so an instruction is 100 ns of simulated time, whatever it is.
 - **Can be debugged.** With `gdb_port=1234` the CPU listens for GDB on that port and waits for it to attach before the first instruction. Each CPU of a simulation can have a port of its own, and a debugger each. See [boot-your-firmware.md](../boot-your-firmware.md).
 - **Sleeps properly.** In `wfi` (wait for interrupt) the core does nothing at all until an interrupt arrives, so an idle system costs almost nothing to simulate.
@@ -37,7 +39,8 @@ platform.run(sp.ms(100))
 
 ## What it leaves out
 
-- **Floating point**, supervisor and user modes, and virtual memory. None of the firmware here needs them. DBT-RISE has cores with all of them, and socpuppet does not offer them yet.
+- **The other cores DBT-RISE has.** It has many more combinations of extensions and modes than the two here.
+- **A supervisor's way to an IMSIC.** The supervisor's interrupt file is there and its line is connected, but `siselect`, `sireg` and `stopei` are not answered yet. Linux needs them, and nothing before it does.
 - **Cycle accuracy.** Every instruction takes the same time. Use it to find out what firmware does, not how many nanoseconds it takes.
 - **Faster backends.** DBT-RISE can also translate blocks of RISC-V code into host code. socpuppet uses its interpreter.
 - **Running on while another CPU is stopped.** SystemC runs every model in turn on one thread, and a CPU stopped in its debugger keeps it. So every other CPU stops with it, and simulated time stands still. That makes debugging several CPUs repeatable, and it is not how a board on a bench behaves. It also means a debugger is answered about memory only while its own CPU is the one stopped: with the host at a breakpoint, the SSD's GDB cannot read the SSD's memory until the host continues.
@@ -58,4 +61,4 @@ Why this one, and what else was tried, is in the [ISS spike report](../iss-spike
 
 ### What we changed
 
-socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`) and to tests of its own (`tests/cpp/platform/cpu_test.cpp`). They found three bugs, each patched: a reset raised a second time stopped the simulation, a withdrawn DMI grant was ignored, and an interrupt handler was entered over and over. Four more patches are for compilers and build systems. Three are for the debugger: a GDB server for each core where there was one for the process, each core's own `sysc` command on its own server, and a `continue` that is answered once. All ten are written up in [upstream.md](../upstream.md).
+socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`) and to tests of its own (`tests/cpp/platform/cpu_test.cpp`). They found five bugs, each patched: a reset raised a second time stopped the simulation, a withdrawn DMI grant was ignored, an interrupt handler was entered over and over, a core with supervisor mode could never take a supervisor's interrupt, and the same core dropped the instruction an interrupt arrived at. Four more patches are for compilers and build systems. Four are for the debugger: a GDB server for each core where there was one for the process, each core's own `sysc` command on its own server, a `continue` that is answered once, and a debugger that hangs up rudely no longer ending the process. All thirteen are written up in [upstream.md](../upstream.md).

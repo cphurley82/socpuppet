@@ -25,6 +25,7 @@ flowchart LR
         link["🎭 pass-through link"]
         iobus["router"]
         uart["UART"]
+        aplic["APLIC"]
         timer["timer"]
         rc["PCIe root complex"]
         ep["PCIe endpoint"]
@@ -35,6 +36,9 @@ flowchart LR
         bus --> timer
         bus --> link --> iobus
         iobus --> uart
+        iobus --> aplic
+        uart -. "irq" .-> aplic
+        aplic -. "interrupt messages,<br/>back across the link" .-> imsic
         iobus --> rc --> ep --> nvme
     end
     desc -- "build()" --> plat
@@ -46,7 +50,7 @@ flowchart LR
     class link,nvme standin
 ```
 
-This is the host board, with the drive that M2's tests plug into its IO die. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
+This is the host board, with the drive that M2's tests plug into its IO die. The dotted lines are how the console interrupts: a wire as far as the APLIC beside it, and from there a message to the CPU's IMSIC, which is how the drive's interrupts go too. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
 
