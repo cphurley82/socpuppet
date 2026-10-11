@@ -19,7 +19,13 @@ from __future__ import annotations
 import dataclasses
 import inspect
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import (
+    Callable,
+    Collection,
+    Iterable,
+    Iterator,
+    Mapping,
+)
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -236,11 +242,15 @@ class Component(ABC):
         """
         return None
 
-    def cpu_node(self, label: str) -> tuple[str, ...] | None:
+    def cpu_node(
+        self, label: str, connected: Collection[str]
+    ) -> tuple[str, ...] | None:
         """This component's `cpu` node in a devicetree, labelled `label`.
 
         The node's lines, from `label: cpu@0 {` to its closing `};`. None
-        for anything that is not a CPU.
+        for anything that is not a CPU. `connected` is which of the
+        component's ports have something connected to them, since what a
+        CPU is can depend on what it is given.
         """
         return None
 
@@ -364,6 +374,8 @@ class DbtRiseCpu(Component):
         initiator("time", required=False),
         # The supervisor external interrupt, for a core with that mode.
         wire_in("supervisor_irq"),
+        # Where its registers that are really an IMSIC's are reached.
+        initiator("csr", required=False),
     )
     is_bus_master = True
 
@@ -397,16 +409,30 @@ class DbtRiseCpu(Component):
         }
 
     @override
-    def cpu_node(self, label: str) -> tuple[str, ...]:
+    def cpu_node(
+        self, label: str, connected: Collection[str]
+    ) -> tuple[str, ...]:
         # Every RISC-V CPU has an interrupt controller inside it: the
         # handful of interrupt inputs the core itself has. Devices refer to
         # it, not to the CPU, which is why it has a label of its own.
         #
         # A devicetree lists the extensions one by one, and G is short for
         # IMAFD with the two Z extensions, which every core here has.
+        # Smcsrind is one more, which a CPU has when it has an IMSIC to
+        # reach: the window onto registers another block keeps (`miselect`
+        # and `mireg`). ⚠️ The extension's name promises more than the CPU
+        # has: the same window for supervisor mode, and five more of them.
+        # It is here because it is what Zephyr's IMSIC driver looks for.
+        # Smaia, which names all the Advanced Interrupt Architecture gives
+        # a hart, is left out until the CPU has more of it.
         extensions = ", ".join(
             f'"{each}"'
-            for each in (*self.isa.replace("g", "imafd"), "zicsr", "zifencei")
+            for each in (
+                *self.isa.replace("g", "imafd"),
+                "zicsr",
+                "zifencei",
+                *(("smcsrind",) if "csr" in connected else ()),
+            )
         )
         return (
             f"{label}: cpu@0 {{",
@@ -552,8 +578,9 @@ class Imsic(Component):
     `machine` and `supervisor` onto the CPU's bus, where the devices that
     send can reach them. Connect `irq` to the CPU's `irq` and
     `supervisor_irq` to its `supervisor_irq`. The files' registers are not
-    on the bus at all: firmware reaches them through the CPU, which is
-    what `csr` is for.
+    on the bus at all. Firmware reaches them through the CPU, and a file
+    cannot interrupt until firmware has switched it on there, so connect
+    the CPU's `csr` to `csr`.
 
     `identities` is the highest identity each file has: 63, or 127, and so
     on up to 2047. The first is 1.
@@ -563,7 +590,7 @@ class Imsic(Component):
     port_specs = (
         target("machine"),
         target("supervisor", required=False),
-        target("csr", required=False),
+        target("csr"),
         wire_out("irq"),
         wire_out("supervisor_irq", required=False),
     )

@@ -38,6 +38,20 @@ class DbtRiseCpu : public sc_core::sc_module {
   // Where the `time` register is read from: a machine timer's `time`
   // socket. Left unconnected, `time` reads zero.
   tlm_utils::simple_initiator_socket<DbtRiseCpu> time{"time"};
+  // Where the registers that are really its IMSIC's are reached: the ones
+  // firmware uses to say which interrupts it wants and to claim them
+  // (`miselect`, `mireg` and `mtopei`). It goes to an IMSIC's `csr`, and
+  // carries what models/hart_registers.h says. Left unconnected, the CPU
+  // has no such registers, and an instruction that names one is an illegal
+  // one.
+  //
+  // What it leaves out: supervisor mode's three (`siselect`, `sireg` and
+  // `stopei`), which an operating system under a monitor uses and which
+  // an IMSIC here already answers for, the other registers the Advanced
+  // Interrupt Architecture gives a hart (`mtopi` and the rest), and a
+  // 32-bit hart, whose registers of half the width an interrupt file here
+  // has not got.
+  tlm_utils::simple_initiator_socket<DbtRiseCpu> csr{"csr"};
   // While high, the CPU does nothing. When it goes low, the CPU starts from
   // its reset vector. Left unconnected, it is tied low.
   sc_core::sc_in<bool> reset{"reset"};

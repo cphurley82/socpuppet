@@ -86,6 +86,10 @@ constexpr Word Csrs(Word csr, Word rs1) {
 constexpr Word Csrr(Word rd, Word csr) {
   return (csr << 20) | (2 << 12) | (rd << 7) | 0x73;
 }
+// rd = a control and status register, which is then written with rs1.
+constexpr Word Csrrw(Word rd, Word csr, Word rs1) {
+  return (csr << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x73;
+}
 // Clear, in a control and status register, the bits that are set in rs1.
 constexpr Word Csrc(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (3 << 12) | 0x73;
@@ -127,8 +131,23 @@ inline constexpr Word kTime = 0xC01;
 // The upper half of the count, which a 32-bit hart has in a register of
 // its own.
 inline constexpr Word kTimeh = 0xC81;
-// The register that holds the address a trap jumps to.
+// The register that holds the address a trap jumps to, and the one that
+// says why the trap was taken: 2 for an illegal instruction.
 inline constexpr Word kMtvec = 0x305;
+inline constexpr Word kMcause = 0x342;
+inline constexpr Word kIllegalInstruction = 2;
+// A hart's way to the registers of its IMSIC's interrupt file for machine
+// mode: firmware writes the number of one to `miselect` and then finds it
+// at `mireg`. And the register a handler claims through: a read is the
+// identity to see to, in bits 26 to 16, and a write takes it.
+inline constexpr Word kMiselect = 0x350;
+inline constexpr Word kMireg = 0x351;
+inline constexpr Word kMtopei = 0x35C;
+// Two of the file's registers, by the numbers they are selected with:
+// whether the file may interrupt at all, and which identities firmware
+// wants to hear of, a bit each.
+inline constexpr Word kEidelivery = 0x70;
+inline constexpr Word kEie0 = 0xC0;
 // The register that holds the address `mret` returns to.
 inline constexpr Word kMepc = 0x341;
 // The register that says which interrupts are handed down to supervisor
@@ -420,6 +439,89 @@ inline Program InSupervisorMode(Word interrupt, const Program& body,
       kT2, kT2, static_cast<std::int32_t>((handler_at - handler_auipc_at) * 4));
   program[body_addi_at] =
       Addi(kT2, kT2, static_cast<std::int32_t>((body_at - body_auipc_at) * 4));
+  return program;
+}
+
+// A program that takes interrupts that arrive as messages at an IMSIC, the
+// way an operating system does. Through its hart's registers it switches
+// the IMSIC's delivery on and has it listen for `identity` (below 64),
+// enables the external interrupt and sleeps. Its handler claims the
+// interrupt, which is all that quiets an IMSIC, and returns. It touches no
+// memory, so that nothing but the claim gives the rest of the platform a
+// turn before it returns. Each time it is woken, the program stores two
+// words as its result: the identity the handler last claimed, and a word
+// after it how many times the handler has run.
+inline Program HandleMessagesThroughAnImsic(Word identity) {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  Program program;
+  // t3 = where the result goes, and t4 = how many times the handler ran.
+  program.push_back(Auipc(kT3, 0));
+  program.push_back(Li(kT4, 0));
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Li(kT1, kEidelivery));
+  program.push_back(Csrw(kMiselect, kT1));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Csrw(kMireg, kT1));
+  program.push_back(Li(kT1, kEie0));
+  program.push_back(Csrw(kMiselect, kT1));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, identity));
+  program.push_back(Csrs(kMireg, kT1));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(Li(kT0, 0));
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  // Sleep, and each time something wakes the hart, store what the handler
+  // left in t0 and t4. An interrupt is taken after the instruction it
+  // arrives at, which is the one after the sleep, so that one does nothing.
+  program.push_back(kWfi);
+  program.push_back(Addi(kZero, kZero, 0));
+  program.push_back(Sw(kT0, kT3, kResultOffset));
+  program.push_back(Sw(kT4, kT3, kResultOffset + 4));
+  program.push_back(Jal(kZero, -16));
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Csrrw(kT0, kMtopei, kZero));
+  program.push_back(Srli(kT0, kT0, 16));
+  program.push_back(Addi(kT4, kT4, 1));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
+  return program;
+}
+
+// A program that writes to the control and status register numbered `csr`
+// and stores, as its result, why it trapped if it did: the trap's cause
+// with one added, so that a result of zero is no trap at all. Then it
+// sleeps.
+inline Program StoreWhyWritingACsrTrapped(Word csr) {
+  constexpr Word kT3 = 28;
+  Program program;
+  program.push_back(Auipc(kT3, 0));
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Csrw(csr, kZero));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Csrr(kT1, kMcause));
+  program.push_back(Addi(kT1, kT1, 1));
+  program.push_back(Sw(kT1, kT3, kResultOffset));
+  AppendSleepForEver(program);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
   return program;
 }
 

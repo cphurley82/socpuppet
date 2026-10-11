@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <ostream>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -622,6 +623,143 @@ TEST(WhenA32BitCpusTimeIsConnectedToItsTimer,
   with_timer.RunUntilAsleep();
 
   EXPECT_EQ(with_timer.ResultWord(), 0x5AU);
+}
+
+// A platform with a CPU, a RAM for its program, an IMSIC with the page for
+// machine mode's messages on the CPU's bus, and a device on that bus that
+// sends one message. The CPU is the core the host has, which is the one
+// that gets an IMSIC.
+struct CpuPlatformWithAnImsic {
+  static constexpr std::uint64_t kRamBase = 0x8000'0000;
+  static constexpr std::uint64_t kMessagePage = 0x2400'0000;
+  // The identity the device interrupts with.
+  static constexpr std::uint32_t kIdentity = 5;
+
+  // `quantum` is how far ahead of the simulation's clock the CPU may run.
+  explicit CpuPlatformWithAnImsic(
+      const sc_core::sc_time& quantum = sc_core::SC_ZERO_TIME)
+      : platform{WithADeviceThatSendsAMessage()} {
+    platform.SetQuantum(quantum);
+    socpuppet::Config cpu = TheCoreWithSupervisorMode();
+    cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
+    platform.Add("cpu", "dbt_rise_cpu", cpu);
+    platform.Add("bus", "router",
+                 {{"inputs", 2},
+                  {"outputs", 2},
+                  {"out0.base", kRamBase},
+                  {"out0.size", 0x1000},
+                  {"out1.base", kMessagePage},
+                  {"out1.size", 0x1000}});
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    platform.Add("imsic", "imsic", {{"identities", 63}});
+    platform.Add("device", "device");
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("device.socket", "bus.in1");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("bus.out1", "imsic.machine");
+    platform.Bind("imsic.irq", "cpu.irq");
+    platform.Bind("cpu.csr", "imsic.csr");
+    platform.Elaborate();
+  }
+
+  void Load(const riscv::Program& program) {
+    platform.DebugWrite("cpu.socket", kRamBase,
+                        std::as_bytes(std::span{program}));
+  }
+
+  // The word a program left `offset` bytes into its result.
+  std::uint32_t ResultWord(std::uint64_t offset = 0) {
+    return ResultWordOf(platform, kRamBase, offset);
+  }
+
+  static socpuppet::Registry WithADeviceThatSendsAMessage() {
+    socpuppet::Registry registry = socpuppet::BuiltinComponents();
+    AddBusDriver(registry, "device", [](BusDriver& device) {
+      // Long enough for a program to have set itself up and gone to
+      // sleep: two dozen instructions, at 100 ns each.
+      device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+      device.Write32(kMessagePage, kIdentity);
+    });
+    return registry;
+  }
+
+  socpuppet::Platform platform;
+};
+
+TEST(WhenAMessageArrivesAtTheImsicOfACpuThatListensForItsIdentity,
+     TheHandlerRunsOnceAndClaimsThatIdentity) {
+  CpuPlatformWithAnImsic with_imsic;
+  with_imsic.Load(
+      riscv::HandleMessagesThroughAnImsic(CpuPlatformWithAnImsic::kIdentity));
+
+  // Two dozen instructions before the message and seven after it.
+  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  const std::uint32_t claimed = with_imsic.ResultWord(0);
+  const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
+  EXPECT_EQ(claimed, CpuPlatformWithAnImsic::kIdentity);
+  EXPECT_EQ(times_the_handler_ran, 1U);
+}
+
+// A claim is what quiets an IMSIC, and the CPU hears that its line fell
+// from a process that runs when the CPU's own lets it. With a quantum the
+// CPU's does not, for a thousand instructions at a time, and the program's
+// handler makes no bus access that would.
+TEST(WhenAMessageArrivesAtTheImsicOfACpuThatRunsAheadOfTheClock,
+     TheHandlerStillRunsOnce) {
+  CpuPlatformWithAnImsic with_imsic{sc_core::sc_time{100, sc_core::SC_US}};
+  with_imsic.Load(
+      riscv::HandleMessagesThroughAnImsic(CpuPlatformWithAnImsic::kIdentity));
+
+  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
+  EXPECT_EQ(times_the_handler_ran, 1U);
+}
+
+// A hart's three registers that are really its IMSIC's.
+struct ImsicRegisterOfAHart {
+  riscv::Word number;
+  const char* name;
+};
+
+void PrintTo(const ImsicRegisterOfAHart& csr, std::ostream* out) {
+  *out << csr.name;
+}
+
+// The registers are the IMSIC's, so a hart with none has not got them.
+class WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer
+    : public ::testing::TestWithParam<ImsicRegisterOfAHart> {};
+
+TEST_P(WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
+       ItTakesAnIllegalInstructionTrap) {
+  CpuPlatform without_imsic{/*xlen=*/64, TheCoreWithSupervisorMode()};
+  without_imsic.Load(riscv::StoreWhyWritingACsrTrapped(GetParam().number));
+
+  without_imsic.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  EXPECT_EQ(without_imsic.ResultWord(), riscv::kIllegalInstruction + 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TheThree, WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
+    ::testing::Values(ImsicRegisterOfAHart{riscv::kMiselect, "miselect"},
+                      ImsicRegisterOfAHart{riscv::kMireg, "mireg"},
+                      ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"}),
+    [](const auto& info) { return std::string{info.param.name}; });
+
+// An IMSIC's files can only be switched on through its hart.
+TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
+     ElaborationIsRefusedAndTheErrorNamesThePort) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  platform.Add("cpu", "dbt_rise_cpu", {{"xlen", 64}, {"reset_vector", 0}});
+  platform.Add("imsic", "imsic", {{"identities", 63}});
+  platform.Bind("cpu.socket", "imsic.machine");
+  platform.Bind("imsic.irq", "cpu.irq");
+
+  EXPECT_THAT([&] { platform.Elaborate(); },
+              ThrowsMessage<std::runtime_error>(HasSubstr("imsic.csr")));
 }
 
 TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {

@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <format>
 #include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 
@@ -13,6 +15,7 @@
 #include <tlm_utils/simple_target_socket.h>
 
 #include "socpuppet/core/little_endian.h"
+#include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
 #include "socpuppet/platform/transport.h"
 
@@ -115,13 +118,52 @@ struct DbtRiseCpu::Core {
   // read costs nothing until the firmware asks.
   void AnswerTimeFromTheTimer() {
     // DBT-RISE wants an lvalue, and copies it.
-    sysc::sc2core_if::rd_csr_f read_time = [this](unsigned csr,
+    sysc::sc2core_if::rd_csr_f read_time = [this](unsigned number,
                                                   std::uint64_t& value) {
-      value = csr == kTimehCsr ? Time() >> 32 : Time();
+      value = number == kTimehCsr ? Time() >> 32 : Time();
       return iss::Ok;
     };
     complex_.register_csr_rd(kTimeCsr, read_time);
     if (xlen_ == 32) complex_.register_csr_rd(kTimehCsr, read_time);
+  }
+
+  // Has the core's registers that are really its IMSIC's answered through
+  // `csr`: the window onto an interrupt file's registers and the register
+  // a claim is made through are sent on, and the register that selects
+  // what the window looks at is kept here. With no IMSIC there, each is
+  // answered with "no such register", which DBT-RISE makes an
+  // illegal-instruction trap, as it does for a register nobody answers
+  // for.
+  void AnswerTheImsicsRegistersThroughCsr() {
+    // DBT-RISE wants lvalues, and copies them.
+    sysc::sc2core_if::rd_csr_f read_selection = [this](unsigned,
+                                                       std::uint64_t& value) {
+      if (!HasAnImsic()) return iss::Err;
+      value = selected_;
+      return iss::Ok;
+    };
+    sysc::sc2core_if::wr_csr_f write_selection = [this](unsigned,
+                                                        std::uint64_t value) {
+      if (!HasAnImsic()) return iss::Err;
+      // Twelve bits of it, which is what an access can carry.
+      selected_ = static_cast<std::uint32_t>(value) & kWidestSelection;
+      return iss::Ok;
+    };
+    complex_.register_csr_rd(kMiselect, read_selection);
+    complex_.register_csr_wr(kMiselect, write_selection);
+
+    sysc::sc2core_if::rd_csr_f read = [this](unsigned number,
+                                             std::uint64_t& value) {
+      return ReadThroughCsr(number, value);
+    };
+    sysc::sc2core_if::wr_csr_f write = [this](unsigned number,
+                                              std::uint64_t value) {
+      return WriteThroughCsr(number, value);
+    };
+    for (const unsigned number : {kMireg, kMtopei}) {
+      complex_.register_csr_rd(number, read);
+      complex_.register_csr_wr(number, write);
+    }
   }
 
   void InvalidateDirectMemory(sc_dt::uint64 start, sc_dt::uint64 end) {
@@ -164,8 +206,69 @@ struct DbtRiseCpu::Core {
                : 0;
   }
 
+  iss::status ReadThroughCsr(unsigned number, std::uint64_t& value) {
+    std::array<std::uint8_t, kHartRegisterBytes> bytes{};
+    if (!ThroughCsr(tlm::TLM_READ_COMMAND, number, bytes)) return iss::Err;
+    value = LoadLittleEndian<std::uint64_t>(bytes);
+    return iss::Ok;
+  }
+
+  iss::status WriteThroughCsr(unsigned number, std::uint64_t value) {
+    auto bytes = LittleEndianBytes(value);
+    if (!ThroughCsr(tlm::TLM_WRITE_COMMAND, number, bytes)) return iss::Err;
+    LetALineThatChangedBeHeard();
+    return iss::Ok;
+  }
+
+  // A write to the IMSIC may have changed its interrupt line: a claim is
+  // what quiets it. The core hears of a line from a method, which cannot
+  // run until this thread yields, and with a quantum that is a thousand
+  // instructions off. Without a yield here the core would return from its
+  // handler still seeing the interrupt pending, and take it again and
+  // again. DBT-RISE is patched to do the same after a bus access
+  // (interrupt-after-access), with the same count: one delta cycle runs
+  // the IMSIC's method and updates the signal, a second runs the core's.
+  static void LetALineThatChangedBeHeard() {
+    for (int delta = 0;
+         delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
+      sc_core::wait(sc_core::SC_ZERO_TIME);
+    }
+  }
+
+  // An access to `mireg` or `mtopei`, sent to whatever is at the other end
+  // of `csr`. Returns whether that had such a register.
+  bool ThroughCsr(tlm::tlm_command command, unsigned number,
+                  std::span<std::uint8_t> data) {
+    const std::uint64_t address =
+        HartRegisterAddress(number, number == kMireg ? selected_ : 0);
+    // The delay means nothing to whoever answers. It is the core's lead all
+    // the same, so that a trace of the socket has the access where the bus
+    // accesses around it are.
+    sc_core::sc_time lead = complex_.Lead();
+    return Transport(cpu_.csr, command, address, data, lead) ==
+           tlm::TLM_OK_RESPONSE;
+  }
+
+  // Whether there is an IMSIC at the other end of `csr`, found by reading
+  // the register a claim is made through, which claims nothing. It cannot
+  // be known sooner or more simply: a `csr` nobody connected is bound to
+  // something that answers every access with an error, so that the socket
+  // is bound says nothing, and an IMSIC cannot be asked anything before
+  // the simulation runs. So it is asked once, the first time firmware
+  // selects a register of one.
+  bool HasAnImsic() {
+    if (!has_an_imsic_) {
+      std::array<std::uint8_t, kHartRegisterBytes> unused{};
+      has_an_imsic_ = ThroughCsr(tlm::TLM_READ_COMMAND, kMtopei, unused);
+    }
+    return *has_an_imsic_;
+  }
+
   DbtRiseCpu& cpu_;
   std::uint64_t xlen_;
+  // What firmware last wrote to `miselect`.
+  std::uint32_t selected_ = 0;
+  std::optional<bool> has_an_imsic_;
   // One instruction takes one clock period of simulated time. 10 MHz is
   // the clock Zephyr's boards for QEMU are told they have.
   sc_core::sc_signal<sc_core::sc_time> clock_period_{
@@ -194,7 +297,10 @@ void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
   core_->InvalidateDirectMemory(start, end);
 }
 
-void DbtRiseCpu::end_of_elaboration() { core_->AnswerTimeFromTheTimer(); }
+void DbtRiseCpu::end_of_elaboration() {
+  core_->AnswerTimeFromTheTimer();
+  core_->AnswerTheImsicsRegistersThroughCsr();
+}
 
 void DbtRiseCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(reset, tied_low_);

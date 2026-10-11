@@ -40,7 +40,9 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     ]
     # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
     # nothing to choose devices for.
-    cpu = master.component.cpu_node(label(master.path))
+    cpu = master.component.cpu_node(
+        label(master.path), _connected_ports(connections, master)
+    )
     if cpu is not None:
         lines += ["", *_chosen(_roles(nodes)), "", *_cpus(cpu)]
     for each in _devices(
@@ -86,6 +88,18 @@ def overlay(
         lines += [*([""] if len(lines) > 1 else []), *block]
     lines += ["};", ""]
     return "\n".join(lines)
+
+
+def _connected_ports(
+    connections: Collection[Connection], placed: Placed
+) -> set[str]:
+    """The names of a component's ports that have something connected."""
+    return {
+        port.name
+        for each in connections
+        for port in (each.source, each.sink)
+        if port.placed is placed
+    }
 
 
 def _nodes(

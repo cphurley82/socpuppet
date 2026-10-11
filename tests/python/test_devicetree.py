@@ -356,7 +356,8 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
 
 
 def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
-    """A CPU with an IMSIC that has both its lines to the CPU.
+    """A CPU with an IMSIC: both the IMSIC's lines go to the CPU, and the
+    CPU's `csr` to the IMSIC.
 
     The page for the supervisor's messages is on the CPU's bus. The one
     for machine mode's is too, unless `machine_page_at` is None.
@@ -375,6 +376,7 @@ def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
     bus.map(imsic.supervisor, base=0x2800_0000)
     platform.connect(imsic.irq, cpu.irq)
     platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
+    platform.connect(cpu.csr, imsic.csr)
     return platform
 
 
@@ -402,6 +404,15 @@ class TestWhenAnImsicsPageForMachineModeIsOnTheCpusBus:
             """
         )
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
+class TestWhenACpusCsrGoesToAnImsic:
+    def test_its_node_lists_the_extension_that_reaches_one(self):
+        # Smcsrind is the window onto another block's registers (`miselect`
+        # and `mireg`), and what Zephyr switches its IMSIC driver on for.
+        platform = cpu_with_an_imsic()
+
+        assert '"zifencei", "smcsrind";' in platform.devicetree()
 
 
 class TestWhenOnlyAnImsicsPageForTheSupervisorIsOnTheCpusBus:

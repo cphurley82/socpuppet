@@ -106,8 +106,8 @@ Registry BuiltinComponents() {
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0});
     std::vector<Port> ports{
         InitiatorPort("socket", module->socket),
-        InitiatorPort("time", module->time,
-                      /*required=*/false),
+        InitiatorPort("time", module->time, /*required=*/false),
+        InitiatorPort("csr", module->csr, /*required=*/false),
         WireSinkPort("irq", module->irq),
         WireSinkPort("timer_irq", module->timer_irq),
         WireSinkPort("supervisor_irq", module->supervisor_irq),
@@ -151,16 +151,14 @@ Registry BuiltinComponents() {
     auto module = std::make_unique<Imsic>(
         name, static_cast<std::uint32_t>(
                   parameters.Required("identities", kInterruptIdentities)));
-    // Only the page for machine mode's messages and its line have to go
-    // somewhere. A platform whose firmware never leaves machine mode has
-    // no use for the supervisor's. Mind that a file can only be switched
-    // on through `csr`: with nothing connected there, no message ever
-    // interrupts.
+    // The supervisor's page and line are for a platform whose firmware
+    // leaves machine mode, and one that never does has no use for them.
+    // `csr` has to go to a hart: a file can only be switched on through
+    // it, so with nothing there no message would ever interrupt.
     std::vector<Port> ports{
         TargetPort("machine", module->machine),
         TargetPort("supervisor", module->supervisor, /*required=*/false),
-        TargetPort("csr", module->csr, /*required=*/false),
-        WireSourcePort("irq", module->irq),
+        TargetPort("csr", module->csr), WireSourcePort("irq", module->irq),
         WireSourcePort("supervisor_irq", module->supervisor_irq,
                        /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
