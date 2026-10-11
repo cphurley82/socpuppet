@@ -36,6 +36,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import NamedTuple
 
+from socpuppet.boards.boot import ROM_BASE, Boot
 from socpuppet.components import (
     DbtRiseCpu,
     MachineTimer,
@@ -102,6 +103,10 @@ class CpuKit(NamedTuple):
     #: The watchdog, which has the system controller reset the CPU when
     #: firmware stops feeding it.
     wdt: Placed
+    #: The boot ROM the CPU starts in, if the kit was described with one.
+    #: Its program is loaded through the CPU:
+    #: `platform.load_elf("rom_rv32.elf", via=cpu.socket)`.
+    rom: Placed | None = None
 
 
 def add_cpu_kit(
@@ -113,6 +118,7 @@ def add_cpu_kit(
     gdb_port: int = 0,
     die: int = COMPUTE_DIE,
     boot_address: int = BOOT_FLASH_BASE,
+    boot: Boot | None = None,
 ) -> tuple[Placed, CpuKit]:
     """Put a 32-bit CPU on `bus`, with what a CPU needs around it.
 
@@ -127,11 +133,22 @@ def add_cpu_kit(
     out, they are the first die and the start of the flash, which is right
     for a board with one of each.
 
+    `boot` is what the CPU starts in. 🎭 With none it starts in its SRAM,
+    where `platform.load_elf` has put its firmware. With
+    `socpuppet.boards.boot.from_rom` it starts in a boot ROM, which finds
+    the firmware in the board's flash.
+
     💡 A CPU has one interrupt input for all of its devices, and asks the
     controller which of them it was.
     """
+    rom = None if boot is None else boot(place, bus)
     cpu = place.add(
-        "cpu", DbtRiseCpu(xlen=32, reset_vector=SRAM_BASE, gdb_port=gdb_port)
+        "cpu",
+        DbtRiseCpu(
+            xlen=32,
+            reset_vector=SRAM_BASE if rom is None else ROM_BASE,
+            gdb_port=gdb_port,
+        ),
     )
     sram = place.add("sram", Memory(size=SRAM_SIZE))
     uart = place.add("uart", Ns16550())
@@ -159,7 +176,13 @@ def add_cpu_kit(
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
     return cpu, CpuKit(
-        sram=sram, uart=uart, timer=timer, plic=plic, syscon=syscon, wdt=wdt
+        sram=sram,
+        uart=uart,
+        timer=timer,
+        plic=plic,
+        syscon=syscon,
+        wdt=wdt,
+        rom=rom,
     )
 
 

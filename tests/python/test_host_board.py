@@ -6,6 +6,7 @@ import re
 import pytest
 
 from devicetree_compiler import dtc_errors, needs_dtc
+from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
     BOOT_FLASH_CONTROLLER_BASE,
@@ -21,6 +22,7 @@ from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
     IO_SIZE,
+    RAM_BASE,
     UART_SOURCE,
     WATCHDOG_SOURCE,
     drive_overlay,
@@ -135,6 +137,46 @@ class TestTheHostsWatchdog:
         assert (
             InterruptEntry("compute.aplic", WATCHDOG_SOURCE, "compute.wdt.irq")
             in board.platform.interrupt_map()
+        )
+
+
+class TestTheHostAsItIsByDefault:
+    def test_starts_its_cpu_in_its_ram_and_has_no_rom(self):
+        # 🎭 Python is the boot ROM's stand-in: it puts the image in RAM.
+        board = host()
+
+        assert board.cpu.component.reset_vector == RAM_BASE
+        assert board.rom is None
+
+
+class TestTheHostDescribedToBootFromARom:
+    def test_starts_its_cpu_in_a_rom_on_its_own_die(self):
+        board = host(boot=from_rom)
+        [rom] = [
+            each
+            for each in board.platform.address_map()
+            if each.component == board.rom.path
+        ]
+
+        assert board.cpu.component.reset_vector == rom.address
+        assert rom.group == "compute"
+
+    def test_has_its_rom_where_a_boot_rom_is_linked_to_run(self):
+        board = host(boot=from_rom)
+        [rom] = [
+            each
+            for each in board.platform.address_map()
+            if each.component == board.rom.path
+        ]
+
+        assert rom.address == ROM_BASE
+
+    def test_shows_its_firmware_the_devicetree_the_host_always_has(self):
+        # Which is why one image boots either way: firmware is not told
+        # of the ROM that started it.
+        assert (
+            host(boot=from_rom).platform.devicetree()
+            == host().platform.devicetree()
         )
 
 

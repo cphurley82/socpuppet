@@ -9,6 +9,7 @@ import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import ssd as boards_ssd
+from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, SRAM_BASE, SYSCON_BASE
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
 from socpuppet.boards.scripted_host import ECAM_BASE, idle_host
@@ -25,6 +26,32 @@ from zephyr_module import ZEPHYR_MODULE, clock_rate
 
 SSD_BOARD = ZEPHYR_MODULE / "boards/socpuppet/socpuppet_ssd"
 SSD_DESCRIPTION = pathlib.Path(boards_ssd.__file__)
+
+
+class TestAnSsdDescribedToBootFromARom:
+    def test_starts_its_cpu_in_a_rom_of_its_own_where_a_boot_rom_is_linked_to_run(
+        self,
+    ):
+        board = ssd(host=idle_host, boot=from_rom)
+        [rom] = [
+            each
+            for each in board.platform.address_map(via=board.ssd.cpu.socket)
+            if each.component == board.ssd.cpu_kit.rom.path
+        ]
+
+        assert board.ssd.cpu.component.reset_vector == rom.address
+        assert rom.address == ROM_BASE
+        assert rom.group == "ssd"
+
+    def test_with_a_script_for_its_firmware_is_refused_since_it_has_no_cpu(
+        self,
+    ):
+        with pytest.raises(ValueError, match=r"`boot`.*no CPU"):
+            ssd(
+                host=idle_host,
+                firmware=stand_in_firmware().script,
+                boot=from_rom,
+            )
 
 
 class TestTheZephyrBoardForTheSsd:

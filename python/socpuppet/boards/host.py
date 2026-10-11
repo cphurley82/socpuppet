@@ -81,6 +81,7 @@ import textwrap
 from typing import Any, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
+from socpuppet.boards.boot import ROM_BASE, Boot
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
     BOOT_FLASH_CONTROLLER_BASE,
@@ -255,6 +256,10 @@ class Host[Drive: PcieDrive](NamedTuple):
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
     manager: Manager | None = None
+    #: The boot ROM the CPU starts in, if the host was described with one.
+    #: Its program is loaded through the CPU:
+    #: `platform.load_elf("rom_rv64.elf", via=board.cpu.socket)`.
+    rom: Placed | None = None
 
 
 # The two declarations are for a type checker. They say that the host
@@ -264,6 +269,7 @@ class Host[Drive: PcieDrive](NamedTuple):
 def host(
     *,
     gdb_port: int = 0,
+    boot: Boot | None = None,
     drive_blocks: int | None = None,
     manager: AddManager | None = None,
     trace: bool = False,
@@ -272,6 +278,7 @@ def host(
 def host[Drive: PcieDrive](
     *,
     gdb_port: int = 0,
+    boot: Boot | None = None,
     drive_blocks: int | None = None,
     drive: AddDrive[Drive],
     manager: AddManager | None = None,
@@ -280,6 +287,7 @@ def host[Drive: PcieDrive](
 def host(
     *,
     gdb_port: int = 0,
+    boot: Boot | None = None,
     drive_blocks: int | None = None,
     drive: AddDrive[Any] | None = None,
     manager: AddManager | None = None,
@@ -288,8 +296,16 @@ def host(
     """Describe the host. Nothing is simulated until `platform.build()`.
 
     With a `gdb_port`, the CPU listens for a debugger on that TCP port and
-    waits for one to attach before it executes anything. With
-    `drive_blocks`, the host has an SSD of that many 512-byte blocks on a
+    waits for one to attach before it executes anything.
+
+    `boot` is what the CPU starts in. 🎭 With none it starts in its RAM,
+    where `platform.load_elf` has put its firmware, which is the quick way
+    to try an image. With `boot=from_rom`, from `socpuppet.boards.boot`,
+    it starts in a boot ROM, which finds the firmware in the IO die's
+    flash, copies it to RAM and jumps to it, as silicon does. That module
+    says what is then loaded, and where.
+
+    With `drive_blocks`, the host has an SSD of that many 512-byte blocks on a
     PCIe link.
 
     `drive` is the function that describes that SSD. 🎭 With none it is
@@ -322,7 +338,9 @@ def host(
     platform = Platform()
     compute_group = platform.group("compute")
     io_group = platform.group("io")
-    compute = _compute_die(platform, compute_group, gdb_port=gdb_port)
+    compute = _compute_die(
+        platform, compute_group, gdb_port=gdb_port, boot=boot
+    )
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
     io = _io_die(platform, io_group)
@@ -377,6 +395,7 @@ def host(
             )
         ),
         manager=placed_manager,
+        rom=compute.rom,
     )
 
 
@@ -388,12 +407,15 @@ class _ComputeDie(NamedTuple):
     imsic: Placed
     syscon: Placed
     wdt: Placed
+    rom: Placed | None
 
 
 def _compute_die(
-    platform: Platform, place: Group, *, gdb_port: int
+    platform: Platform, place: Group, *, gdb_port: int, boot: Boot | None
 ) -> _ComputeDie:
     """Describe the die the CPU is on, up to its end of the link."""
+    bus = place.add("bus", Router())
+    rom = None if boot is None else boot(place, bus)
     # RV64GC with supervisor and user mode: the core an application
     # processor has, and the one Linux needs. Zephyr runs on it in machine
     # mode and leaves floating point and the other two modes alone. This
@@ -402,13 +424,12 @@ def _compute_die(
         "cpu",
         DbtRiseCpu(
             xlen=64,
-            reset_vector=RAM_BASE,
+            reset_vector=RAM_BASE if rom is None else ROM_BASE,
             gdb_port=gdb_port,
             isa="gc",
             modes="msu",
         ),
     )
-    bus = place.add("bus", Router())
     ram = place.add("ram", Memory(size=RAM_SIZE))
     imsic = place.add("imsic", Imsic())
     timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
@@ -444,7 +465,7 @@ def _compute_die(
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
-    return _ComputeDie(cpu, bus, imsic, syscon, wdt)
+    return _ComputeDie(cpu, bus, imsic, syscon, wdt, rom)
 
 
 class _IoDie(NamedTuple):

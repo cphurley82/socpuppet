@@ -19,12 +19,17 @@
 #                     application in firmware/flash_test says how to build
 #                     it for the board, and adds nothing to it
 #
+# And one thing that is no Zephyr at all: the boot ROM in firmware/rom,
+# which is what a CPU that boots from a flash runs first. It is built with
+# the same compiler, once for each kind of CPU, as rom_rv32 and rom_rv64.
+#
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
-# For each it leaves, in the output directory:
+# For each Zephyr image it leaves, in the output directory:
 #   <name>_<board>.elf          the image, with symbols
 #   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
 #   <name>_<board>.opcodes.txt  how often each instruction appears in it
+# and for the boot ROM, rom_rv32 and rom_rv64, each an .elf and a .bin.
 #
 # Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself,
 # and a Python with the packages Zephyr's build needs) stays in the output
@@ -133,6 +138,32 @@ if [[ ! -d ${toolchain} ]]; then
     rm "${compiler}"
   )
 fi
+
+# The boot ROM: a program with no operating system and no C library under
+# it, linked to run from where a socpuppet CPU has its ROM. It needs the
+# compiler and nothing of Zephyr's, so it is built first. It includes the
+# register maps the Zephyr module carries, for the system controller and
+# for the header of the image it loads.
+#
+# ⚠️ The linker script is given to gcc itself with -T. Handed to the linker
+# with -Wl,-T it is ignored without a word: the SDK's gcc is set up for
+# picolibc, whose own script it uses unless it sees a -T of its own.
+rom=${repository}/firmware/rom
+for each in "rv64 rv64imac_zicsr lp64" "rv32 rv32imac_zicsr ilp32"; do
+  read -r kind march mabi <<< "${each}"
+  echo "Building the boot ROM for ${kind}"
+  image=${out}/rom_${kind}
+  "${toolchain}/bin/riscv64-zephyr-elf-gcc" \
+    -march="${march}" -mabi="${mabi}" -mcmodel=medany \
+    -Os -g -Wall -Wextra -Werror -ffreestanding -nostdlib -nostartfiles \
+    -I "${module}/include" -include "${rom}/board_${kind}.h" \
+    -T "${rom}/rom.ld" \
+    "${rom}/start.S" "${rom}/main.c" -o "${image}.elf"
+  "${toolchain}/bin/riscv64-zephyr-elf-objcopy" -O binary "${image}.elf" "${image}.bin"
+  "${toolchain}/bin/riscv64-zephyr-elf-readelf" --file-header "${image}.elf" |
+    grep --extended-regexp "Class|Entry point"
+  echo "  $(wc -c < "${image}.bin" | tr -d ' ') bytes in ${image}.bin"
+done
 
 # Zephyr itself, at the release socpuppet is pinned to. Nothing built here
 # needs any of Zephyr's external modules, so only the one repository is

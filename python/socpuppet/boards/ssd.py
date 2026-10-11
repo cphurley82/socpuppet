@@ -40,6 +40,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet.boards.boot import Boot
 from socpuppet.boards.cpu_kit import (
     CpuKit,
     add_boot_flash,
@@ -145,6 +146,7 @@ def add_ssd_function(
     group: Group | None = None,
     firmware: Script | None = None,
     gdb_port: int = 0,
+    boot: Boot | None = None,
 ) -> Ssd:
     """Describe an SSD with no PCIe around it: an NVMe function.
 
@@ -165,6 +167,10 @@ def add_ssd_function(
     for one to attach before it executes anything. 🎭 Or `firmware` is a
     script that stands in for the firmware, in the CPU's place (see
     `stand_in_firmware`).
+
+    `boot` is what that CPU starts in: its SRAM with none, or with
+    `socpuppet.boards.boot.from_rom` a boot ROM that loads the firmware
+    from the SSD's own flash.
     """
     if blocks < DRIVE_BLOCKS_PER_NAND_BLOCK or (
         blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
@@ -174,6 +180,12 @@ def add_ssd_function(
             f"A NAND block is {DRIVE_BLOCKS_PER_NAND_BLOCK} of the drive's "
             f"512-byte blocks, and {blocks} blocks were asked for. Ask for "
             f"{DRIVE_BLOCKS_PER_NAND_BLOCK}, or a multiple of it."
+        )
+    if firmware is not None and boot is not None:
+        raise ValueError(
+            "A `boot` was asked for, which is what a CPU starts in. With a "
+            "script standing in for its firmware the SSD has no CPU. Leave "
+            "out `firmware` for an SSD with a CPU, or leave out `boot`."
         )
     if firmware is not None and gdb_port:
         raise ValueError(
@@ -214,6 +226,7 @@ def add_ssd_function(
                 FLASH_SOURCE: flash.irq,
             },
             gdb_port=gdb_port,
+            boot=boot,
         )
     else:
         cpu = _add_scripted_cpu(platform, place, frontend, firmware)
@@ -270,6 +283,7 @@ def add_ssd(
     group: Group | None = None,
     firmware: Script | None = None,
     gdb_port: int = 0,
+    boot: Boot | None = None,
 ) -> Ssd:
     """Describe an SSD on the PCIe link of `root_complex`.
 
@@ -284,6 +298,7 @@ def add_ssd(
         group=group,
         firmware=firmware,
         gdb_port=gdb_port,
+        boot=boot,
     )
     place = platform if group is None else group
     endpoint = place.add(
@@ -325,6 +340,7 @@ def ssd(
     blocks: int = 4096,
     firmware: Script | None = None,
     gdb_port: int = 0,
+    boot: Boot | None = None,
     trace: bool = False,
 ) -> SsdBoard:
     """Describe the SSD, with a 🎭 scripted host on its PCIe link.
@@ -351,6 +367,7 @@ def ssd(
         group=platform.group("ssd"),
         firmware=firmware,
         gdb_port=gdb_port,
+        boot=boot,
     )
     return SsdBoard(platform, drive, scripted_host)
 
