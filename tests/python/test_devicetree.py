@@ -221,11 +221,16 @@ class TestWhenTheDevicetreeCommandIsGivenAFileThatIsNotThere:
         assert "Traceback" not in result.stderr
 
 
-def cpu_with_its_peripherals(*, xlen=64):
-    """A CPU with a RAM, an interrupt controller, a timer and a UART."""
+def cpu_with_its_peripherals(*, xlen=64, **described):
+    """A CPU with a RAM, an interrupt controller, a timer and a UART.
+
+    `described` is anything more to describe the CPU with than its word
+    size.
+    """
     platform = sp.Platform()
     cpu = platform.add(
-        "cpu", sp.DbtRiseCpu(xlen=xlen, reset_vector=0x8000_0000)
+        "cpu",
+        sp.DbtRiseCpu(xlen=xlen, reset_vector=0x8000_0000, **described),
     )
     bus = platform.add("bus", sp.Router())
     ram = platform.add("ram", sp.Memory(size=0x10_0000))
@@ -330,6 +335,14 @@ class TestWhenAPlatformHasACpuWithItsPeripherals:
         platform, _, _ = cpu_with_its_peripherals(xlen=32)
 
         assert 'riscv,isa-base = "rv32i";' in platform.devicetree()
+
+    def test_a_cpu_with_floating_point_lists_f_and_d_among_its_extensions(self):
+        platform, _, _ = cpu_with_its_peripherals(isa="gc", modes="msu")
+
+        assert (
+            'riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", '
+            '"zifencei";' in platform.devicetree()
+        )
 
 
 class TestWhenADevicesInterruptGoesToAPlicSource:

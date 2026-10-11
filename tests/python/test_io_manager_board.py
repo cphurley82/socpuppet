@@ -74,13 +74,10 @@ class TestWhenTheBoardIsBuilt:
 
 class TestWhenTheManagerIsARealCpu:
     def test_it_is_a_32_bit_core_that_starts_in_the_sram(self):
-        board = io_manager(compute=nothing)
+        cpu = io_manager(compute=nothing).manager.cpu.component
 
-        assert board.manager.cpu.component.parameters == {
-            "xlen": 32,
-            "reset_vector": SRAM_BASE,
-            "gdb_port": 0,
-        }
+        assert cpu.parameters["xlen"] == 32
+        assert cpu.parameters["reset_vector"] == SRAM_BASE
 
     def test_it_has_the_kit_every_socpuppet_cpu_has(self):
         board = io_manager(compute=nothing)

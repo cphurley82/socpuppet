@@ -114,13 +114,14 @@ def wire_in(name: str) -> PortSpec:
     return PortSpec(name, "wire", "sink", required=False)
 
 
-def not_a_parameter(default: Any) -> Any:
+def not_a_parameter(default: Any, *, kw_only: bool = True) -> Any:
     """A field the simulator is not configured with, and its default.
 
     For what a component is handed that is not a number, such as a script.
+    It is given by keyword, as a parameter is, unless `kw_only` is false.
     """
     return dataclasses.field(
-        default=default, kw_only=False, metadata={"parameter": False}
+        default=default, kw_only=kw_only, metadata={"parameter": False}
     )
 
 
@@ -315,6 +316,14 @@ _CPU_PORTS = (
 )
 
 
+#: The cores a `DbtRiseCpu` can be: what `isa` and `modes` may be together,
+#: and at which `xlen`.
+_CORES: Mapping[tuple[str, str], tuple[int, ...]] = {
+    ("imac", "m"): (32, 64),
+    ("gc", "msu"): (64,),
+}
+
+
 class DbtRiseCpu(Component):
     """A RISC-V CPU that runs real firmware.
 
@@ -329,9 +338,19 @@ class DbtRiseCpu(Component):
     simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
     debugger stops the whole simulation, the other CPUs with it.
 
-    It is an RV32IMAC or RV64IMAC core in machine mode only: no floating
-    point, and no supervisor or user mode. Build firmware for it with
-    `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
+    As it comes it is an RV32IMAC or RV64IMAC core in machine mode only: no
+    floating point, and no supervisor or user mode. Build firmware for it
+    with `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
+
+    `isa` is which instruction sets it has, by RISC-V's letters for them:
+    the part of `RV64IMAC` after the number. `modes` is which privilege
+    modes. `isa="gc", modes="msu"` is RV64GC, with single and double
+    precision floating point, and with supervisor and user mode below
+    machine mode. That pair, at 64 bits only, and the default pair,
+    `isa="imac", modes="m"`, at either width, are the cores there are. Any
+    other combination is refused. Firmware built for RV64IMAC runs on the
+    RV64GC core unchanged. ⚠️ Unless it uses physical memory protection
+    (PMP), which the default core has and the RV64GC one has not.
     """
 
     implementation = "dbt_rise_cpu"
@@ -341,19 +360,51 @@ class DbtRiseCpu(Component):
     xlen: int
     reset_vector: int
     gdb_port: int = 0
+    isa: Literal["imac", "gc"] = not_a_parameter(default="imac")
+    modes: Literal["m", "msu"] = not_a_parameter(default="m")
+
+    def __post_init__(self) -> None:
+        if self.xlen not in _CORES.get((self.isa, self.modes), ()):
+            raise ValueError(
+                f'There is no CPU with xlen={self.xlen}, isa="{self.isa}", '
+                f'modes="{self.modes}". The ones there are: '
+                + ", and ".join(
+                    f'isa="{isa}", modes="{modes}" with xlen='
+                    + " or ".join(str(xlen) for xlen in xlens)
+                    for (isa, modes), xlens in _CORES.items()
+                )
+                + "."
+            )
+
+    @property
+    @override
+    def parameters(self) -> dict[str, int]:
+        # The simulator takes numbers, so the two strings go as two flags.
+        return {
+            **super().parameters,
+            "floating_point": int(self.isa == "gc"),
+            "supervisor_mode": int(self.modes == "msu"),
+        }
 
     @override
     def cpu_node(self, label: str) -> tuple[str, ...]:
         # Every RISC-V CPU has an interrupt controller inside it: the
         # handful of interrupt inputs the core itself has. Devices refer to
         # it, not to the CPU, which is why it has a label of its own.
+        #
+        # A devicetree lists the extensions one by one, and G is short for
+        # IMAFD with the two Z extensions, which every core here has.
+        extensions = ", ".join(
+            f'"{each}"'
+            for each in (*self.isa.replace("g", "imafd"), "zicsr", "zifencei")
+        )
         return (
             f"{label}: cpu@0 {{",
             '\tdevice_type = "cpu";',
             '\tcompatible = "riscv";',
             "\treg = <0>;",
             f'\triscv,isa-base = "rv{self.xlen}i";',
-            '\triscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei";',
+            f"\triscv,isa-extensions = {extensions};",
             "",
             f"\t{label}_intc: interrupt-controller {{",
             '\t\tcompatible = "riscv,cpu-intc";',
@@ -1048,7 +1099,7 @@ class ScriptedBusMaster(Component):
     port_specs = _CPU_PORTS
     is_bus_master = True
 
-    script: Script | None = not_a_parameter(None)
+    script: Script | None = not_a_parameter(None, kw_only=False)
 
     def __post_init__(self) -> None:
         script = self.script
