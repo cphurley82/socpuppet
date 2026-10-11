@@ -27,6 +27,7 @@
 #include "socpuppet/models/pcie_endpoint.h"
 #include "socpuppet/models/pcie_root_complex.h"
 #include "socpuppet/models/plic.h"
+#include "socpuppet/models/rom.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
@@ -36,6 +37,7 @@ namespace socpuppet {
 
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
+static_assert(MemorySlot<Rom>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(LinkEndpointSlot<D2dLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
@@ -292,6 +294,11 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{TargetPort("socket", module->socket),
                             WireSourcePort("irq", module->irq)};
     AddNumberedPorts(ports, "source", 1, module->sources, WireSinkPort);
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("rom", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<Rom>(name, parameters.Required("size"));
+    std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("scripted_bus_master", [](const char* name, Parameters&) {

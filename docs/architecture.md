@@ -282,6 +282,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [NVMe frontend](models/nvme-frontend.md)
 - [PCIe endpoint](models/pcie-endpoint.md)
 - [PCIe root complex](models/pcie-root-complex.md)
+- [ROM](models/rom.md)
 - [Router](models/router.md)
 - [UART (16550)](models/ns16550.md)
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)

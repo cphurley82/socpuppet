@@ -44,6 +44,7 @@ add_executable(kernel_tests
   contracts/message_controller_test.cpp
   contracts/nand_test.cpp
   contracts/nvme_test.cpp
+  contracts/rom_test.cpp
   contracts/uart_test.cpp
   platform/aplic_test.cpp
   platform/composition_test.cpp

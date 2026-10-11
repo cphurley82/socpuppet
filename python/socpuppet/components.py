@@ -243,6 +243,15 @@ class Component(ABC):
         """
         return
 
+    def why_a_poke_was_refused(self, path: str) -> str | None:
+        """What to tell someone whose `poke` this component turned away.
+
+        `path` is where this component is placed. None for a component
+        that takes any write that fits inside it, which is most: its
+        refusal is then that the write did not fit.
+        """
+        return None
+
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
         """The devicetree node for this component, where a bus master finds it.
 
@@ -725,6 +734,38 @@ class Memory(Component):
             ('device_type = "memory";',),
             on_bus=False,
             chosen=("zephyr,sram",),
+        )
+
+
+class Rom(Component):
+    """A read-only memory of `size` bytes: what a CPU boots from.
+
+    A CPU starts at a fixed address, its reset vector, and on a real chip
+    that address is in a ROM, written when the chip is made, whose program
+    finds the firmware and starts it. Map `socket` at the reset vector and
+    load the ROM's own program with `platform.load_elf`, before the first
+    run. A write from the bus always fails. ⚠️ `poke` and `load_elf` work
+    only until the bus master's first access. After it they are refused,
+    as a debugger cannot patch a ROM on a board.
+
+    It has no devicetree node. Firmware is not told of the ROM that
+    started it.
+    """
+
+    implementation = "rom"
+    port_specs = (target("socket"),)
+
+    size: int
+
+    def __post_init__(self) -> None:
+        self.mapped_size = self.size
+
+    @override
+    def why_a_poke_was_refused(self, path: str) -> str:
+        return (
+            f'"{path}" is a ROM, and its bus master has already come to '
+            "it. A ROM is loaded before the first run and not after: a "
+            "debugger cannot patch one on a board either."
         )
 
 

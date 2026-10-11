@@ -285,10 +285,25 @@ class Platform:
 
         This is how a program gets into memory before the CPU runs it. Like
         a peek, a poke takes no simulated time. `via` works as in `peek32`.
+
+        Raises LookupError if nothing there takes the whole write, and
+        PermissionError if what is there will not be written to, as a ROM
+        will not once its bus master has read it.
         """
         view = self._view(via)
         if not self.native().debug_write(view.path, address, data):
-            raise self._nothing_at(address, len(data), view)
+            raise self._refused(address, view) or self._nothing_at(
+                address, len(data), view
+            )
+
+    def _refused(self, address: int, view: Port) -> PermissionError | None:
+        """Why what is at `address` would not be written to, if it says."""
+        for entry in self.address_map(view):
+            if entry.address <= address < entry.address + (entry.size or 0):
+                component = self._placed[entry.component].component
+                reason = component.why_a_poke_was_refused(entry.component)
+                return None if reason is None else PermissionError(reason)
+        return None
 
     def load_elf(
         self, path: str | os.PathLike[str], via: Port | None = None

@@ -55,6 +55,7 @@ EXAMPLES = [
     ),
     sp.PcieRootComplex(),
     sp.Plic(),
+    sp.Rom(size=0x100),
     router_with_one_output(),
     router_with_two_inputs(),
     sp.ScriptedBusMaster(),

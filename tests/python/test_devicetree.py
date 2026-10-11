@@ -346,6 +346,19 @@ class TestWhenAPlatformHasACpuWithItsPeripherals:
         )
 
 
+class TestWhenACpuHasARomBelowItsRam:
+    def test_the_devicetree_is_the_one_without_the_rom(self):
+        # Firmware is not told of the ROM it was started by: QEMU's `virt`
+        # machine has no node for its own either. And `zephyr,sram` goes to
+        # the lowest memory, which a ROM at a reset vector would be.
+        platform, bus, _ = cpu_with_its_peripherals()
+        without = platform.devicetree()
+        rom = platform.add("rom", sp.Rom(size=0xF000))
+        bus.map(rom.socket, base=0x1000)
+
+        assert platform.devicetree() == without
+
+
 class TestWhenADevicesInterruptGoesToAPlicSource:
     def test_its_node_names_the_plic_and_the_source(self):
         platform, bus, plic = cpu_with_its_peripherals()

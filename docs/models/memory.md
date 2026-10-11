@@ -18,7 +18,7 @@ A block of RAM: DRAM on a host, SRAM in a controller. It is a flat array of byte
 - **Timing.** Accesses take no simulated time. Real DRAM has latency, refresh and training; none of that is modeled.
 - **Physical detail.** No ECC, no banks or ranks, no power states.
 - **Initial contents.** It starts as all zeros. Real memory starts as garbage, and firmware that depends on zeros would get away with it here.
-- **Read-only memory.** There is no ROM variant yet.
+- **Read-only memory.** A memory that refuses writes is [`sp.Rom`](rom.md).
 
 ## Under the hood
 

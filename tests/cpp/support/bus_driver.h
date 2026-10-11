@@ -23,10 +23,13 @@ class DirectMemory {
   DirectMemory(const tlm::tlm_dmi& dmi, std::uint64_t address)
       : pointer_(dmi.get_dmi_ptr() + (address - dmi.get_start_address())),
         bytes_to_end_(dmi.get_end_address() - address + 1),
-        read_write_allowed_(dmi.is_read_write_allowed()) {}
+        read_allowed_(dmi.is_read_allowed()),
+        write_allowed_(dmi.is_write_allowed()) {}
 
   bool Granted() const { return pointer_ != nullptr; }
-  bool ReadWriteAllowed() const { return read_write_allowed_; }
+  bool ReadAllowed() const { return read_allowed_; }
+  bool WriteAllowed() const { return write_allowed_; }
+  bool ReadWriteAllowed() const { return read_allowed_ && write_allowed_; }
   // How many bytes the grant covers, from the requested address onwards.
   std::uint64_t BytesToEnd() const { return bytes_to_end_; }
 
@@ -37,7 +40,8 @@ class DirectMemory {
  private:
   const std::uint8_t* pointer_ = nullptr;
   std::uint64_t bytes_to_end_ = 0;
-  bool read_write_allowed_ = false;
+  bool read_allowed_ = false;
+  bool write_allowed_ = false;
 };
 
 // A test's hands on the bus: runs the given body inside a simulation thread,

@@ -18,6 +18,7 @@ from socpuppet.components import (
     PcieEndpoint,
     PcieRootComplex,
     Plic,
+    Rom,
     Router,
     ScriptedBusMaster,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "PcieRootComplex",
     "Platform",
     "Plic",
+    "Rom",
     "Router",
     "ScriptedBusMaster",
     "SsdFirmware",
