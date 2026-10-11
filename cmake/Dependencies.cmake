@@ -268,12 +268,17 @@ FetchContent_Declare(vpv_peripherals
   # it was enabled never interrupted; one whose line was still high when
   # its handler completed never interrupted again; and one whose line
   # pulsed while its handler was running was not heard.
+  # uart-interrupt-from-state: the UART's interrupt was folded together
+  # from a queue of events and came out wrong for a driver that enables an
+  # interrupt whose cause is already there, as every driver does to start
+  # transmitting.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-last-source.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-look-again.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-level-sources.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-edge-while-claimed.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-uart-interrupt-from-state.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

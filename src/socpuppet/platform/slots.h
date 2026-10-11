@@ -114,12 +114,16 @@ concept MessageControllerSlot =
 // Whoever is at the other end of its serial line is the test or the script
 // that holds it: what the UART transmitted is kept as text, and bytes are
 // handed to it to receive, which show in its registers a delta cycle on.
+// It has one interrupt output, for an interrupt controller's input.
 template <typename T>
 concept UartSlot = std::constructible_from<T, sc_core::sc_module_name> &&
                    requires(T uart, std::string_view received) {
                      {
                        uart.socket
                      } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+                     {
+                       uart.irq
+                     } -> std::convertible_to<sc_core::sc_out<bool>&>;
                      { uart.Output() } -> std::convertible_to<std::string>;
                      uart.Write(received);
                    };

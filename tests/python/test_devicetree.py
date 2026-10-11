@@ -354,6 +354,12 @@ class TestWhenADevicesInterruptGoesToAPlicSource:
 
         assert "interrupts-extended = <&plic 5 1>;" in platform.devicetree()
 
+    def test_a_uart_is_such_a_device(self):
+        platform, _, plic = cpu_with_its_peripherals()
+        platform.connect(platform.port("uart.irq"), plic.source10)
+
+        assert "interrupts-extended = <&plic 10 1>;" in platform.devicetree()
+
 
 def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
     """A CPU with an IMSIC: both the IMSIC's lines go to the CPU, and the

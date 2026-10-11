@@ -30,15 +30,16 @@ namespace socpuppet {
 // byte out of a socket as a one-byte write, and asks the same socket for
 // each received byte. The far end of that socket is here. It is told
 // through a second socket whether a byte is waiting to be asked for, which
-// is all that socket carries. Its reset is never asserted, and its
-// interrupt goes to a signal that nobody reads yet.
+// is all that socket carries. Its reset is never asserted. Its interrupt
+// output is the adapter's own: the model drives it from one process, so
+// there is nothing to do but pass it on.
 struct Ns16550::Model {
-  Model() {
+  explicit Model(Ns16550& owner) {
     uart_.sock_i_->bind(serial_line_);
     serial_line_.register_b_transport(this, &Model::OnTheSerialLine);
     byte_waiting_.bind(*uart_.sock_t_ext_);
     uart_.rst_in_.bind(reset_tied_low_);
-    uart_.bindIRQ(0, &interrupt_unread_);
+    (*uart_.irq_out_)[0].bind(owner.irq);
   }
 
   const std::string& Output() const { return output_; }
@@ -114,7 +115,6 @@ struct Ns16550::Model {
   // What has come in on the serial line and has not been read yet.
   std::deque<char> received_;
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
-  sc_core::sc_signal<bool> interrupt_unread_{"interrupt_unread"};
   vpvper::pulpino::UART<Model> uart_{
       "uart",
       // base address, size in bytes, interrupts, registers
@@ -126,7 +126,7 @@ struct Ns16550::Model {
 };
 
 Ns16550::Ns16550(const sc_core::sc_module_name& name)
-    : sc_module(name), model_(std::make_unique<Model>()) {
+    : sc_module(name), model_(std::make_unique<Model>(*this)) {
   socket.register_b_transport(this, &Ns16550::b_transport);
   socket.register_transport_dbg(this, &Ns16550::transport_dbg);
   SC_METHOD(ShowWhatCameIn);
@@ -141,9 +141,8 @@ const std::string& Ns16550::Output() const { return model_->Output(); }
 void Ns16550::Write(std::string_view received) {
   model_->Receive(received);
   // A delta cycle on, and in a process of the UART's own. Telling the
-  // borrowed model may wake its interrupt process at once, which a model
-  // may only do from inside the simulation, and whoever calls this may be
-  // a script, between two runs of it.
+  // borrowed model is a transaction, which belongs inside the simulation,
+  // and whoever calls this may be a script, between two runs of it.
   came_in_.notify(sc_core::SC_ZERO_TIME);
 }
 

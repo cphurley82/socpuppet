@@ -13,7 +13,8 @@
 #include "tests/cpp/support/bus_driver.h"
 
 // What every 16550-style UART must do, whatever is behind it. This is the
-// part of the 16550 that a driver's polled console relies on.
+// part of the 16550 that a driver's console relies on, polled or driven by
+// the interrupt.
 //
 // To hold an implementation to this contract:
 //   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, UartContract,
@@ -30,6 +31,12 @@ class UartContract : public ::testing::Test {
   // that sets the baud rate, low byte first.
   static constexpr std::uint64_t kDivisorLow = 0;
   static constexpr std::uint64_t kDivisorHigh = 1;
+  // Which interrupts are enabled, a bit each. With the divisor latch
+  // closed, as it is unless a test opens it.
+  static constexpr std::uint64_t kInterruptEnable = 1;
+  // Which interrupt is pending, as a code: the one with the highest
+  // priority, if more than one is.
+  static constexpr std::uint64_t kInterruptIdentification = 2;
   static constexpr std::uint64_t kLineControl = 3;
   static constexpr std::uint64_t kModemControl = 4;
   static constexpr std::uint64_t kLineStatus = 5;
@@ -43,15 +50,40 @@ class UartContract : public ::testing::Test {
   // Line status: a received byte is waiting to be read.
   static constexpr std::uint8_t kDataReady = 0x01;
 
+  // Interrupt enable: a received byte is waiting, and the transmit
+  // register can take another byte.
+  static constexpr std::uint8_t kReceivedDataAvailable = 0x01;
+  static constexpr std::uint8_t kTransmitterEmpty = 0x02;
+  // Interrupt identification, its low three bits: none is pending, the
+  // transmit register is empty, and a received byte is waiting, which has
+  // the higher priority of those two.
+  static constexpr std::uint8_t kIdentificationBits = 0x07;
+  static constexpr std::uint8_t kNonePending = 0x01;
+  static constexpr std::uint8_t kTransmitterEmptyPending = 0x02;
+  static constexpr std::uint8_t kReceivedDataPending = 0x04;
+
   // Not a value any test expects, so that a read the UART leaves unanswered
   // shows.
   static constexpr std::uint8_t kUnanswered = 0xA5;
+
+  UartContract() { uart_.irq.bind(interrupt_); }
 
   // Runs `body` in a simulation thread wired to the UART, to completion.
   void OnTheBus(std::function<void(BusDriver&)> body) {
     BusDriver driver{"driver", std::move(body)};
     driver.socket.bind(uart_.socket);
     sc_core::sc_start();
+  }
+
+  // Which interrupt the UART says is pending.
+  static std::uint8_t PendingInterrupt(BusDriver& bus) {
+    return ReadRegister(bus, kInterruptIdentification) & kIdentificationBits;
+  }
+
+  // Whether the UART is interrupting, once what was just done has settled.
+  bool Interrupting(BusDriver& bus) {
+    Settle(bus);
+    return interrupt_.read();
   }
 
   // Writes one byte to the register at `offset`.
@@ -81,6 +113,9 @@ class UartContract : public ::testing::Test {
   }
 
   UartType uart_{"uart"};
+  // A wire takes one driver, so a UART drives its line from one process
+  // of its own, whether a byte came in or a register was written.
+  sc_core::sc_signal<bool> interrupt_{"interrupt"};
 };
 
 TYPED_TEST_SUITE_P(UartContract);
@@ -233,6 +268,236 @@ TYPED_TEST_P(UartContract, BytesThatComeInWhileOthersWaitAreReadAfterThem) {
   EXPECT_EQ(second, 'K');
 }
 
+// A driver enables an interrupt by reading the register, setting one bit
+// and writing it back, so that it leaves the others as they were.
+TYPED_TEST_P(UartContract, TheInterruptEnableRegisterReadsBackWhatWasWritten) {
+  std::uint8_t enabled = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable | this->kTransmitterEmpty);
+    enabled = this->ReadRegister(bus, this->kInterruptEnable);
+  });
+
+  EXPECT_EQ(enabled, this->kReceivedDataAvailable | this->kTransmitterEmpty);
+}
+
+// Only reading the byte ends it. Asking which interrupt is pending does
+// not, as it does for the transmitter's.
+TYPED_TEST_P(
+    UartContract,
+    WithTheReceiveInterruptEnabledAByteThatComesInInterruptsUntilItIsRead) {
+  bool before = true;
+  std::uint8_t pending = 0;
+  bool with_the_byte_waiting = false;
+  bool once_read = true;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable);
+    before = this->Interrupting(bus);
+    this->uart_.Write("A");
+    this->Settle(bus);
+    pending = this->PendingInterrupt(bus);
+    with_the_byte_waiting = this->Interrupting(bus);
+    this->ReadRegister(bus, this->kReceiveBuffer);
+    once_read = this->Interrupting(bus);
+  });
+
+  EXPECT_FALSE(before);
+  EXPECT_EQ(pending, this->kReceivedDataPending);
+  EXPECT_TRUE(with_the_byte_waiting);
+  EXPECT_FALSE(once_read);
+}
+
+// A driver enables its interrupts after whoever is at the other end may
+// have started typing.
+TYPED_TEST_P(UartContract,
+             EnablingTheReceiveInterruptWithAByteAlreadyWaitingInterrupts) {
+  bool interrupting = false;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->uart_.Write("A");
+    this->Settle(bus);
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable);
+    interrupting = this->Interrupting(bus);
+  });
+
+  EXPECT_TRUE(interrupting);
+}
+
+TYPED_TEST_P(UartContract,
+             WithTwoBytesWaitingReadingOneLeavesTheReceiveInterruptPending) {
+  bool interrupting = false;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable);
+    this->uart_.Write("OK");
+    this->Settle(bus);
+    this->ReadRegister(bus, this->kReceiveBuffer);
+    interrupting = this->Interrupting(bus);
+  });
+
+  EXPECT_TRUE(interrupting);
+}
+
+// A handler reads until there is nothing left, with nothing between the
+// reads to let the UART catch up.
+TYPED_TEST_P(UartContract,
+             ReadingTwoBytesOneStraightAfterTheOtherEndsTheInterrupt) {
+  bool interrupting = true;
+  std::uint8_t pending = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable);
+    this->uart_.Write("OK");
+    this->Settle(bus);
+    this->ReadRegister(bus, this->kReceiveBuffer);
+    this->ReadRegister(bus, this->kReceiveBuffer);
+    interrupting = this->Interrupting(bus);
+    pending = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_FALSE(interrupting);
+  EXPECT_EQ(pending, this->kNonePending);
+}
+
+// This is how a driver starts to transmit: it enables the interrupt and
+// waits to be told there is room, which there is at once.
+TYPED_TEST_P(UartContract,
+             EnablingTheTransmitInterruptWhileNothingIsBeingSentInterrupts) {
+  bool interrupting = false;
+  std::uint8_t pending = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable, this->kTransmitterEmpty);
+    interrupting = this->Interrupting(bus);
+    pending = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_TRUE(interrupting);
+  EXPECT_EQ(pending, this->kTransmitterEmptyPending);
+}
+
+// On the chip, being told once is the whole of it: the interrupt is for
+// the register becoming empty, and not for its being empty. It matters
+// here for what the line then does: it falls, and can rise again.
+TYPED_TEST_P(UartContract,
+             ReadingWhichInterruptIsPendingEndsTheTransmitInterrupt) {
+  bool before = false;
+  std::uint8_t said = 0;
+  bool after = true;
+  std::uint8_t said_then = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable, this->kTransmitterEmpty);
+    before = this->Interrupting(bus);
+    said = this->PendingInterrupt(bus);
+    after = this->Interrupting(bus);
+    said_then = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_TRUE(before);
+  EXPECT_EQ(said, this->kTransmitterEmptyPending);
+  EXPECT_FALSE(after);
+  EXPECT_EQ(said_then, this->kNonePending);
+}
+
+// A driver enables the receive interrupt by writing the register back
+// with one more bit set, and the transmit interrupt's bit may be among
+// those it leaves as they were.
+TYPED_TEST_P(UartContract,
+             RewritingTheEnableRegisterDoesNotRaiseTheTransmitInterruptAgain) {
+  bool interrupting = true;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable, this->kTransmitterEmpty);
+    this->Settle(bus);
+    this->PendingInterrupt(bus);
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kTransmitterEmpty | this->kReceivedDataAvailable);
+    interrupting = this->Interrupting(bus);
+  });
+
+  EXPECT_FALSE(interrupting);
+}
+
+// A byte sent is gone at once here, so there is room again at once.
+TYPED_TEST_P(UartContract,
+             WithTheTransmitInterruptEnabledWritingAByteInterruptsAgain) {
+  bool interrupting = false;
+  std::uint8_t pending = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable, this->kTransmitterEmpty);
+    this->Settle(bus);
+    this->PendingInterrupt(bus);
+    this->WriteRegister(bus, this->kTransmitHolding, 'O');
+    interrupting = this->Interrupting(bus);
+    pending = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_TRUE(interrupting);
+  EXPECT_EQ(pending, this->kTransmitterEmptyPending);
+}
+
+// A driver looks at one code and does one thing, so the UART says the one
+// with the higher priority, and the other is still there afterwards.
+TYPED_TEST_P(UartContract,
+             WithBothPendingAReceivedByteIsSaidFirstAndTheTransmitterAfterIt) {
+  std::uint8_t first = 0;
+  std::uint8_t once_the_byte_is_read = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable,
+                        this->kReceivedDataAvailable | this->kTransmitterEmpty);
+    this->uart_.Write("A");
+    this->Settle(bus);
+    first = this->PendingInterrupt(bus);
+    this->ReadRegister(bus, this->kReceiveBuffer);
+    once_the_byte_is_read = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_EQ(first, this->kReceivedDataPending);
+  EXPECT_EQ(once_the_byte_is_read, this->kTransmitterEmptyPending);
+}
+
+// A driver with nothing more to send disables the interrupt.
+TYPED_TEST_P(UartContract,
+             DisablingTheTransmitInterruptWhileItIsPendingEndsIt) {
+  bool before = false;
+  bool after = true;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->WriteRegister(bus, this->kInterruptEnable, this->kTransmitterEmpty);
+    before = this->Interrupting(bus);
+    this->WriteRegister(bus, this->kInterruptEnable, 0);
+    after = this->Interrupting(bus);
+  });
+
+  EXPECT_TRUE(before);
+  EXPECT_FALSE(after);
+}
+
+// A console that is polled enables nothing.
+TYPED_TEST_P(UartContract, WithNoInterruptEnabledTheLineStaysLow) {
+  bool interrupting = true;
+  std::uint8_t pending = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    this->uart_.Write("A");
+    this->WriteRegister(bus, this->kTransmitHolding, 'O');
+    interrupting = this->Interrupting(bus);
+    pending = this->PendingInterrupt(bus);
+  });
+
+  EXPECT_FALSE(interrupting);
+  EXPECT_EQ(pending, this->kNonePending);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     UartContract, BytesWrittenToTheTransmitRegisterBecomeTheOutput,
     AfterAByteIsWrittenTheLineStatusShowsTheTransmitterReady,
@@ -243,6 +508,18 @@ REGISTER_TYPED_TEST_SUITE_P(
     WithNothingReceivedTheLineStatusShowsNoDataReady,
     AByteThatComesInIsReadFromTheReceiveRegisterAndThenThereIsNone,
     BytesThatComeInAreReadInTheOrderTheyCameWithDataReadyUntilTheLast,
-    BytesThatComeInWhileOthersWaitAreReadAfterThem);
+    BytesThatComeInWhileOthersWaitAreReadAfterThem,
+    TheInterruptEnableRegisterReadsBackWhatWasWritten,
+    WithTheReceiveInterruptEnabledAByteThatComesInInterruptsUntilItIsRead,
+    EnablingTheReceiveInterruptWithAByteAlreadyWaitingInterrupts,
+    WithTwoBytesWaitingReadingOneLeavesTheReceiveInterruptPending,
+    ReadingTwoBytesOneStraightAfterTheOtherEndsTheInterrupt,
+    EnablingTheTransmitInterruptWhileNothingIsBeingSentInterrupts,
+    ReadingWhichInterruptIsPendingEndsTheTransmitInterrupt,
+    RewritingTheEnableRegisterDoesNotRaiseTheTransmitInterruptAgain,
+    WithTheTransmitInterruptEnabledWritingAByteInterruptsAgain,
+    WithBothPendingAReceivedByteIsSaidFirstAndTheTransmitterAfterIt,
+    DisablingTheTransmitInterruptWhileItIsPendingEndsIt,
+    WithNoInterruptEnabledTheLineStaysLow);
 
 #endif  // TESTS_CPP_CONTRACTS_UART_CONTRACT_H_

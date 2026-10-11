@@ -186,7 +186,11 @@ Registry BuiltinComponents() {
   });
   registry.Add("ns16550", [](const char* name, Parameters&) {
     auto module = std::make_unique<Ns16550>(name);
-    std::vector<Port> ports{TargetPort("socket", module->socket)};
+    std::vector<Port> ports{TargetPort("socket", module->socket),
+                            // A console that is polled leaves the line
+                            // alone.
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("nvme_frontend", [](const char* name, Parameters& parameters) {

@@ -722,12 +722,16 @@ class Ns16550(Component):
     """A 16550-style UART: the serial port a firmware's console prints through.
 
     What the firmware transmits is kept, and the placed UART's `output`
-    reads it. The model is borrowed from VPV-Peripherals (the PULPino UART).
-    Nothing is ever received yet, and the interrupt is not connected.
+    reads it. What it is to receive is typed with the placed UART's
+    `write`. The model is borrowed from VPV-Peripherals (the PULPino UART).
+
+    `irq` is high while an interrupt the firmware enabled is pending: a
+    received byte is waiting, or the transmit register has emptied. A
+    console that is polled leaves it unconnected.
     """
 
     implementation = "ns16550"
-    port_specs = (target("socket"),)
+    port_specs = (target("socket"), wire_out("irq", required=False))
     #: The 16550's eight registers, one byte each.
     mapped_size = 8
 

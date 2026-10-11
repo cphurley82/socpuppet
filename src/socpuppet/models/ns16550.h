@@ -22,10 +22,15 @@ namespace socpuppet {
 //   - What the firmware transmits is kept, to be read with Output(), and
 //     what it is to receive is handed over with Write(). Whoever holds
 //     the UART is the other end of its serial line.
-// The interrupt is not connected yet.
 class Ns16550 : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<Ns16550> socket{"socket"};
+  // The interrupt, for an interrupt controller's input: high while an
+  // interrupt the firmware enabled is pending. That is while a received
+  // byte waits. And it is from when the transmit register empties, which
+  // here is as soon as it is written, or from when that interrupt is
+  // enabled, until firmware asks which interrupt it is.
+  sc_core::sc_out<bool> irq{"irq"};
 
   explicit Ns16550(const sc_core::sc_module_name& name);
   ~Ns16550() override;

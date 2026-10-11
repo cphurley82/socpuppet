@@ -475,6 +475,21 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: the adapter's telling after each read can go.
 
+### The PULPino UART works its interrupt out from a queue of events, and loses track
+
+- **Where**: `pulpino/uart.h`, `send_interrupt_process` and everything that pushes to `interrupt_event_q_`.
+- **What is wrong**: 🎓 a 16550's interrupt line is a level, and its identification register (IIR) says why the line is high. Two reasons matter to a console. "A received byte is waiting" lasts until the byte is read. "The transmit register has emptied" is acknowledged by reading the IIR while it is the reason given, and happens again when the next byte has gone. Here each register access pushes a "set" or a "reset" event, and a thread folds the events into the IIR. Five things go wrong:
+  - Enabling an interrupt whose cause is already there raises nothing: a byte that came in before the receive interrupt was enabled, and a transmit register that is empty when the transmit interrupt is enabled. A driver starts to transmit by enabling that interrupt and waiting for it, so Zephyr's would never send its first byte.
+  - When a "set" and a "reset" are folded together the resets are dropped, so a handler that reads two bytes with nothing between leaves the line high with nothing waiting, and the IIR says a byte is.
+  - With both pending the two reasons are or-ed into the IIR, which then reads as the code for a third, the line-status interrupt, and a driver services neither. And any read of the IIR acknowledges the transmit interrupt, whatever the read reported.
+  - Disabling an interrupt in the enable register does not lower the line.
+  - The IIR reads as zero until the first event, which says "pending" with a reason the model does not have. And the line-status interrupt is raised when "data ready" changes, which is not what it is for.
+- **How to see it**: six tests of `UartContract` in `tests/cpp/contracts/uart_contract.h` fail with the patch taken out: `EnablingTheReceiveInterruptWithAByteAlreadyWaitingInterrupts`, `ReadingTwoBytesOneStraightAfterTheOtherEndsTheInterrupt`, `EnablingTheTransmitInterruptWhileNothingIsBeingSentInterrupts`, `ReadingWhichInterruptIsPendingEndsTheTransmitInterrupt`, `WithBothPendingAReceivedByteIsSaidFirstAndTheTransmitterAfterIt` and `DisablingTheTransmitInterruptWhileItIsPendingEndsIt`. So does `TestWhenFirmwareSleepsUntilTheUartInterrupts` in `tests/python/test_uart.py`, where a handler echoes what is typed.
+- **What we do**: `cmake/patches/vpv-peripherals-uart-interrupt-from-state.patch`. The queue goes. The model keeps one bit of its own, "the transmit register has emptied and the IIR has not said so yet", which is set when a byte is sent and when the transmit interrupt goes from disabled to enabled, and cleared by an IIR read that reports it. The IIR and the line are then worked out from what is true at that moment: the enable register, the line status's "data ready" bit, and that one bit. The line is still written by the model's one thread, a delta cycle after whatever changed. The line-status interrupt is left out, since the model has no line errors to report.
+- **Upstream fix**: the patch as it is. A model with a transmitter that takes time would set the bit when the byte has gone, where the patch sets it at once. The patch does not reset the bit, or the enable register, when `rst_in_` moves; the enable register was not reset before it either.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### `pulpino/uart.h` does not include what it uses
 
 - **Where**: `pulpino/uart.h`, lines 80 to 82.

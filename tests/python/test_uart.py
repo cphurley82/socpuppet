@@ -23,7 +23,7 @@ PRINT_OK_THEN_SLEEP = b"".join(
 )
 
 
-def a_cpu_running(program):
+def a_cpu_running(program, *, interrupted_by_the_uart=False):
     """A CPU, a RAM that holds `program` and a UART, built.
 
     Returns the platform and the UART.
@@ -36,6 +36,10 @@ def a_cpu_running(program):
     platform.connect(cpu.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
     bus.map(uart.socket, base=UART_BASE)
+    if interrupted_by_the_uart:
+        # Straight to the CPU, with no interrupt controller between: with
+        # one device there is nothing to tell apart.
+        platform.connect(uart.irq, cpu.irq)
     platform.build()
     platform.poke(RAM_BASE, program)
     return platform, uart
@@ -89,3 +93,51 @@ class TestWhenPythonTypesAtAUart:
         platform.run(sp.us(100))
 
         assert uart.output == "eggs\n"
+
+
+# A program that sends back whatever comes in, and sleeps until something
+# does: it has the UART interrupt when a byte is waiting, and its handler
+# reads the byte and transmits it.
+ECHO_FROM_AN_INTERRUPT = b"".join(
+    word.to_bytes(4, "little")
+    for word in (
+        0x100002B7,  # lui   t0, 0x10000        t0 = UART_BASE
+        0x00000317,  # auipc t1, 0              t1 = where this is
+        0x02830313,  # addi  t1, t1, 40         the handler, below
+        0x30531073,  # csrw  mtvec, t1          traps go there
+        0x00100313,  # li    t1, 1              "a received byte waits"
+        0x006280A3,  # sb    t1, 1(t0)          the interrupt enable register
+        0x00B31313,  # slli  t1, t1, 11         the external interrupt
+        0x30432073,  # csrs  mie, t1            enable it
+        0x30046073,  # csrsi mstatus, 8         and interrupts as a whole
+        0x10500073,  # wfi                      sleep until an interrupt
+        0xFFDFF06F,  # j     -4                 and sleep again after it
+        0x0002C303,  # lbu   t1, 0(t0)          handler: the receive register
+        0x00628023,  # sb    t1, 0(t0)          the transmit register
+        0x30200073,  # mret                     back to sleep
+    )
+)
+
+
+@pytest.mark.platform
+class TestWhenFirmwareSleepsUntilTheUartInterrupts:
+    def test_it_receives_what_was_typed(self):
+        platform, uart = a_cpu_running(
+            ECHO_FROM_AN_INTERRUPT, interrupted_by_the_uart=True
+        )
+
+        uart.write("spam\n")
+        # Eleven instructions to set up and three a byte: a hundred
+        # microseconds is far more than they need.
+        platform.run(sp.us(100))
+
+        assert uart.output == "spam\n"
+
+    def test_it_stays_asleep_while_nothing_is_typed(self):
+        platform, uart = a_cpu_running(
+            ECHO_FROM_AN_INTERRUPT, interrupted_by_the_uart=True
+        )
+
+        platform.run(sp.us(100))
+
+        assert uart.output == ""

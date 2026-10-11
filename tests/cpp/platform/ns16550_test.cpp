@@ -16,6 +16,8 @@
 // gives the read a value.
 TEST(WhenTheNs16550sReceiveRegisterIsReadWithNothingReceived, ItReadsAsZero) {
   socpuppet::Ns16550 uart{"uart"};
+  sc_core::sc_signal<bool> interrupt{"interrupt"};
+  uart.irq.bind(interrupt);
   std::array<std::uint8_t, 1> received{0xFF};
   BusDriver driver{"driver",
                    [&](BusDriver& bus) { bus.Read(/*address=*/0, received); }};
