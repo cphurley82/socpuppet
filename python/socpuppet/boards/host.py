@@ -251,8 +251,19 @@ def host(
     compute = platform.group("compute")
     io = platform.group("io")
 
+    # RV64GC with supervisor and user mode: the core an application
+    # processor has, and the one Linux needs. Zephyr runs on it in machine
+    # mode and leaves floating point and the other two modes alone. This
+    # core has no PMP, which the RV64IMAC one had.
     cpu = compute.add(
-        "cpu", DbtRiseCpu(xlen=64, reset_vector=RAM_BASE, gdb_port=gdb_port)
+        "cpu",
+        DbtRiseCpu(
+            xlen=64,
+            reset_vector=RAM_BASE,
+            gdb_port=gdb_port,
+            isa="gc",
+            modes="msu",
+        ),
     )
     compute_bus = compute.add("bus", Router())
     ram = compute.add("ram", Memory(size=RAM_SIZE))

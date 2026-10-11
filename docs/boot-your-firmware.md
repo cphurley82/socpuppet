@@ -10,7 +10,7 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 
 | What | Where | Zephyr driver |
 |---|---|---|
-| CPU | RV64IMAC, machine mode, starts at `0x8000_0000` | |
+| CPU | RV64GC, with machine, supervisor and user mode. Starts at `0x8000_0000`, in machine mode, which is where Zephyr stays. ⚠️ No PMP | |
 | RAM | `0x8000_0000`, 64 MB | |
 | Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
 | UART, the console | `0x1000_0000` | `ns16550` |

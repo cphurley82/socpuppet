@@ -34,6 +34,13 @@ class TestTheZephyrBoardForTheHost:
         assert clock_rate() == TIMER_HZ
 
 
+class TestTheHostsCpu:
+    def test_is_rv64gc_with_supervisor_and_user_mode(self):
+        cpu = host().cpu.component
+
+        assert (cpu.xlen, cpu.isa, cpu.modes) == (64, "gc", "msu")
+
+
 class TestTheHostsTimer:
     def test_is_at_the_address_every_socpuppet_cpu_has_its_timer_at(self):
         [timer] = [
