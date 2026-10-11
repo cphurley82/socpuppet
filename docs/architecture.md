@@ -21,22 +21,36 @@ flowchart LR
         cpu["CPU"]
         bus["router"]
         ram["memory"]
+        rom["boot ROM"]
+        syscon["system controller"]
+        wdt["watchdog"]
+        caplic["APLIC"]
         imsic["IMSIC"]
         link["🎭 pass-through link"]
         iobus["router"]
         uart["UART"]
         aplic["APLIC"]
+        flash["boot flash"]
         timer["timer"]
         rc["PCIe root complex"]
         ep["PCIe endpoint"]
         nvme["🎭 behavioral NVMe"]
         cpu --> bus
         bus --> ram
+        bus --> rom
+        bus --> syscon
+        bus --> wdt
+        bus --> caplic
         bus --> imsic
         bus --> timer
         bus --> link --> iobus
         iobus --> uart
         iobus --> aplic
+        iobus --> flash
+        wdt -. "bite" .-> syscon
+        syscon -. "reset" .-> cpu
+        wdt -. "irq" .-> caplic
+        caplic -. "interrupt messages" .-> imsic
         uart -. "irq" .-> aplic
         aplic -. "interrupt messages,<br/>back across the link" .-> imsic
         iobus --> rc --> ep --> nvme
@@ -50,7 +64,7 @@ flowchart LR
     class link,nvme standin
 ```
 
-This is the host board, with the drive that M2's tests plug into its IO die. The dotted lines are how the console interrupts: a wire as far as the APLIC beside it, and from there a message to the CPU's IMSIC, which is how the drive's interrupts go too. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
+This is the host board, with the drive that M2's tests plug into its IO die. The boot ROM is there when the board is described with `boot=from_rom`: the CPU then starts in it, and its program finds the firmware in the boot flash on the other die ([boot-your-firmware.md](boot-your-firmware.md#booting-from-flash)). The system controller is the one driver of the CPU's reset, which it pulses when the watchdog bites or the firmware asks. The dotted lines are how the console interrupts: a wire as far as the APLIC beside it, and from there a message to the CPU's IMSIC, which is how the drive's interrupts go too. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
 
@@ -249,6 +263,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | Slot | Contract | Implementations |
 |---|---|---|
 | memory | `MemoryContract` | `Memory` |
+| boot ROM | `RomContract` | `Rom` |
 | link endpoint | `LinkContract` | `D2dLinkEndpoint`, 🎭 `PassThroughLinkEndpoint` |
 | CPU | `BusMasterContract` | `DbtRiseCpu`, 🎭 `ScriptedBusMaster` |
 | UART | `UartContract` | `Ns16550` |
@@ -256,6 +271,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | interrupt controller | `InterruptControllerContract` | `Plic` |
 | message controller | `MessageControllerContract` | `Imsic` |
 | APLIC | `AplicContract` | `Aplic` |
+| watchdog | `WatchdogContract` | `Watchdog` |
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 
@@ -263,7 +279,7 @@ The real die-to-die link passes `LinkContract` beside the stand-in, and the plat
 
 ### Borrowed models
 
-💡 socpuppet borrows before it builds. The CPU, the UART, the timer, the PLIC and the APLIC are other projects' models, each behind a small adapter of ours. A contract suite does a second job for a borrowed model: it is written first, it says what socpuppet relies on, and it found real bugs in every model it was pointed at. Those are fixed with small patches, and each patch is written up in [upstream.md](upstream.md), ready to send back.
+💡 socpuppet borrows before it builds. The CPU, the UART, the timer, the PLIC, the APLIC, the watchdog and the SPI flash are other projects' models, each behind a small adapter of ours. A contract suite does a second job for a borrowed model: it is written first, it says what socpuppet relies on, and it found real bugs in every model it was pointed at. Those are fixed with small patches, and each patch is written up in [upstream.md](upstream.md), ready to send back.
 
 ## The models
 
@@ -288,6 +304,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [System controller](models/system-controller.md)
 - [UART (16550)](models/ns16550.md)
 - [Watchdog](models/watchdog.md)
+- [Boot image](models/boot-image.md), which is no model but a file format: what a boot ROM finds in a flash
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
 - 🎭 [Ideal NAND](models/ideal-nand.md)
 - 🎭 [IO-die manager](models/io-manager.md)
@@ -304,9 +321,9 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 | Piece | Source |
 |---|---|
 | Simulation kernel, TLM-2.0 | [SystemC 3.0](https://github.com/accellera-official/systemc) (Accellera) |
-| Router, logging | [SystemC-Components](https://github.com/Minres/SystemC-Components) (SCC, Minres) |
+| Router, logging, the SPI wires inside the flash | [SystemC-Components](https://github.com/Minres/SystemC-Components) (SCC, Minres) |
 | CPU | [DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV) (Minres) |
-| UART, machine timer, interrupt controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
+| UART, machine timer, interrupt controllers, watchdog, SPI flash and its controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
 | Reading ELF files | [ELFIO](https://github.com/serge1/ELFIO) |
 | The layouts of NVMe's registers and commands | [SPDK](https://github.com/spdk/spdk) (one header) |
 | Python bindings | [pybind11](https://github.com/pybind/pybind11) |
@@ -316,4 +333,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the rest of a real SoC's cast (interrupts as messages, a boot ROM and its flash, an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [plan.md](plan.md).
+🚧 Not built yet: the rest of a real SoC's cast (an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [plan.md](plan.md).

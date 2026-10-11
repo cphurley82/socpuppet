@@ -1,7 +1,0 @@
-description: |
-  The system controller of a socpuppet CPU: which die it is on, where to
-  boot from, why it was last reset, and a register that asks for a reset.
-
-compatible: "socpuppet,system-controller"
-
-include: syscon.yaml

@@ -21,6 +21,7 @@ COULD_NOT_RUN = 77
         "chiplet_host_hello.py",
         "full_bootchain.py",
         "shell_from_python.py",
+        "boot_from_flash.py",
     ]
 )
 def example(request, pytestconfig):

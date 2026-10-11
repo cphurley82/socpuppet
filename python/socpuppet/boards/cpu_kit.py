@@ -21,6 +21,9 @@ says which of its devices' lines go on which of the interrupt
 controller's sources, and where its CPU boots from; everything else is the
 same every time.
 
+With `boot=from_rom` there is an eighth, a boot ROM, and the CPU starts in
+that and not in the SRAM (`socpuppet.boards.boot`).
+
 The host's CPU is a 64-bit one with other things around it, and has the
 system controller and the watchdog in common with these:
 `add_system_controller()` and `add_watchdog()` are the parts of the kit

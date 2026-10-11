@@ -117,6 +117,8 @@ And `examples/full_bootchain.py` has no script left in it: every CPU is a CPU, r
 
 And in `examples/shell_from_python.py` the puppet answers back. The host runs Zephyr's shell, Python types commands at its console and reads what it says. The console's interrupt starts as a wire on one die and arrives as a message on the other, and the show counts how many crossed.
 
+And `examples/boot_from_flash.py` boots the way silicon does. Nothing is put in RAM. The CPU starts in a boot ROM, which finds the firmware in a flash on the other die, copies it across, checks it and jumps to it. The firmware then gets itself reset twice, once by asking and once by not feeding its watchdog, and the ROM loads it again each time. Each time it starts it says why.
+
 ## Try it
 
 socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.

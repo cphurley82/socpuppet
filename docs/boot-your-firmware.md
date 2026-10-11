@@ -476,6 +476,120 @@ ms     who      said
 - **It costs nothing you will notice.** The manager's firmware lets the host go half a millisecond later than 🎭 the script does, the disk test's verdict comes that half millisecond later, at 603.7 ms of simulated time, and the wall time is the same as with the script: under half a second.
 - `tests/python/test_m8_exit.py` is a complete example.
 
+## Booting from flash
+
+Everything above wakes a CPU up with its firmware already in RAM, because `load_elf` put it there. 🎭 That is Python standing in for a boot ROM, and it is the quick way to try an image. Silicon has nobody to do that. A real CPU starts in a ROM, whose program finds the firmware in a flash, copies it into RAM and jumps to it. Every socpuppet board boots that way too, when it is asked to:
+
+```python
+import socpuppet as sp
+from socpuppet import boot_image
+from socpuppet.boards.boot import from_rom
+from socpuppet.boards.host import host
+
+board = host(boot=from_rom)
+board.platform.build()
+# The ROM's own program goes in the ROM.
+board.platform.load_elf("build/firmware/rom_rv64.elf", via=board.cpu.socket)
+# The firmware goes in the flash, wrapped, where the ROM will look.
+board.platform.poke(
+    board.syscon.component.boot_address,
+    boot_image.wrap("build/host/zephyr/zephyr.elf"),
+    via=board.cpu.socket,
+)
+board.platform.run_until(lambda: "Hello World!" in board.uart.output, timeout=sp.ms(200))
+print(board.uart.output)
+```
+
+```text
+rom: zephyr: 12104 bytes to 0x80000000, jumping to 0x80000000
+*** Booting Zephyr OS build v4.4.2 ***
+Hello World! socpuppet_host/socpuppet_rv64
+```
+
+The first line is the ROM's, and nothing was in RAM before it.
+
+### Two ways to boot
+
+| | 🎭 The quick way | From the ROM |
+|---|---|---|
+| Describe the board | `host()` | `host(boot=from_rom)` |
+| The CPU starts in | RAM, at `0x8000_0000` | [the ROM](models/rom.md), at `0x1000` |
+| You load | the firmware, into RAM: `load_elf` | the ROM's program into the ROM (`load_elf`), and the firmware's [boot image](models/boot-image.md) into [the flash](models/spi-flash.md) (`poke` or `load_binary`) |
+| The firmware greets at | 1 ms | 25.6 ms |
+| A reset | starts the CPU in a RAM nobody reloads | loads the image again |
+| Use it | to try an image, and to boot something big | to test what a boot really does: the order, the flash, a bad image, a watchdog |
+
+Nothing is built differently. The two ways show firmware the same devicetree, so the image that boots one way boots the other.
+
+- **The ROM is `firmware/rom`**, a start in assembly and two pages of C with no Zephyr in it. `firmware/build.sh` builds it for each kind of CPU: `rom_rv64.elf` for the host, `rom_rv32.elf` for the SSD and the manager. [Its README](../firmware/rom/README.md) has every line it can say.
+- 🎓 **A boot image is the ELF file with the reading done.** A ROM of a kilobyte cannot read ELF, so `boot_image.wrap(file)` lays the program out as it will be in memory and puts a header of 64 bytes in front: a name, which kind of CPU, where the bytes go, where to start, and a CRC. `socpuppet boot-image zephyr.elf -o zephyr.img` writes one to a file, and `platform.load_binary("zephyr.img", at=..., via=...)` loads it.
+- **Where the image goes is the system controller's `boot_address`.** Each CPU's ROM asks [its system controller](models/system-controller.md) where to look. For the host that is the start of the flash, `0x1020_0000`. The IO die's manager shares that flash and looks 2 MiB further in. So ask the board, as above, and do not write the address down.
+- **The flash is across the link.** The host's flash is on the IO die, so every byte of the image crosses the die-to-die link on its way to RAM. With `trace=True` the reads are in the trace, which `examples/boot_from_flash.py` counts.
+- ⚠️ **A ROM checks what it loaded, and that takes time.** The copy of Zephyr's `hello_world` is 1.5 ms and the CRC of it 23 ms: the sum is worked out half a byte at a time, which is what a ROM of this size can afford. It is the honest price of booting as silicon does, and the reason the quick way is the default.
+- **A bad image is a sentence on the console**, and nothing is started: `rom: no image at 0x10200000` for an empty flash, `rom: zephyr: bad CRC: ...` for bytes that are not the ones the header was made for, `rom: zephyr is a 32-bit image, and this is a 64-bit CPU`, and `rom: stopped by a trap: ...` for an image with nowhere to go.
+- ⚠️ **`load_elf` of the firmware is refused on a board with a ROM**, and the error says where the image goes instead. What a CPU is given by `load_elf` has to start where the CPU does, and that is now the ROM.
+- **All three CPUs can.** `host(boot=from_rom, manager=functools.partial(add_manager, boot=from_rom), drive=functools.partial(add_ssd, boot=from_rom))` is three ROMs and two flashes, the IO die's holding the host's image and the manager's, and the SSD's its own. Each is loaded through its own CPU, at its own system controller's `boot_address`. Or mix them: a board can boot one CPU from its ROM and load another the quick way.
+- `tests/python/test_m14_exit.py` is a complete example, and `tests/python/cast.py` has the loading for three CPUs in one function.
+
+## When the watchdog bites
+
+Every socpuppet CPU has a [watchdog](models/watchdog.md) and a [system controller](models/system-controller.md), and Zephyr drives both with drivers of its own. 🎓 A watchdog is a counter that resets the CPU when it runs out, and firmware keeps it from running out by feeding it. Firmware that hangs stops feeding, and the reset puts it back on its feet. The system controller then says why the CPU was reset, which is how firmware knows that it happened.
+
+```c
+#include <zephyr/drivers/syscon.h>
+#include <zephyr/drivers/watchdog.h>
+#include <zephyr/sys/reboot.h>
+#include <socpuppet/regs/system_controller.h>
+
+static const struct device *const system_controller =
+	DEVICE_DT_GET_ONE(socpuppet_system_controller);
+static const struct device *const watchdog = DEVICE_DT_GET_ONE(sifive_wdt);
+
+uint32_t cause;
+syscon_read_reg(system_controller, SYSTEM_CONTROLLER_RESET_CAUSE, &cause);
+
+const struct wdt_timeout_cfg timeout = {
+	.window.max = 90, /* milliseconds */
+	.flags = WDT_FLAG_RESET_SOC,
+};
+int channel = wdt_install_timeout(watchdog, &timeout);
+wdt_setup(watchdog, 0);
+/* ...and then, more often than every 90 ms: */
+wdt_feed(watchdog, channel);
+```
+
+```ini
+CONFIG_WATCHDOG=y
+CONFIG_SYSCON=y
+CONFIG_REBOOT=y
+```
+
+`firmware/watchdog` is a whole application of that, which gets itself reset twice and says why each time it starts. `examples/boot_from_flash.py` boots it from the host's flash:
+
+```text
+ms     who   said
+29.0   host  rom: watchdog_socpuppet_host: 14448 bytes to 0x80000000, jumping to 0x80000000
+30.2   host  reset cause: power-on
+60.6   host  watchdog: ran out, and interrupted
+89.6   host  rom: watchdog_socpuppet_host: 14448 bytes to 0x80000000, jumping to 0x80000000
+90.8   host  reset cause: software
+121.3  host  watchdog: fed 1
+...
+273.5  host  watchdog: fed 6
+273.7  host  watchdog: no more feeding
+392.5  host  rom: watchdog_socpuppet_host: 14448 bytes to 0x80000000, jumping to 0x80000000
+393.8  host  reset cause: watchdog
+```
+
+- **`RESET_CAUSE` reads `POWER_ON`, `SOFTWARE` or `WATCHDOG`**, by the names in `<socpuppet/regs/system_controller.h>`. It is the one thing that survives a reset, which is why it is in a register and not in the firmware's memory.
+- **`sys_reboot()` works.** Zephyr leaves its last step to the SoC, and socpuppet's SoC writes the system controller's `RESET_REQUEST`. Turn on `CONFIG_REBOOT`.
+- **A watchdog can interrupt and not reset**: `WDT_FLAG_RESET_NONE` with a `callback`. The interrupt is a wire to the interrupt controller on the watchdog's own die: the compute die's APLIC on the host, the PLIC on the SSD and the manager.
+- ⚠️ **Boot from the ROM for this.** The quick way does not survive a reset. The CPU starts again in a RAM nobody reloads, with the firmware's data as the first run left it, and Zephyr takes a fault before it gets to `main`. A reset needs something to put the image back, which is what the ROM and the flash are for.
+- ⚠️ **A reset reaches the CPU and nothing else.** The interrupt controllers and every other device are left as they were, as on many real chips whose watchdog resets the core alone. Zephyr's drivers set up what they use, so it comes up. Firmware that trusts a device to be as it was at power-on would be wrong here.
+- **A watchdog that has bitten is off**, and at zero, as it is at power-on: that much it does for itself. After a reset the firmware asked for it is still running as it was set up, and firmware that starts again feeds it or sets it up again.
+- ⚠️ **Zephyr cannot switch this watchdog off.** `wdt_disable()` on SiFive's watchdog gives it its longest period, about eighteen hours, and leaves it running ([watchdog.md](models/watchdog.md)).
+- `tests/python/test_m14_exit.py` holds all of it, on the host and on the SSD.
+
 ## Waiting for something to happen
 
 A test usually wants to run until the firmware says something, with a limit in case it never does:
