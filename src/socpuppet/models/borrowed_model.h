@@ -33,8 +33,12 @@ struct PoweredOn : Borrowed {
 // through it.
 class BorrowedSocket {
  public:
+  // `name` is this end's own, which an adapter with two of these gives
+  // each: the simulator wants every object in a module named apart.
   template <typename TargetSocket>
-  explicit BorrowedSocket(TargetSocket& borrowed) {
+  explicit BorrowedSocket(TargetSocket& borrowed,
+                          const char* name = "to_borrowed")
+      : socket_(name) {
     socket_.bind(borrowed);
   }
 
@@ -48,8 +52,7 @@ class BorrowedSocket {
   }
 
  private:
-  tlm_utils::simple_initiator_socket<BorrowedSocket, scc::LT> socket_{
-      "to_borrowed"};
+  tlm_utils::simple_initiator_socket<BorrowedSocket, scc::LT> socket_;
 };
 
 }  // namespace socpuppet

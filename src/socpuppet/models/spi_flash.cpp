@@ -33,10 +33,10 @@ struct SpiFlash::Model {
   vpvper::generic::spi_mem chip_{"chip"};
 
  public:
-  BorrowedSocket registers{controller_.socket};
+  BorrowedSocket registers{controller_.socket, "to_registers"};
   // The controller's window onto the chip: it hands an access straight to
   // the chip's memory, with no SPI command in between.
-  BorrowedSocket window{controller_.xip_sck};
+  BorrowedSocket window{controller_.xip_sck, "to_window"};
 };
 
 SpiFlash::SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size)
