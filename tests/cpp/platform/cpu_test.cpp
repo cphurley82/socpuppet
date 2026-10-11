@@ -33,9 +33,11 @@ struct CpuPlatform {
   // Not zero, so that a CPU that ignored its reset vector would not pass.
   static constexpr std::uint64_t kResetVector = 0x100;
 
-  explicit CpuPlatform(std::uint64_t xlen) {
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", xlen}, {"reset_vector", kResetVector}});
+  // `more` is any parameters of the CPU beyond its word size and where it
+  // starts.
+  explicit CpuPlatform(std::uint64_t xlen, socpuppet::Config more = {}) {
+    more.insert({{"xlen", xlen}, {"reset_vector", kResetVector}});
+    platform.Add("cpu", "dbt_rise_cpu", more);
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Bind("cpu.socket", "ram.socket");
     platform.Elaborate();
@@ -94,6 +96,19 @@ TEST(WhenXlenIs64, TheCpusRegistersAre64BitsWide) {
   EXPECT_EQ(with_cpu.Result(), 0b1111'1111);
 }
 
+TEST(WhenA64BitCpuHasFloatingPointAndSupervisorMode,
+     AValueGoesThroughAFloatingPointRegisterAndComesBack) {
+  // The one core with floating point is also the one with supervisor mode.
+  // socpuppet offers the two together or neither, so both are asked for.
+  CpuPlatform with_cpu{/*xlen=*/64,
+                       {{"floating_point", 1}, {"supervisor_mode", 1}}};
+  with_cpu.Load(riscv::MoveByteThroughAFloatingPointRegisterThenSleep(0x5A));
+
+  with_cpu.RunUntilAsleep();
+
+  EXPECT_EQ(with_cpu.Result(), 0x5A);
+}
+
 TEST(WhenXlenIsNeither32Nor64, TheCpuIsRefusedAndTheErrorNamesItAndTheChoices) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
 
@@ -104,6 +119,51 @@ TEST(WhenXlenIsNeither32Nor64, TheCpuIsRefusedAndTheErrorNamesItAndTheChoices) {
       },
       ThrowsMessage<std::invalid_argument>(
           AllOf(HasSubstr("16"), HasSubstr("32"), HasSubstr("64"))));
+}
+
+TEST(WhenACpuIsAskedForFloatingPointWithoutSupervisorMode,
+     ItIsRefusedAndTheErrorNamesBoth) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add(
+            "cpu", "dbt_rise_cpu",
+            {{"xlen", 64}, {"reset_vector", 0}, {"floating_point", 1}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("floating_point"), HasSubstr("supervisor_mode"))));
+}
+
+TEST(WhenACpuIsAskedForSupervisorModeWithoutFloatingPoint,
+     ItIsRefusedAndTheErrorNamesBoth) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add(
+            "cpu", "dbt_rise_cpu",
+            {{"xlen", 64}, {"reset_vector", 0}, {"supervisor_mode", 1}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("floating_point"), HasSubstr("supervisor_mode"))));
+}
+
+TEST(WhenA32BitCpuIsAskedForFloatingPointAndSupervisorMode,
+     ItIsRefusedAndTheErrorSaysOnlyA64BitCpuHasThem) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("cpu", "dbt_rise_cpu",
+                     {{"xlen", 32},
+                      {"reset_vector", 0},
+                      {"floating_point", 1},
+                      {"supervisor_mode", 1}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("floating_point"), HasSubstr("supervisor_mode"),
+                HasSubstr("32"), HasSubstr("64"))));
 }
 
 // A platform whose CPU reaches its RAM through a probe that counts the

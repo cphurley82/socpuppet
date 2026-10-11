@@ -7,7 +7,8 @@
 
 // Just enough of a RISC-V assembler to write a CPU test's program by hand,
 // so that the tests need no toolchain. Every instruction here is in the
-// base integer set and is encoded the same for 32 and 64 bits.
+// base integer set and is encoded the same for 32 and 64 bits, but for the
+// few that say otherwise.
 namespace riscv {
 
 using Word = std::uint32_t;
@@ -85,6 +86,17 @@ constexpr Word Csrs(Word csr, Word rs1) {
 constexpr Word Csrw(Word csr, Word rs1) {
   return (csr << 20) | (rs1 << 15) | (1 << 12) | 0x73;
 }
+// Floating-point register `rd` = the 64 bits of integer register rs1, as
+// they are. Only a 64-bit core with double-precision floating point (the D
+// extension) has it.
+constexpr Word FmvDX(Word rd, Word rs1) {
+  return 0xF200'0053 | (rs1 << 15) | (rd << 7);
+}
+// Integer register `rd` = the 64 bits of floating-point register rs1, as
+// they are. For the same cores as FmvDX.
+constexpr Word FmvXD(Word rd, Word rs1) {
+  return 0xE200'0053 | (rs1 << 15) | (rd << 7);
+}
 // The control and status register that says which interrupts are enabled,
 // and its bits for the machine timer and machine external interrupts.
 inline constexpr Word kMie = 0x304;
@@ -93,6 +105,10 @@ inline constexpr Word kMachineExternalInterrupt = 11;
 // The status register, and its bit that switches interrupts on as a whole.
 inline constexpr Word kMstatus = 0x300;
 inline constexpr Word kInterruptsOn = 3;
+// The low bit of its two-bit field that says what state the floating-point
+// registers are in. While the field is zero, as after reset, they are
+// switched off and a floating-point instruction is an illegal one.
+inline constexpr Word kFloatingPointOn = 13;
 // The register that holds the address a trap jumps to.
 inline constexpr Word kMtvec = 0x305;
 // Return from a trap handler to where the trap was taken.
@@ -117,6 +133,26 @@ inline Program StoreByteThenSleep(std::uint8_t value) {
   program.push_back(Auipc(kT0, 0));
   program.push_back(Li(kT1, value));
   program.push_back(Sb(kT1, kT0, kResultOffset));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that switches floating point on, moves `value` into a
+// floating-point register and back out, stores what came out as its result
+// and sleeps. On a core with no floating point the move is an illegal
+// instruction, and nothing is stored.
+inline Program MoveByteThroughAFloatingPointRegisterThenSleep(
+    std::uint8_t value) {
+  constexpr Word kFt0 = 0;
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kFloatingPointOn));
+  program.push_back(Csrs(kMstatus, kT1));
+  program.push_back(Li(kT1, value));
+  program.push_back(FmvDX(kFt0, kT1));
+  program.push_back(FmvXD(kT2, kFt0));
+  program.push_back(Sb(kT2, kT0, kResultOffset));
   AppendSleepForEver(program);
   return program;
 }

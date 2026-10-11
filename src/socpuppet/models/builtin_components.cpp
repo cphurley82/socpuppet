@@ -95,7 +95,10 @@ Registry BuiltinComponents() {
     auto module = std::make_unique<DbtRiseCpu>(
         name, parameters.Required("xlen"), parameters.Required("reset_vector"),
         static_cast<std::uint16_t>(
-            parameters.Optional("gdb_port", 0, kFitsIn16Bits)));
+            parameters.Optional("gdb_port", 0, kFitsIn16Bits)),
+        DbtRiseCpuExtras{
+            .floating_point = parameters.Optional("floating_point", 0) != 0,
+            .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0});
     std::vector<Port> ports{InitiatorPort("socket", module->socket),
                             WireSinkPort("irq", module->irq),
                             WireSinkPort("timer_irq", module->timer_irq),

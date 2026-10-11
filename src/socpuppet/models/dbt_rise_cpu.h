@@ -10,10 +10,23 @@
 
 namespace socpuppet {
 
+// What a core can have beyond the plain one's IMAC and machine mode.
+// DBT-RISE has a core for some combinations and not for others, and
+// socpuppet offers two: neither, at either word size, and both, at 64
+// bits (DBT-RISE's `rv64gc_msu`). Mind that the core with both has no
+// physical memory protection, which the plain one has.
+struct DbtRiseCpuExtras {
+  // Single and double precision floating point: the F and D extensions.
+  bool floating_point = false;
+  // Supervisor and user mode below machine mode, and an MMU.
+  bool supervisor_mode = false;
+};
+
 // A RISC-V CPU. The model is DBT-RISE-RISCV's (Minres): an instruction-set
 // simulator, which executes the firmware's instructions one after another
-// the way the real processor would. It is an RV32IMAC or RV64IMAC core in
-// machine mode only: no floating point, and no supervisor or user mode.
+// the way the real processor would. As it comes it is an RV32IMAC or
+// RV64IMAC core in machine mode only: no floating point, and no supervisor
+// or user mode. A 64-bit one can be asked for with both (`DbtRiseCpuExtras`).
 //
 // This class is only the adapter that fits it into a socpuppet platform.
 // DBT-RISE's own headers stay out of this one, so that nothing else has to
@@ -40,7 +53,8 @@ class DbtRiseCpu : public sc_core::sc_module {
   // The CPU then waits for a debugger to attach before it executes its
   // first instruction.
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-             std::uint64_t reset_vector, std::uint16_t gdb_port = 0);
+             std::uint64_t reset_vector, std::uint16_t gdb_port,
+             DbtRiseCpuExtras extras);
   ~DbtRiseCpu() override;
 
   // SystemC's last chance to bind a port. By now we know whether anyone

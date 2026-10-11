@@ -1,6 +1,7 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -16,22 +17,28 @@ namespace socpuppet {
 
 namespace {
 
-// DBT-RISE's name for the core with registers of `xlen` bits: machine mode
-// only, with physical memory protection, which Zephyr's RISC-V boards
-// switch on. Any other width is refused. Called before the Core is built,
-// so that a refusal comes before any of DBT-RISE's core exists.
-const char* CoreType(std::uint64_t xlen) {
-  switch (xlen) {
-    case 32:
-      return "rv32imac_mp";
-    case 64:
-      return "rv64imac_mp";
-    default:
-      throw std::invalid_argument(
-          "The \"xlen\" of a \"dbt_rise_cpu\" is the width of its "
-          "registers in bits, 32 or 64, and " +
-          std::to_string(xlen) + " was given.");
+// DBT-RISE's name for the core with registers of `xlen` bits and these
+// extras. The plain one is machine mode only, with physical memory
+// protection, which Zephyr's RISC-V boards switch on. A width or a
+// combination socpuppet has no core for is refused. Called before the Core
+// is built, so that a refusal comes before any of DBT-RISE's core exists.
+const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
+  if (xlen != 32 && xlen != 64) {
+    throw std::invalid_argument(
+        "The \"xlen\" of a \"dbt_rise_cpu\" is the width of its "
+        "registers in bits, 32 or 64, and " +
+        std::to_string(xlen) + " was given.");
   }
+  const bool plain = !extras.floating_point && !extras.supervisor_mode;
+  const bool both = extras.floating_point && extras.supervisor_mode;
+  if (plain) return xlen == 32 ? "rv32imac_mp" : "rv64imac_mp";
+  if (both && xlen == 64) return "rv64gc_msu";
+  throw std::invalid_argument(std::format(
+      "A \"dbt_rise_cpu\" comes with neither \"floating_point\" nor "
+      "\"supervisor_mode\", at an \"xlen\" of 32 or 64, or with the two "
+      "together, at 64. An \"xlen\" of {} with \"floating_point\" {} and "
+      "\"supervisor_mode\" {} was asked for.",
+      xlen, extras.floating_point ? 1 : 0, extras.supervisor_mode ? 1 : 0));
 }
 
 }  // namespace
@@ -117,9 +124,10 @@ struct DbtRiseCpu::Core {
 };
 
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-                       std::uint64_t reset_vector, std::uint16_t gdb_port)
+                       std::uint64_t reset_vector, std::uint16_t gdb_port,
+                       DbtRiseCpuExtras extras)
     : sc_module(name),
-      core_(std::make_unique<Core>(*this, CoreType(xlen), reset_vector,
+      core_(std::make_unique<Core>(*this, CoreType(xlen, extras), reset_vector,
                                    gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &DbtRiseCpu::invalidate_direct_mem_ptr);
