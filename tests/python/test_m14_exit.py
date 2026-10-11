@@ -13,7 +13,17 @@ is `firmware/rom`, which `firmware/build.sh` builds for each kind of CPU.
 import pytest
 
 import socpuppet as sp
-from cast import GREETING, HELLO_WORLD
+from cast import (
+    DISK_TEST,
+    FROM_THEIR_ROMS,
+    GREETING,
+    HELLO_WORLD,
+    MANAGER,
+    ROM_FOR_A_32_BIT_CPU,
+    ROM_FOR_A_64_BIT_CPU,
+    SSD,
+    boot,
+)
 from link_trace import sent_to_the_io_die
 from socpuppet import boot_image
 from socpuppet.boards.boot import from_rom
@@ -23,8 +33,6 @@ from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
 from socpuppet.regs import boot_image_header
 
-HOST_ROM = "rom_rv64.elf"
-ROM_FOR_A_32_BIT_CPU = "rom_rv32.elf"
 SSD_HELLO_WORLD = "hello_world_socpuppet_ssd.elf"
 SSD_GREETING = "Hello World! socpuppet_ssd"
 #: The ROM copies `hello_world`, which is 12 KiB, in about a millisecond
@@ -37,7 +45,9 @@ def a_host_with_a_rom(firmware, **described):
     """The host, built, with the ROM's program in its ROM and nothing else."""
     board = host(boot=from_rom, **described)
     board.platform.build()
-    board.platform.load_elf(firmware(HOST_ROM), via=board.cpu.socket)
+    board.platform.load_elf(
+        firmware(ROM_FOR_A_64_BIT_CPU), via=board.cpu.socket
+    )
     return board
 
 
@@ -376,3 +386,56 @@ class TestWhenAnSsdsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
         self, the_ssds_story
     ):
         assert RAN_OUT_AND_INTERRUPTED in said_in(the_ssds_story)
+
+
+@pytest.fixture
+def three_cpus_with_roms(firmware):
+    """A host whose three CPUs boot from ROMs, built, and nothing run yet.
+
+    Gives the board, and the story its three consoles will tell.
+    """
+    # 2 MiB of drive, as in M8's own test of the three.
+    board = host(drive_blocks=4096, **FROM_THEIR_ROMS)
+    story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
+    return board, story
+
+
+@pytest.mark.platform
+class TestWhenAllThreeCpusOfAHostBootFromTheirRoms:
+    # What the three firmwares then do is M8's, and its exit test runs
+    # this way too (test_m8_exit.py).
+
+    def test_nothing_is_in_any_cpus_ram_before_it_runs(
+        self, three_cpus_with_roms, firmware
+    ):
+        board, _ = three_cpus_with_roms
+
+        for image_file, cpu in (
+            (DISK_TEST, board.cpu),
+            (MANAGER, board.manager.cpu),
+            (SSD, board.drive.ssd.cpu),
+        ):
+            image = boot_image.from_elf(firmware(image_file))
+            assert board.platform.peek(
+                image.load_address, len(image.payload), via=cpu.socket
+            ) == bytes(len(image.payload)), image.name
+
+    def test_the_first_thing_each_cpu_says_is_its_rom_naming_that_cpus_image(
+        self, three_cpus_with_roms, firmware
+    ):
+        _, story = three_cpus_with_roms
+        everyone = {"host": DISK_TEST, "manager": MANAGER, "ssd": SSD}
+
+        # The host is the last to speak: it is held until the link is up,
+        # five milliseconds in, and its image is the largest and the only
+        # one copied across the link. It is a few milliseconds more.
+        all_spoke = story.run_until(
+            lambda: {line.who for line in story.lines} == set(everyone),
+            timeout=LONG_ENOUGH,
+        )
+
+        assert all_spoke, said_in(story)
+        for who, image_file in everyone.items():
+            first, *_ = (line.text for line in story.lines if line.who == who)
+            image = boot_image.from_elf(firmware(image_file))
+            assert first.startswith(f"{ROM_SAYS}{image.name}: ")

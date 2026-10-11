@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, elf, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
-from socpuppet.components import DbtRiseCpu, LinkModel
+from socpuppet.components import Component, DbtRiseCpu, LinkModel
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.terminal import stdout_wants_color
@@ -298,11 +298,22 @@ class Platform:
 
     def _refused(self, address: int, view: Port) -> PermissionError | None:
         """Why what is at `address` would not be written to, if it says."""
+        found = self._placed_at(address, view)
+        if found is None:
+            return None
+        reason = found.component.why_a_poke_was_refused(found.path)
+        return None if reason is None else PermissionError(reason)
+
+    def _component_at(self, address: int, view: Port) -> Component | None:
+        """The component a bus master finds at an address, if any."""
+        found = self._placed_at(address, view)
+        return None if found is None else found.component
+
+    def _placed_at(self, address: int, view: Port) -> Placed | None:
+        """What a bus master finds at an address, if anything."""
         for entry in self.address_map(view):
             if entry.address <= address < entry.address + (entry.size or 0):
-                component = self._placed[entry.component].component
-                reason = component.why_a_poke_was_refused(entry.component)
-                return None if reason is None else PermissionError(reason)
+                return self._placed[entry.component]
         return None
 
     def load_elf(
@@ -327,6 +338,7 @@ class Platform:
             xlen=program.xlen,
             entry=program.entry,
             path=view.placed.path,
+            what_is_at=lambda address: self._component_at(address, view),
         )
         for address, data in program.segments:
             self._poke_from(program.file, address, data, view)

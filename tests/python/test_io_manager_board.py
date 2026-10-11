@@ -8,6 +8,7 @@ import pytest
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
 from socpuppet.boards import io_manager as boards_io_manager
+from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import IO_DIE, SRAM_BASE
 from socpuppet.boards.io_manager import RAM_BASE, SCRATCH_BASE, io_manager
 from socpuppet.boards.manager import LINK_SOURCE, stand_in_manager
@@ -135,6 +136,22 @@ class TestWhenTheManagerIsARealCpu:
         ]
 
 
+class TestWhenTheManagerIsDescribedToBootFromARom:
+    def test_it_starts_in_a_rom_on_its_own_die_where_a_boot_rom_is_linked_to_run(
+        self,
+    ):
+        board = io_manager(compute=nothing, boot=from_rom)
+        [rom] = [
+            each
+            for each in board.platform.address_map(via=board.manager.cpu.socket)
+            if each.component == board.manager.cpu_kit.rom.path
+        ]
+
+        assert board.manager.cpu.component.reset_vector == rom.address
+        assert rom.address == ROM_BASE
+        assert rom.group == "io"
+
+
 class TestWhenTheManagerIsAScript:
     def test_a_gdb_port_is_refused_and_the_error_says_there_is_no_cpu(self):
         with pytest.raises(ValueError, match=r"gdb_port=1234") as refused:
@@ -145,6 +162,14 @@ class TestWhenTheManagerIsAScript:
             )
 
         assert "a debugger attaches to a CPU" in str(refused.value)
+
+    def test_a_boot_is_refused_and_the_error_says_there_is_no_cpu(self):
+        with pytest.raises(ValueError, match=r"`boot`.*no CPU"):
+            io_manager(
+                compute=nothing,
+                manager=stand_in_manager().script,
+                boot=from_rom,
+            )
 
 
 class TestTheZephyrBoardForTheManager:

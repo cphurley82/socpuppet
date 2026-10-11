@@ -6,6 +6,7 @@ import socpuppet as sp
 from elf_files import elf_file
 
 RAM_BASE = 0x8000_0000
+ROM_BASE = 0x1000
 
 
 def cpu_and_ram(*, xlen=64, reset_vector=RAM_BASE):
@@ -17,6 +18,20 @@ def cpu_and_ram(*, xlen=64, reset_vector=RAM_BASE):
     bus = platform.add("bus", sp.Router())
     ram = platform.add("ram", sp.Memory(size=0x4000))
     platform.connect(cpu.socket, bus.target)
+    bus.map(ram.socket, base=RAM_BASE)
+    platform.build()
+    return platform
+
+
+def cpu_that_starts_in_a_rom_and_ram():
+    """A CPU whose reset vector is in a ROM, with a RAM at RAM_BASE, built."""
+    platform = sp.Platform()
+    cpu = platform.add("cpu", sp.DbtRiseCpu(xlen=64, reset_vector=ROM_BASE))
+    bus = platform.add("bus", sp.Router())
+    rom = platform.add("rom", sp.Rom(size=0x1000))
+    ram = platform.add("ram", sp.Memory(size=0x4000))
+    platform.connect(cpu.socket, bus.target)
+    bus.map(rom.socket, base=ROM_BASE)
     bus.map(ram.socket, base=RAM_BASE)
     platform.build()
     return platform
@@ -79,6 +94,31 @@ class TestWhenAnImageDoesNotStartAtTheCpusResetVector:
             ValueError, match=r"starts at 0x80000040.*reset vector.*0x80000000"
         ):
             platform.load_elf(image)
+
+
+@pytest.mark.platform
+class TestWhenAnImageForRamIsLoadedThroughACpuThatStartsInABootRom:
+    def test_loading_is_refused_and_the_error_says_the_image_goes_in_the_flash(
+        self, tmp_path
+    ):
+        image = elf_file(
+            tmp_path,
+            xlen=64,
+            entry=RAM_BASE,
+            segments=[(RAM_BASE, b"code")],
+        )
+        platform = cpu_that_starts_in_a_rom_and_ram()
+
+        with pytest.raises(
+            ValueError, match=r"boot ROM.*goes in the flash"
+        ) as refused:
+            platform.load_elf(image)
+
+        assert "boot_image.wrap" in str(refused.value)
+        # What fits a CPU that starts in RAM, to link the image at the
+        # reset vector or move the vector, would send this reader the
+        # wrong way.
+        assert "reset_vector=" not in str(refused.value)
 
 
 @pytest.mark.platform

@@ -234,13 +234,20 @@ class Component(ABC):
         return {}
 
     def refuse_image(
-        self, *, image: str, xlen: int, entry: int, path: str
+        self,
+        *,
+        image: str,
+        xlen: int,
+        entry: int,
+        path: str,
+        what_is_at: Callable[[int], Component | None],
     ) -> None:
         """Raise if a program image loaded through this component cannot run.
 
         `image` is the file, built for a word size of `xlen` bits and
-        starting at `entry`. `path` is where this component is placed. Most
-        components run no program and have no objection.
+        starting at `entry`. `path` is where this component is placed, and
+        `what_is_at(address)` is the component it finds at an address, or
+        None. Most components run no program and have no objection.
         """
         return
 
@@ -496,7 +503,13 @@ class DbtRiseCpu(Component):
 
     @override
     def refuse_image(
-        self, *, image: str, xlen: int, entry: int, path: str
+        self,
+        *,
+        image: str,
+        xlen: int,
+        entry: int,
+        path: str,
+        what_is_at: Callable[[int], Component | None],
     ) -> None:
         if xlen != self.xlen:
             raise ValueError(
@@ -504,13 +517,27 @@ class DbtRiseCpu(Component):
                 f"{self.xlen}-bit CPU. Build the firmware for a "
                 f"{self.xlen}-bit core, or describe the CPU with xlen={xlen}."
             )
-        if entry != self.reset_vector:
+        if entry == self.reset_vector:
+            return
+        if isinstance(what_is_at(self.reset_vector), Rom):
             raise ValueError(
                 f"{image} starts at {entry:#x}, and {path} starts executing "
-                f"at its reset vector, {self.reset_vector:#x}. Link the "
-                "firmware to start there, or describe the CPU with "
-                f"reset_vector={entry:#x}."
+                f"in a boot ROM, at {self.reset_vector:#x}. What `load_elf` "
+                "gives this CPU is the ROM's own program (firmware/rom). An "
+                "image for the ROM to boot goes in the flash, where the "
+                "CPU's system controller says to look: "
+                "`platform.poke(<its boot_address>, "
+                f'socpuppet.boot_image.wrap("{image}"), '
+                "via=<the CPU's socket>)`. Or have the CPU start in RAM, "
+                "where `load_elf` puts an image, as a socpuppet board "
+                "described with no `boot` does."
             )
+        raise ValueError(
+            f"{image} starts at {entry:#x}, and {path} starts executing "
+            f"at its reset vector, {self.reset_vector:#x}. Link the "
+            "firmware to start there, or describe the CPU with "
+            f"reset_vector={entry:#x}."
+        )
 
 
 class DmaEngine(Component):

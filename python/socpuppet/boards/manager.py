@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+from socpuppet.boards.boot import Boot
 from socpuppet.boards.cpu_kit import (
     BOOT_FLASH_BASE,
     IO_DIE,
@@ -43,7 +44,8 @@ class Manager(NamedTuple):
     """The IO die's manager, as `add_manager` describes it."""
 
     #: The manager's CPU, or 🎭 the script in its place. Firmware is
-    #: loaded through it: `platform.load_elf(file, via=manager.cpu.socket)`.
+    #: loaded through it: `platform.load_elf(file, via=manager.cpu.socket)`,
+    #: or the boot ROM's program if the CPU starts in one (`cpu_kit.rom`).
     cpu: Placed
     #: What a real CPU has around it. None when a script is in its place.
     cpu_kit: CpuKit | None = None
@@ -67,6 +69,7 @@ def add_manager(
     link_end: Placed,
     script: Script | None = None,
     gdb_port: int = 0,
+    boot: Boot | None = None,
 ) -> Manager:
     """Put the IO die's manager on `bus`, with the link's registers.
 
@@ -76,9 +79,18 @@ def add_manager(
 
     With no `script` the manager is a 32-bit CPU with the usual kit around
     it, and the firmware is loaded into it. `gdb_port` is where a debugger
-    can attach to it. 🎭 With a `script`, that is in the CPU's place and
-    there is no kit: `add_manager(..., script=stand_in_manager().script)`.
+    can attach to it. `boot` is what that CPU starts in: its SRAM with
+    none, or with `socpuppet.boards.boot.from_rom` a boot ROM that loads
+    the firmware from the die's flash. 🎭 With a `script`, that is in the
+    CPU's place and there is no kit:
+    `add_manager(..., script=stand_in_manager().script)`.
     """
+    if script is not None and boot is not None:
+        raise ValueError(
+            "A `boot` was asked for, which is what a CPU starts in. With a "
+            "script standing in for it the manager has no CPU. Leave out the "
+            "script for a manager with a CPU, or leave out `boot`."
+        )
     if script is not None and gdb_port:
         raise ValueError(
             f"gdb_port={gdb_port} was asked for, and a debugger attaches to "
@@ -97,6 +109,7 @@ def add_manager(
             gdb_port=gdb_port,
             die=IO_DIE,
             boot_address=BOOT_FLASH_BASE + MANAGER_IMAGE_OFFSET,
+            boot=boot,
         )
     else:
         # 🎭 A script has one interrupt input, and the link is the only

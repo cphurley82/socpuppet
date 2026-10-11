@@ -238,10 +238,12 @@ def add_watchdog(
 def add_boot_flash(place: Platform | Group, bus: PlacedRouter) -> Placed:
     """Put the flash a CPU boots from on `bus`, for a CPU with one to itself.
 
-    It is read like memory at `BOOT_FLASH_BASE`, where the CPU's system
-    controller says its image is, and its controller's registers are at
-    `BOOT_FLASH_CONTROLLER_BASE`. Fill it before the first run:
-    `platform.load_binary(image, at=BOOT_FLASH_BASE, via=cpu.socket)`.
+    It is read like memory from `BOOT_FLASH_BASE`, and its controller's
+    registers are at `BOOT_FLASH_CONTROLLER_BASE`. Fill it before the
+    first run, where the CPU's system controller says its image is, which
+    is its `boot_address` and need not be the flash's first byte:
+    `platform.load_binary(image, at=syscon.component.boot_address,
+    via=cpu.socket)`.
 
     The host's two CPUs share one flash, and the host places that itself.
     """

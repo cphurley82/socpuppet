@@ -14,12 +14,25 @@ as one story.
 No image is built for this. The manager's is the one M5 runs on the IO
 manager board, the SSD's is the one M4 runs on the SSD board, and the
 host's are the ones M3's tests run.
+
+Since M14 the three boot both ways there are: with 🎭 Python putting each
+image in its CPU's RAM, and with each CPU starting in a boot ROM that
+finds its image in a flash. What the three then do is the same.
 """
 
 import pytest
 
 import socpuppet as sp
-from cast import DISK_TEST, GREETING, HELLO_WORLD, MANAGER, SSD, boot
+from cast import (
+    DISK_TEST,
+    FROM_THEIR_ROMS,
+    GREETING,
+    HELLO_WORLD,
+    LOADED_BY_PYTHON,
+    MANAGER,
+    SSD,
+    boot,
+)
 from disk_access import LIMIT, VERDICTS, no_verdict
 from link_trace import (
     sent_to_the_compute_die,
@@ -35,7 +48,6 @@ from manager_firmware import (
 )
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
-from socpuppet.boards.ssd import add_ssd
 from ssd_zephyr_firmware import BANNER as SSD_BANNER
 
 #: Zephyr takes a millisecond or two to start on the manager, the link
@@ -81,14 +93,19 @@ class TestWhenTheManagerUnderAHostRunsFirmwareThatLeavesTheLinkAlone:
         assert board.uart.output == ""
 
 
-@pytest.fixture
-def bootchain(firmware):
+@pytest.fixture(
+    params=[
+        pytest.param(LOADED_BY_PYTHON, id="loaded by Python"),
+        pytest.param(FROM_THEIR_ROMS, id="from their ROMs"),
+    ]
+)
+def bootchain(request, firmware):
     """All three firmwares, run until the host's says how its tests went.
 
     Gives the story their three consoles told: `manager`, `ssd`, `host`.
     """
     # 2 MiB of drive, as in M3b, M6 and M7.
-    board = host(drive_blocks=4096, manager=add_manager, drive=add_ssd)
+    board = host(drive_blocks=4096, **request.param)
     story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
     gave_a_verdict = story.run_until(
         lambda: any(

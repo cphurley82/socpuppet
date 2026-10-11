@@ -104,7 +104,8 @@ class Ssd(NamedTuple):
     """An SSD at its place in a platform, part by part."""
 
     #: The SSD's CPU, or 🎭 the script that stands in for it. Firmware is
-    #: loaded through it: `platform.load_elf(file, via=ssd.cpu.socket)`.
+    #: loaded through it: `platform.load_elf(file, via=ssd.cpu.socket)`,
+    #: or the boot ROM's program if the CPU starts in one (`cpu_kit.rom`).
     cpu: Placed
     #: The bus the CPU reaches the three devices and the buffer through.
     bus: PlacedRouter

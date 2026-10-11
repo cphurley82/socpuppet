@@ -32,6 +32,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet.boards.boot import Boot
 from socpuppet.boards.cpu_kit import add_boot_flash
 from socpuppet.boards.manager import Manager, add_manager, stand_in_manager
 from socpuppet.components import (
@@ -66,7 +67,8 @@ class IoManagerBoard(NamedTuple):
     #: The IO die's manager: `manager.cpu` is its CPU, or 🎭 the script in
     #: its place, and `manager.cpu_kit` what a real CPU has around it.
     #: Firmware is loaded through the CPU:
-    #: `platform.load_elf(file, via=board.manager.cpu.socket)`.
+    #: `platform.load_elf(file, via=board.manager.cpu.socket)`, or the boot
+    #: ROM's program if the board was described with `boot=from_rom`.
     manager: Manager
     #: 🎭 The compute die's stand-in, held in reset until the link is up.
     compute: Placed
@@ -85,6 +87,7 @@ def io_manager(
     compute: Script,
     manager: Script | None = None,
     gdb_port: int = 0,
+    boot: Boot | None = None,
     trace: bool = False,
 ) -> IoManagerBoard:
     """Describe the board. Nothing is simulated until `platform.build()`.
@@ -92,10 +95,11 @@ def io_manager(
     `compute` is 🎭 the script in the compute die's place, which runs once
     the manager has let that die out of reset. `manager` is 🎭 a script in
     the IO die's CPU slot; with none, the IO die has a real CPU and the
-    firmware is loaded into it, and `gdb_port` is where a debugger can
-    attach to it. With `trace=True`, everything that crosses the link is
-    recorded, the sideband apart from the mainband (`socpuppet.ucie` reads
-    the packets back).
+    firmware is loaded into it, `gdb_port` is where a debugger can attach
+    to it, and `boot` is what it starts in (its SRAM with none, or with
+    `socpuppet.boards.boot.from_rom` a boot ROM). With `trace=True`,
+    everything that crosses the link is recorded, the sideband apart from
+    the mainband (`socpuppet.ucie` reads the packets back).
     """
     platform = Platform()
     compute_die = platform.group("compute")
@@ -110,7 +114,13 @@ def io_manager(
     # scratch the compute die reaches across the link.
     bus = io.add("bus", Router())
     placed_manager = add_manager(
-        platform, io, bus, link_end=link.b, script=manager, gdb_port=gdb_port
+        platform,
+        io,
+        bus,
+        link_end=link.b,
+        script=manager,
+        gdb_port=gdb_port,
+        boot=boot,
     )
     # A CPU boots from a flash, and a script from nothing.
     boot_flash = add_boot_flash(io, bus) if manager is None else None
