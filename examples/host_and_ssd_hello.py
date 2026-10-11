@@ -2,10 +2,10 @@
 
  the host (64-bit, Zephyr)               the SSD (32-bit, Zephyr)
  cpu ─▶ bus ─┬─▶ ram                     endpoint ─▶ frontend ◀─▶ cpu
-  ▲     ▲    ├─▶ plic ◀─ msi bridge         ▲           │          ▲
+  ▲     ▲    ├─▶ imsic                      ▲           │          ▲
   │     │    └─▶ root complex ══════════════╝           ▼          ▼
   │     └─────── root complex ◀══ endpoint ◀──────── uplink ◀── dma, flash
-  └── plic                                                          │
+  └── imsic                                                         │
                                                                     ▼ nand
 
 In host_hello.py the host booted alone, and in ssd_firmware_hello.py the

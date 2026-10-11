@@ -10,6 +10,8 @@ config SYS_CLOCK_HW_CYCLES_PER_SEC
 config RISCV_SOC_INTERRUPT_INIT
 	default y
 
+if RISCV_HAS_PLIC
+
 # Zephyr numbers interrupts in two levels. The first level is the CPU's
 # own, of which number 11 is the external interrupt that the PLIC drives.
 # The PLIC's sources are the second level, and get the numbers from 12 up.
@@ -25,6 +27,17 @@ config MAX_IRQ_PER_AGGREGATOR
 
 config NUM_IRQS
 	default 44
+
+endif # RISCV_HAS_PLIC
+
+if RISCV_IMSIC
+
+# Zephyr's IMSIC driver takes an identity as an interrupt's number, in one
+# table with the CPU's own sixteen. The IMSIC has identities 1 to 63.
+config NUM_IRQS
+	default 64
+
+endif # RISCV_IMSIC
 
 # Zephyr's PCIe bus scan keeps its place in an array of 3 KB on the stack,
 # and it runs before the kernel has threads, on the stack that interrupts

@@ -101,9 +101,6 @@ def tables():
             seen_from(io_board, "compute.cpu.socket")
         ),
         "interrupts:host": interrupt_table(host_board.interrupt_map()),
-        "interrupts:host-drive": interrupt_table(
-            only_in(with_a_drive.interrupt_map(), host_board.interrupt_map())
-        ),
         "interrupts:host-ssd": interrupt_table(with_the_ssd.interrupt_map()),
         "interrupts:ssd": interrupt_table(ssd_board.interrupt_map()),
         "interrupts:io-manager": interrupt_table(io_board.interrupt_map()),

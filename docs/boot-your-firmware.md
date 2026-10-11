@@ -12,7 +12,7 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 |---|---|---|
 | CPU | RV64GC, with machine, supervisor and user mode. Starts at `0x8000_0000`, in machine mode, which is where Zephyr stays. ⚠️ No PMP | |
 | RAM | `0x8000_0000`, 64 MB | |
-| Interrupt controller (PLIC) | `0x0C00_0000`, 31 sources | `sifive,plic-1.0.0` |
+| Interrupt controller ([IMSIC](models/imsic.md)) | `0x2400_0000` for machine mode's messages, `0x2800_0000` for the supervisor's. 63 identities | `riscv,imsic`, Zephyr's own, and socpuppet's module for `irq_enable` |
 | UART, the console | `0x1000_0000` | `ns16550` |
 | Machine timer | `0x0200_0000`, 10 MHz | `riscv,machine-timer` |
 
@@ -66,7 +66,6 @@ The host can have an SSD on a PCIe link: 🎭 the [behavioral NVMe](models/behav
 |---|---|---|
 | PCIe root complex, configuration window | `0x1010_0000`, one bus | `socpuppet,pcie`, from socpuppet's module |
 | PCIe root complex, memory window | `0x1080_0000`, 1 MB | |
-| MSI-to-PLIC bridge | `0x0300_0000`, to PLIC sources 1 and 2 | (the root complex's driver uses it) |
 | NVMe drive | found by the scan | `nvme-controller` |
 
 🎓 Zephyr calls hardware that is plugged into a board a *shield*. The drive, and the host's side of its link, are the shield `socpuppet_host_drive`. Name it when you build:
@@ -90,7 +89,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 ⚠️ Firmware built with the shield needs the drive. On a host described without one it stops before it prints anything: the first place it looks for the drive is an address where nothing answers.
 
-💡 A PCIe device interrupts with a message, and the board's interrupt controller only has wires. [The bridge's page](models/msi-plic-bridge.md) says how the two meet.
+💡 A PCIe device interrupts with a message, and the board's interrupt controller is one that is sent messages, so the drive's interrupts go to it as they are: identities 32 and 33, written to `0x2400_0000`. [The IMSIC's page](models/imsic.md) has the rest.
 
 ## The SSD's controller
 

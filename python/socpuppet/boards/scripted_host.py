@@ -51,8 +51,9 @@ from socpuppet.platform import Group, Platform
 #: a few hundred pages of data. The real host has more.
 RAM_BASE = real_host.RAM_BASE
 RAM_SIZE = 1024 * 1024
-#: The register that takes the drive's interrupt messages.
-MSI_BASE = real_host.MSI_BASE
+#: The register that takes the drive's interrupt messages. It is where
+#: the real host has the page its interrupt controller takes them at.
+MSI_BASE = real_host.IMSIC_BASE
 #: The root complex's two windows: configuration space, and the memory
 #: window a device's registers are placed in.
 ECAM_BASE = real_host.IO_BASE + real_host.ECAM_OFFSET

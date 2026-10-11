@@ -27,5 +27,13 @@ properties:
     type: phandle
     required: true
     description: |
-      Where a device on the link sends its interrupt messages: the
-      platform's MSI-to-PLIC bridge (socpuppet,msi-plic-bridge).
+      Where a device on the link sends its interrupt messages: the hart's
+      IMSIC (riscv,imsic).
+
+  socpuppet,msi-identities:
+    type: array
+    required: true
+    description: |
+      The identities the board sets aside at the IMSIC for the device's
+      vectors, in the order of the vectors. The driver programs each into
+      the device, which then sends it.

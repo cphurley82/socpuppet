@@ -31,11 +31,11 @@ flowchart LR
     subgraph compute["🧠 the compute die's bus: what the CPU sees"]
         direction TB
         timer["timer<br/>0x0200_0000&nbsp;·&nbsp;64&nbsp;KiB"]
-        msi["MSI&nbsp;bridge<br/>0x0300_0000&nbsp;·&nbsp;4&nbsp;bytes"]
-        plic["PLIC<br/>0x0C00_0000&nbsp;·&nbsp;64&nbsp;MiB"]
         win["window&nbsp;onto&nbsp;the&nbsp;IO&nbsp;die<br/>0x1000_0000&nbsp;·&nbsp;16&nbsp;MiB"]
+        imsic["IMSIC,&nbsp;machine&nbsp;mode's&nbsp;page<br/>0x2400_0000&nbsp;·&nbsp;4&nbsp;KiB"]
+        simsic["IMSIC,&nbsp;the&nbsp;supervisor's&nbsp;page<br/>0x2800_0000&nbsp;·&nbsp;4&nbsp;KiB"]
         ram["RAM<br/>0x8000_0000&nbsp;·&nbsp;64&nbsp;MiB"]
-        timer ~~~ msi ~~~ plic ~~~ win ~~~ ram
+        timer ~~~ win ~~~ imsic ~~~ simsic ~~~ ram
     end
     subgraph io["the IO die's bus: what is in the window"]
         direction TB
@@ -58,14 +58,14 @@ flowchart LR
     classDef window fill:#e9d5ff,stroke:#7e22ce,color:#000
     classDef pcie fill:#fed7aa,stroke:#c2410c,color:#000
     class ram memory
-    class msi,plic,uart,timer,cfg,bar0 device
+    class imsic,simsic,uart,timer,cfg,bar0 device
     class win window
     class ecam,mmio pcie
     style io stroke:#7e22ce,stroke-width:2px
     style drive stroke:#c2410c,stroke-width:2px
 ```
 
-The first two columns are a bus each, lowest address at the top. Green is memory and blue is a device's registers. The purple block is a window, and the purple box is the bus behind it. The two orange blocks are windows too, onto the orange box. The drawing is not to scale: the PLIC's 64 MiB and the UART's 8 bytes come out the same size, which flatters the UART.
+The first two columns are a bus each, lowest address at the top. Green is memory and blue is a device's registers. The purple block is a window, and the purple box is the bus behind it. The two orange blocks are windows too, onto the orange box. The drawing is not to scale: the RAM's 64 MiB and the UART's 8 bytes come out the same size, which flatters the UART.
 
 As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware see the board with no drive:
 
@@ -74,19 +74,19 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0200_0000` | 64 KiB | `compute.timer.socket` | [Machine timer](models/machine-timer.md) | |
-| `0x0C00_0000` | 64 MiB | `compute.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
+| `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |
+| `0x2800_0000` | 4 KiB | `compute.imsic.supervisor` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x8000_0000` | 64 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
 
 <!-- address-map:host end -->
 
-With a drive, three more things answer:
+With a drive, two more things answer:
 
 <!-- address-map:host-drive start -->
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
-| `0x0300_0000` | 4 bytes | `compute.msi.socket` | [MSI-to-PLIC bridge](models/msi-plic-bridge.md) | |
 | `0x1010_0000` | 1 MiB | `io.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
 | `0x1080_0000` | 1 MiB | `io.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
 
@@ -99,29 +99,21 @@ The interrupt lines of the board with no drive:
 | Controller | Number | Line |
 | --- | --- | --- |
 | `compute.cpu` | 7 | `compute.timer.irq` |
-| `compute.cpu` | 11 | `compute.plic.irq` |
+| `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
+| `compute.cpu` | 11 | `compute.imsic.irq` |
 
 <!-- interrupts:host end -->
 
-And a drive adds one line for each of its interrupt vectors:
-
-<!-- interrupts:host-drive start -->
-
-| Controller | Number | Line |
-| --- | --- | --- |
-| `compute.plic` | 1 | `compute.msi.irq0` |
-| `compute.plic` | 2 | `compute.msi.irq1` |
-
-<!-- interrupts:host-drive end -->
+A drive adds no line. Its interrupts are messages: identities 32 and 33, one for each of its two vectors, written to `compute.imsic.machine` at `0x2400_0000`. ⚠️ So they are in no table here, which only has wires, and 32 and 33 are all that firmware knows them by. They are in the shield's devicetree, as `socpuppet,msi-identities`.
 
 The constants are at the top of `python/socpuppet/boards/host.py`.
 
-- **What they are for.** `io.uart` is the console. `compute.ram` is where firmware is loaded, and the CPU starts executing at its first address. `compute.msi` is where the drive's interrupt messages are sent. `io.rc.ecam` is the PCIe configuration window, and `io.rc.mmio` the PCIe memory window, with the drive's registers somewhere in it.
+- **What they are for.** `io.uart` is the console. `compute.ram` is where firmware is loaded, and the CPU starts executing at its first address. `compute.imsic.machine` is where interrupt messages are sent, the drive's among them, and `compute.imsic.supervisor` is the same for an operating system that runs below machine mode. `io.rc.ecam` is the PCIe configuration window, and `io.rc.mmio` the PCIe memory window, with the drive's registers somewhere in it.
 - 💡 **A window translates.** A [router](models/router.md) hands a target the offset from the start of the range that matched. So the IO die's bus counts from zero: the UART is at `0` there and the PCIe configuration window at `0x10_0000`, and the CPU finds them at `0x1000_0000` and `0x1010_0000`. Firmware sees one flat map and cannot tell where the die boundary is, which is the point: the split can change without the firmware changing.
 - 🎓 **The two PCIe windows are two kinds of address.** The configuration window is how a host asks what is on the link. Every function a bus could hold has 4 KiB of it, laid out by bus, device and function number, so 1 MiB is one whole bus. The drive's NVMe registers are something else: 8 KiB that the host places wherever it likes in the memory window, by writing an address into the drive's *base address register* (BAR). 🎭 The scripted host puts them at the start, `0x1080_0000`.
-- **What comes back up sees the same map.** A drive reads and writes the host's memory by itself, which is DMA, and it interrupts by writing a small message to an address the host chose. Both come up the PCIe link, back across the die-to-die link, and onto the compute die's bus through an input of their own. From there the RAM is at `0x8000_0000` for the data, and the MSI bridge at `0x0300_0000` for the message.
+- **What comes back up sees the same map.** A drive reads and writes the host's memory by itself, which is DMA, and it interrupts by writing a small message to an address the host chose. Both come up the PCIe link, back across the die-to-die link, and onto the compute die's bus through an input of their own. From there the RAM is at `0x8000_0000` for the data, and the IMSIC's page at `0x2400_0000` for the message.
 - **Everywhere else there is nothing.** An access to an address that no range covers gets an address error. A script that makes one stops with `BusError`, naming the address.
-- 🎓 **The numbers are borrowed.** RAM at `0x8000_0000`, the timer at `0x0200_0000`, the PLIC at `0x0C00_0000` and a UART at `0x1000_0000` are where QEMU's RISC-V `virt` machine has them, so they are the addresses a learner is most likely to have met already. The PLIC's 64 MiB is what the RISC-V specification lays its registers out over, most of it empty.
+- 🎓 **The numbers are borrowed.** RAM at `0x8000_0000`, the timer at `0x0200_0000`, the IMSIC's two pages at `0x2400_0000` and `0x2800_0000` and a UART at `0x1000_0000` are where QEMU's RISC-V `virt` machine has them, so they are the addresses a learner is most likely to have met already.
 - ⚠️ **A devicetree names the timer by its registers**, as `timer@200bff8`. That is `mtime`, at offset `0xBFF8` in the timer's 64 KiB, and `mtimecmp` is at `0x4000`.
 - 💡 **The timer is on the CPU's die**, and so is everything else with an interrupt line to the CPU. A die-to-die link carries transactions and messages, and has no wire for a line to go down. The UART is on the other die and has no line at all: Zephyr's console polls it.
 
@@ -209,9 +201,9 @@ And for comparison, what 🎭 the scripted host in front of it sees (`host.cpu.s
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
-| `0x0300_0000` | 4 bytes | `host.msi.socket` | [🎭 MSI receiver](models/msi-receiver.md) | |
 | `0x1010_0000` | 1 MiB | `host.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | |
 | `0x1080_0000` | 1 MiB | `host.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | |
+| `0x2400_0000` | 4 bytes | `host.msi.socket` | [🎭 MSI receiver](models/msi-receiver.md) | |
 | `0x8000_0000` | 1 MiB | `host.ram.socket` | [Memory](models/memory.md) | |
 
 <!-- address-map:ssd-host end -->
@@ -234,16 +226,15 @@ The SSD's constants are at the top of `python/socpuppet/boards/ssd.py`, the ones
 - **The SSD's CPU (`ssd.cpu.socket`) sees exactly what it sees on its own board**: the first table under [The SSD](#the-ssd). Firmware built for `socpuppet_ssd` runs here unchanged.
 - ⚠️ **So every question about this board starts with "whose?"** `platform.load_elf`, `platform.peek32`, `platform.devicetree` and `socpuppet address-map` all take the CPU whose view you mean, as `via=` or `--via`.
 
-What is new is the interrupt lines side by side. There are two interrupt controllers, one for each CPU, and source 1 is a different line on each:
+What is new is the interrupt lines side by side. There are two interrupt controllers, one for each CPU, and of two kinds: the host's is sent messages and has one line, to its CPU, and the SSD's has a line in from each of its devices:
 
 <!-- interrupts:host-ssd start -->
 
 | Controller | Number | Line |
 | --- | --- | --- |
 | `compute.cpu` | 7 | `compute.timer.irq` |
-| `compute.cpu` | 11 | `compute.plic.irq` |
-| `compute.plic` | 1 | `compute.msi.irq0` |
-| `compute.plic` | 2 | `compute.msi.irq1` |
+| `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
+| `compute.cpu` | 11 | `compute.imsic.irq` |
 | `ssd.cpu` | 7 | `ssd.timer.irq` |
 | `ssd.cpu` | 11 | `ssd.plic.irq` |
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |
@@ -252,7 +243,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 
 <!-- interrupts:host-ssd end -->
 
-- **Nothing joins the two lists but the PCIe link.** The SSD interrupts its host by sending a message up the link, which the MSI bridge turns into `compute.msi.irq0` or `irq1`. The host gets the SSD's attention by writing a doorbell, which the frontend turns into `ssd.frontend.cpu_irq`. No wire runs between them.
+- **Nothing joins the two lists but the PCIe link.** The SSD interrupts its host by sending a message up the link, to the host's IMSIC, which raises `compute.imsic.irq`. The host gets the SSD's attention by writing a doorbell, which the frontend turns into `ssd.frontend.cpu_irq`. No wire runs between them.
 - 🎓 **Each CPU sees an interrupt up to one quantum late.** A command the host sends is seen by the SSD's firmware up to a quantum after the doorbell, and its completion is seen by the host up to a quantum after the message. That is temporal decoupling, the price of running each CPU for a stretch before the next has its turn.
 
 ## The IO manager

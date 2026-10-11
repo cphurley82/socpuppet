@@ -13,9 +13,10 @@
  *     That is what Zephyr takes it for unless a driver says otherwise, so
  *     this one says nothing.
  *   - Where a device is to send its interrupt messages (MSI), and which
- *     interrupt each one arrives as. Here they go to the MSI-to-PLIC bridge
- *     that the node's `msi-parent` names, which pulses one PLIC source for
- *     each vector.
+ *     interrupt each one arrives as. Here they go to the IMSIC that the
+ *     node's `msi-parent` names. A message is an interrupt identity,
+ *     written to the IMSIC's page, and the node says which identities the
+ *     board has set aside for the device's vectors.
  *
  * Zephyr's generic ECAM driver (pcie_ecam.c) does the first two. It can
  * only deliver MSI through an Arm GICv3 ITS, which is why this is a driver
@@ -99,36 +100,31 @@ static bool socpuppet_pcie_region_get_allocate_base(const struct device *dev, pc
 #ifdef CONFIG_PCIE_MSI
 
 /*
- * The bridge. Zephyr has one PCIe controller, the one `chosen` names, so
- * there is one of these nodes and one bridge to find.
+ * The IMSIC the node's `msi-parent` names, and the identities the node
+ * says its device's vectors may use. Zephyr has one PCIe controller, the
+ * one `chosen` names, so there is one of these nodes to read them from.
  */
-#define MSI_BRIDGE DT_INST_PHANDLE(0, msi_parent)
+#define MSI_PARENT DT_INST_PHANDLE(0, msi_parent)
 
-#define MSI_BRIDGE_IRQ(vector, _) DT_IRQN_BY_IDX(MSI_BRIDGE, vector)
-
-/* The interrupt each of the bridge's vectors arrives as: its PLIC source. */
-static const unsigned int msi_bridge_irqs[] = {
-	LISTIFY(DT_NUM_IRQS(MSI_BRIDGE), MSI_BRIDGE_IRQ, (, ))};
+static const unsigned int msi_identities[] = DT_INST_PROP(0, socpuppet_msi_identities);
 
 /*
  * Says, for each of a device's interrupt vectors, what the device is to
- * write and where, and which interrupt that arrives as. The message is the
- * vector's own number, written to the bridge's register.
- *
- * The device's vector N gets the bridge's vector N. With one device on
- * the link there is no one to share the bridge with.
+ * write and where, and which interrupt that arrives as. The message is an
+ * identity, written to the IMSIC's page, and Zephyr's IMSIC driver takes
+ * the identity as the interrupt's number.
  */
 static uint8_t socpuppet_pcie_msi_device_setup(const struct device *dev, unsigned int priority,
 					       msi_vector_t *vectors, uint8_t n_vector)
 {
-	uint8_t count = MIN(n_vector, ARRAY_SIZE(msi_bridge_irqs));
+	uint8_t count = MIN(n_vector, ARRAY_SIZE(msi_identities));
 
 	ARG_UNUSED(dev);
 
 	for (uint8_t vector = 0; vector < count; vector++) {
-		vectors[vector].arch.irq = msi_bridge_irqs[vector];
-		vectors[vector].arch.address = DT_REG_ADDR(MSI_BRIDGE);
-		vectors[vector].arch.eventid = vector;
+		vectors[vector].arch.irq = msi_identities[vector];
+		vectors[vector].arch.address = DT_REG_ADDR(MSI_PARENT);
+		vectors[vector].arch.eventid = msi_identities[vector];
 		vectors[vector].arch.priority = priority;
 	}
 

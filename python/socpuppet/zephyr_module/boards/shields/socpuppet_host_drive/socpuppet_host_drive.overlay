@@ -4,13 +4,6 @@
 	};
 
 	soc {
-		compute_msi: msi-controller@3000000 {
-			compatible = "socpuppet,msi-plic-bridge";
-			reg = <0x0 0x3000000 0x0 0x4>;
-			msi-controller;
-			interrupts-extended = <&compute_plic 1 1 &compute_plic 2 1>;
-		};
-
 		io_rc: pcie@10100000 {
 			compatible = "socpuppet,pcie";
 			reg = <0x0 0x10100000 0x0 0x100000>;
@@ -24,7 +17,8 @@
 };
 
 &io_rc {
-	msi-parent = <&compute_msi>;
+	msi-parent = <&compute_imsic>;
+	socpuppet,msi-identities = <32 33>;
 
 	nvme0: nvme0 {
 		compatible = "nvme-controller";

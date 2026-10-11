@@ -41,7 +41,6 @@ EXAMPLES = [
     sp.Imsic(),
     sp.MachineTimer(),
     sp.Memory(size=0x100),
-    sp.MsiPlicBridge(vectors=3),
     sp.MsiReceiver(),
     sp.Ns16550(),
     sp.NvmeFrontend(vectors=3),

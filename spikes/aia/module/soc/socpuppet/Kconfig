@@ -1,8 +1,0 @@
-# What every socpuppet SoC is: a RISC-V core with the privileged
-# architecture (machine mode, its timer and its interrupts) and a PLIC.
-config SOC_FAMILY_SOCPUPPET
-	select INCLUDE_RESET_VECTOR
-	select RISCV
-	select RISCV_PRIVILEGED
-	select RISCV_HAS_PLIC if DT_HAS_SIFIVE_PLIC_1_0_0_ENABLED
-	select RISCV_SOC_HAS_GP_RELATIVE_ADDRESSING

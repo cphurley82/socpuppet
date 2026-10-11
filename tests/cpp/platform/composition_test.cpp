@@ -272,8 +272,6 @@ INSTANTIATE_TEST_SUITE_P(
                     {"page_size", 0x1'0000'0000}},
                    "page_size",
                    "4294967296"},
-        OutOfRange{"msi_plic_bridge", {{"vectors", 0}}, "vectors", "0"},
-        OutOfRange{"msi_plic_bridge", {{"vectors", 2049}}, "vectors", "2049"},
         OutOfRange{"nvme_frontend", {{"vectors", 0}}, "vectors", "0"},
         OutOfRange{"nvme_frontend", {{"vectors", 2049}}, "vectors", "2049"},
         OutOfRange{"pcie_endpoint", PcieEndpointWith("vendor_id", 0x1'0000),

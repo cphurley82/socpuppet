@@ -19,7 +19,7 @@
 			compatible = "riscv";
 			reg = <0>;
 			riscv,isa-base = "rv64i";
-			riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", "zifencei";
+			riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", "zifencei", "smcsrind";
 
 			compute_cpu_intc: interrupt-controller {
 				compatible = "riscv,cpu-intc";
@@ -48,22 +48,23 @@
 			interrupts-extended = <&compute_cpu_intc 7>;
 		};
 
-		compute_plic: interrupt-controller@c000000 {
-			compatible = "sifive,plic-1.0.0";
-			reg = <0x0 0xc000000 0x0 0x4000000>;
-			#address-cells = <0>;
-			#interrupt-cells = <2>;
-			interrupt-controller;
-			riscv,max-priority = <7>;
-			riscv,ndev = <32>;
-			interrupts-extended = <&compute_cpu_intc 11>;
-		};
-
 		io_uart: uart@10000000 {
 			compatible = "ns16550";
 			reg = <0x0 0x10000000 0x0 0x8>;
 			reg-shift = <0>;
 			clock-frequency = <3686400>;
+		};
+
+		compute_imsic: interrupt-controller@24000000 {
+			compatible = "riscv,imsic";
+			reg = <0x0 0x24000000 0x0 0x1000>;
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			msi-controller;
+			riscv,num-ids = <63>;
+			riscv,hart-id = <0>;
+			interrupts-extended = <&compute_cpu_intc 11>;
 		};
 	};
 };

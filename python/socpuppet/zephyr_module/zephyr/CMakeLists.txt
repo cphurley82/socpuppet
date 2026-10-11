@@ -18,3 +18,16 @@ zephyr_sources_ifdef(CONFIG_SOCPUPPET_FLASH_CONTROLLER
 # on the die that manages it.
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_UCIE_LINK
   ${CMAKE_CURRENT_LIST_DIR}/../drivers/d2d/ucie_link.c)
+
+# irq_enable() and its two friends for a SoC whose interrupts arrive at an
+# IMSIC. Zephyr's own cannot be defined a second time, so the linker wraps
+# them: every call to one goes to the function of that name with `__wrap_`
+# before it, in the file here.
+if(CONFIG_SOCPUPPET_IMSIC_IRQ)
+  zephyr_sources(
+    ${CMAKE_CURRENT_LIST_DIR}/../drivers/interrupt_controller/imsic_irq.c)
+  zephyr_ld_options(
+    -Wl,--wrap=arch_irq_enable
+    -Wl,--wrap=arch_irq_disable
+    -Wl,--wrap=arch_irq_is_enabled)
+endif()

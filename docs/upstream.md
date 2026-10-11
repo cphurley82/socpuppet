@@ -487,17 +487,17 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The last two are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
 - **Where**: `drivers/pcie/host/pcie_ecam.c`, `pcie_ecam_msi_device_setup`.
 - **What is wrong**: the generic ECAM driver does everything a simple root complex needs (configuration access, and placing BARs in the windows that `ranges` gives) except interrupts. Its `msi_device_setup` is written against the GICv3 ITS and returns "no vectors" without `CONFIG_GIC_V3_ITS`. Outside x86, which has its own path, that is the only way Zephyr has to deliver a message-signalled interrupt. A board with any other MSI controller cannot use the driver, and Zephyr's NVMe driver cannot work without MSI-X: it has no polled mode.
 - **How to see it**: give a RISC-V board a `pci-host-ecam-generic` node and an `nvme-controller`. The NVMe driver logs `Could not allocate 2 MSI-X vectors`.
-- **What we do**: a controller driver of our own, `drivers/pcie/socpuppet_pcie.c`, for the compatible `socpuppet,pcie`. It repeats the ECAM driver's configuration and BAR handling for one memory window, and its `msi_device_setup` sends each vector to the MSI-to-PLIC bridge that the node's `msi-parent` names.
-- **Upstream fix**: let the ECAM driver hand MSI setup to the device its `msi-parent` property names, through a small driver API for "something that takes interrupt messages": give me an address, a data value and an interrupt for each of N vectors. The ITS code would be one implementation of it. A RISC-V IMSIC would be another, and so would our bridge.
+- **What we do**: a controller driver of our own, `drivers/pcie/socpuppet_pcie.c`, for the compatible `socpuppet,pcie`. It repeats the ECAM driver's configuration and BAR handling for one memory window, and its `msi_device_setup` sends each vector to the IMSIC that the node's `msi-parent` names: the IMSIC's page is the address and an identity the data, and the node says which identities are the device's (`socpuppet,msi-identities`). 🦜 Until M13 the parent was an MSI-to-PLIC bridge of socpuppet's own, which went when the host's PLIC did.
+- **Upstream fix**: let the ECAM driver hand MSI setup to the device its `msi-parent` property names, through a small driver API for "something that takes interrupt messages": give me an address, a data value and an interrupt for each of N vectors. The ITS code would be one implementation of it, and a RISC-V IMSIC another, handing out identities itself.
 - **Kind**: missing feature.
-- **When it lands**: `socpuppet_pcie.c` shrinks to an MSI controller driver for the bridge, and the root complex's node becomes a `pci-host-ecam-generic`. It has the `msi-parent` already.
+- **When it lands**: `socpuppet_pcie.c` goes, if Zephyr's IMSIC driver is given that API, and the root complex's node becomes a `pci-host-ecam-generic`. It has the `msi-parent` already.
 
 ### MSI-X does not link in a kernel with no MMU
 
@@ -558,6 +558,26 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: a 64-bit offset type for the flash API. That is a large change with every flash driver in its path, so the proposal to make first is the question of whether the flash class is meant for raw NAND at all. Zephyr has no NAND class to use in its place.
 - **Kind**: missing feature.
 - **When it lands**: the firmware's check goes, and a drive may be bigger than 2 GiB. socpuppet keeps the flash class either way ([plan.md](plan.md), decided on 2026-10-09), so if the answer is that the class is not for raw NAND, the limit stays and this entry says so.
+
+### `irq_enable` on RISC-V knows a PLIC's sources and not an IMSIC's identities
+
+- **Where**: `soc/common/riscv-privileged/soc_common_irq.c`, `arch_irq_enable`, `arch_irq_disable` and `arch_irq_is_enabled`. And `drivers/interrupt_controller/intc_riscv_imsic.c`, which has `riscv_imsic_enable_eiid` and nothing that calls it.
+- **What is wrong**: 🎓 a driver switches its interrupt on with `irq_enable(number)`, and the architecture decides what that means. On RISC-V it means a PLIC's source if there is a PLIC and the number is one of its, a CLIC's if there is a CLIC, and otherwise bit `number` of the hart's `mie` register. Zephyr's IMSIC driver takes a message's identity as the interrupt's number, so `irq_enable(32)` for an identity sets a bit of `mie` that has nothing to do with it (computed as `1 << 32` in an `int`, which is not defined), and the identity stays switched off in the IMSIC. Nothing in the tree connects the two. The file is compiled for every SoC with the privileged architecture, so a SoC cannot define the three again.
+- **How to see it**: build `tests/drivers/disk/disk_access` for the host without the module's glue. The NVMe driver waits for the interrupt of its first command and Zephyr prints nothing at all. It was tried, once, by taking `--wrap` out of the module's build.
+- **What we do**: `drivers/interrupt_controller/imsic_irq.c` in the module, and three `-Wl,--wrap=` options in its CMakeLists.txt, which send every call of the three to functions of ours: a number below 16 goes on to Zephyr's own, and one from 16 up is an identity, enabled in the IMSIC. `tests/python/test_zephyr_module.py` holds the numbers the board hands out to what the glue takes for an identity.
+- **Upstream fix**: a third branch in `soc_common_irq.c`, under `CONFIG_RISCV_IMSIC`, that does this, as the CLIC and the PLIC each have one.
+- **Kind**: missing feature.
+- **When it lands**: `imsic_irq.c` and the three linker options go.
+
+### The IMSIC driver turns its highest identity away, and enables the wrong register above 63
+
+- **Where**: `drivers/interrupt_controller/intc_riscv_imsic.c`: `.nr_irqs = MIN(DT_INST_PROP(inst, riscv_num_ids), CONFIG_NUM_IRQS)` with `if (irq >= cfg->nr_irqs)` in `imsic_mext_isr`, and `eiid_to_eie_index`, `*reg_index = eiid / __riscv_xlen`.
+- **What is wrong**: two things, both ⚠️ found by reading and neither run, since the host keeps clear of them. `riscv,num-ids` is the highest identity an IMSIC has, as the devicetree binding has it everywhere else (63, 127 and so on), and the handler treats it as one more than the highest: a message for identity 63 of a 63-identity IMSIC is reported as out of range. And on a 64-bit hart the registers of enable bits are numbered in twos, `eie0`, `eie2`, `eie4`, each of 64 bits, so identity N is in register `eie0 + 2 * (N / 64)`. The driver selects `eie0 + N / 64`, which for identities 64 to 127 is `eie1`: a register a 64-bit hart has not got, and an illegal instruction.
+- **How to see it**: by reading. For the second, `irq_enable` on identity 64 with an IMSIC of 127 on RV64. socpuppet's model refuses the register, as the specification has it (`MessageControllerContract.AHartRegisterTheControllerHasNotIsRefused`).
+- **What we do**: nothing in code. The host's IMSIC has 63 identities and hands out 32 and 33. `tests/python/test_zephyr_module.py` holds every identity the board gives a device to below the highest.
+- **Upstream fix**: `irq > num_ids` for the first, and `2 * (eiid / 64)` when `__riscv_xlen` is 64 for the second.
+- **Kind**: bug.
+- **When it lands**: nothing to delete. The host could use identity 63, and an IMSIC of more than 63.
 
 ## SPDK
 

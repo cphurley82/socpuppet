@@ -28,7 +28,7 @@ The host sees two windows in its address map.
 
 - **The configuration window, `ecam`.** Every function a bus could hold gets 4 KiB of it, laid out by bus, device and function number. 🎓 This layout is called ECAM, the enhanced configuration access mechanism. Reading the first register of each slot is how a host finds out what it has: an empty slot reads as all ones, with no error.
 - **The memory window, `mmio`.** The host places the device's registers somewhere inside it, by writing an address to the device's base address register. An access to the window goes down the link, and the device answers it if the address is one it was given.
-- **What comes up the link** goes out of `dma` onto the host's bus, untouched: the device's DMA into host memory, and its interrupts, which on PCIe are small writes too. What takes those is the [MSI-to-PLIC bridge](msi-plic-bridge.md) on a host that runs firmware, and the [MSI receiver](msi-receiver.md) on a scripted one.
+- **What comes up the link** goes out of `dma` onto the host's bus, untouched: the device's DMA into host memory, and its interrupts, which on PCIe are small writes too. What takes those is the [IMSIC](imsic.md) on a host that runs firmware, and the [MSI receiver](msi-receiver.md) on a scripted one.
 
 💡 The root complex has to know where the host sees the memory window, because a bus hands a target offsets into its window and the device compares addresses on the host's bus. It works that out from where `mmio` is mapped, through routers and links, so there is nothing to tell it. A description that leaves `mmio` unmapped is refused when it is built, before the simulation exists.
 

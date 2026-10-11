@@ -21,7 +21,7 @@ flowchart LR
         cpu["CPU"]
         bus["router"]
         ram["memory"]
-        plic["PLIC"]
+        imsic["IMSIC"]
         link["🎭 pass-through link"]
         iobus["router"]
         uart["UART"]
@@ -31,7 +31,7 @@ flowchart LR
         nvme["🎭 behavioral NVMe"]
         cpu --> bus
         bus --> ram
-        bus --> plic
+        bus --> imsic
         bus --> timer
         bus --> link --> iobus
         iobus --> uart
@@ -268,10 +268,10 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)
 - [Flash controller](models/flash-controller.md)
+- [Interrupt controller (IMSIC)](models/imsic.md)
 - [Interrupt controller (PLIC)](models/plic.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
-- [MSI-to-PLIC bridge](models/msi-plic-bridge.md)
 - [NVMe frontend](models/nvme-frontend.md)
 - [PCIe endpoint](models/pcie-endpoint.md)
 - [PCIe root complex](models/pcie-root-complex.md)

@@ -2,10 +2,10 @@
 
     compute die                                IO die
     🧠 cpu ─▶ bus ─┬─▶ ram
-       ▲  ▲        ├─▶ plic
+       ▲  ▲        ├─▶ imsic
        │  │        ├─▶ timer ─┐
        │  └────────│──────────┘
-     plic          └─▶ link endpoint ══ link endpoint ─▶ bus ─▶ uart
+     imsic         └─▶ link endpoint ══ link endpoint ─▶ bus ─▶ uart
 
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
 die has the CPU, its RAM, the interrupt controller and the timer. The IO
@@ -14,7 +14,9 @@ every access straight through, unless the host is given a `manager`.
 
 💡 Transactions and messages cross the link, and no wires. A real
 die-to-die link has nowhere for an interrupt line to go down, so the
-timer is on the die its CPU is on.
+timer is on the die its CPU is on, and the interrupt controller is one
+that is sent messages: an IMSIC. A device interrupts by writing a number
+to the IMSIC's page, from whichever die it is on.
 
 Firmware sees one flat memory map and cannot tell where the die boundary
 is, which is the point: the split can change without the firmware changing.
@@ -25,13 +27,12 @@ With `drive_blocks`, the host also has an SSD on a PCIe link:
        bus ─▶ link ════ link ─▶ bus ─▶ root complex ═══ endpoint ─▶ nvme
        ▲                 │                  │
        └──── link ◀══════╧══════════════════╛    DMA and interrupt messages
-       └─▶ msi bridge ═▶ plic                    (a line for each vector)
+       └─▶ imsic
 
 The root complex's two windows are on the IO die. What the drive sends up
 (DMA, and its interrupts, as messages) comes back across the die-to-die
-link onto the compute die's bus. There the MSI bridge turns each message
-into a pulse on a line of the interrupt controller, one line for each of
-the drive's interrupt vectors.
+link onto the compute die's bus. A PCIe device's interrupt is a message
+already, so it goes to the IMSIC as it is.
 
 🎭 That SSD is the stand-in drive, which answers the host itself. With
 `drive=add_ssd` as well it is the real one (`socpuppet.boards.ssd`), which
@@ -79,13 +80,12 @@ from socpuppet.boards.manager import Manager
 from socpuppet.components import (
     D2dLink,
     DbtRiseCpu,
+    Imsic,
     MachineTimer,
     Memory,
-    MsiPlicBridge,
     Ns16550,
     PassThroughLink,
     PcieRootComplex,
-    Plic,
     Router,
 )
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
@@ -97,8 +97,11 @@ RAM_BASE = 0x8000_0000
 RAM_SIZE = 64 * 1024 * 1024
 # The timer has no constant here: it is at `cpu_kit.TIMER_BASE`, where
 # every other socpuppet CPU has its timer.
-#: The interrupt controller.
-PLIC_BASE = 0x0C00_0000
+#: The interrupt controller's two pages, which are where messages are sent:
+#: the one for machine mode, and the one for supervisor mode. They are
+#: where QEMU's `virt` machine has them.
+IMSIC_BASE = 0x2400_0000
+IMSIC_SUPERVISOR_BASE = 0x2800_0000
 #: Everything on the IO die is inside this window of the compute die's map.
 IO_BASE = 0x1000_0000
 IO_SIZE = 0x0100_0000
@@ -112,11 +115,17 @@ ECAM_OFFSET = 0x10_0000
 ECAM_SIZE = 0x10_0000
 PCIE_WINDOW_OFFSET = 0x80_0000
 PCIE_WINDOW_SIZE = 0x10_0000
-#: Where the drive's interrupt messages are sent, on the compute die, and
-#: the interrupt controller's source that the first vector comes out on.
-#: The vectors after it take the sources after it.
-MSI_BASE = 0x0300_0000
-MSI_SOURCE = 1
+#: The identities the board sets aside at its interrupt controller for the
+#: drive's interrupt vectors, one each. The drive does not know them:
+#: firmware writes one into the drive for each vector, and that is the
+#: number the drive then sends.
+#:
+#: 💡 Zephyr knows an interrupt by one number, whichever way it comes, so
+#: the numbers are shared out. Up to 15 are the CPU's own lines, such as
+#: the timer's. From 32 are for devices that send messages themselves, of
+#: which the drive is the first. The 16 between are kept for devices that
+#: only have a wire.
+DRIVE_IDENTITIES = tuple(range(32, 32 + VECTORS))
 
 
 class PcieDrive(Protocol):
@@ -170,8 +179,6 @@ class HostDrive[Drive: PcieDrive](NamedTuple):
     #: What the host's `drive` function returned: 🎭 the stand-in drive
     #: unless the host was given another.
     ssd: Drive
-    #: The bridge that takes the SSD's interrupt messages.
-    msi: Placed
     #: The host's end of the PCIe link the SSD is on.
     root_complex: Placed
 
@@ -182,6 +189,9 @@ class Host[Drive: PcieDrive](NamedTuple):
     platform: Platform
     cpu: Placed
     uart: PlacedUart
+    #: The interrupt controller, which every interrupt but the timer's
+    #: comes to, as a message.
+    imsic: Placed
     #: The link between the two dies: `link.a` is the compute die's end,
     #: `link.b` the IO die's.
     link: Link
@@ -267,7 +277,7 @@ def host(
     )
     compute_bus = compute.add("bus", Router())
     ram = compute.add("ram", Memory(size=RAM_SIZE))
-    plic = compute.add("plic", Plic())
+    imsic = compute.add("imsic", Imsic())
     timer = compute.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute, io, trace=trace)
@@ -292,12 +302,16 @@ def host(
     platform.connect(cpu.socket, compute_bus.target)
     compute_bus.map(ram.socket, base=RAM_BASE)
     compute_bus.map(timer.socket, base=TIMER_BASE)
-    compute_bus.map(plic.socket, base=PLIC_BASE)
+    compute_bus.map(imsic.machine, base=IMSIC_BASE)
+    compute_bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
     compute_bus.map(d2d.a.target, base=IO_BASE, size=IO_SIZE)
     platform.connect(d2d.b.initiator, io_bus.target)
     io_bus.map(uart.socket, base=UART_OFFSET)
 
-    platform.connect(plic.irq, cpu.irq)
+    platform.connect(imsic.irq, cpu.irq)
+    platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
+    # The IMSIC's registers are the CPU's to reach, and not on the bus.
+    platform.connect(cpu.csr, imsic.csr)
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
@@ -309,25 +323,19 @@ def host(
                 "host(drive_blocks=4096, drive=...)."
             )
         return Host(
-            platform, cpu, uart, d2d, drive=None, manager=placed_manager
+            platform, cpu, uart, imsic, d2d, drive=None, manager=placed_manager
         )
 
-    msi = compute.add("msi", MsiPlicBridge(vectors=VECTORS))
     root_complex = io.add("rc", PcieRootComplex())
     io_bus.map(root_complex.ecam, base=ECAM_OFFSET, size=ECAM_SIZE)
     io_bus.map(
         root_complex.mmio, base=PCIE_WINDOW_OFFSET, size=PCIE_WINDOW_SIZE
     )
     # What the drive sends up crosses the die-to-die link the other way and
-    # comes onto the compute die's bus.
+    # comes onto the compute die's bus: its DMA to the RAM, and its
+    # interrupt messages to the IMSIC's page.
     platform.connect(root_complex.dma, d2d.b.target)
     platform.connect(d2d.a.initiator, compute_bus.add_input())
-    compute_bus.map(msi.socket, base=MSI_BASE)
-    for vector in range(VECTORS):
-        platform.connect(
-            getattr(msi, f"irq{vector}"),
-            getattr(plic, f"source{MSI_SOURCE + vector}"),
-        )
     ssd = (drive or add_behavioral_drive)(
         platform, root_complex, blocks=drive_blocks, group=platform.group("ssd")
     )
@@ -335,8 +343,9 @@ def host(
         platform,
         cpu,
         uart,
+        imsic,
         d2d,
-        drive=HostDrive(ssd, msi, root_complex),
+        drive=HostDrive(ssd, root_complex),
         manager=placed_manager,
     )
 
@@ -344,11 +353,14 @@ def host(
 def drive_overlay(board: Host[Any] | None = None) -> str:
     """The devicetree that the host with a drive has more than the board.
 
-    It is the overlay of the Zephyr shield `socpuppet_host_drive`: the MSI
-    bridge and the PCIe root complex, and in the root complex's node what
-    only this board can say of it.
+    It is the overlay of the Zephyr shield `socpuppet_host_drive`: the PCIe
+    root complex, and in its node what only this board can say of it.
 
-    - Where a device's interrupt messages go: `msi-parent`, the bridge.
+    - Where a device's interrupt messages go: `msi-parent`, the IMSIC.
+    - Which identities are set aside there for the device's vectors. A
+      message is an identity and nothing more, and no device comes with
+      one: the driver writes one into the device for each vector, and that
+      is the number the device then sends.
     - A node for the drive. 🎓 A device on a PCIe link is found by
       scanning, so a devicetree need not list it. Zephyr wants a node all
       the same, to attach its driver to, and matches it to what the scan
@@ -370,13 +382,15 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
     endpoint = drive.ssd.endpoint
     assert endpoint is not None
     root_complex = devicetree.label(drive.root_complex.path)
-    msi = devicetree.label(drive.msi.path)
+    imsic = devicetree.label(board.imsic.path)
+    identities = " ".join(str(each) for each in DRIVE_IDENTITIES)
     return board.platform.devicetree_overlay(
-        [drive.msi, drive.root_complex], via=board.cpu.socket
+        [drive.root_complex], via=board.cpu.socket
     ) + textwrap.dedent(
         f"""
         &{root_complex} {{
-        \tmsi-parent = <&{msi}>;
+        \tmsi-parent = <&{imsic}>;
+        \tsocpuppet,msi-identities = <{identities}>;
 
         \tnvme0: nvme0 {{
         \t\tcompatible = "nvme-controller";

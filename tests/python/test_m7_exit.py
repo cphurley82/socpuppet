@@ -27,8 +27,8 @@ from link_trace import (
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
+    IMSIC_BASE,
     IO_BASE,
-    MSI_BASE,
     RAM_BASE,
     host,
 )
@@ -243,7 +243,7 @@ class TestWhenTheLinkIsTracedWhileZephyrsDiskTestRuns:
         interrupted = [
             each
             for each in sent_to_the_compute_die(board)
-            if each.command == "write" and each.address == MSI_BASE
+            if each.command == "write" and each.address == IMSIC_BASE
         ]
 
         assert len(completed) == len(submission_doorbells(board))

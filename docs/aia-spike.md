@@ -1,21 +1,14 @@
-# The AIA spike 🚧
+# The AIA spike: does Zephyr build for an IMSIC and no PLIC?
 
-Step 0 of milestone M13, which gives the host an IMSIC and an APLIC where it has a PLIC ([docs/plan.md](../../docs/plan.md)). Zephyr 4.4.2 has a driver for each and no board in its tree that uses either, so nobody had seen them build for a board, let alone socpuppet's.
+This is the report of a spike for milestone M13 in [plan.md](plan.md), run on 2026-10-10. 🦜 The spike's code has since been deleted, when M13's steps 8 and 9 put what it found into socpuppet's Zephyr module, test-first. `8d4959a` is the commit that holds `spikes/aia/` as it was run.
 
-**The question.** Does Zephyr build for a `socpuppet_host` whose devicetree has `riscv,imsic` under `smcsrind` and no PLIC, and what does socpuppet's Zephyr module have to supply around the two drivers?
+**The question.** Zephyr 4.4.2 has a driver for an IMSIC and one for an APLIC, and no board in its tree that uses either. Does it build for a `socpuppet_host` whose devicetree has `riscv,imsic` under `smcsrind` and no PLIC, and what does socpuppet's Zephyr module have to supply around the two drivers?
 
-**The answer.** Yes, with glue and nothing more. `hello_world`, the disk test with the drive's shield, and the shell sample all build. Nothing was simulated: the models these images need do not exist yet, and building them is what M13's steps are.
+**The answer.** Yes, with glue and nothing more. `hello_world`, the disk test with the drive's shield, and the shell sample all built. Nothing was simulated: the models these images needed did not exist yet.
 
-⚠️ Nothing here is part of socpuppet. It is exploratory code, nothing outside `spikes/` may depend on it, and it goes when M13's step 8 puts the real thing in the module.
+## How it was run
 
-## Running it
-
-```sh
-firmware/build.sh      # once: leaves the toolchain and Zephyr in build/firmware
-spikes/aia/build.sh    # builds the three images in build/spikes/aia
-```
-
-The trial module is socpuppet's own (`python/socpuppet/zephyr_module`) with this directory's `module/` laid over it. Each file in `module/` is the real one with the spike's change made, so `diff -r` of the two shows the whole of it.
+The trial module was socpuppet's own with the spike's files laid over it: a hand-edited devicetree for the host, the SoC's Kconfig, the root complex's driver and the glue. A script built the three images in the devcontainer's image, each from an empty build directory.
 
 ## What it found
 
@@ -33,7 +26,7 @@ The trial module is socpuppet's own (`python/socpuppet/zephyr_module`) with this
 
 ⚠️ Identity 63 is lost: the driver refuses `irq >= MIN(riscv,num-ids, NUM_IRQS)`, and `riscv,num-ids` is the highest identity, not one more than it.
 
-**`irq_enable` needs glue, and the linker's `--wrap` is it.** Zephyr's `arch_irq_enable` for RISC-V sets bit `irq` of `mie` unless a PLIC or a CLIC is configured, and the file is compiled for every SoC with the privileged architecture, so the module cannot define the function again. `module/drivers/interrupt_controller/aia_irq.c` defines `__wrap_arch_irq_enable` and its two friends, and the module's CMake passes `-Wl,--wrap=`. In the built images every caller jumps to the wrapper: the timer's 7 and the IMSIC's 11 go on to Zephyr's own, an identity is enabled in the IMSIC, and an APLIC source is also given its mode, routed to its identity and enabled. The other candidate, a `SYS_INIT` that enables everything the devicetree names, was not needed.
+**`irq_enable` needs glue, and the linker's `--wrap` is it.** Zephyr's `arch_irq_enable` for RISC-V sets bit `irq` of `mie` unless a PLIC or a CLIC is configured, and the file is compiled for every SoC with the privileged architecture, so the module cannot define the function again. `aia_irq.c` in the spike's module defines `__wrap_arch_irq_enable` and its two friends, and the module's CMake passes `-Wl,--wrap=`. In the built images every caller jumps to the wrapper: the timer's 7 and the IMSIC's 11 go on to Zephyr's own, an identity is enabled in the IMSIC, and an APLIC source is also given its mode, routed to its identity and enabled. The other candidate, a `SYS_INIT` that enables everything the devicetree names, was not needed.
 
 **The root complex's driver** takes its identities from a property of ours on its node, `socpuppet,msi-identities = <32 33>`, and gives each vector the IMSIC's page as its address and the identity as its data. Zephyr's PCIe code then calls `irq_enable` on the identity, which the glue answers.
 
@@ -51,8 +44,8 @@ The trial module is socpuppet's own (`python/socpuppet/zephyr_module`) with this
 - It writes `mmsiaddrcfg` only if both halves read zero, with the IMSIC's page number.
 - It sets bit 11 of `target`, which the specification reserves.
 
-## What building could not say
+## What building could not say, and what running then said
 
-- **Whether the two drivers work.** They have compiled. They have not run.
-- ⚠️ **A wire that stays high.** In MSI mode an APLIC sends a level-sensitive source's message once, when the line rises. Linux pends it again after each interrupt if the line is still high, and Zephyr does not. A UART whose line stays high from one interrupt into the next, as it may while it has more to transmit, would then go quiet. M13's step 13 will see.
-- **A build directory keeps its configuration.** A change to the board's defconfig did not reach a directory that already existed, so `build.sh` starts each from nothing.
+- **Whether the two drivers work.** They had compiled and not run. ✅ The IMSIC's did, the first time it met the model: Zephyr's disk test passed with every interrupt a message (M13, steps 8 and 9). The APLIC's is step 13's to find out.
+- ⚠️ **A wire that stays high.** In MSI mode an APLIC sends a level-sensitive source's message once, when the line rises. Linux pends it again after each interrupt if the line is still high, and Zephyr does not. A UART whose line stays high from one interrupt into the next, as it may while it has more to transmit, would then go quiet. Step 13 will see.
+- **A build directory keeps its configuration.** A change to the board's defconfig did not reach a directory that already existed, so the spike's script started each from nothing.

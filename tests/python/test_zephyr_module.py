@@ -5,9 +5,14 @@ import re
 
 import socpuppet as sp
 from processes import run_socpuppet
+from socpuppet.boards.host import host
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
-from zephyr_module import ZEPHYR_MODULE, kconfig_default
+from zephyr_module import (
+    ZEPHYR_MODULE,
+    kconfig_default,
+    the_identities_of_the_hosts_drive,
+)
 
 
 class TestWhenTheZephyrModuleCommandIsRun:
@@ -50,23 +55,23 @@ class TestTheBindingsOfTheZephyrModule:
         assert vendors <= vendors_zephyr_is_told_of()
 
 
-class TestTheInterruptNumbersZephyrIsTold:
-    """🎓 Zephyr numbers interrupts in two levels. The first level is the
-    CPU's own inputs, and one of them is the line an interrupt controller
-    drives. That controller's sources are the second level, and are
-    numbered on from where the first level ends. The SoC's Kconfig says
+class TestTheInterruptNumbersZephyrIsToldOfASocWithAPlic:
+    """🎓 With a PLIC, Zephyr numbers interrupts in two levels. The first
+    level is the CPU's own inputs, and one of them is the line an interrupt
+    controller drives. That controller's sources are the second level, and
+    are numbered on from where the first level ends. The SoC's Kconfig says
     where that is, and how many there are, and a board's description says
     the same things its own way."""
 
     def test_the_second_level_hangs_off_the_input_the_plic_drives(self):
-        assert kconfig_default("2ND_LVL_INTR_00_OFFSET") == (
+        assert plic_default("2ND_LVL_INTR_00_OFFSET") == (
             the_number_a_cpu_knows_its_plic_by()
         )
 
     def test_the_second_levels_numbers_start_after_the_first_levels(self):
         # The CPU's inputs are numbered from 0 up to the one the PLIC
         # drives, which is the last of them.
-        assert kconfig_default("2ND_LVL_ISR_TBL_OFFSET") == (
+        assert plic_default("2ND_LVL_ISR_TBL_OFFSET") == (
             the_number_a_cpu_knows_its_plic_by() + 1
         )
 
@@ -74,12 +79,52 @@ class TestTheInterruptNumbersZephyrIsTold:
         self,
     ):
         # And for source 0, which means "none".
-        assert kconfig_default("MAX_IRQ_PER_AGGREGATOR") == sp.Plic.SOURCES + 1
+        assert plic_default("MAX_IRQ_PER_AGGREGATOR") == sp.Plic.SOURCES + 1
 
     def test_there_are_as_many_interrupts_as_both_levels_have(self):
-        assert kconfig_default("NUM_IRQS") == kconfig_default(
+        assert plic_default("NUM_IRQS") == plic_default(
             "2ND_LVL_ISR_TBL_OFFSET"
-        ) + kconfig_default("MAX_IRQ_PER_AGGREGATOR")
+        ) + plic_default("MAX_IRQ_PER_AGGREGATOR")
+
+
+def plic_default(name):
+    """The number a SoC with a PLIC gives Zephyr for a Kconfig option."""
+    return kconfig_default(name, under="RISCV_HAS_PLIC")
+
+
+class TestTheInterruptNumbersZephyrIsToldOfASocWithAnImsic:
+    """🎓 With an IMSIC there is one level. Zephyr's driver takes a
+    message's identity as the interrupt's number, and looks it up in the
+    same table as the CPU's own inputs, which have the numbers below 16."""
+
+    def test_there_is_a_number_for_every_identity_and_for_none(self):
+        # Identity 0 means "none", and counts as one.
+        assert kconfig_default("NUM_IRQS", under="RISCV_IMSIC") == (
+            host().imsic.component.identities + 1
+        )
+
+    def test_each_identity_of_the_hosts_drive_is_one_zephyr_takes_as_a_message(
+        self,
+    ):
+        # Not a number of one of the CPU's own inputs, which the module's
+        # `irq_enable` would take for that input. And below the IMSIC's
+        # highest identity: Zephyr's driver turns that one away, though it
+        # is one the IMSIC has (docs/upstream.md).
+        first = the_first_number_that_is_an_identity()
+        highest = host().imsic.component.identities
+
+        for identity in the_identities_of_the_hosts_drive():
+            assert first <= identity < highest
+
+
+def the_first_number_that_is_an_identity():
+    """Where the module's `irq_enable` starts taking a number for an identity."""
+    glue = ZEPHYR_MODULE / "drivers/interrupt_controller/imsic_irq.c"
+    said = re.search(
+        r"^#define FIRST_IDENTITY (\d+)$", glue.read_text(), re.MULTILINE
+    )
+    assert said is not None, f"{glue} does not say where identities start"
+    return int(said.group(1))
 
 
 def bindings():

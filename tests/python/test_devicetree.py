@@ -422,41 +422,6 @@ class TestWhenOnlyAnImsicsPageForTheSupervisorIsOnTheCpusBus:
         assert "imsic" not in platform.devicetree()
 
 
-class TestWhenAnMsiBridgesLinesGoToPlicSources:
-    def test_its_node_is_exactly_this(self):
-        platform, bus, plic = cpu_with_its_peripherals()
-        msi = platform.add("msi", sp.MsiPlicBridge(vectors=2))
-        bus.map(msi.socket, base=0x0300_0000)
-        platform.connect(msi.irq0, plic.source4)
-        platform.connect(msi.irq1, plic.source9)
-
-        node = textwrap.dedent(
-            """\
-            msi: msi-controller@3000000 {
-            \tcompatible = "socpuppet,msi-plic-bridge";
-            \treg = <0x0 0x3000000 0x0 0x4>;
-            \tmsi-controller;
-            \tinterrupts-extended = <&plic 4 1 &plic 9 1>;
-            };
-            """
-        )
-        assert textwrap.indent(node, "\t\t") in platform.devicetree()
-
-    def test_its_node_names_the_sources_in_the_order_of_its_vectors(self):
-        platform, bus, plic = cpu_with_its_peripherals()
-        msi = platform.add("msi", sp.MsiPlicBridge(vectors=2))
-        bus.map(msi.socket, base=0x0300_0000)
-        # Firmware finds a vector's interrupt by its place in the list, so
-        # the list is in the order of the vectors and not of the wiring.
-        platform.connect(msi.irq1, plic.source9)
-        platform.connect(msi.irq0, plic.source4)
-
-        assert (
-            "interrupts-extended = <&plic 4 1 &plic 9 1>;"
-            in platform.devicetree()
-        )
-
-
 class TestWhenAnSsdsDevicesAreOnItsCpusBus:
     # The three devices an SSD's firmware drives. Each has a node for its
     # register block, with the PLIC source its line goes to.
@@ -628,12 +593,12 @@ class TestADevicetreeOverlayForOneOfAPlatformsComponents:
 
 class TestADevicetreeOverlayForAComponentThatFillsNoRole:
     def test_says_nothing_of_what_is_chosen(self):
-        platform, bus, plic = cpu_with_its_peripherals()
-        msi = platform.add("msi", sp.MsiPlicBridge(vectors=1))
-        bus.map(msi.socket, base=0x0300_0000)
-        platform.connect(msi.irq0, plic.source4)
+        # A second timer, which is no console and no memory.
+        platform, bus, _ = cpu_with_its_peripherals()
+        device = platform.add("device", sp.MachineTimer())
+        bus.map(device.socket, base=0x0300_0000)
 
-        assert "chosen" not in platform.devicetree_overlay([msi])
+        assert "chosen" not in platform.devicetree_overlay([device])
 
 
 def a_manager_die_with_the_real_link():

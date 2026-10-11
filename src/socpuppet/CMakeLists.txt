@@ -203,7 +203,6 @@ target_sources(socpuppet_models INTERFACE
     models/imsic.h
     models/interrupt_lines.h
     models/memory.h
-    models/msi_plic_bridge.h
     models/msi_receiver.h
     models/nand_link.h
     models/nvme_frontend.h

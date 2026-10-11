@@ -107,7 +107,7 @@ def test_a_row_on_the_masters_own_bus_is_through_nothing(tmp_path):
     assert cells(page, starting=host_board.RAM_BASE)["Through"] == ""
 
 
-def test_the_table_of_what_a_drive_adds_has_the_msi_bridge_and_not_the_ram(
+def test_the_table_of_what_a_drive_adds_has_the_root_complex_and_not_the_ram(
     tmp_path,
 ):
     page = a_page(tmp_path, "address-map:host-drive")
@@ -115,7 +115,8 @@ def test_the_table_of_what_a_drive_adds_has_the_msi_bridge_and_not_the_ram(
     address_map_docs("write", page)
 
     written = page.read_text()
-    assert f"`{format_address(host_board.MSI_BASE)}`" in written
+    configuration_window = host_board.IO_BASE + host_board.ECAM_OFFSET
+    assert f"`{format_address(configuration_window)}`" in written
     assert f"`{format_address(host_board.RAM_BASE)}`" not in written
 
 
@@ -132,7 +133,7 @@ def test_an_interrupt_table_row_says_which_controller_which_number_and_which_lin
     )
 
 
-def test_the_interrupt_table_of_the_host_with_the_ssd_has_lines_of_both_interrupt_controllers(
+def test_the_interrupt_table_of_the_host_with_the_ssd_has_the_lines_of_the_host_and_of_the_ssd(
     tmp_path,
 ):
     page = a_page(tmp_path, "interrupts:host-ssd")
@@ -140,14 +141,8 @@ def test_the_interrupt_table_of_the_host_with_the_ssd_has_lines_of_both_interrup
     address_map_docs("write", page)
 
     written = page.read_text()
-    assert (
-        f"| `compute.plic` | {host_board.MSI_SOURCE} | `compute.msi.irq0` |"
-        in written
-    )
-    assert (
-        f"| `ssd.plic` | {ssd_board.FRONTEND_SOURCE} | `ssd.frontend.cpu_irq` |"
-        in written
-    )
+    assert "`compute.imsic.irq`" in written
+    assert "`ssd.frontend.cpu_irq`" in written
 
 
 def test_the_table_of_the_hosts_manager_has_the_links_registers_and_nothing_else(

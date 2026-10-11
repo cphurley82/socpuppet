@@ -8,18 +8,22 @@ import pytest
 
 from devicetree_compiler import dtc_errors, needs_dtc
 from socpuppet.boards.cpu_kit import TIMER_BASE, TIMER_HZ
-from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
+from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
     IO_BASE,
-    MSI_SOURCE,
     drive_overlay,
     host,
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
-from socpuppet.components import MachineTimer
-from zephyr_module import ZEPHYR_MODULE, clock_rate
+from socpuppet.components import Imsic, MachineTimer
+from socpuppet.interrupt_map import InterruptEntry
+from zephyr_module import (
+    ZEPHYR_MODULE,
+    clock_rate,
+    the_identities_of_the_hosts_drive,
+)
 
 
 class TestTheZephyrBoardForTheHost:
@@ -52,6 +56,20 @@ class TestTheHostsTimer:
         assert timer.address == TIMER_BASE
 
 
+class TestTheHostsInterruptController:
+    def test_is_an_imsic_with_a_page_for_each_mode_where_qemus_virt_has_them(
+        self,
+    ):
+        pages = {
+            each.port: each.address
+            for each in host().platform.address_map()
+            if each.implementation == Imsic.implementation
+        }
+
+        # VIRT_IMSIC_M and VIRT_IMSIC_S in QEMU's hw/riscv/virt.c.
+        assert pages == {"machine": 0x2400_0000, "supervisor": 0x2800_0000}
+
+
 class TestTheZephyrShieldForTheHostsDrive:
     def test_its_overlay_is_what_the_host_description_generates(self):
         checked_in = (
@@ -74,8 +92,19 @@ class TestTheZephyrShieldForTheHostsDrive:
         assert f"vendor-id = <{VENDOR_ID:#x}>;" in overlay
         assert f"device-id = <{DEVICE_ID:#x}>;" in overlay
 
-    def test_its_overlay_sends_the_root_complexs_messages_to_the_bridge(self):
-        assert "msi-parent = <&compute_msi>;" in drive_overlay()
+    def test_its_overlay_sends_the_root_complexs_messages_to_the_imsic(self):
+        assert "msi-parent = <&compute_imsic>;" in drive_overlay()
+
+    def test_its_overlay_sets_an_identity_aside_for_each_of_the_drives_vectors(
+        self,
+    ):
+        # A message is an identity written to the IMSIC's page, and no
+        # device comes with one. The board says which are the drive's, so
+        # that what it leaves free for other things stays free.
+        identities = the_identities_of_the_hosts_drive()
+
+        assert len(identities) == VECTORS
+        assert len(set(identities)) == VECTORS
 
     def test_its_overlay_has_every_device_the_drive_adds_to_the_host(self):
         added = labels(host(drive_blocks=64).platform.devicetree()) - labels(
@@ -108,20 +137,6 @@ class TestTheHostWithADrive:
         assert board.drive is not None
         assert board.drive.ssd.nvme.component.parameters["blocks"] == 4096
 
-    def test_gives_each_of_the_drives_vectors_a_plic_source_of_its_own(self):
-        board = host(drive_blocks=64)
-
-        connections = json.loads(board.platform.to_json())["connections"]
-
-        assert {
-            each["source"]: each["sink"]
-            for each in connections
-            if each["source"].startswith("compute.msi.irq")
-        } == {
-            "compute.msi.irq0": f"compute.plic.source{MSI_SOURCE}",
-            "compute.msi.irq1": f"compute.plic.source{MSI_SOURCE + 1}",
-        }
-
     @pytest.mark.platform
     def test_shows_the_drive_in_the_configuration_window(self):
         board = host(drive_blocks=64)
@@ -136,11 +151,36 @@ class TestTheHostWithADrive:
 
 
 class TestTheInterruptLinesOfTheHostWithADrive:
+    def test_the_ones_to_the_cpu_are_the_timers_and_the_imsics_two(self):
+        # Every other interrupt comes as a message, to the IMSIC, the
+        # drive's among them.
+        board = host(drive_blocks=64)
+
+        to_the_cpu = [
+            each
+            for each in board.platform.interrupt_map()
+            if each.controller == board.cpu.path
+        ]
+
+        assert to_the_cpu == [
+            InterruptEntry("compute.cpu", 7, "compute.timer.irq"),
+            InterruptEntry("compute.cpu", 9, "compute.imsic.supervisor_irq"),
+            InterruptEntry("compute.cpu", 11, "compute.imsic.irq"),
+        ]
+
+    def test_none_is_to_a_plic(self):
+        # What makes a node a PLIC to firmware is what it is compatible
+        # with, and the SoC's Kconfig looks for exactly this.
+        devicetree = host(drive_blocks=64).platform.devicetree()
+
+        assert 'compatible = "sifive,plic-1.0.0"' not in devicetree
+
     def test_each_stays_on_the_die_it_starts_on(self):
         # A die-to-die link carries transactions and messages, and no
         # wires. The drive's interrupts have to cross it, so they are
-        # sent as messages and become lines on the compute die.
-        board = host(drive_blocks=64)
+        # sent as messages, and stay messages until the IMSIC. The SSD
+        # has lines of its own, on its own side of the PCIe link.
+        board = host_with_the_ssd()
 
         crossing = [
             each
