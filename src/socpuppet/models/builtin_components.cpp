@@ -30,6 +30,7 @@
 #include "socpuppet/models/rom.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/system_controller.h"
+#include "socpuppet/models/watchdog.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/slots.h"
@@ -39,6 +40,7 @@ namespace socpuppet {
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
+static_assert(WatchdogSlot<Watchdog>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(LinkEndpointSlot<D2dLinkEndpoint>);
 static_assert(UartSlot<Ns16550>);
@@ -324,6 +326,14 @@ Registry BuiltinComponents() {
                                 WireSourcePort("reset", module->reset)};
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
+  registry.Add("watchdog", [](const char* name, Parameters&) {
+    auto module = std::make_unique<Watchdog>(name);
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        WireSourcePort("irq", module->irq, /*required=*/false),
+        WireSourcePort("bite", module->bite, /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter
   // sizes it and loads its address map from the parameters:
   //   inputs               how many masters it takes; one if left out

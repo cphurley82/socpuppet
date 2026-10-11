@@ -459,6 +459,41 @@ class TestWhenAUartsInterruptGoesToAPlicSource:
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
 
+def cpu_with_a_watchdog():
+    """A CPU with a watchdog whose interrupt is at source 4 of its PLIC."""
+    platform, bus, plic = cpu_with_its_peripherals()
+    wdt = platform.add("wdt", sp.Watchdog())
+    bus.map(wdt.socket, base=0x0010_1000)
+    platform.connect(wdt.irq, plic.source4)
+    return platform, wdt, plic
+
+
+class TestWhenAWatchdogsInterruptGoesToAPlicSource:
+    def test_its_node_is_exactly_this(self):
+        # Zephyr's binding for SiFive's watchdog requires a property called
+        # `interrupts`, so the interrupt is given the short way.
+        platform, _, _ = cpu_with_a_watchdog()
+
+        node = textwrap.dedent(
+            """\
+            wdt: watchdog@101000 {
+            \tcompatible = "sifive,wdt";
+            \treg = <0x0 0x101000 0x0 0x1000>;
+            \tinterrupt-parent = <&plic>;
+            \tinterrupts = <4 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_its_bite_at_another_source_is_no_interrupt_of_its_node(self):
+        # The line that resets is not one firmware has a handler for.
+        platform, wdt, plic = cpu_with_a_watchdog()
+        platform.connect(wdt.bite, plic.source5)
+
+        assert "interrupts = <4 1>;" in platform.devicetree()
+
+
 def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
     """A CPU with an IMSIC: both the IMSIC's lines go to the CPU, and the
     CPU's `csr` to the IMSIC.

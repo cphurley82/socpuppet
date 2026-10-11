@@ -139,12 +139,30 @@ class TestAnSsdWithNoScriptForItsFirmware:
             each["source"]: each["sink"]
             for each in connections
             if each["sink"].startswith("ssd.plic.source")
+            and each["source"] != "ssd.wdt.irq"
         } == {
             "ssd.frontend.cpu_irq": f"ssd.plic.source{FRONTEND_SOURCE}",
             "ssd.dma.irq": f"ssd.plic.source{DMA_SOURCE}",
             "ssd.flash.irq": f"ssd.plic.source{FLASH_SOURCE}",
         }
         assert len({FRONTEND_SOURCE, DMA_SOURCE, FLASH_SOURCE}) == 3
+
+    def test_its_watchdog_interrupts_at_the_source_after_its_devices(self):
+        board = ssd(host=idle_host)
+        after = max(FRONTEND_SOURCE, DMA_SOURCE, FLASH_SOURCE) + 1
+
+        assert what_drives(
+            board.platform, board.platform.port(f"ssd.plic.source{after}")
+        ) == [board.ssd.cpu_kit.wdt.irq.path]
+
+    def test_has_a_watchdog_that_bites_its_system_controller(self):
+        board = ssd(host=idle_host)
+        kit = board.ssd.cpu_kit
+
+        assert isinstance(kit.wdt.component, sp.Watchdog)
+        assert what_drives(board.platform, kit.syscon.bite) == [
+            kit.wdt.bite.path
+        ]
 
     def test_sends_the_plic_and_the_timer_to_the_cpu(self):
         board = ssd(host=idle_host)

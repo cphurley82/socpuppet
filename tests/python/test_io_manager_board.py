@@ -97,6 +97,22 @@ class TestWhenTheManagerIsARealCpu:
 
         assert syscon.die == IO_DIE
 
+    def test_its_watchdog_bites_its_system_controller(self):
+        board = io_manager(compute=nothing)
+        kit = board.manager.cpu_kit
+
+        assert what_drives(board.platform, kit.syscon.bite) == [
+            kit.wdt.bite.path
+        ]
+
+    def test_its_watchdog_interrupts_at_the_source_after_the_links(self):
+        board = io_manager(compute=nothing)
+
+        assert what_drives(
+            board.platform,
+            board.platform.port(f"io.plic.source{LINK_SOURCE + 1}"),
+        ) == [board.manager.cpu_kit.wdt.irq.path]
+
     def test_the_links_line_is_on_a_source_of_its_interrupt_controller(self):
         board = io_manager(compute=nothing)
 

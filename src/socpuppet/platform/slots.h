@@ -125,6 +125,24 @@ concept AplicSlot =
       { aplic.msi } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
     };
 
+// A watchdog timer: built from a name, with its registers reached through
+// one TLM target socket. It has two outputs. `irq` is its interrupt, for an
+// interrupt controller's input, and `bite` is the line that rises when
+// firmware has let it run out, for whatever resets the CPU.
+template <typename T>
+concept WatchdogSlot = std::constructible_from<T, sc_core::sc_module_name> &&
+                       requires(T watchdog) {
+                         {
+                           watchdog.socket
+                         } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+                         {
+                           watchdog.irq
+                         } -> std::convertible_to<sc_core::sc_out<bool>&>;
+                         {
+                           watchdog.bite
+                         } -> std::convertible_to<sc_core::sc_out<bool>&>;
+                       };
+
 // A UART: built from a name and reached through one TLM target socket.
 // Whoever is at the other end of its serial line is the test or the script
 // that holds it: what the UART transmitted is kept as text, and bytes are

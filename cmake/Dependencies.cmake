@@ -277,6 +277,8 @@ FetchContent_Declare(vpv_peripherals
   # transmitting.
   # aplic-msi-mode: the APLIC delivered over a line only. This adds
   # delivery by message, which a platform whose harts have IMSICs needs.
+  # aon-watchdog: the model of SiFive's always-on block had the watchdog's
+  # registers and nothing behind them. This adds the watchdog.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-last-source.patch
@@ -285,6 +287,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-edge-while-claimed.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-uart-interrupt-from-state.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aplic-msi-mode.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aon-watchdog.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

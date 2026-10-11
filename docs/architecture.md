@@ -286,6 +286,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Router](models/router.md)
 - [System controller](models/system-controller.md)
 - [UART (16550)](models/ns16550.md)
+- [Watchdog](models/watchdog.md)
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
 - 🎭 [Ideal NAND](models/ideal-nand.md)
 - 🎭 [IO-die manager](models/io-manager.md)

@@ -74,6 +74,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `compute.syscon.socket` | [System controller](models/system-controller.md) | |
+| `0x0010_1000` | 4 KiB | `compute.wdt.socket` | [Watchdog](models/watchdog.md) | |
 | `0x0200_0000` | 64 KiB | `compute.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 32 KiB | `compute.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
@@ -101,6 +102,7 @@ The interrupt lines of the board with no drive:
 
 | Controller | Number | Line |
 | --- | --- | --- |
+| `compute.aplic` | 17 | `compute.wdt.irq` |
 | `compute.cpu` | 7 | `compute.timer.irq` |
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
@@ -175,6 +177,7 @@ What the SSD's own CPU sees (`ssd.cpu.socket`):
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `ssd.syscon.socket` | [System controller](models/system-controller.md) | |
+| `0x0010_1000` | 4 KiB | `ssd.wdt.socket` | [Watchdog](models/watchdog.md) | |
 | `0x0200_0000` | 64 KiB | `ssd.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `ssd.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `ssd.uart.socket` | [UART (16550)](models/ns16550.md) | |
@@ -197,6 +200,7 @@ Its interrupt lines:
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |
 | `ssd.plic` | 2 | `ssd.dma.irq` |
 | `ssd.plic` | 3 | `ssd.flash.irq` |
+| `ssd.plic` | 4 | `ssd.wdt.irq` |
 
 <!-- interrupts:ssd end -->
 
@@ -237,6 +241,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 
 | Controller | Number | Line |
 | --- | --- | --- |
+| `compute.aplic` | 17 | `compute.wdt.irq` |
 | `compute.cpu` | 7 | `compute.timer.irq` |
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
@@ -246,6 +251,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |
 | `ssd.plic` | 2 | `ssd.dma.irq` |
 | `ssd.plic` | 3 | `ssd.flash.irq` |
+| `ssd.plic` | 4 | `ssd.wdt.irq` |
 
 <!-- interrupts:host-ssd end -->
 
@@ -263,6 +269,7 @@ What the manager's CPU sees (`io.cpu.socket`):
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `io.syscon.socket` | [System controller](models/system-controller.md) | |
+| `0x0010_1000` | 4 KiB | `io.wdt.socket` | [Watchdog](models/watchdog.md) | |
 | `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | |
@@ -279,6 +286,7 @@ What 🎭 the compute die sees (`compute.cpu.socket`), which is the same again t
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `io.syscon.socket` | [System controller](models/system-controller.md) | `compute.bus`, same addresses |
+| `0x0010_1000` | 4 KiB | `io.wdt.socket` | [Watchdog](models/watchdog.md) | `compute.bus`, same addresses |
 | `0x0200_0000` | 64 KiB | `io.timer.socket` | [Machine timer](models/machine-timer.md) | `compute.bus`, same addresses |
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | `compute.bus`, same addresses |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus`, same addresses |
@@ -298,6 +306,7 @@ The interrupt lines:
 | `io.cpu` | 7 | `io.timer.irq` |
 | `io.cpu` | 11 | `io.plic.irq` |
 | `io.plic` | 1 | `io.d2d.irq` |
+| `io.plic` | 2 | `io.wdt.irq` |
 
 <!-- interrupts:io-manager end -->
 
@@ -329,6 +338,7 @@ The interrupt lines:
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x0010_0000` | 32 bytes | `io.manager.syscon.socket` | [System controller](models/system-controller.md) | |
+| `0x0010_1000` | 4 KiB | `io.manager.wdt.socket` | [Watchdog](models/watchdog.md) | |
 | `0x0200_0000` | 64 KiB | `io.manager.timer.socket` | [Machine timer](models/machine-timer.md) | |
 | `0x0C00_0000` | 64 MiB | `io.manager.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.manager.uart.socket` | [UART (16550)](models/ns16550.md) | |

@@ -60,6 +60,7 @@ EXAMPLES = [
     router_with_two_inputs(),
     sp.ScriptedBusMaster(),
     sp.SystemController(die=1, boot_address=0x1020_0000),
+    sp.Watchdog(),
 ]
 
 

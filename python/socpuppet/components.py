@@ -830,6 +830,47 @@ class SystemController(Component):
         )
 
 
+class Watchdog(Component):
+    """A watchdog timer: it resets the CPU when firmware stops feeding it.
+
+    🎓 A watchdog is a counter firmware has to keep setting back to zero.
+    Firmware that hangs stops, the count reaches a value firmware chose,
+    and the watchdog bites. This is the one in SiFive's FE310, which
+    Zephyr has a driver for (`sifive,wdt`).
+
+    Connect `bite` to a system controller's `bite`, which is what resets
+    the CPU. `irq` is its interrupt, for a watchdog that is told to say it
+    has run out and not to reset: connect it to an interrupt controller's
+    source. ⚠️ Zephyr's driver will not build for a watchdog whose node
+    has no interrupt.
+
+    The model is borrowed from VPV-Peripherals, with the watchdog itself
+    added: it had the registers and nothing behind them.
+    """
+
+    implementation = "watchdog"
+    port_specs = (
+        target("socket"),
+        wire_out("irq", required=False),
+        wire_out("bite", required=False),
+    )
+    #: A page: the watchdog's registers, and those of the rest of the
+    #: always-on block the model is of, which nothing here uses.
+    mapped_size = 0x1000
+
+    @override
+    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+        return DeviceNode(
+            "watchdog",
+            ((reached["socket"].address, self.mapped_size),),
+            ('compatible = "sifive,wdt";',),
+            # `bite` resets, and is no interrupt.
+            interrupts=("irq",),
+            # Zephyr's binding requires the property by this name.
+            short_interrupts=True,
+        )
+
+
 class MsiReceiver(Component):
     """🎭 Stand-in for what takes a host's message-signalled interrupts.
 

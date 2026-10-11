@@ -1,0 +1,259 @@
+diff --git a/sifive/aon.cpp b/sifive/aon.cpp
+--- a/sifive/aon.cpp
++++ b/sifive/aon.cpp
+@@ -9,8 +9,24 @@
+ 
+ #include "scc/utilities.h"
+ 
++#include <algorithm>
++
+ namespace vpvper {
+ namespace sifive {
++namespace {
++// wdogcfg, as the FE310 has it.
++const uint32_t WDOGCFG_SCALE = 0xf;
++const uint32_t WDOGCFG_RSTEN = 1u << 8;
++const uint32_t WDOGCFG_ZEROCMP = 1u << 9;
++const uint32_t WDOGCFG_ENALWAYS = 1u << 12;
++const uint32_t WDOGCFG_ENCOREAWAKE = 1u << 13;
++const uint32_t WDOGCFG_IP0 = 1u << 28;
++// What is compared is 16 bits wide.
++const uint32_t WDOGCMP_MASK = 0xffff;
++// What unlocks the watchdog's registers for one write, and what feeds it.
++const uint32_t WDOGKEY = 0x51f15e;
++const uint32_t WDOGFEED = 0xd09f00d;
++} // namespace
+ 
+ aon::aon(sc_core::sc_module_name nm)
+ : sc_core::sc_module(nm)
+@@ -19,12 +35,65 @@
+ , NAMED(erst_n_i)
+ , NAMED(lfclkc_o)
+ , NAMED(rst_o)
++, NAMED(wdog_irq_o)
+ , NAMEDD(regs, aon_regs) {
+     regs->registerResources(*this);
+     SC_METHOD(clock_cb);
+     sensitive << clk_i;
+     SC_METHOD(reset_cb);
+     sensitive << erst_n_i;
++    SC_METHOD(wdog_match_cb);
++    sensitive << wdog_match_evt;
++    dont_initialize();
++    SC_METHOD(wdog_rst_done_cb);
++    sensitive << wdog_rst_done_evt;
++    dont_initialize();
++    SC_METHOD(wdog_drive_cb);
++    sensitive << wdog_drive_evt;
++    dont_initialize();
++
++    // Every write to a watchdog register takes the key first, and uses it up.
++    regs->wdogkey.set_write_cb([this](const scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time) -> bool {
++        wdog_unlocked = data == WDOGKEY;
++        return true;
++    });
++    regs->wdogkey.set_read_cb([this](const scc::sc_register<uint32_t>&, uint32_t& data, sc_core::sc_time) -> bool {
++        data = wdog_unlocked ? 1 : 0;
++        return true;
++    });
++    regs->wdogcfg.set_write_cb([this](const scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time) -> bool {
++        if(wdog_write_allowed()) {
++            // Whether it counts may change: settle the count as it was first.
++            wdog_set_count(wdog_count_now());
++            regs->r_wdogcfg = data;
++            wdog_schedule();
++            // The interrupt is the ip0 bit, which this may have cleared.
++            wdog_drive_evt.notify(sc_core::SC_ZERO_TIME);
++        }
++        return true;
++    });
++    regs->wdogcmp.set_write_cb([this](const scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time) -> bool {
++        if(wdog_write_allowed()) {
++            regs->r_wdogcmp = data & WDOGCMP_MASK;
++            wdog_schedule();
++        }
++        return true;
++    });
++    regs->wdogcount.set_read_cb([this](const scc::sc_register<uint32_t>&, uint32_t& data, sc_core::sc_time) -> bool {
++        data = static_cast<uint32_t>(wdog_count_now());
++        return true;
++    });
++    regs->wdogs.set_read_cb([this](const scc::sc_register<uint32_t>&, uint32_t& data, sc_core::sc_time) -> bool {
++        data = static_cast<uint32_t>(wdog_count_now() >> (regs->r_wdogcfg & WDOGCFG_SCALE));
++        return true;
++    });
++    regs->wdogfeed.set_write_cb([this](const scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time) -> bool {
++        if(wdog_write_allowed() && data == WDOGFEED) {
++            wdog_set_count(0);
++            wdog_schedule();
++        }
++        return true;
++    });
+ }
+ 
+ void aon::start_of_simulation() { rst_o = true; }
+@@ -34,17 +103,89 @@
+ aon::~aon() {} // NOLINT
+ 
+ void aon::reset_cb() {
+-    if(!erst_n_i.read()) {
++    ext_rst = !erst_n_i.read();
++    if(ext_rst) {
+         regs->reset_start();
+-        rst_o = true;
++        wdog_reset();
+     } else {
+         regs->reset_stop();
+-        rst_o = false;
+     }
+-    lfclkc_o.write(sc_core::sc_time(1 / 32768., sc_core::SC_SEC));
++    // rst_o has two reasons to be high now, and one process that writes it.
++    wdog_drive_evt.notify(sc_core::SC_ZERO_TIME);
++    lfclkc_o.write(lfclk);
+ }
+ 
+ void aon::reset_internal_cb() {}
+ 
++// The watchdog as it is out of reset: off, at zero, locked, with nothing to wait for. A register's reset goes
++// through its write callback, so resetting wdogcfg uses up a key that had been given and not yet used.
++void aon::wdog_reset() {
++    wdog_match_evt.cancel();
++    regs->wdogcfg.reset();
++    regs->wdogcmp.reset();
++    wdog_set_count(0);
++}
++
++bool aon::wdog_write_allowed() {
++    const bool allowed = wdog_unlocked;
++    wdog_unlocked = false;
++    return allowed;
++}
++
++// The core is always awake here, so the two ways of enabling come to the same.
++bool aon::wdog_counting() const { return (regs->r_wdogcfg & (WDOGCFG_ENALWAYS | WDOGCFG_ENCOREAWAKE)) != 0; }
++
++uint64_t aon::wdog_count_now() const {
++    if(!wdog_counting())
++        return wdog_count;
++    return wdog_count + static_cast<uint64_t>((sc_core::sc_time_stamp() - wdog_count_at) / lfclk);
++}
++
++void aon::wdog_set_count(uint64_t count) {
++    wdog_count = count;
++    wdog_count_at = sc_core::sc_time_stamp();
++}
++
++// Has wdog_match_cb run when the scaled count next reaches the compare value: at once if it already has, and no
++// sooner than at_least_ticks from where the count was last settled.
++void aon::wdog_schedule(uint64_t at_least_ticks) {
++    wdog_match_evt.cancel();
++    if(!wdog_counting())
++        return;
++    const uint64_t match = static_cast<uint64_t>(regs->r_wdogcmp) << (regs->r_wdogcfg & WDOGCFG_SCALE);
++    const uint64_t ticks = std::max(match > wdog_count ? match - wdog_count : 0, at_least_ticks);
++    const sc_core::sc_time when = wdog_count_at + lfclk * static_cast<double>(ticks);
++    const sc_core::sc_time now = sc_core::sc_time_stamp();
++    wdog_match_evt.notify(when > now ? when - now : sc_core::SC_ZERO_TIME);
++}
++
++void aon::wdog_match_cb() {
++    if((regs->r_wdogcfg & WDOGCFG_RSTEN) != 0) {
++        // A bite resets the watchdog with what it resets, for one tick of the low-frequency clock.
++        wdog_reset();
++        wdog_rst = true;
++        wdog_rst_done_evt.notify(lfclk);
++    } else {
++        regs->r_wdogcfg |= WDOGCFG_IP0;
++        if((regs->r_wdogcfg & WDOGCFG_ZEROCMP) != 0) {
++            // A tick at the least, so that a compare value of zero runs out once a tick and not for ever in none.
++            wdog_set_count(0);
++            wdog_schedule(1);
++        }
++    }
++    wdog_drive_evt.notify(sc_core::SC_ZERO_TIME);
++}
++
++void aon::wdog_rst_done_cb() {
++    wdog_rst = false;
++    wdog_drive_evt.notify(sc_core::SC_ZERO_TIME);
++}
++
++void aon::wdog_drive_cb() {
++    rst_o = ext_rst || wdog_rst;
++    if(wdog_irq_o.get_interface())
++        wdog_irq_o = (regs->r_wdogcfg & WDOGCFG_IP0) != 0;
++}
++
+ } /* namespace sifive */
+ } /* namespace vpvper */
+diff --git a/sifive/aon.h b/sifive/aon.h
+--- a/sifive/aon.h
++++ b/sifive/aon.h
+@@ -7,6 +7,7 @@
+ #ifndef _AON_H_
+ #define _AON_H_
+ 
++#include "scc/signal_opt_ports.h"
+ #include "scc/tlm_target.h"
+ 
+ namespace vpvper {
+@@ -21,6 +22,8 @@
+     sc_core::sc_in<bool> erst_n_i;
+     sc_core::sc_out<sc_core::sc_time> lfclkc_o;
+     sc_core::sc_out<bool> rst_o;
++    // The watchdog's interrupt: high while wdogcfg.ip0 is set.
++    scc::sc_out_opt<bool> wdog_irq_o;
+     aon(sc_core::sc_module_name nm);
+     virtual ~aon() override; // need to keep it in source file because of fwd declaration of aon_regs
+ 
+@@ -29,8 +32,26 @@
+     void clock_cb();
+     void reset_cb();
+     void reset_internal_cb();
++    // The watchdog. Its counter is not stepped once per tick of the low-frequency clock: wdog_count is what it
++    // was at wdog_count_at, and what it is now is worked out when someone asks.
++    void wdog_match_cb();
++    void wdog_rst_done_cb();
++    void wdog_drive_cb();
++    void wdog_reset();
++    bool wdog_counting() const;
++    uint64_t wdog_count_now() const;
++    void wdog_set_count(uint64_t count);
++    void wdog_schedule(uint64_t at_least_ticks = 0);
++    bool wdog_write_allowed();
+     sc_core::sc_time clk;
+     std::unique_ptr<aon_regs> regs;
++    sc_core::sc_time lfclk{1 / 32768., sc_core::SC_SEC};
++    uint64_t wdog_count{0};
++    sc_core::sc_time wdog_count_at;
++    bool wdog_unlocked{false};
++    bool wdog_rst{false};
++    bool ext_rst{true};
++    sc_core::sc_event wdog_match_evt, wdog_rst_done_evt, wdog_drive_evt;
+ };
+ 
+ } /* namespace sifive */
+diff --git a/sifive/aon.rdl b/sifive/aon.rdl
+--- a/sifive/aon.rdl
++++ b/sifive/aon.rdl
+@@ -40,7 +40,7 @@
+ 		desc = "";
+ 		field {
+ 			name="data";
+-		} data[31:0];
++		} data[31:0] = 0xffff;
+ 	} wdogcmp @0x20;
+ 	// Real-Time Clock Registers
+ 	reg {
+diff --git a/sifive/gen/aon_regs.h b/sifive/gen/aon_regs.h
+--- a/sifive/gen/aon_regs.h
++++ b/sifive/gen/aon_regs.h
+@@ -107,7 +107,7 @@
+ , NAMED(wdogs, r_wdogs, 0, *this)
+ , NAMED(wdogfeed, r_wdogfeed, 0, *this)
+ , NAMED(wdogkey, r_wdogkey, 0, *this)
+-, NAMED(wdogcmp, r_wdogcmp, 0, *this)
++, NAMED(wdogcmp, r_wdogcmp, 0xffff, *this)
+ , NAMED(rtccfg, r_rtccfg, 0, *this)
+ , NAMED(rtclo, r_rtclo, 0, *this)
+ , NAMED(rtchi, r_rtchi, 0, *this)

@@ -87,6 +87,7 @@ from socpuppet.boards.cpu_kit import (
     TIMER_BASE,
     TIMER_HZ,
     add_system_controller,
+    add_watchdog,
 )
 from socpuppet.boards.drive import (
     VECTORS,
@@ -136,6 +137,9 @@ APLIC_OFFSET = 0x0C_0000
 #: a device has an APLIC. It is where `virt` has its APLIC, which is also
 #: where a 32-bit socpuppet CPU has its PLIC.
 COMPUTE_APLIC_BASE = PLIC_BASE
+#: Which source of the compute die's APLIC the watchdog's line is: the
+#: number after the UART's, since no number is a source at both APLICs.
+WATCHDOG_SOURCE = 17
 #: Which source of the IO die's APLIC the UART's line is. The first 15
 #: numbers are kept clear, as they are the CPU's own lines to Zephyr, which
 #: knows an interrupt by one number.
@@ -235,6 +239,9 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: The system controller, which drives the CPU's reset and tells its
     #: boot ROM where the host's image is.
     syscon: Placed
+    #: The watchdog, which has the system controller reset the CPU when
+    #: firmware stops feeding it.
+    wdt: Placed
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -341,6 +348,7 @@ def host(
         compute.imsic,
         d2d,
         compute.syscon,
+        compute.wdt,
         drive=(
             None
             if drive_blocks is None
@@ -363,6 +371,7 @@ class _ComputeDie(NamedTuple):
     bus: PlacedRouter
     imsic: Placed
     syscon: Placed
+    wdt: Placed
 
 
 def _compute_die(
@@ -405,6 +414,13 @@ def _compute_die(
     bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
     bus.map(aplic.socket, base=COMPUTE_APLIC_BASE)
     platform.connect(aplic.msi, bus.add_input())
+    wdt = add_watchdog(
+        platform,
+        place,
+        bus,
+        syscon,
+        irq=getattr(aplic, f"source{WATCHDOG_SOURCE}"),
+    )
     platform.connect(imsic.irq, cpu.irq)
     platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
     # The IMSIC's registers are the CPU's to reach, and not on the bus.
@@ -412,7 +428,7 @@ def _compute_die(
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
-    return _ComputeDie(cpu, bus, imsic, syscon)
+    return _ComputeDie(cpu, bus, imsic, syscon, wdt)
 
 
 class _IoDie(NamedTuple):

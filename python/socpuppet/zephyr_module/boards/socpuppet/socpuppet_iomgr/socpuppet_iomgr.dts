@@ -51,6 +51,13 @@
 			reg = <0x0 0x100000 0x0 0x20>;
 		};
 
+		io_wdt: watchdog@101000 {
+			compatible = "sifive,wdt";
+			reg = <0x0 0x101000 0x0 0x1000>;
+			interrupt-parent = <&io_plic>;
+			interrupts = <2 1>;
+		};
+
 		io_timer: timer@200bff8 {
 			compatible = "riscv,machine-timer";
 			reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;

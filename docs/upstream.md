@@ -526,6 +526,21 @@ Two more things read in the same file and not acted on:
 - **Kind**: a surprise more than a bug.
 - **When it lands**: the adapter can stop binding what it does not use.
 
+### The always-on block has a watchdog's registers and no watchdog
+
+- **Where**: `sifive/aon.cpp`, `sifive/aon.h`, and the reset value of one register in `sifive/aon.rdl` and `sifive/gen/aon_regs.h`.
+- **What is missing**: 🎓 SiFive's FE310 has an always-on block with a watchdog in it, which Zephyr and Linux both have a driver for. The model has all the block's registers and nothing behind any of them: what is written is read back, nothing counts, and its reset output only follows the reset button. A firmware's watchdog driver sets it up and it never bites.
+- **How to see it**: `WatchdogContract` in `tests/cpp/contracts/watchdog_contract.h`. Without the patch the adapter does not compile, since the model has no output for the watchdog's interrupt.
+- **What we do**: `cmake/patches/vpv-peripherals-aon-watchdog.patch`. It adds the watchdog as the FE310's manual has it:
+  - a count of ticks of the 32,768 Hz clock while `wdogcfg` says to count, worked out when it is read and not stepped a tick at a time, so that an idle watchdog schedules nothing;
+  - `wdogs`, the count shifted right by the scale, and the moment it reaches `wdogcmp`;
+  - at that moment, with `rsten`, a pulse of `rst_o` one tick long, and the watchdog back as it is out of reset; without it, the `ip0` bit, which stays until firmware clears it, and a new output for it, `wdog_irq_o`, optional so that a platform that does not bind it still elaborates;
+  - `zerocmp`, the key that every write wants first and uses up, and the value that feeds;
+  - `wdogcmp` out of reset as `0xFFFF`, where it was zero, which would bite the moment the watchdog was started.
+- **Upstream fix**: the patch as it is, as an offer of a feature. It leaves the rest of the block alone: the real-time clock and the power manager are still registers and nothing more. `rst_o` now has one process that writes it, where the button's callback wrote it directly. Two things it does not do, to say when offering it: the count goes by the simulation's clock and ignores how far ahead of it an accessing CPU is, where the ACLINT counts that in, and it does not wrap at 31 bits.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
 ### `pulpino/uart.h` does not include what it uses
 
 - **Where**: `pulpino/uart.h`, lines 80 to 82.

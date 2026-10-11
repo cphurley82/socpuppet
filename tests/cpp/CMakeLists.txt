@@ -47,6 +47,7 @@ add_executable(kernel_tests
   contracts/nvme_test.cpp
   contracts/rom_test.cpp
   contracts/uart_test.cpp
+  contracts/watchdog_test.cpp
   platform/aplic_test.cpp
   platform/composition_test.cpp
   platform/cpu_test.cpp

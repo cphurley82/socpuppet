@@ -190,6 +190,24 @@ target_link_libraries(socpuppet_aplic
   PRIVATE vpv_aplic)
 socpuppet_dev_checks(socpuppet_aplic)
 
+# The watchdog: the one in VPV-Peripherals' model of SiFive's always-on
+# block, built apart from ours as the timer's model is.
+add_library(vpv_aon STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/aon.cpp)
+target_compile_definitions(vpv_aon PUBLIC SC_SIGNAL_IF)
+target_compile_options(vpv_aon PRIVATE -w)
+target_include_directories(vpv_aon SYSTEM PUBLIC
+  ${vpv_peripherals_SOURCE_DIR})
+target_link_libraries(vpv_aon PUBLIC scc::components SystemC::systemc)
+
+add_library(socpuppet_watchdog STATIC models/watchdog.cpp)
+target_sources(socpuppet_watchdog PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/watchdog.h)
+target_link_libraries(socpuppet_watchdog
+  PUBLIC SystemC::systemc
+  PRIVATE vpv_aon)
+socpuppet_dev_checks(socpuppet_watchdog)
+
 # platform/: composing components by name (ports, the registry, the
 # platform builder), and what a model needs from the platform to take part.
 add_library(socpuppet_platform STATIC platform/platform.cpp)
@@ -237,7 +255,8 @@ target_sources(socpuppet_models INTERFACE
     models/tie_low.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu
-  socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic)
+  socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
+  socpuppet_watchdog)
 
 # The registry of everything above, by name. Compiled on its own, so that a
 # file that only wants the registry does not compile every model to get it.
@@ -254,7 +273,7 @@ socpuppet_check_headers(
   socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
   socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_machine_timer
-  socpuppet_ns16550 socpuppet_plic)
+  socpuppet_ns16550 socpuppet_plic socpuppet_watchdog)
 
 # What the extension below is made of, besides its one source file. Listed
 # as a library of their own so that `check_headers` compiles each alone.

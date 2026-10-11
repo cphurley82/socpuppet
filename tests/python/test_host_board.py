@@ -13,6 +13,7 @@ from socpuppet.boards.cpu_kit import (
     SYSCON_BASE,
     TIMER_BASE,
     TIMER_HZ,
+    WATCHDOG_BASE,
 )
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
@@ -20,6 +21,7 @@ from socpuppet.boards.host import (
     IO_BASE,
     IO_SIZE,
     UART_SOURCE,
+    WATCHDOG_SOURCE,
     drive_overlay,
     host,
 )
@@ -30,6 +32,7 @@ from socpuppet.components import (
     Imsic,
     MachineTimer,
     SystemController,
+    Watchdog,
 )
 from socpuppet.interrupt_map import InterruptEntry
 from wiring import what_drives
@@ -103,6 +106,35 @@ class TestTheHostsSystemController:
         self,
     ):
         assert host().syscon.component.boot_address == BOOT_FLASH_BASE
+
+
+class TestTheHostsWatchdog:
+    def test_is_beside_the_system_controller_where_every_socpuppet_cpu_has_one(
+        self,
+    ):
+        [wdt] = [
+            each
+            for each in host().platform.address_map()
+            if each.implementation == Watchdog.implementation
+        ]
+
+        assert wdt.address == WATCHDOG_BASE
+
+    def test_bites_the_system_controller_which_is_what_resets_the_cpu(self):
+        board = host()
+
+        assert what_drives(board.platform, board.syscon.bite) == [
+            board.wdt.bite.path
+        ]
+
+    def test_interrupts_through_the_aplic_on_its_own_die(self):
+        # A wire stays on its die, and the watchdog is on the CPU's.
+        board = host()
+
+        assert (
+            InterruptEntry("compute.aplic", WATCHDOG_SOURCE, "compute.wdt.irq")
+            in board.platform.interrupt_map()
+        )
 
 
 class TestTheHostsInterruptController:

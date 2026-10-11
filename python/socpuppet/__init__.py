@@ -22,6 +22,7 @@ from socpuppet.components import (
     Router,
     ScriptedBusMaster,
     SystemController,
+    Watchdog,
 )
 from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
 from socpuppet.io_manager import IoManager
@@ -86,6 +87,7 @@ __all__ = [
     "SystemController",
     "TraceRecord",
     "Transcript",
+    "Watchdog",
     "expect32",
     "ms",
     "ns",

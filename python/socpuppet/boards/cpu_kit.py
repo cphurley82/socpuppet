@@ -2,9 +2,10 @@
 
 A CPU on its own can do nothing: it needs a memory to run from, somewhere
 to print, a timer to count time with, an interrupt controller for its
-devices' lines, and a system controller, which owns its reset and tells it
-where to boot from. Every board that has a CPU of its own wants the same
-five, at the same addresses, which is what lets them share one SoC in
+devices' lines, a system controller, which owns its reset and tells it
+where to boot from, and a watchdog, which resets it when its firmware has
+hung. Every board that has a CPU of its own wants the same six, at the
+same addresses, which is what lets them share one SoC in
 Zephyr (`socpuppet_rv32`) and what makes a devicetree for one board read
 like a devicetree for another.
 
@@ -12,16 +13,18 @@ like a devicetree for another.
                    ├─▶ uart     its console
                    ├─▶ timer    ─▶ the CPU's timer interrupt, and its `time`
                    ├─▶ plic     ─▶ the CPU's interrupt, from the devices' lines
-                   └─▶ syscon   ─▶ the CPU's reset
+                   ├─▶ syscon   ─▶ the CPU's reset
+                   └─▶ wdt      ─▶ the system controller, when it bites
 
-`add_cpu_kit()` puts the six on a board's bus and wires them up. The board
+`add_cpu_kit()` puts the seven on a board's bus and wires them up. The board
 says which of its devices' lines go on which of the interrupt
 controller's sources, and where its CPU boots from; everything else is the
 same every time.
 
 The host's CPU is a 64-bit one with other things around it, and has the
-system controller in common with these: `add_system_controller()` is the
-part of the kit it takes.
+system controller and the watchdog in common with these:
+`add_system_controller()` and `add_watchdog()` are the parts of the kit
+it takes.
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from socpuppet.components import (
     Ns16550,
     Plic,
     SystemController,
+    Watchdog,
 )
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart, Port
 from socpuppet.platform import Group, Platform
@@ -43,6 +47,8 @@ from socpuppet.platform import Group, Platform
 #: The system controller: which die the CPU is on, where it boots from,
 #: why it was last reset. QEMU's `virt` machine has its reset device here.
 SYSCON_BASE = 0x0010_0000
+#: The watchdog, beside the system controller it bites.
+WATCHDOG_BASE = 0x0010_1000
 #: The flash a CPU boots from, which its system controller's boot address
 #: is inside. It is one address for every socpuppet CPU, so that a boot ROM
 #: finds its flash in the same place on every board. 🚧 No board has a
@@ -85,6 +91,9 @@ class CpuKit(NamedTuple):
     plic: Placed
     #: The system controller, which drives the CPU's reset.
     syscon: Placed
+    #: The watchdog, which has the system controller reset the CPU when
+    #: firmware stops feeding it.
+    wdt: Placed
 
 
 def add_cpu_kit(
@@ -101,7 +110,8 @@ def add_cpu_kit(
 
     `sources` says which of the interrupt controller's sources each of the
     board's device lines goes to, numbered from 1 (source 0 means "no
-    interrupt"). With a `gdb_port`, the CPU listens for a debugger on that
+    interrupt"). The watchdog's interrupt takes the source after the
+    highest of them. With a `gdb_port`, the CPU listens for a debugger on that
     TCP port and waits for one to attach before it executes anything.
 
     `die` and `boot_address` are what the CPU's system controller tells
@@ -128,12 +138,20 @@ def add_cpu_kit(
     bus.map(sram.socket, base=SRAM_BASE)
     for source, line in sources.items():
         platform.connect(line, getattr(plic, f"source{source}"))
+    after_the_boards_own = max(sources) + 1
+    wdt = add_watchdog(
+        platform,
+        place,
+        bus,
+        syscon,
+        irq=getattr(plic, f"source{after_the_boards_own}"),
+    )
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
     platform.connect(cpu.time, timer.time)
     return cpu, CpuKit(
-        sram=sram, uart=uart, timer=timer, plic=plic, syscon=syscon
+        sram=sram, uart=uart, timer=timer, plic=plic, syscon=syscon, wdt=wdt
     )
 
 
@@ -162,3 +180,25 @@ def add_system_controller(
     bus.map(syscon.socket, base=SYSCON_BASE)
     platform.connect(syscon.reset, cpu.reset)
     return syscon
+
+
+def add_watchdog(
+    platform: Platform,
+    place: Platform | Group,
+    bus: PlacedRouter,
+    syscon: Placed,
+    *,
+    irq: Port,
+) -> Placed:
+    """Put a CPU's watchdog on `bus`, biting the CPU's system controller.
+
+    Every socpuppet CPU has one, at `WATCHDOG_BASE`. When firmware stops
+    feeding it, its `bite` rises and the system controller `syscon`
+    resets the CPU. `irq` is where its interrupt line goes: a source of
+    the CPU's interrupt controller.
+    """
+    wdt = place.add("wdt", Watchdog())
+    bus.map(wdt.socket, base=WATCHDOG_BASE)
+    platform.connect(wdt.bite, syscon.bite)
+    platform.connect(wdt.irq, irq)
+    return wdt
