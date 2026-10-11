@@ -290,7 +290,7 @@ jobs:
           # Saved once for each set of dependencies. Our own few files are
           # compiled every time, which is what a change to them needs.
           key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
-      - uses: pypa/cibuildwheel@v4.2.1
+      - uses: pypa/cibuildwheel@v4.3.0
       - name: Check what each wheel holds
         run: |
           for wheel in wheelhouse/*.whl; do
