@@ -21,7 +21,7 @@ Verdicts and logs: build/twister/out
 
 💡 Read the second number of the first line with the third and fourth. The twelve configurations that did not pass did not fail either: they are the ones [left out on purpose](#what-is-left-out-and-why), which twister counts among the executed.
 
-It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Intel Mac it runs itself in Docker, as `firmware/build.sh` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes seven and a half minutes on the sixteen-core machine it was measured on.
+It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Apple silicon Mac that is all it needs: the Zephyr SDK has a compiler for one, `firmware/build.sh` fetches it, and twister runs on macOS itself, with no Docker. The whole list takes six and a half minutes there, on a ten-core M4. On an Intel Mac it runs itself in Docker, as `firmware/build.sh` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes seven and a half minutes on the sixteen-core machine it was measured on. [In CI](#in-ci) has the four places side by side.
 
 To run less, give twister's own options after the script's name, or after `--suites`:
 
@@ -169,10 +169,23 @@ Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict
 
 ## In CI
 
-The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`: it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.sh`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as the artifact `twister`.
+The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`, once on Linux and once on a Mac (`ubuntu-24.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.sh`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-24.04` and `twister-macos-15`.
+
+💡 The Mac is there because its runner is Apple silicon, which is the one place twister runs on macOS itself. An Intel Mac runs it in a Linux container, so without this leg nothing would say that the scripts had stopped working on a Mac's own tools.
 
 It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites, the quarantine list and our own suites' `testcase.yaml` files to twister's own schemas.
 
 On a runner, with four cores where the figure above had sixteen, the job took twenty minutes the first time and thirty-three the second, both on 2026-10-12 and both passing the same 113 scenarios as the run here. The first was two minutes to fetch Zephyr and its SDK, which the cache now has, five to build socpuppet, eleven for twister, and one to keep the logs. The second had a runner half as fast at everything: eight minutes to build socpuppet and nineteen for twister. ⚠️ That makes it one of the longest jobs of the workflow. If the list grows, twister's minutes grow with it, and a suite then has to earn its place.
+
+The Mac's leg first ran later the same day, and passed the same 113 scenarios in thirty-nine minutes, beside a Linux leg that took thirty-three. Its runner has three cores. Four of its minutes went on fetching Zephyr and its SDK, which its own cache now has, nine on building socpuppet, twenty-three on twister, and two on keeping the logs. So the four places twister has run, each with the same verdicts:
+
+| Where | Cores | Building socpuppet | Twister, the whole list | Slowest scenario |
+|---|---|---|---|---|
+| Apple silicon Mac (M4), on macOS itself | 10 | 3 min | 6 min 31 s | 31 s |
+| Intel Mac, in Docker with the volume | 16 | 12 min | 7 min 40 s | 38 s |
+| CI, `ubuntu-24.04` (three runs) | 4 | 5 to 8 min | 11 to 19 min | 28 s |
+| CI, `macos-15` (one run) | 3 | 9 min | 23 min | 15 s |
+
+🎓 Twister's minutes are nearly all CMake and the compiler, a build for each scenario and as many at once as there are cores, so the column follows the cores and how fast each is. Ten of Apple's beat sixteen of Intel's that reach their files through a container. The last column does not follow it: a scenario's own run is one thread of the simulator, and the same scenario took twice as long on the M4, with ten running at once and six of its cores the slow kind, as on the runner's three. That reading is a guess and was not looked into, since every scenario has its time several times over in all four places.
 
 💡 A slow runner does not fail a scenario by itself. Twister gives each one a time on its board, sixty seconds unless its suite asks for more, and on the slow runner none used more than a sixth of its own: the longest, one of the scheduler's, took 28 s of its 180. A scenario that comes to need most of its time on a developer's machine is one to look at before a slow runner finds it.
