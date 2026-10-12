@@ -75,6 +75,8 @@ The check: with the simulation stopped there, a debug write of a compare value o
 
 💡 [plan.md](plan.md) has had the neighbour of this since M3: "A CPU going to sleep does not let the clock catch up first." This one is not about time. It is a level-sensitive line treated as an edge at the moment of sleeping. The same tests pass on the 32-bit boards, where the timing happens not to line up.
 
+⚠️ **Added when M21's step 1 fixed it: the rise is heard, and what loses it is a write.** The core does set the timer's pending bit when the line rises. Zephyr's interrupt entry then clears that bit in `mip`, which a real hart ignores because the bit is read-only, and DBT-RISE's harts did not. With the compare value already in the past the line never falls, so there is no change to set the bit again. The check above, a compare value poked a millisecond ahead, woke the CPU for that reason: it made the line fall and rise. The fix is in the hart's `mip` and not in how it sleeps, and it is the 32-bit boards' hart too, which got away with it for a reason [plan.md](plan.md) gives under what M21's steps found.
+
 ### B. ⚠️ The 32-bit boards wake late, by more than a quantum (ours; measured, not explained)
 
 On `socpuppet_ssd` and `socpuppet_iomgr`, and not on the host, the tests that measure a wait fail by a little: `timer_api.test_sleep_abs` "expected wakeup at 87, got 91", `context.test_cpu_idle` "idled for 113 ticks, expected 100", `sleep.test_usleep` over its upper bound, `work.test_1cpu_system_reschedule` over its maximum, and the time-slicing scenarios "timeslice too big, expected 2010000 got 2011149". A tick is 100 µs on all three boards (`CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`, tickless), which is also the default quantum.
