@@ -1883,6 +1883,161 @@ TEST(WhenSupervisorModeSetsTheStateOfTheFloatingPointRegistersInSstatus,
   EXPECT_EQ(riscv::FloatingPointStateIn(mstatus), riscv::kFloatingPointClean);
 }
 
+// 🎓 A kernel may leave floating point off for a program until the program
+// first uses it, as Zephyr does. The trap is how it hears, and what lets
+// it not save and restore thirty-two registers for every program that
+// never does. It then switches floating point on and returns to the same
+// instruction, so the trap has to say where that was.
+class WhenFloatingPointIsOffAndSupervisorModeUsesIt
+    : public ::testing::TestWithParam<NamedInstruction> {};
+
+TEST_P(WhenFloatingPointIsOffAndSupervisorModeUsesIt,
+       MachineModeTakesAnIllegalInstructionTrapAtThatInstruction) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {}, {GetParam().instruction}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
+  const std::uint64_t how_far_past_it_the_trap_returns = with_pages.Result(3);
+  EXPECT_EQ(why_machine_mode_was_entered, riscv::kIllegalInstruction + 1);
+  EXPECT_EQ(how_far_past_it_the_trap_returns, 0U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachUse, WhenFloatingPointIsOffAndSupervisorModeUsesIt,
+    ::testing::Values(
+        NamedInstruction{"a move into a register", riscv::FmvDX(0, riscv::kT1)},
+        // From the result's own address, which supervisor mode has in t2.
+        NamedInstruction{"a load", riscv::Fld(0, riscv::kT2, 0)},
+        NamedInstruction{"a sum", riscv::FaddD(0, 0, 0)},
+        NamedInstruction{"a store", riscv::Fsd(0, riscv::kT2, 0)},
+        NamedInstruction{"a multiply and add in one",
+                         riscv::FmaddD(0, 0, 0, 0)},
+        NamedInstruction{"a compressed load", riscv::kCompressedFldThenNop},
+        NamedInstruction{"a compressed store", riscv::kCompressedFsdThenNop},
+        NamedInstruction{"a compressed load from the stack",
+                         riscv::kCompressedFldspThenNop},
+        NamedInstruction{"a compressed store to the stack",
+                         riscv::kCompressedFsdspThenNop},
+        NamedInstruction{"a read of its control register",
+                         riscv::Csrr(riscv::kT0, riscv::kFcsr)},
+        NamedInstruction{"a write of its control register",
+                         riscv::Csrw(riscv::kFcsr, riscv::kZero)}));
+
+// Something that changes the floating-point registers or their control
+// register, as an instruction, and the state they were in before it.
+struct ChangeOfFloatingPointState {
+  const char* name;
+  riscv::Word state_before;
+  riscv::Word instruction;
+};
+
+void PrintTo(const ChangeOfFloatingPointState& change, std::ostream* out) {
+  *out << change.name;
+}
+
+// A kernel that stops running a program looks at this state, and saves the
+// registers only if it says dirty. A hart that did not mark it would have
+// two programs share one set of registers.
+class WhenSupervisorModeHasFloatingPointOnAndChangesItsState
+    : public ::testing::TestWithParam<ChangeOfFloatingPointState> {};
+
+TEST_P(WhenSupervisorModeHasFloatingPointOnAndChangesItsState,
+       TheStateIsDirtyAndSaysSoInBothStatusRegisters) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {},
+      Then({riscv::SetFloatingPointState(riscv::kSstatus,
+                                         GetParam().state_before),
+            {GetParam().instruction},
+            StoreSstatusThenCallMachineMode()})));
+
+  with_pages.RunUntilAsleep();
+
+  // The instruction was executed: what entered machine mode was the call
+  // after it.
+  ASSERT_EQ(with_pages.Result(0), riscv::kEcallFromSupervisorMode + 1);
+  const std::uint64_t mstatus = with_pages.Result(1);
+  const std::uint64_t sstatus = with_pages.Result(2);
+  EXPECT_EQ(riscv::FloatingPointStateIn(sstatus), riscv::kFloatingPointDirty);
+  EXPECT_TRUE(riscv::SomeStateIsDirtyIn(sstatus));
+  EXPECT_EQ(riscv::FloatingPointStateIn(mstatus), riscv::kFloatingPointDirty);
+  EXPECT_TRUE(riscv::SomeStateIsDirtyIn(mstatus));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachWay, WhenSupervisorModeHasFloatingPointOnAndChangesItsState,
+    ::testing::Values(
+        ChangeOfFloatingPointState{"a move into a register, from initial",
+                                   riscv::kFloatingPointInitial,
+                                   riscv::FmvDX(0, riscv::kT1)},
+        ChangeOfFloatingPointState{"a move into a register, from clean",
+                                   riscv::kFloatingPointClean,
+                                   riscv::FmvDX(0, riscv::kT1)},
+        ChangeOfFloatingPointState{
+            "a write of its control register, from clean",
+            riscv::kFloatingPointClean,
+            riscv::Csrw(riscv::kFcsr, riscv::kZero)}));
+
+// What a kernel does once it has saved a program's registers.
+TEST(WhenSupervisorModeMarksDirtyFloatingPointStateClean,
+     NeitherStatusRegisterSaysAnyStateIsDirty) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {},
+      Then({riscv::SetFloatingPointState(riscv::kSstatus,
+                                         riscv::kFloatingPointDirty),
+            riscv::MarkDirtyFloatingPointStateClean(riscv::kSstatus),
+            StoreSstatusThenCallMachineMode()})));
+
+  with_pages.RunUntilAsleep();
+
+  // Both registers were read with the state clean: neither word is one
+  // that was never stored.
+  const std::uint64_t mstatus = with_pages.Result(1);
+  const std::uint64_t sstatus = with_pages.Result(2);
+  ASSERT_EQ(riscv::FloatingPointStateIn(sstatus), riscv::kFloatingPointClean);
+  ASSERT_EQ(riscv::FloatingPointStateIn(mstatus), riscv::kFloatingPointClean);
+  EXPECT_FALSE(riscv::SomeStateIsDirtyIn(sstatus));
+  EXPECT_FALSE(riscv::SomeStateIsDirtyIn(mstatus));
+}
+
+// A program's stack and a kernel's own memory are at addresses above
+// 4 GiB, and a `float` on one is loaded and stored like anything else.
+// The single is in the result's page, past the result itself.
+constexpr std::uint64_t kPastTheResult = 0x100;
+static_assert(CpuPlatformWithPages::kPages.result > 0xFFFF'FFFF);
+
+TEST(WhenASingleIsLoadedThroughAnAddressAbove4GiB, TheLoadGetsWhatIsThere) {
+  constexpr std::uint32_t kThere = 0x1234'5678;
+  CpuPlatformWithPages with_pages;
+  with_pages.Put(CpuPlatformWithPages::kResultPage + kPastTheResult, kThere);
+  with_pages.Load(
+      riscv::LoadASingle(CpuPlatformWithPages::kPages,
+                         CpuPlatformWithPages::kPages.result + kPastTheResult));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t loaded = with_pages.Result();
+  EXPECT_EQ(loaded, kThere);
+}
+
+TEST(WhenASingleIsStoredThroughAnAddressAbove4GiB, TheStoreGoesThere) {
+  constexpr std::uint32_t kToStore = 0x0BAD'CAFE;
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreASingle(
+      CpuPlatformWithPages::kPages,
+      CpuPlatformWithPages::kPages.result + kPastTheResult, kToStore));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t there_afterwards = with_pages.Result();
+  EXPECT_EQ(there_afterwards, kToStore);
+}
+
 // Four bits of `mstatus` that are a monitor's way of keeping an operating
 // system in hand: whose memory machine mode's own loads use, and whether
 // the operating system may change its page tables, sleep, or return from
@@ -1892,18 +2047,14 @@ constexpr std::uint64_t kMachineModesOwnBits =
     (std::uint64_t{1} << riscv::kTrapVirtualMemory) |
     (std::uint64_t{1} << riscv::kTimeoutWait) |
     (std::uint64_t{1} << riscv::kTrapSret);
-riscv::Program T0IsMachineModesOwnBits() {
-  return {riscv::Lui(riscv::kT0,
-                     static_cast<riscv::Word>(kMachineModesOwnBits >> 12))};
-}
 
 TEST(WhenSupervisorModeSetsBitsOfMachineModesOwnInSstatus,
      NoneOfThemIsSetInMstatus) {
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      Then({T0IsMachineModesOwnBits(),
-            {riscv::Csrs(riscv::kSstatus, riscv::kT0), riscv::kEcall}})));
+      Then({riscv::SetBits(riscv::kSstatus, kMachineModesOwnBits, riscv::kT0),
+            {riscv::kEcall}})));
 
   with_pages.RunUntilAsleep();
 
@@ -1921,13 +2072,14 @@ TEST(WhenMachineModeHasSetBitsOfItsOwnInMstatus,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff,
-      {riscv::Lui(riscv::kT1, static_cast<riscv::Word>(kThreeOfThem >> 12)),
-       riscv::Csrs(riscv::kMstatus, riscv::kT1)},
+      riscv::SetBits(riscv::kMstatus, kThreeOfThem, riscv::kT1),
       StoreSstatusThenCallMachineMode()));
 
   with_pages.RunUntilAsleep();
 
-  // They were set: machine mode read them back when it was called.
+  // Supervisor mode did read `sstatus`, and went on to call machine mode,
+  // which read the three back: they were set.
+  ASSERT_EQ(with_pages.Result(0), riscv::kEcallFromSupervisorMode + 1);
   const std::uint64_t mstatus = with_pages.Result(1);
   ASSERT_EQ(mstatus & kThreeOfThem, kThreeOfThem);
   const std::uint64_t sstatus = with_pages.Result(2);

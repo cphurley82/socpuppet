@@ -1,0 +1,22 @@
+diff --git a/src/vm/interp/vm_rv64gc.cpp b/src/vm/interp/vm_rv64gc.cpp
+index 9a6158d..dc94a1c 100644
+--- a/src/vm/interp/vm_rv64gc.cpp
++++ b/src/vm/interp/vm_rv64gc.cpp
+@@ -4402,7 +4402,7 @@ typename vm_base<ARCH>::virt_addr_t vm_impl<ARCH>::execute_inst(finish_cond_e co
+                                         raise(0, traits::RV_CAUSE_ILLEGAL_INSTRUCTION);
+                                     }
+                                     else {
+-                                        uint64_t offs = (uint32_t)((uint128_t)(*(X+rs1)) + (int128_t)((int16_t)sext<12>(imm)));
++                                        uint64_t offs = (uint64_t)((uint128_t)(*(X+rs1)) + (int128_t)((int16_t)sext<12>(imm)));
+                                         uint32_t res_40 = super::template read_mem<uint32_t>(traits::MEM, offs);
+                                         if(this->core.reg.trap_state>=0x80000000UL) throw memory_access_exception();
+                                         *(F+rd) = NaNBox32(res_40);
+@@ -4432,7 +4432,7 @@ typename vm_base<ARCH>::virt_addr_t vm_impl<ARCH>::execute_inst(finish_cond_e co
+                                         raise(0, traits::RV_CAUSE_ILLEGAL_INSTRUCTION);
+                                     }
+                                     else {
+-                                        uint64_t offs = (uint32_t)((uint128_t)(*(X+rs1)) + (int128_t)((int16_t)sext<12>(imm)));
++                                        uint64_t offs = (uint64_t)((uint128_t)(*(X+rs1)) + (int128_t)((int16_t)sext<12>(imm)));
+                                         super::template write_mem<uint32_t>(traits::MEM, offs, (uint32_t)*(F+rs2));
+                                         if(this->core.reg.trap_state>=0x80000000UL) throw memory_access_exception();
+                                     }

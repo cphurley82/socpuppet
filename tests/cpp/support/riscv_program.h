@@ -90,6 +90,10 @@ constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
 constexpr Word Ld(Word rd, Word rs1, std::int32_t offset) {
   return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x03;
 }
+// rd = rs1 - rs2.
+constexpr Word Sub(Word rd, Word rs1, Word rs2) {
+  return 0x4000'0033 | (rs2 << 20) | (rs1 << 15) | (rd << 7);
+}
 // Jump to rs1 + offset, leaving the return address in rd.
 constexpr Word Jalr(Word rd, Word rs1, std::int32_t offset) {
   return (Field(offset, 12) << 20) | (rs1 << 15) | (rd << 7) | 0x67;
@@ -132,6 +136,53 @@ constexpr Word FmvDX(Word rd, Word rs1) {
 constexpr Word FmvXD(Word rd, Word rs1) {
   return 0xE200'0053 | (rs1 << 15) | (rd << 7);
 }
+// Load the double at offset(rs1) into floating-point register `rd`.
+constexpr Word Fld(Word rd, Word rs1, std::int32_t offset) {
+  return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x07;
+}
+// Floating-point register `rd` = rs1 + rs2, as doubles, rounded the way the
+// floating-point control register says.
+constexpr Word FaddD(Word rd, Word rs1, Word rs2) {
+  return (Word{1} << 25) | (rs2 << 20) | (rs1 << 15) | (7 << 12) | (rd << 7) |
+         0x53;
+}
+// Load the single at offset(rs1) into floating-point register `rd`, and
+// store the single in floating-point register rs2 at offset(rs1).
+constexpr Word Flw(Word rd, Word rs1, std::int32_t offset) {
+  return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x07;
+}
+constexpr Word Fsw(Word rs2, Word rs1, std::int32_t offset) {
+  return (Sw(rs2, rs1, offset) & ~Word{0x7F}) | 0x27;
+}
+// Floating-point register `rd` = the low 32 bits of integer register rs1,
+// as they are, and the other way about, with the sign carried up.
+constexpr Word FmvWX(Word rd, Word rs1) {
+  return 0xF000'0053 | (rs1 << 15) | (rd << 7);
+}
+constexpr Word FmvXW(Word rd, Word rs1) {
+  return 0xE000'0053 | (rs1 << 15) | (rd << 7);
+}
+// Store the double in floating-point register rs2 at offset(rs1).
+constexpr Word Fsd(Word rs2, Word rs1, std::int32_t offset) {
+  return (Sd(rs2, rs1, offset) & ~Word{0x7F}) | 0x27;
+}
+// Floating-point register `rd` = rs1 * rs2 + rs3, as doubles, in one
+// rounding.
+constexpr Word FmaddD(Word rd, Word rs1, Word rs2, Word rs3) {
+  return (rs3 << 27) | (Word{1} << 25) | (rs2 << 20) | (rs1 << 15) | (7 << 12) |
+         (rd << 7) | 0x43;
+}
+// Two compressed instructions in one word, of which the second does
+// nothing. The first is a load of the double at the address in x8 into
+// floating-point register 8, the store of it back there, or the same two
+// for floating-point register 0 and the address in the stack pointer.
+inline constexpr Word kCompressedFldThenNop = 0x0001'2000;
+inline constexpr Word kCompressedFsdThenNop = 0x0001'A000;
+inline constexpr Word kCompressedFldspThenNop = 0x0001'2002;
+inline constexpr Word kCompressedFsdspThenNop = 0x0001'A002;
+// The floating-point control register: how to round, and which exceptions
+// have happened.
+inline constexpr Word kFcsr = 0x003;
 // The control and status register that says which interrupts are enabled,
 // and its bits for the machine timer and machine external interrupts.
 inline constexpr Word kMie = 0x304;
@@ -163,10 +214,20 @@ constexpr Word FloatingPointStateIn(std::uint64_t status) {
 constexpr bool SomeStateIsDirtyIn(std::uint64_t status) {
   return (status >> 63) != 0;
 }
-// The instruction that sets the field to `state`, in the register numbered
-// `csr`, `mstatus` or `sstatus`, from zero. It uses t0.
+// The two instructions that set, in the register numbered `csr`, the bits
+// that are set in `bits`, which are among bits 12 to 31. They use `scratch`.
+inline Program SetBits(Word csr, std::uint64_t bits, Word scratch) {
+  return {Lui(scratch, static_cast<Word>(bits >> 12)), Csrs(csr, scratch)};
+}
+// The instructions that set the field to `state`, in the register numbered
+// `csr`, `mstatus` or `sstatus`, from zero. They use t0.
 inline Program SetFloatingPointState(Word csr, Word state) {
-  return {Lui(kT0, state << (kFloatingPointOn - 12)), Csrs(csr, kT0)};
+  return SetBits(csr, std::uint64_t{state} << kFloatingPointOn, kT0);
+}
+// And the ones that mark dirty state clean: dirty is both bits of the
+// field, and clean the upper one. They use t0.
+inline Program MarkDirtyFloatingPointStateClean(Word csr) {
+  return {Lui(kT0, 1 << (kFloatingPointOn - 12)), Csrc(csr, kT0)};
 }
 // Its two-bit field that says which mode `mret` returns to, by the place
 // of its low bit: 1 there is supervisor mode, and 3 is machine mode.
@@ -185,7 +246,7 @@ inline constexpr Word kTimeoutWait = 21;
 // Machine mode's two instructions that set the bit of the status register
 // at `place`, which is 12 or above. They use t1.
 inline Program SetInMstatus(Word place) {
-  return {Lui(kT1, Word{1} << (place - 12)), Csrs(kMstatus, kT1)};
+  return SetBits(kMstatus, std::uint64_t{1} << place, kT1);
 }
 // Its bit that switches interrupts on for supervisor mode.
 inline constexpr Word kSupervisorInterruptsOn = 1;
@@ -349,6 +410,9 @@ class Assembler {
   void Emit(Word instruction) { code_.push_back(instruction); }
   void Emit(std::initializer_list<Word> instructions) {
     code_.insert(code_.end(), instructions);
+  }
+  void Emit(const Program& instructions) {
+    code_.insert(code_.end(), instructions.begin(), instructions.end());
   }
 
   // How far the next instruction is from the first, in bytes.
@@ -1086,12 +1150,13 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
 
 // A program that runs `supervisors_code` in supervisor mode, once machine
 // mode has executed `machine_modes_setup`, which may use t1. Paging is
-// off, so `at` is where the RAM has things. Its result is two words: why
+// off, so `at` is where the RAM has things. Its result is four words. Why
 // machine mode's handler was entered, the cause with one added so that
-// zero is never, and what `mstatus` read as there. The handler sleeps, and
-// so does supervisor mode if its code runs to its end. Supervisor mode's
-// code finds the result's address in t2, and a third word of the result is
-// its own to store: Sd(rs2, kT2, 16).
+// zero is never, and what `mstatus` read as there. A third that is
+// supervisor mode's own to store, which finds the result's address in t2:
+// Sd(rs2, kT2, 16). And how far past the first instruction of supervisor
+// mode's code, in bytes, machine mode was to return to. The handler
+// sleeps, and so does supervisor mode if its code runs to its end.
 inline Program RunInSupervisorModeAfter(const Pages& at,
                                         const Program& machine_modes_setup,
                                         const Program& supervisors_code) {
@@ -1109,6 +1174,7 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
 
   program.Set(supervisor, at.code + program.Here());
   program.Load(kT2, at.result);
+  const std::uint64_t its_first_instruction = at.code + program.Here();
   for (const Word instruction : supervisors_code) program.Emit(instruction);
   AppendSleepForEver(program);
 
@@ -1116,6 +1182,8 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
   program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
   program.Load(kT4, at.result);
   program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMstatus), Sd(kT1, kT4, 8)});
+  program.Load(kT5, its_first_instruction);
+  program.Emit({Csrr(kT1, kMepc), Sub(kT1, kT1, kT5), Sd(kT1, kT4, 24)});
   AppendSleepForEver(program);
   return program.Assemble();
 }
@@ -1303,6 +1371,36 @@ inline Program TakeAnInterruptAtALoadThatWalksThePageTables(
   program.Set(handler, at.code + program.Here());
   program.Load(kT4, device);
   program.Emit({Sw(kZero, kT4, 0), kSret});
+  return program.Assemble();
+}
+
+// Two programs that, in supervisor mode under paging and with floating
+// point on, use the single at `address`. The first loads it into a
+// floating-point register and stores what it got as its result. The
+// second stores `value` there from a floating-point register and stores
+// what is then there as its result. Both values are below 0x8000'0000, so
+// that no sign is carried up. Then each sleeps.
+inline Program LoadASingle(const Pages& at, std::uint64_t address) {
+  Assembler program;
+  program.Emit(SetFloatingPointState(kMstatus, kFloatingPointInitial));
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Load(kT1, address);
+  program.Load(kT2, at.result);
+  program.Emit({Flw(0, kT1, 0), FmvXW(kT0, 0), Sd(kT0, kT2, 0)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+inline Program StoreASingle(const Pages& at, std::uint64_t address,
+                            Word value) {
+  Assembler program;
+  program.Emit(SetFloatingPointState(kMstatus, kFloatingPointInitial));
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Load(kT1, address);
+  program.Load(kT2, at.result);
+  program.Load(kT0, value);
+  program.Emit(
+      {FmvWX(1, kT0), Fsw(1, kT1, 0), Lw(kT0, kT1, 0), Sd(kT0, kT2, 0)});
+  AppendSleepForEver(program);
   return program.Assemble();
 }
 

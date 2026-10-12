@@ -482,6 +482,26 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### Floating point is never off, and its state is never dirty
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h` (`read`, `write`, `read_status`, `write_mstatus`); the instructions themselves are in `src/vm/interp/vm_rv64gc.cpp`.
+- **What is wrong**: `mstatus.FS` is a field that can be written and that nothing reads. A floating-point instruction executes with it off, where it is an illegal instruction, and executes with it on without marking it dirty; `fcsr` is the same. `SD`, the bit that says some extension's state is dirty, is set in the hart's copy when `FS` is written as dirty, never cleared, and masked out of every read of `mstatus` and `sstatus`, so it is never seen at all. 🎓 When a kernel stops running a program it saves the thirty-two floating-point registers only if `FS` says dirty, and marks them clean when it has. Linux gives every program floating point from the start and counts on exactly that. Here no state would ever be dirty, so nothing would ever be saved, and two programs that both use floating point would share one set of registers. A kernel may also leave floating point off for a program until its first floating-point instruction traps, as Zephyr does; here none would.
+- **How to see it**: with `FS` off, a floating-point move, load, store, sum, fused multiply-add, any of the four compressed loads and stores, or a read or write of `fcsr`, each of which executes; with it on, one such instruction, after which `FS` reads as it was and `SD` as clear (`WhenFloatingPointIsOffAndSupervisorModeUsesIt` and the two tests after it in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-fp-status.patch`, in the hart with supervisor mode and nowhere else. The interpreter is instantiated on the bare register set and cannot see `mstatus`, but every instruction it executes it first fetches through the hart's `read`. So the hart looks at what was fetched: an instruction of the F or D extension is an illegal one while `FS` is off, and leaves `FS` dirty otherwise. `fflags`, `frm` and `fcsr` are refused while it is off, and a write of one leaves it dirty, in `read` and `write`, where a debugger's access can be told from the program's and is let through. `SD` is no longer kept: a read of `mstatus` or `sstatus` works it out from `FS`. Nothing generated is touched.
+- **Upstream fix**: in the description the interpreter is generated from, where each instruction of the two extensions can test `FS` and set it, and only those that write a register need set it: ours marks it for one that only reads, such as a compare, which the specification allows. That wants a way for generated code to reach `mstatus`. ⚠️ What ours does not cover. **A backend that translates blocks**: asmjit reads its instructions with a debug read when it translates them, not with a fetch as it executes them, so under it floating point would again be never off and never dirty, with nothing to show for it. The check for a floating-point instruction is for RV64 without the vector extension: RV32 has its compressed single-precision loads and stores where these are not looked for, and the vector extension has loads and stores under the same two major opcodes. `SD` is worked out from `FS` alone, and would not say that the vector state is dirty. And the other two harts execute floating point with `FS` off as before; no core socpuppet builds on them has floating point.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### `flw` and `fsw` cut their address to 32 bits on a 64-bit hart
+
+- **Where**: `src/vm/interp/vm_rv64gc.cpp`, the cases for `FLW` and `FSW`, which is generated code.
+- **What is wrong**: both work out their address as `(uint32_t)(rs1 + imm)`, where `fld` and `fsd` beside them, and every integer load and store, have `(uint64_t)`. A single-precision load or store through an address above 4 GiB goes to the low 32 bits of it: under Sv39 that is a page fault at an address the program never used, and with paging off it is whatever is there. A program's stack and a kernel's own memory are both above 4 GiB.
+- **How to see it**: `flw` and `fsw` through an address in the upper half of memory (`WhenASingleIsLoadedAndStoredThroughAnAddressAbove4GiB` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-flw-address.patch`, the two casts. ⚠️ It is a patch to a generated file, and the next regeneration undoes it.
+- **Upstream fix**: in the CoreDSL description of the F extension (`gen_input/ISA`, a submodule the build does not fetch), where the address of the two is presumably written with a 32-bit type, and then `vm_rv64gc.cpp` and the other backends' copies generated again. `src/vm/interp/vm_rv64gcv.cpp` has the same two lines, and the asmjit and LLVM files very likely do.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

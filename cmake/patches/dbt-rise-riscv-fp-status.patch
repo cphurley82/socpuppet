@@ -1,0 +1,107 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index ab318d5..c875b17 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -78,9 +78,7 @@ public:
+             new_val |= old_val & this->state.mstatus.UXL.Mask;
+         }
+ 
+-        if constexpr(base::extension_status_mask)
+-            if((new_val & base::extension_status_mask) == base::extension_status_mask)
+-                new_val |= reg_t(1) << (sizeof(reg_t) * 8 - 1);
++        // SD is not kept: read_status works it out
+         this->state.mstatus = new_val;
+     }
+ 
+@@ -122,6 +120,34 @@ protected:
+     iss::status write_edelegh(unsigned addr, uint32_t val);
+ 
+     void check_interrupt();
++    // the F and D extensions are switched off while mstatus.FS is 0: an instruction of theirs, and an access to fflags, frm or
++    // fcsr, is then an illegal instruction. Once they are on, anything that may have changed their state leaves FS dirty (3)
++    bool fp_is_off() const { return this->state.mstatus.FS == 0; }
++    void set_fp_dirty() { this->state.mstatus.FS = 3; }
++    static bool is_fp_csr(unsigned addr) { return addr == fflags || addr == frm || addr == fcsr; }
++    bool fp_csr_usable(unsigned addr) const { return !is_fp_csr(addr) || !fp_is_off(); }
++    // whether the instruction at data is one of the F or D extension's, by its major opcode: LOAD-FP, STORE-FP, the four fused
++    // multiply-adds and OP-FP, or, compressed, C.FLD, C.FSD, C.FLDSP and C.FSDSP. For RV64 without the V extension: RV32 has the
++    // compressed single precision forms where these are, and V has loads and stores under LOAD-FP and STORE-FP
++    static bool is_fp_instruction(const uint8_t* data) {
++        if((data[0] & 0x3) == 0x3) {
++            switch(data[0] & 0x7f) {
++            case 0x07:
++            case 0x27:
++            case 0x43:
++            case 0x47:
++            case 0x4b:
++            case 0x4f:
++            case 0x53:
++                return true;
++            default:
++                return false;
++            }
++        }
++        const auto quadrant = data[0] & 0x3;
++        const auto funct3 = data[1] >> 5;
++        return quadrant != 1 && (funct3 == 1 || funct3 == 5);
++    }
+     // cycle, time, instret and the hpmcounters (0xc00 to 0xc1f, and their upper halves at 0xc80 on RV32) may be read below M mode
+     // only if mcounteren has the counter's bit, and in U mode only if scounteren has it as well
+     bool counter_readable(unsigned addr) {
+@@ -233,9 +259,11 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+         case traits<BASE>::CSR: {
+             if(length != sizeof(reg_t))
+                 return iss::Err;
+-            // a counter is checked here and not where it is read: a wrapper may answer for one of them, as it does for time
+-            auto res =
+-                (is_debug(access) || counter_readable(addr)) ? this->read_csr(addr, *reinterpret_cast<reg_t* const>(data)) : iss::Err;
++            // a counter is checked here and not where it is read: a wrapper may answer for one of them, as it does for time. And
++            // fcsr here, where a debugger's read can be told from the program's
++            auto res = (is_debug(access) || (counter_readable(addr) && fp_csr_usable(addr)))
++                           ? this->read_csr(addr, *reinterpret_cast<reg_t* const>(data))
++                           : iss::Err;
+             if(res != iss::Ok && !is_debug(access))
+                 this->reg.trap_state = (1U << 31) | traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16;
+             return res;
+@@ -284,6 +312,17 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+                     this->reg.trap_state = (1UL << 31) | trap_id << 16;
+                     this->fault_data = addr;
+                 }
++                // the F and D extensions are switched off while mstatus.FS is 0, and an instruction of theirs is then an illegal
++                // one; while they are on, one leaves FS dirty. The interpreter cannot see mstatus, and every instruction it
++                // executes it fetches here first, which a backend that translates blocks does not. (An instruction that only reads
++                // the registers dirties them too, which the specification allows.)
++                if(res == iss::Ok && is_fetch(a.access) && !is_debug(a.access) && is_fp_instruction(data)) {
++                    if(this->fp_is_off()) {
++                        this->reg.trap_state = (1UL << 31) | traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16;
++                        return iss::Err;
++                    }
++                    this->set_fp_dirty();
++                }
+                 return res;
+             } catch(trap_access& ta) {
+                 if(!is_debug(access)) {
+@@ -338,9 +377,12 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::write(const addr_t& a, const unsigned
+         case traits<BASE>::CSR: {
+             if(length != sizeof(reg_t))
+                 return iss::Err;
+-            auto res = this->write_csr(addr, *reinterpret_cast<const reg_t*>(data));
++            auto res = (is_debug(access) || fp_csr_usable(addr)) ? this->write_csr(addr, *reinterpret_cast<const reg_t*>(data)) : iss::Err;
+             if(res != iss::Ok && !is_debug(access))
+                 this->reg.trap_state = (1U << 31) | traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16;
++            // a write of fflags, frm or fcsr leaves the state of the F and D extensions dirty
++            if(res == iss::Ok && !is_debug(access) && is_fp_csr(addr))
++                set_fp_dirty();
+             return res;
+         } break;
+         case traits<BASE>::FENCE: {
+@@ -411,6 +453,9 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::write(const addr_t& a, const unsigned
+ template <typename BASE, features_e FEAT> iss::status riscv_hart_msu_vp<BASE, FEAT>::read_status(unsigned addr, reg_t& val) {
+     auto req_priv_lvl = (addr >> 8) & 0x3;
+     val = this->state.mstatus & base::get_msu_status_mask(req_priv_lvl);
++    // SD, in mstatus and in sstatus, says that the state of the F and D extensions is dirty (and would say it of V's)
++    if(req_priv_lvl >= PRIV_S && this->state.mstatus.FS == 3)
++        val |= reg_t(1) << (sizeof(reg_t) * 8 - 1);
+     return iss::Ok;
+ }
+ 
