@@ -1207,8 +1207,8 @@ TEST_P(WhenSupervisorModeUsesAnAddressNoPageIsMappedAt,
   constexpr std::uint64_t kNotMapped =
       CpuPlatformWithPages::kSpareAddresses + 0x18;
   CpuPlatformWithPages with_pages;
-  with_pages.Load(riscv::StoreWhyAndWhereAnAccessTraps(
-      CpuPlatformWithPages::kPages, kNotMapped, GetParam().instruction));
+  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
+      CpuPlatformWithPages::kPages, kNotMapped, {GetParam().instruction}));
 
   with_pages.RunUntilAsleep();
 
@@ -1228,6 +1228,107 @@ INSTANTIATE_TEST_SUITE_P(
                        riscv::kStorePageFault},
         UseOfAnAddress{"a jump", riscv::Jalr(riscv::kZero, riscv::kT1, 0),
                        riscv::kInstructionPageFault}));
+
+// A use supervisor mode makes of a page: what the page's entry says, and
+// the instructions that use the page, with its address in t1.
+struct UseOfAPage {
+  const char* name;
+  std::uint64_t bits;
+  riscv::Program instructions;
+  // The page fault it is, for a use that is one.
+  riscv::Word page_fault = 0;
+};
+
+void PrintTo(const UseOfAPage& use, std::ostream* out) { *out << use.name; }
+
+// 🎓 A page's entry says more than where the page is. Whether it has been
+// used at all (accessed) and written (dirty), which a kernel reads to
+// choose what to move out of memory and what to write back first. Whose it
+// is. And what may be done there. This hart marks no page accessed or
+// dirty itself: it takes a page fault at one that is not marked so, and
+// leaves the marking to the kernel, which the specification allows and
+// calls Svade.
+class WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow
+    : public ::testing::TestWithParam<UseOfAPage> {};
+
+TEST_P(WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow,
+       ItTakesThePageFaultOfThatUseWhichSaysTheAddress) {
+  constexpr std::uint64_t kAddress =
+      CpuPlatformWithPages::kSpareAddresses + 0x18;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
+                 CpuPlatformWithPages::kFirstSparePage, GetParam().bits);
+  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
+      CpuPlatformWithPages::kPages, kAddress, GetParam().instructions));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  EXPECT_EQ(why, GetParam().page_fault + 1);
+  EXPECT_EQ(where, kAddress);
+}
+
+const riscv::Word kLoad = riscv::Ld(riscv::kT0, riscv::kT1, 0);
+const riscv::Word kStore = riscv::Sd(riscv::kT0, riscv::kT1, 0);
+
+INSTANTIATE_TEST_SUITE_P(
+    EachWay, WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow,
+    ::testing::Values(UseOfAPage{"a load from a page not marked accessed",
+                                 riscv::kPteRead | riscv::kPteWrite,
+                                 {kLoad},
+                                 riscv::kLoadPageFault},
+                      UseOfAPage{"a store to a page not marked dirty",
+                                 riscv::kPteRead | riscv::kPteWrite |
+                                     riscv::kPteAccessed,
+                                 {kStore},
+                                 riscv::kStorePageFault},
+                      UseOfAPage{"a load from a page of user mode's",
+                                 CpuPlatformWithPages::kData | riscv::kPteUser,
+                                 {kLoad},
+                                 riscv::kLoadPageFault},
+                      UseOfAPage{"a load from a page that may only be executed",
+                                 riscv::kPteExecute | riscv::kPteAccessed,
+                                 {kLoad},
+                                 riscv::kLoadPageFault}));
+
+// Supervisor mode's status register has a bit for each of two of those: a
+// kernel sets SUM for as long as it copies to or from a program's memory,
+// and MXR to read an instruction it has to emulate.
+class WhenSupervisorModeSetsTheStatusBitThatAllowsAUseOfAPage
+    : public ::testing::TestWithParam<UseOfAPage> {};
+
+TEST_P(WhenSupervisorModeSetsTheStatusBitThatAllowsAUseOfAPage,
+       TheUseIsMadeAndNothingTraps) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
+                 CpuPlatformWithPages::kFirstSparePage, GetParam().bits);
+  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
+      CpuPlatformWithPages::kPages, CpuPlatformWithPages::kSpareAddresses,
+      GetParam().instructions));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t every_instruction_ran = with_pages.Result(2);
+  EXPECT_EQ(why, 0U);
+  EXPECT_EQ(every_instruction_ran, 1U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachBit, WhenSupervisorModeSetsTheStatusBitThatAllowsAUseOfAPage,
+    ::testing::Values(
+        UseOfAPage{
+            "a load from a page of user mode's, with SUM",
+            CpuPlatformWithPages::kData | riscv::kPteUser,
+            {riscv::Lui(riscv::kT0, riscv::kSupervisorUserMemoryInUpper20),
+             riscv::Csrs(riscv::kSstatus, riscv::kT0), kLoad}},
+        UseOfAPage{
+            "a load from a page that may only be executed, with MXR",
+            riscv::kPteExecute | riscv::kPteAccessed,
+            {riscv::Lui(riscv::kT0, riscv::kMakeExecutableReadableInUpper20),
+             riscv::Csrs(riscv::kSstatus, riscv::kT0), kLoad}}));
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

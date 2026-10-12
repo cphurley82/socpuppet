@@ -189,6 +189,13 @@ inline constexpr Word kSie = 0x104;
 inline constexpr Word kStvec = 0x105;
 // And its view of which interrupts are pending.
 inline constexpr Word kSip = 0x144;
+// Supervisor mode's view of the status register, and two of its bits, by
+// their place in the upper twenty that `lui` sets: SUM lets supervisor
+// mode use user mode's pages, and MXR lets a load read a page that may
+// otherwise only be executed.
+inline constexpr Word kSstatus = 0x100;
+inline constexpr Word kSupervisorUserMemoryInUpper20 = 1 << (18 - 12);
+inline constexpr Word kMakeExecutableReadableInUpper20 = 1 << (19 - 12);
 // The register that says which exceptions are handed down to supervisor
 // mode, a bit for each cause, and the three causes that are page faults:
 // of an instruction fetch, of a load and of a store.
@@ -222,6 +229,9 @@ inline constexpr std::uint64_t kPteValid = 0x01;
 inline constexpr std::uint64_t kPteRead = 0x02;
 inline constexpr std::uint64_t kPteWrite = 0x04;
 inline constexpr std::uint64_t kPteExecute = 0x08;
+// A page of user mode's, which supervisor mode may not use unless it says
+// it means to.
+inline constexpr std::uint64_t kPteUser = 0x10;
 inline constexpr std::uint64_t kPteAccessed = 0x40;
 inline constexpr std::uint64_t kPteDirty = 0x80;
 constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
@@ -825,14 +835,15 @@ inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
 }
 
 // A program that, in supervisor mode under paging, with page faults handed
-// down to that mode, puts `address` in t1 and executes `access`, an
-// instruction that uses it. Its trap handler stores two words as the
-// program's result: why the trap was taken, the cause with one added so
-// that zero is no trap at all, and the address the trap says. Either way
-// it then sleeps.
-inline Program StoreWhyAndWhereAnAccessTraps(const Pages& at,
-                                             std::uint64_t address,
-                                             Word access) {
+// down to that mode, puts `address` in t1 and executes `accesses`,
+// instructions that use it and may use t0 as well. Its result is three
+// words. Its trap handler stores two: why the trap was taken, the cause
+// with one added so that zero is no trap at all, and the address the trap
+// says. The third is one if every instruction was executed and none
+// trapped. Either way it then sleeps.
+inline Program StoreWhyAndWhereAccessesTrap(const Pages& at,
+                                            std::uint64_t address,
+                                            const Program& accesses) {
   Assembler program;
   program.Load(kT1, (std::uint64_t{1} << kInstructionPageFault) |
                         (std::uint64_t{1} << kLoadPageFault) |
@@ -842,7 +853,9 @@ inline Program StoreWhyAndWhereAnAccessTraps(const Pages& at,
   const Assembler::Constant handler = program.Load(kT1);
   program.Emit(Csrw(kStvec, kT1));
   program.Load(kT1, address);
-  program.Emit(access);
+  for (const Word access : accesses) program.Emit(access);
+  program.Load(kT2, at.result);
+  program.Emit({Li(kT0, 1), Sd(kT0, kT2, 16)});
   AppendSleepForEver(program);
 
   program.Set(handler, at.code + program.Here());
