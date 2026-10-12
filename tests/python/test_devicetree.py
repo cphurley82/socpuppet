@@ -534,18 +534,21 @@ class TestWhenACpuHasTwoWatchdogsOnItsBus:
         assert "watchdog0 = &spam;" in platform.devicetree()
 
 
-def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
+def cpu_with_an_imsic(
+    *, machine_page_at=0x2400_0000, isa="gc", modes="msu", **described
+):
     """A CPU with an IMSIC: both the IMSIC's lines go to the CPU, and the
     CPU's `csr` to the IMSIC.
 
     The page for the supervisor's messages is on the CPU's bus. The one
-    for machine mode's is too, unless `machine_page_at` is None.
+    for machine mode's is too, unless `machine_page_at` is None. The CPU
+    is the one with supervisor mode unless `isa` and `modes` say another.
     `described` is what to describe the IMSIC with.
     """
     platform = sp.Platform()
     cpu = platform.add(
         "cpu",
-        sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000, isa="gc", modes="msu"),
+        sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000, isa=isa, modes=modes),
     )
     bus = platform.add("bus", sp.Router())
     imsic = platform.add("imsic", sp.Imsic(**described))
@@ -748,7 +751,23 @@ class TestWhenACpusCsrGoesToAnImsic:
         # and `mireg`), and what Zephyr switches its IMSIC driver on for.
         platform = cpu_with_an_imsic()
 
-        assert '"zifencei", "smcsrind";' in platform.devicetree()
+        assert '"zifencei", "smcsrind"' in platform.devicetree()
+
+    def test_a_cpu_with_supervisor_mode_lists_that_modes_way_to_one_as_well(
+        self,
+    ):
+        # Ssaia is supervisor mode's three registers (`siselect`, `sireg`
+        # and `stopei`), and what Linux's IMSIC driver looks for.
+        platform = cpu_with_an_imsic(isa="gc", modes="msu")
+
+        assert '"smcsrind", "ssaia";' in platform.devicetree()
+
+    def test_a_cpu_with_no_supervisor_mode_does_not(self):
+        platform = cpu_with_an_imsic(isa="imac", modes="m")
+
+        devicetree = platform.devicetree()
+        assert '"zifencei", "smcsrind";' in devicetree
+        assert "ssaia" not in devicetree
 
 
 class TestWhenOnlyAnImsicsPageForTheSupervisorIsOnTheCpusBus:

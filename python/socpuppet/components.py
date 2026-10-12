@@ -464,17 +464,23 @@ class DbtRiseCpu(Component):
         # Smcsrind is one more, which a CPU has when it has an IMSIC to
         # reach: the window onto registers another block keeps (`miselect`
         # and `mireg`). ⚠️ The extension's name promises more than the CPU
-        # has: the same window for supervisor mode, and five more of them.
-        # It is here because it is what Zephyr's IMSIC driver looks for.
-        # Smaia, which names all the Advanced Interrupt Architecture gives
-        # a hart, is left out until the CPU has more of it.
+        # has: five more such windows. It is here because it is what
+        # Zephyr's IMSIC driver looks for. Ssaia is the same for a CPU
+        # with supervisor mode: that mode's window and the register it
+        # claims through (`siselect`, `sireg` and `stopei`), which is what
+        # Linux's IMSIC driver looks for. ⚠️ Its name promises more too:
+        # `stopi`, which says which of all a hart's interrupts comes first,
+        # is not there. Smaia, the same name for machine mode, is left out
+        # until something asks for it.
+        reaches_an_imsic = "csr" in connected
         extensions = ", ".join(
             f'"{each}"'
             for each in (
                 *self.isa.replace("g", "imafd"),
                 "zicsr",
                 "zifencei",
-                *(("smcsrind",) if "csr" in connected else ()),
+                *(("smcsrind",) if reaches_an_imsic else ()),
+                *(("ssaia",) if reaches_an_imsic and "s" in self.modes else ()),
             )
         )
         return (
