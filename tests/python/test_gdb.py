@@ -14,6 +14,7 @@ from disk_access import IMAGE as DISK_TEST
 from disk_access import run_to_a_verdict
 from gdb_client import GdbClient
 from manager_firmware import IMAGE as MANAGER_IMAGE
+from socpuppet import ztest
 from socpuppet.boards.cpu_kit import SRAM_BASE
 from socpuppet.boards.host import RAM_BASE, host
 from socpuppet.boards.manager import add_manager
@@ -430,7 +431,7 @@ class TestWhenEachOfTheHostsThreeCpusHasAGdbPort:
             lambda debugger: None, run=lambda: run_to_a_verdict(debugged.board)
         )
 
-        assert "PROJECT EXECUTION SUCCESSFUL" in debugged.board.uart.output
+        assert ztest.parse(debugged.board.uart.output).passed
 
 
 def architecture(target_description):

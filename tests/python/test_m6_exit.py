@@ -17,7 +17,8 @@ import pytest
 
 import socpuppet as sp
 from cast import DISK_TEST, SSD, boot
-from disk_access import run_to_a_verdict
+from disk_access import assert_it_read_and_wrote, run_to_a_verdict
+from socpuppet import ztest
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd, stand_in_firmware
 from ssd_zephyr_firmware import BANNER
@@ -67,20 +68,19 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
 
         run_to_a_verdict(board)
 
-        assert "PASS - [disk_driver.test_read]" in board.uart.output
-        assert "PASS - [disk_driver.test_write]" in board.uart.output
+        assert_it_read_and_wrote(board.uart.output)
 
     @only_with_zephyr
     def test_each_firmware_prints_on_its_own_console(self, host_with_the_ssd):
         board = host_with_the_ssd(blocks=4096)
         ssds_console = board.drive.ssd.cpu_kit.uart
 
-        run_to_a_verdict(board)
+        hosts_report = run_to_a_verdict(board)
 
         assert BANNER in ssds_console.output
         assert BANNER not in board.uart.output
-        assert "disk_driver" in board.uart.output
-        assert "disk_driver" not in ssds_console.output
+        assert "disk_driver" in [suite.name for suite in hosts_report.suites]
+        assert ztest.parse(ssds_console.output).suites == ()
 
 
 #: The largest drive the SSD's firmware takes: 2 GiB, in 512-byte blocks.
@@ -112,8 +112,7 @@ class TestWhenTheSsdsFirmwareTakesAQuarterOfASecondToComeReady:
         run_to_a_verdict(board)
 
         assert f"Disk reports {LARGEST_DRIVE} sectors" in board.uart.output
-        assert "PASS - [disk_driver.test_read]" in board.uart.output
-        assert "PASS - [disk_driver.test_write]" in board.uart.output
+        assert_it_read_and_wrote(board.uart.output)
 
 
 #: Long enough for a host whose SSD is ready at once to have printed its

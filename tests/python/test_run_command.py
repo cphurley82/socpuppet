@@ -16,6 +16,7 @@ from cast import (
 from elf_files import elf_file
 from processes import run_socpuppet, start_socpuppet
 from riscv_program import SPIN, a_program_that_says
+from socpuppet import ztest
 from socpuppet.boards import host
 from zephyr_module import BOARDS
 
@@ -263,7 +264,7 @@ class TestWhenAnImageRunByTheRunCommandSaysItsTestsPassed:
             "socpuppet_host_drive",
         )
 
-        assert "PROJECT EXECUTION SUCCESSFUL" in result.stdout
+        assert ztest.parse(result.stdout).passed
         assert result.stderr == ""
 
 
