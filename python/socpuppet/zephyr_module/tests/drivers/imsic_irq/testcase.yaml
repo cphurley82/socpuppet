@@ -1,0 +1,7 @@
+# The host is the board whose interrupts arrive at an IMSIC, with an APLIC
+# on each of its two dies for the devices that only have a wire.
+tests:
+  socpuppet.drivers.imsic_irq:
+    harness: ztest
+    platform_allow:
+      - socpuppet_host

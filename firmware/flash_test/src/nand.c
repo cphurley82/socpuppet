@@ -98,4 +98,25 @@ ZTEST(nand, test_a_read_that_runs_past_the_end_of_the_nand_is_refused)
 	zassert_equal(flash_read(nand, (off_t)size - 1, read_back, 2), -EINVAL);
 }
 
+ZTEST(nand, test_a_write_that_runs_past_the_end_of_the_nand_is_refused)
+{
+	uint64_t size;
+
+	zassert_ok(flash_get_size(nand, &size));
+
+	/* Whole pages, the first of them the NAND's last. */
+	zassert_equal(flash_write(nand, (off_t)(size - page_size), written, 2 * page_size),
+		      -EINVAL);
+}
+
+ZTEST(nand, test_an_erase_that_runs_past_the_end_of_the_nand_is_refused)
+{
+	uint64_t size;
+
+	zassert_ok(flash_get_size(nand, &size));
+
+	/* Whole blocks, the first of them the NAND's last. */
+	zassert_equal(flash_erase(nand, (off_t)(size - block.size), 2 * block.size), -EINVAL);
+}
+
 ZTEST_SUITE(nand, NULL, nand_setup, nand_before, NULL, NULL);
