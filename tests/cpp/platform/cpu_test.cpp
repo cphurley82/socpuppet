@@ -2129,7 +2129,7 @@ std::vector<UseOfAtomicsEitherWay> EitherWay(
   std::vector<UseOfAtomicsEitherWay> either_way;
   for (const bool over_the_bus : {false, true}) {
     for (const UseOfAtomics& use : uses) {
-      either_way.push_back({use, over_the_bus});
+      either_way.push_back({.use = use, .over_the_bus = over_the_bus});
     }
   }
   return either_way;
@@ -2320,12 +2320,17 @@ void PrintTo(const MisalignedUse& use, std::ostream* out) { *out << use.name; }
 // An atomic is a load and a store in one, and is refused as a store: a
 // handler that makes misaligned loads on a program's behalf must not
 // take one for a load, since it could only make half of it.
-constexpr MisalignedUse kEachMisalignedUse[] = {
-    {"a load", riscv::Lw(riscv::kT0, riscv::kT1, 0), riscv::kMisalignedLoad},
-    {"a store", riscv::Sw(riscv::kT0, riscv::kT1, 0), riscv::kMisalignedStore},
-    {"an atomic sum", riscv::AmoaddW(riscv::kT0, riscv::kT1, riscv::kT3),
-     riscv::kMisalignedStore},
-};
+constexpr std::array<MisalignedUse, 3> kEachMisalignedUse{{
+    {.name = "a load",
+     .instruction = riscv::Lw(riscv::kT0, riscv::kT1, 0),
+     .cause = riscv::kMisalignedLoad},
+    {.name = "a store",
+     .instruction = riscv::Sw(riscv::kT0, riscv::kT1, 0),
+     .cause = riscv::kMisalignedStore},
+    {.name = "an atomic sum",
+     .instruction = riscv::AmoaddW(riscv::kT0, riscv::kT1, riscv::kT3),
+     .cause = riscv::kMisalignedStore},
+}};
 
 // An address in the RAM that is one past a multiple of four.
 constexpr std::uint64_t kOddAddress =
