@@ -1141,9 +1141,11 @@ struct CpuPlatformWithPages {
                         std::as_bytes(std::span{bytes}));
   }
 
-  // Puts `program` in the program's page, where the CPU starts.
-  void Load(const riscv::Program& program) {
-    platform.DebugWrite("cpu.socket", kProgramPage,
+  // Puts `program` in the program's page, where the CPU starts, or in the
+  // page of the RAM at `physical`.
+  void Load(const riscv::Program& program,
+            std::uint64_t physical = kProgramPage) {
+    platform.DebugWrite("cpu.socket", physical,
                         std::as_bytes(std::span{program}));
   }
 
@@ -1523,6 +1525,58 @@ INSTANTIATE_TEST_SUITE_P(
                       NamedInstruction{"sfence.vma", riscv::kSfenceVma},
                       NamedInstruction{"sret", riscv::kSret},
                       NamedInstruction{"mret", riscv::kMret}));
+
+// Something a program in user mode does, and the trap it is.
+struct ActOfAUserProgram {
+  const char* name;
+  riscv::Program code;
+  riscv::Word cause;
+  // What the trap says of an address, which for a fault is the address.
+  std::uint64_t address;
+};
+
+void PrintTo(const ActOfAUserProgram& act, std::ostream* out) {
+  *out << act.name;
+}
+
+// What Linux is, most of the time: a program in user mode on pages of its
+// own, and a kernel on pages the program may not touch, which hears of the
+// program only when it traps.
+class WhenAProgramInUserModeOnItsOwnPageUnderPaging
+    : public ::testing::TestWithParam<ActOfAUserProgram> {};
+
+TEST_P(WhenAProgramInUserModeOnItsOwnPageUnderPaging,
+       TrapsToSupervisorModeWithTheCauseAndTheAddressOfWhatItDid) {
+  constexpr std::uint64_t kUsersPage = CpuPlatformWithPages::kSpareAddresses;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(kUsersPage, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kCode | riscv::kPteUser);
+  with_pages.Load(GetParam().code, CpuPlatformWithPages::kFirstSparePage);
+  with_pages.Load(riscv::RunTheCodeAtAnAddressInUserModeUnderPaging(
+      CpuPlatformWithPages::kPages, kUsersPage));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  EXPECT_EQ(why, GetParam().cause + 1);
+  EXPECT_EQ(where, GetParam().address);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachAct, WhenAProgramInUserModeOnItsOwnPageUnderPaging,
+    ::testing::Values(
+        ActOfAUserProgram{
+            "a system call", {riscv::kEcall}, riscv::kEcallFromUserMode, 0},
+        ActOfAUserProgram{"a load from a page of the supervisor's",
+                          riscv::LoadFrom(CpuPlatformWithPages::kPages.result),
+                          riscv::kLoadPageFault,
+                          CpuPlatformWithPages::kPages.result},
+        ActOfAUserProgram{"a jump into a page of the supervisor's",
+                          riscv::JumpTo(CpuPlatformWithPages::kPages.code),
+                          riscv::kInstructionPageFault,
+                          CpuPlatformWithPages::kPages.code}));
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

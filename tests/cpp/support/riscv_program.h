@@ -894,6 +894,51 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
   return program.Assemble();
 }
 
+// An operating system for a program in user mode under paging, with
+// system calls and page faults handed down to it. It sets its trap
+// handler and returns to user mode at the virtual address `users_code`,
+// where a test has put a program. Its handler stores two words as the
+// result, why the trap was taken, the cause with one added so that zero is
+// no trap at all, and the address the trap says, and then sleeps.
+inline Program RunTheCodeAtAnAddressInUserModeUnderPaging(
+    const Pages& at, std::uint64_t users_code) {
+  Assembler program;
+  program.Load(kT1, (std::uint64_t{1} << kEcallFromUserMode) |
+                        (std::uint64_t{1} << kInstructionPageFault) |
+                        (std::uint64_t{1} << kLoadPageFault) |
+                        (std::uint64_t{1} << kStorePageFault));
+  program.Emit(Csrw(kMedeleg, kT1));
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  const Assembler::Constant handler = program.Load(kT1);
+  program.Emit({Csrw(kStvec, kT1),
+                // The mode to return to is user mode.
+                Li(kT1, 1 << kSupervisorPreviousMode), Csrc(kSstatus, kT1)});
+  program.Load(kT1, users_code);
+  program.Emit({Csrw(kSepc, kT1), kSret});
+
+  program.Set(handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kScause), Addi(kT1, kT1, 1)});
+  program.Load(kT2, at.result);
+  program.Emit({Sd(kT1, kT2, 0), Csrr(kT1, kStval), Sd(kT1, kT2, 8)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// Two things for a program in user mode to do with an address: load the
+// word there, and jump there.
+inline Program LoadFrom(std::uint64_t address) {
+  Assembler program;
+  program.Load(kT1, address);
+  program.Emit(Ld(kT0, kT1, 0));
+  return program.Assemble();
+}
+inline Program JumpTo(std::uint64_t address) {
+  Assembler program;
+  program.Load(kT1, address);
+  program.Emit(Jalr(kZero, kT1, 0));
+  return program.Assemble();
+}
+
 // A program that, in supervisor mode under paging, with page faults handed
 // down to that mode, puts `address` in t1 and executes `accesses`,
 // instructions that use it and may use t0 as well. Its result is three
