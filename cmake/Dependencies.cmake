@@ -162,7 +162,9 @@ FetchContent_Declare(dbt_rise_riscv
   # interrupt-drops-instruction: the same cores dropped a load, a CSR read
   # or an atomic that an interrupt arrived at. reset-pulse: a reset that
   # rose and fell while a busy core was ahead of the clock stopped the
-  # simulation, where it now restarts the core.
+  # simulation, where it now restarts the core. mip-read-only: firmware
+  # could clear the machine timer's pending bit, and the core then slept
+  # through an interrupt whose line stayed high.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -173,6 +175,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-supervisor-interrupts.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-interrupt-drops-instruction.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-pulse.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-mip-read-only.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

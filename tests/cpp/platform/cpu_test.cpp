@@ -518,6 +518,45 @@ TEST(WhenTheTimerInterruptLineRisesWhileTheCpuSleeps, ItsHandlerRuns) {
   EXPECT_GE(with_device.TimesTheHandlerRan(), 1);
 }
 
+// Raises the line once a program has enabled its interrupt and gone to
+// sleep, which takes it four instructions at 100 ns each, and leaves the
+// line high.
+void RaiseOnceTheProgramSleeps(InterruptSource& device) {
+  device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
+  device.Raise();
+}
+
+// Zephyr clears an interrupt's bit in `mip` on its way into every handler.
+// For the machine timer's interrupt that write does nothing on a real hart:
+// the bit says what the line says, and is read-only. A core that lets the
+// write through forgets an interrupt whose line then stays high, as the
+// timer's does when the next compare value is already in the past.
+TEST(WhenAProgramClearsTheTimerInterruptInMipWhileItsLineIsHigh,
+     TheCoreWithSupervisorModeStillWakesToIt) {
+  CpuPlatformWithAnInterruptSource with_device{
+      "timer_irq", RaiseOnceTheProgramSleeps, TheCoreWithSupervisorMode()};
+  with_device.Load(riscv::SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
+      riscv::kMachineTimerInterrupt));
+
+  // Four instructions before the line rises and four after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.ResultWord(0), 1U);
+}
+
+TEST(WhenAProgramClearsTheTimerInterruptInMipWhileItsLineIsHigh,
+     TheCoreWithoutSupervisorModeStillWakesToIt) {
+  CpuPlatformWithAnInterruptSource with_device{"timer_irq",
+                                               RaiseOnceTheProgramSleeps};
+  with_device.Load(riscv::SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
+      riscv::kMachineTimerInterrupt));
+
+  // Four instructions before the line rises and four after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.ResultWord(0), 1U);
+}
+
 TEST(WhenAHandlerQuietsTheDeviceThatInterrupted, ItRunsOncePerInterrupt) {
   CpuPlatformWithAnInterruptSource with_device{
       "irq", [](InterruptSource& device) {

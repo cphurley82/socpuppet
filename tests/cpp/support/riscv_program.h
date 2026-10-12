@@ -114,6 +114,9 @@ constexpr Word FmvXD(Word rd, Word rs1) {
 inline constexpr Word kMie = 0x304;
 inline constexpr Word kMachineTimerInterrupt = 7;
 inline constexpr Word kMachineExternalInterrupt = 11;
+// The register that says which interrupts are pending, a bit each as in
+// `mie`.
+inline constexpr Word kMip = 0x344;
 // The status register, and its bit that switches interrupts on as a whole.
 inline constexpr Word kMstatus = 0x300;
 inline constexpr Word kInterruptsOn = 3;
@@ -284,6 +287,30 @@ inline Program SleepUntilTheExternalInterruptThenStoreWord(
   program.push_back(kWfi);
   program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
   program.push_back(Sw(kZero, kT0, 0));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that sleeps until the line of `interrupt` is high, clears that
+// interrupt's bit in `mip`, sleeps again, and stores a one as its result
+// when it wakes.
+//
+// Zephyr clears the bit the same way, on its way into every handler. This
+// program leaves interrupts as a whole switched off, as
+// SleepUntilTheExternalInterruptThenStoreWord does, so no trap is taken and
+// nothing quiets whatever holds the line high.
+inline Program SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
+    Word interrupt) {
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, interrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(kWfi);
+  program.push_back(Csrc(kMip, kT1));
+  program.push_back(kWfi);
+  program.push_back(Li(kT1, 1));
+  program.push_back(Sw(kT1, kT0, kResultOffset));
   AppendSleepForEver(program);
   return program;
 }
