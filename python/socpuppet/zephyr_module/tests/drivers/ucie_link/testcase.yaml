@@ -1,0 +1,8 @@
+# The IO die's manager is the board with the link's registers. `socpuppet
+# run` gives it a compute die that makes one round trip once it is let go,
+# which is what the suite watches for.
+tests:
+  socpuppet.drivers.ucie_link:
+    harness: ztest
+    platform_allow:
+      - socpuppet_iomgr

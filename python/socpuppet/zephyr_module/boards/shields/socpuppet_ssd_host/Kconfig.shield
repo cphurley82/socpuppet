@@ -1,0 +1,2 @@
+config SHIELD_SOCPUPPET_SSD_HOST
+	def_bool $(shields_list_contains,socpuppet_ssd_host)

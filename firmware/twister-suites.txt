@@ -39,3 +39,7 @@ samples/synchronization -K
 # socpuppet's own applications, each on the board it is for: every
 # directory under firmware/ that has a testcase.yaml.
 firmware
+
+# The tests of the drivers in socpuppet's Zephyr module, each on the board
+# its hardware is on.
+python/socpuppet/zephyr_module/tests

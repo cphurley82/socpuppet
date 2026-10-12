@@ -103,7 +103,7 @@ west twister -p socpuppet_host -T tests/kernel/sleep
 
 ## socpuppet's own applications are suites too
 
-The last line of the list is `firmware`, and every application there with a `testcase.yaml` is built and judged with the rest, each on the boards it names:
+One line of the list is `firmware`, and every application there with a `testcase.yaml` is built and judged with the rest, each on the boards it names:
 
 | Suite | Boards | How twister judges it |
 |---|---|---|

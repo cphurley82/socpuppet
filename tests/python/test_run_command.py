@@ -5,6 +5,7 @@ import subprocess
 
 import pytest
 
+import ssd_zephyr_firmware
 from cast import (
     DISK_TEST,
     GREETING,
@@ -70,6 +71,25 @@ class TestWhenTheRunCommandIsGivenAShieldForABoardThatTakesNone:
             "run",
             str(a_program(tmp_path, xlen=32)),
             "--board",
+            "socpuppet_iomgr",
+            "--shield",
+            "socpuppet_host_drive",
+            check=False,
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "socpuppet_iomgr takes no shield" in line
+
+
+class TestWhenTheRunCommandIsGivenAShieldTheSsdDoesNotTake:
+    def test_it_fails_in_one_line_that_names_the_one_the_ssd_takes(
+        self, tmp_path
+    ):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path, xlen=32)),
+            "--board",
             "socpuppet_ssd",
             "--shield",
             "socpuppet_host_drive",
@@ -78,7 +98,60 @@ class TestWhenTheRunCommandIsGivenAShieldForABoardThatTakesNone:
 
         assert result.returncode != 0
         [line] = result.stderr.strip().splitlines()
-        assert "socpuppet_ssd takes no shield" in line
+        assert "socpuppet_ssd_host" in line
+
+
+#: Simulated milliseconds. The shield's host waits a second for the drive
+#: to say it is ready, which is as long as socpuppet's frontend says that
+#: may take, so a run this long has seen it give up if it was going to.
+LONGER_THAN_A_HOST_WAITS_TO_BE_TOLD_READY = "1100"
+
+
+class TestWhenTheSsdIsRunWithTheShieldThatIsItsHost:
+    """🎭 The shield `socpuppet_ssd_host` is a host in front of the SSD
+    that says a host's first words to a drive: it finds it on its PCIe
+    link, enables it, waits for it to say it is ready, asks for its queues
+    and how big it is, and writes one block."""
+
+    def test_an_image_that_never_says_the_drive_is_ready_fails_the_run_in_one_line_that_says_so(
+        self, tmp_path
+    ):
+        deaf_to_the_host = a_program_that_says("Spam\n", tmp_path)
+
+        result = run_socpuppet(
+            "run",
+            str(deaf_to_the_host),
+            "--board",
+            "socpuppet_ssd",
+            "--shield",
+            "socpuppet_ssd_host",
+            "--boot",
+            "ram",
+            check=False,
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "socpuppet_ssd_host" in line
+        assert "did not become ready" in line
+
+    def test_the_ssds_own_firmware_gives_that_host_nothing_to_complain_of(
+        self, firmware
+    ):
+        result = boot_from_rom(
+            firmware,
+            ROM_FOR_A_32_BIT_CPU,
+            str(firmware(ssd_zephyr_firmware.IMAGE)),
+            "--board",
+            "socpuppet_ssd",
+            "--shield",
+            "socpuppet_ssd_host",
+            "--until",
+            LONGER_THAN_A_HOST_WAITS_TO_BE_TOLD_READY,
+        )
+
+        [line] = result.stderr.strip().splitlines()
+        assert "--until" in line
 
 
 class TestWhenTheRunCommandIsGivenAShieldTheHostDoesNotTake:

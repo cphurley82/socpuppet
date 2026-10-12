@@ -1,0 +1,17 @@
+/*
+ * The host in front of the SSD. It adds nothing to the SSD's own
+ * devicetree: the firmware finds the host through the frontend and the DMA
+ * engine it has already. What the shield changes is what is on the other
+ * side of them. With it, `socpuppet run` puts a host there that says a
+ * host's first words to a drive: it finds the drive and lets it reach the
+ * host's memory, enables it, waits to be told it is ready, asks for its
+ * queues and how big it is, and writes one block. The board alone has a
+ * host that does nothing.
+ *
+ * The host waits for "ready" as long as the controller says that may take,
+ * which is a second of simulated time. An image built with the shield has
+ * that long to say so, or to be done.
+ *
+ * Zephyr knows a shield by its overlay, so the file is here though it adds
+ * nothing.
+ */
