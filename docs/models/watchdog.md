@@ -63,6 +63,16 @@ compute_wdt: watchdog@101000 {
 
 ⚠️ The interrupt is given the short way, as `interrupt-parent` and `interrupts`, because Zephyr's binding for this watchdog requires a property of that name, and its driver will not build for a node without one.
 
+The devicetree also names it, at the top of the tree:
+
+```dts
+aliases {
+	watchdog0 = &compute_wdt;
+};
+```
+
+🎓 An alias is a name that firmware and boards agree on beforehand. Zephyr's watchdog test and samples ask for `watchdog0` and get whichever watchdog the board says that is, so the same program runs on boards that label theirs differently. Of two watchdogs on one CPU's bus, the one at the lower address has the name.
+
 ## Under the hood
 
 💡 This one is borrowed. The model is the always-on block from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), by Minres, which had the watchdog's registers and nothing behind them. The watchdog is added by `cmake/patches/vpv-peripherals-aon-watchdog.patch`, which is written up in [upstream.md](../upstream.md) as a feature to offer.

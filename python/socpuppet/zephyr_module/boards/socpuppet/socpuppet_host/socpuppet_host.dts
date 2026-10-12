@@ -10,6 +10,10 @@
 		zephyr,sram = &compute_ram;
 	};
 
+	aliases {
+		watchdog0 = &compute_wdt;
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;

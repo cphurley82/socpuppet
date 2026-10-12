@@ -7,7 +7,7 @@ the two from drifting apart. No simulation is needed to do it.
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from socpuppet.address_map import Reached, reachable_ports
@@ -27,7 +27,7 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     Each component describes its own node (`Component.device_node`). What
     is decided here is where the nodes go: the CPU under `cpus`, memory at
     the top, every other device under `soc`, and which of them `chosen`
-    points at.
+    and `aliases` point at.
     """
     master = view.placed
     nodes = _nodes(connections, view)
@@ -41,12 +41,16 @@ def generate(connections: Collection[Connection], view: Port) -> str:
         "\t#size-cells = <2>;",
     ]
     # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
-    # nothing to choose devices for.
+    # nothing to choose or name devices for.
     cpu = master.component.cpu_node(
         label(master.path), _connected_ports(connections, master)
     )
     if cpu is not None:
-        lines += ["", *_chosen(_roles(nodes)), "", *_cpus(cpu)]
+        lines += ["", *_references("chosen", _roles(nodes))]
+        aliases = _aliases(nodes)
+        if aliases:
+            lines += ["", *_references("aliases", aliases)]
+        lines += ["", *_cpus(cpu)]
     for each in _devices(
         nodes,
         connections,
@@ -87,7 +91,7 @@ def overlay(
         addresses,
     )
     if roles:
-        blocks.insert(0, _chosen(roles))
+        blocks.insert(0, _references("chosen", roles))
     lines = ["/ {"]
     for block in blocks:
         # A blank line between one block and the next.
@@ -323,21 +327,38 @@ def _cpus(cpu: tuple[str, ...]) -> list[str]:
 
 
 def _roles(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
-    """Which device fills each `chosen` role: the first that can."""
-    filled: dict[str, Placed] = {}
-    for placed, node in nodes:
-        for role in node.chosen:
-            filled.setdefault(role, placed)
-    return filled
+    """Which device the firmware should use for each `chosen` role."""
+    return _first_to_claim((placed, node.chosen) for placed, node in nodes)
 
 
-def _chosen(roles: dict[str, Placed]) -> list[str]:
-    """The `chosen` node: which devices the firmware should use for what."""
+def _aliases(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
+    """Which device has each name in `aliases`."""
+    return _first_to_claim((placed, node.aliases) for placed, node in nodes)
+
+
+def _first_to_claim(
+    claims: Iterable[tuple[Placed, tuple[str, ...]]],
+) -> dict[str, Placed]:
+    """Which device has each name: the first to claim it.
+
+    A name is for one device. The nodes come in the order of their
+    addresses, so of two that claim a name the one at the lower address
+    has it.
+    """
+    first: dict[str, Placed] = {}
+    for placed, names in claims:
+        for name in names:
+            first.setdefault(name, placed)
+    return first
+
+
+def _references(name: str, devices: dict[str, Placed]) -> list[str]:
+    """A node at the top of the tree whose properties each name a device."""
     return [
-        "\tchosen {",
+        f"\t{name} {{",
         *(
-            f"\t\t{role} = &{label(placed.path)};"
-            for role, placed in sorted(roles.items())
+            f"\t\t{property_} = &{label(placed.path)};"
+            for property_, placed in sorted(devices.items())
         ),
         "\t};",
     ]

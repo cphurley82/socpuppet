@@ -77,6 +77,11 @@ class DeviceNode(NamedTuple):
     on_bus: bool = True
     #: The `chosen` properties this node can fill, such as `zephyr,console`.
     chosen: tuple[str, ...] = ()
+    #: The names in `aliases` this node can take, such as `watchdog0`.
+    #: 🎓 An alias is a name firmware agrees on beforehand for "the board's
+    #: watchdog", so that one program runs on boards that label theirs
+    #: differently.
+    aliases: tuple[str, ...] = ()
     #: Which of the component's output lines are this node's interrupts, by
     #: port. None means all of them, which is right for a component that is
     #: one device.
@@ -931,6 +936,8 @@ class Watchdog(Component):
             "watchdog",
             ((reached["socket"].address, self.mapped_size),),
             ('compatible = "sifive,wdt";',),
+            # Zephyr's watchdog test and samples look for this name.
+            aliases=("watchdog0",),
             # `bite` resets, and is no interrupt.
             interrupts=("irq",),
             # Zephyr's binding requires the property by this name.

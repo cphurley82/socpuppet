@@ -10,6 +10,10 @@
 		zephyr,sram = &ssd_sram;
 	};
 
+	aliases {
+		watchdog0 = &ssd_wdt;
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;

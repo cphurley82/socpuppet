@@ -508,6 +508,32 @@ class TestWhenAWatchdogsInterruptGoesToAPlicSource:
         assert "interrupts = <4 1>;" in platform.devicetree()
 
 
+class TestWhenACpuHasAWatchdogOnItsBus:
+    def test_it_is_the_alias_watchdog0(self):
+        # Zephyr's own watchdog test asks for its device by this alias.
+        platform, _, _ = cpu_with_a_watchdog()
+
+        aliases = textwrap.dedent(
+            """\
+            aliases {
+            \twatchdog0 = &wdt;
+            };
+            """
+        )
+        assert textwrap.indent(aliases, "\t") in platform.devicetree()
+
+
+class TestWhenACpuHasTwoWatchdogsOnItsBus:
+    def test_the_one_at_the_lower_address_is_the_alias_watchdog0(self):
+        # An alias names one device, as a role in `chosen` does, and goes
+        # to the first that can take it.
+        platform, bus, _ = cpu_with_its_peripherals()
+        bus.map(platform.add("eggs", sp.Watchdog()).socket, base=0x0010_2000)
+        bus.map(platform.add("spam", sp.Watchdog()).socket, base=0x0010_1000)
+
+        assert "watchdog0 = &spam;" in platform.devicetree()
+
+
 def cpu_with_an_imsic(*, machine_page_at=0x2400_0000, **described):
     """A CPU with an IMSIC: both the IMSIC's lines go to the CPU, and the
     CPU's `csr` to the IMSIC.
