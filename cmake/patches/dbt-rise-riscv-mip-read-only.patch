@@ -1,12 +1,13 @@
 diff --git a/src/iss/arch/riscv_hart_m_p.h b/src/iss/arch/riscv_hart_m_p.h
 --- a/src/iss/arch/riscv_hart_m_p.h
 +++ b/src/iss/arch/riscv_hart_m_p.h
-@@ -352,6 +352,8 @@ template <typename BASE, features_e FEAT> iss::status riscv_hart_m_p<BASE, FEAT>
+@@ -352,6 +352,9 @@ template <typename BASE, features_e FEAT> iss::status riscv_hart_m_p<BASE, FEAT>
          lval |= this->mip_csr & ~static_cast<uint64_t>(std::numeric_limits<reg_t>::max());
      // generate mask from allowed writable bits, the number of custom interrupts and the available ie bits
      auto mask = this->mie_mip_mask[3] & this->clint_custom_irq_mask & ~0x777ULL; // clear H, S & U mode bits
-+    // The machine timer's interrupt is read-only here, as it is in riscv_hart_msu_vp.h and for the reason given there.
-+    mask &= ~(1ULL << 7);
++    // The machine timer's interrupt and the machine external interrupt are read-only here, as they are in
++    // riscv_hart_msu_vp.h and for the reason given there.
++    mask &= ~(1ULL << 7 | 1ULL << 11);
      this->mip_csr = (this->mip_csr & ~mask) | (lval & mask);
      check_interrupt();
      return iss::Ok;
@@ -17,10 +18,10 @@ diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
          this->mip_csr = (this->mip_csr & ~mask) | (lval & mask);
          break;
      case mip:
-+        // The machine timer's interrupt is read-only here: its bit says what the timer's line says, and only the timer
-+        // changes it. A write that cleared it would lose the interrupt for as long as the line then stayed high, since
-+        // local_irq is told of a line only when it changes.
-+        mask &= ~(1ULL << 7);
++        // The machine timer's interrupt and the machine external interrupt are read-only here: each bit says what its
++        // line says, and only the timer or the interrupt controller changes it. A write that cleared one would lose the
++        // interrupt for as long as the line then stayed high, since local_irq is told of a line only when it changes.
++        mask &= ~(1ULL << 7 | 1ULL << 11);
          if(sizeof(reg_t) == 4) // add the upper part of mip_csr
              lval |= this->mip_csr & ~static_cast<uint64_t>(std::numeric_limits<reg_t>::max());
          this->mip_csr = (this->mip_csr & ~mask) | (lval & mask);

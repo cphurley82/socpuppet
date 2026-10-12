@@ -557,6 +557,35 @@ TEST(WhenAProgramClearsTheTimerInterruptInMipWhileItsLineIsHigh,
   EXPECT_EQ(with_device.ResultWord(0), 1U);
 }
 
+// The external interrupt's bit is read-only in the same way: it says what
+// the interrupt controller's line says. The line stays high after a claim
+// when the controller has another interrupt waiting.
+TEST(WhenAProgramClearsTheExternalInterruptInMipWhileItsLineIsHigh,
+     TheCoreWithSupervisorModeStillWakesToIt) {
+  CpuPlatformWithAnInterruptSource with_device{"irq", RaiseOnceTheProgramSleeps,
+                                               TheCoreWithSupervisorMode()};
+  with_device.Load(riscv::SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
+      riscv::kMachineExternalInterrupt));
+
+  // Four instructions before the line rises and four after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.ResultWord(0), 1U);
+}
+
+TEST(WhenAProgramClearsTheExternalInterruptInMipWhileItsLineIsHigh,
+     TheCoreWithoutSupervisorModeStillWakesToIt) {
+  CpuPlatformWithAnInterruptSource with_device{"irq",
+                                               RaiseOnceTheProgramSleeps};
+  with_device.Load(riscv::SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
+      riscv::kMachineExternalInterrupt));
+
+  // Four instructions before the line rises and four after it.
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  EXPECT_EQ(with_device.ResultWord(0), 1U);
+}
+
 TEST(WhenAHandlerQuietsTheDeviceThatInterrupted, ItRunsOncePerInterrupt) {
   CpuPlatformWithAnInterruptSource with_device{
       "irq", [](InterruptSource& device) {

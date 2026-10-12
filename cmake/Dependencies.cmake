@@ -163,8 +163,9 @@ FetchContent_Declare(dbt_rise_riscv
   # or an atomic that an interrupt arrived at. reset-pulse: a reset that
   # rose and fell while a busy core was ahead of the clock stopped the
   # simulation, where it now restarts the core. mip-read-only: firmware
-  # could clear the machine timer's pending bit, and the core then slept
-  # through an interrupt whose line stayed high.
+  # could clear the pending bit of the machine timer's interrupt or of the
+  # machine external one, and the core then slept through an interrupt whose
+  # line stayed high.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
