@@ -1,0 +1,7 @@
+# The flash translation layer needs the SSD's NAND and its buffer, and no
+# host.
+tests:
+  socpuppet.firmware.ssd.ftl:
+    harness: ztest
+    platform_allow:
+      - socpuppet_ssd

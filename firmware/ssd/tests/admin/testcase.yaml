@@ -1,0 +1,9 @@
+# Identify answers with a page copied into the host's memory, and a PCIe
+# device may not reach that until a host has said it may. The shield is
+# that host (docs/twister.md).
+tests:
+  socpuppet.firmware.ssd.admin:
+    harness: ztest
+    extra_args: SHIELD=socpuppet_ssd_host
+    platform_allow:
+      - socpuppet_ssd
