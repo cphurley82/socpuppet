@@ -11,9 +11,9 @@
 #                                                      one suite, by hand
 #
 # Everything after --suites goes to twister. A -T that is relative is a
-# directory of Zephyr's tree, or one of this repository's if it starts with
-# firmware/ or python/. The verdicts and the logs are left in
-# build/twister/out, in a directory for each run of twister: twister.json,
+# directory of Zephyr's tree, unless it is firmware or python, or under one
+# of them: those are this repository's. The verdicts and the logs are left
+# in build/twister/out, in a directory for each run of twister: twister.json,
 # twister.xml for a CI's test report, twister.log, and each scenario's
 # build.log, its handler.log, which is its console, and its
 # handler_stderr.log, where `socpuppet run` says how a run ended.
@@ -189,13 +189,12 @@ export SOCPUPPET_FIRMWARE_DIR=${firmware}
 # cost more than it saves once the sources are on a local disk.
 export USE_CCACHE=0
 
-# A -T that is relative is Zephyr's, or ours if it starts with firmware/ or
-# python/, where our own suites are. firmware/build.sh takes an
-# application's directory the same way.
+# A -T that is relative is Zephyr's, unless it is firmware or python, or
+# under one of them, where our own suites are.
 resolve() {
   case $1 in
     /*) echo "$1" ;;
-    firmware/* | python/*) echo "${repository}/$1" ;;
+    firmware | firmware/* | python | python/*) echo "${repository}/$1" ;;
     *) echo "${zephyr}/$1" ;;
   esac
 }

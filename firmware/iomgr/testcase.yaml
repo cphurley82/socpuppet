@@ -1,0 +1,15 @@
+# What twister, Zephyr's test runner, reads of this application
+# (docs/twister.md). It has no test framework in it, so twister is told
+# what it prints when it has done its job: trained the link to the compute
+# die and let that die out of reset.
+tests:
+  socpuppet.firmware.iomgr:
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "iomgr: D2D link up"
+        - "iomgr: compute die released"
+    platform_allow:
+      - socpuppet_iomgr

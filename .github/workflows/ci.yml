@@ -39,8 +39,9 @@ jobs:
             build/firmware/*.elf
             build/firmware/*.opcodes.txt
           # The board the images are built for is part of what they are.
-          # The script and the lists that twister is run from build no image.
-          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', 'python/socpuppet/zephyr_module/**') }}
+          # What twister is run from builds no image: its script, its lists,
+          # and what it reads of each application.
+          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**') }}
       - name: Build the images
         if: steps.images.outputs.cache-hit != 'true'
         run: firmware/build.sh
@@ -158,7 +159,7 @@ jobs:
         # conftest.py of its own.
         run: |
           uv run pytest tests/python/test_twister_boards.py
-          uv run pytest tests/tooling/test_twister_lists.py
+          uv run pytest tests/tooling -k twister
       - name: Run every suite of the list on every board
         run: firmware/twister.sh --suites
       - uses: actions/upload-artifact@v7

@@ -1,0 +1,12 @@
+# What twister, Zephyr's test runner, reads of this application
+# (docs/twister.md). It has no test framework in it, so twister is told
+# what it prints when its drive is up: the line that says how big.
+tests:
+  socpuppet.firmware.ssd:
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "socpuppet SSD firmware: a drive of \\d+ pages of \\d+ bytes"
+    platform_allow:
+      - socpuppet_ssd
