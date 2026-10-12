@@ -372,15 +372,35 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
-### A trap that `sret` raises is thrown away, and an interrupt can be taken inside an exception's handler
+### An interrupt that is pending when an exception is taken is taken inside the exception's handler
 
-- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `leave_trap`, and `enter_trap` in all three harts.
-- **What is wrong**: two things, both ⚠️ found by reading while the entry above was checked, and neither run. `leave_trap` sets an illegal-instruction trap in `trap_state` when supervisor mode executes `sret` with `mstatus.TSR` set, and then ends with `trap_state = pending_trap` whichever branch it took, which overwrites it, with `NEXT_PC` left at `0xffffffff`. And `enter_trap` clears `pending_trap` only when what it is taking is an interrupt. If an interrupt is pending and the instruction it arrives at raises an exception of its own (an `ecall`, a fault), the exception is taken, the interpreter copies the old `pending_trap` back, and the interrupt is taken one instruction into the exception's handler, with interrupts off, over the top of `mepc` and `mcause`.
-- **How to see it**: by reading. For the second, an `ecall` at the instruction a pending and enabled interrupt arrives at.
-- **What we do**: nothing. Zephyr on the host makes no `ecall` and never runs in supervisor mode. Linux under OpenSBI does both, in M20.
-- **Upstream fix**: return from `leave_trap` after raising the trap. And have `enter_trap` work `pending_trap` out again (`check_interrupt`) once it has changed `mstatus`, whatever it took.
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h` and `src/iss/arch/riscv_hart_m_p.h`, `enter_trap`.
+- **What is wrong**: `enter_trap` clears `pending_trap` only when what it is taking is an interrupt. If an interrupt is pending and the instruction it arrives at raises an exception of its own (an `ecall`, a fault), the exception is taken, the interpreter copies the old `pending_trap` back into `trap_state`, and the interrupt is taken one instruction into the exception's handler: with interrupts off there, and whether or not it is that mode's interrupt to take at all. On a hart with one mode the handler is entered a second time over the top of `mepc` and `mcause`, and returns into itself. Zephyr makes such calls: `irq_offload` is an `ecall`. On a hart with supervisor mode there are two ways to it under Linux. A program's system call or page fault, handed down, with the kernel's timer pending: one instruction into the kernel's handler the interrupt is taken over `sepc` and `scause`, and `SPP` then says the trap came from the kernel. And the kernel's own call to its monitor with one of its interrupts pending: the call goes to machine mode, and one instruction into the monitor's handler the kernel's interrupt is taken by machine mode, which it was never handed up to, over `mepc`, `mcause` and `MPP`. Found by reading in M21, and run in M22.
+- **How to see it**: an interrupt that is pending and enabled by the instruction before an `ecall`. In supervisor mode with a delegated external interrupt (`WhenASupervisorsInterruptIsPendingAtItsCallToMachineMode` in `tests/cpp/platform/cpu_test.cpp`), and in machine mode on the core that has no other (`WhenAnInterruptIsPendingAtACallOnTheCoreWithMachineModeOnly`). Unpatched, the handler is entered again and again and the caller never runs on.
+- **What we do**: `cmake/patches/dbt-rise-riscv-interrupt-inside-exception.patch`: in both harts, `enter_trap` ends by working out again what is pending (`check_interrupt`), for the mode and the enables the hart has once the trap is taken, whatever it took. An interrupt of machine mode's that is pending when supervisor mode takes a trap is then taken one instruction into the supervisor's handler, as it should be, where it used to wait for something else to look.
+- **Upstream fix**: the same, in all three harts, and then `pending_trap = 0` in the interrupt's branch is no longer needed. ⚠️ One thing of the same family is left: the interpreter takes an interrupt from a copy of `pending_trap` it made an instruction earlier. An instruction that masks the interrupt it arrives at, or quiets the device, still has it taken afterwards. The mode cannot be wrong, since an exception and an `xRET` each replace the copy.
 - **Kind**: bug.
-- **When it lands**: nothing to delete.
+- **When it lands**: drop the patch.
+
+### The illegal instruction that `sret` is under `mstatus.TSR` is raised and thrown away
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `leave_trap`.
+- **What is wrong**: `leave_trap` sets an illegal-instruction trap in `trap_state` when supervisor mode executes `sret` with `mstatus.TSR` set, and then ends with `trap_state = pending_trap` whichever branch it took, which overwrites it, with `NEXT_PC` left at `0xffffffff`. The hart jumps there and takes a fetch fault where it should have told the monitor of an `sret`. The bit is for a monitor that runs an operating system which believes it is alone, and neither OpenSBI nor Linux sets it, so this one is for being right and not for the boot. Found by reading in M21, and run in M22.
+- **How to see it**: `mstatus.TSR` set, and `sret` in supervisor mode (`WhenSupervisorModeExecutesSretWhileMachineModeHasItTrapped`). Machine mode's handler sees cause 0, a misaligned fetch, where it should see cause 2.
+- **What we do**: `cmake/patches/dbt-rise-riscv-sret-tsr.patch`: `leave_trap` returns once it has raised the trap.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### `mstatus.MPRV` stays set across a return to a mode below machine mode
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `leave_trap`.
+- **What is wrong**: the privileged specification, since its version 1.12, has an `mret` or an `sret` that leaves the hart in a mode below machine mode clear `MPRV`. `leave_trap` leaves it. Nothing looks at `MPRV` below machine mode, so nothing shows until machine mode is entered again, where its own loads and stores are then translated and checked as the mode in `MPP` would have them: a monitor's handler reading its own stack through the operating system's page tables. A monitor that clears `MPRV` itself before it returns, as OpenSBI does round the one place it uses it, never meets this.
+- **How to see it**: set `MPRV` in machine mode, `mret` to supervisor mode, `ecall`, and read `mstatus` in machine mode's handler (`WhenMachineModeReturnsToSupervisorModeWithMprvSet`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-mprv-on-return.patch`: `leave_trap` clears it when the mode it returns to is not machine mode.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
 
 ### With paging on, an instruction is fetched from its virtual address as if it were physical
 
@@ -428,7 +448,7 @@ Each entry says:
 - **What is wrong**: `leave_trap` takes the mode an `xRET` is of and never asks which mode the hart is in. `mret` in user or supervisor mode, and `sret` in user mode, are executed: the hart goes to the address in `mepc` or `sepc`, in whatever mode `MPP` or `SPP` says. Each is an illegal instruction in a mode below its own. A program under an operating system could put itself in the mode the last trap came from.
 - **How to see it**: `sret`, and `mret`, as the first instruction of a program in user mode, with illegal instructions handed down to supervisor mode (`WhenUserModeExecutesAnInstructionThatIsForTheModesAboveIt` in `tests/cpp/platform/cpu_test.cpp`).
 - **What we do**: `cmake/patches/dbt-rise-riscv-xret-privilege.patch`: `leave_trap` raises an illegal instruction when the hart's mode is below the instruction's, and returns.
-- **Upstream fix**: the same, in all three harts.
+- **Upstream fix**: the same, in this hart. `riscv_hart_mu_p.h` has the check already and loses the trap it raises, as the entry about `mstatus.TSR` describes of this one. `riscv_hart_m_p.h` needs nothing: its cores decode `mret` only, and are never below machine mode. And the two ways out of `leave_trap` that are illegal instructions, this and `sret` under `TSR`, would read better as one condition.
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 

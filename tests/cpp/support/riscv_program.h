@@ -74,6 +74,10 @@ constexpr Word Bne(Word rs1, Word rs2, std::int32_t offset) {
          (((immediate >> 1) & 0xF) << 8) | (((immediate >> 11) & 1) << 7) |
          0x63;
 }
+// Branch to pc + offset if rs1 is less than rs2, both taken as signed.
+constexpr Word Blt(Word rs1, Word rs2, std::int32_t offset) {
+  return (Bne(rs1, rs2, offset) & ~(Word{7} << 12)) | (Word{4} << 12);
+}
 // Store all 64 bits of rs2 at offset(rs1). Only a 64-bit core has it.
 constexpr Word Sd(Word rs2, Word rs1, std::int32_t offset) {
   return Sb(rs2, rs1, offset) | (3 << 12);
@@ -146,6 +150,18 @@ inline constexpr Word kFloatingPointOn = 13;
 // Its two-bit field that says which mode `mret` returns to, by the place
 // of its low bit: 1 there is supervisor mode, and 3 is machine mode.
 inline constexpr Word kPreviousMode = 11;
+// Two bits a monitor sets for the modes below it, by their place in the
+// status register. TSR has `sret` trap in supervisor mode, which is how a
+// monitor runs an operating system that thinks it is alone. MPRV has
+// machine mode's own loads and stores made as the mode it came from would
+// make them, which is how a monitor reads a program's memory.
+inline constexpr Word kTrapSret = 22;
+inline constexpr Word kModifyPrivilege = 17;
+// Machine mode's two instructions that set the bit of the status register
+// at `place`, which is 12 or above. They use t1.
+inline Program SetInMstatus(Word place) {
+  return {Lui(kT1, Word{1} << (place - 12)), Csrs(kMstatus, kT1)};
+}
 // Its bit that switches interrupts on for supervisor mode.
 inline constexpr Word kSupervisorInterruptsOn = 1;
 // The register a hart reads the machine timer's count from, read-only.
@@ -245,8 +261,11 @@ inline constexpr Word kSfenceVma = 0x1200'0073;
 // Ask the mode above for something: a system call, from a program to its
 // operating system.
 inline constexpr Word kEcall = 0x0000'0073;
-// Why a trap was taken when it was one of those from user mode.
+// Why a trap was taken when it was one of those from user mode, from
+// supervisor mode and from machine mode.
 inline constexpr Word kEcallFromUserMode = 8;
+inline constexpr Word kEcallFromSupervisorMode = 9;
+inline constexpr Word kEcallFromMachineMode = 11;
 // The register that holds the address `sret` returns to, and the bit of
 // the status register that says which mode that is: set for supervisor
 // mode, clear for user mode.
@@ -509,6 +528,64 @@ inline Program TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
   AppendSleepForEver(program);
 
   const std::size_t handler_at = program.size();
+  program.push_back(Lui(kT1, static_cast<Word>(device >> 12)));
+  program.push_back(Sw(kZero, kT1, 0));
+  program.push_back(kMret);
+
+  program[addi_at] =
+      Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
+  return program;
+}
+
+// A program that has the external interrupt pending at an `ecall`, on a
+// hart with machine mode and nothing below it, as firmware calls its own
+// kernel while a device is asking. It enables the interrupt, sleeps with
+// interrupts as a whole switched off until the line is high, and switches
+// them on with the instruction before the `ecall`.
+//
+// Its one handler tells the two apart by the sign of the cause. For the
+// interrupt it quiets the device at `device` (an address as for
+// StoreWordThenSleep) by writing to it. For the call it stores two words
+// of the program's result, why it was entered, the cause with one added so
+// that zero is never, and where it was to return to, and returns to the
+// instruction after. The result's other two words are where the `ecall`
+// is, and one, once the program has run on past it.
+inline Program TakeAnInterruptAtAnEcallFromMachineMode(std::uint64_t device) {
+  Program program;
+  program.push_back(Auipc(kT3, 0));
+  // t2 = the address of the handler, worked out from where we are now.
+  const std::size_t auipc_at = program.size();
+  program.push_back(Auipc(kT2, 0));
+  const std::size_t addi_at = program.size();
+  program.push_back(0);  // filled in below, once the handler's place is known
+  program.push_back(Csrw(kMtvec, kT2));
+  program.push_back(Li(kT1, 1));
+  program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
+  program.push_back(Csrs(kMie, kT1));
+  program.push_back(kWfi);
+  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  // t0 = where the `ecall` is: four instructions on from here.
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Addi(kT0, kT0, 16));
+  program.push_back(Sw(kT0, kT3, kResultOffset + 8));
+  program.push_back(Csrs(kMstatus, kT1));
+  program.push_back(kEcall);
+  program.push_back(Li(kT0, 1));
+  program.push_back(Sw(kT0, kT3, kResultOffset + 12));
+  AppendSleepForEver(program);
+
+  const std::size_t handler_at = program.size();
+  program.push_back(Csrr(kT1, kMcause));
+  // An interrupt's cause has its top bit set: past the call's part, which
+  // is seven instructions.
+  program.push_back(Blt(kT1, kZero, 8 * 4));
+  program.push_back(Addi(kT1, kT1, 1));
+  program.push_back(Sw(kT1, kT3, kResultOffset));
+  program.push_back(Csrr(kT1, kMepc));
+  program.push_back(Sw(kT1, kT3, kResultOffset + 4));
+  program.push_back(Addi(kT1, kT1, 4));
+  program.push_back(Csrw(kMepc, kT1));
+  program.push_back(kMret);
   program.push_back(Lui(kT1, static_cast<Word>(device >> 12)));
   program.push_back(Sw(kZero, kT1, 0));
   program.push_back(kMret);
@@ -869,8 +946,11 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
   program.Load(kT1, delegated);
   program.Emit({Csrw(kMedeleg, kT1),
                 // The mode to return to is user mode: both bits clear.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode),
-                Csrc(kMstatus, kT1)});
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                // And the last trap to supervisor mode is said to have come
+                // from supervisor mode, so that one from user mode has to
+                // say otherwise.
+                Li(kT1, 1 << kSupervisorPreviousMode), Csrs(kMstatus, kT1)});
   const Assembler::Constant users_code = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
@@ -890,6 +970,95 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
   program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
   program.Load(kT4, at.result);
   program.Emit(Sd(kT1, kT4, 24));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that has the supervisor external interrupt arrive at an
+// `ecall` that supervisor mode makes, as a kernel calls the monitor under
+// it while one of its own interrupts is pending. Paging is off, so `at` is
+// where the RAM has things, and `device` is the address of the device
+// that interrupts.
+//
+// In supervisor mode it enables the interrupt, sleeps with interrupts as a
+// whole switched off until the line is high, and switches them on with the
+// instruction before the `ecall`, so that the interrupt is pending when
+// the `ecall` is executed. Which of the two a hart takes first is its own
+// affair. Its result is four words:
+//   - why machine mode's handler was entered, the cause with one added so
+//     that zero is never, and where it was to return to. That handler
+//     returns to the instruction after.
+//   - where the `ecall` is.
+//   - one, once supervisor mode has run on past the `ecall`.
+// Supervisor mode's handler quiets the device by writing to it, and
+// returns.
+inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
+    const Pages& at, std::uint64_t device) {
+  Assembler program;
+  const Assembler::Constant machine_handler = program.Load(kT1);
+  program.Emit(Csrw(kMtvec, kT1));
+  const Assembler::Constant supervisor_handler = program.Load(kT1);
+  program.Emit({Csrw(kStvec, kT1), Li(kT1, 1),
+                Slli(kT1, kT1, kSupervisorExternalInterrupt),
+                Csrs(kMideleg, kT1), Csrs(kSie, kT1),
+                // The mode to return to is supervisor, as InSupervisorMode
+                // sets it.
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
+                Csrs(kMstatus, kT1)});
+  const Assembler::Constant supervisors_code = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+
+  program.Set(supervisors_code, at.code + program.Here());
+  program.Load(kT2, at.result);
+  const Assembler::Constant the_ecall = program.Load(kT0);
+  program.Emit({Sd(kT0, kT2, 16), kWfi, Li(kT3, 1 << kSupervisorInterruptsOn),
+                Csrs(kSstatus, kT3)});
+  program.Set(the_ecall, at.code + program.Here());
+  program.Emit({kEcall, Li(kT0, 1), Sd(kT0, kT2, 24)});
+  AppendSleepForEver(program);
+
+  program.Set(machine_handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
+  program.Load(kT4, at.result);
+  program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMepc), Sd(kT1, kT4, 8),
+                Addi(kT1, kT1, 4), Csrw(kMepc, kT1), kMret});
+
+  program.Set(supervisor_handler, at.code + program.Here());
+  program.Load(kT5, device);
+  program.Emit({Sw(kZero, kT5, 0), kSret});
+  return program.Assemble();
+}
+
+// A program that runs `supervisors_code` in supervisor mode, once machine
+// mode has executed `machine_modes_setup`, which may use t1. Paging is
+// off, so `at` is where the RAM has things. Its result is two words: why
+// machine mode's handler was entered, the cause with one added so that
+// zero is never, and what `mstatus` read as there. The handler sleeps, and
+// so does supervisor mode if its code runs to its end.
+inline Program RunInSupervisorModeAfter(const Pages& at,
+                                        const Program& machine_modes_setup,
+                                        const Program& supervisors_code) {
+  Assembler program;
+  const Assembler::Constant machine_handler = program.Load(kT1);
+  program.Emit({Csrw(kMtvec, kT1),
+                // The mode to return to is supervisor, as InSupervisorMode
+                // sets it.
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
+                Csrs(kMstatus, kT1)});
+  for (const Word instruction : machine_modes_setup) program.Emit(instruction);
+  const Assembler::Constant supervisor = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+
+  program.Set(supervisor, at.code + program.Here());
+  for (const Word instruction : supervisors_code) program.Emit(instruction);
+  AppendSleepForEver(program);
+
+  program.Set(machine_handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
+  program.Load(kT4, at.result);
+  program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMstatus), Sd(kT1, kT4, 8)});
   AppendSleepForEver(program);
   return program.Assemble();
 }

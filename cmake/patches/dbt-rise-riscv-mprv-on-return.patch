@@ -1,0 +1,14 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index 68a0370..372390f 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -807,6 +807,9 @@ template <typename BASE, features_e FEAT> uint64_t riscv_hart_msu_vp<BASE, FEAT>
+             this->state.mstatus.UPIE = 1;
+             break;
+         }
++        // an xRET into a mode below M clears MPRV (privileged specification 1.12)
++        if(this->reg.PRIV != PRIV_M)
++            this->state.mstatus.MPRV = 0;
+         // sets the pc to the value stored in the x epc register.
+         this->reg.NEXT_PC = this->csr[uepc | inst_priv << 8];
+         this->disass_output(

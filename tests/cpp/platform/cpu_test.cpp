@@ -526,6 +526,33 @@ void RaiseOnceTheProgramSleeps(InterruptSource& device) {
   device.Raise();
 }
 
+// Firmware with one mode calls its own kernel with `ecall` too, which is
+// how Zephyr has a thread run something as if it were an interrupt, and a
+// device can be asking when it does. The call's handler has to find its
+// registers as the call left them, and not be entered a second time, by
+// the interrupt, an instruction in.
+TEST(WhenAnInterruptIsPendingAtACallOnTheCoreWithMachineModeOnly,
+     TheHandlerTakesTheCallAsItWasMadeAndTheInterruptOnce) {
+  CpuPlatformWithAnInterruptSource with_device{"irq",
+                                               RaiseOnceTheProgramSleeps};
+  with_device.Load(riscv::TakeAnInterruptAtAnEcallFromMachineMode(
+      CpuPlatformWithAnInterruptSource::kDeviceBase));
+
+  with_device.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint32_t why_the_handler_was_entered_for_the_call =
+      with_device.ResultWord(0);
+  const std::uint32_t where_it_was_to_return_to = with_device.ResultWord(4);
+  const std::uint32_t where_the_call_is = with_device.ResultWord(8);
+  const std::uint32_t the_program_ran_on = with_device.ResultWord(12);
+  EXPECT_EQ(why_the_handler_was_entered_for_the_call,
+            riscv::kEcallFromMachineMode + 1);
+  EXPECT_EQ(where_it_was_to_return_to, where_the_call_is);
+  EXPECT_EQ(with_device.TimesTheHandlerRan(), 1);
+  EXPECT_EQ(the_program_ran_on, 1U);
+}
+
 // Zephyr clears an interrupt's bit in `mip` on its way into every handler.
 // For the machine timer's interrupt that write does nothing on a real hart:
 // the bit says what the line says, and is read-only. A core that lets the
@@ -1526,12 +1553,12 @@ INSTANTIATE_TEST_SUITE_P(
                       NamedInstruction{"sret", riscv::kSret},
                       NamedInstruction{"mret", riscv::kMret}));
 
-// Something a program in user mode does, and the trap it is.
+// Something a program in user mode does with an address, and the page
+// fault it is when the address is not the program's to use.
 struct ActOfAUserProgram {
   const char* name;
   riscv::Program code;
   riscv::Word cause;
-  // What the trap says of an address, which for a fault is the address.
   std::uint64_t address;
 };
 
@@ -1542,11 +1569,28 @@ void PrintTo(const ActOfAUserProgram& act, std::ostream* out) {
 // What Linux is, most of the time: a program in user mode on pages of its
 // own, and a kernel on pages the program may not touch, which hears of the
 // program only when it traps.
-class WhenAProgramInUserModeOnItsOwnPageUnderPaging
+TEST(WhenAProgramInUserModeOnItsOwnPageUnderPagingMakesASystemCall,
+     SupervisorModeTakesIt) {
+  constexpr std::uint64_t kUsersPage = CpuPlatformWithPages::kSpareAddresses;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(kUsersPage, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kCode | riscv::kPteUser);
+  with_pages.Load({riscv::kEcall}, CpuPlatformWithPages::kFirstSparePage);
+  with_pages.Load(riscv::RunTheCodeAtAnAddressInUserModeUnderPaging(
+      CpuPlatformWithPages::kPages, kUsersPage));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  EXPECT_EQ(why, riscv::kEcallFromUserMode + 1);
+}
+
+class WhenAProgramInUserModeOnItsOwnPageUnderPagingUsesAPageOfTheSupervisors
     : public ::testing::TestWithParam<ActOfAUserProgram> {};
 
-TEST_P(WhenAProgramInUserModeOnItsOwnPageUnderPaging,
-       TrapsToSupervisorModeWithTheCauseAndTheAddressOfWhatItDid) {
+TEST_P(WhenAProgramInUserModeOnItsOwnPageUnderPagingUsesAPageOfTheSupervisors,
+       SupervisorModeTakesThePageFaultOfThatUseWhichSaysTheAddress) {
   constexpr std::uint64_t kUsersPage = CpuPlatformWithPages::kSpareAddresses;
   CpuPlatformWithPages with_pages;
   with_pages.Map(kUsersPage, CpuPlatformWithPages::kFirstSparePage,
@@ -1565,18 +1609,80 @@ TEST_P(WhenAProgramInUserModeOnItsOwnPageUnderPaging,
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    EachAct, WhenAProgramInUserModeOnItsOwnPageUnderPaging,
+    EachUse,
+    WhenAProgramInUserModeOnItsOwnPageUnderPagingUsesAPageOfTheSupervisors,
     ::testing::Values(
-        ActOfAUserProgram{
-            "a system call", {riscv::kEcall}, riscv::kEcallFromUserMode, 0},
-        ActOfAUserProgram{"a load from a page of the supervisor's",
+        ActOfAUserProgram{"a load from it",
                           riscv::LoadFrom(CpuPlatformWithPages::kPages.result),
                           riscv::kLoadPageFault,
                           CpuPlatformWithPages::kPages.result},
-        ActOfAUserProgram{"a jump into a page of the supervisor's",
-                          riscv::JumpTo(CpuPlatformWithPages::kPages.code),
-                          riscv::kInstructionPageFault,
-                          CpuPlatformWithPages::kPages.code}));
+        ActOfAUserProgram{
+            "a jump into it", riscv::JumpTo(CpuPlatformWithPages::kPages.code),
+            riscv::kInstructionPageFault, CpuPlatformWithPages::kPages.code}));
+
+// A kernel calls the monitor under it with `ecall`, and one of the
+// kernel's own interrupts can be pending when it does. Whichever a hart
+// takes first, the monitor has to find its registers as the call left
+// them: the kernel's interrupt is the kernel's to take, and never the
+// monitor's, in the middle of its handler.
+TEST(WhenASupervisorsInterruptIsPendingAtItsCallToMachineMode,
+     MachineModeTakesTheCallAsItWasMadeAndSupervisorModeTheInterruptOnce) {
+  CpuPlatformWithPages with_pages{RaiseOnceTheSupervisorSleeps};
+  with_pages.Load(riscv::TakeAnInterruptAtAnEcallFromSupervisorMode(
+      CpuPlatformWithPages::kWithPagingOff, CpuPlatformWithPages::kDevice));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
+  const std::uint64_t where_it_was_to_return_to = with_pages.Result(1);
+  const std::uint64_t where_the_call_is = with_pages.Result(2);
+  const std::uint64_t the_supervisor_ran_on = with_pages.Result(3);
+  const int times_the_supervisor_took_its_interrupt =
+      with_pages.TimesTheHandlerRan();
+  EXPECT_EQ(why_machine_mode_was_entered, riscv::kEcallFromSupervisorMode + 1);
+  EXPECT_EQ(where_it_was_to_return_to, where_the_call_is);
+  EXPECT_EQ(times_the_supervisor_took_its_interrupt, 1);
+  EXPECT_EQ(the_supervisor_ran_on, 1U);
+}
+
+// A monitor that wants to see every return an operating system makes sets
+// TSR, and is then told of each `sret` as an illegal instruction.
+TEST(WhenSupervisorModeExecutesSretWhileMachineModeHasItTrapped,
+     MachineModeTakesAnIllegalInstructionTrap) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff,
+      riscv::SetInMstatus(riscv::kTrapSret), {riscv::kSret}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
+  EXPECT_EQ(why_machine_mode_was_entered, riscv::kIllegalInstruction + 1);
+}
+
+// MPRV is for machine mode's use while it is in machine mode. Left set
+// across a return to a mode below, it would be waiting the next time
+// machine mode was entered, and the monitor's own loads and stores would
+// go through the operating system's page tables.
+TEST(WhenMachineModeReturnsToSupervisorModeWithMprvSet,
+     MprvIsClearTheNextTimeMachineModeIsEntered) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff,
+      riscv::SetInMstatus(riscv::kModifyPrivilege), {riscv::kEcall}));
+
+  with_pages.RunUntilAsleep();
+
+  // Machine mode was entered again, by the call, which is what makes the
+  // status it stored there the one to look at.
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
+  ASSERT_EQ(why_machine_mode_was_entered, riscv::kEcallFromSupervisorMode + 1);
+  const bool mprv =
+      ((with_pages.Result(1) >> riscv::kModifyPrivilege) & 1) != 0;
+  EXPECT_FALSE(mprv);
+}
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

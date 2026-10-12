@@ -178,6 +178,13 @@ FetchContent_Declare(dbt_rise_riscv
   # had been there first, where it is a page fault. xret-privilege: user
   # mode could execute `sret` or `mret` and land in whatever mode a
   # register said. sfence-user-mode: and `sfence.vma`.
+  # interrupt-inside-exception: an interrupt that was pending when an
+  # exception was taken was taken one instruction into the exception's
+  # handler, whatever mode that was in and whatever it had masked, on the
+  # cores with supervisor mode and on the ones without.
+  # sret-tsr: the illegal instruction that `sret` is under `mstatus.TSR`
+  # was raised and then thrown away. mprv-on-return: `mstatus.MPRV` stayed
+  # set across a return to a mode below machine mode.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -195,6 +202,9 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-tlb-dirty.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-xret-privilege.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-sfence-user-mode.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-interrupt-inside-exception.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-sret-tsr.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-mprv-on-return.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
