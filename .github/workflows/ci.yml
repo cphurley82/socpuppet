@@ -39,7 +39,8 @@ jobs:
             build/firmware/*.elf
             build/firmware/*.opcodes.txt
           # The board the images are built for is part of what they are.
-          key: firmware-${{ hashFiles('firmware/**', 'python/socpuppet/zephyr_module/**') }}
+          # The script and the lists that twister is run from build no image.
+          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', 'python/socpuppet/zephyr_module/**') }}
       - name: Build the images
         if: steps.images.outputs.cache-hit != 'true'
         run: firmware/build.sh
@@ -91,6 +92,89 @@ jobs:
           # A missing firmware image fails its boot test instead of
           # skipping it.
           SOCPUPPET_REQUIRE_FIRMWARE: "1"
+
+  twister:
+    # Zephyr's own test suites, and ours, run on every board by twister,
+    # Zephyr's test runner, with socpuppet as the emulator: the
+    # board-compliance run (docs/twister.md). Twister builds an image and
+    # runs it in one breath, so this one job has both what builds firmware
+    # and what runs it: Zephyr, its SDK and its venv, which are cached, and
+    # a socpuppet built here as the test job builds it.
+    name: Twister (Zephyr's tests on the boards)
+    needs: firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/dev/_deps
+          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - name: Restore Zephyr, its SDK and its venv
+        id: zephyr
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+            build/firmware/zephyr-sdk-*
+          # The version of each.
+          key: zephyr-${{ hashFiles('firmware/versions.sh') }}
+      - name: Fetch Zephyr and its SDK
+        # The script that builds the images is the one that fetches what
+        # builds them, so this builds every image again too. Once for each
+        # version.
+        if: steps.zephyr.outputs.cache-hit != 'true'
+        run: firmware/build.sh
+      - name: Keep Zephyr, its SDK and its venv
+        # Saved here and not when the job is over, where a scenario that
+        # fails would have every later run fetch it all again.
+        if: steps.zephyr.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+            build/firmware/zephyr-sdk-*
+          key: ${{ steps.zephyr.outputs.cache-primary-key }}
+      # The boot ROMs, which every run starts in, with the other images.
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: build/firmware
+      - run: uv sync
+      - run: uv run cmake --preset dev
+      - run: uv run cmake --build --preset dev
+      - name: Hold the files twister reads to Zephyr's own schemas
+        # The tests that read Zephyr's tree, which no other job has.
+        # One directory to a run of pytest, as ctest has it: each has a
+        # conftest.py of its own.
+        run: |
+          uv run pytest tests/python/test_twister_boards.py
+          uv run pytest tests/tooling/test_twister_lists.py
+      - name: Run every suite of the list on every board
+        run: firmware/twister.sh --suites
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: twister
+          # The verdicts, twister's own account of each run, and each
+          # scenario's build log, its console, and what the emulator said
+          # of how the run ended.
+          path: |
+            build/twister/out/*/twister.json
+            build/twister/out/*/twister*.xml
+            build/twister/out/*/twister.log
+            build/twister/out/**/build.log
+            build/twister/out/**/handler.log
+            build/twister/out/**/handler_stderr.log
 
   tidy:
     # clang-tidy over our own C++, and each of our headers compiled on its

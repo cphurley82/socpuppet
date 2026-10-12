@@ -45,8 +45,9 @@
 # care what built them.
 set -euo pipefail
 
-zephyr_version=v4.4.2
-sdk_version=1.0.1
+# zephyr_version and sdk_version.
+# shellcheck source=firmware/versions.sh
+source "$(dirname "$0")/versions.sh"
 # Each image to build, as "application board [shield]". The application is
 # a directory of Zephyr's, or one of this repository's if it starts with
 # "firmware/", and the image is named after the last part of it. A shield is Zephyr's word for hardware plugged into a board:

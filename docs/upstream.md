@@ -623,7 +623,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The very last is about twister, Zephyr's test runner, and is in its documentation.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The last two were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -754,6 +754,16 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: have `dt_compat_any_has_prop` and its siblings answer for `interrupts` when the node has either spelling, or give the drivers a function that asks whether a node has an interrupt.
 - **Kind**: bug.
 - **When it lands**: `short_interrupts` can go, and every node can be written the same way.
+
+### The SiFive watchdog driver accepts a callback it cannot call
+
+- **Where**: `drivers/watchdog/wdt_sifive.c`, `wdt_sifive_install_timeout`.
+- **What is wrong**: Zephyr's watchdog API lets a timeout have a callback, which is to run when the watchdog runs out and before any reset. The SiFive watchdog either resets or interrupts, and for a timeout with `WDT_FLAG_RESET_SOC` the driver has the comment "WDT supports global SoC reset but cannot callback", sets the watchdog up to reset, and returns success whether a callback was given or not. The callback is then never called, and nothing has told the application so.
+- **How to see it**: Zephyr's own `tests/drivers/watchdog/wdt_basic_api` on any board with this driver, which `firmware/twister.sh -p socpuppet_host -T tests/drivers/watchdog/wdt_basic_api` runs if its entry is taken out of `firmware/twister-quarantine.yaml`. Its case `test_wdt_callback_1` installs such a timeout with a callback and, after the reset, expects the callback to have left a value. It fails at `test_wdt.c:495`. The test provides for a driver that cannot: `-ENOTSUP` from `wdt_install_timeout` is "CB1 not supported on platform" and a pass.
+- **What we do**: nothing to the driver. The model does what the driver asks of it, and the CPU is reset and comes back each time. The suite is in `firmware/twister-quarantine.yaml` with this as its reason.
+- **Upstream fix**: return `-ENOTSUP` from `wdt_sifive_install_timeout` for a timeout that has both `WDT_FLAG_RESET_SOC` and a callback.
+- **Kind**: bug.
+- **When it lands**: the quarantine entry goes, and the watchdog's suite runs on all three boards.
 
 ### The documented `run_custom` target does not depend on the image
 

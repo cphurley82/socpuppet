@@ -1,0 +1,38 @@
+# What firmware/twister.sh leaves out, and why. Twister reads this list
+# (--quarantine-list), skips what an entry matches, and copies the entry's
+# comment into its reports, so the reason travels with the results.
+#
+# An entry matches a scenario on a platform when each list it has matches:
+# every string is a regular expression that has to match the whole name. A
+# platform's name is the board and its SoC, as in socpuppet_ssd/socpuppet_rv32.
+#
+# docs/twister.md has each of these at more length.
+
+- scenarios:
+    - drivers\.watchdog
+  comment: >-
+    Zephyr's test and Zephyr's driver disagree. The test installs a timeout
+    that resets the SoC and has a callback, and expects the callback to have
+    run before the reset. The SiFive watchdog cannot do both, and its driver,
+    wdt_sifive, sets the reset up without the callback and reports success
+    where the test provides for -ENOTSUP. The CPU is reset and comes back
+    from its ROM each time, which is what socpuppet models. See
+    docs/upstream.md.
+
+- scenarios:
+    - arch\.riscv64\.fatal\..*
+  platforms:
+    - socpuppet_ssd/.*
+    - socpuppet_iomgr/.*
+  comment: >-
+    A suite for a 64-bit CPU: it matches a dump of 64-bit registers digit
+    for digit, and a 32-bit CPU's dump has half as many. It runs on
+    socpuppet_host.
+
+- scenarios:
+    - libraries\.libc\.common\.stdio\..*
+  comment: >-
+    These include ff.h, from the FatFs module, to test stdio on a file
+    system. firmware/build.sh fetches Zephyr and none of its external
+    modules, since nothing socpuppet builds needs one, so they do not
+    build. The rest of the C library's suite runs.
