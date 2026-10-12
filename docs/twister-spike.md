@@ -1,6 +1,6 @@
 # The twister spike: Zephyr's own tests on the puppet
 
-This is the report of a spike for milestone M21 in [plan.md](plan.md), run on 2026-10-11. Its code is in `spikes/twister/`, with a README that says how to run each part, and it goes when M21's steps have rebuilt what it found test-first.
+This is the report of a spike for milestone M21 in [plan.md](plan.md), run on 2026-10-11. Its code was in `spikes/twister/`, with a README that said how to run each part. It was deleted when M21's steps had rebuilt what it found test-first, and commit `4de4daa` is the last that holds it. 🦜 What replaced each part: `spikes/twister/run.py` is `socpuppet run`, the boards' two files for twister are in the Zephyr module, `twister.sh` and `suites.txt` are `firmware/twister.sh` and `firmware/twister-suites.txt`, and the suite beside the drivers is the first of six in the module's `tests/drivers`. [twister.md](twister.md) is the page for what there is now.
 
 🎓 **Twister** is the program Zephyr's own CI runs: it finds every `testcase.yaml` and `sample.yaml` under a directory, builds each one for each board asked for, runs the result on an emulator or a real board, and reads the console for a verdict. **ztest** is Zephyr's test framework, the thing that prints `PASS - [suite.case]` and `PROJECT EXECUTION SUCCESSFUL`, and the way twister judges a run unless a test says otherwise. Together they are how Zephyr tests itself on a thousand boards, and the question here is whether a socpuppet board can be one of them.
 

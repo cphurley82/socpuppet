@@ -135,6 +135,7 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
 - 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board, or on the SSD's controller.
+- ✅ [Run Zephyr's tests on the puppet](docs/twister.md): Zephyr's own test suites, and yours, on every board, with socpuppet as the emulator.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🗺️ [The address map](docs/address-map.md): what answers at which address, on each board.
 - 🔧 [Building and testing](docs/development.md).

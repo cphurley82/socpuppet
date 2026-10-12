@@ -425,6 +425,7 @@ west build -d build/iomgr -b socpuppet_iomgr /path/to/socpuppet/firmware/iomgr -
 
 ```python
 import socpuppet as sp
+from socpuppet import ztest
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
@@ -444,7 +445,7 @@ story = sp.Transcript(
     },
 )
 story.run_until(
-    lambda: any(line.who == "host" and "PROJECT EXECUTION" in line.text for line in story.lines),
+    lambda: any(line.who == "host" and ztest.verdict_of(line.text) for line in story.lines),
     timeout=sp.ms(2000),
 )
 print(sp.render_transcript(story.lines))
@@ -692,6 +693,69 @@ The same GDB program debugs both kinds of CPU: each server tells its debugger wh
 - 💡 **`monitor sysc print_time` asks a CPU the simulated time.** At a breakpoint it says when in the boot you are, on the clock all three share.
 - **Two CPUs cannot share a port**, and a platform says so by name when it is built.
 - `tests/python/test_gdb.py` drives three debuggers from one test, with a small client of its own in place of GDB.
+
+## Test your firmware with twister
+
+🎓 Zephyr's test framework is called **ztest**, and its test runner **twister**. A ztest suite is a Zephyr application whose `main` is the framework's: you write cases, and it runs them and prints how each went. Twister builds such an application for a board, runs the image, and reads the console for the verdict. To twister a socpuppet board is a board like any other, with socpuppet as its emulator, so your firmware's tests run here the way they would on QEMU.
+
+A suite is four files:
+
+```text
+my_test/
+├── CMakeLists.txt    as for any Zephyr application
+├── prj.conf          CONFIG_ZTEST=y, and what your code needs
+├── testcase.yaml     which boards, and how to judge the run
+└── src/main.c        the cases
+```
+
+```c
+#include <zephyr/ztest.h>
+
+ZTEST(spam, test_the_answer_is_as_advertised)
+{
+	zassert_equal(6 * 7, 42);
+}
+
+ZTEST_SUITE(spam, NULL, NULL, NULL, NULL, NULL);
+```
+
+```yaml
+tests:
+  my.spam:
+    harness: ztest
+    platform_allow:
+      - socpuppet_host
+```
+
+Run it with twister, from a Zephyr workspace:
+
+```sh
+export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)   # where the boards are
+export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/build.sh in a checkout
+west twister -p socpuppet_host -T my_test
+```
+
+In a checkout of socpuppet, `firmware/twister.sh -p socpuppet_host -T /path/to/my_test` sets those up for you. Either way twister ends with how many cases passed, and each scenario's console is in `handler.log` under its output directory.
+
+💡 **While you are working on one test, skip twister.** Build the image once, as in [step 2](#2-build), and run it directly. It takes a second or two, the console is printed as it comes, and the command's exit status is the verdict:
+
+```sh
+socpuppet run build/zephyr/zephyr.elf --board socpuppet_host
+```
+
+And from Python, `socpuppet.ztest` reads a console into a report, for a test that wants more than a verdict:
+
+```python
+from socpuppet import ztest
+
+report = ztest.parse(board.uart.output)
+assert report.passed
+assert report.case("spam.test_the_answer_is_as_advertised").result == "PASS"
+```
+
+⚠️ **A test that needs something on the other side of the board's hardware** says so with a shield, as an image does. `socpuppet_host_drive` puts 🎭 a drive on the host's PCIe link. `socpuppet_ssd_host` puts 🎭 a host in front of the SSD that says a host's first words to a drive: it enables it, asks for its queues and how big it is, and writes one block. In a `testcase.yaml` that is `extra_args: SHIELD=socpuppet_ssd_host`, and twister passes it on to `socpuppet run`. socpuppet's own drivers are tested this way, in the module's `tests/drivers`, and they are examples to start from.
+
+A program with no test framework in it can be a suite too: `harness: console` in its `testcase.yaml`, and the lines it should print. [Run Zephyr's tests on the puppet](twister.md) has that, how twister comes to run socpuppet at all, and what Zephyr's own suites say of these boards.
 
 ## When it does not boot
 
