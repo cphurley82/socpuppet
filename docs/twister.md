@@ -173,4 +173,4 @@ The `twister` job of `.github/workflows/ci.yml` does the same for every pull req
 
 It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites, the quarantine list and our own suites' `testcase.yaml` files to twister's own schemas.
 
-🚧 The job is written and has not run yet. How long it takes on a runner, with four cores where the figure above had sixteen, is not known: the estimate is a quarter of an hour for twister, after the build of socpuppet. If it is much longer, the list is cut to what earns its place.
+On a runner, with four cores where the figure above had sixteen, the job takes twenty minutes: two to fetch Zephyr and its SDK when the cache does not have them, five to build socpuppet, eleven for twister, and one to keep the logs. That is its first run, on 2026-10-12, which passed the same 113 scenarios as the run here. ⚠️ That makes it one of the longest jobs of the workflow. If the list grows, twister's eleven minutes grow with it, and a suite then has to earn its place.
