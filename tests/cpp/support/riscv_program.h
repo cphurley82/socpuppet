@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <vector>
 
 // Just enough of a RISC-V assembler to write a CPU test's program by hand,
@@ -78,6 +79,10 @@ constexpr Word Sd(Word rs2, Word rs1, std::int32_t offset) {
 // Load the 32-bit word at offset(rs1) into rd.
 constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
   return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x03;
+}
+// Load all 64 bits at offset(rs1) into rd. Only a 64-bit core has it.
+constexpr Word Ld(Word rd, Word rs1, std::int32_t offset) {
+  return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x03;
 }
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
@@ -178,6 +183,28 @@ inline constexpr Word kSie = 0x104;
 inline constexpr Word kStvec = 0x105;
 // And its view of which interrupts are pending.
 inline constexpr Word kSip = 0x144;
+// The register that turns paging on: which kind of page table, in its top
+// four bits, and the number of the page the first table is in. 8 is Sv39,
+// tables of three levels that translate an address of 39 bits.
+inline constexpr Word kSatp = 0x180;
+constexpr std::uint64_t SatpForSv39(std::uint64_t root_table) {
+  return (std::uint64_t{8} << 60) | (root_table >> 12);
+}
+// An entry of a page table: the number of the page it leads to, ten bits
+// up, over bits that say what the entry is. Valid alone is a pointer to
+// the next table down. With any of read, write and execute it is a page,
+// and those say what may be done there. Accessed and dirty say whether
+// the page has been used at all and whether it has been written.
+inline constexpr std::uint64_t kPteValid = 0x01;
+inline constexpr std::uint64_t kPteRead = 0x02;
+inline constexpr std::uint64_t kPteWrite = 0x04;
+inline constexpr std::uint64_t kPteExecute = 0x08;
+inline constexpr std::uint64_t kPteAccessed = 0x40;
+inline constexpr std::uint64_t kPteDirty = 0x80;
+constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
+                                       std::uint64_t bits) {
+  return ((leads_to >> 12) << 10) | bits;
+}
 // Return from a trap handler to where the trap was taken.
 inline constexpr Word kMret = 0x3020'0073;
 // The same, from a handler in supervisor mode.
@@ -192,6 +219,79 @@ inline constexpr std::int32_t kResultOffset = 0x200;
 inline void AppendSleepForEver(Program& program) {
   program.push_back(kWfi);
   program.push_back(Jal(kZero, -4));
+}
+
+// A program put together an instruction at a time, which can have 64-bit
+// constants in it.
+//
+// 🎓 `lui` and `addi` make a constant of 32 bits, with its sign carried up
+// into the rest of a 64-bit register, which is no way to an address in the
+// upper half of memory or to a page-table entry. What a compiler does
+// instead is keep such constants as data after the code, in a **literal
+// pool**, and load one by its distance from the instruction that wants it.
+// That works wherever the program runs, which matters here: a program that
+// turns paging on runs at two addresses, the one it was loaded at and the
+// one its pages say.
+class Assembler {
+ public:
+  // Which constant of the pool, for Set.
+  using Constant = std::size_t;
+
+  void Emit(Word instruction) { code_.push_back(instruction); }
+  void Emit(std::initializer_list<Word> instructions) {
+    code_.insert(code_.end(), instructions);
+  }
+
+  // How far the next instruction is from the first, in bytes.
+  std::uint64_t Here() const { return code_.size() * 4; }
+
+  // rd = `value`, loaded from the pool. A value that is not known yet, the
+  // address of code further down, is given later with Set.
+  Constant Load(Word rd, std::uint64_t value = 0) {
+    loads_.push_back({.at = code_.size(), .rd = rd, .of = pool_.size()});
+    // rd = the address of this instruction, then what is `offset` past it,
+    // which Assemble fills in when it knows where the pool starts.
+    code_.push_back(Auipc(rd, 0));
+    code_.push_back(0);
+    pool_.push_back(value);
+    return pool_.size() - 1;
+  }
+  void Set(Constant constant, std::uint64_t value) { pool_[constant] = value; }
+
+  // The program: the code, and then the pool, on a boundary of eight bytes
+  // from the first instruction, since a load of eight bytes from anywhere
+  // else traps. So the program has to be loaded at such a boundary too.
+  Program Assemble() const {
+    Program program = code_;
+    if (program.size() % 2 != 0) program.push_back(0);
+    const std::size_t pool_at = program.size();
+    for (const Loaded& load : loads_) {
+      const std::size_t words_ahead = pool_at + 2 * load.of - load.at;
+      program[load.at + 1] =
+          Ld(load.rd, load.rd, static_cast<std::int32_t>(words_ahead * 4));
+    }
+    for (const std::uint64_t value : pool_) {
+      program.push_back(static_cast<Word>(value));
+      program.push_back(static_cast<Word>(value >> 32));
+    }
+    return program;
+  }
+
+ private:
+  struct Loaded {
+    // Which word of the code the load starts at.
+    std::size_t at;
+    Word rd;
+    Constant of;
+  };
+
+  Program code_;
+  std::vector<Loaded> loads_;
+  std::vector<std::uint64_t> pool_;
+};
+
+inline void AppendSleepForEver(Assembler& program) {
+  program.Emit({kWfi, Jal(kZero, -4)});
 }
 
 // A program that stores `value` as its result and then sleeps. It finds the
@@ -651,6 +751,52 @@ inline Program SelectForMachineModeThenForSupervisorModeAndStoreBoth(
   };
   AppendSleepForEver(program);
   return program;
+}
+
+// Where things are for a program that runs under paging, which it cannot
+// work out from its own address as the others do: it runs at two.
+struct Pages {
+  // The physical address of the first page table.
+  std::uint64_t root_table;
+  // The virtual address the page the program is loaded in is mapped at.
+  std::uint64_t code;
+  // The virtual address of a page the program may write. Its result goes
+  // there, in words of 64 bits.
+  std::uint64_t result;
+};
+
+// Machine mode's part of a program that runs under paging: it turns Sv39
+// on, with the tables `at` says, and drops to supervisor mode at whatever
+// instruction comes after this, by that instruction's virtual address.
+// 💡 No monitor does this: it hands over with paging off, and an operating
+// system turns it on for itself. Machine mode's own addresses are never
+// translated, so doing it here lets a program arrive at its virtual
+// address with nothing mapped where it was loaded.
+inline void AppendEnterSupervisorModeUnderPaging(Assembler& program,
+                                                 const Pages& at) {
+  program.Load(kT1, SatpForSv39(at.root_table));
+  program.Emit({Csrw(kSatp, kT1),
+                // The mode to return to is supervisor, as InSupervisorMode
+                // sets it.
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
+                Csrs(kMstatus, kT1)});
+  const Assembler::Constant entry = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+  program.Set(entry, at.code + program.Here());
+}
+
+// A program that runs under paging in supervisor mode, at its virtual
+// address, and stores the address of one of its own instructions as its
+// result. Then it sleeps.
+inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
+  Assembler program;
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Emit(Auipc(kT1, 0));
+  program.Load(kT2, at.result);
+  program.Emit(Sd(kT1, kT2, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
 }
 
 // A program that writes to the control and status register numbered `csr`

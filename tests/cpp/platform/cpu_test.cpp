@@ -1021,6 +1021,113 @@ TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
               ThrowsMessage<std::runtime_error>(HasSubstr("imsic.csr")));
 }
 
+// A platform for a program that runs under paging: the core with
+// supervisor mode, and 64 KiB of RAM with Sv39 page tables in it that a
+// test adds pages to.
+//
+// 🎓 Sv39 translates an address in three steps, nine bits of it at a time:
+// an entry of the first table leads to a second table, an entry of that to
+// a third, and an entry of the third to the page. Addresses of 39 bits are
+// two halves, the bottom of memory and the top, and an operating system's
+// kernel lives in the top one, where no RAM is.
+struct CpuPlatformWithPages {
+  static constexpr std::uint64_t kRamBase = 0x8000'0000;
+  // The RAM's pages, by what is in each.
+  static constexpr std::uint64_t kProgramPage = kRamBase;
+  static constexpr std::uint64_t kFirstTable = kRamBase + 0x1000;
+  static constexpr std::uint64_t kSecondTable = kRamBase + 0x2000;
+  static constexpr std::uint64_t kThirdTable = kRamBase + 0x3000;
+  static constexpr std::uint64_t kResultPage = kRamBase + 0x4000;
+  // The first address of the top half, which is where the tables here
+  // lead: the 512 pages from it up are the third table's to map.
+  static constexpr std::uint64_t kTopHalf = 0xFFFF'FFC0'0000'0000;
+  // Where the program's page and the result's are mapped.
+  static constexpr riscv::Pages kPages{
+      .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
+
+  CpuPlatformWithPages() {
+    socpuppet::Config cpu = TheCoreWithSupervisorMode();
+    cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
+    platform.Add("cpu", "dbt_rise_cpu", cpu);
+    platform.Add(
+        "bus", "router",
+        {{"outputs", 1}, {"out0.base", kRamBase}, {"out0.size", 0x1'0000}});
+    platform.Add("ram", "memory", {{"size", 0x1'0000}});
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Elaborate();
+
+    // The way down to the third table: the top half starts at the first
+    // table's entry 256, and its first 512 pages at the second's entry 0.
+    WriteEntry(kFirstTable, 256,
+               riscv::PageTableEntry(kSecondTable, riscv::kPteValid));
+    WriteEntry(kSecondTable, 0,
+               riscv::PageTableEntry(kThirdTable, riscv::kPteValid));
+    // Accessed, and dirty where it is written: this hart takes a page
+    // fault at a page that is not marked so, and marks none itself.
+    Map(kPages.code, kProgramPage,
+        riscv::kPteRead | riscv::kPteExecute | riscv::kPteAccessed);
+    Map(kPages.result, kResultPage,
+        riscv::kPteRead | riscv::kPteWrite | riscv::kPteAccessed |
+            riscv::kPteDirty);
+  }
+
+  // Maps the page at `virtual_address`, one of the 512 from kTopHalf up,
+  // onto the page of RAM at `physical`, with what `bits` allow there.
+  void Map(std::uint64_t virtual_address, std::uint64_t physical,
+           std::uint64_t bits) {
+    WriteEntry(kThirdTable, (virtual_address - kTopHalf) / 0x1000,
+               riscv::PageTableEntry(physical, bits | riscv::kPteValid));
+  }
+
+  // Puts `program` in the program's page, where the CPU starts.
+  void Load(const riscv::Program& program) {
+    platform.DebugWrite("cpu.socket", kProgramPage,
+                        std::as_bytes(std::span{program}));
+  }
+
+  // Any program here is a few dozen instructions and then asleep.
+  void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
+
+  // The word of 64 bits that a program left as its result, read where the
+  // RAM has it.
+  std::uint64_t Result() {
+    std::array<std::uint8_t, 8> word{};
+    platform.DebugRead("cpu.socket", kResultPage,
+                       std::as_writable_bytes(std::span{word}));
+    return socpuppet::LoadLittleEndian<std::uint64_t>(word);
+  }
+
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+ private:
+  void WriteEntry(std::uint64_t table, std::uint64_t index,
+                  std::uint64_t entry) {
+    const auto bytes = socpuppet::LittleEndianBytes(entry);
+    platform.DebugWrite("cpu.socket", table + index * 8,
+                        std::as_bytes(std::span{bytes}));
+  }
+};
+
+// An operating system's kernel runs at addresses that no RAM is at, and
+// its page tables say where each page of it really is. An instruction is
+// found through them as a word of data is. Nothing here maps the program
+// where it was loaded, so there is no other way for it to run.
+static_assert(CpuPlatformWithPages::kPages.code !=
+              CpuPlatformWithPages::kProgramPage);
+
+TEST(WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt,
+     TheProgramRunsThereAndStoresThroughItsTablesToo) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreWhereItRunsInSupervisorModeUnderPaging(
+      CpuPlatformWithPages::kPages));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t page_it_ran_in = with_pages.Result() & ~0xFFFULL;
+  EXPECT_EQ(page_it_ran_in, CpuPlatformWithPages::kPages.code);
+}
+
 TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {
   constexpr std::uint64_t kRamBase = 0x8000'0000;
   constexpr std::uint64_t kPlicBase = 0x0C00'0000;

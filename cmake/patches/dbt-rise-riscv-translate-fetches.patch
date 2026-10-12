@@ -1,0 +1,14 @@
+diff --git a/src/iss/mem/mmu.h b/src/iss/mem/mmu.h
+index 0dc0b44..c6e8f8b 100644
+--- a/src/iss/mem/mmu.h
++++ b/src/iss/mem/mmu.h
+@@ -108,7 +108,8 @@ private:
+     }
+ 
+     bool needs_translation(const addr_t& addr) {
+-        return likely(addr.space == arch::traits<PLAT>::MEM) &&
++        // instruction fetches arrive in the IMEM space, data accesses in MEM; both are translated
++        return likely(addr.space == arch::traits<PLAT>::MEM || addr.space == arch::traits<PLAT>::IMEM) &&
+                (effective_priv(addr.access) == arch::PRIV_U || effective_priv(addr.access) == arch::PRIV_S) && vm_setting.levels;
+     }
+ 

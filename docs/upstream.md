@@ -382,6 +382,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: nothing to delete.
 
+### With paging on, an instruction is fetched from its virtual address as if it were physical
+
+- **Where**: `src/iss/mem/mmu.h`, `needs_translation`.
+- **What is wrong**: the interpreter fetches from a memory space of its own, `IMEM` (`src/vm/interp/vm_rv64gc.cpp`, `fetch_ins`), and the MMU translates an address only when its space is `MEM`. So in supervisor or user mode with `satp` set, a load or a store goes through the page tables and an instruction fetch does not: the virtual address goes down to the bus. A program whose pages map it where it already is runs all the same, which is why a small test of paging passes. A kernel linked at an address in the upper half of memory takes a fetch access fault at its first instruction. `pmp.h` beside it takes both spaces, and says so in a comment.
+- **How to see it**: page tables that map a page of the program at an address with no memory behind it, `satp` written in machine mode, and an `mret` to that address in supervisor mode (`WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-translate-fetches.patch` has `needs_translation` take `IMEM` as well.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.
