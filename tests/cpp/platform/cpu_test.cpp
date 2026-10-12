@@ -1065,6 +1065,9 @@ struct CpuPlatformWithPages {
   // Where the program's page and the result's are mapped.
   static constexpr riscv::Pages kPages{
       .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
+  // The same for a program that leaves paging off: where the RAM has them.
+  static constexpr riscv::Pages kWithPagingOff{
+      .root_table = kFirstTable, .code = kProgramPage, .result = kResultPage};
 
   // `interrupts` is what the device does. Left out, it never interrupts.
   explicit CpuPlatformWithPages(
@@ -1444,6 +1447,82 @@ TEST(WhenAnInterruptArrivesAtALoadFromAPageTheHartHasNotUsedYet,
   EXPECT_EQ(with_pages.Result(), kInThePage);
   EXPECT_EQ(with_pages.TimesTheHandlerRan(), 1);
 }
+
+// 🎓 A program asks its operating system for something with `ecall`, which
+// is a trap on purpose. A monitor in machine mode hands that cause down,
+// so that the operating system's handler takes it and not the monitor's.
+TEST(WhenUserModeMakesASystemCallThatIsHandedDownToSupervisorMode,
+     TheSupervisorsHandlerTakesItFromUserModeAndTheProgramRunsOn) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInUserMode(
+      CpuPlatformWithPages::kWithPagingOff,
+      /*delegated=*/std::uint64_t{1} << riscv::kEcallFromUserMode,
+      {riscv::kEcall}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const bool came_from_supervisor_mode =
+      ((with_pages.Result(1) >> riscv::kSupervisorPreviousMode) & 1) != 0;
+  const std::uint64_t the_user_ran_on = with_pages.Result(2);
+  EXPECT_EQ(why, riscv::kEcallFromUserMode + 1);
+  EXPECT_FALSE(came_from_supervisor_mode);
+  EXPECT_EQ(the_user_ran_on, 1U);
+}
+
+// What a monitor has not handed down is its own to see to.
+TEST(WhenUserModeReadsARegisterOfSupervisorModesAndNothingIsHandedDown,
+     MachineModeTakesAnIllegalInstructionTrap) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInUserMode(
+      CpuPlatformWithPages::kWithPagingOff, /*delegated=*/0,
+      {riscv::Csrr(riscv::kT0, riscv::kSstatus)}));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(3);
+  EXPECT_EQ(why_machine_mode_was_entered, riscv::kIllegalInstruction + 1);
+}
+
+// An instruction, by a name for it.
+struct NamedInstruction {
+  const char* name;
+  riscv::Word instruction;
+};
+
+void PrintTo(const NamedInstruction& named, std::ostream* out) {
+  *out << named.name;
+}
+
+// A program is not its operating system: what belongs to the modes above
+// it is not there for it. The returns from a trap are the ones that
+// matter most, since each puts the hart in whatever mode a register says.
+class WhenUserModeExecutesAnInstructionThatIsForTheModesAboveIt
+    : public ::testing::TestWithParam<NamedInstruction> {};
+
+TEST_P(WhenUserModeExecutesAnInstructionThatIsForTheModesAboveIt,
+       ItIsAnIllegalInstructionWhichSupervisorModeTakesIfHandedDown) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInUserMode(
+      CpuPlatformWithPages::kWithPagingOff,
+      /*delegated=*/std::uint64_t{1} << riscv::kIllegalInstruction,
+      {GetParam().instruction}));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t why = with_pages.Result(0);
+  EXPECT_EQ(why, riscv::kIllegalInstruction + 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachOne, WhenUserModeExecutesAnInstructionThatIsForTheModesAboveIt,
+    ::testing::Values(NamedInstruction{"a read of sstatus",
+                                       riscv::Csrr(riscv::kT0,
+                                                   riscv::kSstatus)},
+                      NamedInstruction{"sfence.vma", riscv::kSfenceVma},
+                      NamedInstruction{"sret", riscv::kSret},
+                      NamedInstruction{"mret", riscv::kMret}));
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

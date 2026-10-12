@@ -175,7 +175,9 @@ FetchContent_Declare(dbt_rise_riscv
   # and ended the process when written with a mode the MMU has not got. It
   # also takes Sv48 and Sv57 away, which is ours: no test here runs them.
   # tlb-dirty: a store to a page not marked dirty went through if a load
-  # had been there first, where it is a page fault.
+  # had been there first, where it is a page fault. xret-privilege: user
+  # mode could execute `sret` or `mret` and land in whatever mode a
+  # register said. sfence-user-mode: and `sfence.vma`.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -191,6 +193,8 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-fetch-ends-page.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-satp-warl.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-tlb-dirty.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-xret-privilege.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-sfence-user-mode.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

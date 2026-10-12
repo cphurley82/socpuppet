@@ -242,6 +242,16 @@ constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
 // use of an address walks the page tables again. A kernel executes it
 // after it has changed an entry.
 inline constexpr Word kSfenceVma = 0x1200'0073;
+// Ask the mode above for something: a system call, from a program to its
+// operating system.
+inline constexpr Word kEcall = 0x0000'0073;
+// Why a trap was taken when it was one of those from user mode.
+inline constexpr Word kEcallFromUserMode = 8;
+// The register that holds the address `sret` returns to, and the bit of
+// the status register that says which mode that is: set for supervisor
+// mode, clear for user mode.
+inline constexpr Word kSepc = 0x141;
+inline constexpr Word kSupervisorPreviousMode = 8;
 // Return from a call, in the two bytes a compressed instruction takes.
 inline constexpr std::uint16_t kCompressedRet = 0x8082;
 // Return from a trap handler to where the trap was taken.
@@ -834,6 +844,52 @@ inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
   program.Emit(Auipc(kT1, 0));
   program.Load(kT2, at.result);
   program.Emit(Sd(kT1, kT2, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that runs `instructions` in user mode, as an operating system
+// runs a program, with the causes whose bits are set in `delegated` handed
+// down to supervisor mode. Paging is off, so `at` is where the RAM has
+// things. Its result is four words:
+//   - why supervisor mode's handler was entered, the cause with one added
+//     so that zero is never, and what `sstatus` read as there. That
+//     handler returns to the instruction after the one that trapped.
+//   - one, once user mode has executed every instruction and run on.
+//   - why machine mode's handler was entered, with one added. That handler
+//     sleeps.
+// User mode cannot sleep, so its code ends going round and round.
+inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
+                             const Program& instructions) {
+  Assembler program;
+  const Assembler::Constant machine_handler = program.Load(kT1);
+  program.Emit(Csrw(kMtvec, kT1));
+  const Assembler::Constant supervisor_handler = program.Load(kT1);
+  program.Emit(Csrw(kStvec, kT1));
+  program.Load(kT1, delegated);
+  program.Emit({Csrw(kMedeleg, kT1),
+                // The mode to return to is user mode: both bits clear.
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode),
+                Csrc(kMstatus, kT1)});
+  const Assembler::Constant users_code = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+
+  program.Set(users_code, at.code + program.Here());
+  for (const Word instruction : instructions) program.Emit(instruction);
+  program.Load(kT2, at.result);
+  program.Emit(
+      {Li(kT0, 1), Sd(kT0, kT2, 16), Addi(kZero, kZero, 0), Jal(kZero, -4)});
+
+  program.Set(supervisor_handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kScause), Addi(kT1, kT1, 1)});
+  program.Load(kT4, at.result);
+  program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kSstatus), Sd(kT1, kT4, 8),
+                Csrr(kT1, kSepc), Addi(kT1, kT1, 4), Csrw(kSepc, kT1), kSret});
+
+  program.Set(machine_handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
+  program.Load(kT4, at.result);
+  program.Emit(Sd(kT1, kT4, 24));
   AppendSleepForEver(program);
   return program.Assemble();
 }

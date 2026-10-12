@@ -1,0 +1,14 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index e28ba6a..2f52978 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -336,7 +336,8 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::write(const addr_t& a, const unsigned
+             case 2:
+             case 3: {
+                 auto tvm = this->state.mstatus.TVM;
+-                if(this->reg.PRIV == PRIV_S & tvm != 0) {
++                // SFENCE.VMA is an instruction of S mode's: illegal in U mode, and in S mode when TVM is set
++                if(this->reg.PRIV == PRIV_U || (this->reg.PRIV == PRIV_S && tvm != 0)) {
+                     this->reg.trap_state = (1UL << 31) | (traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16);
+                     this->fault_data = this->reg.PC;
+                     return iss::Err;

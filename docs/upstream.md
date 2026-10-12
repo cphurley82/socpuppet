@@ -422,6 +422,26 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### User mode can execute `sret` and `mret`
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `leave_trap`.
+- **What is wrong**: `leave_trap` takes the mode an `xRET` is of and never asks which mode the hart is in. `mret` in user or supervisor mode, and `sret` in user mode, are executed: the hart goes to the address in `mepc` or `sepc`, in whatever mode `MPP` or `SPP` says. Each is an illegal instruction in a mode below its own. A program under an operating system could put itself in the mode the last trap came from.
+- **How to see it**: `sret`, and `mret`, as the first instruction of a program in user mode, with illegal instructions handed down to supervisor mode (`WhenUserModeExecutesAnInstructionThatIsForTheModesAboveIt` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-xret-privilege.patch`: `leave_trap` raises an illegal instruction when the hart's mode is below the instruction's, and returns.
+- **Upstream fix**: the same, in all three harts.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### User mode can execute `sfence.vma`
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `write`, the case for the `FENCE` space.
+- **What is wrong**: `sfence.vma` is refused in supervisor mode when `mstatus.TVM` is set, and in no other case, so user mode can execute it. It is supervisor mode's instruction and an illegal one below. The test beside it was `PRIV == PRIV_S & tvm != 0`, which is right only by the precedence of `!=` over `&`.
+- **How to see it**: `sfence.vma` in user mode (the same test as the entry above).
+- **What we do**: `cmake/patches/dbt-rise-riscv-sfence-user-mode.patch`: it is an illegal instruction in user mode as well, and the condition is written with `&&`.
+- **Upstream fix**: the same. ⚠️ Not looked at: `wfi` in user mode, which the specification makes an illegal instruction on a hart with supervisor mode unless it ends within a bounded time, and which `wait_until` refuses only under `mstatus.TW`.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.
