@@ -623,7 +623,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The very last is about twister, Zephyr's test runner, and is in its documentation.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -754,6 +754,16 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: have `dt_compat_any_has_prop` and its siblings answer for `interrupts` when the node has either spelling, or give the drivers a function that asks whether a node has an interrupt.
 - **Kind**: bug.
 - **When it lands**: `short_interrupts` can go, and every node can be written the same way.
+
+### The documented `run_custom` target does not depend on the image
+
+- **Where**: `doc/develop/test/twister.rst`, "Running tests on custom emulator", and `cmake/modules/kernel.cmake`, which includes a board's `board.cmake`.
+- **What is wrong**: the documentation's example ends `DEPENDS ${logical_target_for_zephyr_elf}`. A `board.cmake` is included before Zephyr's own directory is added, and the variable is first set there (`CMakeLists.txt`, exported with `PARENT_SCOPE`). So in a `board.cmake` it is empty, the `DEPENDS` names nothing, and `run` does not build the image first. Twister never notices, because it builds before it runs. `west build -t run` runs the image of the last build after an edit, and fails in a tree that has not been built.
+- **How to see it**: follow the example for a board, configure an application, and look for `run_custom` in the build directory's `build.ninja`: it has no inputs. The test `test_the_image_is_built_first` in `tests/python/test_zephyr_module.py` does the same with a stand-in for Zephyr's build that keeps Zephyr's order.
+- **What we do**: `boards/socpuppet/run_with_socpuppet.cmake` adds the dependency at the end of the configuration, with `cmake_language(DEFER CALL add_dependencies run_custom ${logical_target_for_zephyr_elf})`, when the variable has its value.
+- **Upstream fix**: the same line in the documentation's example, or the dependency added by Zephyr itself where it makes `run` depend on `run_custom`, which is after the variable is set and would mend every board that followed the example.
+- **Kind**: bug, in documentation.
+- **When it lands**: if Zephyr adds the dependency itself, the deferred call goes.
 
 ## SPDK
 

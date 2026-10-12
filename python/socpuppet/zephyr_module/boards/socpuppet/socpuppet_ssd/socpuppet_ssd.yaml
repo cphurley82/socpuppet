@@ -1,0 +1,21 @@
+# What twister, Zephyr's test runner, reads of this board. `custom` is its
+# word for an emulator it does not know: it runs the build's `run` target,
+# which board.cmake makes `socpuppet run`, and reads the console from it.
+identifier: socpuppet_ssd
+name: socpuppet SSD
+type: sim
+arch: riscv
+simulation:
+  - name: custom
+    # Not what is run, which board.cmake says: what twister looks for on its
+    # PATH before it runs anything. A board whose program it cannot find is
+    # built and never run.
+    exec: socpuppet
+toolchain:
+  - zephyr
+# Both in KiB, and both the size of the RAM: the image is loaded into RAM
+# and runs there (CONFIG_XIP=n), so its code needs room there too.
+ram: 256
+flash: 256
+supported:
+  - watchdog
