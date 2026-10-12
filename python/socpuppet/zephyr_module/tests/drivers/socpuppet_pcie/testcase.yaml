@@ -1,0 +1,8 @@
+# The host is the board with a PCIe root complex, and only with the shield
+# that puts a drive on its link. `socpuppet run` gives it the drive.
+tests:
+  socpuppet.drivers.pcie:
+    harness: ztest
+    extra_args: SHIELD=socpuppet_host_drive
+    platform_allow:
+      - socpuppet_host

@@ -8,7 +8,7 @@ is, for the board `socpuppet_ssd`. It writes, reads back, erases, copies
 and asks the driver about itself, in the first two blocks of the NAND.
 
 So this is the driver's contract, and most of it was not written here: it
-is what Zephyr expects of every flash driver. Four cases beside it are
+is what Zephyr expects of every flash driver. Six cases beside it are
 socpuppet's, for what only a NAND does: a write of more than one page, and
 what the driver refuses.
 
@@ -37,6 +37,8 @@ CASES = [
     "nand.test_a_write_that_is_not_of_whole_pages_is_refused_and_writes_nothing",
     "nand.test_an_erase_that_is_not_of_whole_blocks_is_refused_and_erases_nothing",
     "nand.test_a_read_that_runs_past_the_end_of_the_nand_is_refused",
+    "nand.test_a_write_that_runs_past_the_end_of_the_nand_is_refused",
+    "nand.test_an_erase_that_runs_past_the_end_of_the_nand_is_refused",
 ]
 
 
