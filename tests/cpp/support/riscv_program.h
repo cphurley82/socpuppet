@@ -166,6 +166,22 @@ inline Program SetInMstatus(Word place) {
 inline constexpr Word kSupervisorInterruptsOn = 1;
 // The register a hart reads the machine timer's count from, read-only.
 inline constexpr Word kTime = 0xC01;
+// The two counters beside it: of clock cycles, and of instructions.
+inline constexpr Word kCycle = 0xC00;
+inline constexpr Word kInstret = 0xC02;
+// The registers that say who may read those three, a bit for each in the
+// order of their numbers. Machine mode's says whether the modes below it
+// may, and supervisor mode's whether user mode may as well.
+inline constexpr Word kMcounteren = 0x306;
+inline constexpr Word kScounteren = 0x106;
+inline constexpr Word kMayReadCycle = 1 << 0;
+inline constexpr Word kMayReadTime = 1 << 1;
+inline constexpr Word kMayReadInstret = 1 << 2;
+// The three modes, as the status register's field for the mode to return
+// to numbers them.
+inline constexpr Word kUserMode = 0;
+inline constexpr Word kSupervisorMode = 1;
+inline constexpr Word kMachineMode = 3;
 // The upper half of the count, which a 32-bit hart has in a register of
 // its own.
 inline constexpr Word kTimeh = 0xC81;
@@ -607,14 +623,26 @@ inline Program CountDownThenSleep(Word iterations) {
   return program;
 }
 
+// Machine mode's instructions that allow user mode to read `time`, in both
+// registers that have to, and drop to user mode at the instruction after
+// them. They use t1, and run wherever they are put.
+inline Program EnterUserModeAllowedToReadTime() {
+  return {Li(kT1, kMayReadTime), Csrw(kMcounteren, kT1), Csrw(kScounteren, kT1),
+          // The mode to return to is user mode: both bits clear.
+          Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+          // To the instruction after the return, four on from here.
+          Auipc(kT1, 0), Addi(kT1, kT1, 16), Csrw(kMepc, kT1), kMret};
+}
+
 // A program that counts down from `iterations` (as for
 // CountDownThenSleep), then reads the `time` register and, with its very
 // next instruction, the low word of the machine timer's count where the
 // timer has it on the bus, at `mtime` (an address below 0x8000'0000). It
 // stores the two as its result, `time` first and the timer's own a word
-// after, and sleeps.
-inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
-                                                      Word iterations) {
+// after, and sleeps. `first` is anything to execute before all that, which
+// may use t1.
+inline Program ReadTimeThenTheTimersOwnCountThenSleep(
+    std::uint64_t mtime, Word iterations, const Program& first = {}) {
   // The address in two parts: what Lui can load, and what is left for the
   // load's offset, which is signed and of 12 bits.
   const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
@@ -622,6 +650,7 @@ inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
       static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
   Program program;
   program.push_back(Auipc(kT0, 0));
+  program.insert(program.end(), first.begin(), first.end());
   program.push_back(Lui(kT3, upper));
   program.push_back(Lui(kT2, iterations >> 12));
   program.push_back(Addi(kT2, kT2, -1));
@@ -1059,6 +1088,58 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
   program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
   program.Load(kT4, at.result);
   program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMstatus), Sd(kT1, kT4, 8)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that reads the counter numbered `counter` in `mode`, once
+// machine mode has written `mcounteren` and `scounteren`. Paging is off,
+// so `at` is where the RAM has things. Its result is two words: why
+// machine mode's handler was entered, the cause with one added so that
+// zero is never, and one, once the read has not trapped and the program
+// has run on. The handler sleeps, and the program ends going round and
+// round, since user mode cannot sleep.
+inline Program ReadACounterIn(Word mode, const Pages& at, Word counter,
+                              Word mcounteren, Word scounteren) {
+  Assembler program;
+  const Assembler::Constant machine_handler = program.Load(kT1);
+  program.Emit(
+      {Csrw(kMtvec, kT1), Li(kT1, static_cast<std::int32_t>(mcounteren)),
+       Csrw(kMcounteren, kT1), Li(kT1, static_cast<std::int32_t>(scounteren)),
+       Csrw(kScounteren, kT1),
+       // The mode to return to: clear both bits of the field, then set it.
+       Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+       Li(kT1, static_cast<std::int32_t>(mode)), Slli(kT1, kT1, kPreviousMode),
+       Csrs(kMstatus, kT1)});
+  const Assembler::Constant below = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+
+  program.Set(below, at.code + program.Here());
+  program.Emit(Csrr(kT0, counter));
+  program.Load(kT2, at.result);
+  program.Emit(
+      {Li(kT0, 1), Sd(kT0, kT2, 8), Addi(kZero, kZero, 0), Jal(kZero, -4)});
+
+  program.Set(machine_handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
+  program.Load(kT4, at.result);
+  program.Emit(Sd(kT1, kT4, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in machine mode, writes `mcounteren` and `scounteren`
+// (each with a value below 2048) and stores what the two then read as its
+// result, at `result`. Then it sleeps.
+inline Program StoreWhatTheCounterEnablesReadAsAfterWriting(
+    Word mcounteren, Word scounteren, std::uint64_t result) {
+  Assembler program;
+  program.Load(kT2, result);
+  program.Emit({Li(kT1, static_cast<std::int32_t>(mcounteren)),
+                Csrw(kMcounteren, kT1),
+                Li(kT1, static_cast<std::int32_t>(scounteren)),
+                Csrw(kScounteren, kT1), Csrr(kT0, kMcounteren), Sd(kT0, kT2, 0),
+                Csrr(kT0, kScounteren), Sd(kT0, kT2, 8)});
   AppendSleepForEver(program);
   return program.Assemble();
 }

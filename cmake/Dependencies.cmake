@@ -184,7 +184,9 @@ FetchContent_Declare(dbt_rise_riscv
   # cores with supervisor mode and on the ones without.
   # sret-tsr: the illegal instruction that `sret` is under `mstatus.TSR`
   # was raised and then thrown away. mprv-on-return: `mstatus.MPRV` stayed
-  # set across a return to a mode below machine mode.
+  # set across a return to a mode below machine mode. counter-enables:
+  # `mcounteren` and `scounteren` kept nothing and refused nothing, so
+  # every mode could read every counter.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -205,6 +207,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-interrupt-inside-exception.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-sret-tsr.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-mprv-on-return.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-counter-enables.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

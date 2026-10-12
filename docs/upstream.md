@@ -462,6 +462,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### `mcounteren` and `scounteren` keep nothing and refuse nothing
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, the constructor's table of registers, and `read`.
+- **What is wrong**: both registers are answered by `read_null` and `write_null`: they read as zero whatever is written. And nothing looks at them. A read of `cycle`, `time`, `instret` or an `hpmcounter` is checked only against the privilege its number implies, which for those is none, so supervisor mode and user mode read every counter whatever a monitor or a kernel has said. Linux's programs read `time` that way, which works here by accident. A monitor that keeps `time` to itself so as to emulate it, and a kernel that keeps `cycle` from a program, are both ignored. What makes it work on purpose is what the two already do: OpenSBI writes all ones to `mcounteren` and Linux allows its programs `time` in `scounteren`, and nothing else.
+- **How to see it**: machine mode clears a counter's bit in `mcounteren`, and supervisor mode reads the counter; or sets it there and clears it in `scounteren`, and user mode reads it (`WhenAModeBelowMachineModeReadsACounterItHasNotBeenAllowed` in `tests/cpp/platform/cpu_test.cpp`). And write either register and read it back (`WhenMachineModeWritesTheTwoRegistersThatAllowCountersToBeRead`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-counter-enables.patch`: the two are plain registers, and `read` refuses a counter below machine mode unless `mcounteren` has its bit, and in user mode unless `scounteren` has it too. The check is in `read`, ahead of the register's own callback, because a wrapper may answer for a counter and socpuppet's does for `time`.
+- **Upstream fix**: the same, and in `riscv_hart_mu_p.h` with `mcounteren` alone. ⚠️ Not done here: the registers keep all 64 bits of what is written, where the specification has 32, and a bit for an `hpmcounter` that reads as zero is kept like any other. A hart in debug mode is asked as a mode below machine mode would be, which no core socpuppet builds can be in. And `csrrwi` with `x0` for its destination reads the register all the same, which the specification says it must not (`src/vm/interp/vm_rv64gc.cpp`): harmless for a counter, which cannot be written either.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

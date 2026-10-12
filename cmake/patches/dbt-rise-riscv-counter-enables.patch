@@ -1,0 +1,51 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index 372390f..ab318d5 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -122,6 +122,16 @@ protected:
+     iss::status write_edelegh(unsigned addr, uint32_t val);
+ 
+     void check_interrupt();
++    // cycle, time, instret and the hpmcounters (0xc00 to 0xc1f, and their upper halves at 0xc80 on RV32) may be read below M mode
++    // only if mcounteren has the counter's bit, and in U mode only if scounteren has it as well
++    bool counter_readable(unsigned addr) {
++        if(this->reg.PRIV == PRIV_M || (addr & ~0x9fu) != 0xc00)
++            return true;
++        const reg_t bit = reg_t(1) << (addr & 0x1f);
++        if(!(this->csr[mcounteren] & bit))
++            return false;
++        return this->reg.PRIV == PRIV_S || (this->csr[scounteren] & bit);
++    }
+     mem::mmu<BASE> mmu;
+     mem::neumann_memory_with_htif<BASE> default_mem;
+ };
+@@ -169,14 +179,14 @@ riscv_hart_msu_vp<BASE, FEAT>::riscv_hart_msu_vp()
+         this->csr_wr_cb[uie] = MK_CSR_WR_CB(write_ie);
+         this->csr[misa] |= extension_encoding::N;
+     }
+-    this->csr_rd_cb[mcounteren] = MK_CSR_RD_CB(read_null);
+-    this->csr_wr_cb[mcounteren] = MK_CSR_WR_CB(write_null);
++    this->csr_rd_cb[mcounteren] = MK_CSR_RD_CB(read_plain);
++    this->csr_wr_cb[mcounteren] = MK_CSR_WR_CB(write_plain);
+     this->csr_rd_cb[arch::riscv_csr::medeleg] = MK_CSR_RD_CB(read_plain);
+     this->csr_wr_cb[arch::riscv_csr::medeleg] = MK_CSR_WR_CB(write_edeleg);
+     this->csr_rd_cb[mideleg] = MK_CSR_RD_CB(read_plain);
+     this->csr_wr_cb[mideleg] = MK_CSR_WR_CB(write_ideleg);
+-    this->csr_rd_cb[scounteren] = MK_CSR_RD_CB(read_null);
+-    this->csr_wr_cb[scounteren] = MK_CSR_WR_CB(write_null);
++    this->csr_rd_cb[scounteren] = MK_CSR_RD_CB(read_plain);
++    this->csr_wr_cb[scounteren] = MK_CSR_WR_CB(write_plain);
+     if(traits<BASE>::XLEN == 32) {
+         this->csr_rd_cb[mstatush] = MK_CSR_RD_CB(read_statush);
+         this->csr_wr_cb[mstatush] = MK_CSR_WR_CB(write_statush);
+@@ -223,7 +233,9 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+         case traits<BASE>::CSR: {
+             if(length != sizeof(reg_t))
+                 return iss::Err;
+-            auto res = this->read_csr(addr, *reinterpret_cast<reg_t* const>(data));
++            // a counter is checked here and not where it is read: a wrapper may answer for one of them, as it does for time
++            auto res =
++                (is_debug(access) || counter_readable(addr)) ? this->read_csr(addr, *reinterpret_cast<reg_t* const>(data)) : iss::Err;
+             if(res != iss::Ok && !is_debug(access))
+                 this->reg.trap_state = (1U << 31) | traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16;
+             return res;

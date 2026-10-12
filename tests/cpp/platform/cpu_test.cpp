@@ -688,12 +688,15 @@ struct CpuPlatformWithATimer {
   // And the value it interrupts at.
   static constexpr std::uint64_t kMtimecmp = kTimerBase + 0x4000;
 
-  CpuPlatformWithATimer(std::uint64_t xlen, bool time_is_connected) {
+  // `more` is any parameters of the CPU beyond its word size and where it
+  // starts.
+  CpuPlatformWithATimer(std::uint64_t xlen, bool time_is_connected,
+                        socpuppet::Config more = {}) {
     // The CPU runs up to 100 us ahead of the clock that the timer counts
     // by.
     platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", xlen}, {"reset_vector", kRamBase}});
+    more.insert({{"xlen", xlen}, {"reset_vector", kRamBase}});
+    platform.Add("cpu", "dbt_rise_cpu", more);
     platform.Add("bus", "router",
                  {{"outputs", 2},
                   {"out0.base", kRamBase},
@@ -742,6 +745,24 @@ TEST(WhenACpusTimeIsConnectedToItsTimer,
      TheTimeRegisterReadsOneTickBehindTheTimersOwnCountReadAnInstructionLater) {
   CpuPlatformWithATimer with_timer{/*xlen=*/64, /*time_is_connected=*/true};
   with_timer.Load(ReadTimeThenTheTimersOwnCount());
+
+  with_timer.RunUntilAsleep();
+
+  const std::uint32_t time = with_timer.ResultWord(0);
+  const std::uint32_t the_timers_own_count = with_timer.ResultWord(4);
+  EXPECT_EQ(time + 1, the_timers_own_count);
+}
+
+// What Linux's programs do for the time of day, with no call to the
+// kernel: the kernel has allowed them the register, and the monitor has
+// allowed the kernel.
+TEST(WhenUserModeIsAllowedTheTimeRegisterOnACpuConnectedToItsTimer,
+     ItReadsOneTickBehindTheTimersOwnCountAsMachineModeDoes) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/64, /*time_is_connected=*/true,
+                                   TheCoreWithSupervisorMode()};
+  with_timer.Load(riscv::ReadTimeThenTheTimersOwnCountThenSleep(
+      CpuPlatformWithATimer::kMtime, /*iterations=*/4096,
+      riscv::EnterUserModeAllowedToReadTime()));
 
   with_timer.RunUntilAsleep();
 
@@ -1682,6 +1703,146 @@ TEST(WhenMachineModeReturnsToSupervisorModeWithMprvSet,
   const bool mprv =
       ((with_pages.Result(1) >> riscv::kModifyPrivilege) & 1) != 0;
   EXPECT_FALSE(mprv);
+}
+
+// A read of a counter from a mode below machine mode, and what the two
+// registers that allow it say.
+struct ReadOfACounter {
+  const char* name;
+  riscv::Word mode;
+  riscv::Word counter;
+  riscv::Word mcounteren;
+  riscv::Word scounteren;
+};
+
+void PrintTo(const ReadOfACounter& read, std::ostream* out) {
+  *out << read.name;
+}
+
+riscv::Program ProgramFor(const ReadOfACounter& read) {
+  return riscv::ReadACounterIn(read.mode, CpuPlatformWithPages::kWithPagingOff,
+                               read.counter, read.mcounteren, read.scounteren);
+}
+
+// Whether a read was let through, by a program of ProgramFor's that has
+// run on a platform: it ran on, where a trap would have stopped it.
+::testing::AssertionResult TheReadDidNotTrap(CpuPlatformWithPages& with_pages) {
+  if (with_pages.Result(1) == 1) return ::testing::AssertionSuccess();
+  return ::testing::AssertionFailure()
+         << "The program did not run on, and the cause with one added, or "
+            "zero for no trap, is "
+         << with_pages.Result(0);
+}
+
+// 🎓 A hart counts its clock cycles and the instructions it has executed,
+// and reads the time from its timer, and a program can read all three
+// with no call to anyone: Linux gives its programs the time of day that
+// way. Each mode says whether the one below it may. A monitor keeps them
+// to itself if it wants a kernel to ask, and a kernel keeps them from a
+// program it does not want timing things.
+class WhenAModeBelowMachineModeReadsACounterItHasBeenAllowed
+    : public ::testing::TestWithParam<ReadOfACounter> {};
+
+TEST_P(WhenAModeBelowMachineModeReadsACounterItHasBeenAllowed,
+       TheReadDoesNotTrapAndTheProgramRunsOn) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(ProgramFor(GetParam()));
+
+  with_pages.RunUntilAsleep();
+
+  EXPECT_TRUE(TheReadDidNotTrap(with_pages));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachCounter, WhenAModeBelowMachineModeReadsACounterItHasBeenAllowed,
+    ::testing::Values(
+        ReadOfACounter{"supervisor mode, cycle", riscv::kSupervisorMode,
+                       riscv::kCycle, riscv::kMayReadCycle, 0},
+        ReadOfACounter{"supervisor mode, time", riscv::kSupervisorMode,
+                       riscv::kTime, riscv::kMayReadTime, 0},
+        ReadOfACounter{"supervisor mode, instret", riscv::kSupervisorMode,
+                       riscv::kInstret, riscv::kMayReadInstret, 0},
+        ReadOfACounter{"user mode, cycle", riscv::kUserMode, riscv::kCycle,
+                       riscv::kMayReadCycle, riscv::kMayReadCycle},
+        ReadOfACounter{"user mode, time", riscv::kUserMode, riscv::kTime,
+                       riscv::kMayReadTime, riscv::kMayReadTime},
+        ReadOfACounter{"user mode, instret", riscv::kUserMode, riscv::kInstret,
+                       riscv::kMayReadInstret, riscv::kMayReadInstret}));
+
+// Each row allows every counter but the one it reads, or allows that one
+// in one register only, so that it is that bit which refuses it.
+class WhenAModeBelowMachineModeReadsACounterItHasNotBeenAllowed
+    : public ::testing::TestWithParam<ReadOfACounter> {};
+
+TEST_P(WhenAModeBelowMachineModeReadsACounterItHasNotBeenAllowed,
+       MachineModeTakesAnIllegalInstructionTrap) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(ProgramFor(GetParam()));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
+  EXPECT_EQ(why_machine_mode_was_entered, riscv::kIllegalInstruction + 1);
+}
+
+constexpr riscv::Word kMayReadAll =
+    riscv::kMayReadCycle | riscv::kMayReadTime | riscv::kMayReadInstret;
+
+INSTANTIATE_TEST_SUITE_P(
+    EachCounter, WhenAModeBelowMachineModeReadsACounterItHasNotBeenAllowed,
+    ::testing::Values(
+        ReadOfACounter{"supervisor mode, cycle", riscv::kSupervisorMode,
+                       riscv::kCycle, kMayReadAll & ~riscv::kMayReadCycle,
+                       kMayReadAll},
+        ReadOfACounter{"supervisor mode, time", riscv::kSupervisorMode,
+                       riscv::kTime, kMayReadAll & ~riscv::kMayReadTime,
+                       kMayReadAll},
+        ReadOfACounter{"supervisor mode, instret", riscv::kSupervisorMode,
+                       riscv::kInstret, kMayReadAll & ~riscv::kMayReadInstret,
+                       kMayReadAll},
+        ReadOfACounter{"user mode, time, which only machine mode allows",
+                       riscv::kUserMode, riscv::kTime, kMayReadAll,
+                       kMayReadAll & ~riscv::kMayReadTime},
+        ReadOfACounter{"user mode, time, which only supervisor mode allows",
+                       riscv::kUserMode, riscv::kTime,
+                       kMayReadAll & ~riscv::kMayReadTime, kMayReadAll}));
+
+// The registers are for the modes below machine mode, and say nothing of
+// machine mode itself.
+class WhenMachineModeReadsACounterThatNeitherRegisterAllows
+    : public ::testing::TestWithParam<ReadOfACounter> {};
+
+TEST_P(WhenMachineModeReadsACounterThatNeitherRegisterAllows,
+       TheReadDoesNotTrapAndTheProgramRunsOn) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(ProgramFor(GetParam()));
+
+  with_pages.RunUntilAsleep();
+
+  EXPECT_TRUE(TheReadDidNotTrap(with_pages));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachCounter, WhenMachineModeReadsACounterThatNeitherRegisterAllows,
+    ::testing::Values(
+        ReadOfACounter{"cycle", riscv::kMachineMode, riscv::kCycle, 0, 0},
+        ReadOfACounter{"time", riscv::kMachineMode, riscv::kTime, 0, 0},
+        ReadOfACounter{"instret", riscv::kMachineMode, riscv::kInstret, 0, 0}));
+
+TEST(WhenMachineModeWritesTheTwoRegistersThatAllowCountersToBeRead,
+     EachReadsBackAsItWasWritten) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreWhatTheCounterEnablesReadAsAfterWriting(
+      /*mcounteren=*/kMayReadAll, /*scounteren=*/riscv::kMayReadTime,
+      CpuPlatformWithPages::kResultPage));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t mcounteren = with_pages.Result(0);
+  const std::uint64_t scounteren = with_pages.Result(1);
+  EXPECT_EQ(mcounteren, kMayReadAll);
+  EXPECT_EQ(scounteren, riscv::kMayReadTime);
 }
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
