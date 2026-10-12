@@ -297,6 +297,30 @@ TYPED_TEST_P(BusMasterContract,
                                  ::testing::Ge(raised_at))));
 }
 
+TYPED_TEST_P(BusMasterContract,
+             AMasterWaitingForAnInterruptWhoseLineIsAlreadyHighCarriesOn) {
+  // The master is held in reset until after the line has risen, so that
+  // the line is high before it starts to wait and does not move again.
+  const sc_core::sc_time raised_at = this->Microseconds(2);
+  const sc_core::sc_time released_at = this->Microseconds(5);
+  this->Build({.behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
+               .reset =
+                   [&](LineDriver& reset) {
+                     reset.Set(true);
+                     reset.WaitFor(released_at);
+                     reset.Set(false);
+                   },
+               .irq =
+                   [&](LineDriver& irq) {
+                     irq.WaitFor(raised_at);
+                     irq.Set(true);
+                   }});
+
+  this->RunToTheEnd();
+
+  EXPECT_THAT(this->probed_, ::testing::SizeIs(1));
+}
+
 TYPED_TEST_P(
     BusMasterContract,
     AMasterThatClaimsQuietsAndCompletesAtThePlicIsInterruptedOncePerInterrupt) {
@@ -340,6 +364,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat,
     WhenResetComesWhileTheMasterIsAheadOfTheClockItStartsOverWithNoLead,
     AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises,
+    AMasterWaitingForAnInterruptWhoseLineIsAlreadyHighCarriesOn,
     AMasterThatClaimsQuietsAndCompletesAtThePlicIsInterruptedOncePerInterrupt,
     WithATimerConnectedToItsTimerInterruptInputTheMasterRuns);
 
