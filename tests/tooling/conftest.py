@@ -35,6 +35,23 @@ LINT = REPO / "tools" / "lint.py"
 
 
 @pytest.fixture
+def zephyr_tree():
+    """Zephyr's own sources, where `firmware/build.sh` fetched them.
+
+    A test that reads one of Zephyr's files is skipped where they are not,
+    which is everywhere but a machine the firmware was built on and CI's
+    `twister` job.
+    """
+    tree = REPO / "build/firmware/zephyr"
+    if not tree.is_dir():
+        pytest.skip(
+            f"There is no {tree}. `firmware/build.sh` fetches Zephyr, which "
+            "takes a few minutes the first time."
+        )
+    return tree
+
+
+@pytest.fixture
 def repo(tmp_path):
     """A throwaway git repository carrying the real lint configuration."""
     _make_repo(tmp_path)

@@ -1,0 +1,30 @@
+# What twister, Zephyr's test runner, reads of this application
+# (docs/twister.md). It has no test framework in it: it says why its CPU
+# was last reset, three times, and twister is told the lines to wait for
+# and the order they come in.
+#
+# The two lines between the causes are there for the order. A watchdog
+# whose interrupt never comes does not print the first of them, and one
+# that bites while it is being fed says `reset cause: watchdog` before the
+# second, so neither run matches and the scenario fails when its time is
+# up.
+#
+# There is no `expect_reboot`, though the CPU is reset twice: that is for
+# a ztest suite that starts again, and the console harness only matches
+# lines.
+tests:
+  socpuppet.firmware.watchdog:
+    harness: console
+    harness_config:
+      type: multi_line
+      ordered: true
+      regex:
+        - "reset cause: power-on"
+        - "watchdog: ran out, and interrupted"
+        - "reset cause: software"
+        - "watchdog: no more feeding"
+        - "reset cause: watchdog"
+    platform_allow:
+      - socpuppet_host
+      - socpuppet_ssd
+      - socpuppet_iomgr

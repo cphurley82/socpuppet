@@ -6,30 +6,15 @@ Both name things in Zephyr's tree, which `firmware/build.sh` fetches into
 build/firmware, so these tests are skipped where it has not been run.
 """
 
-import os
 import re
 
 import jsonschema
-import pytest
 import yaml
+from twister_files import directory_of, suites_of_the_list
 
 from conftest import REPO
 
-SUITES = REPO / "firmware/twister-suites.txt"
 QUARANTINE = REPO / "firmware/twister-quarantine.yaml"
-
-
-@pytest.fixture
-def zephyr_tree():
-    """Zephyr's own sources, where `firmware/build.sh` fetched them."""
-    firmware = os.environ.get("SOCPUPPET_FIRMWARE_DIR", REPO / "build/firmware")
-    tree = REPO / firmware / "zephyr"
-    if not tree.is_dir():
-        pytest.skip(
-            f"There is no {tree}. `firmware/build.sh` fetches Zephyr, which "
-            "takes a few minutes the first time."
-        )
-    return tree
 
 
 def test_every_suite_of_the_list_is_a_directory_with_a_suite_in_it(zephyr_tree):
@@ -84,23 +69,9 @@ def test_every_scenario_the_quarantine_list_names_is_one_the_run_has(
     assert matching_nothing == []
 
 
-def suites_of_the_list():
-    """The directory each line of the list names, without the line's flags."""
-    return [
-        line.split()[0]
-        for line in SUITES.read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-
-
 def suite_files(suite, zephyr_tree):
-    """The files under a suite's directory that describe its scenarios.
-
-    The directory is Zephyr's, or this repository's if it starts with
-    firmware/ or python/, as firmware/twister.sh takes it.
-    """
-    ours = suite.startswith(("firmware/", "python/"))
-    directory = (REPO if ours else zephyr_tree) / suite
+    """The files under a suite's directory that describe its scenarios."""
+    directory = directory_of(suite, zephyr_tree)
     return [
         file
         for name in ("testcase.yaml", "sample.yaml")

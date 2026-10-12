@@ -31,7 +31,7 @@ firmware/twister.sh -p socpuppet_ssd -T tests/kernel/sleep -v  # one suite of Ze
 firmware/twister.sh -p socpuppet_ssd -T firmware/flash_test    # one of ours
 ```
 
-`-T` names a directory to look for suites in. A relative one is in Zephyr's tree, or in this repository if it starts with `firmware/` or `python/`. `-p` names a board, and `-v` prints each scenario's verdict as it comes.
+`-T` names a directory to look for suites in. A relative one is in Zephyr's tree, unless it is `firmware` or `python`, or under one of them: those are this repository's. `-p` names a board, and `-v` prints each scenario's verdict as it comes.
 
 What is left behind, in `build/twister/out/<run>/`. A run is one run of twister: `--suites` makes one called `suites` for most of the list and one for each suite that needs flags of its own, named after the suite, and a command without `--suites` makes one called `one`.
 
@@ -100,6 +100,19 @@ west twister -p socpuppet_host -T tests/kernel/sleep
 | **Scenarios** | **32** | **28** | **37** |
 
 97 scenarios and 2073 test cases, and none fails. It was not always so. The first time these suites ran, in the spike that began this ([twister-spike.md](twister-spike.md)), 46 scenarios of 126 did not pass, and they found two bugs in socpuppet that none of its own tests had: firmware could clear an interrupt's pending bit that a real CPU keeps read-only, and the timer charged a CPU for time it had already spent. Both are mended, and both were in borrowed models ([upstream.md](upstream.md)).
+
+## socpuppet's own applications are suites too
+
+The last line of the list is `firmware`, and every application there with a `testcase.yaml` is built and judged with the rest, each on the boards it names:
+
+| Suite | Boards | How twister judges it |
+|---|---|---|
+| `firmware/flash_test` | `socpuppet_ssd` | It is a ztest suite: Zephyr's own test of a flash driver, and four cases of ours for what only a NAND does |
+| `firmware/watchdog` | all three | By its console: `reset cause: power-on`, then `software`, then `watchdog`, with the lines between them in their order |
+| `firmware/iomgr` | `socpuppet_iomgr` | By its console: the link is up, and then the compute die is released |
+| `firmware/ssd` | `socpuppet_ssd` | By its console: the line that says how big its drive is |
+
+🎓 Three of the four have no test framework in them. A `testcase.yaml` can say `harness: console` and list the lines an application should print, as regular expressions, and twister passes the scenario when it has read them all. It is how Zephyr's samples are judged, and it makes a suite of any program that says what it did.
 
 ## What is left out, and why
 
