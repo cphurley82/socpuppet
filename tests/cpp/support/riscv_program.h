@@ -1506,6 +1506,34 @@ inline Program TakeAMisalignedAccessInSupervisorMode(
   return program.Assemble();
 }
 
+// A program in which machine mode reads a kernel's memory as the kernel
+// would, the way a monitor does to look at the instruction a kernel
+// trapped on. Supervisor mode, under paging, calls machine mode. Machine
+// mode's handler, which is at `machine_modes_code` plus its place in the
+// program since machine mode's own addresses are not translated, sets
+// MPRV, loads the word at the virtual address `address`, stores it as the
+// program's result, at the virtual address `at.result`, clears MPRV again
+// and sleeps.
+inline Program LoadAsSupervisorModeWouldFromMachineMode(
+    const Pages& at, std::uint64_t machine_modes_code, std::uint64_t address) {
+  Assembler program;
+  const Assembler::Constant handler = program.Load(kT1);
+  program.Emit(Csrw(kMtvec, kT1));
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Emit(kEcall);
+  AppendSleepForEver(program);
+
+  program.Set(handler, machine_modes_code + program.Here());
+  // Both addresses first: once MPRV is set, a load from the program's own
+  // pool would be translated too.
+  program.Load(kT5, address);
+  program.Load(kT6, at.result);
+  program.Emit(SetInMstatus(kModifyPrivilege));
+  program.Emit({Ld(kT0, kT5, 0), Sd(kT0, kT6, 0), Csrc(kMstatus, kT1)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
 // A program that, in machine mode, where `satp` translates nothing,
 // stores what `satp` reads as before anything has written it, and then
 // writes each of `values` to it in turn and stores what it reads as after

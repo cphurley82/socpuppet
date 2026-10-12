@@ -2423,6 +2423,30 @@ TEST(WhenAHandlerMakesTheStoreThatAHartRefusedAtAnOddAddress,
   EXPECT_EQ(the_program_ran_on, 1U);
 }
 
+// 🎓 Machine mode's addresses are not translated. A monitor that has to
+// look at a kernel's memory, at the instruction it trapped on or at a
+// buffer it was handed, sets MPRV, and its loads and stores are then made
+// as the mode it was entered from would make them: through the kernel's
+// page tables. OpenSBI does it for every misaligned access it makes on a
+// kernel's behalf.
+TEST(WhenMachineModeSetsMprvAfterATrapFromSupervisorModeUnderPaging,
+     ItsLoadsAndStoresGoThroughTheSupervisorsPageTables) {
+  constexpr std::uint64_t kThere = 0x0123'4567'89AB'CDEF;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
+                 CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kData);
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage + 0x18, kThere);
+  with_pages.Load(riscv::LoadAsSupervisorModeWouldFromMachineMode(
+      CpuPlatformWithPages::kPages, CpuPlatformWithPages::kProgramPage,
+      CpuPlatformWithPages::kInASparePage));
+
+  with_pages.RunUntilAsleep();
+
+  // Loaded from an address only the tables lead to, and stored to another.
+  EXPECT_EQ(with_pages.Result(), kThere);
+}
+
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;
   // The RAM starts as zeros, which a program that stored nothing would
