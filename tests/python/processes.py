@@ -42,7 +42,7 @@ def start_python(code):
     )
 
 
-def run_socpuppet(*arguments, check=True):
+def run_socpuppet(*arguments, check=True, **extra_environment):
     """Run the socpuppet command line, and return the finished process.
 
     Unless `check` is false, a command that fails fails the test, with
@@ -50,13 +50,24 @@ def run_socpuppet(*arguments, check=True):
     """
     result = subprocess.run(
         [sys.executable, "-m", "socpuppet", *arguments],
-        env=environment(),
+        env=environment(**extra_environment),
         capture_output=True,
         text=True,
     )
     if check:
         assert result.returncode == 0, result.stderr
     return result
+
+
+def start_socpuppet(*arguments):
+    """Start the socpuppet command line, with its output piped back."""
+    return subprocess.Popen(
+        [sys.executable, "-m", "socpuppet", *arguments],
+        env=environment(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
 
 
 def run_file(path, **extra_environment):

@@ -8,10 +8,11 @@ import sys
 import traceback
 from collections.abc import Sequence
 
-from socpuppet import address_map, boot_image, interrupt_map
+from socpuppet import address_map, boot_image, interrupt_map, run
 from socpuppet.address_map import MapEntry
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
+from socpuppet.time import ms
 
 
 def main(arguments: Sequence[str] | None = None) -> None:
@@ -92,9 +93,61 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "-DZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)."
         ),
     )
+    runner = commands.add_parser(
+        "run",
+        help="run a firmware image on a board and print its console",
+        description=(
+            "Run a firmware image on one of socpuppet's boards and print "
+            "what it says on its console."
+        ),
+    )
+    runner.add_argument("image", help="the firmware, as a linker wrote it")
+    runner.add_argument(
+        "--board",
+        required=True,
+        metavar="BOARD",
+        help=f"the board to run it on: {', '.join(run.BOARDS)}",
+    )
+    runner.add_argument(
+        "--shield",
+        action="append",
+        default=[],
+        metavar="SHIELD",
+        help="a shield the board has on, as the image was built with it",
+    )
+    runner.add_argument(
+        "--boot",
+        choices=("rom", "ram"),
+        default="rom",
+        help=(
+            "how the CPU gets the image: from its boot ROM, which finds it "
+            "in the flash as silicon does (the default), or loaded straight "
+            "into RAM, which is quicker. The ROM's own program is one that "
+            "firmware/build.sh builds, looked for in SOCPUPPET_FIRMWARE_DIR "
+            "or else in build/firmware"
+        ),
+    )
+    runner.add_argument(
+        "--until",
+        type=int,
+        default=30_000,
+        metavar="MS",
+        help=(
+            "stop after this many milliseconds of simulated time (the "
+            "default is %(default)s)"
+        ),
+    )
     options = parser.parse_args(arguments)
 
-    if options.command == "zephyr-module":
+    if options.command == "run":
+        run.run(
+            options.image,
+            options.board,
+            options.shield,
+            from_rom=options.boot == "rom",
+            until=ms(options.until),
+        )
+    elif options.command == "zephyr-module":
         print(pathlib.Path(__file__).parent / "zephyr_module")
     elif options.command == "boot-image":
         print(_boot_image(options.elf, options.output))
