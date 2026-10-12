@@ -183,6 +183,37 @@ inline constexpr Word kCompressedFsdspThenNop = 0x0001'A002;
 // The floating-point control register: how to round, and which exceptions
 // have happened.
 inline constexpr Word kFcsr = 0x003;
+// The atomic instructions, which read a word of memory and write it as
+// one act. `width` is 2 for a word of 32 bits and 3 for one of 64.
+constexpr Word Atomic(Word which, Word width, Word rd, Word rs1, Word rs2) {
+  return (which << 27) | (rs2 << 20) | (rs1 << 15) | (width << 12) | (rd << 7) |
+         0x2F;
+}
+// 🎓 A pair that makes a read and a later write one act: rd = the 64 bits
+// at the address in rs1, which the hart then holds a reservation on. And
+// the store of rs2 there, which is made only if the reservation is still
+// held, with rd = 0 if it was and 1 if it was not. Either way the
+// reservation is gone afterwards.
+constexpr Word LrD(Word rd, Word rs1) { return Atomic(0b00010, 3, rd, rs1, 0); }
+constexpr Word ScD(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b00011, 3, rd, rs1, rs2);
+}
+// And four that do it in one instruction: rd = what is at the address in
+// rs1, where there is then rs2, or the sum of the two, or the bits of
+// either (in a word of 32 bits), or the greater of the two as signed
+// numbers.
+constexpr Word AmoswapD(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b00001, 3, rd, rs1, rs2);
+}
+constexpr Word AmoaddD(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b00000, 3, rd, rs1, rs2);
+}
+constexpr Word AmoorW(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b01000, 2, rd, rs1, rs2);
+}
+constexpr Word AmomaxD(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b10100, 3, rd, rs1, rs2);
+}
 // The control and status register that says which interrupts are enabled,
 // and its bits for the machine timer and machine external interrupts.
 inline constexpr Word kMie = 0x304;
@@ -1400,6 +1431,19 @@ inline Program StoreASingle(const Pages& at, std::uint64_t address,
   program.Load(kT0, value);
   program.Emit(
       {FmvWX(1, kT0), Fsw(1, kT1, 0), Lw(kT0, kT1, 0), Sd(kT0, kT2, 0)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that executes `instructions` in machine mode, with the address
+// `cell` in t1 and the address of its result, `result`, in t2. Then it
+// sleeps.
+inline Program RunWithACell(std::uint64_t cell, std::uint64_t result,
+                            const Program& instructions) {
+  Assembler program;
+  program.Load(kT1, cell);
+  program.Load(kT2, result);
+  program.Emit(instructions);
   AppendSleepForEver(program);
   return program.Assemble();
 }

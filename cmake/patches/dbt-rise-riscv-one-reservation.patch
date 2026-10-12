@@ -1,0 +1,29 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index c875b17..3264299 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -284,12 +284,10 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+             }
+         } break;
+         case traits<BASE>::RES: {
++            // an SC asks whether the reservation is held on its address, and gives the reservation up whichever the answer
+             auto it = atomic_reservation.find(addr);
+-            if(it != atomic_reservation.end() && it->second != 0) {
+-                memset(data, 0xff, length);
+-                atomic_reservation.erase(addr);
+-            } else
+-                memset(data, 0, length);
++            memset(data, it != atomic_reservation.end() && it->second != 0 ? 0xff : 0, length);
++            atomic_reservation.clear();
+         } break;
+         default: {
+             auto alignment = is_fetch(access) ? (this->has_compressed() ? 2 : 4) : std::min<unsigned>(length, sizeof(reg_t));
+@@ -410,6 +408,8 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::write(const addr_t& a, const unsigned
+             }
+         } break;
+         case traits<BASE>::RES: {
++            // a hart holds one reservation, on one address: an LR replaces any it held
++            atomic_reservation.clear();
+             atomic_reservation[addr] = data[0];
+         } break;
+         default: {

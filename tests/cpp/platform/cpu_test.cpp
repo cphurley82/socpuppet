@@ -1206,6 +1206,20 @@ struct CpuPlatformWithPages {
     return platform.ModuleAt<InterruptSource>("device").TimesQuieted();
   }
 
+  // Has the RAM take back the direct access it gave and give no more, so
+  // that the CPU reaches it by a transaction each time.
+  void WithdrawDirectAccess() {
+    platform.ModuleAt<CountingProbe>("probe").WithdrawDirectAccess();
+  }
+
+  // The word of 64 bits in the RAM at `physical`.
+  std::uint64_t At(std::uint64_t physical) {
+    std::array<std::uint8_t, 8> word{};
+    platform.DebugRead("cpu.socket", physical,
+                       std::as_writable_bytes(std::span{word}));
+    return socpuppet::LoadLittleEndian<std::uint64_t>(word);
+  }
+
   // How many transactions the CPU has sent to the bus.
   std::uint64_t Transactions() {
     return platform.ModuleAt<CountingProbe>("probe").Transactions();
@@ -2085,6 +2099,213 @@ TEST(WhenMachineModeHasSetBitsOfItsOwnInMstatus,
   const std::uint64_t sstatus = with_pages.Result(2);
   EXPECT_EQ(sstatus & kMachineModesOwnBits, 0U);
 }
+
+// A use of the atomic instructions on a cell of memory, whose address the
+// instructions find in t1, with where their result goes in t2: what is in
+// the cell before, and what is to be found afterwards, as the result and
+// in the cell.
+struct UseOfAtomics {
+  const char* name;
+  std::uint64_t cell_before;
+  riscv::Program instructions;
+  std::uint64_t result;
+  std::uint64_t cell_after;
+};
+
+// And whether the hart reaches the cell by direct memory access or by a
+// transaction each time.
+struct UseOfAtomicsEitherWay {
+  UseOfAtomics use;
+  bool over_the_bus;
+};
+
+void PrintTo(const UseOfAtomicsEitherWay& way, std::ostream* out) {
+  *out << way.use.name
+       << (way.over_the_bus ? ", over the bus" : ", by direct access");
+}
+
+std::vector<UseOfAtomicsEitherWay> EitherWay(
+    const std::vector<UseOfAtomics>& uses) {
+  std::vector<UseOfAtomicsEitherWay> either_way;
+  for (const bool over_the_bus : {false, true}) {
+    for (const UseOfAtomics& use : uses) {
+      either_way.push_back({use, over_the_bus});
+    }
+  }
+  return either_way;
+}
+
+// What a use of the atomics left: its result, and what is in the cell.
+struct LeftByAtomics {
+  std::uint64_t result;
+  std::uint64_t cell;
+};
+
+// Runs a use of the atomics on a platform of its own.
+LeftByAtomics WhatIsLeftBy(const UseOfAtomicsEitherWay& way) {
+  constexpr std::uint64_t kCell = CpuPlatformWithPages::kFirstSparePage;
+  CpuPlatformWithPages with_pages;
+  if (way.over_the_bus) with_pages.WithdrawDirectAccess();
+  with_pages.Put(kCell, way.use.cell_before);
+  // The RAM starts as zeros, which a program that stored nothing would
+  // leave looking like a result of zero.
+  with_pages.Put(CpuPlatformWithPages::kResultPage, ~std::uint64_t{0});
+  with_pages.Load(riscv::RunWithACell(kCell, CpuPlatformWithPages::kResultPage,
+                                      way.use.instructions));
+
+  with_pages.RunUntilAsleep();
+
+  if (way.over_the_bus) {
+    // It was: an instruction fetched is a transaction, and with direct
+    // access the whole program is a handful.
+    EXPECT_GE(with_pages.Transactions(), way.use.instructions.size());
+  }
+  return {.result = with_pages.Result(), .cell = with_pages.At(kCell)};
+}
+
+// What a store-conditional answers with when it stored, and when not.
+constexpr std::uint64_t kStored = 0;
+constexpr std::uint64_t kDidNotStore = 1;
+// What the cell holds before anything, and what a store-conditional is
+// given to store there.
+constexpr std::uint64_t kInTheCell = 0x11;
+constexpr std::int32_t kGiven = 0x5A;
+
+// The instructions that the uses of a store-conditional are put together
+// from. t3 = what it is given, and t5 = the address of the cell after the
+// one in t1. Each use ends by storing the last answer as the result.
+constexpr riscv::Word kT3IsGiven = riscv::Li(riscv::kT3, kGiven);
+constexpr riscv::Word kT5IsTheNextCell = riscv::Addi(riscv::kT5, riscv::kT1, 8);
+constexpr riscv::Word kReserveTheCell = riscv::LrD(riscv::kT0, riscv::kT1);
+constexpr riscv::Word kReserveTheNextCell = riscv::LrD(riscv::kT0, riscv::kT5);
+constexpr riscv::Word kStoreConditionalToTheCell =
+    riscv::ScD(riscv::kT4, riscv::kT1, riscv::kT3);
+constexpr riscv::Word kStoreConditionalToTheNextCell =
+    riscv::ScD(riscv::kT4, riscv::kT5, riscv::kT3);
+constexpr riscv::Word kTheAnswerIsTheResult =
+    riscv::Sd(riscv::kT4, riscv::kT2, 0);
+
+// 🎓 A kernel's locks and counters are made of these. A load-reserved and
+// a store-conditional make a read and a later write one act: the store is
+// made only if the hart still holds the reservation the load took.
+class WhenAStoreConditionalFollowsALoadReservedOfItsCell
+    : public ::testing::TestWithParam<UseOfAtomicsEitherWay> {};
+
+TEST_P(WhenAStoreConditionalFollowsALoadReservedOfItsCell,
+       ItStoresAndAnswersZero) {
+  const LeftByAtomics left = WhatIsLeftBy(GetParam());
+
+  EXPECT_EQ(left.result, kStored);
+  EXPECT_EQ(left.cell, GetParam().use.cell_after);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EitherWay, WhenAStoreConditionalFollowsALoadReservedOfItsCell,
+    ::testing::ValuesIn(EitherWay({{"at once",
+                                    kInTheCell,
+                                    {kT3IsGiven, kReserveTheCell,
+                                     kStoreConditionalToTheCell,
+                                     kTheAnswerIsTheResult},
+                                    kStored,
+                                    kGiven}})));
+
+// A hart has one reservation, on one address, and any store-conditional
+// gives it up, whether or not it stored. That second half is how a kernel
+// makes sure that a program it interrupted between the two halves of the
+// pair cannot finish the pair as if nothing had happened: on its way out
+// of every trap Linux executes a store-conditional to its own stack.
+class WhenAStoreConditionalFindsNoReservationOnItsCell
+    : public ::testing::TestWithParam<UseOfAtomicsEitherWay> {};
+
+TEST_P(WhenAStoreConditionalFindsNoReservationOnItsCell,
+       ItAnswersOneAndStoresNothing) {
+  const LeftByAtomics left = WhatIsLeftBy(GetParam());
+
+  EXPECT_EQ(left.result, kDidNotStore);
+  EXPECT_EQ(left.cell, GetParam().use.cell_after);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachReason, WhenAStoreConditionalFindsNoReservationOnItsCell,
+    ::testing::ValuesIn(EitherWay({
+        {"with no load-reserved before it",
+         kInTheCell,
+         {kT3IsGiven, kStoreConditionalToTheCell, kTheAnswerIsTheResult},
+         kDidNotStore,
+         kInTheCell},
+        // The first stored what it was given, and the second is given
+        // something else.
+        {"after a store-conditional that stored",
+         kInTheCell,
+         {kT3IsGiven, kReserveTheCell, kStoreConditionalToTheCell,
+          riscv::Li(riscv::kT3, 0x7B), kStoreConditionalToTheCell,
+          kTheAnswerIsTheResult},
+         kDidNotStore,
+         kGiven},
+        {"with another cell reserved",
+         kInTheCell,
+         {kT3IsGiven, kT5IsTheNextCell, kReserveTheNextCell,
+          kStoreConditionalToTheCell, kTheAnswerIsTheResult},
+         kDidNotStore,
+         kInTheCell},
+        {"after a store-conditional to another cell",
+         kInTheCell,
+         {kT3IsGiven, kT5IsTheNextCell, kReserveTheCell,
+          kStoreConditionalToTheNextCell, kStoreConditionalToTheCell,
+          kTheAnswerIsTheResult},
+         kDidNotStore,
+         kInTheCell},
+        {"which was reserved before another cell was",
+         kInTheCell,
+         {kT3IsGiven, kT5IsTheNextCell, kReserveTheCell, kReserveTheNextCell,
+          kStoreConditionalToTheCell, kTheAnswerIsTheResult},
+         kDidNotStore,
+         kInTheCell},
+    })));
+
+// The ones that do it in one instruction: what was in the cell comes back
+// in a register, and what the operation makes of it and of the register
+// it was given is left in the cell.
+class WhenAProgramUsesAnAtomicMemoryOperation
+    : public ::testing::TestWithParam<UseOfAtomicsEitherWay> {};
+
+TEST_P(WhenAProgramUsesAnAtomicMemoryOperation,
+       ItGivesBackWhatWasThereAndLeavesWhatTheOperationMakes) {
+  const LeftByAtomics left = WhatIsLeftBy(GetParam());
+
+  EXPECT_EQ(left.result, GetParam().use.result);
+  EXPECT_EQ(left.cell, GetParam().use.cell_after);
+}
+
+// An operation on t1's cell and t3 whose answer, in t0, is the result.
+riscv::Program WithT3(std::int32_t given, riscv::Word operation) {
+  return {riscv::Li(riscv::kT3, given), operation,
+          riscv::Sd(riscv::kT0, riscv::kT2, 0)};
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachOperation, WhenAProgramUsesAnAtomicMemoryOperation,
+    ::testing::ValuesIn(EitherWay({
+        {"a swap", 0x11,
+         WithT3(0x22, riscv::AmoswapD(riscv::kT0, riscv::kT1, riscv::kT3)),
+         0x11, 0x22},
+        {"a sum", 0x11,
+         WithT3(0x22, riscv::AmoaddD(riscv::kT0, riscv::kT1, riscv::kT3)), 0x11,
+         0x33},
+        // The low half of the cell alone: what comes back has its sign
+        // carried up, and the upper half of the cell is left as it was.
+        {"an or, of 32 bits", 0xAAAA'AAAA'8000'0011,
+         WithT3(0x30, riscv::AmoorW(riscv::kT0, riscv::kT1, riscv::kT3)),
+         0xFFFF'FFFF'8000'0011, 0xAAAA'AAAA'8000'0031},
+        {"the greater, with a greater", 0x11,
+         WithT3(0x22, riscv::AmomaxD(riscv::kT0, riscv::kT1, riscv::kT3)), 0x11,
+         0x22},
+        // All ones is below zero as a signed number, and above everything
+        // as an unsigned one.
+        {"the greater, with a number below zero", 0x11,
+         WithT3(-1, riscv::AmomaxD(riscv::kT0, riscv::kT1, riscv::kT3)), 0x11,
+         0x11},
+    })));
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

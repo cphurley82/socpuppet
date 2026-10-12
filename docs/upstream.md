@@ -502,6 +502,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### A hart holds a reservation for every address, and a store-conditional gives up only its own
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `read` and `write`, the cases for the `RES` space, and the member `atomic_reservation`.
+- **What is wrong**: `lr` makes an entry in a map from an address to a flag, and `sc` looks its own address up and removes that entry if it is there. So a hart holds as many reservations as it has made, and an `sc` to an address that has none fails and leaves the others where they are. The specification gives a hart one reservation, and has any `sc` end it, whether or not it stored. 🎓 That second half is what a kernel uses. A program interrupted between its `lr` and its `sc` must not finish the pair when it is run again as if nothing had happened in between, so Linux, on its way out of every trap, executes an `sc` to its own stack, to give up whatever reservation the hart holds. Here that `sc` gives up nothing. If what happened in between was a plain store or an `amoadd` to the reserved word, and not another `lr` and `sc` pair, the reservation is still there, the program's `sc` stores, and the other update is lost.
+- **How to see it**: `lr` of one word, `sc` to another, and then `sc` to the first, which stores; and `lr` of one word, `lr` of another, and `sc` to the first, which stores (two rows of `WhenAProgramUsesTheAtomicInstructions` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-one-reservation.patch`, in the hart with supervisor mode: an `lr` replaces whatever the hart held, and an `sc` empties the map once it has looked. ⚠️ `riscv_hart_m_p.h`, which the SSD's and the IO manager's cores are built on, has the same map and keeps the fault. No image of ours executes an `lr` or an `sc` (Zephyr's atomics are the compiler's own, which are `amo*` instructions), and Zephyr's RISC-V port has no `sc` on its way out of a trap to count on.
+- **Upstream fix**: the same, with one address and a flag where the map is, and in the other two harts. ⚠️ Not done, and each wants its own look. **A reset** leaves the reservation where it was, where the specification says there is none after one. **The reservation is on the virtual address**: the interpreter hands over the register as it is, and the `RES` space never reaches the MMU, which matters only if the address's translation changes between the `lr` and the `sc` with no `sc` in between. **`lr` with `x0` for its destination** makes no reservation and replaces none (`src/vm/interp/vm_rv64gc.cpp` has the whole of it inside `if(rd != 0)`). A store by another hart to the reserved word, which there is none of here. And a trap or an `xRET` clears nothing, on purpose: the specification allows that, and a hart that keeps a reservation across a trap is the one that shows a kernel which forgot its `sc`.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

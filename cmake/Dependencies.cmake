@@ -191,6 +191,8 @@ FetchContent_Declare(dbt_rise_riscv
   # set four bits that are machine mode's alone. fp-status: no instruction
   # looked at `mstatus.FS`, so floating point was never off and its state
   # never dirty. flw-address: `flw` and `fsw` cut their address to 32 bits.
+  # one-reservation: a hart kept a reservation for every address it had
+  # loaded reserved, and a store-conditional gave up only its own address's.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -215,6 +217,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-sstatus-view.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-fp-status.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-flw-address.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-one-reservation.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
