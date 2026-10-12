@@ -1,0 +1,34 @@
+# The suites firmware/twister.sh --suites runs, on every board: the
+# board-compliance run. A line is a suite's directory, in this repository
+# if there is one of that name and in Zephyr's tree if not, and then any
+# flags that one suite needs. The suites with no flags are run together,
+# in one run of twister; a suite with flags gets a run of its own.
+#
+# -K (--force-platform) runs a suite on a board its own list of platforms
+# leaves out. Zephyr's samples and its RISC-V fatal-error test name the
+# boards they are for, and ours are not among them.
+#
+# What is left out of a suite, and why, is in firmware/twister-quarantine.yaml.
+
+# The kernel: threads, the scheduler, time, and what happens when it all
+# goes wrong.
+tests/kernel/common
+tests/kernel/threads/thread_apis
+tests/kernel/sched/schedule_api
+tests/kernel/timer/timer_api
+tests/kernel/sleep
+tests/kernel/context
+tests/kernel/workq/work
+tests/kernel/fatal/exception
+tests/arch/riscv/fatal -K
+
+# The watchdog, which resets the CPU and expects to come back.
+tests/drivers/watchdog/wdt_basic_api
+
+# The console both ways, and the C library.
+tests/subsys/shell/shell
+tests/lib/c_lib
+
+# Two samples, judged by what they print.
+samples/hello_world -K
+samples/synchronization -K
