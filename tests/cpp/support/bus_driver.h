@@ -96,6 +96,18 @@ class BusDriver : public sc_core::sc_module {
     return Transport(tlm::TLM_READ_COMMAND, address, data, lead);
   }
 
+  // A 64-bit write from a master that is running `lead` ahead of the
+  // simulation's clock. Returns the master's own time when the write comes
+  // back: the clock's, and however far ahead of it the master then is.
+  sc_core::sc_time Write64Ahead(std::uint64_t address, std::uint64_t value,
+                                const sc_core::sc_time& lead) {
+    sc_core::sc_time ahead = lead;
+    TransportAhead(tlm::TLM_WRITE_COMMAND, address,
+                   socpuppet::WriteData(socpuppet::LittleEndianBytes(value)),
+                   ahead);
+    return sc_core::sc_time_stamp() + ahead;
+  }
+
   void WaitFor(const sc_core::sc_time& duration) { wait(duration); }
 
   // Debug transport: an access that takes no simulated time and has no side
@@ -135,9 +147,18 @@ class BusDriver : public sc_core::sc_module {
       tlm::tlm_command command, std::uint64_t address,
       std::span<std::uint8_t> data,
       sc_core::sc_time delay = sc_core::SC_ZERO_TIME) {
+    return TransportAhead(command, address, data, delay);
+  }
+
+  // `ahead` goes in as how far ahead of the simulation's clock the master
+  // is, and comes back as how far ahead of it the master is afterwards.
+  tlm::tlm_response_status TransportAhead(tlm::tlm_command command,
+                                          std::uint64_t address,
+                                          std::span<std::uint8_t> data,
+                                          sc_core::sc_time& ahead) {
     tlm::tlm_generic_payload transaction;
     socpuppet::SetUpAccess(transaction, command, address, data);
-    socket->b_transport(transaction, delay);
+    socket->b_transport(transaction, ahead);
     direct_memory_was_offered_ = transaction.is_dmi_allowed();
     return transaction.get_response_status();
   }

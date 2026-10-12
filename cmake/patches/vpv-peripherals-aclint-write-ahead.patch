@@ -1,0 +1,17 @@
+diff --git a/minres/aclint.cpp b/minres/aclint.cpp
+--- a/minres/aclint.cpp
++++ b/minres/aclint.cpp
+@@ -36,8 +36,12 @@ aclint::aclint(sc_module_name nm, size_t num_cpus)
+         return false;
+     });
+     auto mtime_write_cb_with_wait = [this](const sc_register<uint64_t>& reg, const uint64_t data, sc_time& d) -> bool {
+-        if(d.value())
++        if(d.value()) {
+             wait(d);
++            // The delay is how far ahead of the clock the writer was, and the clock has now caught up with it. Handed
++            // back as it came, it would be counted a second time, as a write that took that long.
++            d = SC_ZERO_TIME;
++        }
+         if(!regs->in_reset()) {
+             reg.put(data);
+             this->update_mtime();

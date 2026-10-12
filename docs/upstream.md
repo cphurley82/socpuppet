@@ -413,7 +413,7 @@ Each entry says:
 Two more things read in the same file and not acted on:
 
 - `const int lfclk_mutiplier = 10; // hardcoded for unit test` is declared and never used.
-- The write callbacks for `mtimecmp` and `msip` call `wait()` when the access arrives with a delay, so they only work when the write comes from a SystemC thread. A write from a method would be a SystemC error.
+- The write callbacks for `mtimecmp` and `msip` call `wait()` when the access arrives with a delay, so they only work when the write comes from a SystemC thread. A write from a method would be a SystemC error. What they do with the delay afterwards is an entry of its own, below: "The ACLINT charges a writer that is ahead of the clock for its lead a second time".
 
 ### The ACLINT wakes for every tick once anything reads its count as a signal
 
@@ -434,6 +434,16 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: bring `last_updt` up to now before the written value is stored, so that nothing is owed.
 - **Kind**: bug.
 - **When it lands**: nothing to delete.
+
+### The ACLINT charges a writer that is ahead of the clock for its lead a second time
+
+- **Where**: `minres/aclint.cpp`, the write callback of `mtimecmp` (`mtime_write_cb_with_wait`), and the one of `msip`, which begins with the same two lines.
+- **What is wrong**: 🎓 a CPU model runs ahead of the simulation's clock, and says how far ahead it is in the delay of each bus access (temporal decoupling). A target may add its own latency to that delay. Or it may wait the delay out, so that the clock catches up with the writer, and then the delay is spent and has to go back as zero. This callback waits, and hands the delay back as it came. Its caller now has a clock that has moved on by its lead and a delay that still says the same lead, and DBT-RISE takes the two together for a write that took that long: `write_mem` in `core_complex.cpp` adds the cycles and moves its quantum keeper on by them. So every write to `mtimecmp` costs the CPU as much time as it happened to be ahead by, up to a quantum, with nothing executed in it. Firmware sees the count jump between reading it and setting a compare value worked out from it, so every wait ends late. A 64-bit hart sets the compare value in one write and a 32-bit one in three, and loses three times as much.
+- **How to see it**: `MachineTimerContract.AWriterAheadOfTheClockLosesNoTimeSettingTheCompareValue` in `tests/cpp/contracts/machine_timer_contract.h`, with the patch taken out: a writer 2 µs ahead of the clock at 5 µs has its write come back at 9 µs of its own time. And with a CPU, in `tests/cpp/platform/cpu_test.cpp`: in `WhenA32BitCpuAheadOfTheClockSetsItsCompareValueInThreeWrites` the timer's count moves on by 595 ticks across four instructions, which is three times the 19.7 µs the CPU is ahead by and the four ticks that are due, and in `WhenA64BitCpuAheadOfTheClockSetsItsCompareValueInOneWrite` by 199 across two. 🧦 It was met as Zephyr's own tests of time failing on the two 32-bit boards and passing on the host, with a quantum and a tick of 100 µs each: `kernel.context` ("idled for 113 ticks, expected 100"), `timer_api`, `sleep`, `workq` and the scheduler's time-slicing scenarios ([twister-spike.md](twister-spike.md)).
+- **What we do**: `cmake/patches/vpv-peripherals-aclint-write-ahead.patch` sets the delay to zero after the wait, in the callback of `mtimecmp`.
+- **Upstream fix**: the same, in the callback of `msip` as well, which no firmware of socpuppet's writes. It is what the project's own `sifive/uart_terminal.cpp` and `sifive/gpio.cpp` do after their waits (`wait(d); d = SC_ZERO_TIME;`), and what SystemC's `simple_target_socket` does. By reading, two more files that socpuppet does not build have the fault in another form: `sifive/pwm.cpp` and `sifive/uart.cpp` take the delay by value, so the first cannot hand a zero back and the second zeroes a copy.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
 
 ### The PLIC reads its last source's priority from past the end of an array
 

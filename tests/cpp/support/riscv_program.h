@@ -67,6 +67,10 @@ constexpr Word Bne(Word rs1, Word rs2, std::int32_t offset) {
          (((immediate >> 1) & 0xF) << 8) | (((immediate >> 11) & 1) << 7) |
          0x63;
 }
+// Store all 64 bits of rs2 at offset(rs1). Only a 64-bit core has it.
+constexpr Word Sd(Word rs2, Word rs1, std::int32_t offset) {
+  return Sb(rs2, rs1, offset) | (3 << 12);
+}
 // Load the 32-bit word at offset(rs1) into rd.
 constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
   return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x03;
@@ -395,6 +399,50 @@ inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
   program.push_back(Lw(kT4, kT3, lower));
   program.push_back(Sw(kT1, kT0, kResultOffset));
   program.push_back(Sw(kT4, kT0, kResultOffset + 4));
+  AppendSleepForEver(program);
+  return program;
+}
+
+// A program that counts down from `iterations` (as for
+// CountDownThenSleep), reads the low word of the machine timer's count at
+// `mtime` (as for ReadTimeThenTheTimersOwnCountThenSleep), sets the timer's
+// compare value at `mtimecmp` (a multiple of 4096 below 0x8000'0000), and
+// reads the count again. It stores the two counts as its result, the
+// earlier one first, and sleeps.
+//
+// It sets the compare value the way Zephyr does on a hart of `xlen` bits.
+// One of 64 writes it whole. One of 32 writes it in three: the high word
+// to all ones, so that no value in between can interrupt, then the low
+// word, then the high word. The value is all ones, a time too far off to
+// come.
+inline Program ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
+    std::uint64_t mtime, std::uint64_t mtimecmp, Word iterations, int xlen) {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  constexpr Word kT5 = 30;
+  constexpr Word kT6 = 31;
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const auto lower =
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+  Program program;
+  program.push_back(Auipc(kT0, 0));
+  program.push_back(Lui(kT3, upper));
+  program.push_back(Lui(kT6, static_cast<Word>(mtimecmp >> 12)));
+  program.push_back(Li(kT1, -1));
+  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Addi(kT2, kT2, -1));
+  program.push_back(Bne(kT2, kZero, -4));
+  program.push_back(Lw(kT4, kT3, lower));
+  if (xlen == 64) {
+    program.push_back(Sd(kT1, kT6, 0));
+  } else {
+    program.push_back(Sw(kT1, kT6, 4));
+    program.push_back(Sw(kT1, kT6, 0));
+    program.push_back(Sw(kT1, kT6, 4));
+  }
+  program.push_back(Lw(kT5, kT3, lower));
+  program.push_back(Sw(kT4, kT0, kResultOffset));
+  program.push_back(Sw(kT5, kT0, kResultOffset + 4));
   AppendSleepForEver(program);
   return program;
 }

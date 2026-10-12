@@ -658,6 +658,8 @@ struct CpuPlatformWithATimer {
   static constexpr std::uint64_t kTimerBase = 0x0200'0000;
   // Where the timer has its count.
   static constexpr std::uint64_t kMtime = kTimerBase + 0xBFF8;
+  // And the value it interrupts at.
+  static constexpr std::uint64_t kMtimecmp = kTimerBase + 0x4000;
 
   CpuPlatformWithATimer(std::uint64_t xlen, bool time_is_connected) {
     // The CPU runs up to 100 us ahead of the clock that the timer counts
@@ -746,6 +748,43 @@ TEST(WhenA32BitCpusTimeIsConnectedToItsTimer,
   with_timer.RunUntilAsleep();
 
   EXPECT_EQ(with_timer.ResultWord(), 0x5AU);
+}
+
+// Firmware reads the count, adds a wait to it and sets the compare value,
+// so time that goes missing between the read and the write is a wait that
+// ends late. The loop before is as in ReadTimeThenTheTimersOwnCount: it
+// leaves the CPU some 19 us ahead of the simulation's clock.
+TEST(WhenA32BitCpuAheadOfTheClockSetsItsCompareValueInThreeWrites,
+     TheTimersCountMovesOnByFourInstructionsFromOneReadToTheNext) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/32, /*time_is_connected=*/false};
+  with_timer.Load(
+      riscv::ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
+          CpuPlatformWithATimer::kMtime, CpuPlatformWithATimer::kMtimecmp,
+          /*iterations=*/4096, /*xlen=*/32));
+
+  with_timer.RunUntilAsleep();
+
+  const std::uint32_t before = with_timer.ResultWord(0);
+  const std::uint32_t after = with_timer.ResultWord(4);
+  // The three writes and a read: the timer counts once for each
+  // instruction.
+  EXPECT_EQ(after - before, 4U);
+}
+
+TEST(WhenA64BitCpuAheadOfTheClockSetsItsCompareValueInOneWrite,
+     TheTimersCountMovesOnByTwoInstructionsFromOneReadToTheNext) {
+  CpuPlatformWithATimer with_timer{/*xlen=*/64, /*time_is_connected=*/false};
+  with_timer.Load(
+      riscv::ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
+          CpuPlatformWithATimer::kMtime, CpuPlatformWithATimer::kMtimecmp,
+          /*iterations=*/4096, /*xlen=*/64));
+
+  with_timer.RunUntilAsleep();
+
+  const std::uint32_t before = with_timer.ResultWord(0);
+  const std::uint32_t after = with_timer.ResultWord(4);
+  // The write and a read: the timer counts once for each instruction.
+  EXPECT_EQ(after - before, 2U);
 }
 
 // A platform with a CPU, a RAM for its program, an IMSIC with the page for

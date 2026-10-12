@@ -270,7 +270,11 @@ FetchContent_Declare(vpv_peripherals
   GIT_REPOSITORY https://github.com/VP-Vibes/VPV-Peripherals.git
   GIT_TAG 8c70afcc74b7ac03ca822d8fbad0752ae6176a81 # 2026-09-23
   # aclint-time-zero: a timer compare value written at time zero was never
-  # acted on. The four for the PLIC: its last source's priority was read
+  # acted on.
+  # aclint-write-ahead: a CPU that set the compare value while it was ahead
+  # of the clock was charged the time it was ahead by a second time, so its
+  # clock jumped at every write.
+  # The four for the PLIC: its last source's priority was read
   # from past the end of an array; a source that was already pending when
   # it was enabled never interrupted; one whose line was still high when
   # its handler completed never interrupted again; and one whose line
@@ -285,6 +289,7 @@ FetchContent_Declare(vpv_peripherals
   # registers and nothing behind them. This adds the watchdog.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-last-source.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-look-again.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-plic-level-sources.patch

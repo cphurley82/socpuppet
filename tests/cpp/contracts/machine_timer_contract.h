@@ -259,6 +259,25 @@ TYPED_TEST_P(MachineTimerContract, TheCompareValueCanBeWrittenInTwoHalves) {
   EXPECT_EQ(compare, 0x0123'4567'89AB'CDEFU);
 }
 
+// A CPU model runs ahead of the simulation's clock and says by how much
+// with each access. A timer may let the clock catch up before it takes the
+// write, which costs the writer nothing: it is as far on as it was.
+TYPED_TEST_P(MachineTimerContract,
+             AWriterAheadOfTheClockLosesNoTimeSettingTheCompareValue) {
+  sc_core::sc_time the_writers_time_afterwards;
+
+  this->OnTheBus(
+      [&](BusDriver& bus) {
+        bus.WaitFor(this->Microseconds(5));
+        // To the writer it is 7 us.
+        the_writers_time_afterwards = bus.Write64Ahead(
+            this->kMtimecmp, std::uint64_t{1} << 62, this->Microseconds(2));
+      },
+      this->Microseconds(20));
+
+  EXPECT_EQ(the_writers_time_afterwards, this->Microseconds(7));
+}
+
 TYPED_TEST_P(MachineTimerContract, ACompareValueTooFarOffToEverComeIsAccepted) {
   this->OnTheBus(
       [&](BusDriver& bus) {
@@ -282,6 +301,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     MovingTheCompareValueAheadEndsTheInterrupt,
     MovingTheCompareValueAheadInTheInstantTheCountReachesItEndsTheInterrupt,
     TheCompareValueCanBeWrittenInTwoHalves,
+    AWriterAheadOfTheClockLosesNoTimeSettingTheCompareValue,
     ACompareValueTooFarOffToEverComeIsAccepted);
 
 #endif  // TESTS_CPP_CONTRACTS_MACHINE_TIMER_CONTRACT_H_
