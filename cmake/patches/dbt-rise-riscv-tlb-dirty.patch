@@ -1,12 +1,12 @@
 diff --git a/src/iss/mem/mmu.h b/src/iss/mem/mmu.h
-index 26e7f1c..53855a6 100644
+index 26e7f1c..ac43877 100644
 --- a/src/iss/mem/mmu.h
 +++ b/src/iss/mem/mmu.h
 @@ -249,6 +249,11 @@ template <typename PLAT> uint64_t mmu<PLAT>::virt2phys(iss::access_type access,
      reg_t pte{0};
      if(auto it = tlb.find(addr >> PGSHIFT); it != tlb.end()) {
          pte = it->second;
-+        // the entry may have been cached by a read, which needs the A bit only; a write still needs the D bit (Svade)
++        // the entry may have been cached by a read or a fetch, which need the A bit only; a write still needs the D bit (Svade)
 +        if(type == iss::access_type::WRITE && !(pte & PTE_D)) {
 +            CPPLOG(DEBUG) << "Page fault for address 0x" << std::hex << addr << ": unset D bit";
 +            throw_page_fault(type, addr);

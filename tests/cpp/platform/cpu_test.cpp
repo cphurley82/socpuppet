@@ -441,7 +441,7 @@ TEST(WhenAnInterruptArrivesAtALoadOnTheCoreWithSupervisorMode,
 }
 
 // Raises the line once a program has got to supervisor mode and gone to
-// sleep: twenty instructions, at 100 ns each.
+// sleep: up to thirty instructions, at 100 ns each.
 void RaiseOnceTheSupervisorSleeps(InterruptSource& device) {
   device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
   device.Raise();
@@ -1024,7 +1024,8 @@ TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
 // A platform for a program that runs under paging: the core with
 // supervisor mode, and 64 KiB of RAM with Sv39 page tables in it that a
 // test adds pages to. The CPU reaches the RAM through a probe that counts
-// the transactions.
+// the transactions, and a device on its bus can raise its supervisor
+// external interrupt.
 //
 // 🎓 Sv39 translates an address in three steps, nine bits of it at a time:
 // an entry of the first table leads to a second table, an entry of that to
@@ -1043,11 +1044,17 @@ struct CpuPlatformWithPages {
   // that they are not neighbours in the RAM.
   static constexpr std::uint64_t kFirstSparePage = kRamBase + 0x5000;
   static constexpr std::uint64_t kSecondSparePage = kRamBase + 0x7000;
+  // The device that interrupts, which is not in the RAM. A write to it
+  // quiets it.
+  static constexpr std::uint64_t kDevice = 0x1000'0000;
   // The first address of the top half, which is where the tables here
   // lead: the 512 pages from it up are the third table's to map.
   static constexpr std::uint64_t kTopHalf = 0xFFFF'FFC0'0000'0000;
   // From here up nothing is mapped until a test maps it.
   static constexpr std::uint64_t kSpareAddresses = kTopHalf + 0x2000;
+  // An address some way into the first page of those, for a test that
+  // looks at the address a fault names: it is not the page's own.
+  static constexpr std::uint64_t kInASparePage = kSpareAddresses + 0x18;
   // What a page of code is mapped with, and a page of data. Accessed, and
   // dirty where it is written: this hart takes a page fault at a page
   // that is not marked so, and marks none itself.
@@ -1059,18 +1066,28 @@ struct CpuPlatformWithPages {
   static constexpr riscv::Pages kPages{
       .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
 
-  CpuPlatformWithPages() : platform{CpuPlatformWithAProbe::WithAProbe()} {
+  // `interrupts` is what the device does. Left out, it never interrupts.
+  explicit CpuPlatformWithPages(
+      const std::function<void(InterruptSource&)>& interrupts =
+          [](InterruptSource&) {})
+      : platform{WithAProbeAndADeviceThat(interrupts)} {
     socpuppet::Config cpu = TheCoreWithSupervisorMode();
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     platform.Add("cpu", "dbt_rise_cpu", cpu);
-    platform.Add(
-        "bus", "router",
-        {{"outputs", 1}, {"out0.base", kRamBase}, {"out0.size", 0x1'0000}});
+    platform.Add("bus", "router",
+                 {{"outputs", 2},
+                  {"out0.base", kRamBase},
+                  {"out0.size", 0x1'0000},
+                  {"out1.base", kDevice},
+                  {"out1.size", 0x1000}});
     platform.Add("ram", "memory", {{"size", 0x1'0000}});
     platform.Add("probe", "counting_probe");
+    platform.Add("device", "interrupt_source");
     platform.Bind("cpu.socket", "probe.target");
     platform.Bind("probe.initiator", "bus.target");
     platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("bus.out1", "device.socket");
+    platform.Bind("device.line", "cpu.supervisor_irq");
     platform.Elaborate();
 
     // The way down to the third table: the top half starts at the first
@@ -1083,12 +1100,23 @@ struct CpuPlatformWithPages {
     Map(kPages.result, kResultPage, kData);
   }
 
-  // Maps the page at `virtual_address`, one of the 512 from kTopHalf up,
-  // onto the page of RAM at `physical`, with what `bits` allow there.
+  // The third table's entry for a page of RAM at `physical`, with what
+  // `bits` allow there, and how far into that table the entry is for the
+  // page at `virtual_address`, one of the 512 from kTopHalf up.
+  static constexpr std::uint64_t EntryFor(std::uint64_t physical,
+                                          std::uint64_t bits) {
+    return riscv::PageTableEntry(physical, bits | riscv::kPteValid);
+  }
+  static constexpr std::uint64_t PlaceOfTheEntryOf(
+      std::uint64_t virtual_address) {
+    return ((virtual_address - kTopHalf) / 0x1000) * 8;
+  }
+
+  // Maps the page at `virtual_address` onto the page at `physical`.
   void Map(std::uint64_t virtual_address, std::uint64_t physical,
            std::uint64_t bits) {
-    WriteEntry(kThirdTable, (virtual_address - kTopHalf) / 0x1000,
-               riscv::PageTableEntry(physical, bits | riscv::kPteValid));
+    Put(kThirdTable + PlaceOfTheEntryOf(virtual_address),
+        EntryFor(physical, bits));
   }
 
   // Maps the gigabyte the RAM is in onto itself, for code and for data,
@@ -1121,6 +1149,10 @@ struct CpuPlatformWithPages {
   // thousand.
   void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
 
+  int TimesTheHandlerRan() {
+    return platform.ModuleAt<InterruptSource>("device").TimesQuieted();
+  }
+
   // How many transactions the CPU has sent to the bus.
   std::uint64_t Transactions() {
     return platform.ModuleAt<CountingProbe>("probe").Transactions();
@@ -1138,6 +1170,13 @@ struct CpuPlatformWithPages {
   socpuppet::Platform platform;
 
  private:
+  static socpuppet::Registry WithAProbeAndADeviceThat(
+      const std::function<void(InterruptSource&)>& interrupts) {
+    socpuppet::Registry registry = CpuPlatformWithAProbe::WithAProbe();
+    AddInterruptSource(registry, "interrupt_source", interrupts);
+    return registry;
+  }
+
   void WriteEntry(std::uint64_t table, std::uint64_t index,
                   std::uint64_t entry) {
     Put(table + (index * 8), entry);
@@ -1203,9 +1242,7 @@ class WhenSupervisorModeUsesAnAddressNoPageIsMappedAt
 
 TEST_P(WhenSupervisorModeUsesAnAddressNoPageIsMappedAt,
        ItTakesThePageFaultOfThatUseWhichSaysTheAddress) {
-  // Some way into its page, so that the address is not the page's.
-  constexpr std::uint64_t kNotMapped =
-      CpuPlatformWithPages::kSpareAddresses + 0x18;
+  constexpr std::uint64_t kNotMapped = CpuPlatformWithPages::kInASparePage;
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
       CpuPlatformWithPages::kPages, kNotMapped, {GetParam().instruction}));
@@ -1253,8 +1290,7 @@ class WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow
 
 TEST_P(WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow,
        ItTakesThePageFaultOfThatUseWhichSaysTheAddress) {
-  constexpr std::uint64_t kAddress =
-      CpuPlatformWithPages::kSpareAddresses + 0x18;
+  constexpr std::uint64_t kAddress = CpuPlatformWithPages::kInASparePage;
   CpuPlatformWithPages with_pages;
   with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
                  CpuPlatformWithPages::kFirstSparePage, GetParam().bits);
@@ -1293,31 +1329,6 @@ INSTANTIATE_TEST_SUITE_P(
                                  {kLoad},
                                  riscv::kLoadPageFault}));
 
-// A hart keeps the translations it has worked out, so as not to walk the
-// tables for every access, and what it keeps of a page that has only been
-// read must not let a write by. A kernel that marks a page clean and
-// counts on the fault to hear that it was written would otherwise never
-// write it back.
-TEST(WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJustLoadedFrom,
-     TheStoreIsStillAPageFault) {
-  constexpr std::uint64_t kAddress =
-      CpuPlatformWithPages::kSpareAddresses + 0x18;
-  CpuPlatformWithPages with_pages;
-  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
-                 CpuPlatformWithPages::kFirstSparePage,
-                 riscv::kPteRead | riscv::kPteWrite | riscv::kPteAccessed);
-  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
-      CpuPlatformWithPages::kPages, kAddress, {kLoad, kStore}));
-
-  with_pages.RunUntilAsleep();
-
-  // The program stores the cause with one added, and zero for no trap.
-  const std::uint64_t why = with_pages.Result(0);
-  const std::uint64_t where = with_pages.Result(1);
-  EXPECT_EQ(why, riscv::kStorePageFault + 1);
-  EXPECT_EQ(where, kAddress);
-}
-
 // Supervisor mode's status register has a bit for each of two of those: a
 // kernel sets SUM for as long as it copies to or from a program's memory,
 // and MXR to read an instruction it has to emulate.
@@ -1335,10 +1346,9 @@ TEST_P(WhenSupervisorModeSetsTheStatusBitThatAllowsAUseOfAPage,
 
   with_pages.RunUntilAsleep();
 
-  const std::uint64_t why = with_pages.Result(0);
   const std::uint64_t every_instruction_ran = with_pages.Result(2);
-  EXPECT_EQ(why, 0U);
-  EXPECT_EQ(every_instruction_ran, 1U);
+  EXPECT_EQ(every_instruction_ran, 1U)
+      << "It trapped, and the cause with one added is " << with_pages.Result(0);
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1354,6 +1364,86 @@ INSTANTIATE_TEST_SUITE_P(
             riscv::kPteExecute | riscv::kPteAccessed,
             {riscv::Lui(riscv::kT0, riscv::kMakeExecutableReadableInUpper20),
              riscv::Csrs(riscv::kSstatus, riscv::kT0), kLoad}}));
+
+// A hart keeps the translations it has worked out, so as not to walk the
+// tables for every access, and what it keeps of a page that has only been
+// read must not let a write by. A kernel that marks a page clean and
+// counts on the fault to hear that it was written would otherwise never
+// write it back.
+TEST(WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJustLoadedFrom,
+     TheStoreIsStillAPageFaultWhichSaysTheAddress) {
+  constexpr std::uint64_t kAddress = CpuPlatformWithPages::kInASparePage;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
+                 CpuPlatformWithPages::kFirstSparePage,
+                 riscv::kPteRead | riscv::kPteWrite | riscv::kPteAccessed);
+  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
+      CpuPlatformWithPages::kPages, kAddress, {kLoad, kStore}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  EXPECT_EQ(why, riscv::kStorePageFault + 1);
+  EXPECT_EQ(where, kAddress);
+}
+
+// A kernel moves a page by changing its entry, and a hart that keeps
+// translations goes on using the old one until it is told to forget.
+TEST(WhenAProgramChangesWhereAPageItHasUsedLeadsAndExecutesSfenceVma,
+     ItsNextLoadIsFromWhereTheEntryNowLeads) {
+  constexpr std::uint64_t kAddress = CpuPlatformWithPages::kSpareAddresses;
+  // The third table itself, where the program can write it.
+  constexpr std::uint64_t kTable = kAddress + 0x1000;
+  constexpr std::uint64_t kInTheFirstPage = 0x1111'1111'1111'1111;
+  constexpr std::uint64_t kInTheSecondPage = 0x2222'2222'2222'2222;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(kAddress, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kData);
+  with_pages.Map(kTable, CpuPlatformWithPages::kThirdTable,
+                 CpuPlatformWithPages::kData);
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage, kInTheFirstPage);
+  with_pages.Put(CpuPlatformWithPages::kSecondSparePage, kInTheSecondPage);
+  with_pages.Load(riscv::LoadChangeAnEntryAndLoadAgain(
+      CpuPlatformWithPages::kPages, kAddress,
+      kTable + CpuPlatformWithPages::PlaceOfTheEntryOf(kAddress),
+      CpuPlatformWithPages::EntryFor(CpuPlatformWithPages::kSecondSparePage,
+                                     CpuPlatformWithPages::kData)));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t loaded_before = with_pages.Result(0);
+  const std::uint64_t loaded_after = with_pages.Result(1);
+  // The page did lead somewhere else at first, which is what makes the
+  // second load a test of anything.
+  EXPECT_EQ(loaded_before, kInTheFirstPage);
+  EXPECT_EQ(loaded_after, kInTheSecondPage);
+}
+
+// A load from a page the hart has no translation for yet is several loads,
+// from the page tables and then from the page. M13 found a core that
+// dropped a load an interrupt arrived at, and a kernel's interrupts arrive
+// at loads like this one all the time.
+TEST(WhenAnInterruptArrivesAtALoadFromAPageTheHartHasNotUsedYet,
+     TheLoadIsStillExecutedAndTheHandlerRunsOnce) {
+  constexpr std::uint64_t kAddress = CpuPlatformWithPages::kSpareAddresses;
+  constexpr std::uint64_t kDeviceAddress = kAddress + 0x1000;
+  constexpr std::uint64_t kInThePage = 0x1234'5678'9ABC'DEF0;
+  CpuPlatformWithPages with_pages{RaiseOnceTheSupervisorSleeps};
+  with_pages.Map(kAddress, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kData);
+  with_pages.Map(kDeviceAddress, CpuPlatformWithPages::kDevice,
+                 CpuPlatformWithPages::kData);
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage, kInThePage);
+  with_pages.Load(riscv::TakeAnInterruptAtALoadThatWalksThePageTables(
+      CpuPlatformWithPages::kPages, kAddress, kDeviceAddress));
+
+  with_pages.RunUntilAsleep();
+
+  EXPECT_EQ(with_pages.Result(), kInThePage);
+  EXPECT_EQ(with_pages.TimesTheHandlerRan(), 1);
+}
 
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;

@@ -238,6 +238,10 @@ constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
                                        std::uint64_t bits) {
   return ((leads_to >> 12) << 10) | bits;
 }
+// Have the hart forget every translation it has kept, so that the next
+// use of an address walks the page tables again. A kernel executes it
+// after it has changed an entry.
+inline constexpr Word kSfenceVma = 0x1200'0073;
 // Return from a call, in the two bytes a compressed instruction takes.
 inline constexpr std::uint16_t kCompressedRet = 0x8082;
 // Return from a trap handler to where the trap was taken.
@@ -863,6 +867,63 @@ inline Program StoreWhyAndWhereAccessesTrap(const Pages& at,
   program.Load(kT2, at.result);
   program.Emit({Sd(kT1, kT2, 0), Csrr(kT1, kStval), Sd(kT1, kT2, 8)});
   AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in supervisor mode under paging, changes a page-table
+// entry it has just used, as a kernel does when it moves a page. It loads
+// the word at `address`, writes `entry` to the place in a page table at
+// the virtual address `entry_at`, executes `sfence.vma`, and loads the
+// word at `address` again. Its result is the two words it loaded. Then it
+// sleeps.
+inline Program LoadChangeAnEntryAndLoadAgain(const Pages& at,
+                                             std::uint64_t address,
+                                             std::uint64_t entry_at,
+                                             std::uint64_t entry) {
+  Assembler program;
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Load(kT1, address);
+  program.Load(kT2, at.result);
+  program.Emit({Ld(kT0, kT1, 0), Sd(kT0, kT2, 0)});
+  program.Load(kT0, entry);
+  program.Load(kT3, entry_at);
+  program.Emit({Sd(kT0, kT3, 0), kSfenceVma, Ld(kT0, kT1, 0), Sd(kT0, kT2, 8)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that has the supervisor external interrupt arrive, in
+// supervisor mode under paging, at a load from `address`, a page that
+// nothing has used yet, so that the hart has the page tables to walk for
+// it. It stores what the load got as its result.
+//
+// As TakeTheExternalInterruptAtALoadOfItsOwnFirstWord does, it enables the
+// interrupt, sleeps with interrupts as a whole switched off until the line
+// is high, and then switches them on, so that the interrupt arrives at the
+// very next instruction, which is the load. Its handler quiets the device
+// at the virtual address `device` by writing to it, and returns to the
+// store after the load.
+inline Program TakeAnInterruptAtALoadThatWalksThePageTables(
+    const Pages& at, std::uint64_t address, std::uint64_t device) {
+  Assembler program;
+  program.Emit({Li(kT1, 1), Slli(kT1, kT1, kSupervisorExternalInterrupt),
+                Csrs(kMideleg, kT1)});
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  const Assembler::Constant handler = program.Load(kT1);
+  program.Emit({Csrw(kStvec, kT1), Li(kT1, 1),
+                Slli(kT1, kT1, kSupervisorExternalInterrupt), Csrs(kSie, kT1)});
+  program.Load(kT1, address);
+  program.Load(kT2, at.result);
+  program.Emit({kWfi, Li(kT3, 1 << kSupervisorInterruptsOn),
+                // What the load would leave untouched, if it did not
+                // happen.
+                Li(kT0, 0), Csrs(kSstatus, kT3), Ld(kT0, kT1, 0),
+                Sd(kT0, kT2, 0)});
+  AppendSleepForEver(program);
+
+  program.Set(handler, at.code + program.Here());
+  program.Load(kT4, device);
+  program.Emit({Sw(kZero, kT4, 0), kSret});
   return program.Assemble();
 }
 
