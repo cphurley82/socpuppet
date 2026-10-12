@@ -202,11 +202,17 @@ inline constexpr Word kScause = 0x142;
 inline constexpr Word kStval = 0x143;
 // The register that turns paging on: which kind of page table, in its top
 // four bits, and the number of the page the first table is in. 8 is Sv39,
-// tables of three levels that translate an address of 39 bits.
+// tables of three levels that translate an address of 39 bits, and 9 and
+// 10 are Sv48 and Sv57, of four levels and five.
 inline constexpr Word kSatp = 0x180;
-constexpr std::uint64_t SatpForSv39(std::uint64_t root_table) {
-  return (std::uint64_t{8} << 60) | (root_table >> 12);
+constexpr std::uint64_t Satp(std::uint64_t kind, std::uint64_t root_table) {
+  return (kind << 60) | (root_table >> 12);
 }
+constexpr std::uint64_t SatpForSv39(std::uint64_t root_table) {
+  return Satp(8, root_table);
+}
+// Its sixteen bits between those two, for an address-space identifier.
+inline constexpr std::uint64_t kSatpIdentifier = std::uint64_t{0xFFFF} << 44;
 // An entry of a page table: the number of the page it leads to, ten bits
 // up, over bits that say what the entry is. Valid alone is a pointer to
 // the next table down. With any of read, write and execute it is a page,
@@ -843,6 +849,39 @@ inline Program StoreWhyAndWhereAnAccessTraps(const Pages& at,
   program.Emit({Csrr(kT1, kScause), Addi(kT1, kT1, 1)});
   program.Load(kT2, at.result);
   program.Emit({Sd(kT1, kT2, 0), Csrr(kT1, kStval), Sd(kT1, kT2, 8)});
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in machine mode, where `satp` translates nothing,
+// stores what `satp` reads as before anything has written it, and then
+// writes each of `values` to it in turn and stores what it reads as after
+// each. Its result is those words, at `result`. Then it sleeps.
+inline Program StoreWhatSatpReadsAsBeforeAndAfterWriting(
+    std::initializer_list<std::uint64_t> values, std::uint64_t result) {
+  Assembler program;
+  program.Load(kT2, result);
+  program.Emit({Csrr(kT1, kSatp), Sd(kT1, kT2, 0)});
+  std::int32_t next = 8;
+  for (const std::uint64_t value : values) {
+    program.Load(kT1, value);
+    program.Emit({Csrw(kSatp, kT1), Csrr(kT1, kSatp), Sd(kT1, kT2, next)});
+    next += 8;
+  }
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in supervisor mode under paging, counts down from
+// `iterations` (above zero) to one, storing the count as its result each
+// time round: three instructions, one of them a store. Then it sleeps.
+inline Program CountDownUnderPagingStoringEachCount(const Pages& at,
+                                                    std::uint64_t iterations) {
+  Assembler program;
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Load(kT2, at.result);
+  program.Load(kT1, iterations);
+  program.Emit({Sd(kT1, kT2, 0), Addi(kT1, kT1, -1), Bne(kT1, kZero, -8)});
   AppendSleepForEver(program);
   return program.Assemble();
 }

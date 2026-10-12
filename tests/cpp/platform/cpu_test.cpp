@@ -1023,7 +1023,8 @@ TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
 
 // A platform for a program that runs under paging: the core with
 // supervisor mode, and 64 KiB of RAM with Sv39 page tables in it that a
-// test adds pages to.
+// test adds pages to. The CPU reaches the RAM through a probe that counts
+// the transactions.
 //
 // 🎓 Sv39 translates an address in three steps, nine bits of it at a time:
 // an entry of the first table leads to a second table, an entry of that to
@@ -1058,7 +1059,7 @@ struct CpuPlatformWithPages {
   static constexpr riscv::Pages kPages{
       .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
 
-  CpuPlatformWithPages() {
+  CpuPlatformWithPages() : platform{CpuPlatformWithAProbe::WithAProbe()} {
     socpuppet::Config cpu = TheCoreWithSupervisorMode();
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     platform.Add("cpu", "dbt_rise_cpu", cpu);
@@ -1066,7 +1067,9 @@ struct CpuPlatformWithPages {
         "bus", "router",
         {{"outputs", 1}, {"out0.base", kRamBase}, {"out0.size", 0x1'0000}});
     platform.Add("ram", "memory", {{"size", 0x1'0000}});
-    platform.Bind("cpu.socket", "bus.target");
+    platform.Add("probe", "counting_probe");
+    platform.Bind("cpu.socket", "probe.target");
+    platform.Bind("probe.initiator", "bus.target");
     platform.Bind("bus.out0", "ram.socket");
     platform.Elaborate();
 
@@ -1113,8 +1116,15 @@ struct CpuPlatformWithPages {
                         std::as_bytes(std::span{program}));
   }
 
-  // Any program here is a few dozen instructions and then asleep.
+  // Any program here is asleep within a millisecond. Most are a few dozen
+  // instructions, at 100 ns each, and the longest is a loop of some six
+  // thousand.
   void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
+
+  // How many transactions the CPU has sent to the bus.
+  std::uint64_t Transactions() {
+    return platform.ModuleAt<CountingProbe>("probe").Transactions();
+  }
 
   // The word of 64 bits that a program left as its result, or the
   // `index`th of several, read where the RAM has it.
@@ -1125,7 +1135,7 @@ struct CpuPlatformWithPages {
     return socpuppet::LoadLittleEndian<std::uint64_t>(word);
   }
 
-  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+  socpuppet::Platform platform;
 
  private:
   void WriteEntry(std::uint64_t table, std::uint64_t index,
@@ -1193,6 +1203,7 @@ class WhenSupervisorModeUsesAnAddressNoPageIsMappedAt
 
 TEST_P(WhenSupervisorModeUsesAnAddressNoPageIsMappedAt,
        ItTakesThePageFaultOfThatUseWhichSaysTheAddress) {
+  // Some way into its page, so that the address is not the page's.
   constexpr std::uint64_t kNotMapped =
       CpuPlatformWithPages::kSpareAddresses + 0x18;
   CpuPlatformWithPages with_pages;
@@ -1217,6 +1228,97 @@ INSTANTIATE_TEST_SUITE_P(
                        riscv::kStorePageFault},
         UseOfAnAddress{"a jump", riscv::Jalr(riscv::kZero, riscv::kT1, 0),
                        riscv::kInstructionPageFault}));
+
+TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
+  CpuPlatformWithPages with_pages;
+  // The RAM starts as zeros, which a program that stored nothing would
+  // leave looking like the answer.
+  with_pages.Put(CpuPlatformWithPages::kResultPage, ~std::uint64_t{0});
+  with_pages.Load(riscv::StoreWhatSatpReadsAsBeforeAndAfterWriting(
+      {}, CpuPlatformWithPages::kResultPage));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t at_first = with_pages.Result(0);
+  EXPECT_EQ(at_first, 0U);
+}
+
+// 🎓 An address-space identifier is a number a kernel gives each program,
+// in sixteen bits of `satp`, so that a hart can keep one program's
+// translations while it runs another. A hart may have fewer bits of it
+// than sixteen, or none, and a kernel finds out how many by writing ones
+// and reading them back. This hart keeps translations by address alone,
+// so it has to say none.
+TEST(WhenSatpIsWrittenWithAnAddressSpaceIdentifier,
+     TheIdentifierReadsBackAsZeroAndTheRestAsWritten) {
+  constexpr std::uint64_t kPagingOn =
+      riscv::SatpForSv39(CpuPlatformWithPages::kFirstTable);
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreWhatSatpReadsAsBeforeAndAfterWriting(
+      {kPagingOn | riscv::kSatpIdentifier}, CpuPlatformWithPages::kResultPage));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t once_written = with_pages.Result(1);
+  EXPECT_EQ(once_written, kPagingOn);
+}
+
+// A kind of paging, by the number that asks for it in `satp`.
+struct KindOfPaging {
+  const char* name;
+  std::uint64_t number;
+};
+
+void PrintTo(const KindOfPaging& kind, std::ostream* out) { *out << kind.name; }
+
+// A kernel asks for the biggest kind of paging it knows and looks at what
+// the hart kept, and Linux knows Sv57. This hart has Sv39 and no other,
+// as most chips have, so that Sv39 is what a kernel ends up with.
+class WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot
+    : public ::testing::TestWithParam<KindOfPaging> {};
+
+TEST_P(WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot, ItKeepsWhatItHad) {
+  constexpr std::uint64_t kPagingOn =
+      riscv::SatpForSv39(CpuPlatformWithPages::kFirstTable);
+  // With another table than the first write's, so that a hart which kept
+  // its kind of paging and took the rest would not pass.
+  const std::uint64_t another_kind_and_table =
+      riscv::Satp(GetParam().number, CpuPlatformWithPages::kSecondTable);
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreWhatSatpReadsAsBeforeAndAfterWriting(
+      {kPagingOn, another_kind_and_table}, CpuPlatformWithPages::kResultPage));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t after_the_second_write = with_pages.Result(2);
+  EXPECT_EQ(after_the_second_write, kPagingOn);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachKind, WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot,
+    ::testing::Values(KindOfPaging{"Sv48", 9}, KindOfPaging{"Sv57", 10},
+                      KindOfPaging{"one the standard keeps back", 11},
+                      KindOfPaging{"one the standard has not got", 15}));
+
+// Direct access is to the RAM, by the addresses the RAM has, and a
+// translation ends in one of those. So paging costs a program none of it.
+TEST(WhenAProgramUnderPagingLoopsInAMemoryThatOffersDirectAccess,
+     TheCpuStillDoesNotUseTheBusForIt) {
+  // As many as the millisecond that RunUntilAsleep runs for has room for.
+  constexpr std::uint64_t kIterations = 2048;
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::CountDownUnderPagingStoringEachCount(
+      CpuPlatformWithPages::kPages, kIterations));
+
+  // Three instructions each time round, at 100 ns an instruction: 0.6 ms.
+  with_pages.RunUntilAsleep();
+
+  // The loop finished: the last count it stored is one.
+  ASSERT_EQ(with_pages.Result(), 1U);
+  // Without direct access every fetch and every store is a transaction,
+  // four each time round.
+  EXPECT_LT(with_pages.Transactions(), kIterations);
+}
 
 // Two pages that follow each other in a program's addresses can be
 // anywhere in the RAM, and an instruction of four bytes can begin two

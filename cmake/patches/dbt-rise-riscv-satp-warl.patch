@@ -1,0 +1,80 @@
+diff --git a/src/iss/mem/mmu.h b/src/iss/mem/mmu.h
+index 7c6eb7f..26e7f1c 100644
+--- a/src/iss/mem/mmu.h
++++ b/src/iss/mem/mmu.h
+@@ -79,6 +79,8 @@ template <typename PLAT> struct mmu : public memory_elem {
+ 
+     constexpr static reg_t PGSIZE = 1 << PGSHIFT;
+     constexpr static reg_t PGMASK = PGSIZE - 1;
++    // the ASID field of satp: 16 bits at bit 44 for RV64, 9 bits at bit 22 for RV32
++    constexpr static reg_t ASID_MASK = sizeof(reg_t) == 8 ? static_cast<reg_t>(0xffffULL << 44) : static_cast<reg_t>(0x1ffULL << 22);
+ 
+     mmu(arch::priv_if<reg_t> hart_if)
+     : hart_if(hart_if) {
+@@ -183,14 +185,19 @@ private:
+             return iss::Err;
+         }
+         CPPLOG(INFO) << "mmu: writing satp with 0x" << std::hex << val;
+-        satp = val;
+-        update_vm_info();
++        // satp is WARL. The TLB is keyed by the virtual page number alone, so there are no ASID bits: the field reads as zero. A
++        // MODE that is not implemented leaves the register as it was.
++        const reg_t before = satp;
++        satp = val & ~ASID_MASK;
++        if(!update_vm_info())
++            satp = before;
+         return iss::Ok;
+     }
+ 
+     uint64_t virt2phys(iss::access_type access, uint64_t addr);
+ 
+-    template <typename T = reg_t, std::enable_if_t<std::is_same_v<T, uint32_t>, bool> = true> inline void update_vm_info() {
++    // sets vm_setting from satp; returns false and leaves it alone if satp's MODE is not one that is implemented
++    template <typename T = reg_t, std::enable_if_t<std::is_same_v<T, uint32_t>, bool> = true> inline bool update_vm_info() {
+         switch(bit_sub<31, 1>(satp)) {
+         case 0:
+             vm_setting = {0, 0, 0, 0}; // off
+@@ -199,10 +206,11 @@ private:
+             vm_setting = {2, 10, 4, bit_sub<0, 22>(satp) << PGSHIFT}; // SV32
+             break;
+         default:
+-            abort();
++            return false;
+         }
++        return true;
+     }
+-    template <typename T = reg_t, std::enable_if_t<std::is_same_v<T, uint64_t>, bool> = true> inline void update_vm_info() {
++    template <typename T = reg_t, std::enable_if_t<std::is_same_v<T, uint64_t>, bool> = true> inline bool update_vm_info() {
+         switch(bit_sub<60, 4>(satp)) {
+         case 0:
+             vm_setting = {0, 0, 0, 0}; // off
+@@ -210,18 +218,10 @@ private:
+         case 8:
+             vm_setting = {3, 9, 8, bit_sub<0, 44>(satp) << PGSHIFT}; // SV39
+             break;
+-        case 9:
+-            vm_setting = {4, 9, 8, bit_sub<0, 44>(satp) << PGSHIFT}; // SV48
+-            break;
+-        case 10:
+-            vm_setting = {5, 9, 8, bit_sub<0, 44>(satp) << PGSHIFT}; // SV57
+-            break;
+-        case 11:
+-            vm_setting = {6, 9, 8, bit_sub<0, 44>(satp) << PGSHIFT}; // SV64
+-            break;
+         default:
+-            abort();
++            return false;
+         }
++        return true;
+     }
+     void throw_page_fault(iss::access_type type, uint64_t bad_addr) {
+         switch(type) {
+@@ -237,7 +237,7 @@ private:
+     }
+ 
+ protected:
+-    reg_t satp;
++    reg_t satp{0};
+     std::unordered_map<reg_t, uint64_t> tlb;
+     vm_info vm_setting{0, 0, 0, 0};
+     arch::priv_if<reg_t> hart_if;

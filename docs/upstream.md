@@ -402,6 +402,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### `satp` keeps an address-space identifier the MMU ignores, and a mode it has not got ends the process
+
+- **Where**: `src/iss/mem/mmu.h`, `write_satp`, `update_vm_info` and the member `satp`.
+- **What is wrong**: three things about one register. 🎓 `satp` is WARL: software may write anything to it, and what it reads back is what the hart can do, which is how a kernel finds out. (1) `write_satp` keeps the whole value, so the bits of the address-space identifier, sixteen of them (nine on a 32-bit hart), read back as written, while the TLB is a map from a page's number to its translation with no identifier in it. Linux writes ones to the field and reads them back to count how many identifiers a hart has, and with enough of them (more than twice its CPUs, which sixteen bits always is) it stops emptying the TLB when it switches from one program to another: each program would then be run with the other's translations. With none it empties the TLB at every switch, with an `sfence.vma`, which this MMU answers by emptying all of it. (2) `update_vm_info` calls `abort()` for a mode it has no case for, where the specification has such a write change nothing. A kernel that asks for a mode to see whether it is there takes the simulator down with it. (3) The member has no initial value, so `satp` reads as whatever was in memory until something writes it.
+- **How to see it**: in machine mode, write `satp` with Sv39 and every bit of the identifier set, and read it back; then write it with 15 in its top four bits (`WhenSatpIsWrittenWithAnAddressSpaceIdentifier` and `WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot` in `tests/cpp/platform/cpu_test.cpp`). The third is seen by reading: memory that was never written is zero as often as not, and `WhenNothingHasWrittenSatp` holds the value now that there is one.
+- **What we do**: `cmake/patches/dbt-rise-riscv-satp-warl.patch`: the identifier's bits are cleared from what is kept, a mode with no case leaves the register as it was, and the member starts at zero. ⚠️ The 32-bit half of the first, nine bits at bit 22, is by reading: socpuppet builds no 32-bit core with an MMU. ⚠️ **And one thing that is ours and not a fault of theirs**: the patch takes the cases for Sv48, Sv57 and mode 11 out of `update_vm_info`, so that this hart has Sv39 and no other. Nothing here has run a walk of four or five levels, Linux asks for Sv57 first and keeps whatever reads back, and a kernel is the wrong place to run a path for the first time. A hart with Sv39 only is what most chips are. To have the others back, put the three cases back and test them.
+- **Upstream fix**: the first three as they are, or an identifier in the TLB's key and as many bits of it in `satp`. The call of `update_vm_info` in `virt2phys`, at every miss of the TLB, is not needed once `satp` can only hold a mode it knows. Mode 11, which it takes as "SV64", is one the specification keeps back.
+- **Kind**: bug.
+- **When it lands**: drop the patch, and decide again about Sv48 and Sv57.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

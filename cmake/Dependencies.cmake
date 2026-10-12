@@ -170,7 +170,10 @@ FetchContent_Declare(dbt_rise_riscv
   # data was translated, and one that lay across two pages got its second
   # half from the first page again. fetch-ends-page: a two-byte instruction
   # that ended a page took a page fault for the page after, which it had
-  # no use for.
+  # no use for. satp-warl: `satp` kept an address-space identifier that the
+  # MMU then ignored, read as whatever was in memory until it was written,
+  # and ended the process when written with a mode the MMU has not got. It
+  # also takes Sv48 and Sv57 away, which is ours: no test here runs them.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -184,6 +187,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-mip-read-only.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-translate-fetches.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-fetch-ends-page.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-satp-warl.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
