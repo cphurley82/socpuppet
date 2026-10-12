@@ -787,6 +787,17 @@ TEST(WhenA64BitCpuAheadOfTheClockSetsItsCompareValueInOneWrite,
   EXPECT_EQ(after - before, 2U);
 }
 
+// What a test may ask of a CpuPlatformWithAnImsic.
+struct ImsicPlatformSetup {
+  // How far ahead of the simulation's clock the CPU may run.
+  sc_core::sc_time quantum = sc_core::SC_ZERO_TIME;
+  // Whether the device writes its message to the page for supervisor mode,
+  // where otherwise it writes to machine mode's.
+  bool to_the_supervisors_page = false;
+  // The core's extras, as for TheCoreWithSupervisorMode.
+  socpuppet::Config core = TheCoreWithSupervisorMode();
+};
+
 // A platform with a CPU, a RAM for its program, an IMSIC with its two
 // pages for messages on the CPU's bus, one for machine mode and one for
 // supervisor mode, and a device on that bus that sends one message. The
@@ -798,14 +809,12 @@ struct CpuPlatformWithAnImsic {
   // The identity the device interrupts with.
   static constexpr std::uint32_t kIdentity = 5;
 
-  // `quantum` is how far ahead of the simulation's clock the CPU may run,
-  // and `page` is the one the device writes its message to.
-  explicit CpuPlatformWithAnImsic(
-      const sc_core::sc_time& quantum = sc_core::SC_ZERO_TIME,
-      std::uint64_t page = kMessagePage)
-      : platform{WithADeviceThatSendsAMessageTo(page)} {
-    platform.SetQuantum(quantum);
-    socpuppet::Config cpu = TheCoreWithSupervisorMode();
+  explicit CpuPlatformWithAnImsic(const ImsicPlatformSetup& setup = {})
+      : platform{WithADeviceThatSendsAMessageTo(setup.to_the_supervisors_page
+                                                    ? kSupervisorsMessagePage
+                                                    : kMessagePage)} {
+    platform.SetQuantum(setup.quantum);
+    socpuppet::Config cpu = setup.core;
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     platform.Add("cpu", "dbt_rise_cpu", cpu);
     platform.Add("bus", "router",
@@ -836,6 +845,11 @@ struct CpuPlatformWithAnImsic {
                         std::as_bytes(std::span{program}));
   }
 
+  // The message is sent at 5 us and a handler is a handful of
+  // instructions, so any program here is asleep again long before 1 ms,
+  // whatever the quantum.
+  void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
+
   // The word a program left `offset` bytes into its result.
   std::uint32_t ResultWord(std::uint64_t offset = 0) {
     return ResultWordOf(platform, kRamBase, offset);
@@ -862,8 +876,7 @@ TEST(WhenAMessageArrivesAtTheImsicOfACpuThatListensForItsIdentity,
   with_imsic.Load(
       riscv::HandleMessagesThroughAnImsic(CpuPlatformWithAnImsic::kIdentity));
 
-  // Two dozen instructions before the message and seven after it.
-  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+  with_imsic.RunUntilAsleep();
 
   const std::uint32_t claimed = with_imsic.ResultWord(0);
   const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
@@ -877,11 +890,12 @@ TEST(WhenAMessageArrivesAtTheImsicOfACpuThatListensForItsIdentity,
 // handler makes no bus access that would.
 TEST(WhenAMessageArrivesAtTheImsicOfACpuThatRunsAheadOfTheClock,
      TheHandlerStillRunsOnce) {
-  CpuPlatformWithAnImsic with_imsic{sc_core::sc_time{100, sc_core::SC_US}};
+  CpuPlatformWithAnImsic with_imsic{
+      {.quantum = sc_core::sc_time{100, sc_core::SC_US}}};
   with_imsic.Load(
       riscv::HandleMessagesThroughAnImsic(CpuPlatformWithAnImsic::kIdentity));
 
-  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+  with_imsic.RunUntilAsleep();
 
   const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
   EXPECT_EQ(times_the_handler_ran, 1U);
@@ -892,12 +906,11 @@ TEST(WhenAMessageArrivesAtTheImsicOfACpuThatRunsAheadOfTheClock,
 // claims from through supervisor mode's own three registers.
 TEST(WhenAMessageArrivesAtTheSupervisorsPageOfTheImsicOfACpuThatListensThere,
      TheSupervisorsHandlerRunsOnceAndClaimsTheMessagesIdentity) {
-  CpuPlatformWithAnImsic with_imsic{
-      sc_core::SC_ZERO_TIME, CpuPlatformWithAnImsic::kSupervisorsMessagePage};
+  CpuPlatformWithAnImsic with_imsic{{.to_the_supervisors_page = true}};
   with_imsic.Load(riscv::HandleMessagesInSupervisorModeThroughAnImsic(
       CpuPlatformWithAnImsic::kIdentity));
 
-  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+  with_imsic.RunUntilAsleep();
 
   const std::uint32_t claimed = with_imsic.ResultWord(0);
   const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
@@ -905,7 +918,41 @@ TEST(WhenAMessageArrivesAtTheSupervisorsPageOfTheImsicOfACpuThatListensThere,
   EXPECT_EQ(times_the_handler_ran, 1U);
 }
 
-// A hart's three registers that are really its IMSIC's.
+// As for machine mode's handler: the claim is all that gives the rest of
+// the platform a turn before the supervisor's returns.
+TEST(WhenAMessageArrivesAtTheSupervisorsPageOfACpuThatRunsAheadOfTheClock,
+     TheSupervisorsHandlerStillRunsOnce) {
+  CpuPlatformWithAnImsic with_imsic{
+      {.quantum = sc_core::sc_time{100, sc_core::SC_US},
+       .to_the_supervisors_page = true}};
+  with_imsic.Load(riscv::HandleMessagesInSupervisorModeThroughAnImsic(
+      CpuPlatformWithAnImsic::kIdentity));
+
+  with_imsic.RunUntilAsleep();
+
+  const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
+  EXPECT_EQ(times_the_handler_ran, 1U);
+}
+
+// The two modes each select for themselves: an operating system that looks
+// at a register of its file does not move what the monitor under it was
+// looking at.
+TEST(WhenACpuWithAnImsicSelectsARegisterForEachOfItsTwoModes,
+     EachSelectionReadsBackAsItWasWritten) {
+  CpuPlatformWithAnImsic with_imsic;
+  with_imsic.Load(riscv::SelectForMachineModeThenForSupervisorModeAndStoreBoth(
+      /*for_machine_mode=*/riscv::kEidelivery,
+      /*for_supervisor_mode=*/riscv::kEie0));
+
+  with_imsic.RunUntilAsleep();
+
+  const std::uint32_t machine_modes = with_imsic.ResultWord(0);
+  const std::uint32_t supervisor_modes = with_imsic.ResultWord(4);
+  EXPECT_EQ(machine_modes, riscv::kEidelivery);
+  EXPECT_EQ(supervisor_modes, riscv::kEie0);
+}
+
+// One of a hart's registers that are really its IMSIC's.
 struct ImsicRegisterOfAHart {
   riscv::Word number;
   const char* name;
@@ -931,10 +978,35 @@ TEST_P(WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    TheThree, WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
+    TheThreeOfEachMode, WhenACpuWithNoImsicWritesARegisterAnImsicWouldAnswer,
     ::testing::Values(ImsicRegisterOfAHart{riscv::kMiselect, "miselect"},
                       ImsicRegisterOfAHart{riscv::kMireg, "mireg"},
-                      ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"}));
+                      ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"},
+                      ImsicRegisterOfAHart{riscv::kSiselect, "siselect"},
+                      ImsicRegisterOfAHart{riscv::kSireg, "sireg"},
+                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}));
+
+// The supervisor's three are a way to supervisor mode's file, and a hart
+// with no such mode has no use for one: its IMSIC's second file is nobody's.
+class WhenACpuWithAnImsicAndNoSupervisorModeWritesARegisterOfThatModes
+    : public ::testing::TestWithParam<ImsicRegisterOfAHart> {};
+
+TEST_P(WhenACpuWithAnImsicAndNoSupervisorModeWritesARegisterOfThatModes,
+       ItTakesAnIllegalInstructionTrap) {
+  CpuPlatformWithAnImsic with_imsic{{.core = {}}};
+  with_imsic.Load(riscv::StoreWhyWritingACsrTrapped(GetParam().number));
+
+  with_imsic.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  EXPECT_EQ(with_imsic.ResultWord(), riscv::kIllegalInstruction + 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TheThree, WhenACpuWithAnImsicAndNoSupervisorModeWritesARegisterOfThatModes,
+    ::testing::Values(ImsicRegisterOfAHart{riscv::kSiselect, "siselect"},
+                      ImsicRegisterOfAHart{riscv::kSireg, "sireg"},
+                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}));
 
 // An IMSIC's files can only be switched on through its hart.
 TEST(WhenAnImsicsWayInForItsHartGoesNowhere,

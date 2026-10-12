@@ -39,16 +39,16 @@ class DbtRiseCpu : public sc_core::sc_module {
   // socket. Left unconnected, `time` reads zero.
   tlm_utils::simple_initiator_socket<DbtRiseCpu> time{"time"};
   // Where the registers that are really its IMSIC's are reached: the ones
-  // firmware uses to say which interrupts it wants and to claim them
-  // (`miselect`, `mireg` and `mtopei`). It goes to an IMSIC's `csr`, and
-  // carries what models/hart_registers.h says. Left unconnected, the CPU
-  // has no such registers, and an instruction that names one is an illegal
-  // one.
+  // firmware uses to say which interrupts it wants and to claim them.
+  // There are three for machine mode (`miselect`, `mireg` and `mtopei`)
+  // and, on a core with supervisor mode, three for that mode (`siselect`,
+  // `sireg` and `stopei`), which an operating system under a monitor uses.
+  // It goes to an IMSIC's `csr`, and carries what models/hart_registers.h
+  // says. Left unconnected, the CPU has no such registers, and an
+  // instruction that names one is an illegal one.
   //
-  // What it leaves out: supervisor mode's three (`siselect`, `sireg` and
-  // `stopei`), which an operating system under a monitor uses and which
-  // an IMSIC here already answers for, the other registers the Advanced
-  // Interrupt Architecture gives a hart (`mtopi` and the rest), and a
+  // What it leaves out: the other registers the Advanced Interrupt
+  // Architecture gives a hart (`mtopi`, `stopi` and the rest), and a
   // 32-bit hart, whose registers of half the width an interrupt file here
   // has not got.
   tlm_utils::simple_initiator_socket<DbtRiseCpu> csr{"csr"};

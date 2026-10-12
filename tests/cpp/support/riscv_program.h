@@ -641,6 +641,28 @@ inline Program HandleMessagesInSupervisorModeThroughAnImsic(Word identity) {
                            Addi(kT4, kT4, 1), kSret});
 }
 
+// A program that, in machine mode, writes `for_machine_mode` to `miselect`
+// and then `for_supervisor_mode` to `siselect` (each below 2048), and
+// stores what the two then read as its result: `miselect`, and a word
+// after it `siselect`. Then it sleeps.
+inline Program SelectForMachineModeThenForSupervisorModeAndStoreBoth(
+    Word for_machine_mode, Word for_supervisor_mode) {
+  constexpr Word kT3 = 28;
+  Program program{
+      Auipc(kT3, 0),
+      Li(kT1, static_cast<std::int32_t>(for_machine_mode)),
+      Csrw(kMiselect, kT1),
+      Li(kT1, static_cast<std::int32_t>(for_supervisor_mode)),
+      Csrw(kSiselect, kT1),
+      Csrr(kT1, kMiselect),
+      Sw(kT1, kT3, kResultOffset),
+      Csrr(kT1, kSiselect),
+      Sw(kT1, kT3, kResultOffset + 4),
+  };
+  AppendSleepForEver(program);
+  return program;
+}
+
 // A program that writes to the control and status register numbered `csr`
 // and stores, as its result, why it trapped if it did: the trap's cause
 // with one added, so that a result of zero is no trap at all. Then it

@@ -79,8 +79,9 @@ struct CoreComplex : sysc::riscv::core_complex<> {
 //     are tied low.
 struct DbtRiseCpu::Core {
   Core(DbtRiseCpu& cpu, std::uint64_t xlen, const char* core_type,
-       std::uint64_t reset_vector, std::uint16_t gdb_port)
-      : cpu_(cpu), xlen_(xlen) {
+       bool has_supervisor_mode, std::uint64_t reset_vector,
+       std::uint16_t gdb_port)
+      : cpu_(cpu), xlen_(xlen), has_supervisor_mode_(has_supervisor_mode) {
     complex_.core_type.set_value(core_type);
     complex_.reset_address.set_value(reset_vector);
     // The GDB server is DBT-RISE's own, and each CPU that asks has one of
@@ -128,31 +129,31 @@ struct DbtRiseCpu::Core {
   }
 
   // Has the core's registers that are really its IMSIC's answered through
-  // `csr`: the window onto an interrupt file's registers and the register
-  // a claim is made through are sent on, and the register that selects
-  // what the window looks at is kept here. With no IMSIC there, each is
-  // answered with "no such register", which DBT-RISE makes an
-  // illegal-instruction trap, as it does for a register nobody answers
-  // for.
+  // `csr`, three for machine mode's interrupt file and, on a core with
+  // supervisor mode, three for that mode's: the window onto a file's
+  // registers and the register a claim is made through are sent on, and
+  // the register that selects what the window looks at is kept here, one
+  // for each mode. With no IMSIC there, each is answered with "no such
+  // register", which DBT-RISE makes an illegal-instruction trap, as it
+  // does for a register nobody answers for.
   void AnswerTheImsicsRegistersThroughCsr() {
     // DBT-RISE wants lvalues, and copies them.
-    sysc::sc2core_if::rd_csr_f read_selection = [this](unsigned,
+    sysc::sc2core_if::rd_csr_f read_selection = [this](unsigned number,
                                                        std::uint64_t& value) {
       if (!HasAnImsic()) return iss::Err;
-      value = selected_;
+      value = SelectedFor(number);
       return iss::Ok;
     };
-    sysc::sc2core_if::wr_csr_f write_selection = [this](unsigned,
+    sysc::sc2core_if::wr_csr_f write_selection = [this](unsigned number,
                                                         std::uint64_t value) {
       if (!HasAnImsic()) return iss::Err;
       // Twelve bits of it, which is what an access can carry.
-      selected_ = static_cast<std::uint32_t>(value) & kWidestSelection;
+      SelectedFor(number) =
+          static_cast<std::uint32_t>(value) & kWidestSelection;
       return iss::Ok;
     };
-    for (const unsigned number : {kMiselect, kSiselect}) {
-      complex_.register_csr_rd(number, read_selection);
-      complex_.register_csr_wr(number, write_selection);
-    }
+    complex_.register_csr_rd(kMiselect, read_selection);
+    complex_.register_csr_wr(kMiselect, write_selection);
 
     sysc::sc2core_if::rd_csr_f read = [this](unsigned number,
                                              std::uint64_t& value) {
@@ -162,7 +163,15 @@ struct DbtRiseCpu::Core {
                                               std::uint64_t value) {
       return WriteThroughCsr(number, value);
     };
-    for (const unsigned number : {kMireg, kMtopei, kSireg, kStopei}) {
+    for (const unsigned number : {kMireg, kMtopei}) {
+      complex_.register_csr_rd(number, read);
+      complex_.register_csr_wr(number, write);
+    }
+    if (!has_supervisor_mode_) return;
+
+    complex_.register_csr_rd(kSiselect, read_selection);
+    complex_.register_csr_wr(kSiselect, write_selection);
+    for (const unsigned number : {kSireg, kStopei}) {
       complex_.register_csr_rd(number, read);
       complex_.register_csr_wr(number, write);
     }
@@ -244,7 +253,7 @@ struct DbtRiseCpu::Core {
                   std::span<std::uint8_t> data) {
     const bool is_a_window = number == kMireg || number == kSireg;
     const std::uint64_t address =
-        HartRegisterAddress(number, is_a_window ? selected_ : 0);
+        HartRegisterAddress(number, is_a_window ? SelectedFor(number) : 0);
     // The delay means nothing to whoever answers. It is the core's lead all
     // the same, so that a trace of the socket has the access where the bus
     // accesses around it are.
@@ -268,10 +277,18 @@ struct DbtRiseCpu::Core {
     return *has_an_imsic_;
   }
 
+  // What firmware last selected for the mode whose selecting register or
+  // window is numbered `number`. Each mode selects for itself.
+  std::uint32_t& SelectedFor(unsigned number) {
+    return number == kSiselect || number == kSireg ? siselect_ : miselect_;
+  }
+
   DbtRiseCpu& cpu_;
   std::uint64_t xlen_;
-  // What firmware last wrote to `miselect`.
-  std::uint32_t selected_ = 0;
+  bool has_supervisor_mode_;
+  // What firmware last wrote to each of the two selecting registers.
+  std::uint32_t miselect_ = 0;
+  std::uint32_t siselect_ = 0;
   std::optional<bool> has_an_imsic_;
   // One instruction takes one clock period of simulated time. 10 MHz is
   // the clock Zephyr's boards for QEMU are told they have.
@@ -289,7 +306,8 @@ DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        DbtRiseCpuExtras extras)
     : sc_module(name),
       core_(std::make_unique<Core>(*this, xlen, CoreType(xlen, extras),
-                                   reset_vector, gdb_port)) {
+                                   extras.supervisor_mode, reset_vector,
+                                   gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &DbtRiseCpu::invalidate_direct_mem_ptr);
 }

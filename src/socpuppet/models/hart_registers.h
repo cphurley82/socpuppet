@@ -22,10 +22,10 @@ namespace socpuppet {
 // of the CSRs are windows, `mireg` and `sireg`: firmware writes a number
 // to `miselect` and then finds the register of that number at `mireg`. An
 // access to a window has the number that was selected in its low twelve
-// bits, which is as many bits of `miselect` as a hart here keeps. A block
-// answers an address it has no register for with an address error, and
-// the hart takes an illegal-instruction trap, as it does for a CSR it has
-// not got.
+// bits, which is as many bits of `miselect` or `siselect` as a hart here
+// keeps. A block answers an address it has no register for with an
+// address error, and the hart takes an illegal-instruction trap, as it
+// does for a CSR it has not got.
 //
 // An instruction that reads a CSR and writes it, as a claim through
 // `mtopei` does, is one act to firmware. Here it is a read and then a

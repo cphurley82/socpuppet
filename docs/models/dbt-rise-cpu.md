@@ -40,7 +40,7 @@ platform.run(sp.ms(100))
 ## What it leaves out
 
 - **The other cores DBT-RISE has.** It has many more combinations of extensions and modes than the two here.
-- **A supervisor's way to an IMSIC.** The supervisor's interrupt file is there and its line is connected, but `siselect`, `sireg` and `stopei` are not answered yet. Linux needs them, and nothing before it does.
+- **The rest of the Advanced Interrupt Architecture's registers.** A hart reaches its IMSIC's two interrupt files, through `miselect`, `mireg` and `mtopei` for machine mode and `siselect`, `sireg` and `stopei` for supervisor mode. The others the architecture gives a hart (`mtopi`, `stopi` and the rest) are not there, and nothing run here has read one.
 - **Cycle accuracy.** Every instruction takes the same time. Use it to find out what firmware does, not how many nanoseconds it takes.
 - **Faster backends.** DBT-RISE can also translate blocks of RISC-V code into host code. socpuppet uses its interpreter.
 - **Running on while another CPU is stopped.** SystemC runs every model in turn on one thread, and a CPU stopped in its debugger keeps it. So every other CPU stops with it, and simulated time stands still. That makes debugging several CPUs repeatable, and it is not how a board on a bench behaves. It also means a debugger is answered about memory only while its own CPU is the one stopped: with the host at a breakpoint, the SSD's GDB cannot read the SSD's memory until the host continues.
