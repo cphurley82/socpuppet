@@ -282,7 +282,11 @@ class TestWhenARunIsInterruptedFromTheKeyboard:
             platform.connect(cpu.socket, ram.socket)
             platform.build()
             platform.run()
-            """
+            """,
+            # An interrupt that lands inside coverage.py's tracer leaves
+            # the tracer's lock held, and the process then waits for it for
+            # ever (docs/upstream.md). So this process is not measured.
+            measured=False,
         )
         endless.stdout.readline()  # wait until the script is running
 

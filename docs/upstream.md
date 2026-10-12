@@ -769,7 +769,7 @@ Two more things read in the same file and not acted on:
 
 - **Where**: `doc/develop/test/twister.rst`, "Running tests on custom emulator", and `cmake/modules/kernel.cmake`, which includes a board's `board.cmake`.
 - **What is wrong**: the documentation's example ends `DEPENDS ${logical_target_for_zephyr_elf}`. A `board.cmake` is included before Zephyr's own directory is added, and the variable is first set there (`CMakeLists.txt`, exported with `PARENT_SCOPE`). So in a `board.cmake` it is empty, the `DEPENDS` names nothing, and `run` does not build the image first. Twister never notices, because it builds before it runs. `west build -t run` runs the image of the last build after an edit, and fails in a tree that has not been built.
-- **How to see it**: follow the example for a board, configure an application, and look for `run_custom` in the build directory's `build.ninja`: it has no inputs. The test `test_the_image_is_built_first` in `tests/python/test_zephyr_module.py` does the same with a stand-in for Zephyr's build that keeps Zephyr's order.
+- **How to see it**: follow the example for a board, configure an application, and look for `run_custom` in the build directory's `build.ninja`: it has no inputs. The test `test_the_image_is_built_first` in `tests/python/test_twister_boards.py` does the same with a stand-in for Zephyr's build that keeps Zephyr's order.
 - **What we do**: `boards/socpuppet/run_with_socpuppet.cmake` adds the dependency at the end of the configuration, with `cmake_language(DEFER CALL add_dependencies run_custom ${logical_target_for_zephyr_elf})`, when the variable has its value.
 - **Upstream fix**: the same line in the documentation's example, or the dependency added by Zephyr itself where it makes `run` depend on `run_custom`, which is after the variable is set and would mend every board that followed the example.
 - **Kind**: bug, in documentation.
@@ -882,6 +882,20 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: test `PCI_COMMAND_BUS_MASTER`, for messages and for DMA.
 - **Kind**: bug.
 - **When it lands**: nothing to delete here.
+
+## coverage.py
+
+[coveragepy/coveragepy](https://github.com/coveragepy/coveragepy), version `7.16.2` in `uv.lock`. Not part of socpuppet: the build's `coverage` target measures the Python tests with it, and `.coveragerc` has it measure the processes a test starts as well.
+
+### An interrupt that lands in the tracer leaves its lock held, and the process never ends
+
+- **Where**: `coverage/collector.py`, `lock_data` and `unlock_data`, which each tracer calls around its first sight of a file (`coverage/ctracer/tracer.c`, `pytracer.py`, `sysmon.py`).
+- **What is wrong**: the two are plain Python functions, called one after the other. Python runs a signal's handler between two bytecodes, and those of `lock_data` and `unlock_data` are bytecodes like any others. So Ctrl-C at the wrong moment raises `KeyboardInterrupt` after the lock is taken and before it is given back. The exception goes up through the program as it should, the traceback is printed, and then the process waits for a lock that it holds itself and never exits. The moment is rare in a program that has been running a while, since a file is seen for the first time only once. It is not rare in one that is interrupted as it starts.
+- **How to see it**: measure a process that calls into a module for the first time, and send it `SIGINT` as it does. The test `test_the_process_stops_with_keyboard_interrupt` in `tests/python/test_scripts.py` did that, by interrupting a run as soon as its script had printed one line. Measured, it hung 9 times in 150 on an Intel Mac with Python 3.13, with a traceback that ends in `lock_data` at `self.data_lock.acquire()`, and it failed CI's coverage job once, with one that ends in `unlock_data`.
+- **What we do**: that one process is started with `measured=False` (`tests/python/processes.py`), which takes coverage.py's two environment variables away from it. It runs nothing of `python/socpuppet` that other tests do not run.
+- **Upstream fix**: one method on the collector that does the whole of it, `with self.data_lock: self.data.setdefault(tracename, set())`, for the tracers to call in place of the pair. A `with` gives the lock back when an exception is raised inside it.
+- **Kind**: bug.
+- **When it lands**: `measured=False` and `unmeasured()` go.
 
 ## QBox
 
