@@ -291,7 +291,7 @@ class Assembler {
     if (program.size() % 2 != 0) program.push_back(0);
     const std::size_t pool_at = program.size();
     for (const Loaded& load : loads_) {
-      const std::size_t words_ahead = pool_at + 2 * load.of - load.at;
+      const std::size_t words_ahead = pool_at + (2 * load.of) - load.at;
       program[load.at + 1] =
           Ld(load.rd, load.rd, static_cast<std::int32_t>(words_ahead * 4));
     }

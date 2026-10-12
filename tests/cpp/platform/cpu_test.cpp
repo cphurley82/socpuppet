@@ -1130,7 +1130,7 @@ struct CpuPlatformWithPages {
   // `index`th of several, read where the RAM has it.
   std::uint64_t Result(std::uint64_t index = 0) {
     std::array<std::uint8_t, 8> word{};
-    platform.DebugRead("cpu.socket", kResultPage + index * 8,
+    platform.DebugRead("cpu.socket", kResultPage + (index * 8),
                        std::as_writable_bytes(std::span{word}));
     return socpuppet::LoadLittleEndian<std::uint64_t>(word);
   }
@@ -1140,7 +1140,7 @@ struct CpuPlatformWithPages {
  private:
   void WriteEntry(std::uint64_t table, std::uint64_t index,
                   std::uint64_t entry) {
-    Put(table + index * 8, entry);
+    Put(table + (index * 8), entry);
   }
 };
 
