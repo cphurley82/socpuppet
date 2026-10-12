@@ -15,10 +15,10 @@ from cast import (
 )
 from elf_files import elf_file
 from processes import run_socpuppet, start_socpuppet
-from riscv_program import SPIN, WFI, says
-from socpuppet.boards import cpu_kit, host
+from riscv_program import SPIN, a_program_that_says
+from socpuppet.boards import host
+from zephyr_module import BOARDS
 
-BOARDS = ("socpuppet_host", "socpuppet_ssd", "socpuppet_iomgr")
 #: Simulated milliseconds, and far more than a boot ROM needs to load
 #: Zephyr's `hello_world` and the sample to speak, which takes under ten.
 #: The sample gives no verdict, so a run of it goes on until it is stopped.
@@ -32,20 +32,6 @@ def a_program(directory, *, xlen=64):
         xlen=xlen,
         entry=host.RAM_BASE,
         segments=[(host.RAM_BASE, b"Spam, spam, spam")],
-    )
-
-
-def a_program_that_says(text, directory, *, then=WFI):
-    """An ELF file for the board `socpuppet_ssd`: say `text`, then sleep.
-
-    Or `then` do something else, for good.
-    """
-    program = says(text, uart=cpu_kit.UART_BASE, then=then)
-    return elf_file(
-        directory,
-        xlen=32,
-        entry=cpu_kit.SRAM_BASE,
-        segments=[(cpu_kit.SRAM_BASE, program)],
     )
 
 

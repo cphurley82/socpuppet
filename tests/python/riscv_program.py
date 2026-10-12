@@ -5,6 +5,9 @@ Every instruction here is in the base integer set and is encoded the same
 for a 32-bit CPU and a 64-bit one.
 """
 
+from elf_files import elf_file
+from socpuppet.boards import cpu_kit
+
 # Registers, by their number.
 ZERO = 0
 T0 = 5
@@ -49,3 +52,17 @@ def says(text, *, uart, then=WFI):
         program += [li(T1, byte), sb(T1, T0)]
     program += [then, BACK_ONE]
     return b"".join(word.to_bytes(4, "little") for word in program)
+
+
+def a_program_that_says(text, directory, *, then=WFI):
+    """An ELF file for the board `socpuppet_ssd`: say `text`, then sleep.
+
+    Or `then` do something else, for good.
+    """
+    program = says(text, uart=cpu_kit.UART_BASE, then=then)
+    return elf_file(
+        directory,
+        xlen=32,
+        entry=cpu_kit.SRAM_BASE,
+        segments=[(cpu_kit.SRAM_BASE, program)],
+    )

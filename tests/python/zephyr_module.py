@@ -3,9 +3,26 @@
 import pathlib
 import re
 
+import yaml
+
 import socpuppet
 
 ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
+
+#: The boards the module carries, by the names Zephyr builds for.
+BOARDS = ("socpuppet_host", "socpuppet_ssd", "socpuppet_iomgr")
+
+
+def full_name(board):
+    """What a board calls itself, in the `board.yml` that makes it a board."""
+    described = ZEPHYR_MODULE / "boards/socpuppet" / board / "board.yml"
+    return yaml.safe_load(described.read_text())["board"]["full_name"]
+
+
+def platform_file(board):
+    """What a board's platform file says, the file twister reads of a board."""
+    file = ZEPHYR_MODULE / "boards/socpuppet" / board / f"{board}.yaml"
+    return yaml.safe_load(file.read_text())
 
 
 def kconfig_default(name, under=None):
@@ -59,3 +76,20 @@ def the_identities_of_the_hosts_drive():
     said = re.search(r"socpuppet,msi-identities = <([\d ]+)>;", overlay)
     assert said is not None, "the drive's overlay names no identities"
     return [int(each) for each in said.group(1).split()]
+
+
+def ram_size(board):
+    """How many bytes of memory a board's devicetree gives Zephyr to run in."""
+    devicetree = (
+        ZEPHYR_MODULE / "boards/socpuppet" / board / f"{board}.dts"
+    ).read_text()
+    chosen = re.search(r"zephyr,sram = &(\w+);", devicetree)
+    assert chosen is not None, f"{board}.dts chooses no zephyr,sram"
+    node = re.search(
+        # No further than the node's own closing brace.
+        rf"{chosen.group(1)}: memory@\w+ {{[^}}]*?"
+        r"reg = <0x0 0x[0-9a-f]+ 0x0 (0x[0-9a-f]+)>;",
+        devicetree,
+    )
+    assert node is not None, f"{board}.dts has no node for its zephyr,sram"
+    return int(node.group(1), 16)

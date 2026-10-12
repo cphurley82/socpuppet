@@ -6,6 +6,15 @@ import pytest
 pytest_plugins = ["pytester", "socpuppet.pytest_plugin"]
 
 
+def firmware_directory(pytestconfig):
+    """Where `firmware/build.sh` left what it built and what it fetched."""
+    return pathlib.Path(
+        os.environ.get(
+            "SOCPUPPET_FIRMWARE_DIR", pytestconfig.rootpath / "build/firmware"
+        )
+    )
+
+
 @pytest.fixture
 def firmware(pytestconfig):
     """Find a firmware image that `firmware/build.sh` built, by file name.
@@ -15,11 +24,7 @@ def firmware(pytestconfig):
     command that builds it. Where the images must be there (in CI), set
     SOCPUPPET_REQUIRE_FIRMWARE and the test fails instead.
     """
-    directory = pathlib.Path(
-        os.environ.get(
-            "SOCPUPPET_FIRMWARE_DIR", pytestconfig.rootpath / "build/firmware"
-        )
-    )
+    directory = firmware_directory(pytestconfig)
 
     def find(name):
         image = directory / name
@@ -34,3 +39,22 @@ def firmware(pytestconfig):
         pytest.skip(missing)
 
     return find
+
+
+@pytest.fixture
+def zephyr_tree(pytestconfig):
+    """Zephyr's own sources, where `firmware/build.sh` fetched them.
+
+    They are beside the images. A test that reads one of Zephyr's files is
+    skipped where they are not, whatever SOCPUPPET_REQUIRE_FIRMWARE says:
+    the images travel from one CI job to the next, and Zephyr does not.
+    ⚠️ So CI's `test` job skips such a test, and its `twister` job, which
+    has Zephyr, is the one that runs it.
+    """
+    tree = firmware_directory(pytestconfig) / "zephyr"
+    if not tree.is_dir():
+        pytest.skip(
+            f"There is no {tree}. `firmware/build.sh` fetches Zephyr, which "
+            "takes a few minutes the first time."
+        )
+    return tree
