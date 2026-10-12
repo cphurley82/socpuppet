@@ -38,6 +38,8 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 | `tests/cpp/platform/` | composed platforms | one process per test |
 | `tests/python/` | the Python API | `@pytest.mark.platform` tests get a process each |
 | `tests/tooling/` | the lint runner and the build-time checks | each makes a throwaway repository or CMake project |
+| `python/socpuppet/zephyr_module/tests/`, `firmware/**/testcase.yaml` | ztest suites and applications that run inside Zephyr, on a board | by twister, with `firmware/twister.sh`. Not part of `ctest` |
+| Zephyr's own `tests/` and `samples/` | the board-compliance run: Zephyr's suites on every board | by twister, with `firmware/twister.sh --suites`, and in CI's `twister` job |
 
 💡 "One process per test" is because the SystemC kernel cannot be restarted. Run the C++ kernel tests through `ctest`, not by launching the test binary by hand: launched directly, the second test in the binary would find the kernel already used.
 
@@ -88,7 +90,7 @@ docker run --rm -v "$PWD":/workspace -w /workspace \
     uv run cmake --build build/linux'
 ```
 
-💡 `firmware/build.sh` builds that image the first time it runs on an Intel Mac. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says.
+💡 `firmware/build.sh` builds that image the first time it runs on an Intel Mac. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.sh` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
 
 ## One build tree, three kinds of build
 
@@ -113,9 +115,7 @@ uv run cmake --build --preset spike
 uv run ctest --preset spike            # only the tests labelled `spike`
 ```
 
-The twister spike ([spikes/twister](../spikes/twister/README.md), report in [twister-spike.md](twister-spike.md)) asks whether Zephyr's test runner can run Zephyr's own tests on socpuppet's boards. It is scripts and a few Zephyr files and no C++, so it needs no option and no preset: `spikes/twister/twister.sh` runs it, and it goes when M21's steps have rebuilt what it found.
-
-The earlier spikes have gone. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
+The earlier spikes have gone. The twister spike asked whether Zephyr's test runner could run Zephyr's own tests on socpuppet's boards ([twister-spike.md](twister-spike.md)). It was scripts and a few Zephyr files, and it was deleted when M21's steps had rebuilt what it found test-first, as `socpuppet run`, the boards' two files for twister and `firmware/twister.sh`; the report names the commit that holds it. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
 
 ## Firmware
 
@@ -131,6 +131,13 @@ firmware/build.sh        # into build/firmware
 - ⚠️ The toolchain an Intel Mac ends up with in `build/firmware` is Linux's, GDB included. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
+
+`firmware/twister.sh` is the other thing to run there. It has twister, Zephyr's test runner, build Zephyr's own test suites and ours for each board and run every one on socpuppet, which is how a change to a model, a driver or a board is held to several thousand tests nobody here wrote. It takes about eight minutes for the whole list, so it is for before a push and for CI, and not for the inner loop. [twister.md](twister.md) is its page.
+
+```sh
+firmware/twister.sh --suites                                   # everything, on every board
+firmware/twister.sh -T python/socpuppet/zephyr_module/tests    # the drivers' own tests
+```
 
 ## The package
 

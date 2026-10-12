@@ -14,14 +14,14 @@ firmware/twister.sh --suites  # every suite of the list, on every board
 The first prints nothing of interest. The second ends like this, once for each run of twister it makes:
 
 ```text
-INFO    - 87 of 99 executed test configurations passed (87.88%), 0 built (not run), 0 failed, 0 errored, with no warnings in 385.15 seconds.
-INFO    - 2063 of 2063 executed test cases passed (100.00%) on 3 out of total 1476 platforms (0.20%).
+INFO    - 103 of 115 executed test configurations passed (89.57%), 0 built (not run), 0 failed, 0 errored, with no warnings in 383.99 seconds.
+INFO    - 2143 of 2143 executed test cases passed (100.00%) on 3 out of total 1476 platforms (0.20%).
 Verdicts and logs: build/twister/out
 ```
 
 💡 Read the second number of the first line with the third and fourth. The twelve configurations that did not pass did not fail either: they are the ones [left out on purpose](#what-is-left-out-and-why), which twister counts among the executed.
 
-It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Intel Mac it runs itself in Docker, as `firmware/build.sh` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes about eight minutes on the sixteen-core machine it was measured on.
+It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Intel Mac it runs itself in Docker, as `firmware/build.sh` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes seven and a half minutes on the sixteen-core machine it was measured on.
 
 To run less, give twister's own options after the script's name, or after `--suites`:
 
@@ -99,20 +99,51 @@ west twister -p socpuppet_host -T tests/kernel/sleep
 | `samples/synchronization` | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 |
 | **Scenarios** | **32** | **28** | **37** |
 
-97 scenarios and 2073 test cases, and none fails. It was not always so. The first time these suites ran, in the spike that began this ([twister-spike.md](twister-spike.md)), 46 scenarios of 126 did not pass, and they found two bugs in socpuppet that none of its own tests had: firmware could clear an interrupt's pending bit that a real CPU keeps read-only, and the timer charged a CPU for time it had already spent. Both are mended, and both were in borrowed models ([upstream.md](upstream.md)).
+That is 97 scenarios of Zephyr's own, and none fails. With socpuppet's own suites, below, the whole run is 113 scenarios and 2153 test cases. It was not always so. The first time these suites ran, in the spike that began this ([twister-spike.md](twister-spike.md)), 46 scenarios of 126 did not pass, and they found two bugs in socpuppet that none of its own tests had: firmware could clear an interrupt's pending bit that a real CPU keeps read-only, and the timer charged a CPU for time it had already spent. Both are mended, and both were in borrowed models ([upstream.md](upstream.md)).
 
-## socpuppet's own applications are suites too
+## socpuppet's own suites
 
-One line of the list is `firmware`, and every application there with a `testcase.yaml` is built and judged with the rest, each on the boards it names:
+Two more lines of the list are directories of this repository, and every suite under them is built and judged with the rest, each on the boards it names.
+
+**The applications in `firmware/`**, as they are:
 
 | Suite | Boards | How twister judges it |
 |---|---|---|
-| `firmware/flash_test` | `socpuppet_ssd` | It is a ztest suite: Zephyr's own test of a flash driver, and four cases of ours for what only a NAND does |
+| `firmware/flash_test` | `socpuppet_ssd` | It is a ztest suite: Zephyr's own test of a flash driver, and six cases of ours for what only a NAND does |
 | `firmware/watchdog` | all three | By its console: `reset cause: power-on`, then `software`, then `watchdog`, with the lines between them in their order |
 | `firmware/iomgr` | `socpuppet_iomgr` | By its console: the link is up, and then the compute die is released |
 | `firmware/ssd` | `socpuppet_ssd` | By its console: the line that says how big its drive is |
 
 🎓 Three of the four have no test framework in them. A `testcase.yaml` can say `harness: console` and list the lines an application should print, as regular expressions, and twister passes the scenario when it has read them all. It is how Zephyr's samples are judged, and it makes a suite of any program that says what it did.
+
+**The SSD firmware's own logic**, in `firmware/ssd/tests/`: the firmware's sources built into a ztest suite in the firmware's place, to test one part of it a call at a time.
+
+| Suite | Cases | What it holds |
+|---|---|---|
+| `firmware/ssd/tests/ftl` | 7 | The flash translation layer: a page never written reads as zeros, a page stored reads as it was stored, and where in the NAND each is kept |
+| `firmware/ssd/tests/admin` | 14 | The admin commands: what Identify says, the answer to Set Features, and everything that is refused, by the status it is refused with |
+
+**The drivers of socpuppet's Zephyr module**, in the module's own `tests/drivers/`, which is in the package, so a suite there can be run from an installed socpuppet too:
+
+| Suite | Board | Cases | What it holds |
+|---|---|---|---|
+| `syscon_reset_cause` | all three | 2 | The system controller through Zephyr's own `syscon` driver |
+| `ucie_link` | `socpuppet_iomgr` | 7 | Train the link, let the other die go, train again |
+| `dma_engine` | `socpuppet_ssd`, with a host | 6 | Copies to and from the host's memory, and what a copy that cannot be made returns |
+| `nvme_frontend` | `socpuppet_ssd`, with a host | 6 | The ready handshake, a command read whole and from which queue, a completion posted, a queue created |
+| `socpuppet_pcie` | `socpuppet_host`, with a drive | 7 | The scan finds the drive, where its registers are placed, and its interrupts as messages |
+| `imsic_irq` | `socpuppet_host` | 9 | `irq_enable` reaches the IMSIC, and the APLIC of the right die |
+
+🎭 **"With a host" and "with a drive" are shields.** A driver's hardware often does nothing until something on the other side of it speaks, and under twister there is one board and one image. So the suite is built with a shield (`extra_args: SHIELD=...` in its `testcase.yaml`), twister passes the shield on, and `socpuppet run` puts a stand-in there:
+
+| Shield | Board | What `socpuppet run` puts beside the board |
+|---|---|---|
+| `socpuppet_host_drive` | `socpuppet_host` | 🎭 A drive on the PCIe link, which answers as an NVMe drive does |
+| `socpuppet_ssd_host` | `socpuppet_ssd` | 🎭 A host in front of the SSD that says a host's first words to a drive: it finds it and lets it reach the host's memory, enables it, waits to be told it is ready, asks for a pair of I/O queues and how big the drive is, and writes one block |
+
+⚠️ The SSD's host waits one second of simulated time to be told the drive is ready, and ends the run if it never is, in one line that says so. A suite built with that shield says so in time, as `nvme_frontend`'s does, or is done by then, as `dma_engine`'s is.
+
+💡 These suites test code that was already there, so none of their cases was ever seen to fail the usual way first. Each was held to a mutation instead: a line of the driver is broken on purpose, the case meant for it has to fail, and the line is put back. One case that could not tell a broken driver from a working one was found that way, and mended.
 
 ## What is left out, and why
 
@@ -140,4 +171,6 @@ Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict
 
 The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`: it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.sh`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as the artifact `twister`.
 
-It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites and the quarantine list to twister's own schemas.
+It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites, the quarantine list and our own suites' `testcase.yaml` files to twister's own schemas.
+
+🚧 The job is written and has not run yet. How long it takes on a runner, with four cores where the figure above had sixteen, is not known: the estimate is a quarter of an hour for twister, after the build of socpuppet. If it is much longer, the list is cut to what earns its place.
