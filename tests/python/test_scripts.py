@@ -91,6 +91,21 @@ class TestWhenAScriptYieldsAWait:
 
 
 @pytest.mark.platform
+class TestWhenTheTimeARunWasGivenEndsAtAMomentWithMoreStillToCome:
+    def test_the_run_ends_there_and_nothing_is_logged(self, capfd):
+        def script():
+            yield sp.wait(sp.ns(10))
+            yield sp.wait(sp.ns(10))
+
+        platform = master_with_ram(script)
+
+        platform.run_until(lambda: False, timeout=sp.ns(10))
+
+        assert platform.time == sp.ns(10)
+        assert capfd.readouterr().out == ""
+
+
+@pytest.mark.platform
 class TestWhenAScriptExpectsAValueThatIsNotInMemory:
     def test_run_raises_and_the_error_names_address_expected_and_actual(self):
         def script():

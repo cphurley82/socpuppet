@@ -234,8 +234,12 @@ class Platform:
             if ahead is None:
                 return False  # nothing left to do
             if deadline is not None and self.time + ahead > deadline:
-                native.run_for(deadline - self.time)
-                return False  # out of time, and nothing happened in it
+                # Out of time, and nothing happens in what is left of it.
+                # None may be left: the kernel is not asked to run for no
+                # time at all, which it does with a warning.
+                if self.time < deadline:
+                    native.run_for(deadline - self.time)
+                return False
             native.step()
 
     @property
