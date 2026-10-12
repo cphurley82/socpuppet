@@ -101,19 +101,30 @@ jobs:
     # runs it in one breath, so this one job has both what builds firmware
     # and what runs it: Zephyr, its SDK and its venv, which are cached, and
     # a socpuppet built here as the test job builds it.
-    name: Twister (Zephyr's tests on the boards)
+    #
+    # On Linux and on a Mac, as the test job is. The Mac's runner is Apple
+    # silicon, the one Mac the Zephyr SDK has a toolchain for, and so the
+    # one place twister runs on macOS itself: an Intel Mac runs it in the
+    # devcontainer's image, which is Linux. Nothing but this leg would say
+    # that the scripts had stopped working there.
+    name: Twister (Zephyr's tests on the boards, ${{ matrix.os }})
     needs: firmware
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
       - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
         uses: actions/cache@v6
         with:
           path: build/dev/_deps
-          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - name: Restore Zephyr, its SDK and its venv
         id: zephyr
         uses: actions/cache/restore@v6
@@ -124,8 +135,10 @@ jobs:
             build/firmware/venv
             build/firmware/zephyr
             build/firmware/zephyr-sdk-*
-          # The version of each.
-          key: zephyr-${{ hashFiles('firmware/versions.sh') }}
+          # The version of each, and the machine: the SDK's compiler and
+          # the venv's Python are programs for the runner they were
+          # fetched on.
+          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
       - name: Fetch Zephyr and its SDK
         # The script that builds the images is the one that fetches what
         # builds them, so this builds every image again too. Once for each
@@ -165,7 +178,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: twister
+          name: twister-${{ matrix.os }}
           # The verdicts, twister's own account of each run, and each
           # scenario's build log, its console, and what the emulator said
           # of how the run ended.
