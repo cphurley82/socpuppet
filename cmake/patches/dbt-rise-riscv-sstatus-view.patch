@@ -1,0 +1,29 @@
+diff --git a/src/iss/arch/riscv_hart_common.h b/src/iss/arch/riscv_hart_common.h
+index 56f6780..f72d50e 100644
+--- a/src/iss/arch/riscv_hart_common.h
++++ b/src/iss/arch/riscv_hart_common.h
+@@ -327,7 +327,7 @@ template <typename BASE = logging::disass> struct riscv_hart_common : public BAS
+ 
+     // Notation for differing fields is: 32 bits / 64 bits
+     static constexpr uint32_t mstatus_lower = 0b00000000000000000001100010001000;
+-    static constexpr uint32_t sstatus_lower = 0b00000000011111100000000100100010;
++    static constexpr uint32_t sstatus_lower = 0b00000000000011000000000100100010;
+     static constexpr uint32_t ustatus_lower = 0b00000000000000000000000000010001;
+     //                                          ||||||/|||||||||/|/|/|/|||||||||
+     //                                          |||||/ ||||||||| | | | ||||||||+-- UIE
+@@ -379,8 +379,14 @@ template <typename BASE = logging::disass> struct riscv_hart_common : public BAS
+             static_assert("Unsupported XLEN value");
+     }
+     static constexpr reg_t get_mu_status_mask(unsigned priv_lvl) { return ustatus_lower | (priv_lvl >= PRIV_M ? get_mstatus_mask() : 0); }
++    // on a hart with S mode, M mode has MPRV, TVM, TW and TSR as well
++    static constexpr uint32_t mstatus_msu_lower = 0b00000000011100100000000000000000;
+     static constexpr reg_t get_msu_status_mask(unsigned priv_lvl) {
+-        return get_mu_status_mask(priv_lvl) | ((priv_lvl >= PRIV_S) ? sstatus_lower : 0);
++        // sstatus is the view of mstatus that has SIE, SPIE, SPP, SUM and MXR and the state of the extensions (FS, VS); MPRV, TVM, TW
++        // and TSR are M mode's alone
++        return get_mu_status_mask(priv_lvl) |
++               ((priv_lvl >= PRIV_S) ? (sstatus_lower | riscv_hart_common<BASE>::extension_status_mask) : 0) |
++               ((priv_lvl >= PRIV_M) ? mstatus_msu_lower : 0);
+     }
+     const std::array<const char, 4> lvl = {{'U', 'S', 'H', 'M'}};
+     const std::array<const char*, 16> trap_str = {{""

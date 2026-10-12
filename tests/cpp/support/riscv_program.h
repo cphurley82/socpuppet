@@ -147,6 +147,27 @@ inline constexpr Word kInterruptsOn = 3;
 // registers are in. While the field is zero, as after reset, they are
 // switched off and a floating-point instruction is an illegal one.
 inline constexpr Word kFloatingPointOn = 13;
+// The field's four values. Off, and then three that are on: as they were
+// first set up, as a kernel last saved them, and changed since. A kernel
+// saves a program's registers when it stops running it only if they are
+// dirty, and marks them clean when it has.
+inline constexpr Word kFloatingPointOff = 0;
+inline constexpr Word kFloatingPointInitial = 1;
+inline constexpr Word kFloatingPointClean = 2;
+inline constexpr Word kFloatingPointDirty = 3;
+constexpr Word FloatingPointStateIn(std::uint64_t status) {
+  return static_cast<Word>(status >> kFloatingPointOn) & 3;
+}
+// The status register's top bit, which says in one place that some state
+// of the kind is dirty.
+constexpr bool SomeStateIsDirtyIn(std::uint64_t status) {
+  return (status >> 63) != 0;
+}
+// The instruction that sets the field to `state`, in the register numbered
+// `csr`, `mstatus` or `sstatus`, from zero. It uses t0.
+inline Program SetFloatingPointState(Word csr, Word state) {
+  return {Lui(kT0, state << (kFloatingPointOn - 12)), Csrs(csr, kT0)};
+}
 // Its two-bit field that says which mode `mret` returns to, by the place
 // of its low bit: 1 there is supervisor mode, and 3 is machine mode.
 inline constexpr Word kPreviousMode = 11;
@@ -157,6 +178,10 @@ inline constexpr Word kPreviousMode = 11;
 // make them, which is how a monitor reads a program's memory.
 inline constexpr Word kTrapSret = 22;
 inline constexpr Word kModifyPrivilege = 17;
+// And two more of a monitor's: TVM has supervisor mode trap when it writes
+// `satp` or executes `sfence.vma`, and TW when it sleeps.
+inline constexpr Word kTrapVirtualMemory = 20;
+inline constexpr Word kTimeoutWait = 21;
 // Machine mode's two instructions that set the bit of the status register
 // at `place`, which is 12 or above. They use t1.
 inline Program SetInMstatus(Word place) {
@@ -1064,7 +1089,9 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
 // off, so `at` is where the RAM has things. Its result is two words: why
 // machine mode's handler was entered, the cause with one added so that
 // zero is never, and what `mstatus` read as there. The handler sleeps, and
-// so does supervisor mode if its code runs to its end.
+// so does supervisor mode if its code runs to its end. Supervisor mode's
+// code finds the result's address in t2, and a third word of the result is
+// its own to store: Sd(rs2, kT2, 16).
 inline Program RunInSupervisorModeAfter(const Pages& at,
                                         const Program& machine_modes_setup,
                                         const Program& supervisors_code) {
@@ -1081,6 +1108,7 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
   program.Emit({Csrw(kMepc, kT1), kMret});
 
   program.Set(supervisor, at.code + program.Here());
+  program.Load(kT2, at.result);
   for (const Word instruction : supervisors_code) program.Emit(instruction);
   AppendSleepForEver(program);
 

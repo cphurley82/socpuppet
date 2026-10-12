@@ -472,6 +472,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### `sstatus` hides the floating-point state and shows four bits that are machine mode's
+
+- **Where**: `src/iss/arch/riscv_hart_common.h`, `sstatus_lower` and `get_msu_status_mask`.
+- **What is wrong**: `sstatus` is supervisor mode's view of `mstatus`, and what it shows and takes is a mask. The mask has bits 17 to 22, which are `MPRV`, `SUM`, `MXR`, `TVM`, `TW` and `TSR`, where the specification's `sstatus` has the two in the middle. And it has no `FS`, the state of the floating-point registers, which the mask for machine mode gets from `extension_status_mask`. So supervisor mode reads `FS` as off whatever it is, and a write of it through `sstatus` does nothing: a kernel cannot switch floating point on for a program, off for the next, or see that a program's registers are dirty and want saving. And supervisor mode can set for itself the four bits a monitor keeps it in hand with, `TSR` among them, and `MPRV`, which then has machine mode's own loads and stores made as the mode it came from would make them. ⚠️ Machine mode could write those four only because they were in that mask, which is added to its own: `mstatus_lower` has none of them.
+- **How to see it**: supervisor mode sets `FS` in `sstatus` and reads it back there, and machine mode reads it in `mstatus`; supervisor mode sets the four bits in `sstatus` and machine mode looks for them in `mstatus`; machine mode sets three of them and supervisor mode looks in `sstatus` (the three tests from `WhenSupervisorModeSetsTheStateOfTheFloatingPointRegistersInSstatus` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-sstatus-view.patch`: supervisor mode's mask is `SIE`, `SPIE`, `SPP`, `SUM`, `MXR` and the extensions' state, and machine mode's, on a hart with supervisor mode, gains the four that were only ever in the other.
+- **Upstream fix**: the same. ⚠️ Not looked at: `MPRV` on the hart with user mode and no supervisor mode (`get_mu_status_mask`), where it means something and cannot be written; and `UXL`, which `sstatus` should show and does not.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

@@ -1845,6 +1845,95 @@ TEST(WhenMachineModeWritesTheTwoRegistersThatAllowCountersToBeRead,
   EXPECT_EQ(scounteren, riscv::kMayReadTime);
 }
 
+// What a test puts together a program for supervisor mode from: lists of
+// instructions, one after another.
+riscv::Program Then(std::initializer_list<riscv::Program> parts) {
+  riscv::Program all;
+  for (const riscv::Program& part : parts) {
+    all.insert(all.end(), part.begin(), part.end());
+  }
+  return all;
+}
+
+// Supervisor mode stores `sstatus` as the third word of its result, and
+// calls machine mode, which stores `mstatus` as the second.
+riscv::Program StoreSstatusThenCallMachineMode() {
+  return {riscv::Csrr(riscv::kT0, riscv::kSstatus),
+          riscv::Sd(riscv::kT0, riscv::kT2, 16), riscv::kEcall};
+}
+
+// 🎓 `sstatus` is supervisor mode's view of `mstatus`: the same register,
+// with what is machine mode's own left out. The state of the
+// floating-point registers is in both, because it is the kernel that
+// saves them for a program and has to switch them off and on.
+TEST(WhenSupervisorModeSetsTheStateOfTheFloatingPointRegistersInSstatus,
+     ItReadsBackThereAndInMstatus) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {},
+      Then({riscv::SetFloatingPointState(riscv::kSstatus,
+                                         riscv::kFloatingPointClean),
+            StoreSstatusThenCallMachineMode()})));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t mstatus = with_pages.Result(1);
+  const std::uint64_t sstatus = with_pages.Result(2);
+  EXPECT_EQ(riscv::FloatingPointStateIn(sstatus), riscv::kFloatingPointClean);
+  EXPECT_EQ(riscv::FloatingPointStateIn(mstatus), riscv::kFloatingPointClean);
+}
+
+// Four bits of `mstatus` that are a monitor's way of keeping an operating
+// system in hand: whose memory machine mode's own loads use, and whether
+// the operating system may change its page tables, sleep, or return from
+// a trap without the monitor hearing of it.
+constexpr std::uint64_t kMachineModesOwnBits =
+    (std::uint64_t{1} << riscv::kModifyPrivilege) |
+    (std::uint64_t{1} << riscv::kTrapVirtualMemory) |
+    (std::uint64_t{1} << riscv::kTimeoutWait) |
+    (std::uint64_t{1} << riscv::kTrapSret);
+riscv::Program T0IsMachineModesOwnBits() {
+  return {riscv::Lui(riscv::kT0,
+                     static_cast<riscv::Word>(kMachineModesOwnBits >> 12))};
+}
+
+TEST(WhenSupervisorModeSetsBitsOfMachineModesOwnInSstatus,
+     NoneOfThemIsSetInMstatus) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {},
+      Then({T0IsMachineModesOwnBits(),
+            {riscv::Csrs(riscv::kSstatus, riscv::kT0), riscv::kEcall}})));
+
+  with_pages.RunUntilAsleep();
+
+  // Machine mode was entered by the call, with the status it stored.
+  ASSERT_EQ(with_pages.Result(0), riscv::kEcallFromSupervisorMode + 1);
+  const std::uint64_t mstatus = with_pages.Result(1);
+  EXPECT_EQ(mstatus & kMachineModesOwnBits, 0U);
+}
+
+TEST(WhenMachineModeHasSetBitsOfItsOwnInMstatus,
+     SupervisorModeDoesNotReadThemInSstatus) {
+  // All but the one that a return to supervisor mode clears.
+  constexpr std::uint64_t kThreeOfThem =
+      kMachineModesOwnBits & ~(std::uint64_t{1} << riscv::kModifyPrivilege);
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff,
+      {riscv::Lui(riscv::kT1, static_cast<riscv::Word>(kThreeOfThem >> 12)),
+       riscv::Csrs(riscv::kMstatus, riscv::kT1)},
+      StoreSstatusThenCallMachineMode()));
+
+  with_pages.RunUntilAsleep();
+
+  // They were set: machine mode read them back when it was called.
+  const std::uint64_t mstatus = with_pages.Result(1);
+  ASSERT_EQ(mstatus & kThreeOfThem, kThreeOfThem);
+  const std::uint64_t sstatus = with_pages.Result(2);
+  EXPECT_EQ(sstatus & kMachineModesOwnBits, 0U);
+}
+
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;
   // The RAM starts as zeros, which a program that stored nothing would
