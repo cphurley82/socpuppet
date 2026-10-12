@@ -1306,8 +1306,8 @@ TEST_P(WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow,
   EXPECT_EQ(where, kAddress);
 }
 
-const riscv::Word kLoad = riscv::Ld(riscv::kT0, riscv::kT1, 0);
-const riscv::Word kStore = riscv::Sd(riscv::kT0, riscv::kT1, 0);
+constexpr riscv::Word kLoad = riscv::Ld(riscv::kT0, riscv::kT1, 0);
+constexpr riscv::Word kStore = riscv::Sd(riscv::kT0, riscv::kT1, 0);
 
 INSTANTIATE_TEST_SUITE_P(
     EachWay, WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow,
