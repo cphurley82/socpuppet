@@ -91,6 +91,8 @@ What was measured: `kernel.context` on `socpuppet_iomgr`, run by hand at three q
 
 So the quantum is in it. What is not explained: 13 ticks is 1.3 ms, thirteen quanta, where the plan's rule is that a CPU sees an interrupt up to one quantum late; and the host, with the same timer, the same quantum and the same tick, passes every one of these. One difference between the two is known and was not tested: a 32-bit CPU writes `mtimecmp` in three bus accesses (the high half to all ones, the low half, the high half) and reads `mtime` in two or more, where the 64-bit CPU does each in one. That is a suspect and nothing more. The runs with no verdict at the smaller quanta were not looked into either, and may be A.
 
+✅ **Added when M21's step 2 fixed it: the suspect did it, and the host is not innocent.** The borrowed timer takes a write of `mtimecmp` from a CPU that is ahead of the clock by waiting until the clock has caught up, and then reported the same time again as the write's own latency. So each write cost the CPU as much time as it was ahead by, up to a quantum, and a 32-bit CPU makes three. Measured: 59.1 µs lost in one setting of the compare value on a 32-bit CPU that was 19.7 µs ahead, and 19.7 µs on a 64-bit one. The host loses up to a tick each time and the 32-bit boards up to three, and by their verdicts Zephyr's tests allow the one and not the other. A smaller quantum makes the loss smaller, which is all the table above shows. One line in the timer mends it, and every scenario listed here passes on both boards. [plan.md](plan.md) has the measurements under what M21's steps found.
+
 ### C. Zephyr's watchdog test and Zephyr's SiFive driver disagree (theirs)
 
 See question 3. The model does what the driver asks of it.
