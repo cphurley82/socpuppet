@@ -3,6 +3,8 @@
 import pathlib
 import re
 
+import pytest
+
 import socpuppet as sp
 from processes import run_socpuppet
 from socpuppet import run
@@ -53,10 +55,11 @@ class TestWhatTheDriversTestsKnowOfTheStandInsBesideThem:
     What the C knows of the stand-in is written in the C, as a number, and
     the stand-in is Python. So the numbers are held to it here."""
 
-    def test_the_host_address_the_dma_tests_copy_to_is_in_the_hosts_memory(
-        self,
+    @pytest.mark.parametrize("suite", ["dma_engine", "the SSD's admin"])
+    def test_the_host_address_a_suite_copies_to_is_in_the_hosts_memory(
+        self, suite
     ):
-        address = defined("dma_engine", "IN_THE_HOSTS_MEMORY")
+        address = defined(suite, "IN_THE_HOSTS_MEMORY")
 
         # With room after it for the most the tests copy, three pages and
         # a bit.
@@ -66,9 +69,12 @@ class TestWhatTheDriversTestsKnowOfTheStandInsBesideThem:
             < scripted_host.RAM_BASE + scripted_host.RAM_SIZE - 4 * 4096
         )
 
-    def test_the_address_they_take_for_past_the_hosts_memory_is(self):
+    @pytest.mark.parametrize("suite", ["dma_engine", "the SSD's admin"])
+    def test_the_address_a_suite_takes_for_past_the_hosts_memory_is(
+        self, suite
+    ):
         assert (
-            defined("dma_engine", "PAST_THE_HOSTS_MEMORY")
+            defined(suite, "PAST_THE_HOSTS_MEMORY")
             >= scripted_host.RAM_BASE + scripted_host.RAM_SIZE
         )
 
@@ -76,13 +82,23 @@ class TestWhatTheDriversTestsKnowOfTheStandInsBesideThem:
         assert defined("ucie_link", "ITS_WORD") == io_manager.HELLO
 
 
+#: Where each suite that knows a number of a stand-in's is.
+SUITES_THAT_KNOW_A_STAND_IN = {
+    "dma_engine": ZEPHYR_MODULE / "tests/drivers/dma_engine/src/main.c",
+    "ucie_link": ZEPHYR_MODULE / "tests/drivers/ucie_link/src/main.c",
+    # Not part of the package: in a checkout only.
+    "the SSD's admin": pathlib.Path(__file__).parents[2]
+    / "firmware/ssd/tests/admin/src/main.c",
+}
+
+
 def defined(suite, name):
-    """The number a driver's test suite has for `name`, from its `#define`."""
-    source = (
-        ZEPHYR_MODULE / "tests/drivers" / suite / "src/main.c"
-    ).read_text()
+    """The number a ztest suite has for `name`, from its `#define`."""
+    source = SUITES_THAT_KNOW_A_STAND_IN[suite]
+    if not source.is_file():
+        pytest.skip(f"There is no {source} here: it is not in the package.")
     found = re.search(
-        rf"^#define {name}\s+(0x[0-9A-Fa-f]+)", source, re.MULTILINE
+        rf"^#define {name}\s+(0x[0-9A-Fa-f]+)", source.read_text(), re.MULTILINE
     )
     assert found is not None, f"{suite}'s test has no #define {name}"
     return int(found.group(1), 16)
