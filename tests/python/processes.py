@@ -31,11 +31,29 @@ def run_python(code):
     return result.stdout.strip()
 
 
-def start_python(code):
-    """Start a snippet in a fresh interpreter, with its output piped back."""
+# What tells a new interpreter that coverage.py is to measure it. The build's
+# `coverage` target runs the tests with these set (see .coveragerc).
+COVERAGE_SWITCHES = ("COVERAGE_PROCESS_START", "COVERAGE_PROCESS_CONFIG")
+
+
+def unmeasured(environment):
+    """The same environment, for a process coverage.py is to leave alone."""
+    return {
+        name: value
+        for name, value in environment.items()
+        if name not in COVERAGE_SWITCHES
+    }
+
+
+def start_python(code, *, measured=True):
+    """Start a snippet in a fresh interpreter, with its output piped back.
+
+    A process that is not `measured` is one coverage.py leaves alone, even
+    when it is measuring the tests.
+    """
     return subprocess.Popen(
         [sys.executable, "-c", textwrap.dedent(code)],
-        env=environment(),
+        env=environment() if measured else unmeasured(environment()),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
