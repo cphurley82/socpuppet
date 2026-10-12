@@ -1293,6 +1293,31 @@ INSTANTIATE_TEST_SUITE_P(
                                  {kLoad},
                                  riscv::kLoadPageFault}));
 
+// A hart keeps the translations it has worked out, so as not to walk the
+// tables for every access, and what it keeps of a page that has only been
+// read must not let a write by. A kernel that marks a page clean and
+// counts on the fault to hear that it was written would otherwise never
+// write it back.
+TEST(WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJustLoadedFrom,
+     TheStoreIsStillAPageFault) {
+  constexpr std::uint64_t kAddress =
+      CpuPlatformWithPages::kSpareAddresses + 0x18;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(CpuPlatformWithPages::kSpareAddresses,
+                 CpuPlatformWithPages::kFirstSparePage,
+                 riscv::kPteRead | riscv::kPteWrite | riscv::kPteAccessed);
+  with_pages.Load(riscv::StoreWhyAndWhereAccessesTrap(
+      CpuPlatformWithPages::kPages, kAddress, {kLoad, kStore}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  EXPECT_EQ(why, riscv::kStorePageFault + 1);
+  EXPECT_EQ(where, kAddress);
+}
+
 // Supervisor mode's status register has a bit for each of two of those: a
 // kernel sets SUM for as long as it copies to or from a program's memory,
 // and MXR to read an instruction it has to emulate.

@@ -412,6 +412,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch, and decide again about Sv48 and Sv57.
 
+### A store to a page not marked dirty goes through if a load has been there first
+
+- **Where**: `src/iss/mem/mmu.h`, `virt2phys`.
+- **What is wrong**: the MMU takes a page fault at a page whose accessed bit is clear, or whose dirty bit is clear when it is written, and leaves the marking to the kernel (the specification's Svade). The check is made when the tables are walked, and a translation that is found in the TLB is used without it. A load from a page that is marked accessed and not dirty puts its translation in the TLB, and a store to the same page then finds it there and goes through. A kernel that clears the dirty bit of a page it has written back, and counts on the fault to hear that the page was written again, never hears, and the page's new contents are lost when it is dropped.
+- **How to see it**: a page mapped readable, writable and accessed, with the dirty bit clear; a load from it and then a store to it (`WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJustLoadedFrom` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-tlb-dirty.patch`: a store that finds its translation in the TLB looks at the dirty bit the entry was put there with, and takes the fault if it is clear. The kernel's `sfence.vma` after it has marked the page then empties the TLB, as it must.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.
