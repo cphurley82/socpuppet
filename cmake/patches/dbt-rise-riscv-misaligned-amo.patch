@@ -1,0 +1,35 @@
+diff --git a/src/iss/arch/riscv_hart_msu_vp.h b/src/iss/arch/riscv_hart_msu_vp.h
+index 3264299..2dedd4d 100644
+--- a/src/iss/arch/riscv_hart_msu_vp.h
++++ b/src/iss/arch/riscv_hart_msu_vp.h
+@@ -120,6 +120,8 @@ protected:
+     iss::status write_edelegh(unsigned addr, uint32_t val);
+ 
+     void check_interrupt();
++    // whether the instruction last fetched is an atomic memory operation
++    bool fetched_an_amo{false};
+     // the F and D extensions are switched off while mstatus.FS is 0: an instruction of theirs, and an access to fflags, frm or
+     // fcsr, is then an illegal instruction. Once they are on, anything that may have changed their state leaves FS dirty (3)
+     bool fp_is_off() const { return this->state.mstatus.FS == 0; }
+@@ -300,7 +302,10 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+             }
+             try {
+                 if(!is_debug(access) && (addr & (alignment - 1))) {
+-                    this->reg.trap_state = (1UL << 31) | traits<BASE>::RV_CAUSE_MISALIGNED_LOAD << 16;
++                    // an AMO reads and then writes, and its misaligned address is a store's ("store/AMO address misaligned"):
++                    // whoever emulates misaligned loads must not take it for one
++                    auto cause = fetched_an_amo ? traits<BASE>::RV_CAUSE_MISALIGNED_STORE : traits<BASE>::RV_CAUSE_MISALIGNED_LOAD;
++                    this->reg.trap_state = (1UL << 31) | cause << 16;
+                     this->fault_data = addr;
+                     return iss::Err;
+                 }
+@@ -314,6 +319,9 @@ iss::status riscv_hart_msu_vp<BASE, FEAT>::read(const addr_t& a, const unsigned
+                 // one; while they are on, one leaves FS dirty. The interpreter cannot see mstatus, and every instruction it
+                 // executes it fetches here first, which a backend that translates blocks does not. (An instruction that only reads
+                 // the registers dirties them too, which the specification allows.)
++                // remembered for a misaligned read: the major opcode AMO, and not LR, which is a load
++                if(res == iss::Ok && is_fetch(a.access) && !is_debug(a.access))
++                    fetched_an_amo = (data[0] & 0x7f) == 0x2f && (data[3] >> 3) != 0b00010;
+                 if(res == iss::Ok && is_fetch(a.access) && !is_debug(a.access) && is_fp_instruction(data)) {
+                     if(this->fp_is_off()) {
+                         this->reg.trap_state = (1UL << 31) | traits<BASE>::RV_CAUSE_ILLEGAL_INSTRUCTION << 16;

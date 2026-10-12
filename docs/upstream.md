@@ -512,6 +512,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### An atomic at a misaligned address raises the load's cause
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, `read`, and the `AMO*` cases of `src/vm/interp/vm_rv64gc.cpp`.
+- **What is wrong**: an `amo*` reads its word and then writes it, each as an ordinary access. The hart refuses a misaligned read with cause 4, a misaligned load, and that is what an `amo*` at a misaligned address raises. The specification has it raise the store's, cause 6, so that whoever makes misaligned loads on a program's behalf does not take an atomic for one and make half of it. `sc` is a store and raises 6, and `lr` a load.
+- **How to see it**: an `amoadd.w` at an odd address, and the cause in the handler (the row "an atomic sum" of `WhenSupervisorModeUsesAWordAtAnOddAddress` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-misaligned-amo.patch`, in the hart with supervisor mode: where it fetches an instruction it remembers whether that is an atomic memory operation, and a misaligned read by one is refused as a store. ⚠️ Nothing on the road to Linux executes one: a kernel that did would be wrong on every hart, and OpenSBI passes on to the kernel a misaligned trap whose instruction it does not know.
+- **Upstream fix**: in the description the interpreter is generated from: an `amo*` checks its address before it reads, and raises the store's cause. Ours works only where an instruction is fetched as it is executed, which a backend that translates blocks does not do.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## softvector
 
 [Minres/softvector](https://github.com/Minres/softvector), a submodule of DBT-RISE-RISCV.

@@ -208,6 +208,9 @@ constexpr Word AmoswapD(Word rd, Word rs1, Word rs2) {
 constexpr Word AmoaddD(Word rd, Word rs1, Word rs2) {
   return Atomic(0b00000, 3, rd, rs1, rs2);
 }
+constexpr Word AmoaddW(Word rd, Word rs1, Word rs2) {
+  return Atomic(0b00000, 2, rd, rs1, rs2);
+}
 constexpr Word AmoorW(Word rd, Word rs1, Word rs2) {
   return Atomic(0b01000, 2, rd, rs1, rs2);
 }
@@ -353,9 +356,14 @@ inline constexpr Word kInstructionPageFault = 12;
 inline constexpr Word kLoadPageFault = 13;
 inline constexpr Word kStorePageFault = 15;
 // Supervisor mode's own why and where of a trap: the cause, and for a
-// fault the address that could not be used.
+// fault the address that could not be used. And machine mode's where.
 inline constexpr Word kScause = 0x142;
 inline constexpr Word kStval = 0x143;
+inline constexpr Word kMtval = 0x343;
+// Two causes that are not page faults: a load, and a store, at an address
+// that is not a multiple of what is loaded or stored.
+inline constexpr Word kMisalignedLoad = 4;
+inline constexpr Word kMisalignedStore = 6;
 // The register that turns paging on: which kind of page table, in its top
 // four bits, and the number of the page the first table is in. 8 is Sv39,
 // tables of three levels that translate an address of 39 bits, and 9 and
@@ -1181,13 +1189,14 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
 
 // A program that runs `supervisors_code` in supervisor mode, once machine
 // mode has executed `machine_modes_setup`, which may use t1. Paging is
-// off, so `at` is where the RAM has things. Its result is four words. Why
+// off, so `at` is where the RAM has things. Its result is five words. Why
 // machine mode's handler was entered, the cause with one added so that
 // zero is never, and what `mstatus` read as there. A third that is
 // supervisor mode's own to store, which finds the result's address in t2:
 // Sd(rs2, kT2, 16). And how far past the first instruction of supervisor
-// mode's code, in bytes, machine mode was to return to. The handler
-// sleeps, and so does supervisor mode if its code runs to its end.
+// mode's code, in bytes, machine mode was to return to. And the address
+// the trap says, which for a fault is the one that could not be used. The
+// handler sleeps, and so does supervisor mode if its code runs to its end.
 inline Program RunInSupervisorModeAfter(const Pages& at,
                                         const Program& machine_modes_setup,
                                         const Program& supervisors_code) {
@@ -1214,7 +1223,8 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
   program.Load(kT4, at.result);
   program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMstatus), Sd(kT1, kT4, 8)});
   program.Load(kT5, its_first_instruction);
-  program.Emit({Csrr(kT1, kMepc), Sub(kT1, kT1, kT5), Sd(kT1, kT4, 24)});
+  program.Emit({Csrr(kT1, kMepc), Sub(kT1, kT1, kT5), Sd(kT1, kT4, 24),
+                Csrr(kT1, kMtval), Sd(kT1, kT4, 32)});
   AppendSleepForEver(program);
   return program.Assemble();
 }
@@ -1445,6 +1455,54 @@ inline Program RunWithACell(std::uint64_t cell, std::uint64_t result,
   program.Load(kT2, result);
   program.Emit(instructions);
   AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// What a handler does to make a store of a word that a hart refused: it
+// stores the low 32 bits of t0 a byte at a time at the address the trap
+// says, which it has in t5. It uses t6.
+inline Program StoreTheWordInT0AByteAtATimeAtT5() {
+  return {Sb(kT0, kT5, 0),    Srli(kT6, kT0, 8), Sb(kT6, kT5, 1),
+          Srli(kT6, kT0, 16), Sb(kT6, kT5, 2),   Srli(kT6, kT0, 24),
+          Sb(kT6, kT5, 3)};
+}
+
+// A program that, in supervisor mode with paging off and misaligned loads
+// and stores handed down to that mode, puts `address` in t1 and `t0` in t0
+// and executes `access`, an instruction that uses them. Its trap handler
+// stores two words of the result, why the trap was taken, the cause with
+// one added so that zero is no trap at all, and the address the trap says,
+// which it leaves in t5 for `then_the_handler` to use. Then it returns to
+// the instruction after, and the program stores one as a third word of its
+// result, and sleeps.
+inline Program TakeAMisalignedAccessInSupervisorMode(
+    const Pages& at, std::uint64_t address, Word access,
+    const Program& then_the_handler = {}, std::uint64_t t0 = 0) {
+  Assembler program;
+  program.Emit({Li(kT1, (1 << kMisalignedLoad) | (1 << kMisalignedStore)),
+                Csrw(kMedeleg, kT1)});
+  const Assembler::Constant handler = program.Load(kT1);
+  program.Emit({Csrw(kStvec, kT1),
+                // The mode to return to is supervisor, as InSupervisorMode
+                // sets it.
+                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
+                Csrs(kMstatus, kT1)});
+  const Assembler::Constant supervisor = program.Load(kT1);
+  program.Emit({Csrw(kMepc, kT1), kMret});
+
+  program.Set(supervisor, at.code + program.Here());
+  program.Load(kT1, address);
+  program.Load(kT2, at.result);
+  program.Load(kT0, t0);
+  program.Emit({access, Li(kT3, 1), Sd(kT3, kT2, 16)});
+  AppendSleepForEver(program);
+
+  program.Set(handler, at.code + program.Here());
+  program.Emit({Csrr(kT4, kScause), Addi(kT4, kT4, 1), Sd(kT4, kT2, 0),
+                Csrr(kT5, kStval), Sd(kT5, kT2, 8)});
+  program.Emit(then_the_handler);
+  program.Emit({Csrr(kT4, kSepc), Addi(kT4, kT4, 4), Csrw(kSepc, kT4), kSret});
   return program.Assemble();
 }
 

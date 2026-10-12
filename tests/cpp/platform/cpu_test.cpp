@@ -2307,6 +2307,117 @@ INSTANTIATE_TEST_SUITE_P(
          0x11},
     })));
 
+// A use of a word at an address that is not a multiple of four, by the
+// instruction that makes it, with the address in t1, and the trap it is.
+struct MisalignedUse {
+  const char* name;
+  riscv::Word instruction;
+  riscv::Word cause;
+};
+
+void PrintTo(const MisalignedUse& use, std::ostream* out) { *out << use.name; }
+
+// An atomic is a load and a store in one, and is refused as a store: a
+// handler that makes misaligned loads on a program's behalf must not
+// take one for a load, since it could only make half of it.
+constexpr MisalignedUse kEachMisalignedUse[] = {
+    {"a load", riscv::Lw(riscv::kT0, riscv::kT1, 0), riscv::kMisalignedLoad},
+    {"a store", riscv::Sw(riscv::kT0, riscv::kT1, 0), riscv::kMisalignedStore},
+    {"an atomic sum", riscv::AmoaddW(riscv::kT0, riscv::kT1, riscv::kT3),
+     riscv::kMisalignedStore},
+};
+
+// An address in the RAM that is one past a multiple of four.
+constexpr std::uint64_t kOddAddress =
+    CpuPlatformWithPages::kFirstSparePage + 0x101;
+
+// 🎓 A hart may refuse a load or a store at an address that is not a
+// multiple of its size, and this one does. A kernel is written as if no
+// hart did, so something under it catches the trap and makes the access
+// itself, a byte at a time. For that the trap has to say which instruction
+// and which address.
+class WhenSupervisorModeUsesAWordAtAnOddAddress
+    : public ::testing::TestWithParam<MisalignedUse> {};
+
+TEST_P(WhenSupervisorModeUsesAWordAtAnOddAddress,
+       MachineModeTakesTheTrapOfThatUseWhichSaysTheInstructionAndTheAddress) {
+  // The address is made from the result's own, which supervisor mode has
+  // in t2, by one instruction, so the use is the one after it.
+  constexpr std::int32_t kOddOffsetFromTheResult = 0x101;
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::RunInSupervisorModeAfter(
+      CpuPlatformWithPages::kWithPagingOff, {},
+      {riscv::Addi(riscv::kT1, riscv::kT2, kOddOffsetFromTheResult),
+       GetParam().instruction}));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t how_far_into_its_code = with_pages.Result(3);
+  const std::uint64_t where = with_pages.Result(4);
+  EXPECT_EQ(why, GetParam().cause + 1);
+  EXPECT_EQ(how_far_into_its_code, 4U);
+  EXPECT_EQ(where, CpuPlatformWithPages::kResultPage + kOddOffsetFromTheResult);
+}
+
+INSTANTIATE_TEST_SUITE_P(EachUse, WhenSupervisorModeUsesAWordAtAnOddAddress,
+                         ::testing::ValuesIn(kEachMisalignedUse));
+
+// A monitor may hand the two traps down, to a kernel that would sooner see
+// to them itself.
+class WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIsHandedDown
+    : public ::testing::TestWithParam<MisalignedUse> {};
+
+TEST_P(WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIsHandedDown,
+       SupervisorModeTakesItWithTheAddressAndTheProgramRunsOnPastIt) {
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::TakeAMisalignedAccessInSupervisorMode(
+      CpuPlatformWithPages::kWithPagingOff, kOddAddress,
+      GetParam().instruction));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  const std::uint64_t the_program_ran_on = with_pages.Result(2);
+  EXPECT_EQ(why, GetParam().cause + 1);
+  EXPECT_EQ(where, kOddAddress);
+  EXPECT_EQ(the_program_ran_on, 1U);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachUse, WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIsHandedDown,
+    ::testing::ValuesIn(kEachMisalignedUse));
+
+// What the handler of such a trap does. Here it is in supervisor mode, as
+// Linux's own is from 6.16, which asks OpenSBI to hand the two traps down.
+// For a kernel that does not ask, OpenSBI does the same one mode up, from
+// `mepc` and `mtval`. The trap says where, the instruction it names says
+// what (this handler is told: a word, from t0), and the handler stores the
+// word a byte at a time and returns past the instruction.
+TEST(WhenAHandlerMakesTheStoreThatAHartRefusedAtAnOddAddress,
+     TheWordIsThereAndTheProgramRunsOn) {
+  constexpr std::uint32_t kWord = 0x1234'5678;
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::TakeAMisalignedAccessInSupervisorMode(
+      CpuPlatformWithPages::kWithPagingOff, kOddAddress,
+      riscv::Sw(riscv::kT0, riscv::kT1, 0),
+      /*then_the_handler=*/riscv::StoreTheWordInT0AByteAtATimeAtT5(),
+      /*t0=*/kWord));
+
+  with_pages.RunUntilAsleep();
+
+  // The handler ran: the word there is its doing, and not the
+  // instruction's.
+  ASSERT_EQ(with_pages.Result(0), riscv::kMisalignedStore + 1);
+  const auto there = static_cast<std::uint32_t>(with_pages.At(kOddAddress));
+  const std::uint64_t the_program_ran_on = with_pages.Result(2);
+  EXPECT_EQ(there, kWord);
+  EXPECT_EQ(the_program_ran_on, 1U);
+}
+
 TEST(WhenNothingHasWrittenSatp, ItReadsAsPagingOff) {
   CpuPlatformWithPages with_pages;
   // The RAM starts as zeros, which a program that stored nothing would
