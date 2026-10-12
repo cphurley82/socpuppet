@@ -1,0 +1,15 @@
+identifier: socpuppet_iomgr
+name: socpuppet IO-die manager, simulated by socpuppet
+type: sim
+arch: riscv
+simulation:
+  - name: custom
+    exec: socpuppet-run
+toolchain:
+  - zephyr
+ram: 256
+flash: 256
+supported:
+  - watchdog
+testing:
+  timeout_multiplier: 2

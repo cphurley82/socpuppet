@@ -113,6 +113,8 @@ uv run cmake --build --preset spike
 uv run ctest --preset spike            # only the tests labelled `spike`
 ```
 
+The twister spike ([spikes/twister](../spikes/twister/README.md), report in [twister-spike.md](twister-spike.md)) asks whether Zephyr's test runner can run Zephyr's own tests on socpuppet's boards. It is scripts and a few Zephyr files and no C++, so it needs no option and no preset: `spikes/twister/twister.sh` runs it, and it goes when M21's steps have rebuilt what it found.
+
 The earlier spikes have gone. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
 
 ## Firmware

@@ -1,0 +1,11 @@
+tests:
+  socpuppet.drivers.syscon.reset_cause:
+    tags:
+      - socpuppet
+      - drivers
+    harness: ztest
+    platform_allow:
+      - socpuppet_host
+      - socpuppet_ssd
+      - socpuppet_iomgr
+    filter: dt_compat_enabled("socpuppet,system-controller")

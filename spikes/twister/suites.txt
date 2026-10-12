@@ -1,0 +1,19 @@
+# One twister invocation a line: the suite's directory (under Zephyr's tree
+# unless it starts with spikes/) and the flags it needs. `twister.sh --suites`
+# runs each on the boards given with -p. `-K` runs a suite past its
+# platform_allow list.
+tests/kernel/common
+tests/kernel/timer/timer_api
+tests/kernel/sched/schedule_api
+tests/kernel/threads/thread_apis
+tests/kernel/workq/work
+tests/kernel/sleep
+tests/kernel/context
+tests/kernel/fatal/exception
+tests/arch/riscv/fatal -K
+tests/drivers/watchdog/wdt_basic_api
+tests/subsys/shell/shell
+tests/lib/c_lib
+samples/hello_world -K
+samples/synchronization -K
+spikes/twister/tests/drivers/syscon_reset_cause

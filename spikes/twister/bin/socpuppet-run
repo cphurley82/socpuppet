@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The emulator twister invokes: `exec: socpuppet-run` in the board's yaml,
+# and the command of the `run_custom` target in its board.cmake. It runs
+# the spike's runner with a Python that can import socpuppet, unbuffered,
+# because twister reads the console from a pipe a line at a time.
+set -euo pipefail
+here=$(cd "$(dirname "$0")/../../.." && pwd)
+exec "${SOCPUPPET_PYTHON:-python3}" -u "${here}/spikes/twister/run.py" "$@"
