@@ -807,6 +807,31 @@ inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
   return program.Assemble();
 }
 
+// A program that turns paging on for itself, as an operating system does.
+// Machine mode drops to supervisor mode where the program is, with paging
+// off. There it writes `satp`, runs on at the same addresses, which its
+// tables have to map onto themselves for that, and jumps to its virtual
+// address. It stores the address of an instruction there as its result,
+// and sleeps.
+inline Program TurnPagingOnInSupervisorModeThenStoreWhereItRuns(
+    const Pages& at) {
+  Assembler program;
+  program.Emit({Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
+                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode), Csrs(kMstatus, kT1),
+                // To the instruction after the return, four on from here.
+                Auipc(kT1, 0), Addi(kT1, kT1, 16), Csrw(kMepc, kT1), kMret});
+  program.Load(kT1, SatpForSv39(at.root_table));
+  program.Emit(Csrw(kSatp, kT1));
+  const Assembler::Constant up_there = program.Load(kT1);
+  program.Emit(Jalr(kZero, kT1, 0));
+  program.Set(up_there, at.code + program.Here());
+  program.Emit(Auipc(kT1, 0));
+  program.Load(kT2, at.result);
+  program.Emit(Sd(kT1, kT2, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
 // A program that, in supervisor mode under paging, calls the code at the
 // virtual address `code`, which a test has put there, and stores what that
 // left in t0 as its result. Then it sleeps.

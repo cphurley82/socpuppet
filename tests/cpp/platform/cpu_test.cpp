@@ -1088,6 +1088,16 @@ struct CpuPlatformWithPages {
                riscv::PageTableEntry(physical, bits | riscv::kPteValid));
   }
 
+  // Maps the gigabyte the RAM is in onto itself, for code and for data,
+  // with one entry of the first table: a page of 1 GiB. 🎓 An entry that
+  // is a page can be in any of the three tables, and the higher the table
+  // the bigger the page.
+  void MapTheRamWhereItIs() {
+    WriteEntry(
+        kFirstTable, kRamBase >> 30,
+        riscv::PageTableEntry(kRamBase, kCode | kData | riscv::kPteValid));
+  }
+
   // Puts `value` in the RAM at `physical`, in as many bytes as its type
   // has.
   template <typename Value>
@@ -1136,6 +1146,29 @@ TEST(WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::StoreWhereItRunsInSupervisorModeUnderPaging(
       CpuPlatformWithPages::kPages));
+
+  with_pages.RunUntilAsleep();
+
+  const std::uint64_t page_it_ran_in = with_pages.Result() & ~0xFFFULL;
+  EXPECT_EQ(page_it_ran_in, CpuPlatformWithPages::kPages.code);
+}
+
+// A kernel is entered with paging off and turns it on for itself. From the
+// instruction after that it is running through its tables, at the
+// addresses it was loaded at, until it jumps to the ones it was linked
+// for. Linux maps itself where it is with big pages to get across.
+TEST(WhenSupervisorModeTurnsPagingOnWithItsRamMappedWhereItIsByABigPage,
+     ItRunsOnAndThenAtItsHighAddress) {
+  // The result goes where the RAM has it, which is some way into the big
+  // page: only the page's first 4 KiB are where any page would put them.
+  constexpr riscv::Pages kWithTheResultWhereItIs{
+      .root_table = CpuPlatformWithPages::kFirstTable,
+      .code = CpuPlatformWithPages::kPages.code,
+      .result = CpuPlatformWithPages::kResultPage};
+  CpuPlatformWithPages with_pages;
+  with_pages.MapTheRamWhereItIs();
+  with_pages.Load(riscv::TurnPagingOnInSupervisorModeThenStoreWhereItRuns(
+      kWithTheResultWhereItIs));
 
   with_pages.RunUntilAsleep();
 
