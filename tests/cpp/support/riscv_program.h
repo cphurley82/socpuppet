@@ -189,6 +189,17 @@ inline constexpr Word kSie = 0x104;
 inline constexpr Word kStvec = 0x105;
 // And its view of which interrupts are pending.
 inline constexpr Word kSip = 0x144;
+// The register that says which exceptions are handed down to supervisor
+// mode, a bit for each cause, and the three causes that are page faults:
+// of an instruction fetch, of a load and of a store.
+inline constexpr Word kMedeleg = 0x302;
+inline constexpr Word kInstructionPageFault = 12;
+inline constexpr Word kLoadPageFault = 13;
+inline constexpr Word kStorePageFault = 15;
+// Supervisor mode's own why and where of a trap: the cause, and for a
+// fault the address that could not be used.
+inline constexpr Word kScause = 0x142;
+inline constexpr Word kStval = 0x143;
 // The register that turns paging on: which kind of page table, in its top
 // four bits, and the number of the page the first table is in. 8 is Sv39,
 // tables of three levels that translate an address of 39 bits.
@@ -803,6 +814,35 @@ inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
   program.Emit(Auipc(kT1, 0));
   program.Load(kT2, at.result);
   program.Emit(Sd(kT1, kT2, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in supervisor mode under paging, with page faults handed
+// down to that mode, puts `address` in t1 and executes `access`, an
+// instruction that uses it. Its trap handler stores two words as the
+// program's result: why the trap was taken, the cause with one added so
+// that zero is no trap at all, and the address the trap says. Either way
+// it then sleeps.
+inline Program StoreWhyAndWhereAnAccessTraps(const Pages& at,
+                                             std::uint64_t address,
+                                             Word access) {
+  Assembler program;
+  program.Load(kT1, (std::uint64_t{1} << kInstructionPageFault) |
+                        (std::uint64_t{1} << kLoadPageFault) |
+                        (std::uint64_t{1} << kStorePageFault));
+  program.Emit(Csrw(kMedeleg, kT1));
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  const Assembler::Constant handler = program.Load(kT1);
+  program.Emit(Csrw(kStvec, kT1));
+  program.Load(kT1, address);
+  program.Emit(access);
+  AppendSleepForEver(program);
+
+  program.Set(handler, at.code + program.Here());
+  program.Emit({Csrr(kT1, kScause), Addi(kT1, kT1, 1)});
+  program.Load(kT2, at.result);
+  program.Emit({Sd(kT1, kT2, 0), Csrr(kT1, kStval), Sd(kT1, kT2, 8)});
   AppendSleepForEver(program);
   return program.Assemble();
 }

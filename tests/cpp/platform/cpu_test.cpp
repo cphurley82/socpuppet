@@ -1116,11 +1116,11 @@ struct CpuPlatformWithPages {
   // Any program here is a few dozen instructions and then asleep.
   void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
 
-  // The word of 64 bits that a program left as its result, read where the
-  // RAM has it.
-  std::uint64_t Result() {
+  // The word of 64 bits that a program left as its result, or the
+  // `index`th of several, read where the RAM has it.
+  std::uint64_t Result(std::uint64_t index = 0) {
     std::array<std::uint8_t, 8> word{};
-    platform.DebugRead("cpu.socket", kResultPage,
+    platform.DebugRead("cpu.socket", kResultPage + index * 8,
                        std::as_writable_bytes(std::span{word}));
     return socpuppet::LoadLittleEndian<std::uint64_t>(word);
   }
@@ -1175,6 +1175,48 @@ TEST(WhenSupervisorModeTurnsPagingOnWithItsRamMappedWhereItIsByABigPage,
   const std::uint64_t page_it_ran_in = with_pages.Result() & ~0xFFFULL;
   EXPECT_EQ(page_it_ran_in, CpuPlatformWithPages::kPages.code);
 }
+
+// A way of using an address, by the instruction that does it with the
+// address in t1, and the page fault it is.
+struct UseOfAnAddress {
+  const char* name;
+  riscv::Word instruction;
+  riscv::Word page_fault;
+};
+
+void PrintTo(const UseOfAnAddress& use, std::ostream* out) { *out << use.name; }
+
+// A kernel maps a page when something first touches it, and the fault is
+// how it hears: which kind of use, and of which address.
+class WhenSupervisorModeUsesAnAddressNoPageIsMappedAt
+    : public ::testing::TestWithParam<UseOfAnAddress> {};
+
+TEST_P(WhenSupervisorModeUsesAnAddressNoPageIsMappedAt,
+       ItTakesThePageFaultOfThatUseWhichSaysTheAddress) {
+  constexpr std::uint64_t kNotMapped =
+      CpuPlatformWithPages::kSpareAddresses + 0x18;
+  CpuPlatformWithPages with_pages;
+  with_pages.Load(riscv::StoreWhyAndWhereAnAccessTraps(
+      CpuPlatformWithPages::kPages, kNotMapped, GetParam().instruction));
+
+  with_pages.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  const std::uint64_t why = with_pages.Result(0);
+  const std::uint64_t where = with_pages.Result(1);
+  EXPECT_EQ(why, GetParam().page_fault + 1);
+  EXPECT_EQ(where, kNotMapped);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachUse, WhenSupervisorModeUsesAnAddressNoPageIsMappedAt,
+    ::testing::Values(
+        UseOfAnAddress{"a load", riscv::Ld(riscv::kT0, riscv::kT1, 0),
+                       riscv::kLoadPageFault},
+        UseOfAnAddress{"a store", riscv::Sd(riscv::kT0, riscv::kT1, 0),
+                       riscv::kStorePageFault},
+        UseOfAnAddress{"a jump", riscv::Jalr(riscv::kZero, riscv::kT1, 0),
+                       riscv::kInstructionPageFault}));
 
 // Two pages that follow each other in a program's addresses can be
 // anywhere in the RAM, and an instruction of four bytes can begin two
