@@ -384,11 +384,21 @@ Each entry says:
 
 ### With paging on, an instruction is fetched from its virtual address as if it were physical
 
-- **Where**: `src/iss/mem/mmu.h`, `needs_translation`.
-- **What is wrong**: the interpreter fetches from a memory space of its own, `IMEM` (`src/vm/interp/vm_rv64gc.cpp`, `fetch_ins`), and the MMU translates an address only when its space is `MEM`. So in supervisor or user mode with `satp` set, a load or a store goes through the page tables and an instruction fetch does not: the virtual address goes down to the bus. A program whose pages map it where it already is runs all the same, which is why a small test of paging passes. A kernel linked at an address in the upper half of memory takes a fetch access fault at its first instruction. `pmp.h` beside it takes both spaces, and says so in a comment.
-- **How to see it**: page tables that map a page of the program at an address with no memory behind it, `satp` written in machine mode, and an `mret` to that address in supervisor mode (`WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt` in `tests/cpp/platform/cpu_test.cpp`).
-- **What we do**: `cmake/patches/dbt-rise-riscv-translate-fetches.patch` has `needs_translation` take `IMEM` as well.
-- **Upstream fix**: the same.
+- **Where**: `src/iss/mem/mmu.h`, `needs_translation` and `read_mem`.
+- **What is wrong**: the interpreter fetches from a memory space of its own, `IMEM` (`src/vm/interp/vm_rv64gc.cpp`, `fetch_ins`), and the MMU translates an address only when its space is `MEM`. So in supervisor or user mode with `satp` set, a load or a store goes through the page tables and an instruction fetch does not: the virtual address goes down to the bus. A program whose pages map it where it already is runs all the same, which is why a small test of paging passes. A kernel linked at an address in the upper half of memory takes a fetch access fault at its first instruction. `pmp.h` beside it takes both spaces, and says so in a comment, and the MMU has code that only a fetch could reach: the check of a page's execute bit, and the instruction page fault. One more thing in `read_mem` is met as soon as a fetch is translated. The second half of a read that crosses a page is translated from the address of the first half, where `write_mem` beside it has the address of the second, so the first bytes are read twice. A hart's own load never gets there, since a misaligned one traps first; a debugger's read can; and a fetch does, being always of four bytes and free to begin two bytes before the end of a page.
+- **How to see it**: page tables that map a page of the program at an address with no memory behind it, `satp` written in machine mode, and an `mret` to that address in supervisor mode (`WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt` in `tests/cpp/platform/cpu_test.cpp`). And an `addi` across two pages that are mapped to pages which are not neighbours in the RAM, which executes as another instruction (the test after it).
+- **What we do**: `cmake/patches/dbt-rise-riscv-translate-fetches.patch` has `needs_translation` take `IMEM` as well, and has the second half translate its own address.
+- **Upstream fix**: the same. ⚠️ Two other readers of `IMEM` are translated by it too, and neither is built here. The semihosting probe in `enter_trap` (`riscv_hart_msu_vp.h`) reads the instructions round a breakpoint straight from the memory chain, outside the `try` that `read()` has, so a page fault there would leave `enter_trap` as a C++ exception. And the asmjit backend fetches with a debug read in `IMEM`, which is now translated as a load: it wants the page readable where a fetch wants it executable.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### A two-byte instruction that ends a page takes a page fault for the page after
+
+- **Where**: `src/vm/interp/vm_rv64gc.cpp` and its siblings, `fetch_ins`; met in `src/iss/mem/mmu.h`, `read_mem`.
+- **What is wrong**: the interpreter fetches four bytes whatever the instruction's length. When the last two bytes of a page are a whole compressed instruction, the other two are the first of the next page, which the hart has no use for and which may not be mapped: the last instruction of a program's last page, a `ret` as likely as not, takes an instruction page fault. `pmp.h` knows of the same over-read and denies it ("the 2 bytes the ISS over-reads past a compressed instruction"). Nothing saw it under paging while fetches were not translated at all (the entry above).
+- **How to see it**: a `c.jr ra` in the last two bytes of a mapped page, with no page mapped after it, called from supervisor mode (`WhenATwoByteInstructionEndsAPageAndThePageAfterIsNotMapped` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-fetch-ends-page.patch`, in the MMU, where one change covers every core: a fetch that crosses a page stops at the page's end when the two bytes it has read are a whole instruction, and gives zeros for the rest.
+- **Upstream fix**: in the interpreter, where the length of an instruction is known: fetch two bytes, and two more only if the first two say the instruction has them. That keeps the encoding out of a memory element, and spares the same read at the end of a physical memory.
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 

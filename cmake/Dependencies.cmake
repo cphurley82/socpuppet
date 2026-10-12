@@ -167,7 +167,10 @@ FetchContent_Declare(dbt_rise_riscv
   # machine external one, and the core then slept through an interrupt whose
   # line stayed high. translate-fetches: with paging on, an instruction was
   # fetched from its virtual address as if that were a physical one, where
-  # data was translated.
+  # data was translated, and one that lay across two pages got its second
+  # half from the first page again. fetch-ends-page: a two-byte instruction
+  # that ended a page took a page fault for the page after, which it had
+  # no use for.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -180,6 +183,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-pulse.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-mip-read-only.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-translate-fetches.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-fetch-ends-page.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

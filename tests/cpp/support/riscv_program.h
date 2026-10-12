@@ -17,6 +17,8 @@ using Program = std::vector<Word>;
 
 // Registers, by their number.
 inline constexpr Word kZero = 0;
+// Where a call leaves the address to return to.
+inline constexpr Word kRa = 1;
 inline constexpr Word kT0 = 5;
 inline constexpr Word kT1 = 6;
 inline constexpr Word kT2 = 7;
@@ -83,6 +85,10 @@ constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
 // Load all 64 bits at offset(rs1) into rd. Only a 64-bit core has it.
 constexpr Word Ld(Word rd, Word rs1, std::int32_t offset) {
   return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x03;
+}
+// Jump to rs1 + offset, leaving the return address in rd.
+constexpr Word Jalr(Word rd, Word rs1, std::int32_t offset) {
+  return (Field(offset, 12) << 20) | (rs1 << 15) | (rd << 7) | 0x67;
 }
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
@@ -205,6 +211,8 @@ constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
                                        std::uint64_t bits) {
   return ((leads_to >> 12) << 10) | bits;
 }
+// Return from a call, in the two bytes a compressed instruction takes.
+inline constexpr std::uint16_t kCompressedRet = 0x8082;
 // Return from a trap handler to where the trap was taken.
 inline constexpr Word kMret = 0x3020'0073;
 // The same, from a handler in supervisor mode.
@@ -795,6 +803,22 @@ inline Program StoreWhereItRunsInSupervisorModeUnderPaging(const Pages& at) {
   program.Emit(Auipc(kT1, 0));
   program.Load(kT2, at.result);
   program.Emit(Sd(kT1, kT2, 0));
+  AppendSleepForEver(program);
+  return program.Assemble();
+}
+
+// A program that, in supervisor mode under paging, calls the code at the
+// virtual address `code`, which a test has put there, and stores what that
+// left in t0 as its result. Then it sleeps.
+inline Program StoreWhatTheCodeAtAnAddressLeavesInT0(const Pages& at,
+                                                     std::uint64_t code) {
+  Assembler program;
+  AppendEnterSupervisorModeUnderPaging(program, at);
+  program.Emit(Li(kT0, 0));
+  program.Load(kT1, code);
+  program.Emit(Jalr(kRa, kT1, 0));
+  program.Load(kT2, at.result);
+  program.Emit(Sd(kT0, kT2, 0));
   AppendSleepForEver(program);
   return program.Assemble();
 }

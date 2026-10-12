@@ -1038,9 +1038,22 @@ struct CpuPlatformWithPages {
   static constexpr std::uint64_t kSecondTable = kRamBase + 0x2000;
   static constexpr std::uint64_t kThirdTable = kRamBase + 0x3000;
   static constexpr std::uint64_t kResultPage = kRamBase + 0x4000;
+  // Two pages for a test's own use, with one between that is nobody's, so
+  // that they are not neighbours in the RAM.
+  static constexpr std::uint64_t kFirstSparePage = kRamBase + 0x5000;
+  static constexpr std::uint64_t kSecondSparePage = kRamBase + 0x7000;
   // The first address of the top half, which is where the tables here
   // lead: the 512 pages from it up are the third table's to map.
   static constexpr std::uint64_t kTopHalf = 0xFFFF'FFC0'0000'0000;
+  // From here up nothing is mapped until a test maps it.
+  static constexpr std::uint64_t kSpareAddresses = kTopHalf + 0x2000;
+  // What a page of code is mapped with, and a page of data. Accessed, and
+  // dirty where it is written: this hart takes a page fault at a page
+  // that is not marked so, and marks none itself.
+  static constexpr std::uint64_t kCode =
+      riscv::kPteRead | riscv::kPteExecute | riscv::kPteAccessed;
+  static constexpr std::uint64_t kData = riscv::kPteRead | riscv::kPteWrite |
+                                         riscv::kPteAccessed | riscv::kPteDirty;
   // Where the program's page and the result's are mapped.
   static constexpr riscv::Pages kPages{
       .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
@@ -1063,13 +1076,8 @@ struct CpuPlatformWithPages {
                riscv::PageTableEntry(kSecondTable, riscv::kPteValid));
     WriteEntry(kSecondTable, 0,
                riscv::PageTableEntry(kThirdTable, riscv::kPteValid));
-    // Accessed, and dirty where it is written: this hart takes a page
-    // fault at a page that is not marked so, and marks none itself.
-    Map(kPages.code, kProgramPage,
-        riscv::kPteRead | riscv::kPteExecute | riscv::kPteAccessed);
-    Map(kPages.result, kResultPage,
-        riscv::kPteRead | riscv::kPteWrite | riscv::kPteAccessed |
-            riscv::kPteDirty);
+    Map(kPages.code, kProgramPage, kCode);
+    Map(kPages.result, kResultPage, kData);
   }
 
   // Maps the page at `virtual_address`, one of the 512 from kTopHalf up,
@@ -1078,6 +1086,15 @@ struct CpuPlatformWithPages {
            std::uint64_t bits) {
     WriteEntry(kThirdTable, (virtual_address - kTopHalf) / 0x1000,
                riscv::PageTableEntry(physical, bits | riscv::kPteValid));
+  }
+
+  // Puts `value` in the RAM at `physical`, in as many bytes as its type
+  // has.
+  template <typename Value>
+  void Put(std::uint64_t physical, Value value) {
+    const auto bytes = socpuppet::LittleEndianBytes(value);
+    platform.DebugWrite("cpu.socket", physical,
+                        std::as_bytes(std::span{bytes}));
   }
 
   // Puts `program` in the program's page, where the CPU starts.
@@ -1103,9 +1120,7 @@ struct CpuPlatformWithPages {
  private:
   void WriteEntry(std::uint64_t table, std::uint64_t index,
                   std::uint64_t entry) {
-    const auto bytes = socpuppet::LittleEndianBytes(entry);
-    platform.DebugWrite("cpu.socket", table + index * 8,
-                        std::as_bytes(std::span{bytes}));
+    Put(table + index * 8, entry);
   }
 };
 
@@ -1126,6 +1141,60 @@ TEST(WhenSupervisorModeIsEnteredAtAnAddressWithNoMemoryThatItsTablesMapOntoIt,
 
   const std::uint64_t page_it_ran_in = with_pages.Result() & ~0xFFFULL;
   EXPECT_EQ(page_it_ran_in, CpuPlatformWithPages::kPages.code);
+}
+
+// Two pages that follow each other in a program's addresses can be
+// anywhere in the RAM, and an instruction of four bytes can begin two
+// bytes before the end of the first.
+static_assert(CpuPlatformWithPages::kSecondSparePage !=
+              CpuPlatformWithPages::kFirstSparePage + 0x1000);
+
+TEST(WhenAnInstructionLiesAcrossTwoPagesThatAreNotNeighboursInTheRam,
+     ItIsReadAHalfFromEach) {
+  constexpr std::uint64_t kFirstPage = CpuPlatformWithPages::kSpareAddresses;
+  constexpr std::uint64_t kSecondPage = kFirstPage + 0x1000;
+  constexpr std::uint64_t kTwoBytesBeforeTheEnd = 0xFFE;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(kFirstPage, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kCode);
+  with_pages.Map(kSecondPage, CpuPlatformWithPages::kSecondSparePage,
+                 CpuPlatformWithPages::kCode);
+  // t0 = 0x123, a half of it in each page, and then a return.
+  const riscv::Word across = riscv::Addi(riscv::kT0, riscv::kZero, 0x123);
+  const auto first_half = static_cast<std::uint16_t>(across);
+  const auto second_half = static_cast<std::uint16_t>(across >> 16);
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage + kTwoBytesBeforeTheEnd,
+                 first_half);
+  with_pages.Put(CpuPlatformWithPages::kSecondSparePage, second_half);
+  with_pages.Put(CpuPlatformWithPages::kSecondSparePage + 2,
+                 riscv::Jalr(riscv::kZero, riscv::kRa, 0));
+  with_pages.Load(riscv::StoreWhatTheCodeAtAnAddressLeavesInT0(
+      CpuPlatformWithPages::kPages, kFirstPage + kTwoBytesBeforeTheEnd));
+
+  with_pages.RunUntilAsleep();
+
+  EXPECT_EQ(with_pages.Result(), 0x123U);
+}
+
+// A hart reads no more of an instruction than the instruction has. The
+// last two bytes of a program's last page can be a whole one.
+TEST(WhenATwoByteInstructionEndsAPageAndThePageAfterIsNotMapped,
+     ItRunsAllTheSame) {
+  constexpr std::uint64_t kLastPage = CpuPlatformWithPages::kSpareAddresses;
+  CpuPlatformWithPages with_pages;
+  with_pages.Map(kLastPage, CpuPlatformWithPages::kFirstSparePage,
+                 CpuPlatformWithPages::kCode);
+  // t0 = 0x5A, and then a return in the page's last two bytes.
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage + 0xFFA,
+                 riscv::Addi(riscv::kT0, riscv::kZero, 0x5A));
+  with_pages.Put(CpuPlatformWithPages::kFirstSparePage + 0xFFE,
+                 riscv::kCompressedRet);
+  with_pages.Load(riscv::StoreWhatTheCodeAtAnAddressLeavesInT0(
+      CpuPlatformWithPages::kPages, kLastPage + 0xFFA));
+
+  with_pages.RunUntilAsleep();
+
+  EXPECT_EQ(with_pages.Result(), 0x5AU);
 }
 
 TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {

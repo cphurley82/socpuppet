@@ -1,0 +1,25 @@
+diff --git a/src/iss/mem/mmu.h b/src/iss/mem/mmu.h
+index 2b3adc8..7c6eb7f 100644
+--- a/src/iss/mem/mmu.h
++++ b/src/iss/mem/mmu.h
+@@ -41,6 +41,7 @@
+ #include "iss/vm_types.h"
+ #include "memory_if.h"
+ #include "util/ities.h"
++#include <algorithm>
+ #include <cstdint>
+ #include <optional>
+ #include <type_traits>
+@@ -121,6 +122,12 @@ private:
+             auto len1 = split_addr - addr.val;
+             auto res = down_stream_mem.rd_mem({iss::address_type::PHYSICAL, addr.access, addr.space, virt2phys(addr.access, addr.val)},
+                                               len1, data);
++            // a fetch is always of 4 bytes; if what ends the page is a whole 16 bit instruction (its two lowest bits are not 11), the
++            // next page is not read (and may not be mapped at all)
++            if(res == iss::Ok && is_fetch(addr.access) && (data[0] & 0x3) != 0x3) {
++                std::fill(data + len1, data + length, 0);
++                return res;
++            }
+             if(res == iss::Ok)
+                 res = down_stream_mem.rd_mem({iss::address_type::PHYSICAL, addr.access, addr.space, virt2phys(addr.access, split_addr)},
+                                              length - len1, data + len1);
