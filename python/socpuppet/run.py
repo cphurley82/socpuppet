@@ -6,7 +6,7 @@ import sys
 from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
-from socpuppet import boot_image
+from socpuppet import boot_image, ztest
 from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
 from socpuppet.boards.host import host
@@ -79,11 +79,6 @@ BOARDS = {
 #: How many 512-byte blocks the drive of the shield `socpuppet_host_drive`
 #: has.
 _DRIVE_BLOCKS = 4096
-#: What the last line of a ztest run has in it, followed by `SUCCESSFUL` or
-#: `FAILED`. 🎓 ztest is Zephyr's test framework, and this line is what
-#: Zephyr's own test runner, twister, judges a run by.
-_VERDICT = "PROJECT EXECUTION"
-_FAILED = "FAILED"
 #: The boot ROM's program for each kind of CPU, as `firmware/build.sh`
 #: names the two it builds from `firmware/rom`.
 _ROMS = {32: "rom_rv32.elf", 64: "rom_rv64.elf"}
@@ -178,21 +173,24 @@ def run(
             f"{_in_ms(platform.time)} ms of simulated time, {why}.",
             file=sys.stderr,
         )
-    elif _FAILED in verdict:
+    elif verdict == "FAILED":
         # The console has said which test and why. The status is for a
         # script that runs one image and asks only whether it passed.
         sys.exit(1)
 
 
-def _perform(platform: Platform, uart: PlacedUart, until: int) -> str | None:
+def _perform(
+    platform: Platform, uart: PlacedUart, until: int
+) -> ztest.Verdict | None:
     """Run until the console gives a verdict, printing each line as it comes.
 
-    Returns the line with the verdict, or None if there was none before
-    `until` of simulated time had passed or the simulation had nothing
-    left to do.
+    🎓 The verdict is the last line of a run of ztest, Zephyr's test
+    framework, and is what Zephyr's own test runner, twister, judges a run
+    by. Returns it, or None if there was none before `until` of simulated
+    time had passed or the simulation had nothing left to do.
     """
     console = Transcript(platform, {"console": uart})
-    verdicts: list[str] = []
+    verdicts: list[ztest.Verdict] = []
     printed = 0
 
     def gave_a_verdict() -> bool:
@@ -201,8 +199,8 @@ def _perform(platform: Platform, uart: PlacedUart, until: int) -> str | None:
             # Flushed, because what reads this (twister, or a person) is
             # waiting for each line and will end the run on one of them.
             print(line.text, flush=True)
-            if _VERDICT in line.text:
-                verdicts.append(line.text)
+            if verdict := ztest.verdict_of(line.text):
+                verdicts.append(verdict)
         printed = len(console.lines)
         return bool(verdicts)
 
