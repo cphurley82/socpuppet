@@ -1,0 +1,8 @@
+# Every board has a system controller, so this one runs on all three.
+tests:
+  socpuppet.drivers.syscon.reset_cause:
+    harness: ztest
+    platform_allow:
+      - socpuppet_host
+      - socpuppet_ssd
+      - socpuppet_iomgr

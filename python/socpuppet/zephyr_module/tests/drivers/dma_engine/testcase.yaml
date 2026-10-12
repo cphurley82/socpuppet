@@ -1,0 +1,10 @@
+# The SSD is the board with a DMA engine. A PCIe device may not reach into
+# its host's memory until the host has said it may, so the suite is built
+# with the shield that is a host: with it, `socpuppet run` puts one in
+# front of the SSD that finds the drive and switches that on.
+tests:
+  socpuppet.drivers.dma_engine:
+    harness: ztest
+    extra_args: SHIELD=socpuppet_ssd_host
+    platform_allow:
+      - socpuppet_ssd

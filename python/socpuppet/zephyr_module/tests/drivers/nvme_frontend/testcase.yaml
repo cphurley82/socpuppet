@@ -1,0 +1,10 @@
+# The SSD is the board with an NVMe frontend, and a frontend only has
+# something to say when a host speaks to it. The shield is that host: with
+# it, `socpuppet run` puts one in front of the SSD that says a host's first
+# words to a drive, which is an enable and five commands.
+tests:
+  socpuppet.drivers.nvme_frontend:
+    harness: ztest
+    extra_args: SHIELD=socpuppet_ssd_host
+    platform_allow:
+      - socpuppet_ssd

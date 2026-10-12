@@ -5,6 +5,8 @@ import re
 
 import socpuppet as sp
 from processes import run_socpuppet
+from socpuppet import run
+from socpuppet.boards import io_manager, scripted_host
 from socpuppet.boards.host import UART_SOURCE, host
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
@@ -25,6 +27,65 @@ class TestWhenTheZephyrModuleCommandIsRun:
         assert (module / "boards/socpuppet/socpuppet_host/board.yml").is_file()
         assert (module / "boards/socpuppet/socpuppet_ssd/board.yml").is_file()
         assert (module / "boards/socpuppet/socpuppet_iomgr/board.yml").is_file()
+
+
+class TestTheShieldsTheRunCommandTakes:
+    """🎓 A shield is Zephyr's word for hardware plugged into a board. An
+    image is built with one (`-DSHIELD=`), and `socpuppet run` is told of
+    it so that the board it describes has that hardware on it."""
+
+    def test_each_is_a_shield_the_module_has_for_zephyr_to_build_with(self):
+        taken = {
+            shield for board in run.BOARDS.values() for shield in board.shields
+        }
+
+        assert taken <= {
+            each.parent.name
+            for each in (ZEPHYR_MODULE / "boards/shields").glob(
+                "*/Kconfig.shield"
+            )
+        }
+
+
+class TestWhatTheDriversTestsKnowOfTheStandInsBesideThem:
+    """A driver's test runs inside Zephyr, with 🎭 a stand-in for what is
+    on the other side of its hardware, which `socpuppet run` puts there.
+    What the C knows of the stand-in is written in the C, as a number, and
+    the stand-in is Python. So the numbers are held to it here."""
+
+    def test_the_host_address_the_dma_tests_copy_to_is_in_the_hosts_memory(
+        self,
+    ):
+        address = defined("dma_engine", "IN_THE_HOSTS_MEMORY")
+
+        # With room after it for the most the tests copy, three pages and
+        # a bit.
+        assert (
+            scripted_host.RAM_BASE
+            <= address
+            < scripted_host.RAM_BASE + scripted_host.RAM_SIZE - 4 * 4096
+        )
+
+    def test_the_address_they_take_for_past_the_hosts_memory_is(self):
+        assert (
+            defined("dma_engine", "PAST_THE_HOSTS_MEMORY")
+            >= scripted_host.RAM_BASE + scripted_host.RAM_SIZE
+        )
+
+    def test_the_word_the_link_test_waits_for_is_the_compute_dies(self):
+        assert defined("ucie_link", "ITS_WORD") == io_manager.HELLO
+
+
+def defined(suite, name):
+    """The number a driver's test suite has for `name`, from its `#define`."""
+    source = (
+        ZEPHYR_MODULE / "tests/drivers" / suite / "src/main.c"
+    ).read_text()
+    found = re.search(
+        rf"^#define {name}\s+(0x[0-9A-Fa-f]+)", source, re.MULTILINE
+    )
+    assert found is not None, f"{suite}'s test has no #define {name}"
+    return int(found.group(1), 16)
 
 
 class TestTheBindingsOfTheZephyrModule:

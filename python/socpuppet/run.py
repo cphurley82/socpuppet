@@ -11,9 +11,11 @@ from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
 from socpuppet.boards.host import host
 from socpuppet.boards.io_manager import io_manager, one_round_trip
-from socpuppet.boards.scripted_host import idle_host
+from socpuppet.boards.scripted_host import bring_up_the_drive, idle_host
 from socpuppet.boards.ssd import ssd
 from socpuppet.components import DbtRiseCpu, SystemController
+from socpuppet.errors import NvmeError
+from socpuppet.ops import Steps
 from socpuppet.placed import Placed, PlacedUart
 from socpuppet.platform import Platform
 from socpuppet.time import ms
@@ -49,9 +51,44 @@ def _host(shields: Sequence[str], how: boot.Boot | None) -> _Stage:
 
 
 def _ssd(shields: Sequence[str], how: boot.Boot | None) -> _Stage:
-    """The SSD, with 🎭 a host that asks nothing of it."""
-    it = ssd(host=idle_host, boot=how)
+    """The SSD, with 🎭 a host in front of it.
+
+    One that asks nothing of it, or with its shield on, one that says a
+    host's first words to a drive.
+    """
+    it = ssd(host=_a_hosts_first_words if shields else idle_host, boot=how)
     return _on_a_kit(it.platform, it.ssd.cpu, it.ssd.cpu_kit)
+
+
+class _TheHostGaveUp(RuntimeError):
+    """🎭 A stand-in host could not do its part. The message is for the user."""
+
+
+def _a_hosts_first_words() -> Steps[None]:
+    """🎭 The host of the shield `socpuppet_ssd_host`, as a script.
+
+    What a host does with a drive first, and then no more. It finds the
+    drive on its PCIe link and lets it reach the host's memory. It enables
+    the controller and waits for the firmware to say it is ready. It asks
+    for a pair of I/O queues, which is three commands on the admin queue.
+    It asks the drive how big it is, which is a fourth, answered with a
+    page of data. And it writes one block of zeros at the start of the
+    drive, which is the first command on an I/O queue.
+
+    ⚠️ It waits for "ready" as long as the controller says that may take,
+    which for socpuppet's frontend is a second of simulated time. An image
+    that is run with the shield has that long to say so, or to be done.
+    """
+    try:
+        nvme = yield from bring_up_the_drive()
+        yield from nvme.write_blocks(first=0, data=bytes(512))
+    except NvmeError as failed:
+        raise _TheHostGaveUp(
+            "The shield socpuppet_ssd_host is a host that brings the drive "
+            f"up and writes its first block, and it could not. {failed} An "
+            "image that does not answer a host is one to run without "
+            "--shield socpuppet_ssd_host."
+        ) from failed
 
 
 def _iomgr(shields: Sequence[str], how: boot.Boot | None) -> _Stage:
@@ -73,7 +110,7 @@ def _on_a_kit(platform: Platform, cpu: Placed, kit: CpuKit | None) -> _Stage:
 #: The boards an image can be run on, by the names Zephyr has for them.
 BOARDS = {
     "socpuppet_host": _Board(("socpuppet_host_drive",), _host),
-    "socpuppet_ssd": _Board((), _ssd),
+    "socpuppet_ssd": _Board(("socpuppet_ssd_host",), _ssd),
     "socpuppet_iomgr": _Board((), _iomgr),
 }
 #: How many 512-byte blocks the drive of the shield `socpuppet_host_drive`
@@ -99,7 +136,8 @@ def run(
     is loaded straight into RAM. Each line of the console is printed when
     it is whole. The run ends when a line gives a test framework's
     verdict, when the simulation has nothing left to do, or after `until`
-    of simulated time (see `ms`).
+    of simulated time (see `ms`). It also ends when 🎭 a stand-in that a
+    shield puts beside the board cannot do its part, with what it says.
 
     What cannot be run ends the command with one line that says why, and
     so does a verdict that a test failed, with no line: the console has
@@ -157,7 +195,10 @@ def run(
     else:
         platform.build()
         platform.load_elf(image, via=stage.cpu.socket)
-    verdict = _perform(platform, stage.uart, until)
+    try:
+        verdict = _perform(platform, stage.uart, until)
+    except _TheHostGaveUp as gave_up:
+        sys.exit(str(gave_up))
     if verdict is None:
         # Not a failure of the command's: an image with no test framework
         # in it never gives a verdict, and what it printed is there to be
