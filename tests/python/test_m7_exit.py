@@ -19,7 +19,7 @@ import pytest
 
 import socpuppet as sp
 from cast import DISK_TEST, GREETING, HELLO_WORLD, SSD, boot
-from disk_access import run_to_a_verdict
+from disk_access import assert_it_read_and_wrote, run_to_a_verdict
 from link_trace import (
     sent_to_the_compute_die,
     sent_to_the_io_die,
@@ -138,8 +138,7 @@ class TestWhenZephyrsDiskTestRunsOnTheHostAcrossTheRealLink:
 
         run_to_a_verdict(board)
 
-        assert "PASS - [disk_driver.test_read]" in board.uart.output
-        assert "PASS - [disk_driver.test_write]" in board.uart.output
+        assert_it_read_and_wrote(board.uart.output)
 
 
 @pytest.mark.platform

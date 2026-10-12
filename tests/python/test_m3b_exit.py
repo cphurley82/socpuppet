@@ -21,11 +21,9 @@ import pytest
 
 import socpuppet as sp
 from cast import DISK_TEST, boot
+from disk_access import assert_it_read_and_wrote
+from socpuppet import ztest
 from socpuppet.boards.host import host
-
-#: What Zephyr's test framework ends with, when no test failed and when
-#: one did.
-VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 
 
 @pytest.mark.platform
@@ -39,13 +37,12 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithADrive:
         # The verdict comes at about half a second of simulated time. 2 s
         # leaves room and still ends a run that never gives one.
         gave_a_verdict = board.platform.run_until(
-            lambda: any(each in board.uart.output for each in VERDICTS),
+            lambda: ztest.verdict_of(board.uart.output) is not None,
             timeout=sp.ms(2000),
         )
 
         assert gave_a_verdict, no_verdict(board.uart.output)
-        assert "PASS - [disk_driver.test_read]" in board.uart.output
-        assert "PASS - [disk_driver.test_write]" in board.uart.output
+        assert_it_read_and_wrote(board.uart.output)
 
 
 def no_verdict(output):

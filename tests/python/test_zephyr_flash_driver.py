@@ -19,12 +19,9 @@ limits the size of a transfer, and one for a flash with a power switch.
 import pytest
 
 import socpuppet as sp
+from socpuppet import ztest
 from socpuppet.boards.scripted_host import idle_host
 from socpuppet.boards.ssd import ssd
-
-#: What Zephyr's test framework ends with, when no test failed and when
-#: one did.
-VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 
 #: Zephyr's cases that are about this flash, and then socpuppet's own
 #: (firmware/flash_test/src/nand.c), for what only a NAND does.
@@ -44,8 +41,8 @@ CASES = [
 
 
 @pytest.fixture
-def what_the_test_printed(firmware):
-    """Runs Zephyr's flash test on the SSD, and returns its console.
+def the_console(firmware):
+    """Runs Zephyr's flash test on the SSD, and returns what it printed.
 
     Each test that asks runs it again, which takes a tenth of a second: a
     test that builds a platform has a process to itself.
@@ -63,7 +60,7 @@ def what_the_test_printed(firmware):
     # The verdict comes at about a tenth of a second of simulated time. A
     # second leaves room and still ends a run that never gives one.
     board.platform.run_until(
-        lambda: any(each in console.output for each in VERDICTS),
+        lambda: ztest.verdict_of(console.output) is not None,
         timeout=sp.ms(1000),
     )
     return console.output
@@ -71,13 +68,13 @@ def what_the_test_printed(firmware):
 
 @pytest.mark.platform
 class TestWhenZephyrsFlashTestRunsOnTheSsdsNand:
-    def test_it_gives_a_verdict_and_nothing_failed(self, what_the_test_printed):
-        assert "PROJECT EXECUTION SUCCESSFUL" in what_the_test_printed, (
-            f"Zephyr's flash test printed:\n{what_the_test_printed}"
+    def test_it_gives_a_verdict_and_nothing_failed(self, the_console):
+        assert ztest.parse(the_console).passed, (
+            f"Zephyr's flash test printed:\n{the_console}"
         )
 
     @pytest.mark.parametrize("case", CASES)
-    def test_the_case_passes_and_does_not_skip_itself(
-        self, what_the_test_printed, case
-    ):
-        assert f"PASS - [{case}]" in what_the_test_printed
+    def test_the_case_passes_and_does_not_skip_itself(self, the_console, case):
+        assert ztest.parse(the_console).case(case).result == "PASS", (
+            f"Zephyr's flash test printed:\n{the_console}"
+        )

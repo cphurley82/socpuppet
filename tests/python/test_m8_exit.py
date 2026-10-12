@@ -33,7 +33,7 @@ from cast import (
     SSD,
     boot,
 )
-from disk_access import LIMIT, VERDICTS, no_verdict
+from disk_access import LIMIT, assert_it_read_and_wrote, no_verdict
 from link_trace import (
     sent_to_the_compute_die,
     sent_to_the_io_die,
@@ -46,6 +46,7 @@ from manager_firmware import (
     console_of,
     what_the_manager_said,
 )
+from socpuppet import ztest
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from ssd_zephyr_firmware import BANNER as SSD_BANNER
@@ -109,7 +110,8 @@ def bootchain(request, firmware):
     story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
     gave_a_verdict = story.run_until(
         lambda: any(
-            line.who == "host" and line.text in VERDICTS for line in story.lines
+            line.who == "host" and ztest.verdict_of(line.text)
+            for line in story.lines
         ),
         timeout=LIMIT,
     )
@@ -120,17 +122,12 @@ def bootchain(request, firmware):
 @pytest.mark.platform
 class TestWhenAllThreeFirmwaresBootTogether:
     def test_the_hosts_disk_test_passes(self, bootchain):
-        assert "PROJECT EXECUTION SUCCESSFUL" in said_by("host", bootchain)
+        assert the_hosts_report(bootchain).passed
 
     def test_the_host_read_and_wrote_the_drive_that_is_the_ssds_firmware(
         self, bootchain
     ):
-        # The verdict alone does not say so: a test that is skipped does
-        # not spoil it.
-        said = said_by("host", bootchain)
-
-        assert any("PASS - [disk_driver.test_read]" in line for line in said)
-        assert any("PASS - [disk_driver.test_write]" in line for line in said)
+        assert_it_read_and_wrote("\n".join(said_by("host", bootchain)))
 
     def test_the_manager_says_the_link_is_up_and_the_die_released_before_the_hosts_first_line(
         self, bootchain
@@ -153,6 +150,11 @@ class TestWhenAllThreeFirmwaresBootTogether:
         assert when("ssd", SSD_BANNER, bootchain) < (
             when("host", "Disk reports", bootchain)
         )
+
+
+def the_hosts_report(story):
+    """What the host's console said of its tests, as ztest's report."""
+    return ztest.parse("\n".join(said_by("host", story)))
 
 
 def said_by(who, story):

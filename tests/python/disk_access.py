@@ -7,11 +7,9 @@ drive the host has and whichever link is between the host's dies.
 """
 
 import socpuppet as sp
+from socpuppet import ztest
 
 IMAGE = "disk_access_socpuppet_host.elf"
-#: What Zephyr's test framework ends with, when no test failed and when
-#: one did.
-VERDICTS = ("PROJECT EXECUTION SUCCESSFUL", "PROJECT EXECUTION FAILED")
 #: The verdict comes at about half a second of simulated time with 🎭 the
 #: stand-in drive, and a quarter of a second later under the slowest SSD
 #: the tests have. 2 s leaves room and still ends a run that never gives
@@ -20,12 +18,29 @@ LIMIT = sp.ms(2000)
 
 
 def run_to_a_verdict(board):
-    """Run until the host's firmware says how its tests went."""
+    """Run until the host's firmware says how its tests went.
+
+    Returns what it said of them, as a `socpuppet.ztest.Report`.
+    """
     gave_a_verdict = board.platform.run_until(
-        lambda: any(each in board.uart.output for each in VERDICTS),
+        lambda: ztest.verdict_of(board.uart.output) is not None,
         timeout=LIMIT,
     )
     assert gave_a_verdict, no_verdict(board)
+    return ztest.parse(board.uart.output)
+
+
+def assert_it_read_and_wrote(console):
+    """Fail unless the test's read and write cases passed, on this console.
+
+    The verdict alone does not say so: a case that skips itself does not
+    spoil it, and the test's third case, erase, does skip itself.
+    """
+    report = ztest.parse(console)
+    for case in ("disk_driver.test_read", "disk_driver.test_write"):
+        assert report.case(case).result == "PASS", (
+            f"The host's firmware printed:\n{console}"
+        )
 
 
 def no_verdict(board):
