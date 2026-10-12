@@ -58,6 +58,17 @@ def console_interrupts(board):
     )
 
 
+def answered(board, shown, answer):
+    """Whether the shell has said `answer` since `shown`, and prompted again.
+
+    The prompt is looked for after the answer and not at the console's end:
+    the shell switches to green before its prompt and back after it, so a
+    prompt is never the last thing it prints.
+    """
+    _, found, after = board.uart.output[shown:].partition(answer)
+    return bool(found) and PROMPT in after
+
+
 if __name__ == "__main__":
     if not IMAGE.exists():
         missing = (
@@ -82,14 +93,10 @@ if __name__ == "__main__":
     for command, answer in COMMANDS:
         shown = len(board.uart.output)
         board.uart.write(command + "\n")
-        answered = board.platform.run_until(
-            lambda shown=shown, answer=answer: (
-                answer in board.uart.output[shown:]
-                and board.uart.output.endswith(PROMPT)
-            ),
+        if not board.platform.run_until(
+            lambda shown=shown, answer=answer: answered(board, shown, answer),
             timeout=LONG_ENOUGH,
-        )
-        if not answered:
+        ):
             print(board.uart.output, end="")
             sys.exit(f"\n❌ The shell did not answer `{command}`.")
 
