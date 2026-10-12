@@ -150,7 +150,11 @@ inline constexpr Word kIllegalInstruction = 2;
 inline constexpr Word kMiselect = 0x350;
 inline constexpr Word kMireg = 0x351;
 inline constexpr Word kMtopei = 0x35C;
-// Two of the file's registers, by the numbers they are selected with:
+// The same three for the file that is supervisor mode's.
+inline constexpr Word kSiselect = 0x150;
+inline constexpr Word kSireg = 0x151;
+inline constexpr Word kStopei = 0x15C;
+// Two of a file's registers, by the numbers they are selected with:
 // whether the file may interrupt at all, and which identities firmware
 // wants to hear of, a bit each.
 inline constexpr Word kEidelivery = 0x70;
@@ -603,6 +607,38 @@ inline Program HandleMessagesThroughAnImsic(Word identity) {
   program[addi_at] =
       Addi(kT2, kT2, static_cast<std::int32_t>((handler_at - auipc_at) * 4));
   return program;
+}
+
+// The same for an operating system in supervisor mode, with the IMSIC's
+// file for that mode: it is switched on, listened to and claimed from
+// through supervisor mode's three registers, and the interrupt is the
+// supervisor external one, handed down to that mode and taken there.
+inline Program HandleMessagesInSupervisorModeThroughAnImsic(Word identity) {
+  constexpr Word kT3 = 28;
+  constexpr Word kT4 = 29;
+  Program listen_then_sleep{
+      Li(kT1, kEidelivery),
+      Csrw(kSiselect, kT1),
+      Li(kT1, 1),
+      Csrw(kSireg, kT1),
+      Li(kT1, kEie0),
+      Csrw(kSiselect, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, identity),
+      Csrs(kSireg, kT1),
+      // t0 = what the handler last claimed, and t4 = how many times it ran.
+      Li(kT0, 0),
+      Li(kT4, 0),
+      // As HandleMessagesThroughAnImsic sleeps and stores.
+      kWfi,
+      Addi(kZero, kZero, 0),
+      Sw(kT0, kT3, kResultOffset),
+      Sw(kT4, kT3, kResultOffset + 4),
+      Jal(kZero, -16),
+  };
+  return InSupervisorMode(kSupervisorExternalInterrupt, listen_then_sleep,
+                          {Csrrw(kT0, kStopei, kZero), Srli(kT0, kT0, 16),
+                           Addi(kT4, kT4, 1), kSret});
 }
 
 // A program that writes to the control and status register numbered `csr`

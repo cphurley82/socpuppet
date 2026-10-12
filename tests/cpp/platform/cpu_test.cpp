@@ -787,31 +787,36 @@ TEST(WhenA64BitCpuAheadOfTheClockSetsItsCompareValueInOneWrite,
   EXPECT_EQ(after - before, 2U);
 }
 
-// A platform with a CPU, a RAM for its program, an IMSIC with the page for
-// machine mode's messages on the CPU's bus, and a device on that bus that
-// sends one message. The CPU is the core the host has, which is the one
-// that gets an IMSIC.
+// A platform with a CPU, a RAM for its program, an IMSIC with its two
+// pages for messages on the CPU's bus, one for machine mode and one for
+// supervisor mode, and a device on that bus that sends one message. The
+// CPU is the core the host has, which is the one that gets an IMSIC.
 struct CpuPlatformWithAnImsic {
   static constexpr std::uint64_t kRamBase = 0x8000'0000;
   static constexpr std::uint64_t kMessagePage = 0x2400'0000;
+  static constexpr std::uint64_t kSupervisorsMessagePage = 0x2800'0000;
   // The identity the device interrupts with.
   static constexpr std::uint32_t kIdentity = 5;
 
-  // `quantum` is how far ahead of the simulation's clock the CPU may run.
+  // `quantum` is how far ahead of the simulation's clock the CPU may run,
+  // and `page` is the one the device writes its message to.
   explicit CpuPlatformWithAnImsic(
-      const sc_core::sc_time& quantum = sc_core::SC_ZERO_TIME)
-      : platform{WithADeviceThatSendsAMessage()} {
+      const sc_core::sc_time& quantum = sc_core::SC_ZERO_TIME,
+      std::uint64_t page = kMessagePage)
+      : platform{WithADeviceThatSendsAMessageTo(page)} {
     platform.SetQuantum(quantum);
     socpuppet::Config cpu = TheCoreWithSupervisorMode();
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     platform.Add("cpu", "dbt_rise_cpu", cpu);
     platform.Add("bus", "router",
                  {{"inputs", 2},
-                  {"outputs", 2},
+                  {"outputs", 3},
                   {"out0.base", kRamBase},
                   {"out0.size", 0x1000},
                   {"out1.base", kMessagePage},
-                  {"out1.size", 0x1000}});
+                  {"out1.size", 0x1000},
+                  {"out2.base", kSupervisorsMessagePage},
+                  {"out2.size", 0x1000}});
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Add("imsic", "imsic", {{"identities", 63}});
     platform.Add("device", "device");
@@ -819,7 +824,9 @@ struct CpuPlatformWithAnImsic {
     platform.Bind("device.socket", "bus.in1");
     platform.Bind("bus.out0", "ram.socket");
     platform.Bind("bus.out1", "imsic.machine");
+    platform.Bind("bus.out2", "imsic.supervisor");
     platform.Bind("imsic.irq", "cpu.irq");
+    platform.Bind("imsic.supervisor_irq", "cpu.supervisor_irq");
     platform.Bind("cpu.csr", "imsic.csr");
     platform.Elaborate();
   }
@@ -834,13 +841,14 @@ struct CpuPlatformWithAnImsic {
     return ResultWordOf(platform, kRamBase, offset);
   }
 
-  static socpuppet::Registry WithADeviceThatSendsAMessage() {
+  static socpuppet::Registry WithADeviceThatSendsAMessageTo(
+      std::uint64_t page) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    AddBusDriver(registry, "device", [](BusDriver& device) {
+    AddBusDriver(registry, "device", [page](BusDriver& device) {
       // Long enough for a program to have set itself up and gone to
-      // sleep: two dozen instructions, at 100 ns each.
+      // sleep: three dozen instructions at the most, at 100 ns each.
       device.WaitFor(sc_core::sc_time{5, sc_core::SC_US});
-      device.Write32(kMessagePage, kIdentity);
+      device.Write32(page, kIdentity);
     });
     return registry;
   }
@@ -876,6 +884,24 @@ TEST(WhenAMessageArrivesAtTheImsicOfACpuThatRunsAheadOfTheClock,
   with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
 
   const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
+  EXPECT_EQ(times_the_handler_ran, 1U);
+}
+
+// An operating system runs in supervisor mode, and its interrupts are
+// messages to the IMSIC's page for that mode, which it switches on and
+// claims from through supervisor mode's own three registers.
+TEST(WhenAMessageArrivesAtTheSupervisorsPageOfTheImsicOfACpuThatListensThere,
+     TheSupervisorsHandlerRunsOnceAndClaimsTheMessagesIdentity) {
+  CpuPlatformWithAnImsic with_imsic{
+      sc_core::SC_ZERO_TIME, CpuPlatformWithAnImsic::kSupervisorsMessagePage};
+  with_imsic.Load(riscv::HandleMessagesInSupervisorModeThroughAnImsic(
+      CpuPlatformWithAnImsic::kIdentity));
+
+  with_imsic.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  const std::uint32_t claimed = with_imsic.ResultWord(0);
+  const std::uint32_t times_the_handler_ran = with_imsic.ResultWord(4);
+  EXPECT_EQ(claimed, CpuPlatformWithAnImsic::kIdentity);
   EXPECT_EQ(times_the_handler_ran, 1U);
 }
 

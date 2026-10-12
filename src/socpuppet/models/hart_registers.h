@@ -45,10 +45,12 @@ inline constexpr std::uint32_t kMireg = 0x351;
 inline constexpr std::uint32_t kMtopei = 0x35C;
 inline constexpr std::uint32_t kSireg = 0x151;
 inline constexpr std::uint32_t kStopei = 0x15C;
-// The register that selects what machine mode's window looks at. It is the
-// hart's own to keep: what was selected travels in the window's address,
-// and an IMSIC has no register for it.
+// The register that selects what machine mode's window looks at, and the
+// one that does for supervisor mode's. They are the hart's own to keep:
+// what was selected travels in the window's address, and an IMSIC has no
+// register for either.
 inline constexpr std::uint32_t kMiselect = 0x350;
+inline constexpr std::uint32_t kSiselect = 0x150;
 
 // How wide an access is.
 inline constexpr unsigned kHartRegisterBytes = 8;

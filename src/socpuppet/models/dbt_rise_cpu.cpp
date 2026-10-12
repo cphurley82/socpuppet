@@ -149,8 +149,10 @@ struct DbtRiseCpu::Core {
       selected_ = static_cast<std::uint32_t>(value) & kWidestSelection;
       return iss::Ok;
     };
-    complex_.register_csr_rd(kMiselect, read_selection);
-    complex_.register_csr_wr(kMiselect, write_selection);
+    for (const unsigned number : {kMiselect, kSiselect}) {
+      complex_.register_csr_rd(number, read_selection);
+      complex_.register_csr_wr(number, write_selection);
+    }
 
     sysc::sc2core_if::rd_csr_f read = [this](unsigned number,
                                              std::uint64_t& value) {
@@ -160,7 +162,7 @@ struct DbtRiseCpu::Core {
                                               std::uint64_t value) {
       return WriteThroughCsr(number, value);
     };
-    for (const unsigned number : {kMireg, kMtopei}) {
+    for (const unsigned number : {kMireg, kMtopei, kSireg, kStopei}) {
       complex_.register_csr_rd(number, read);
       complex_.register_csr_wr(number, write);
     }
@@ -235,12 +237,14 @@ struct DbtRiseCpu::Core {
     }
   }
 
-  // An access to `mireg` or `mtopei`, sent to whatever is at the other end
-  // of `csr`. Returns whether that had such a register.
+  // An access to a window or to a register a claim is made through, sent
+  // to whatever is at the other end of `csr`. Returns whether that had
+  // such a register.
   bool ThroughCsr(tlm::tlm_command command, unsigned number,
                   std::span<std::uint8_t> data) {
+    const bool is_a_window = number == kMireg || number == kSireg;
     const std::uint64_t address =
-        HartRegisterAddress(number, number == kMireg ? selected_ : 0);
+        HartRegisterAddress(number, is_a_window ? selected_ : 0);
     // The delay means nothing to whoever answers. It is the core's lead all
     // the same, so that a trace of the socket has the access where the bus
     // accesses around it are.
