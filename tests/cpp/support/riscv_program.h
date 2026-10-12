@@ -19,6 +19,10 @@ inline constexpr Word kZero = 0;
 inline constexpr Word kT0 = 5;
 inline constexpr Word kT1 = 6;
 inline constexpr Word kT2 = 7;
+inline constexpr Word kT3 = 28;
+inline constexpr Word kT4 = 29;
+inline constexpr Word kT5 = 30;
+inline constexpr Word kT6 = 31;
 
 // A signed immediate, cut down to the low `bits` bits of its encoding.
 constexpr Word Field(std::int32_t value, unsigned bits) {
@@ -335,7 +339,6 @@ inline Program SleepClearTheInterruptInMipAndSleepAgainThenStoreOne(
 // load.
 inline Program TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
     std::uint64_t device) {
-  constexpr Word kT3 = 28;
   Program program;
   program.push_back(Auipc(kT3, 0));
   // t2 = the address of the handler, worked out from where we are now.
@@ -386,8 +389,6 @@ inline Program CountDownThenSleep(Word iterations) {
 // after, and sleeps.
 inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
                                                       Word iterations) {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
   // The address in two parts: what Lui can load, and what is left for the
   // load's offset, which is signed and of 12 bits.
   const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
@@ -421,10 +422,6 @@ inline Program ReadTimeThenTheTimersOwnCountThenSleep(std::uint64_t mtime,
 // come.
 inline Program ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
     std::uint64_t mtime, std::uint64_t mtimecmp, Word iterations, int xlen) {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
-  constexpr Word kT5 = 30;
-  constexpr Word kT6 = 31;
   const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
   const auto lower =
       static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
@@ -457,7 +454,6 @@ inline Program ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
 // `timeh` register, stores what it read as its result, and sleeps.
 inline Program WriteTheUpperHalfOfTheTimersCountThenStoreTimeh(
     std::uint64_t mtime, std::int32_t value) {
-  constexpr Word kT3 = 28;
   const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
   const auto lower =
       static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
@@ -510,7 +506,6 @@ inline Program HandleInterruptsByWritingTo(std::uint64_t device,
 // kResultOffset short of where a result goes.
 inline Program InSupervisorMode(Word interrupt, const Program& body,
                                 const Program& handler) {
-  constexpr Word kT3 = 28;
   Program program;
   program.push_back(Auipc(kT3, 0));
   // t2 = the address of the handler, worked out from where we are now.
@@ -563,8 +558,6 @@ inline Program InSupervisorMode(Word interrupt, const Program& body,
 // words as its result: the identity the handler last claimed, and a word
 // after it how many times the handler has run.
 inline Program HandleMessagesThroughAnImsic(Word identity) {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
   Program program;
   // t3 = where the result goes, and t4 = how many times the handler ran.
   program.push_back(Auipc(kT3, 0));
@@ -614,8 +607,6 @@ inline Program HandleMessagesThroughAnImsic(Word identity) {
 // through supervisor mode's three registers, and the interrupt is the
 // supervisor external one, handed down to that mode and taken there.
 inline Program HandleMessagesInSupervisorModeThroughAnImsic(Word identity) {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
   Program listen_then_sleep{
       Li(kT1, kEidelivery),
       Csrw(kSiselect, kT1),
@@ -647,7 +638,6 @@ inline Program HandleMessagesInSupervisorModeThroughAnImsic(Word identity) {
 // after it `siselect`. Then it sleeps.
 inline Program SelectForMachineModeThenForSupervisorModeAndStoreBoth(
     Word for_machine_mode, Word for_supervisor_mode) {
-  constexpr Word kT3 = 28;
   Program program{
       Auipc(kT3, 0),
       Li(kT1, static_cast<std::int32_t>(for_machine_mode)),
@@ -668,7 +658,6 @@ inline Program SelectForMachineModeThenForSupervisorModeAndStoreBoth(
 // with one added, so that a result of zero is no trap at all. Then it
 // sleeps.
 inline Program StoreWhyWritingACsrTrapped(Word csr) {
-  constexpr Word kT3 = 28;
   Program program;
   program.push_back(Auipc(kT3, 0));
   const std::size_t auipc_at = program.size();
@@ -708,7 +697,6 @@ inline Program HandleTheSupervisorExternalInterruptByWritingTo(
 // them what is pending (`sip`).
 inline Program StoreSieThenSipOnTheSupervisorExternalInterrupt(
     std::uint64_t device) {
-  constexpr Word kT3 = 28;
   Program sleep;
   AppendSleepForEver(sleep);
   return InSupervisorMode(
@@ -723,7 +711,6 @@ inline Program StoreSieThenSipOnTheSupervisorExternalInterrupt(
 // interrupts: software, timer and external, which are bits 1, 5 and 9. It
 // stores what `sie` then reads as its result, and sleeps.
 inline Program EnableEverySupervisorInterruptThenStoreSie() {
-  constexpr Word kT3 = 28;
   Program body{
       Li(kT1, 0x222),
       Csrs(kSie, kT1),
@@ -739,8 +726,6 @@ inline Program EnableEverySupervisorInterruptThenStoreSie() {
 // takes the request back, adds one to the program's result, which is a
 // count of the times it has run, and returns to sleep.
 inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
   Program ask_then_sleep{
       Li(kT1, 1 << kSupervisorSoftwareInterrupt),
       Csrs(kSip, kT1),
@@ -760,7 +745,6 @@ inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
 // goes back to sleep. Both addresses are as for StoreWordThenSleep.
 inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
                                      std::uint64_t probe) {
-  constexpr Word kT3 = 28;
   Program program;
   const std::size_t auipc_at = program.size();
   program.push_back(Auipc(kT2, 0));
@@ -800,8 +784,6 @@ inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
 // `plic` and `device` are addresses as for StoreWordThenSleep.
 inline Program HandleInterruptsThroughAPlic(std::uint64_t plic,
                                             std::uint64_t device) {
-  constexpr Word kT3 = 28;
-  constexpr Word kT4 = 29;
   Program program;
   const std::size_t auipc_at = program.size();
   program.push_back(Auipc(kT2, 0));
