@@ -3,26 +3,12 @@
 import pathlib
 import re
 
-import yaml
-
 import socpuppet
 
 ZEPHYR_MODULE = pathlib.Path(socpuppet.__file__).parent / "zephyr_module"
 
 #: The boards the module carries, by the names Zephyr builds for.
 BOARDS = ("socpuppet_host", "socpuppet_ssd", "socpuppet_iomgr")
-
-
-def full_name(board):
-    """What a board calls itself, in the `board.yml` that makes it a board."""
-    described = ZEPHYR_MODULE / "boards/socpuppet" / board / "board.yml"
-    return yaml.safe_load(described.read_text())["board"]["full_name"]
-
-
-def platform_file(board):
-    """What a board's platform file says, the file twister reads of a board."""
-    file = ZEPHYR_MODULE / "boards/socpuppet" / board / f"{board}.yaml"
-    return yaml.safe_load(file.read_text())
 
 
 def kconfig_default(name, under=None):
