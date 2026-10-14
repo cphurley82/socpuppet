@@ -72,8 +72,8 @@ The tables below are what `python3 -I spikes/speed/collect.py` prints from `spik
 | DBT-RISE LLVM 21 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | ✅ suite 906/928 | 🚧 |
 | DBT-RISE LLVM 22 | ✅ suite 906/928 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
 | DBT-RISE LLVM 23 | 🚧 | 🚧 | ✅ suite 905/928 | 🚧 | 🚧 | 🚧 | 🚧 |
-| QBox, repeatable | 🚧 | ❌ build-failed | ❌ build-failed | ✅ | 🚧 | ✅ | 🚧 |
-| QBox, threaded | 🚧 | 🚧 | 🚧 | ❌ speed-failed | 🚧 | ❌ speed-failed | 🚧 |
+| QBox, repeatable | ❌ build-failed | ✅ | ❌ build-failed | ✅ | 🚧 | ✅ | 🚧 |
+| QBox, threaded | 🚧 | ❌ speed-failed | 🚧 | ❌ speed-failed | 🚧 | ❌ speed-failed | 🚧 |
 
 🚧 is a cell that was not tried, ❌ one that was tried and failed, with why. An LLVM row is one version of LLVM: DBT-RISE is written against 19, and 21 and 22 built with no source changes.
 
@@ -87,6 +87,7 @@ The tables below are what `python3 -I spikes/speed/collect.py` prints from `spik
 | Mac Pro, Docker x86-64 | DBT-RISE interpreter | 15.0 | 11.0 | 8.6 | 2.1 | 3 |
 | Mac Pro, Docker x86-64 | DBT-RISE asmjit | 78.9 | 48.0 | 21.5 | 5.3 | 3 |
 | Mac Pro, Docker x86-64 | DBT-RISE LLVM 19 | 76.5 | 46.0 | 20.9 | 5.2 | 3 |
+| Mac Pro, Docker x86-64 | QBox, repeatable | 336.9 | 452.7 | 10.5 | 2.6 | 1 |
 | Air, macOS | DBT-RISE interpreter | 41.0 | 31.6 | 23.8 | 5.9 | 5 |
 | Air, macOS | DBT-RISE LLVM 23 | 169.0 | 112.9 | 53.3 | 13.1 | 3 |
 | Air, Docker arm64 | DBT-RISE interpreter | 39.6 | 30.5 | 24.3 | 6.0 | 3 |
@@ -98,7 +99,7 @@ The tables below are what `python3 -I spikes/speed/collect.py` prints from `spik
 | Ubuntu box, Linux | DBT-RISE asmjit | 133.3 | 84.1 | 44.3 | 10.9 | 3 |
 | Ubuntu box, Linux | DBT-RISE LLVM 19 | 122.9 | 77.3 | 43.3 | 10.7 | 3 |
 | Ubuntu box, Linux | DBT-RISE LLVM 21 | 123.4 | 77.1 | 43.0 | 10.6 | 3 |
-| Ubuntu box, Linux | QBox, repeatable | 362.1 | 589.5 | 22.9 | 5.6 | 1 |
+| Ubuntu box, Linux | QBox, repeatable | 375.4 | 588.5 | 22.7 | 5.6 | 2 |
 | Ubuntu box, Docker x86-64 | DBT-RISE interpreter | 32.0 | 25.0 | 19.4 | 4.8 | 3 |
 | Ubuntu box, Docker x86-64 | DBT-RISE asmjit | 144.0 | 89.8 | 46.6 | 11.5 | 3 |
 | Ubuntu box, Docker x86-64 | DBT-RISE LLVM 19 | 124.4 | 82.7 | 43.6 | 10.7 | 3 |
@@ -182,6 +183,7 @@ A boot to the shell is 1849 million instructions (median of 6).
 | Mac Pro, Docker x86-64 | DBT-RISE interpreter | 123 | 216 |
 | Mac Pro, Docker x86-64 | DBT-RISE asmjit | 23 | 86 |
 | Mac Pro, Docker x86-64 | DBT-RISE LLVM 19 | 24 | 88 |
+| Mac Pro, Docker x86-64 | QBox, repeatable | 5 | 176 |
 | Air, macOS | DBT-RISE interpreter | 45 | 78 |
 | Air, macOS | DBT-RISE LLVM 23 | 11 | 35 |
 | Air, Docker arm64 | DBT-RISE interpreter | 47 | 76 |
