@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <systemc>
@@ -78,11 +79,17 @@ class DbtRiseCpu : public sc_core::sc_module {
   // `backend` is how DBT-RISE runs the core: "interp" for its interpreter,
   // or one of its translating backends, "asmjit" or "llvm", where the build
   // has it. One the build has not got is std::invalid_argument, naming the
-  // ones it has.
+  // ones it has. With std::nullopt it is the build's default
+  // (SOCPUPPET_DBT_RISE_DEFAULT_BACKEND) where the build has this core for
+  // it, and the interpreter where it has not.
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
              std::uint64_t reset_vector, std::uint16_t gdb_port,
-             DbtRiseCpuExtras extras, const std::string& backend);
+             DbtRiseCpuExtras extras,
+             const std::optional<std::string>& backend);
   ~DbtRiseCpu() override;
+
+  // The backend DBT-RISE runs the core with.
+  const std::string& Backend() const;
 
   // SystemC's last chance to bind a port. By now we know whether anyone
   // connected the inputs.
@@ -100,6 +107,8 @@ class DbtRiseCpu : public sc_core::sc_module {
 
   // What an input left unconnected is bound to.
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
+  // Before core_, which is made with it.
+  std::string backend_;
   std::unique_ptr<Core> core_;
 };
 

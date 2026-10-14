@@ -1,5 +1,6 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <format>
@@ -8,6 +9,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <sysc/core_complex.h>
 #include <sysc/iss_factory.h>
@@ -48,26 +50,47 @@ const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
       xlen, extras.floating_point ? 1 : 0, extras.supervisor_mode ? 1 : 0));
 }
 
-// `backend`, which is how DBT-RISE is to run the core called `core_type`:
-// "interp" for its interpreter, or one of its translating backends where
-// the build has it. One the build has no such core for is refused, with
-// those it has, before any of DBT-RISE's core exists. Left to DBT-RISE, it
-// would end the simulation at elaboration. The names are "<core>:<backend>",
-// the key DBT-RISE's `core_complex::create_cpu` looks a core up by.
-std::string Backend(const char* core_type, const std::string& backend) {
+// The backends this build has for the core called `core_type`. DBT-RISE
+// names a core "<core>:<backend>", the key its `core_complex::create_cpu`
+// looks one up by.
+std::vector<std::string> BackendsBuiltFor(const char* core_type) {
   const std::string prefix = std::string(core_type) + ":";
-  std::string built;
+  std::vector<std::string> built;
   for (const std::string& name : sysc::iss_factory::instance().get_names()) {
-    if (!name.starts_with(prefix)) continue;
-    if (name == prefix + backend) return backend;
-    built +=
-        (built.empty() ? "\"" : ", \"") + name.substr(prefix.size()) + "\"";
+    if (name.starts_with(prefix)) built.push_back(name.substr(prefix.size()));
+  }
+  return built;
+}
+
+// How DBT-RISE is to run the core called `core_type`: "interp" for its
+// interpreter, or one of its translating backends where the build has it.
+// One asked for that the build has no such core for is refused, with those
+// it has, before any of DBT-RISE's core exists; left to DBT-RISE, it would
+// end the simulation at elaboration. With none asked for it is the build's
+// default, where the build has this core for it, and the interpreter where
+// it has not: no translating backend has the cores with physical memory
+// protection.
+std::string ChooseBackend(const char* core_type,
+                          const std::optional<std::string>& asked) {
+  const std::vector<std::string> built = BackendsBuiltFor(core_type);
+  const auto has = [&built](const std::string& backend) {
+    return std::ranges::find(built, backend) != built.end();
+  };
+  if (!asked) {
+    return has(SOCPUPPET_DBT_RISE_DEFAULT_BACKEND)
+               ? SOCPUPPET_DBT_RISE_DEFAULT_BACKEND
+               : "interp";
+  }
+  if (has(*asked)) return *asked;
+  std::string named;
+  for (const std::string& backend : built) {
+    named += (named.empty() ? "\"" : ", \"") + backend + "\"";
   }
   throw std::invalid_argument(std::format(
       "This build runs DBT-RISE's core \"{}\", which a \"dbt_rise_cpu\" "
       "with these \"xlen\", \"floating_point\" and \"supervisor_mode\" is, "
       "with {}, and the backend \"{}\" was asked for.",
-      core_type, built, backend));
+      core_type, named, *asked));
 }
 
 // Which of the core's interrupt inputs is the supervisor external
@@ -327,17 +350,20 @@ struct DbtRiseCpu::Core {
 
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector, std::uint16_t gdb_port,
-                       DbtRiseCpuExtras extras, const std::string& backend)
+                       DbtRiseCpuExtras extras,
+                       const std::optional<std::string>& backend)
     : sc_module(name),
+      backend_(ChooseBackend(CoreType(xlen, extras), backend)),
       core_(std::make_unique<Core>(*this, xlen, CoreType(xlen, extras),
-                                   Backend(CoreType(xlen, extras), backend),
-                                   extras.supervisor_mode, reset_vector,
-                                   gdb_port)) {
+                                   backend_, extras.supervisor_mode,
+                                   reset_vector, gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &DbtRiseCpu::invalidate_direct_mem_ptr);
 }
 
 DbtRiseCpu::~DbtRiseCpu() = default;
+
+const std::string& DbtRiseCpu::Backend() const { return backend_; }
 
 void DbtRiseCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
                                            sc_dt::uint64 end) {

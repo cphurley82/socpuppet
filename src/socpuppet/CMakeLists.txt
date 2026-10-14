@@ -124,6 +124,10 @@ target_sources(socpuppet_dbt_rise_cpu PUBLIC
 target_link_libraries(socpuppet_dbt_rise_cpu
   PUBLIC SystemC::systemc
   PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,dbt-rise-riscv_sc_sig>)
+# The backend a "dbt_rise_cpu" runs with when nothing says
+# (cmake/Dependencies.cmake).
+target_compile_definitions(socpuppet_dbt_rise_cpu PRIVATE
+  SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
 socpuppet_dev_checks(socpuppet_dbt_rise_cpu)
 
 # The UART: VPV-Peripherals' PULPino UART.
@@ -292,9 +296,6 @@ target_sources(socpuppet_builtin_components PUBLIC
 target_link_libraries(socpuppet_builtin_components
   PUBLIC socpuppet_platform
   PRIVATE socpuppet_models)
-# The backend a "dbt_rise_cpu" runs with (cmake/Dependencies.cmake).
-target_compile_definitions(socpuppet_builtin_components PRIVATE
-  SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
 socpuppet_dev_checks(socpuppet_builtin_components)
 
 socpuppet_check_headers(

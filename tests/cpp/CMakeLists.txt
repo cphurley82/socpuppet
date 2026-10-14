@@ -70,4 +70,7 @@ target_link_libraries(kernel_tests PRIVATE
 # repository: "tests/cpp/support/bus_driver.h".
 target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR})
 socpuppet_dev_checks(kernel_tests)
+# What the CPU tests expect a CPU to run with when nothing says.
+target_compile_definitions(kernel_tests PRIVATE
+  SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
 gtest_discover_tests(kernel_tests PROPERTIES LABELS cpp)

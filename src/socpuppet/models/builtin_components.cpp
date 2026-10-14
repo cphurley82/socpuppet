@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -124,7 +125,7 @@ Registry BuiltinComponents() {
         DbtRiseCpuExtras{
             .floating_point = parameters.Optional("floating_point", 0) != 0,
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0},
-        SOCPUPPET_DBT_RISE_DEFAULT_BACKEND);
+        /*backend=*/std::nullopt);
     std::vector<Port> ports{
         InitiatorPort("socket", module->socket),
         InitiatorPort("time", module->time, /*required=*/false),

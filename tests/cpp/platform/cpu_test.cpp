@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <span>
 #include <stdexcept>
@@ -189,6 +190,32 @@ TEST(WhenACpuIsAskedForABackendItsBuildHasNoCoreFor,
   EXPECT_THAT(make_a_cpu_with_backend_spam,
               ThrowsMessage<std::invalid_argument>(
                   AllOf(HasSubstr(R"("spam")"), HasSubstr(R"("interp")"))));
+}
+
+TEST(WhenNothingSaysWhichBackend,
+     TheCoreWithSupervisorModeRunsWithTheBuildsDefault) {
+  const socpuppet::DbtRiseCpu cpu{
+      "cpu",
+      /*xlen=*/64,
+      /*reset_vector=*/0,
+      /*gdb_port=*/0,
+      {.floating_point = true, .supervisor_mode = true},
+      /*backend=*/std::nullopt};
+
+  EXPECT_EQ(cpu.Backend(), SOCPUPPET_DBT_RISE_DEFAULT_BACKEND);
+}
+
+// No translating backend has the cores with physical memory protection,
+// so in a build whose default is one of them this is the fallback.
+TEST(WhenNothingSaysWhichBackend, TheCoreWithMemoryProtectionRunsInterpreted) {
+  const socpuppet::DbtRiseCpu cpu{"cpu",
+                                  /*xlen=*/32,
+                                  /*reset_vector=*/0,
+                                  /*gdb_port=*/0,
+                                  /*extras=*/{},
+                                  /*backend=*/std::nullopt};
+
+  EXPECT_EQ(cpu.Backend(), "interp");
 }
 
 TEST(WhenA32BitCpuIsAskedForFloatingPointAndSupervisorMode,
