@@ -25,7 +25,8 @@ struct Loop {
 // result kResultOffset past its first instruction.
 inline Loop Counted(riscv::Word iterations) {
   using riscv::Addi, riscv::Auipc, riscv::Bne, riscv::kT0, riscv::kT1,
-      riscv::kT2, riscv::kZero, riscv::Li, riscv::Lui, riscv::Sw;
+      riscv::kT2, riscv::kResultOffset, riscv::kZero, riscv::Li, riscv::Lui,
+      riscv::Sw;
   riscv::Program program{Auipc(kT0, 0),      Lui(kT2, iterations >> 12),
                          Addi(kT2, kT2, -1), Bne(kT2, kZero, -4),
                          Li(kT1, 1),         Sw(kT1, kT0, kResultOffset)};
