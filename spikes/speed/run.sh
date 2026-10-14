@@ -169,13 +169,18 @@ if [[ $suite -eq 1 ]]; then
   uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' > "$tree.suite.log" 2>&1
   set -e
   suite_s="$(since "$start")"
-  summary="$(grep -E 'tests passed, [0-9]+ tests failed out of' "$tree.suite.log" | tail -1 || true)"
-  failed="$(echo "$summary" | sed -E 's/.* ([0-9]+) tests failed out of ([0-9]+).*/\1/')"
-  total="$(echo "$summary" | sed -E 's/.* ([0-9]+) tests failed out of ([0-9]+).*/\2/')"
+  # "99% tests passed, 1 tests failed out of 925", or with none failed
+  # "100% tests passed out of 925".
+  summary="$(grep -E 'tests passed.* out of [0-9]+' "$tree.suite.log" | tail -1 || true)"
+  total="$(echo "$summary" | sed -nE 's/.* out of ([0-9]+).*/\1/p')"
+  failed="$(echo "$summary" | sed -nE 's/.* ([0-9]+) tests failed out of.*/\1/p')"
   skipped="$(grep -c '\*\*\*Skipped\|Not Run' "$tree.suite.log" || true)"
   names="$(sed -n '/The following tests FAILED/,$p' "$tree.suite.log" |
     sed -nE 's/^[[:space:]]*[0-9]+ - ([^ ]+) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
-  emit "\"status\": \"suite\", \"suite_s\": $suite_s, \"tests\": ${total:-0}, \"failed\": ${failed:-0}, \"skipped\": ${skipped:-0}, \"failed_names\": \"$names\""
+  # The C++ tests, each in a process of its own, and pytest, which is one.
+  cpp_s="$(sed -nE 's/^cpp +=  *([0-9.]+) sec.*/\1/p' "$tree.suite.log")"
+  pytest_s="$(sed -nE 's/.*Test +#[0-9]+: pytest .* ([0-9.]+) sec/\1/p' "$tree.suite.log")"
+  emit "\"status\": \"suite\", \"suite_s\": $suite_s, \"cpp_s\": ${cpp_s:-0}, \"pytest_s\": ${pytest_s:-0}, \"tests\": ${total:-0}, \"failed\": ${failed:-0}, \"skipped\": ${skipped:-0}, \"failed_names\": \"$names\""
 fi
 
 tests="$("$binary" --gtest_list_tests | sed -n 's/^  //p')"
