@@ -35,7 +35,10 @@ sedi 's|FactoryMaker<T, U...>(const char\* _t)|FactoryMaker(const char* _t)|' \
 sedi 's|TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)|TargetSignalSocketProxy(TargetSignalSocket<bool>\& parent)|' \
   systemc-components/common/include/ports/target-signal-socket.h
 
-cmake --preset "$preset" -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20
+# No virglrenderer: QEMU's bundled one does not compile against glibc 2.42's
+# C11 threads, and Homebrew has none. Nothing here draws.
+cmake --preset "$preset" -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20 \
+  -DGS_ENABLE_VIRGLRENDERER=OFF
 start=$(date +%s)
 cmake --build build --parallel "${jobs}"
 echo "build seconds: $(($(date +%s) - start))"
