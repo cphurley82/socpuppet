@@ -113,6 +113,9 @@ Registry BuiltinComponents() {
                      });
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
+  // How DBT-RISE runs the core is the build's to say, in
+  // SOCPUPPET_DBT_RISE_DEFAULT_BACKEND (cmake/Dependencies.cmake). It is not
+  // a parameter because a parameter here is a number, and a backend a name.
   registry.Add("dbt_rise_cpu", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<DbtRiseCpu>(
         name, parameters.Required("xlen"), parameters.Required("reset_vector"),
@@ -121,7 +124,7 @@ Registry BuiltinComponents() {
         DbtRiseCpuExtras{
             .floating_point = parameters.Optional("floating_point", 0) != 0,
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0},
-        "interp");
+        SOCPUPPET_DBT_RISE_DEFAULT_BACKEND);
     std::vector<Port> ports{
         InitiatorPort("socket", module->socket),
         InitiatorPort("time", module->time, /*required=*/false),

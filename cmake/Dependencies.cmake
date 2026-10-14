@@ -134,6 +134,16 @@ FetchContent_Declare(elfio
   URL https://github.com/serge1/ELFIO/archive/refs/tags/Release_3.12.tar.gz
   URL_HASH SHA256=e4ebc9ce3d6916461bc3e7765bb45e6210f0a9b93978bf91e59b05388c024489
   EXCLUDE_FROM_ALL SYSTEM)
+# The backend a "dbt_rise_cpu" runs with when nothing says: its
+# interpreter, which is what the wheel ships. No translating backend is
+# built yet; M26 is measuring them (docs/plan.md).
+set(SOCPUPPET_DBT_RISE_DEFAULT_BACKEND interp CACHE STRING
+  "The backend a dbt_rise_cpu runs with")
+if(NOT SOCPUPPET_DBT_RISE_DEFAULT_BACKEND STREQUAL "interp")
+  message(FATAL_ERROR "SOCPUPPET_DBT_RISE_DEFAULT_BACKEND is "
+    "\"${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}\", and this build has only "
+    "DBT-RISE's interpreter, \"interp\".")
+endif()
 set(WITH_TCC OFF)
 set(WITH_ASMJIT OFF)
 set(WITH_LLVM OFF)
