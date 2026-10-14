@@ -133,6 +133,9 @@ if [[ -n "$sources_from" ]]; then
   for source in "$sources_from"/_deps/*-src; do
     # FetchContent's name upper-cased, hyphens and all: YAML-CPP.
     name="$(basename "$source" -src | tr '[:lower:]' '[:upper:]')"
+    # SPDK's one header is fetched into a directory of its own inside, so
+    # that it is included as "spdk/nvme_spec.h" (cmake/Dependencies.cmake).
+    [[ -d "$source/spdk" ]] && source="$source/spdk"
     configure_args+=("-DFETCHCONTENT_SOURCE_DIR_$name=$(cd "$source" && pwd)")
   done
 fi
