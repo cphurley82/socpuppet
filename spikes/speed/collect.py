@@ -284,6 +284,20 @@ def development(results: Results) -> str:
     )
 
 
+def failures(names: str) -> str:
+    """What failed, short: how many C++ tests, and the rest by name.
+
+    A C++ test's name has a dot in it (Suite.Test), and the rest are the
+    Python suite, the examples and the tooling, which are few.
+    """
+    if not names:
+        return "none"
+    cpp = [name for name in names.split() if "." in name]
+    other = [name for name in names.split() if "." not in name]
+    parts = [f"{len(cpp)} C++ tests"] if cpp else []
+    return ", ".join(parts + other)
+
+
 def backends(results: Results) -> str:
     """What each backend passed, and what it added, where it was tried."""
     rows = []
@@ -302,7 +316,7 @@ def backends(results: Results) -> str:
                 cpu_name(cpu),
                 ENVIRONMENTS[env],
                 f"{suite['tests'] - suite['failed']} of {suite['tests']}",
-                suite.get("failed_names", "") or "none",
+                failures(suite.get("failed_names", "")),
                 added,
             ]
         )

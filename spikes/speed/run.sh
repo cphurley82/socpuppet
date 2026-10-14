@@ -194,8 +194,12 @@ emit "\"status\": \"sizes\", $sizes"
 if [[ $suite -eq 1 ]]; then
   start="$(now)"
   set +e
+  # A test that hangs on a backend can print without end, and ctest keeps
+  # what a test prints in memory: on the Ubuntu box it grew to 19 GB and
+  # was killed. So it keeps the last megabyte of each.
   uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' --timeout 300 \
-    > "$tree.suite.log" 2>&1
+    --test-output-size-passed 100000 --test-output-size-failed 1000000 \
+    --test-output-truncation tail > "$tree.suite.log" 2>&1
   set -e
   suite_s="$(since "$start")"
   # "99% tests passed, 1 tests failed out of 925", or with none failed
