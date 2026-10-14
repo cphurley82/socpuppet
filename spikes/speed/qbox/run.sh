@@ -26,8 +26,10 @@ esac
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository="$(cd "$here/../../.." && pwd)"
 root="${QBOX_ROOT:-/qbox}"
-# Natively, cmake is the one uv installed for socpuppet.
-[[ -d "$repository/.venv/bin" ]] && export PATH="$repository/.venv/bin:$PATH"
+# Natively, cmake is the one uv installed for socpuppet. In a container
+# the image has its own, and the bind mount's is the host's.
+command -v cmake > /dev/null 2>&1 ||
+  export PATH="$repository/.venv/bin:$PATH"
 results="$repository/spikes/speed/results/$env_label-qbox.jsonl"
 host="$(uname -n)"
 commit="$(git -C "$repository" -c safe.directory='*' rev-parse --short HEAD)"
