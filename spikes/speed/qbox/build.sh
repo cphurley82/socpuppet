@@ -35,6 +35,13 @@ sedi 's|FactoryMaker<T, U...>(const char\* _t)|FactoryMaker(const char* _t)|' \
 sedi 's|TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)|TargetSignalSocketProxy(TargetSignalSocket<bool>\& parent)|' \
   systemc-components/common/include/ports/target-signal-socket.h
 
+# The NPU spike's third patch (spikes/npu/hexagon/build.sh): the Hexagon
+# components hand a string built at run time to SCP_FATAL, which fmt in
+# C++20 refuses, and QBox builds them whatever the target.
+sedi 's|("Unrecognized Architecture Revision: " + dsp_arch)|("Unrecognized Architecture Revision: {}", dsp_arch)|' \
+  qemu-components/cpu_hexagon/include/hexagon.h \
+  qemu-components/hexagon_globalreg/include/hexagon_globalreg.h
+
 # No virglrenderer: QEMU's bundled one does not compile against glibc 2.42's
 # C11 threads, and Homebrew has none. Nothing here draws.
 cmake --preset "$preset" -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20 \
