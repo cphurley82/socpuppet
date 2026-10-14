@@ -92,7 +92,7 @@ The tables below are what `python3 -I spikes/speed/collect.py` prints from `spik
 | Air, macOS | DBT-RISE LLVM 23 | 169.0 | 112.9 | 53.3 | 13.1 | 3 |
 | Air, Docker arm64 | DBT-RISE interpreter | 39.6 | 30.5 | 24.3 | 6.0 | 3 |
 | Air, Docker arm64 | DBT-RISE LLVM 19 | 141.3 | 101.9 | 51.6 | 12.7 | 3 |
-| Air, Docker arm64 | QBox, repeatable | 349.3 | 583.8 | 26.6 | 6.5 | 1 |
+| Air, Docker arm64 | QBox, repeatable | 358.3 | 581.8 | 26.6 | 6.5 | 2 |
 | Air, Docker x86-64 (Rosetta) | DBT-RISE interpreter | 24.3 | 18.7 | 14.3 | 3.5 | 3 |
 | Air, Docker x86-64 (Rosetta) | DBT-RISE asmjit | 47.6 | 18.4 | 17.7 | 4.3 | 3 |
 | Ubuntu box, Linux | DBT-RISE interpreter | 32.5 | 24.7 | 19.7 | 4.8 | 3 |
