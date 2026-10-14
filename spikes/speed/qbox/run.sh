@@ -50,7 +50,7 @@ binary="$root/speed/spike_speed_qbox_tests"
 for ((run = 1; run <= runs; run++)); do
   for test in $("$binary" --gtest_list_tests | sed -n 's/^  //p'); do
     line="$(SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
-      SPEED_RUN="$run" timeout 600 "$binary" --gtest_filter="Qbox.$test" 2>&1 |
+      SPEED_RUN="$run" perl -e "alarm 600; exec @ARGV" "$binary" --gtest_filter="Qbox.$test" 2>&1 |
       sed -n 's/^\[speed\] //p')"
     if [[ -z "$line" ]]; then
       mode=deterministic

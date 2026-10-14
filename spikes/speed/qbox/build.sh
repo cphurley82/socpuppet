@@ -10,6 +10,10 @@ set -euo pipefail
 root="${QBOX_ROOT:-/qbox}"
 qbox_commit=4d63017c88a147839d49028d0c60666d691460cc # 2026-09-24
 jobs=${JOBS:-4}
+# macOS's sed wants a suffix after -i, GNU's takes the script there.
+sedi() { if sed --version > /dev/null 2>&1; then sed -i "$@"; else sed -i "" "$@"; fi; }
+preset=gcc
+[[ "$(uname -s)" == Darwin ]] && preset=mac
 
 mkdir -p "$root"
 if [[ ! -d "$root/src/.git" ]]; then
@@ -23,15 +27,15 @@ cd "$root/src"
 if [[ -f systemc-components/common/include/semaphore.h ]]; then
   git mv systemc-components/common/include/semaphore.h \
     systemc-components/common/include/gs_semaphore.h
-  sed -i 's|#include <semaphore.h>|#include <gs_semaphore.h>|' \
+  sedi 's|#include <semaphore.h>|#include <gs_semaphore.h>|' \
     systemc-components/common/include/qkmulti-rolling.h
 fi
-sed -i 's|FactoryMaker<T, U...>(const char\* _t)|FactoryMaker(const char* _t)|' \
+sedi 's|FactoryMaker<T, U...>(const char\* _t)|FactoryMaker(const char* _t)|' \
   systemc-components/common/include/cciutils.h
-sed -i 's|TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)|TargetSignalSocketProxy(TargetSignalSocket<bool>\& parent)|' \
+sedi 's|TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)|TargetSignalSocketProxy(TargetSignalSocket<bool>\& parent)|' \
   systemc-components/common/include/ports/target-signal-socket.h
 
-cmake --preset gcc -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20
+cmake --preset "$preset" -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20
 start=$(date +%s)
 cmake --build build --parallel "${jobs}"
 echo "build seconds: $(($(date +%s) - start))"
