@@ -155,6 +155,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### LLVM 23 has no `CreateGlobalStringPtr`
+
+- **Where**: the generated LLVM cores of DBT-RISE-RISCV, `src/vm/llvm/vm_*.cpp`, which call `builder.CreateGlobalStringPtr(mnemonic)` 661 times, and `src/iss/llvm/vm_base.h` in Core, where `builder` is declared.
+- **What is wrong**: LLVM 23 removed `IRBuilder::CreateGlobalStringPtr`. `CreateGlobalString` has made the same global since LLVM 19, so the cores stopped compiling for one name.
+- **How to see it**: configure with `-DSOCPUPPET_DBT_RISE_BACKENDS=llvm` against Homebrew's `llvm` (23.1 on 2026-10-14): `no member named 'CreateGlobalStringPtr' in 'llvm::IRBuilder<>'` (M26 step 5, on the MacBook Air).
+- **What we do**: `cmake/patches/dbt-rise-core-llvm-global-string.patch` declares `builder` as a struct derived from `IRBuilder<>` that has `CreateGlobalStringPtr` again under `LLVM_VERSION_MAJOR >= 23`, forwarding to `CreateGlobalString`. One patch of ten lines in Core, where 661 in the generated cores would have been the mechanical fix.
+- **Upstream fix**: `CreateGlobalString` in the generator's template, which every LLVM from 19 accepts.
+- **Kind**: accommodation for a newer LLVM.
+- **When it lands**: drop the patch.
+
 ### The helpers LLVM's code calls by name are left out of a static link, and hidden from it
 
 - **Where**: `src/iss/vm_jit_funcs.cpp`, in the static library `dbt-rise-core`.
@@ -576,7 +586,7 @@ Each entry says:
 
 - **Where**: the generated cores in `src/vm/asmjit/` and `src/vm/llvm/`.
 - **What is wrong**: M22's fixes are in the interpreter, or in the hart where the interpreter fetches. A translating backend reads its instructions another way and has its own copy of each instruction's behaviour, so with asmjit as the default 29 of socpuppet's 912 C++ tests fail on the core with supervisor mode: the floating-point state (11, `fp-status`), an interrupt that arrives at an instruction or while the core sleeps, and the IMSIC's handlers (9), the reservation (4, `one-reservation`), a page fault and an instruction at a page's end (3, which hang), and a misaligned access (2).
-- **How to see it**: `ctest -L cpp` in a build configured with `-DSOCPUPPET_DBT_RISE_BACKENDS=asmjit -DSOCPUPPET_DBT_RISE_DEFAULT_BACKEND=asmjit` (M26 step 4, in its report, `docs/speed-spike.md`).
+- **How to see it**: `ctest -L cpp` in a build configured with `-DSOCPUPPET_DBT_RISE_BACKENDS=asmjit -DSOCPUPPET_DBT_RISE_DEFAULT_BACKEND=asmjit` (M26 step 4, in its report, [speed-spike.md](speed-spike.md)).
 - **What we do**: nothing. The interpreter is the default and what ships.
 - **Upstream fix**: each of our patches again, in the generator's description where it is one of an instruction's behaviour, so that every backend has it.
 - **Kind**: bug.

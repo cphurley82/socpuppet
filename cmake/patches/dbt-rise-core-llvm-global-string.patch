@@ -1,0 +1,21 @@
+diff --git a/src/iss/llvm/vm_base.h b/src/iss/llvm/vm_base.h
+index dd101a6..97f21ab 100644
+--- a/src/iss/llvm/vm_base.h
++++ b/src/iss/llvm/vm_base.h
+@@ -543,7 +543,15 @@ protected:
+     uint8_t* regs_base_ptr;
+     sync_type sync_exec{sync_type::NO_SYNC};
+     std::unordered_map<uint64_t, translation_block> func_map;
+-    IRBuilder<> builder{iss::llvm::getContext()};
++    // LLVM 23 took CreateGlobalStringPtr away. CreateGlobalString has made
++    // the same global since LLVM 19, so the generated cores keep their name.
++    struct Builder : IRBuilder<> {
++        using IRBuilder<>::IRBuilder;
++#if LLVM_VERSION_MAJOR >= 23
++        Value* CreateGlobalStringPtr(StringRef str) { return CreateGlobalString(str); }
++#endif
++    };
++    Builder builder{iss::llvm::getContext()};
+     // non-owning pointers
+     Module* mod{nullptr};
+     Function* func{nullptr};

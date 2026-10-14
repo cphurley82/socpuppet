@@ -335,6 +335,7 @@ FetchContent_Declare(dbt_rise_core_git
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-rude-hangup.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-jit-wait-name.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-llvm-pointer-args.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-llvm-global-string.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 set(SOCPUPPET_SUPPRESS_INSTALL TRUE)
