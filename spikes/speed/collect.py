@@ -155,6 +155,8 @@ def place(results: Results, line: dict[str, Any], where: str) -> None:
     elif status == "sizes":
         results.sizes[(cpu, env)] = line
         cell.built = True
+    elif status == "qbox-build":
+        cell.built = True
     elif status in (
         "not-built",
         "not-tried",
