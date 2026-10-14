@@ -77,9 +77,8 @@ std::string ChooseBackend(const char* core_type,
     return std::ranges::find(built, backend) != built.end();
   };
   if (!asked) {
-    return has(SOCPUPPET_DBT_RISE_DEFAULT_BACKEND)
-               ? SOCPUPPET_DBT_RISE_DEFAULT_BACKEND
-               : "interp";
+    const std::string by_default = SOCPUPPET_DBT_RISE_DEFAULT_BACKEND;
+    return has(by_default) ? by_default : std::string{"interp"};
   }
   if (has(*asked)) return *asked;
   std::string named;
