@@ -131,7 +131,8 @@ configure_args=(--preset spike -B "$tree" -DSOCPUPPET_BUILD_SPIKES=ON)
 [[ -n "$dbt_rise_jobs" ]] && configure_args+=("-DSOCPUPPET_DBT_RISE_JOBS=$dbt_rise_jobs")
 if [[ -n "$sources_from" ]]; then
   for source in "$sources_from"/_deps/*-src; do
-    name="$(basename "$source" -src | tr '[:lower:]-' '[:upper:]_')"
+    # FetchContent's name upper-cased, hyphens and all: YAML-CPP.
+    name="$(basename "$source" -src | tr '[:lower:]' '[:upper:]')"
     configure_args+=("-DFETCHCONTENT_SOURCE_DIR_$name=$(cd "$source" && pwd)")
   done
 fi
