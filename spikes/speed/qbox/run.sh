@@ -49,17 +49,21 @@ cmake -S "$here" -B "$root/speed" -G Ninja \
 cmake --build "$root/speed" > "$root/speed.build.log"
 
 binary="$root/speed/spike_speed_qbox_tests"
+qbox="$(git -C "$root/src" -c safe.directory='*' rev-parse --short HEAD)"
 for ((run = 1; run <= runs; run++)); do
   for test in $("$binary" --gtest_list_tests | sed -n 's/^  //p'); do
-    line="$(SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
-      SPEED_RUN="$run" perl -e "alarm 600; exec @ARGV" "$binary" --gtest_filter="Qbox.$test" 2>&1 |
+    # A test that crashes or is stopped by the alarm is a line that says
+    # so, not the end of the run.
+    line="$({ SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
+      SPEED_RUN="$run" perl -e "alarm 600; exec @ARGV" "$binary" \
+      --gtest_filter="Qbox.$test" 2>&1 || true; } |
       sed -n 's/^\[speed\] //p')"
     if [[ -z "$line" ]]; then
       mode=deterministic
       [[ "$test" == *Threaded ]] && mode=threaded
       line="{\"host\": \"$host\", \"env\": \"$env_label\", \"commit\": \"$commit\", \"cpu\": \"qbox\", \"mode\": \"$mode\", \"status\": \"speed-failed\", \"test\": \"$test\", \"run\": $run}"
     else
-      line="{\"status\": \"speed\", ${line#\{}"
+      line="{\"status\": \"speed\", \"qbox\": \"$qbox\", ${line#\{}"
     fi
     echo "$line" | tee -a "$results"
   done

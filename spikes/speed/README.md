@@ -1,6 +1,6 @@
 # The speed spike ⏱️
 
-Milestone M26 asks how fast the host's core is, and on which machine, in which environment and with which CPU the work to boot Linux is best done. It times the core on three loops, on every CPU that can be built and every machine it can be built on, and times what a developer waits for on each: a build, a rebuild and the test suite. The report, with the recommendation, is `docs/speed-spike.md`.
+Milestone M26 asks how fast the host's core is, and on which machine, in which environment and with which CPU the work to boot Linux is best done. It times the core on three loops, on every CPU that can be built and every machine it can be built on, and times what a developer waits for on each: a build, a rebuild and the test suite. The report, with the recommendation, is [docs/speed-spike.md](../../docs/speed-spike.md).
 
 ⚠️ Nothing here is part of socpuppet. It is exploratory code, held to the rules of `spikes/`:
 

@@ -77,6 +77,9 @@ tag="$env_label"
 llvm=""
 if [[ -n "$llvm_dir" ]]; then
   llvm="$(basename "$(dirname "$(dirname "$(dirname "$llvm_dir")")")")"
+  # Homebrew's current LLVM is just "llvm": its version is in its package.
+  [[ "$llvm" == *[0-9]* ]] ||
+    llvm="$llvm@$(sed -n 's/^set(LLVM_VERSION_MAJOR \([0-9]*\)).*/\1/p' "$llvm_dir/LLVMConfig.cmake")"
   tag="$tag-$llvm"
 fi
 tree="build/speed-$tag"
