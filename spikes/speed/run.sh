@@ -21,6 +21,7 @@
 #   --dbt-rise-jobs N      how many of DBT-RISE's generated files to compile
 #                          at once (4); each wants over a gigabyte
 set -euo pipefail
+trap 'echo "run.sh: stopped by a failure at line $LINENO" >&2' ERR
 
 readonly LABELS=(
   native-macos-x86_64 docker-amd64-on-macpro
@@ -164,10 +165,10 @@ emit "\"status\": \"sizes\", $sizes"
 if [[ $suite -eq 1 ]]; then
   start="$(now)"
   set +e
-  ctest --test-dir "$tree" -j 8 -LE 'spike|speed' > "$tree.suite.log" 2>&1
+  uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' > "$tree.suite.log" 2>&1
   set -e
   suite_s="$(since "$start")"
-  summary="$(grep -E 'tests passed, [0-9]+ tests failed out of' "$tree.suite.log" | tail -1)"
+  summary="$(grep -E 'tests passed, [0-9]+ tests failed out of' "$tree.suite.log" | tail -1 || true)"
   failed="$(echo "$summary" | sed -E 's/.* ([0-9]+) tests failed out of ([0-9]+).*/\1/')"
   total="$(echo "$summary" | sed -E 's/.* ([0-9]+) tests failed out of ([0-9]+).*/\2/')"
   skipped="$(grep -c '\*\*\*Skipped\|Not Run' "$tree.suite.log" || true)"
