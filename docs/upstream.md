@@ -137,13 +137,33 @@ Each entry says:
 
 ### A function called `wait()` collides with POSIX on macOS
 
-- **Where**: `src/iss/vm_jit_funcs.h` line 13 and `src/iss/vm_jit_funcs.cpp` line 79: `extern void wait(void*, uint64_t);`
-- **What is wrong**: it is a C-linkage helper for the translating backends, and POSIX already declares `wait()`. On macOS the two declarations meet and the file does not compile.
-- **How to see it**: build DBT-RISE-Core on macOS.
-- **What we do**: no patch. No translating backend is built, so `cmake/Dependencies.cmake` removes the file from the target's sources. A backend would need it back, which is why this blocks the "try the other backends" to-do on macOS.
-- **Upstream fix**: rename the helper, for example to `iss_wait`, along with the other helpers in that file that the generated code calls.
+- **Where**: `src/iss/vm_jit_funcs.h` line 13 and `src/iss/vm_jit_funcs.cpp` line 79: `extern void wait(void*, uint64_t);`, and `src/iss/llvm/vm_base.cpp`, which declares it to LLVM by that name. DBT-RISE-RISCV's generated cores call it: asmjit's by its address, LLVM's by its name.
+- **What is wrong**: it is a C-linkage helper for the translating backends, and POSIX already declares `wait()`. On macOS the two declarations meet and the file does not compile. On Linux they do not meet, and LLVM's code, which looks the helper up by its name in the running process, could as well find the C library's.
+- **How to see it**: build DBT-RISE-Core on macOS with a translating backend.
+- **What we do**: `cmake/patches/dbt-rise-core-jit-wait-name.patch` renames it `iss_wait`, and `cmake/patches/dbt-rise-riscv-jit-wait-name.patch` renames every call in the generated cores (M26). With no translating backend built, `cmake/Dependencies.cmake` still leaves the file out, so that the interpreter's build is what it was.
+- **Upstream fix**: the same rename, in the generator's templates as well as in the generated cores.
 - **Kind**: portability.
-- **When it lands**: stop removing the file.
+- **When it lands**: drop both patches.
+
+### LLVM's code takes the core's pointers as bytes
+
+- **Where**: `src/iss/llvm/vm_base.h`, `open_block_func`, whose block takes three arguments typed `Type::getInt8Ty`, and `src/iss/llvm/vm_base.cpp`, `#define THIS_PTR_TYPE Type::getIntNTy(mod->getContext(), 8)`, the first argument of every helper.
+- **What is wrong**: the three are pointers, to the registers, to the core and to the virtual machine, and the code generated for a block uses them as pointers. Typed as bytes, each is cut to its low eight bits on the way in, and the first helper called is handed an address like `0x10` and crashes. It reads like a move to LLVM's opaque pointers that replaced `getInt8PtrTy` with `getInt8Ty`.
+- **How to see it**: any program on `rv64gc_msu:llvm`; the first block that calls a helper crashes there (M26 step 5).
+- **What we do**: `cmake/patches/dbt-rise-core-llvm-pointer-args.patch` types all four as `PointerType::getUnqual`.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### The helpers LLVM's code calls by name are left out of a static link, and hidden from it
+
+- **Where**: `src/iss/vm_jit_funcs.cpp`, in the static library `dbt-rise-core`.
+- **What is wrong**: LLVM's code finds the helpers by their names in the running process when a block is compiled. Nothing names them when a program is linked, so the linker leaves their file out of the static library's contribution, and on Linux an executable does not export its names unless it is linked to.
+- **How to see it**: any program on `rv64gc_msu:llvm` in a binary linked statically; the block calls a null function.
+- **What we do**: no patch. `cmake/Dependencies.cmake` has a program that links the core ask for `iss_wait` by name, which brings in the file, and links it with `-rdynamic` on Linux.
+- **Upstream fix**: give the helpers to LLVM's engine by address (`addGlobalMapping`, or a symbol map in ORC), as asmjit's code already does, so that neither the linker nor the dynamic symbol table matters.
+- **Kind**: build.
+- **When it lands**: drop the link options.
 
 ### Boost headers are assumed to share one include directory
 
@@ -521,6 +541,58 @@ Each entry says:
 - **Upstream fix**: in the description the interpreter is generated from: an `amo*` checks its address before it reads, and raises the store's cause. Ours works only where an instruction is fetched as it is executed, which a backend that translates blocks does not do.
 - **Kind**: bug.
 - **When it lands**: drop the patch.
+
+### The translating backends' cores specialize a private template of GCC's standard library
+
+- **Where**: every file in `src/vm/asmjit/` and `src/vm/llvm/` that opens `namespace std` after `using uint128_t = unsigned __int128;`.
+- **What is wrong**: the block DBT-RISE-Core's `int128-traits` entry describes, generated again into each core.
+- **How to see it**: build either backend with Apple clang.
+- **What we do**: `cmake/patches/dbt-rise-riscv-int128-traits.patch` wraps each in `#ifdef __GLIBCXX__`.
+- **Upstream fix**: the guard, in the generator's template.
+- **Kind**: portability.
+- **When it lands**: drop the patch.
+
+### `wfi` calls its helper with a 1 where the core's pointer goes, in both translating backends
+
+- **Where**: the `WFI` case of every core in `src/vm/asmjit/` (`cc.invoke(&call_wait_N, &wait, FuncSignature::build<void, uint32_t>()); setArg(call_wait_N, 0, 1);`) and in `src/vm/llvm/` (`wait_N_args{this->gen_ext(this->gen_const(8,1), 32)}`).
+- **What is wrong**: the helper takes the core and a word of flags. The generated call passes one argument, the constant 1, which arrives where the core's pointer goes, and the helper crashes on its first use. Every program that ever sleeps reaches it.
+- **How to see it**: any program ending in `wfi` on either backend, which is every test of socpuppet's (M26 steps 4 and 5).
+- **What we do**: `cmake/patches/dbt-rise-riscv-asmjit-wfi-call.patch` and `dbt-rise-riscv-llvm-wfi-call.patch` pass the core's pointer first and the 1 second, at 64 bits, as the cores' own `gen_wait` does.
+- **Upstream fix**: the same, in the generator's description of `WFI`.
+- **Kind**: bug.
+- **When it lands**: drop the patches.
+
+### LLVM's 64-bit core is registered under a name the SystemC wrapper never asks for, and its target is never set up
+
+- **Where**: `src/vm/llvm/vm_rv64gc.cpp`, which registers `rv64gc|msu_vp|llvm`, and `src/sysc/register_cores.cpp`, whose LLVM section registers only 32-bit and `tgc5c` cores and never calls `iss::init_jit()`.
+- **What is wrong**: `core_complex::create_cpu` looks a core up as `<core>:<backend>`, so `rv64gc_msu:llvm` is not found. And LLVM makes code only once its target for the host is set up, which `riscv-sim`'s `main()` does and nothing in the SystemC wrapper does, so every block is refused with "no targets are registered".
+- **How to see it**: a `core_complex` with `core_type` `rv64gc_msu` and `backend` `llvm`.
+- **What we do**: `cmake/patches/dbt-rise-riscv-llvm-core-names.patch` registers `rv64gc_msu:llvm` beside the others, and `dbt-rise-riscv-llvm-init-jit.patch` calls `iss::init_jit()` as the LLVM cores are registered.
+- **Upstream fix**: the same two, in `register_cores.cpp`.
+- **Kind**: bug.
+- **When it lands**: drop both patches.
+
+### What the interpreter was mended for, the translating backends were not
+
+- **Where**: the generated cores in `src/vm/asmjit/` and `src/vm/llvm/`.
+- **What is wrong**: M22's fixes are in the interpreter, or in the hart where the interpreter fetches. A translating backend reads its instructions another way and has its own copy of each instruction's behaviour, so with asmjit as the default 29 of socpuppet's 912 C++ tests fail on the core with supervisor mode: the floating-point state (11, `fp-status`), an interrupt that arrives at an instruction or while the core sleeps, and the IMSIC's handlers (9), the reservation (4, `one-reservation`), a page fault and an instruction at a page's end (3, which hang), and a misaligned access (2).
+- **How to see it**: `ctest -L cpp` in a build configured with `-DSOCPUPPET_DBT_RISE_BACKENDS=asmjit -DSOCPUPPET_DBT_RISE_DEFAULT_BACKEND=asmjit` (M26 step 4, in its report, `docs/speed-spike.md`).
+- **What we do**: nothing. The interpreter is the default and what ships.
+- **Upstream fix**: each of our patches again, in the generator's description where it is one of an instruction's behaviour, so that every backend has it.
+- **Kind**: bug.
+- **When it lands**: the backend's row in the report changes.
+
+## LLVM, as Debian and Ubuntu package it
+
+### LLVM's CMake package uses `pkg_check_modules` without loading it
+
+- **Where**: `/usr/lib/llvm-19/lib/cmake/llvm/FindLibEdit.cmake` line 17, in `llvm-19-dev` on Ubuntu 26.04.
+- **What is wrong**: it calls `pkg_check_modules`, which `FindPkgConfig` defines, and nothing before it loads that module. A project that has not loaded it itself stops in `find_package(LLVM)` with "Unknown CMake command".
+- **How to see it**: `find_package(LLVM CONFIG)` from a project that has not used `pkg-config` before.
+- **What we do**: no patch. `cmake/Dependencies.cmake` includes `FindPkgConfig` before it looks for LLVM.
+- **Upstream fix**: `find_package(PkgConfig QUIET)` at the top of `FindLibEdit.cmake`, in Debian's packaging or LLVM's.
+- **Kind**: build.
+- **When it lands**: drop the include.
 
 ## softvector
 

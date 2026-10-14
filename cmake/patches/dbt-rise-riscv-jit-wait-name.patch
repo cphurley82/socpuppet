@@ -1,0 +1,249 @@
+diff --git a/src/vm/asmjit/vm_rv32gc.cpp b/src/vm/asmjit/vm_rv32gc.cpp
+index d476c41..a61e1e9 100644
+--- a/src/vm/asmjit/vm_rv32gc.cpp
++++ b/src/vm/asmjit/vm_rv32gc.cpp
+@@ -2679,7 +2679,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv32gcv.cpp b/src/vm/asmjit/vm_rv32gcv.cpp
+index e4ad6a6..04f373a 100644
+--- a/src/vm/asmjit/vm_rv32gcv.cpp
++++ b/src/vm/asmjit/vm_rv32gcv.cpp
+@@ -4339,7 +4339,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv32i.cpp b/src/vm/asmjit/vm_rv32i.cpp
+index 70f0bec..3ab223e 100644
+--- a/src/vm/asmjit/vm_rv32i.cpp
++++ b/src/vm/asmjit/vm_rv32i.cpp
+@@ -2418,7 +2418,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv32imac.cpp b/src/vm/asmjit/vm_rv32imac.cpp
+index 98e72b0..474ec48 100644
+--- a/src/vm/asmjit/vm_rv32imac.cpp
++++ b/src/vm/asmjit/vm_rv32imac.cpp
+@@ -2516,7 +2516,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv64gc.cpp b/src/vm/asmjit/vm_rv64gc.cpp
+index dd412d1..1943ed9 100644
+--- a/src/vm/asmjit/vm_rv64gc.cpp
++++ b/src/vm/asmjit/vm_rv64gc.cpp
+@@ -2769,7 +2769,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv64gcv.cpp b/src/vm/asmjit/vm_rv64gcv.cpp
+index 54ff0ea..de2c6a5 100644
+--- a/src/vm/asmjit/vm_rv64gcv.cpp
++++ b/src/vm/asmjit/vm_rv64gcv.cpp
+@@ -4429,7 +4429,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv64i.cpp b/src/vm/asmjit/vm_rv64i.cpp
+index e1de294..dbcb0d2 100644
+--- a/src/vm/asmjit/vm_rv64i.cpp
++++ b/src/vm/asmjit/vm_rv64i.cpp
+@@ -2452,7 +2452,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_rv64imac.cpp b/src/vm/asmjit/vm_rv64imac.cpp
+index 5e2f240..e9f85a3 100644
+--- a/src/vm/asmjit/vm_rv64imac.cpp
++++ b/src/vm/asmjit/vm_rv64imac.cpp
+@@ -2594,7 +2594,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/asmjit/vm_tgc5c.cpp b/src/vm/asmjit/vm_tgc5c.cpp
+index 6a82710..f6a00e5 100644
+--- a/src/vm/asmjit/vm_tgc5c.cpp
++++ b/src/vm/asmjit/vm_tgc5c.cpp
+@@ -2494,7 +2494,7 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &wait, FuncSignature::build<void, uint32_t>());
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+         setArg(call_wait_5, 0, 1);
+         auto returnValue = CONT;
+         
+diff --git a/src/vm/llvm/vm_rv32gc.cpp b/src/vm/llvm/vm_rv32gc.cpp
+index b92ed21..15d90fc 100644
+--- a/src/vm/llvm/vm_rv32gc.cpp
++++ b/src/vm/llvm/vm_rv32gc.cpp
+@@ -2752,7 +2752,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -9706,7 +9706,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>
+diff --git a/src/vm/llvm/vm_rv32i.cpp b/src/vm/llvm/vm_rv32i.cpp
+index e271a8a..75ebe9f 100644
+--- a/src/vm/llvm/vm_rv32i.cpp
++++ b/src/vm/llvm/vm_rv32i.cpp
+@@ -2482,7 +2482,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -2966,7 +2966,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>
+diff --git a/src/vm/llvm/vm_rv32imac.cpp b/src/vm/llvm/vm_rv32imac.cpp
+index 6db2415..7974045 100644
+--- a/src/vm/llvm/vm_rv32imac.cpp
++++ b/src/vm/llvm/vm_rv32imac.cpp
+@@ -2580,7 +2580,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -5732,7 +5732,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>
+diff --git a/src/vm/llvm/vm_rv64gc.cpp b/src/vm/llvm/vm_rv64gc.cpp
+index 0757fc1..e4d2e07 100644
+--- a/src/vm/llvm/vm_rv64gc.cpp
++++ b/src/vm/llvm/vm_rv64gc.cpp
+@@ -2834,7 +2834,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -12384,7 +12384,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>
+diff --git a/src/vm/llvm/vm_rv64i.cpp b/src/vm/llvm/vm_rv64i.cpp
+index 39d383a..c24341f 100644
+--- a/src/vm/llvm/vm_rv64i.cpp
++++ b/src/vm/llvm/vm_rv64i.cpp
+@@ -2508,7 +2508,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -3675,7 +3675,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>
+diff --git a/src/vm/llvm/vm_tgc5c.cpp b/src/vm/llvm/vm_tgc5c.cpp
+index 13ea642..763adee 100644
+--- a/src/vm/llvm/vm_tgc5c.cpp
++++ b/src/vm/llvm/vm_tgc5c.cpp
+@@ -2558,7 +2558,7 @@ private:
+         std::vector<Value*> wait_57_args{
+             this->gen_ext(this->gen_const(8,1), 32)
+         };
+-        this->builder.CreateCall(this->mod->getFunction("wait"), wait_57_args);
++        this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+         auto returnValue = std::make_tuple(CONT,bb);
+         
+@@ -4987,7 +4987,7 @@ void vm_impl<ARCH>::gen_leave_trap(unsigned lvl) {
+ template <typename ARCH>
+ void vm_impl<ARCH>::gen_wait(unsigned type) {
+     std::vector<Value *> args{ this->core_ptr, ConstantInt::get(getContext(), APInt(64, type)) };
+-    this->builder.CreateCall(this->mod->getFunction("wait"), args);
++    this->builder.CreateCall(this->mod->getFunction("iss_wait"), args);
+ }
+ 
+ template <typename ARCH>

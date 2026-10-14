@@ -25,6 +25,7 @@
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
+#include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
@@ -32,9 +33,6 @@
 #include "tests/cpp/support/counting_probe.h"
 #include "tests/cpp/support/riscv_program.h"
 
-#ifndef SPEED_BACKEND
-#define SPEED_BACKEND "interp"
-#endif
 #ifndef SPEED_COMPILER
 #define SPEED_COMPILER "unknown"
 #endif
@@ -176,7 +174,9 @@ void Measure(const std::string& name, const sc_core::sc_time& quantum,
        << R"("commit": ")" << Environment("SPEED_COMMIT", "unknown") << R"(", )"
        << R"("run": )" << Environment("SPEED_RUN", "0") << ", "
        << R"("cpu": "dbt-rise", )"
-       << R"("backend": ")" << SPEED_BACKEND << R"(", )"
+       << R"("backend": ")"
+       << speed.platform.ModuleAt<socpuppet::DbtRiseCpu>("cpu").Backend()
+       << R"(", )"
        << R"("compiler": ")" << SPEED_COMPILER << R"(", )"
        << R"("loop": ")" << name << R"(", )"
        << R"("quantum_us": )" << quantum.to_seconds() * 1e6 << ", "

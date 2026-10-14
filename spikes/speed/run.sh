@@ -166,7 +166,8 @@ emit "\"status\": \"sizes\", $sizes"
 if [[ $suite -eq 1 ]]; then
   start="$(now)"
   set +e
-  uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' > "$tree.suite.log" 2>&1
+  uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' --timeout 300 \
+    > "$tree.suite.log" 2>&1
   set -e
   suite_s="$(since "$start")"
   # "99% tests passed, 1 tests failed out of 925", or with none failed

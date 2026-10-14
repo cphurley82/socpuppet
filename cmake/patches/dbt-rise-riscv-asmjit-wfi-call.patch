@@ -1,0 +1,144 @@
+diff --git a/src/vm/asmjit/vm_rv32gc.cpp b/src/vm/asmjit/vm_rv32gc.cpp
+index 08a1659..af337d4 100644
+--- a/src/vm/asmjit/vm_rv32gc.cpp
++++ b/src/vm/asmjit/vm_rv32gc.cpp
+@@ -2681,8 +2681,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv32gcv.cpp b/src/vm/asmjit/vm_rv32gcv.cpp
+index 36e5220..559b3a6 100644
+--- a/src/vm/asmjit/vm_rv32gcv.cpp
++++ b/src/vm/asmjit/vm_rv32gcv.cpp
+@@ -4341,8 +4341,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv32i.cpp b/src/vm/asmjit/vm_rv32i.cpp
+index e6dd43f..14acb43 100644
+--- a/src/vm/asmjit/vm_rv32i.cpp
++++ b/src/vm/asmjit/vm_rv32i.cpp
+@@ -2420,8 +2420,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv32imac.cpp b/src/vm/asmjit/vm_rv32imac.cpp
+index 389e86c..3dc853c 100644
+--- a/src/vm/asmjit/vm_rv32imac.cpp
++++ b/src/vm/asmjit/vm_rv32imac.cpp
+@@ -2518,8 +2518,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv64gc.cpp b/src/vm/asmjit/vm_rv64gc.cpp
+index d609417..e5ec101 100644
+--- a/src/vm/asmjit/vm_rv64gc.cpp
++++ b/src/vm/asmjit/vm_rv64gc.cpp
+@@ -2771,8 +2771,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv64gcv.cpp b/src/vm/asmjit/vm_rv64gcv.cpp
+index c7fbdef..76ea32c 100644
+--- a/src/vm/asmjit/vm_rv64gcv.cpp
++++ b/src/vm/asmjit/vm_rv64gcv.cpp
+@@ -4431,8 +4431,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv64i.cpp b/src/vm/asmjit/vm_rv64i.cpp
+index 39964b3..08c20d2 100644
+--- a/src/vm/asmjit/vm_rv64i.cpp
++++ b/src/vm/asmjit/vm_rv64i.cpp
+@@ -2454,8 +2454,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_rv64imac.cpp b/src/vm/asmjit/vm_rv64imac.cpp
+index d12dbb9..0f83167 100644
+--- a/src/vm/asmjit/vm_rv64imac.cpp
++++ b/src/vm/asmjit/vm_rv64imac.cpp
+@@ -2596,8 +2596,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);
+diff --git a/src/vm/asmjit/vm_tgc5c.cpp b/src/vm/asmjit/vm_tgc5c.cpp
+index 9cb31c1..6f23c2e 100644
+--- a/src/vm/asmjit/vm_tgc5c.cpp
++++ b/src/vm/asmjit/vm_tgc5c.cpp
+@@ -2496,8 +2496,9 @@ private:
+         gen_instr_prologue(jh);
+         /*generate behavior*/
+         InvokeNode* call_wait_5;
+-        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, uint32_t>());
+-        setArg(call_wait_5, 0, 1);
++        cc.invoke(&call_wait_5, &iss_wait, FuncSignature::build<void, void*, uint64_t>());
++        call_wait_5->setArg(0, jh.arch_if_ptr);
++        setArg(call_wait_5, 1, 1);
+         auto returnValue = CONT;
+         
+         gen_sync(jh, POST_SYNC, 41);

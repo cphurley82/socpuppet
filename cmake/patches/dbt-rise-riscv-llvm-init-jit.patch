@@ -1,0 +1,19 @@
+diff --git a/src/sysc/register_cores.cpp b/src/sysc/register_cores.cpp
+index 1b1bf8a..d8cb8e6 100644
+--- a/src/sysc/register_cores.cpp
++++ b/src/sysc/register_cores.cpp
+@@ -175,8 +175,14 @@ __attribute__((used)) volatile std::array<bool, 22> riscv_init = {
+                                              })}; // namespace interp
+ } // namespace interp
+ #if defined(WITH_LLVM)
++} // namespace iss
++#include <iss/llvm/jit_init.h>
++namespace iss {
+ namespace llvm {
+ using namespace sysc;
++// LLVM makes code for the host only once its target for the host is set up,
++// which riscv-sim's main() does and nothing in the SystemC wrapper did.
++volatile bool jit_initialized = (iss::init_jit(), true);
+ volatile std::array<bool, 5> riscv_init = {
+     iss_factory::instance().register_creator("rv32imac_m:llvm",
+                                              [](unsigned gdb_port, sysc::riscv::core_complex_if* cc) -> iss_factory::base_t {

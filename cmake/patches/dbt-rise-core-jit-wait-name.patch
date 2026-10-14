@@ -1,0 +1,39 @@
+diff --git a/src/iss/llvm/vm_base.cpp b/src/iss/llvm/vm_base.cpp
+index bcd5aee..d4597ab 100644
+--- a/src/iss/llvm/vm_base.cpp
++++ b/src/iss/llvm/vm_base.cpp
+@@ -77,7 +77,7 @@ void add_functions_2_module(Module* mod) {
+     FDECL(write_mem_dbg, INT_TYPE(8), THIS_PTR_TYPE, INT_TYPE(32), INT_TYPE(32), INT_TYPE(64), INT_TYPE(32), INT_TYPE(8)->getPointerTo());
+     FDECL(enter_trap, INT_TYPE(64), THIS_PTR_TYPE, INT_TYPE(64), INT_TYPE(64), INT_TYPE(64));
+     FDECL(leave_trap, INT_TYPE(64), THIS_PTR_TYPE, INT_TYPE(64));
+-    FDECL(wait, VOID_TYPE, THIS_PTR_TYPE, INT_TYPE(64));
++    FDECL(iss_wait, VOID_TYPE, THIS_PTR_TYPE, INT_TYPE(64));
+     FDECL(print_string, VOID_TYPE, THIS_PTR_TYPE, INT_TYPE(8)->getPointerTo());
+     FDECL(print_disass, VOID_TYPE, THIS_PTR_TYPE, INT_TYPE(64), INT_TYPE(8)->getPointerTo());
+     FDECL(pre_instr_sync, VOID_TYPE, THIS_PTR_TYPE);
+diff --git a/src/iss/vm_jit_funcs.cpp b/src/iss/vm_jit_funcs.cpp
+index 4b66305..acf8a64 100644
+--- a/src/iss/vm_jit_funcs.cpp
++++ b/src/iss/vm_jit_funcs.cpp
+@@ -76,7 +76,7 @@ uint64_t enter_trap(void* iface, uint64_t flags, uint64_t addr, uint64_t tval) {
+ 
+ uint64_t leave_trap(void* iface, uint64_t flags) { return reinterpret_cast<arch_if_ptr_t>(iface)->leave_trap(flags); }
+ 
+-void wait(void* iface, uint64_t flags) { reinterpret_cast<arch_if_ptr_t>(iface)->wait_until(flags); }
++void iss_wait(void* iface, uint64_t flags) { reinterpret_cast<arch_if_ptr_t>(iface)->wait_until(flags); }
+ 
+ void print_string(void* iface, char* str) { CLOG(DEBUG, dbt_rise_iss) << "[EXEC] " << str; }
+ 
+diff --git a/src/iss/vm_jit_funcs.h b/src/iss/vm_jit_funcs.h
+index a98a4f2..351a9ad 100644
+--- a/src/iss/vm_jit_funcs.h
++++ b/src/iss/vm_jit_funcs.h
+@@ -10,7 +10,7 @@ extern int read_mem8(void*, uint32_t, uint32_t, uint64_t, uint64_t*);
+ extern int write_mem8(void*, uint32_t, uint32_t, uint64_t, uint64_t);
+ extern uint64_t enter_trap(void*, uint64_t, uint64_t, uint64_t);
+ extern uint64_t leave_trap(void*, uint64_t);
+-extern void wait(void*, uint64_t);
++extern void iss_wait(void*, uint64_t);
+ extern void print_string(void*, char*);
+ extern void print_disass(void*, uint64_t, char*);
+ extern void pre_instr_sync(void*);

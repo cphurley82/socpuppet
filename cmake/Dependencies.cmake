@@ -134,19 +134,76 @@ FetchContent_Declare(elfio
   URL https://github.com/serge1/ELFIO/archive/refs/tags/Release_3.12.tar.gz
   URL_HASH SHA256=e4ebc9ce3d6916461bc3e7765bb45e6210f0a9b93978bf91e59b05388c024489
   EXCLUDE_FROM_ALL SYSTEM)
-# The backend a "dbt_rise_cpu" runs with when nothing says: its
-# interpreter, which is what the wheel ships. No translating backend is
-# built yet; M26 is measuring them (docs/plan.md).
+# Which of DBT-RISE's translating backends are built besides its
+# interpreter, and the backend a "dbt_rise_cpu" runs with when nothing says.
+# None, and the interpreter, by default: that is what the wheel ships. M26
+# measured the others (docs/plan.md). TinyCC is not offered: it has no core
+# socpuppet could use, and it is LGPL.
+set(SOCPUPPET_DBT_RISE_BACKENDS "" CACHE STRING
+  "DBT-RISE's translating backends to build besides its interpreter: asmjit, llvm")
 set(SOCPUPPET_DBT_RISE_DEFAULT_BACKEND interp CACHE STRING
-  "The backend a dbt_rise_cpu runs with")
-if(NOT SOCPUPPET_DBT_RISE_DEFAULT_BACKEND STREQUAL "interp")
+  "The backend a dbt_rise_cpu runs with: interp, or one of those built")
+foreach(_backend IN LISTS SOCPUPPET_DBT_RISE_BACKENDS)
+  if(NOT _backend MATCHES "^(asmjit|llvm)$")
+    message(FATAL_ERROR "SOCPUPPET_DBT_RISE_BACKENDS names \"${_backend}\", "
+      "and the translating backends socpuppet can build are asmjit and llvm.")
+  endif()
+endforeach()
+set(_dbt_rise_backends interp ${SOCPUPPET_DBT_RISE_BACKENDS})
+if(NOT SOCPUPPET_DBT_RISE_DEFAULT_BACKEND IN_LIST _dbt_rise_backends)
+  list(JOIN _dbt_rise_backends ", " _dbt_rise_backends_named)
   message(FATAL_ERROR "SOCPUPPET_DBT_RISE_DEFAULT_BACKEND is "
-    "\"${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}\", and this build has only "
-    "DBT-RISE's interpreter, \"interp\".")
+    "\"${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}\", and this build has "
+    "${_dbt_rise_backends_named}. Add it to SOCPUPPET_DBT_RISE_BACKENDS.")
+endif()
+# How many of DBT-RISE's generated files are compiled at once (below).
+set(SOCPUPPET_DBT_RISE_JOBS 4 CACHE STRING
+  "How many of DBT-RISE's largest files to compile at once")
+# asmjit (zlib licence) makes x86-64 code at run time, and so does DBT-RISE's
+# backend built on it: it builds and runs on an x86-64 host only. At the
+# commit DBT-RISE's own Conan recipe names (asmjit/cci.20240531).
+if("asmjit" IN_LIST SOCPUPPET_DBT_RISE_BACKENDS)
+  FetchContent_Declare(asmjit
+    URL https://github.com/asmjit/asmjit/archive/d6c5be2212b9a50ba56ec6d1e9b68693c62136c1.zip
+    URL_HASH SHA256=678549712d4708d0513fb0017d03211df415387aea4c031923d4dd5c07b43db6
+    EXCLUDE_FROM_ALL SYSTEM OVERRIDE_FIND_PACKAGE)
+  set(ASMJIT_STATIC ON)
+  set(SOCPUPPET_SUPPRESS_INSTALL TRUE)
+  FetchContent_MakeAvailable(asmjit)
+  set(SOCPUPPET_SUPPRESS_INSTALL FALSE)
+  set(WITH_ASMJIT ON)
+else()
+  set(WITH_ASMJIT OFF)
+endif()
+# LLVM (Apache-2.0 with LLVM exceptions) compiles for the host it runs on,
+# so its backend builds wherever an LLVM development package is installed:
+# Debian's llvm-19-dev (/usr/lib/llvm-19/lib/cmake/llvm) or Homebrew's llvm
+# ($(brew --prefix llvm)/lib/cmake/llvm). DBT-RISE is written against
+# LLVM 19. DBT-RISE-Core links a target that only DBT-RISE-RISCV's own
+# WITH_SYSTEM_LLVM makes, from a path written into it, so it is made here
+# from the package that was found, linked to its one shared library.
+if("llvm" IN_LIST SOCPUPPET_DBT_RISE_BACKENDS)
+  set(SOCPUPPET_LLVM_DIR "" CACHE PATH
+    "The directory with LLVM's LLVMConfig.cmake, for the llvm backend")
+  # Debian's LLVM package looks for libedit with pkg_check_modules and
+  # never loads the module that defines it (docs/upstream.md). Included,
+  # and not found: find_package(PkgConfig) goes to the provider here.
+  include(FindPkgConfig)
+  find_package(LLVM REQUIRED CONFIG HINTS ${SOCPUPPET_LLVM_DIR})
+  message(STATUS "socpuppet: DBT-RISE's llvm backend, against LLVM "
+    "${LLVM_PACKAGE_VERSION} in ${LLVM_DIR}")
+  add_library(llvm-core::llvm-core INTERFACE IMPORTED GLOBAL)
+  target_include_directories(llvm-core::llvm-core SYSTEM INTERFACE
+    ${LLVM_INCLUDE_DIRS})
+  separate_arguments(_llvm_definitions NATIVE_COMMAND "${LLVM_DEFINITIONS}")
+  target_compile_definitions(llvm-core::llvm-core INTERFACE
+    ${_llvm_definitions})
+  target_link_libraries(llvm-core::llvm-core INTERFACE LLVM)
+  set(WITH_LLVM ON)
+else()
+  set(WITH_LLVM OFF)
 endif()
 set(WITH_TCC OFF)
-set(WITH_ASMJIT OFF)
-set(WITH_LLVM OFF)
 # No cores with the vector extension. Its helper library, softvector, is
 # still built and linked: DBT-RISE asks for it either way.
 set(DBT_RISE_RISCV_ENABLE_VECTOR OFF)
@@ -204,6 +261,16 @@ FetchContent_Declare(dbt_rise_riscv
   # one-reservation: a hart kept a reservation for every address it had
   # loaded reserved, and a store-conditional gave up only its own address's.
   # misaligned-amo: an atomic at a misaligned address raised a load's cause.
+  # jit-wait-name: the translating backends call a helper named wait(),
+  # which POSIX has taken (with DBT-RISE-Core's patch of the same name).
+  # int128-traits: the translating backends' cores specialized a private
+  # template of GCC's standard library, as DBT-RISE-Core's did.
+  # asmjit-wfi-call: asmjit's `wfi` called the helper with a 1 where the
+  # core's own pointer goes, and the process crashed at the first `wfi`.
+  # llvm-core-names: the LLVM backend's 64-bit core was registered under a
+  # name the SystemC wrapper never looks up. llvm-init-jit: and nothing in
+  # the wrapper set up LLVM's target for the host, which riscv-sim's main()
+  # does. llvm-wfi-call: LLVM's `wfi` called the helper as asmjit's did.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -230,6 +297,12 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-flw-address.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-one-reservation.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-misaligned-amo.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-jit-wait-name.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-int128-traits.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-asmjit-wfi-call.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-core-names.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-init-jit.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-wfi-call.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
@@ -250,13 +323,18 @@ FetchContent_Declare(dbt_rise_core_git
   # answered one `continue` twice, and the second answer, written to a
   # debugger that had hung up, ended the process. gdb-rude-hangup: so did
   # a debugger whose connection was reset, which is what closing it with
-  # an answer unread does.
+  # an answer unread does. jit-wait-name: the translating backends' helper
+  # was called wait(), which POSIX has taken, and on macOS the two collide.
+  # llvm-pointer-args: LLVM's code took the core's pointers as bytes, so a
+  # helper was handed the low eight bits of one.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-asio-names.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-int128-traits.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-server-per-core.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-continue-answered-once.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-rude-hangup.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-jit-wait-name.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-llvm-pointer-args.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 set(SOCPUPPET_SUPPRESS_INSTALL TRUE)
@@ -270,13 +348,25 @@ set(SOCPUPPET_SUPPRESS_INSTALL FALSE)
 list(TRANSFORM _dbt_rise_boost PREPEND Boost::)
 target_link_libraries(dbt-rise-core PUBLIC ${_dbt_rise_boost})
 target_link_libraries(dbt-rise-riscv PUBLIC ${_dbt_rise_boost})
-# A helper for the translating backends declares a C function called wait(),
-# which POSIX has already taken, and on macOS the two collide. No such
-# backend is built, so the file is left out.
-get_target_property(_dbt_rise_core_sources dbt-rise-core SOURCES)
-list(REMOVE_ITEM _dbt_rise_core_sources src/iss/vm_jit_funcs.cpp)
-set_target_properties(dbt-rise-core PROPERTIES
-  SOURCES "${_dbt_rise_core_sources}")
+# LLVM's code calls the helpers by name, looked up in the running process,
+# where asmjit's calls them by address. So nothing names them when a program
+# is linked, and the linker leaves their file of the static library out: one
+# of them is asked for by name, which brings in the rest. And on Linux an
+# executable keeps its names to itself unless it is linked to export them.
+if(WITH_LLVM)
+  target_link_options(dbt-rise-core INTERFACE
+    $<$<PLATFORM_ID:Linux>:-rdynamic LINKER:--undefined=iss_wait>
+    $<$<PLATFORM_ID:Darwin>:LINKER:-u,_iss_wait>)
+endif()
+# The helpers the translating backends call. With none of them built the
+# file is left out, as it always was, so that the interpreter's build is
+# what it was before M26.
+if(NOT SOCPUPPET_DBT_RISE_BACKENDS)
+  get_target_property(_dbt_rise_core_sources dbt-rise-core SOURCES)
+  list(REMOVE_ITEM _dbt_rise_core_sources src/iss/vm_jit_funcs.cpp)
+  set_target_properties(dbt-rise-core PROPERTIES
+    SOURCES "${_dbt_rise_core_sources}")
+endif()
 # The vector helpers specialize std::make_signed for 128-bit integers, which
 # the standard forbids and newer Clangs treat as an error. PRIVATE, because
 # an older Clang does not know the option, and it must not reach a target
@@ -286,7 +376,7 @@ target_compile_options(softvector PRIVATE
 # Some of the interpreter's sources need over a gigabyte of memory each to
 # compile, so only a few are compiled at once. (Ninja only; other
 # generators ignore the pool.)
-set_property(GLOBAL APPEND PROPERTY JOB_POOLS dbt_rise=4)
+set_property(GLOBAL APPEND PROPERTY JOB_POOLS dbt_rise=${SOCPUPPET_DBT_RISE_JOBS})
 set_target_properties(dbt-rise-riscv PROPERTIES JOB_POOL_COMPILE dbt_rise)
 
 # --- SPDK's NVMe definitions (Intel and others, BSD-3-Clause) ----------------

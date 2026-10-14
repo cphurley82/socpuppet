@@ -1,0 +1,28 @@
+diff --git a/src/iss/llvm/vm_base.cpp b/src/iss/llvm/vm_base.cpp
+index d4597ab..11b3d26 100644
+--- a/src/iss/llvm/vm_base.cpp
++++ b/src/iss/llvm/vm_base.cpp
+@@ -46,7 +46,7 @@ using namespace ::llvm;
+ #define FLOAT_TYPE Type::getFloatTy(mod->getContext())
+ #define DOUBLE_TYPE Type::getDoubleTy(mod->getContext())
+ #define VOID_TYPE Type::getVoidTy(mod->getContext())
+-#define THIS_PTR_TYPE Type::getIntNTy(mod->getContext(), 8)
++#define THIS_PTR_TYPE PointerType::getUnqual(mod->getContext())
+ #define FDECLL(NAME, RET, ...)                                                                                                             \
+     Function* NAME##_func = CurrentModule->getFunction(#NAME);                                                                             \
+     if(!NAME##_func) {                                                                                                                     \
+diff --git a/src/iss/llvm/vm_base.h b/src/iss/llvm/vm_base.h
+index 659be2d..dd101a6 100644
+--- a/src/iss/llvm/vm_base.h
++++ b/src/iss/llvm/vm_base.h
+@@ -520,8 +520,8 @@ protected:
+     virtual Function* open_block_func(phys_addr_t pc) {
+         std::string name("block");
+         GenerateUniqueName(name, pc.val);
+-        std::vector<Type*> mainFuncTyArgs{Type::getInt8Ty(mod->getContext()), Type::getInt8Ty(mod->getContext()),
+-                                          Type::getInt8Ty(mod->getContext())};
++        std::vector<Type*> mainFuncTyArgs{PointerType::getUnqual(mod->getContext()), PointerType::getUnqual(mod->getContext()),
++                                          PointerType::getUnqual(mod->getContext())};
+         Type* ret_t = get_type(get_reg_width(arch::traits<ARCH>::PC));
+         FunctionType* const mainFuncTy = FunctionType::get(ret_t, mainFuncTyArgs, false);
+         Function* f = Function::Create(mainFuncTy, GlobalValue::ExternalLinkage, name.c_str(), mod);

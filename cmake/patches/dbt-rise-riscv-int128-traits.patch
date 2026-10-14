@@ -1,0 +1,180 @@
+diff --git a/src/vm/asmjit/vm_rv32gc.cpp b/src/vm/asmjit/vm_rv32gc.cpp
+index a61e1e9..08a1659 100644
+--- a/src/vm/asmjit/vm_rv32gc.cpp
++++ b/src/vm/asmjit/vm_rv32gc.cpp
+@@ -54,6 +54,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -65,6 +66,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv32gcv.cpp b/src/vm/asmjit/vm_rv32gcv.cpp
+index 04f373a..36e5220 100644
+--- a/src/vm/asmjit/vm_rv32gcv.cpp
++++ b/src/vm/asmjit/vm_rv32gcv.cpp
+@@ -56,6 +56,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -67,6 +68,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv32i.cpp b/src/vm/asmjit/vm_rv32i.cpp
+index 3ab223e..e6dd43f 100644
+--- a/src/vm/asmjit/vm_rv32i.cpp
++++ b/src/vm/asmjit/vm_rv32i.cpp
+@@ -52,6 +52,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -63,6 +64,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv32imac.cpp b/src/vm/asmjit/vm_rv32imac.cpp
+index 474ec48..389e86c 100644
+--- a/src/vm/asmjit/vm_rv32imac.cpp
++++ b/src/vm/asmjit/vm_rv32imac.cpp
+@@ -52,6 +52,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -63,6 +64,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv64gc.cpp b/src/vm/asmjit/vm_rv64gc.cpp
+index 1943ed9..d609417 100644
+--- a/src/vm/asmjit/vm_rv64gc.cpp
++++ b/src/vm/asmjit/vm_rv64gc.cpp
+@@ -54,6 +54,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -65,6 +66,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv64gcv.cpp b/src/vm/asmjit/vm_rv64gcv.cpp
+index de2c6a5..c7fbdef 100644
+--- a/src/vm/asmjit/vm_rv64gcv.cpp
++++ b/src/vm/asmjit/vm_rv64gcv.cpp
+@@ -56,6 +56,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -67,6 +68,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv64i.cpp b/src/vm/asmjit/vm_rv64i.cpp
+index dbcb0d2..39964b3 100644
+--- a/src/vm/asmjit/vm_rv64i.cpp
++++ b/src/vm/asmjit/vm_rv64i.cpp
+@@ -52,6 +52,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -63,6 +64,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_rv64imac.cpp b/src/vm/asmjit/vm_rv64imac.cpp
+index e9f85a3..d12dbb9 100644
+--- a/src/vm/asmjit/vm_rv64imac.cpp
++++ b/src/vm/asmjit/vm_rv64imac.cpp
+@@ -52,6 +52,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -63,6 +64,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {
+diff --git a/src/vm/asmjit/vm_tgc5c.cpp b/src/vm/asmjit/vm_tgc5c.cpp
+index f6a00e5..9cb31c1 100644
+--- a/src/vm/asmjit/vm_tgc5c.cpp
++++ b/src/vm/asmjit/vm_tgc5c.cpp
+@@ -52,6 +52,7 @@
+ #ifndef _MSC_VER
+ using int128_t = __int128;
+ using uint128_t = unsigned __int128;
++#ifdef __GLIBCXX__
+ namespace std {
+ template <> struct make_unsigned<__int128> { typedef unsigned __int128 type; };
+ template <> class __make_unsigned_selector<__int128 unsigned, false, false> {
+@@ -63,6 +64,7 @@ template <> struct is_signed<uint128_t> { static constexpr bool value = false; }
+ template <> struct is_unsigned<int128_t> { static constexpr bool value = false; };
+ template <> struct is_unsigned<uint128_t> { static constexpr bool value = true; };
+ } // namespace std
++#endif // __GLIBCXX__
+ #endif
+ 
+ namespace iss {

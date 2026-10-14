@@ -12,13 +12,8 @@ target_link_libraries(spike_speed_tests PRIVATE
   socpuppet_builtin_components socpuppet_models scc::components GTest::gtest)
 # Headers are included by their path from the top of the repository.
 target_include_directories(spike_speed_tests PRIVATE ${PROJECT_SOURCE_DIR})
-# What the lines say the core was built with.
-set(_speed_backend interp)
-if(DEFINED SOCPUPPET_DBT_RISE_DEFAULT_BACKEND)
-  set(_speed_backend ${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND})
-endif()
+# What the lines say the program was compiled with.
 target_compile_definitions(spike_speed_tests PRIVATE
-  SPEED_BACKEND="${_speed_backend}"
   SPEED_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 socpuppet_dev_checks(spike_speed_tests)
 # Each test starts the SystemC kernel, so each runs in its own process,

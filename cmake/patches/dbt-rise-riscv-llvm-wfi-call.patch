@@ -1,0 +1,78 @@
+diff --git a/src/vm/llvm/vm_rv32gc.cpp b/src/vm/llvm/vm_rv32gc.cpp
+index 15d90fc..6268a93 100644
+--- a/src/vm/llvm/vm_rv32gc.cpp
++++ b/src/vm/llvm/vm_rv32gc.cpp
+@@ -2750,7 +2750,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+diff --git a/src/vm/llvm/vm_rv32i.cpp b/src/vm/llvm/vm_rv32i.cpp
+index 75ebe9f..a1b1dcc 100644
+--- a/src/vm/llvm/vm_rv32i.cpp
++++ b/src/vm/llvm/vm_rv32i.cpp
+@@ -2480,7 +2480,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+diff --git a/src/vm/llvm/vm_rv32imac.cpp b/src/vm/llvm/vm_rv32imac.cpp
+index 7974045..822824e 100644
+--- a/src/vm/llvm/vm_rv32imac.cpp
++++ b/src/vm/llvm/vm_rv32imac.cpp
+@@ -2578,7 +2578,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+diff --git a/src/vm/llvm/vm_rv64gc.cpp b/src/vm/llvm/vm_rv64gc.cpp
+index e4d2e07..ca1192f 100644
+--- a/src/vm/llvm/vm_rv64gc.cpp
++++ b/src/vm/llvm/vm_rv64gc.cpp
+@@ -2832,7 +2832,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+diff --git a/src/vm/llvm/vm_rv64i.cpp b/src/vm/llvm/vm_rv64i.cpp
+index c24341f..e5dd4da 100644
+--- a/src/vm/llvm/vm_rv64i.cpp
++++ b/src/vm/llvm/vm_rv64i.cpp
+@@ -2506,7 +2506,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
+diff --git a/src/vm/llvm/vm_tgc5c.cpp b/src/vm/llvm/vm_tgc5c.cpp
+index 763adee..76990f8 100644
+--- a/src/vm/llvm/vm_tgc5c.cpp
++++ b/src/vm/llvm/vm_tgc5c.cpp
+@@ -2556,7 +2556,7 @@ private:
+         this->gen_instr_prologue();
+         /*generate behavior*/
+         std::vector<Value*> wait_57_args{
+-            this->gen_ext(this->gen_const(8,1), 32)
++            this->core_ptr, this->gen_ext(this->gen_const(8,1), 64)
+         };
+         this->builder.CreateCall(this->mod->getFunction("iss_wait"), wait_57_args);
+         bb = BasicBlock::Create(this->mod->getContext(), "entry", this->func, this->leave_blk);
