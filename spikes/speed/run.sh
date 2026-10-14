@@ -184,7 +184,8 @@ if [[ $suite -eq 1 ]]; then
 fi
 
 tests="$("$binary" --gtest_list_tests | sed -n 's/^  //p')"
-for run in $(seq 1 "$runs"); do
+# Not seq, which on macOS counts down from 1 to 0.
+for ((run = 1; run <= runs; run++)); do
   for test in $tests; do
     line="$(SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
       SPEED_RUN="$run" "$binary" --gtest_filter="Speed.$test" 2>&1 |
