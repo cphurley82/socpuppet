@@ -24,11 +24,12 @@ struct Loop {
 // fetch. It runs wherever it is loaded, with paging off, and leaves its
 // result kResultOffset past its first instruction.
 inline Loop Counted(riscv::Word iterations) {
-  using namespace riscv;  // NOLINT(google-build-using-namespace)
-  Program program{Auipc(kT0, 0),      Lui(kT2, iterations >> 12),
-                  Addi(kT2, kT2, -1), Bne(kT2, kZero, -4),
-                  Li(kT1, 1),         Sw(kT1, kT0, kResultOffset)};
-  AppendSleepForEver(program);
+  using riscv::Addi, riscv::Auipc, riscv::Bne, riscv::kT0, riscv::kT1,
+      riscv::kT2, riscv::kZero, riscv::Li, riscv::Lui, riscv::Sw;
+  riscv::Program program{Auipc(kT0, 0),      Lui(kT2, iterations >> 12),
+                         Addi(kT2, kT2, -1), Bne(kT2, kZero, -4),
+                         Li(kT1, 1),         Sw(kT1, kT0, kResultOffset)};
+  riscv::AppendSleepForEver(program);
   return {.program = program,
           .instructions = (2 * std::uint64_t{iterations}) + 4,
           .walks = 0};
@@ -50,9 +51,11 @@ struct DataPages {
 // and every translation after the first round is one the hart kept.
 inline Loop Paging(const riscv::Pages& at, const DataPages& data,
                    riscv::Word rounds, bool empty_the_tlb) {
-  using namespace riscv;  // NOLINT(google-build-using-namespace)
-  Assembler program;
-  AppendEnterSupervisorModeUnderPaging(program, at);
+  using riscv::Addi, riscv::Bne, riscv::kT1, riscv::kT2, riscv::kT3, riscv::kT4,
+      riscv::kT5, riscv::kT6, riscv::kZero, riscv::Ld, riscv::Li, riscv::Lui,
+      riscv::Sd, riscv::Sub;
+  riscv::Assembler program;
+  riscv::AppendEnterSupervisorModeUnderPaging(program, at);
   // t3 counts the rounds down, t6 is minus a page, for Sub to step by.
   program.Emit({Lui(kT3, rounds >> 12), Lui(kT6, 0xF'FFFF)});
   const std::uint64_t round_at = program.Here();
@@ -63,14 +66,14 @@ inline Loop Paging(const riscv::Pages& at, const DataPages& data,
   program.Emit(Bne(kT5, kZero,
                    static_cast<std::int32_t>(page_at) -
                        static_cast<std::int32_t>(program.Here())));
-  program.Emit(empty_the_tlb ? kSfenceVma : Addi(kZero, kZero, 0));
+  program.Emit(empty_the_tlb ? riscv::kSfenceVma : Addi(kZero, kZero, 0));
   program.Emit(Addi(kT3, kT3, -1));
   program.Emit(Bne(kT3, kZero,
                    static_cast<std::int32_t>(round_at) -
                        static_cast<std::int32_t>(program.Here())));
   program.Load(kT2, at.result);
   program.Emit({Li(kT1, 1), Sd(kT1, kT2, 0)});
-  AppendSleepForEver(program);
+  riscv::AppendSleepForEver(program);
 
   // A round: the address of the first page (two instructions), the count
   // of pages, four for each page, the fence or the nop, and two to go

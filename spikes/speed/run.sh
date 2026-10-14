@@ -21,7 +21,6 @@
 #   --dbt-rise-jobs N      how many of DBT-RISE's generated files to compile
 #                          at once (4); each wants over a gigabyte
 set -euo pipefail
-trap 'echo "run.sh: stopped by a failure at line $LINENO" >&2' ERR
 
 readonly LABELS=(
   native-macos-x86_64 docker-amd64-on-macpro
@@ -91,6 +90,8 @@ jobs="${jobs:-$threads}"
 saved="$(mktemp -d)"
 cp python/socpuppet/_core.*.so "$saved"/ 2>/dev/null || true
 restore() {
+  local status=$?
+  [[ $status -ne 0 ]] && echo "run.sh: stopped by a failure (status $status)" >&2
   rm -f python/socpuppet/_core.*.so
   cp "$saved"/_core.*.so python/socpuppet/ 2>/dev/null || true
   rm -rf "$saved"
@@ -127,7 +128,7 @@ uv run cmake "${configure_args[@]}" > "$tree.configure.log" 2>&1 || {
 configure_s="$(since "$start")"
 
 build() {
-  uv run cmake --build "$tree" -j "$jobs" "$@" > "$tree.build.log" 2>&1
+  uv run cmake --build "$tree" -j "$jobs" > "$tree.build.log" 2>&1
 }
 if [[ $rebuild -eq 1 ]]; then
   # Dependencies are fetched by the configure above, so the build from
