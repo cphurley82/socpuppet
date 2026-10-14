@@ -41,6 +41,31 @@ spikes/speed/docker.sh amd64 --env docker-amd64-on-macpro    # in the devcontain
 
 The label is one of seven, so that a line says where it came from, and `run.sh` refuses any other: `native-macos-x86_64` and `docker-amd64-on-macpro` (the Mac Pro), `native-macos-arm64`, `docker-arm64-on-air` and `docker-amd64-rosetta-on-air` (the MacBook Air), and `native-linux-x86_64` and `docker-amd64-on-ubuntu` (the Ubuntu box). `--backends` and `--default-backend` build and choose DBT-RISE's other backends (M26's steps 4 and 5), and the comment at the top of `run.sh` has the rest.
 
+### The other CPUs
+
+DBT-RISE's translating backends are built into a tree of their own, with the backend as the default so that the whole suite runs on it:
+
+```sh
+spikes/speed/run.sh --env native-linux-x86_64 --backends asmjit --default-backend asmjit
+spikes/speed/run.sh --env native-linux-x86_64 --backends llvm --default-backend llvm \
+  --llvm-dir /usr/lib/llvm-19/lib/cmake/llvm      # apt install llvm-19-dev
+spikes/speed/run.sh --env native-macos-x86_64 --backends llvm --default-backend llvm \
+  --llvm-dir "$(brew --prefix llvm@22)/lib/cmake/llvm"
+spikes/speed/docker.sh amd64 --llvm --env docker-amd64-on-ubuntu --backends llvm \
+  --default-backend llvm --llvm-dir /usr/lib/llvm-19/lib/cmake/llvm
+```
+
+⚠️ asmjit makes x86-64 code, so it builds only where the compiler does: natively on an Intel Mac or on Linux, and in an x86-64 container, Rosetta's included.
+
+QBox needs no Docker on Linux, only the packages `spikes/iss/qbox/Dockerfile` installs. On a Mac it runs in that image:
+
+```sh
+QBOX_ROOT=~/qbox JOBS=8 spikes/speed/qbox/run.sh --env native-linux-x86_64
+docker build -t socpuppet-qbox spikes/iss/qbox
+docker run --rm -v socpuppet-qbox:/qbox -v "$PWD:/workspace" -w /workspace \
+  socpuppet-qbox spikes/speed/qbox/run.sh --env docker-amd64-on-macpro
+```
+
 ⚠️ Timings are only as quiet as the machine. Run nothing else while a column runs, and keep a laptop on its charger.
 
 ⚠️ The extension is built into `python/socpuppet/`, whichever tree built it last. `run.sh` keeps the one that was there and puts it back when it ends.
@@ -52,7 +77,8 @@ The label is one of seven, so that a line says where it came from, and `run.sh` 
 | `loops.h` | The three programs, and what each costs worked out from its shape: instructions and walks. |
 | `speed_test.cpp` | The platform and one test for each loop. |
 | `run.sh` | One environment's column: the build, the suite and the speed tests, into `results/`. |
-| `docker.sh` | `run.sh` in the devcontainer's image, for the Docker columns. |
+| `docker.sh` | `run.sh` in the devcontainer's image, for the Docker columns. `--llvm` adds LLVM 19 to it (`llvm.Dockerfile`). |
 | `collect.py` | `results/` into the report's tables. |
+| `qbox/` | The same three loops on QBox, a project of its own because QBox's SystemC cannot share a program with socpuppet's: `build.sh` builds QBox for RISC-V, `run.sh` builds the loops against it and keeps the lines. |
 | `boot_count.py` | The count of instructions to a Linux shell, on QEMU, for the projection. |
 | `results/` | Every line every run printed, one file per column. |

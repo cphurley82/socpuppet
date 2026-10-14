@@ -66,6 +66,13 @@ cd "$root"
 tag="$env_label"
 [[ -n "$backends" ]] && tag="$tag-${backends//;/-}"
 [[ -n "$default_backend" ]] && tag="$tag-default-$default_backend"
+# Which LLVM, from where its package is: llvm-19 for /usr/lib/llvm-19/...,
+# llvm@22 for Homebrew's /usr/local/opt/llvm@22/...
+llvm=""
+if [[ -n "$llvm_dir" ]]; then
+  llvm="$(basename "$(dirname "$(dirname "$(dirname "$llvm_dir")")")")"
+  tag="$tag-$llvm"
+fi
 tree="build/speed-$tag"
 results="spikes/speed/results/$tag.jsonl"
 mkdir -p spikes/speed/results
@@ -106,9 +113,9 @@ since() { perl -e "printf '%.2f', $(now) - $1"; }
 
 # One line of results/, with what every line carries.
 emit() {
-  printf '{"host": "%s", "env": "%s", "commit": "%s", "cpu_model": "%s", "threads": %s, "backends": "%s", "default_backend": "%s", %s}\n' \
+  printf '{"host": "%s", "env": "%s", "commit": "%s", "cpu_model": "%s", "threads": %s, "backends": "%s", "default_backend": "%s", "llvm": "%s", %s}\n' \
     "$host" "$env_label" "$commit" "$cpu_model" "$threads" "$backends" \
-    "${default_backend:-interp}" "$1" | tee -a "$results"
+    "${default_backend:-interp}" "$llvm" "$1" | tee -a "$results"
 }
 
 configure_args=(--preset spike -B "$tree" -DSOCPUPPET_BUILD_SPIKES=ON)
@@ -195,7 +202,7 @@ for ((run = 1; run <= runs; run++)); do
       emit "\"status\": \"speed-failed\", \"test\": \"$test\", \"run\": $run"
     else
       # The test knows what it ran; this adds what it ran on.
-      echo "{\"cpu_model\": \"$cpu_model\", \"threads\": $threads, \"backends\": \"$backends\", \"status\": \"speed\", ${line#\{}" |
+      echo "{\"cpu_model\": \"$cpu_model\", \"threads\": $threads, \"backends\": \"$backends\", \"llvm\": \"$llvm\", \"status\": \"speed\", ${line#\{}" |
         tee -a "$results"
     fi
   done
