@@ -42,10 +42,11 @@ sedi 's|("Unrecognized Architecture Revision: " + dsp_arch)|("Unrecognized Archi
   qemu-components/cpu_hexagon/include/hexagon.h \
   qemu-components/hexagon_globalreg/include/hexagon_globalreg.h
 
-# No virglrenderer: QEMU's bundled one does not compile against glibc 2.42's
-# C11 threads, and Homebrew has none. Nothing here draws.
+# No virgl and no virCL: QEMU's bundled virclrenderer does not compile
+# against glibc 2.42's C11 threads and wants epoxy, which Homebrew has
+# not got by default. Nothing here draws.
 cmake --preset "$preset" -DLIBQEMU_TARGETS="riscv64" -DCMAKE_CXX_STANDARD=20 \
-  -DGS_ENABLE_VIRGLRENDERER=OFF
+  -DGS_ENABLE_VIRGLRENDERER=OFF -DGS_ENABLE_VIRCLRENDERER=OFF
 start=$(date +%s)
 cmake --build build --parallel "${jobs}"
 echo "build seconds: $(($(date +%s) - start))"
