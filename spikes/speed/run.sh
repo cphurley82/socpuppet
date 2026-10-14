@@ -204,6 +204,10 @@ if [[ $suite -eq 1 ]]; then
   uv run ctest --test-dir "$tree" -j 8 -LE 'spike|speed' --timeout 300 \
     --test-output-size-passed 100000 --test-output-size-failed 1000000 \
     --test-output-truncation tail > "$tree.suite.log" 2>&1
+  # ctest's timeout ends the test it started and not always the process
+  # under it: a test that hung on a backend was found five hours later,
+  # still at 100 % of a core, under the next column's timings.
+  pkill -9 -f "^$tree/tests/" || true
   set -e
   suite_s="$(since "$start")"
   # "99% tests passed, 1 tests failed out of 925", or with none failed
