@@ -66,6 +66,13 @@
       "configurePreset": "spike",
       "output": { "outputOnFailure": true },
       "filter": { "include": { "label": "spike" } }
+    },
+    {
+      "name": "speed",
+      "configurePreset": "spike",
+      "output": { "verbosity": "verbose" },
+      "filter": { "include": { "label": "speed" } },
+      "execution": { "jobs": 1 }
     }
   ]
 }
