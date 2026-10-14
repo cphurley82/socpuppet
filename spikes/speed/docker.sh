@@ -4,10 +4,14 @@
 #
 #   spikes/speed/docker.sh amd64 --env docker-amd64-on-macpro
 #   spikes/speed/docker.sh arm64 --env docker-arm64-on-air
+#   spikes/speed/docker.sh amd64 --llvm --env docker-amd64-on-ubuntu \
+#     --backends llvm --default-backend llvm \
+#     --llvm-dir /usr/lib/llvm-19/lib/cmake/llvm
 #
 # The first argument is the image's architecture. The image is built the
 # first time, as socpuppet-dev:<arch>, and under Rosetta on an Apple
-# silicon Mac that is the slow part. Everything after it goes to run.sh.
+# silicon Mac that is the slow part. --llvm, next, uses that image with
+# LLVM 19 added (llvm.Dockerfile). Everything after goes to run.sh.
 set -euo pipefail
 
 arch="$1"
@@ -17,6 +21,14 @@ image="socpuppet-dev:$arch"
 docker image inspect "$image" > /dev/null 2>&1 ||
   docker build --platform "linux/$arch" --tag "$image" \
     --file "$root/.devcontainer/Dockerfile" "$root/.devcontainer"
+if [[ "${1:-}" == --llvm ]]; then
+  shift
+  docker image inspect "socpuppet-dev-llvm:$arch" > /dev/null 2>&1 ||
+    docker build --platform "linux/$arch" --tag "socpuppet-dev-llvm:$arch" \
+      --build-arg "BASE=$image" --file "$root/spikes/speed/llvm.Dockerfile" \
+      "$root/spikes/speed"
+  image="socpuppet-dev-llvm:$arch"
+fi
 
 # The label run.sh is given names the virtual environment, so that each
 # column keeps its own between runs. uv's cache and its Pythons are kept
