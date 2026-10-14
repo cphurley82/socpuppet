@@ -10,6 +10,7 @@
 #include <string>
 
 #include <sysc/core_complex.h>
+#include <sysc/iss_factory.h>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
@@ -47,6 +48,28 @@ const char* CoreType(std::uint64_t xlen, DbtRiseCpuExtras extras) {
       xlen, extras.floating_point ? 1 : 0, extras.supervisor_mode ? 1 : 0));
 }
 
+// `backend`, which is how DBT-RISE is to run the core called `core_type`:
+// "interp" for its interpreter, or one of its translating backends where
+// the build has it. One the build has no such core for is refused, with
+// those it has, before any of DBT-RISE's core exists. Left to DBT-RISE, it
+// would end the simulation at elaboration. The names are "<core>:<backend>",
+// the key DBT-RISE's `core_complex::create_cpu` looks a core up by.
+std::string Backend(const char* core_type, const std::string& backend) {
+  const std::string prefix = std::string(core_type) + ":";
+  std::string built;
+  for (const std::string& name : sysc::iss_factory::instance().get_names()) {
+    if (!name.starts_with(prefix)) continue;
+    if (name == prefix + backend) return backend;
+    built +=
+        (built.empty() ? "\"" : ", \"") + name.substr(prefix.size()) + "\"";
+  }
+  throw std::invalid_argument(std::format(
+      "This build runs DBT-RISE's core \"{}\", which a \"dbt_rise_cpu\" "
+      "with these \"xlen\", \"floating_point\" and \"supervisor_mode\" is, "
+      "with {}, and the backend \"{}\" was asked for.",
+      core_type, built, backend));
+}
+
 // Which of the core's interrupt inputs is the supervisor external
 // interrupt. DBT-RISE names the machine-mode ones and not this one.
 constexpr unsigned kSupervisorExternalInterrupt = 9;
@@ -79,10 +102,11 @@ struct CoreComplex : sysc::riscv::core_complex<> {
 //     are tied low.
 struct DbtRiseCpu::Core {
   Core(DbtRiseCpu& cpu, std::uint64_t xlen, const char* core_type,
-       bool has_supervisor_mode, std::uint64_t reset_vector,
-       std::uint16_t gdb_port)
+       const std::string& backend, bool has_supervisor_mode,
+       std::uint64_t reset_vector, std::uint16_t gdb_port)
       : cpu_(cpu), xlen_(xlen), has_supervisor_mode_(has_supervisor_mode) {
     complex_.core_type.set_value(core_type);
+    complex_.backend.set_value(backend);
     complex_.reset_address.set_value(reset_vector);
     // The GDB server is DBT-RISE's own, and each CPU that asks has one of
     // its own, on its own port. Zero means none.
@@ -303,9 +327,10 @@ struct DbtRiseCpu::Core {
 
 DbtRiseCpu::DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                        std::uint64_t reset_vector, std::uint16_t gdb_port,
-                       DbtRiseCpuExtras extras)
+                       DbtRiseCpuExtras extras, const std::string& backend)
     : sc_module(name),
       core_(std::make_unique<Core>(*this, xlen, CoreType(xlen, extras),
+                                   Backend(CoreType(xlen, extras), backend),
                                    extras.supervisor_mode, reset_vector,
                                    gdb_port)) {
   socket.register_invalidate_direct_mem_ptr(

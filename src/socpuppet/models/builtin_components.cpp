@@ -120,7 +120,8 @@ Registry BuiltinComponents() {
             parameters.Optional("gdb_port", 0, kFitsIn16Bits)),
         DbtRiseCpuExtras{
             .floating_point = parameters.Optional("floating_point", 0) != 0,
-            .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0});
+            .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0},
+        "interp");
     std::vector<Port> ports{
         InitiatorPort("socket", module->socket),
         InitiatorPort("time", module->time, /*required=*/false),

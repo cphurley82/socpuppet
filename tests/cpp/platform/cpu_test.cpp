@@ -16,6 +16,7 @@
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
+#include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
@@ -172,6 +173,22 @@ TEST(WhenACpuIsAskedForSupervisorModeWithoutFloatingPoint,
       },
       ThrowsMessage<std::invalid_argument>(
           AllOf(HasSubstr("floating_point"), HasSubstr("supervisor_mode"))));
+}
+
+TEST(WhenACpuIsAskedForABackendItsBuildHasNoCoreFor,
+     ItIsRefusedAndTheErrorNamesItAndTheOnesTheBuildHas) {
+  const auto make_a_cpu_with_backend_spam = [] {
+    const socpuppet::DbtRiseCpu cpu{"cpu",
+                                    /*xlen=*/64,
+                                    /*reset_vector=*/0,
+                                    /*gdb_port=*/0,
+                                    /*extras=*/{},
+                                    /*backend=*/"spam"};
+  };
+
+  EXPECT_THAT(make_a_cpu_with_backend_spam,
+              ThrowsMessage<std::invalid_argument>(
+                  AllOf(HasSubstr(R"("spam")"), HasSubstr(R"("interp")"))));
 }
 
 TEST(WhenA32BitCpuIsAskedForFloatingPointAndSupervisorMode,

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include <systemc>
 #include <tlm>
@@ -73,9 +74,14 @@ class DbtRiseCpu : public sc_core::sc_module {
   // `gdb_port`, if not zero, is a TCP port on which a GDB server listens.
   // The CPU then waits for a debugger to attach before it executes its
   // first instruction.
+  //
+  // `backend` is how DBT-RISE runs the core: "interp" for its interpreter,
+  // or one of its translating backends, "asmjit" or "llvm", where the build
+  // has it. One the build has not got is std::invalid_argument, naming the
+  // ones it has.
   DbtRiseCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
              std::uint64_t reset_vector, std::uint16_t gdb_port,
-             DbtRiseCpuExtras extras);
+             DbtRiseCpuExtras extras, const std::string& backend);
   ~DbtRiseCpu() override;
 
   // SystemC's last chance to bind a port. By now we know whether anyone
