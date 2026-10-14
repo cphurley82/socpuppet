@@ -20,6 +20,10 @@
 #   --jobs N               how many compiler jobs (all the machine has)
 #   --dbt-rise-jobs N      how many of DBT-RISE's generated files to compile
 #                          at once (4); each wants over a gigabyte
+#   --sources-from TREE    take the dependencies' sources, already fetched
+#                          and patched, from another tree's _deps instead of
+#                          fetching them: for when GitHub cannot be reached.
+#                          Everything is still compiled in this tree
 set -euo pipefail
 
 readonly LABELS=(
@@ -37,6 +41,7 @@ rebuild=1
 suite=1
 jobs=""
 dbt_rise_jobs=""
+sources_from=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) env_label="$2"; shift 2 ;;
@@ -48,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --no-suite) suite=0; shift ;;
     --jobs) jobs="$2"; shift 2 ;;
     --dbt-rise-jobs) dbt_rise_jobs="$2"; shift 2 ;;
+    --sources-from) sources_from="$2"; shift 2 ;;
     *) echo "run.sh: unknown option $1 (see the top of this file)" >&2; exit 2 ;;
   esac
 done
@@ -123,16 +129,31 @@ configure_args=(--preset spike -B "$tree" -DSOCPUPPET_BUILD_SPIKES=ON)
 [[ -n "$default_backend" ]] && configure_args+=("-DSOCPUPPET_DBT_RISE_DEFAULT_BACKEND=$default_backend")
 [[ -n "$llvm_dir" ]] && configure_args+=("-DSOCPUPPET_LLVM_DIR=$llvm_dir")
 [[ -n "$dbt_rise_jobs" ]] && configure_args+=("-DSOCPUPPET_DBT_RISE_JOBS=$dbt_rise_jobs")
+if [[ -n "$sources_from" ]]; then
+  for source in "$sources_from"/_deps/*-src; do
+    name="$(basename "$source" -src | tr '[:lower:]-' '[:upper:]_')"
+    configure_args+=("-DFETCHCONTENT_SOURCE_DIR_$name=$(cd "$source" && pwd)")
+  done
+fi
 
 echo "🧦 speed: $tag in $tree"
 start="$(now)"
-uv run cmake "${configure_args[@]}" > "$tree.configure.log" 2>&1 || {
+# Every tree fetches its dependencies, so a dropped connection to GitHub
+# fails a configure: try three times, a minute apart.
+for attempt in 1 2 3; do
+  uv run cmake "${configure_args[@]}" > "$tree.configure.log" 2>&1 && break
+  [[ $attempt -lt 3 ]] && sleep 60
+done
+grep -q "Generating done" "$tree.configure.log" || {
   echo "run.sh: configuring failed, see $tree.configure.log" >&2
   tail -20 "$tree.configure.log" >&2
   emit '"status": "configure-failed"'
   exit 1
 }
 configure_s="$(since "$start")"
+# A configure from another tree's sources downloads nothing, so its time
+# is not a configure from nothing.
+[[ -n "$sources_from" ]] && configure_s=0
 
 build() {
   uv run cmake --build "$tree" -j "$jobs" > "$tree.build.log" 2>&1

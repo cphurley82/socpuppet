@@ -13,6 +13,7 @@ boot. A line it cannot place stops it, with the file and the line.
 from __future__ import annotations
 
 import json
+import re
 import statistics
 import sys
 from collections import defaultdict
@@ -36,10 +37,28 @@ ENVIRONMENTS: dict[str, str] = {
 CPUS: dict[str, str] = {
     "interp": "DBT-RISE interpreter",
     "asmjit": "DBT-RISE asmjit",
-    "llvm": "DBT-RISE LLVM",
     "qbox-deterministic": "QBox, repeatable",
     "qbox-threaded": "QBox, threaded",
 }
+# DBT-RISE's LLVM backend has a row for each LLVM it was built against,
+# named as run.sh names it: llvm-19 (Debian's), llvm@22 (Homebrew's).
+LLVM = re.compile(r"^llvm[-@](\d+)$")
+
+
+def cpu_name(cpu: str) -> str:
+    """The name a row of the tables has."""
+    match = LLVM.match(cpu)
+    return f"DBT-RISE LLVM {match.group(1)}" if match else CPUS[cpu]
+
+
+def cpus(results: Results) -> list[str]:
+    """Every row, in the order of the tables: LLVM after asmjit."""
+    llvms = sorted(
+        {cpu for cpu, _ in results.cells if LLVM.match(cpu)},
+        key=lambda cpu: int(LLVM.match(cpu).group(1)),  # type: ignore[union-attr]
+    )
+    return ["interp", "asmjit", *llvms, "qbox-deterministic", "qbox-threaded"]
+
 
 # The loops, and the quantum each is read at: the counted loop at M1's
 # quantum is shown only where it differs.
@@ -83,7 +102,10 @@ def cpu_of(line: dict[str, Any]) -> str:
     """The row a line belongs to."""
     if line.get("cpu") == "qbox":
         return f"qbox-{line['mode']}"
-    return str(line.get("backend") or line.get("default_backend") or "interp")
+    backend = str(
+        line.get("backend") or line.get("default_backend") or "interp"
+    )
+    return str(line.get("llvm") or backend) if backend == "llvm" else backend
 
 
 def place(results: Results, line: dict[str, Any], where: str) -> None:
@@ -103,7 +125,7 @@ def place(results: Results, line: dict[str, Any], where: str) -> None:
             f"{line['cpu_model']}, {line['threads']} threads"
         )
     cpu = cpu_of(line)
-    if cpu not in CPUS:
+    if cpu not in CPUS and not LLVM.match(cpu):
         raise UnplacedLineError(
             f"{where}: the CPU {cpu!r} is not one of {', '.join(CPUS)}"
         )
@@ -172,14 +194,19 @@ def table(header: list[str], rows: list[list[str]]) -> str:
 def matrix(results: Results) -> str:
     """Which CPU ran in which environment, and why not where it did not."""
     rows = []
-    for cpu, name in CPUS.items():
-        row = [name]
+    for cpu in cpus(results):
+        row = [cpu_name(cpu)]
         for env in ENVIRONMENTS:
             cell = results.cells.get((cpu, env))
             if cell is None:
                 row.append("🚧")
             elif cell.rates:
-                row.append("✅")
+                suite = results.suites.get((cpu, env))
+                passed = ""
+                if suite and suite["tests"]:
+                    ran = suite["tests"]
+                    passed = f" suite {ran - suite['failed']}/{ran}"
+                row.append("✅" + passed)
             elif cell.reason:
                 row.append(f"❌ {cell.reason}")
             else:
@@ -192,7 +219,7 @@ def speeds(results: Results) -> str:
     """Median millions of instructions a second, per loop, per cell."""
     rows = []
     for env, env_name in ENVIRONMENTS.items():
-        for cpu, cpu_name in CPUS.items():
+        for cpu in cpus(results):
             cell = results.cells.get((cpu, env))
             if cell is None or not cell.rates:
                 continue
@@ -204,7 +231,7 @@ def speeds(results: Results) -> str:
             rows.append(
                 [
                     env_name,
-                    cpu_name,
+                    cpu_name(cpu),
                     *(median(cell.rates[loop]) for loop in LOOPS),
                     median(cell.walk_rates),
                     str(runs),
@@ -272,7 +299,7 @@ def backends(results: Results) -> str:
         )
         rows.append(
             [
-                CPUS[cpu],
+                cpu_name(cpu),
                 ENVIRONMENTS[env],
                 f"{suite['tests'] - suite['failed']} of {suite['tests']}",
                 suite.get("failed_names", "") or "none",
@@ -293,7 +320,7 @@ def projection(results: Results) -> str:
     count = statistics.median(counts)
     rows = []
     for env, env_name in ENVIRONMENTS.items():
-        for cpu, cpu_name in CPUS.items():
+        for cpu in cpus(results):
             cell = results.cells.get((cpu, env))
             if cell is None or not cell.rates["walks"]:
                 continue
@@ -302,7 +329,7 @@ def projection(results: Results) -> str:
             rows.append(
                 [
                     env_name,
-                    cpu_name,
+                    cpu_name(cpu),
                     f"{count / fast:.0f}",
                     f"{count / slow:.0f}",
                 ]
