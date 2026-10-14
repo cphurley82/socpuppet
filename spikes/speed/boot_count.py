@@ -14,8 +14,10 @@ QEMU ships none.
 Standard library only, run with `python3 -I`, with the downloads in a
 directory of their own:
 
-    python3 -I spikes/speed/boot_count.py --downloads ~/boot-downloads \\
+    python3 -I spikes/speed/boot_count.py --downloads ~/boot-downloads
         --env native-linux-x86_64 --runs 3 >> spikes/speed/results/boot.jsonl
+
+(one command, on one line).
 
 ⚠️ This is a distribution kernel with a 41 MB initrd, booted with OpenSBI
 on QEMU's devicetree and one hart, so its count is an upper bound for
@@ -111,7 +113,7 @@ def boot(qemu: str, directory: Path) -> dict[str, float]:
     ]
     controller, console = pty.openpty()
     start = time.monotonic()
-    process = subprocess.Popen(  # noqa: S603 - the command is ours
+    process = subprocess.Popen(
         command, stdin=console, stdout=console, stderr=console
     )
     os.close(console)
@@ -149,7 +151,7 @@ def main() -> int:
         )
         return 1
     sums = download(arguments.downloads)
-    version = subprocess.run(  # noqa: S603 - the command is ours
+    version = subprocess.run(
         [qemu, "--version"], capture_output=True, text=True, check=True
     ).stdout.splitlines()[0]
     for run in range(1, arguments.runs + 1):
