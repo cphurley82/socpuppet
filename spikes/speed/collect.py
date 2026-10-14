@@ -348,6 +348,23 @@ def projection(results: Results) -> str:
                     f"{count / slow:.0f}",
                 ]
             )
+    # Plain QEMU, where the count was taken, is the ceiling: its wall time
+    # is what the same boot took there, not a projection.
+    for env, env_name in ENVIRONMENTS.items():
+        walls = [
+            float(boot["wall_s"])
+            for boot in results.boots
+            if boot["env"] == env
+        ]
+        if walls:
+            rows.append(
+                [
+                    env_name,
+                    "Plain QEMU, as measured",
+                    f"{statistics.median(walls):.1f}",
+                    median([]),
+                ]
+            )
     header = (
         f"A boot to the shell is {count / 1e6:.0f} million instructions "
         f"(median of {len(counts)})."
