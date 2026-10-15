@@ -41,10 +41,10 @@ def generate(
     give, and `bootargs` is the command line `chosen` hands an operating
     system.
 
-    Each component describes its own node (`Component.device_node`). What
-    is decided here is where the nodes go: the CPU under `cpus`, memory at
-    the top, every other device under `soc`, and which of them `chosen`
-    and `aliases` point at.
+    Each component describes its own nodes (`Component.device_nodes`),
+    most of them one. What is decided here is where the nodes go: the CPU
+    under `cpus`, memory at the top, every other device under `soc`, and
+    which of them `chosen` and `aliases` point at.
     """
     master = view.placed
     nodes = _nodes(connections, view, dialect)
@@ -74,6 +74,7 @@ def generate(
         connections,
         addresses,
         dialect,
+        _labels(nodes),
         soc_properties=(
             'compatible = "simple-bus";',
             "#address-cells = <2>;",
@@ -139,6 +140,7 @@ def overlay(
         connections,
         addresses,
         "zephyr",
+        _labels(nodes),
     )
     if roles:
         blocks.insert(0, _references("chosen", roles))
@@ -165,10 +167,10 @@ def _connected_ports(
 def _nodes(
     connections: Collection[Connection], view: Port, dialect: Dialect
 ) -> list[tuple[Placed, DeviceNode]]:
-    """Each component reachable from `view` that has a node, and the node."""
+    """Each node of each component reachable from `view`, and its component."""
     # Each component's reachable ports, lowest address first. A component
     # with several, such as a PCIe root complex with its two windows, is
-    # one device and gets one node.
+    # one device and gets one node, unless it says it is more.
     reached: dict[Placed, dict[str, Reached]] = {}
     for found in sorted(
         reachable_ports(connections, view), key=lambda found: found.address
@@ -179,8 +181,9 @@ def _nodes(
     return [
         (placed, node)
         for placed, ports in reached.items()
-        if (node := placed.component.device_node(ports, dialect=dialect))
-        is not None
+        for node in placed.component.device_nodes(
+            ports, dialect=dialect, label=label(placed.path)
+        )
     ]
 
 
@@ -207,6 +210,7 @@ def _devices(
     connections: Collection[Connection],
     addresses: Mapping[tuple[Placed, str], int],
     dialect: Dialect,
+    labels: Mapping[tuple[Placed, int], str],
     soc_properties: tuple[str, ...] = (),
 ) -> list[list[str]]:
     """The nodes where they go: memory at the top, the rest under `soc`.
@@ -216,7 +220,7 @@ def _devices(
     have the node yet.
     """
     devices = [
-        _node(placed, node, connections, addresses, dialect, depth=1)
+        _node(placed, node, connections, addresses, dialect, labels, depth=1)
         for placed, node in nodes
         if not node.on_bus
     ]
@@ -226,7 +230,9 @@ def _devices(
         for placed, node in on_bus:
             if len(soc) > 1:
                 soc.append("")
-            soc += _node(placed, node, connections, addresses, dialect, depth=2)
+            soc += _node(
+                placed, node, connections, addresses, dialect, labels, depth=2
+            )
         devices.append([*soc, "\t};"])
     return devices
 
@@ -237,6 +243,7 @@ def _node(
     connections: Collection[Connection],
     addresses: Mapping[tuple[Placed, str], int],
     dialect: Dialect,
+    labels: Mapping[tuple[Placed, int], str],
     depth: int,
 ) -> list[str]:
     """One device's node, with its interrupt read off the wire connections.
@@ -249,9 +256,9 @@ def _node(
     )
     first, *rest = node.properties
     lines = [
-        f"{indent}{label(placed.path)}: {_name(node)} {{",
+        f"{indent}{_label(placed, node)}: {_name(node)} {{",
         f"{indent}\t{first}",
-        f"{indent}\treg = {reg};",
+        *([f"{indent}\treg = {reg};"] if node.reg else []),
         *(f"{indent}\t{each}" for each in rest),
     ]
     interrupts = []
@@ -294,11 +301,11 @@ def _node(
     elif interrupts:
         lines += [f"{indent}\tinterrupts-extended = <{' '.join(interrupts)}>;"]
     if node.messages is not None:
-        taker = _message_taker(
-            getattr(placed, node.messages), connections, addresses
+        page = _message_taker(
+            getattr(placed, node.messages), connections, addresses, dialect
         )
-        if taker is not None:
-            lines += [f"{indent}\tmsi-parent = <&{label(taker.path)}>;"]
+        if page is not None:
+            lines += [f"{indent}\tmsi-parent = <&{labels[page]}>;"]
     return [*lines, f"{indent}}};"]
 
 
@@ -339,17 +346,20 @@ def _message_taker(
     sender: Port,
     connections: Collection[Connection],
     addresses: Mapping[tuple[Placed, str], int],
-) -> Placed | None:
+    dialect: Dialect,
+) -> tuple[Placed, int] | None:
     """What takes the interrupt messages sent from `sender`, for firmware.
 
-    It is found the way an address map is, by following the sender's own
-    accesses, so it is there only if the messages can get there. None if
-    they reach nothing that takes messages and has a node in this tree.
-    `addresses` is where each port is for the master the tree is for.
+    The component, and the address of the page they reach, which is where
+    its node for that page is. It is found the way an address map is, by
+    following the sender's own accesses, so it is there only if the
+    messages can get there. None if they reach nothing that takes messages
+    for the firmware of `dialect` and has a node in this tree. `addresses`
+    is where each port is for the master the tree is for.
     """
     for found in reachable_ports(connections, sender):
         taker = found.port.placed
-        if not taker.component.takes_messages(found.port.name):
+        if not taker.component.takes_messages(found.port.name, dialect=dialect):
             continue
         for_firmware = addresses.get((taker, found.port.name))
         if for_firmware is None:
@@ -365,7 +375,7 @@ def _message_taker(
                 f"would go astray. Map the way from {sender.path} so that "
                 f"it has the same addresses as the CPU's bus."
             )
-        return taker
+        return taker, for_firmware
     return None
 
 
@@ -427,7 +437,29 @@ def _chosen(
 
 def _name(node: DeviceNode) -> str:
     """A node's name, with the address of its first registers after `@`."""
-    return f"{node.name}@{node.reg[0][0]:x}"
+    return f"{node.name}@{node.reg[0][0]:x}" if node.reg else node.name
+
+
+def _labels(
+    nodes: list[tuple[Placed, DeviceNode]],
+) -> dict[tuple[Placed, int], str]:
+    """The label of each node that has registers, by its component and where.
+
+    Where is the address of the node's first registers, which for a page is
+    where the firmware finds the page: the address `_message_taker` gives.
+    So what is sent to a page names that page's node, for a component with
+    a node for each of its pages.
+    """
+    return {
+        (placed, node.reg[0][0]): _label(placed, node)
+        for placed, node in nodes
+        if node.reg
+    }
+
+
+def _label(placed: Placed, node: DeviceNode) -> str:
+    """A node's label: its component's, and the node's suffix, if any."""
+    return f"{label(placed.path)}{node.suffix}"
 
 
 def _path(node: DeviceNode) -> str:
