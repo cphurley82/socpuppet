@@ -13,9 +13,10 @@ The small block every SoC has that answers a CPU's questions about itself and ow
   - `hold` keeps the CPU in reset for as long as it is high. A [die-to-die link](d2d-link.md) holds the other die's CPU this way until the link is trained.
   - `bite` is a watchdog's line. When it rises, `reset` is pulsed and the cause reads `WATCHDOG`. A line that stays high is one bite.
   - Firmware asks by writing a one to `RESET_REQUEST`. `reset` is pulsed and the cause reads `SOFTWARE`.
+  - Firmware switches the CPU off by writing a one to `POWER_OFF`, which is what OpenSBI's shutdown call does through the devicetree's `syscon-poweroff` node. `reset` rises and stays up for good, the register reads one, and the cause is left as it was: the CPU was not reset, and nothing here switches it on again.
 - **A pulse is 1 µs long**, which is ten ticks of the 10 MHz clock a socpuppet CPU has.
 - **Either input may be left unconnected**, and is then tied low.
-- **A debugger looks and does not touch.** `peek` reads a register. `poke` is refused with a `PermissionError` that says why: the one register that can be written asks for a reset.
+- **A debugger looks and does not touch.** `peek` reads a register. `poke` is refused with a `PermissionError` that says why: the registers that can be written reset the CPU and switch it off.
 
 ```python
 syscon = compute.add("syscon", sp.SystemController(die=0, boot_address=0x1020_0000))
@@ -34,6 +35,7 @@ platform.connect(syscon.reset, cpu.reset)
 | `0x04` | `BOOT_ADDRESS` | read | Where the CPU's boot ROM finds the image to start: the address of the image's header. |
 | `0x08` | `RESET_CAUSE` | read | Why the CPU was last reset. 0 `POWER_ON`: The power came on, and nothing has reset the CPU since. 1 `WATCHDOG`: The watchdog bit: firmware stopped feeding it. 2 `SOFTWARE`: Firmware asked, by writing to `RESET_REQUEST`. |
 | `0x0C` | `RESET_REQUEST` | write | Asks for a reset of the CPU. Reads as zero. Bit 0 `RESET`: Write a one to reset the CPU. |
+| `0x10` | `POWER_OFF` | read, write | Switches the CPU off: holds it in reset for good. Reads as one once it has been. Bit 0 `OFF`: Write a one to switch the CPU off. A zero changes nothing. |
 
 <!-- regs:system_controller end -->
 
@@ -56,13 +58,13 @@ syscon: syscon@100000 {
 
 ## What it leaves out
 
-- **Clocks, power and pins.** A real system controller gates clocks, sequences power rails and muxes pins. This one has the reset and nothing else.
+- **Clocks, power and pins.** A real system controller gates clocks, sequences power rails and muxes pins. This one has the reset and a switch that turns the CPU off, and nothing else.
 - **A reset that reaches anything but the CPU.** `reset` is one wire, and a board says what it goes to.
 - **A cause for a hold.** A CPU held at power-on and let go reads `POWER_ON`. So does one that is held a second time, later, by the same line: nothing here tells the two apart.
 - **A cause that is cleared.** `RESET_CAUSE` is the last reason and stays so until the next. Real ones often keep a bit for each cause until firmware clears it.
 
 ## Under the hood
 
-`SystemControllerLogic` (`src/socpuppet/core/system_controller_logic.h`) is the registers and the three reasons, with no simulator in it, and `tests/cpp/unit/system_controller_logic_test.cpp` holds it. `SystemController` is the SystemC wrapper: one process writes `reset`, and an event ends a pulse.
+`SystemControllerLogic` (`src/socpuppet/core/system_controller_logic.h`) is the registers, the three reasons and the switch, with no simulator in it, and `tests/cpp/unit/system_controller_logic_test.cpp` holds it. `SystemController` is the SystemC wrapper: one process writes `reset`, and an event ends a pulse.
 
 ⚠️ A pulse of 1 µs is far shorter than the 100 µs a busy CPU model may run ahead of the clock, and the borrowed CPU used to miss such a pulse and stop the simulation. It is patched ([upstream.md](../upstream.md)), and `tests/cpp/platform/system_controller_test.cpp` has a watchdog bite a CPU that is busy and one that is asleep.

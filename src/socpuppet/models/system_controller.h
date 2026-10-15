@@ -26,6 +26,8 @@ namespace socpuppet {
 //   - `bite` is a watchdog's line. When it rises, `reset` is pulsed.
 //   - Firmware asks for a reset by writing a register, and `reset` is
 //     pulsed for that too.
+//   - Firmware switches the CPU off by writing another, and `reset` then
+//     stays high for good.
 // Either input may be left unconnected, and is then tied low.
 class SystemController : public sc_core::sc_module {
  public:
@@ -75,8 +77,8 @@ class SystemController : public sc_core::sc_module {
   }
 
   // Debug transport: a debugger looks at the registers and changes
-  // nothing, so a write, which could only ask for a reset, is not taken.
-  // Returns the number of bytes transferred.
+  // nothing, so a write, which could reset the CPU or switch it off, is not
+  // taken. Returns the number of bytes transferred.
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
     const bool read = transaction.is_read() &&
                       logic_.ReadRegister(transaction.get_address(),
