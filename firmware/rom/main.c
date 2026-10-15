@@ -208,5 +208,14 @@ void rom_main(void)
 	say(", jumping to ");
 	say_hex(entry);
 	say("\n");
-	((void (*)(void))entry)();
+	/*
+	 * As every RISC-V stage of a boot starts the next: the hart's number in
+	 * a0 and, in a1, what the image's header says to pass on, which for
+	 * OpenSBI is the address of its devicetree.
+	 */
+	uintptr_t hart;
+
+	__asm__ volatile("csrr %0, mhartid" : "=r"(hart));
+	((void (*)(uintptr_t, uintptr_t))entry)(
+		hart, address_at(header + BOOT_IMAGE_HEADER_ARGUMENT_LOW));
 }

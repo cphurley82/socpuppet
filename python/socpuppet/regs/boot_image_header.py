@@ -8,7 +8,7 @@ change the register map and run `uv run python tools/lint.py --fix`.
 """
 
 #: How many bytes of address space the block takes.
-SIZE = 0x40
+SIZE = 0x48
 
 #: What says this is an image at all.
 MAGIC = 0x00
@@ -48,3 +48,11 @@ CRC = 0x1C
 #: all 32 bytes has no zero after it.
 NAME = 0x20
 NAME_SIZE = 0x20
+
+#: What the boot ROM hands the program in `a1`, the low 32 bits: for OpenSBI,
+#: the address of its devicetree. Zero for nothing. The hart's number goes in
+#: `a0`.
+ARGUMENT_LOW = 0x40
+
+#: The high 32 bits, which a 32-bit CPU does not hand on.
+ARGUMENT_HIGH = 0x44

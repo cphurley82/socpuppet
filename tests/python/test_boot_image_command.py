@@ -36,6 +36,23 @@ class TestWhenTheBootImageCommandIsGivenAnElfFile:
         assert "0x80000000" in said
 
 
+class TestWhenTheBootImageCommandIsGivenAnArgumentForTheProgram:
+    def test_the_image_carries_it(self, tmp_path):
+        program = a_program(tmp_path)
+        image = tmp_path / "spam.img"
+
+        run_socpuppet(
+            "boot-image",
+            str(program),
+            "-o",
+            str(image),
+            "--argument",
+            "0x82200000",
+        )
+
+        assert boot_image.read(image.read_bytes()).argument == 0x8220_0000
+
+
 class TestWhenTheBootImageCommandIsGivenAFileThatIsNotThere:
     def test_it_fails_in_one_line_that_names_the_file(self, tmp_path):
         result = run_socpuppet(

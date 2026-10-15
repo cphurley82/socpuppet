@@ -12,6 +12,10 @@ from socpuppet.boards import cpu_kit
 ZERO = 0
 T0 = 5
 T1 = 6
+#: The first two arguments of a call, which is how one stage of a boot
+#: hands the next its hart's number and its devicetree.
+A0 = 10
+A1 = 11
 
 #: Sleep until an interrupt.
 WFI = 0x10500073
@@ -34,6 +38,46 @@ def li(rd, value):
 def sb(rs2, rs1):
     """Store the low byte of rs2 at the address in rs1."""
     return (rs2 << 20) | (rs1 << 15) | 0x23
+
+
+def auipc(rd):
+    """rd = the address of this instruction."""
+    return (rd << 7) | 0x17
+
+
+def store(rs2, rs1, offset, *, xlen):
+    """Store rs2, all `xlen` bits of it, at `offset` (below 2048) past rs1."""
+    width = {32: 2, 64: 3}[xlen]
+    return (
+        ((offset >> 5) << 25)
+        | (rs2 << 20)
+        | (rs1 << 15)
+        | (width << 12)
+        | ((offset & 0x1F) << 7)
+        | 0x23
+    )
+
+
+#: How far past its own first instruction `stores_its_arguments` leaves
+#: what it found.
+ARGUMENTS_AT = 0x100
+
+
+def stores_its_arguments(*, xlen):
+    """A program that stores `a0` and then `a1`, and sleeps for good.
+
+    They go one after the other, a register's width each, `ARGUMENTS_AT`
+    bytes past the program's first instruction, wherever it runs.
+    """
+    size = xlen // 8
+    program = [
+        auipc(T0),
+        store(A0, T0, ARGUMENTS_AT, xlen=xlen),
+        store(A1, T0, ARGUMENTS_AT + size, xlen=xlen),
+        WFI,
+        BACK_ONE,
+    ]
+    return b"".join(word.to_bytes(4, "little") for word in program)
 
 
 def says(text, *, uart, then=WFI):

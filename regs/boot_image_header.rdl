@@ -24,7 +24,7 @@ addrmap boot_image_header {
     name = "Boot image header";
     desc = "What a boot image starts with: what the program after it is, where it goes, and a sum to check it by.";
     // The program's bytes start where the header ends.
-    block_size = 0x40;
+    block_size = 0x48;
     default regwidth = 32;
 
     reg {
@@ -71,4 +71,14 @@ addrmap boot_image_header {
         desc = "The image's name, as text, for a boot ROM to say which image it could not start. Up to 32 bytes of UTF-8, with zeros after a shorter one. A name of all 32 bytes has no zero after it.";
         field { sw = r; } BYTES[31:0] = 0;
     } NAME[8] @ 0x20 += 4;
+
+    reg {
+        desc = "What the boot ROM hands the program in `a1`, the low 32 bits: for OpenSBI, the address of its devicetree. Zero for nothing. The hart's number goes in `a0`.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } ARGUMENT_LOW @ 0x40;
+
+    reg {
+        desc = "The high 32 bits, which a 32-bit CPU does not hand on.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } ARGUMENT_HIGH @ 0x44;
 };
