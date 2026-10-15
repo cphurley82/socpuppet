@@ -4,6 +4,7 @@ The GDB server is DBT-RISE's, so a host here has that CPU whatever
 SOCPUPPET_CPU says (docs/models/qbox-cpu.md).
 """
 
+import contextlib
 import functools
 import re
 import socket
@@ -43,9 +44,23 @@ STORE_0X5A_THEN_SLEEP = b"".join(
 
 def free_port():
     """A TCP port nothing is listening on."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
+    (port,) = free_ports(1)
+    return port
+
+
+def free_ports(count):
+    """`count` TCP ports nothing is listening on, no two the same.
+
+    Each is held until all are found: one let go at once could be given
+    out again for the next.
+    """
+    with contextlib.ExitStack() as held:
+        ports = []
+        for _ in range(count):
+            probe = held.enter_context(socket.socket())
+            probe.bind(("127.0.0.1", 0))
+            ports.append(probe.getsockname()[1])
+        return ports
 
 
 def cpu_waiting_for_a_debugger(port):
@@ -207,7 +222,7 @@ class TestWhenADebuggerHangsUpWithAnAnswerUnread:
 @pytest.mark.platform
 class TestWhenTwoCpusEachHaveAGdbPort:
     def test_each_debugger_finds_its_own_cpu_stopped_at_its_reset_vector(self):
-        spams_port, eggs_port = free_port(), free_port()
+        spams_port, eggs_port = free_ports(2)
         platform = two_cpus_waiting_for_debuggers(spams_port, eggs_port)
 
         found = run_with_debuggers(
@@ -227,7 +242,7 @@ class TestWhenTwoCpusEachHaveAGdbPort:
         # so the other CPU has not stopped: it has not run. Its debugger
         # asked about memory as it attached, as each does here, and is
         # answered when its own CPU is the one that is stopped.
-        ports = [free_port(), free_port()]
+        ports = free_ports(2)
         platform = two_cpus_waiting_for_debuggers(*ports)
         happened = []
 
@@ -453,7 +468,9 @@ class ThreeDebuggedCpus:
     """
 
     def __init__(self, firmware):
-        self.ports = {who: free_port() for who in ("host", "manager", "ssd")}
+        self.ports = dict(
+            zip(("host", "manager", "ssd"), free_ports(3), strict=True)
+        )
         self.board = host(
             cpu="dbt_rise_cpu",
             gdb_port=self.ports["host"],

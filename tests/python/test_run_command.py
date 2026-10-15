@@ -311,6 +311,9 @@ class TestWhenTheRunCommandIsAskedForQboxsCpuInABuildWithoutIt:
             str(a_program(tmp_path)),
             "--board",
             "socpuppet_host",
+            # Not the ROM, which the command looks for before anything.
+            "--boot",
+            "ram",
             "--cpu",
             "qbox_cpu",
             check=False,
@@ -326,6 +329,9 @@ class TestWhenTheRunCommandIsAskedForQboxsCpuInABuildWithoutIt:
             str(a_program(tmp_path)),
             "--board",
             "socpuppet_host",
+            # Not the ROM, which the command looks for before anything.
+            "--boot",
+            "ram",
             check=False,
             SOCPUPPET_CPU="qbox_cpu",
         )
