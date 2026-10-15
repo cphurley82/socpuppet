@@ -83,9 +83,9 @@ def runs(calls):
     return [call[1:] for call in calls if call[0] == "run"]
 
 
-def values(run, option):
-    """What each `option VALUE` of a `docker run` gave, in order."""
-    return [run[i + 1] for i, word in enumerate(run[:-1]) if word == option]
+def values(call, option):
+    """What each `option VALUE` of a docker command gave, in order."""
+    return [call[i + 1] for i, word in enumerate(call[:-1]) if word == option]
 
 
 def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_workspace(
@@ -100,3 +100,25 @@ def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_work
     assert f"{REPO}:/workspace" in values(run, "--volume")
     assert values(run, "--workdir") == ["/workspace"]
     assert run[-len(command) - 1 :] == [TAG, *command]
+
+
+def test_an_image_is_built_from_the_dockerfile_when_none_has_its_hash_and_is_also_named_socpuppet_dev(
+    devcontainer,
+):
+    result, calls = devcontainer("true", images=())
+
+    assert result.returncode == 0, result.stdout
+    (build,) = [call[1:] for call in calls if call[0] == "build"]
+    assert set(values(build, "--tag")) == {TAG, "socpuppet-dev"}
+    assert values(build, "--file") == [str(DOCKERFILE)]
+    assert build[-1] == str(DOCKERFILE.parent)
+    assert calls.index(["build", *build]) < calls.index(["run", *runs(calls)[0]])
+
+
+def test_an_image_already_built_from_this_dockerfile_is_not_built_again(
+    devcontainer,
+):
+    result, calls = devcontainer("true")
+
+    assert result.returncode == 0, result.stdout
+    assert not [call for call in calls if call[0] == "build"]
