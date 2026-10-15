@@ -1,7 +1,7 @@
 """System controller: the registers.
 
-What a CPU asks about itself and its last reset, and the register that asks
-for one.
+What a CPU asks about itself and its last reset, and the registers that reset
+it and switch it off.
 
 Generated from regs/system_controller.rdl by tools/regs.py. Do not edit:
 change the register map and run `uv run python tools/lint.py --fix`.
@@ -30,3 +30,9 @@ RESET_CAUSE_SOFTWARE = 2
 RESET_REQUEST = 0x0C
 #: Write a one to reset the CPU.
 RESET_REQUEST_RESET = 1 << 0
+
+#: Switches the CPU off: holds it in reset for good. Reads as one once it has
+#: been.
+POWER_OFF = 0x10
+#: Write a one to switch the CPU off. A zero changes nothing.
+POWER_OFF_OFF = 1 << 0

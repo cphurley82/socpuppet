@@ -19,6 +19,7 @@ namespace socpuppet {
 // bites when firmware stops feeding it. And firmware may ask. A hold lasts
 // as long as its line is high. The other two are pulses: the reset rises,
 // and whoever owns the clock says when the pulse has been long enough.
+// Firmware may also switch its CPU off, which holds it in reset for good.
 class SystemControllerLogic {
  public:
   // `die` and `boot_address` are what the two registers of those names
@@ -45,6 +46,9 @@ class SystemControllerLogic {
       case SYSTEM_CONTROLLER_RESET_REQUEST:
         StoreLittleEndian(std::uint32_t{0}, out);
         return true;
+      case SYSTEM_CONTROLLER_POWER_OFF:
+        StoreLittleEndian(off_ ? SYSTEM_CONTROLLER_POWER_OFF_OFF : 0U, out);
+        return true;
       default:
         return false;
     }
@@ -52,12 +56,20 @@ class SystemControllerLogic {
 
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in) {
     if (in.size() != kRegisterBytes) return false;
-    if (offset != SYSTEM_CONTROLLER_RESET_REQUEST) return false;
-    if ((LoadLittleEndian<std::uint32_t>(in) &
-         SYSTEM_CONTROLLER_RESET_REQUEST_RESET) != 0) {
-      Pulse(SYSTEM_CONTROLLER_RESET_CAUSE_SOFTWARE);
+    const auto value = LoadLittleEndian<std::uint32_t>(in);
+    switch (offset) {
+      case SYSTEM_CONTROLLER_RESET_REQUEST:
+        if ((value & SYSTEM_CONTROLLER_RESET_REQUEST_RESET) != 0) {
+          Pulse(SYSTEM_CONTROLLER_RESET_CAUSE_SOFTWARE);
+        }
+        return true;
+      case SYSTEM_CONTROLLER_POWER_OFF:
+        // Once off, the CPU stays off: nothing here switches it on again.
+        if ((value & SYSTEM_CONTROLLER_POWER_OFF_OFF) != 0) off_ = true;
+        return true;
+      default:
+        return false;
     }
-    return true;
   }
 
   // The line that holds the CPU in reset for as long as it is high.
@@ -73,7 +85,7 @@ class SystemControllerLogic {
   bool Pulsing() const { return pulsing_; }
 
   // What the CPU's reset line is to be.
-  bool Reset() const { return held_ || pulsing_; }
+  bool Reset() const { return held_ || pulsing_ || off_; }
 
  private:
   // Each register is 32 bits wide.
@@ -89,6 +101,7 @@ class SystemControllerLogic {
   std::uint32_t cause_ = SYSTEM_CONTROLLER_RESET_CAUSE_POWER_ON;
   bool held_ = false;
   bool pulsing_ = false;
+  bool off_ = false;
 };
 
 }  // namespace socpuppet

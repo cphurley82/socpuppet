@@ -116,6 +116,51 @@ TEST(WhenFirmwareWritesAZeroToTheResetRequest, NothingIsReset) {
             SYSTEM_CONTROLLER_RESET_CAUSE_POWER_ON);
 }
 
+// 🎓 A machine can be told to switch itself off: what `poweroff` and an
+// operating system's shutdown ask of it. Here the CPU stops for good, held
+// in reset, and nothing but a new simulation starts it again.
+TEST(WhenFirmwareWritesAOneToPowerOff, TheCpuIsHeldInResetForGood) {
+  Rig rig;
+
+  EXPECT_TRUE(rig.Write32(SYSTEM_CONTROLLER_POWER_OFF,
+                          SYSTEM_CONTROLLER_POWER_OFF_OFF));
+
+  EXPECT_TRUE(rig.controller.Reset());
+  rig.controller.EndPulse();
+  rig.controller.Hold(false);
+  EXPECT_TRUE(rig.controller.Reset());
+}
+
+TEST(WhenFirmwareWritesAOneToPowerOff, ItReadsBackAsOne) {
+  Rig rig;
+
+  rig.Write32(SYSTEM_CONTROLLER_POWER_OFF, SYSTEM_CONTROLLER_POWER_OFF_OFF);
+
+  EXPECT_EQ(rig.Read32(SYSTEM_CONTROLLER_POWER_OFF),
+            SYSTEM_CONTROLLER_POWER_OFF_OFF);
+}
+
+TEST(WhenFirmwareWritesAZeroToPowerOffAfterAOne, TheCpuStaysOff) {
+  Rig rig;
+  rig.Write32(SYSTEM_CONTROLLER_POWER_OFF, SYSTEM_CONTROLLER_POWER_OFF_OFF);
+
+  rig.Write32(SYSTEM_CONTROLLER_POWER_OFF, 0);
+
+  EXPECT_TRUE(rig.controller.Reset());
+}
+
+// It was not reset, so the cause of the last reset is still the cause.
+TEST(WhenFirmwareWritesAOneToPowerOff, TheResetCauseIsLeftAsItWas) {
+  Rig rig;
+  rig.controller.Bite();
+  rig.controller.EndPulse();
+
+  rig.Write32(SYSTEM_CONTROLLER_POWER_OFF, SYSTEM_CONTROLLER_POWER_OFF_OFF);
+
+  EXPECT_EQ(rig.Read32(SYSTEM_CONTROLLER_RESET_CAUSE),
+            SYSTEM_CONTROLLER_RESET_CAUSE_WATCHDOG);
+}
+
 TEST(WhenTheWatchdogBites, TheCpuIsResetUntilThePulseEnds) {
   Rig rig;
 
@@ -209,7 +254,7 @@ TEST(WhenAnAccessToASystemControllerStartsPartWayIntoARegister, ItIsRefused) {
 TEST(WhenAnAccessToASystemControllerIsBesideItsRegisters, ItIsRefused) {
   Rig rig;
   std::array<std::uint8_t, 4> word{};
-  const std::uint64_t beside = SYSTEM_CONTROLLER_RESET_REQUEST + 4;
+  const std::uint64_t beside = SYSTEM_CONTROLLER_POWER_OFF + 4;
 
   EXPECT_FALSE(rig.controller.ReadRegister(beside, word));
   EXPECT_FALSE(rig.Write32(beside, SYSTEM_CONTROLLER_RESET_REQUEST_RESET));

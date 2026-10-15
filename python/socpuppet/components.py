@@ -918,7 +918,7 @@ class SystemController(Component):
 
     Its registers tell firmware which die its CPU is on (`die`), where its
     boot ROM finds the image to start (`boot_address`) and why the CPU was
-    last reset, and one of them asks for a reset.
+    last reset, and two of them reset the CPU and switch it off.
 
     🎓 A wire has one driver, and a CPU's reset has more than one reason to
     rise. So connect `reset` to the CPU's `reset`, and each reason to an
@@ -969,9 +969,9 @@ class SystemController(Component):
     def why_a_poke_was_refused(self, path: str) -> str:
         return (
             f'"{path}" is a system controller, and a debugger looks at '
-            "one and does not touch: the one register that can be written "
-            "asks for a reset of the CPU. To reset the CPU, have firmware "
-            "write RESET_REQUEST."
+            "one and does not touch: the registers that can be written "
+            "reset the CPU and switch it off. To do either, have firmware "
+            "write RESET_REQUEST or POWER_OFF."
         )
 
 

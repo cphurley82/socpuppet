@@ -14,8 +14,8 @@ enum system_controller_reset_cause_e {
 
 addrmap system_controller {
     name = "System controller";
-    desc = "What a CPU asks about itself and its last reset, and the register that asks for one.";
-    // Four registers, and room for four more.
+    desc = "What a CPU asks about itself and its last reset, and the registers that reset it and switch it off.";
+    // Five registers, and room for three more.
     block_size = 0x20;
     default regwidth = 32;
 
@@ -38,4 +38,9 @@ addrmap system_controller {
         desc = "Asks for a reset of the CPU. Reads as zero.";
         field { sw = w; desc = "Write a one to reset the CPU."; } RESET[0:0] = 0;
     } RESET_REQUEST @ 0x0C;
+
+    reg {
+        desc = "Switches the CPU off: holds it in reset for good. Reads as one once it has been.";
+        field { sw = rw; onwrite = woset; desc = "Write a one to switch the CPU off. A zero changes nothing."; } OFF[0:0] = 0;
+    } POWER_OFF @ 0x10;
 };

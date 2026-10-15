@@ -263,6 +263,18 @@ TEST(WhenACpuWritesAOneToTheResetRequest, ASystemControllerPulsesItsResetLine) {
   EXPECT_FALSE(long_after) << "the reset never fell";
 }
 
+TEST(WhenACpuWritesAOneToPowerOff, ASystemControllersResetLineRisesAndStaysUp) {
+  bool long_after = false;
+
+  Rig rig{[&](Rig& lines, BusDriver& bus) {
+    bus.Write32(SYSTEM_CONTROLLER_POWER_OFF, SYSTEM_CONTROLLER_POWER_OFF_OFF);
+    sc_core::wait(LongAfter());
+    long_after = lines.reset.read();
+  }};
+
+  EXPECT_TRUE(long_after);
+}
+
 TEST(ASystemControllersRegisters, AreAnsweredOnItsSocket) {
   std::uint32_t die = 0;
   std::uint32_t boot_address = 0;
@@ -282,7 +294,7 @@ TEST(WhenASystemControllerRefusesAnAccess, TheBusSeesAnAddressError) {
 
   Rig rig{[&](Rig&, BusDriver& bus) {
     std::array<std::uint8_t, 4> word{};
-    beside = bus.Read(SYSTEM_CONTROLLER_RESET_REQUEST + 4, word);
+    beside = bus.Read(SYSTEM_CONTROLLER_POWER_OFF + 4, word);
     not_firmwares_to_write = bus.Write32(SYSTEM_CONTROLLER_DIE, 7);
   }};
 
