@@ -27,6 +27,7 @@
 #include "tests/cpp/support/recording_target.h"
 #include "tests/cpp/support/riscv_program.h"
 #include "tests/cpp/support/test_components.h"
+#include "tests/cpp/support/the_cpu.h"
 
 using ::testing::AllOf;
 using ::testing::HasSubstr;
@@ -43,7 +44,7 @@ struct CpuPlatform {
   // starts.
   explicit CpuPlatform(std::uint64_t xlen, socpuppet::Config more = {}) {
     more.insert({{"xlen", xlen}, {"reset_vector", kResetVector}});
-    platform.Add("cpu", "dbt_rise_cpu", more);
+    AddTheCpu(platform, "cpu", more);
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Bind("cpu.socket", "ram.socket");
     platform.Elaborate();
@@ -241,8 +242,7 @@ struct CpuPlatformWithAProbe {
   static constexpr std::uint64_t kResetVector = 0;
 
   CpuPlatformWithAProbe() : platform{WithAProbe()} {
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", 64}, {"reset_vector", kResetVector}});
+    AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kResetVector}});
     platform.Add("probe", "counting_probe");
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Bind("cpu.socket", "probe.target");
@@ -311,8 +311,7 @@ struct CpuWithItsResetInATestsHands {
   explicit CpuWithItsResetInATestsHands(const Drive& reset)
       : platform{WithALineDriver(reset)} {
     platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", 64}, {"reset_vector", kResetVector}});
+    AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kResetVector}});
     platform.Add(
         "bus", "router",
         {{"outputs", 1}, {"out0.base", kResetVector}, {"out0.size", 0x1000}});
@@ -364,8 +363,8 @@ TEST(WhenA64BitAndA32BitCpuShareASimulation, EachComputesInItsOwnWordSize) {
        {std::pair{"wide", 64}, std::pair{"narrow", 32}}) {
     const std::string cpu = std::string(name) + ".cpu";
     const std::string ram = std::string(name) + ".ram";
-    platform.Add(
-        cpu, "dbt_rise_cpu",
+    AddTheCpu(
+        platform, cpu,
         {{"xlen", static_cast<std::uint64_t>(xlen)}, {"reset_vector", 0}});
     platform.Add(ram, "memory", {{"size", 0x1000}});
     platform.Bind(cpu + ".socket", ram + ".socket");
@@ -404,7 +403,7 @@ struct CpuPlatformWithAnInterruptSource {
       socpuppet::Config more = {})
       : platform{WithAnInterruptSource(interrupts)} {
     more.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
-    platform.Add("cpu", "dbt_rise_cpu", more);
+    AddTheCpu(platform, "cpu", more);
     platform.Add("bus", "router",
                  {{"outputs", 2},
                   {"out0.base", kRamBase},
@@ -688,8 +687,7 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   // The CPU runs up to 100 us ahead of the clock that the timer counts by.
   const sc_core::sc_time quantum{100, sc_core::SC_US};
   platform.SetQuantum(quantum);
-  platform.Add("cpu", "dbt_rise_cpu",
-               {{"xlen", 64}, {"reset_vector", kRamBase}});
+  AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
   platform.Add("bus", "router",
                {{"outputs", 3},
                 {"out0.base", kRamBase},
@@ -740,7 +738,7 @@ struct CpuPlatformWithATimer {
     // by.
     platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
     more.insert({{"xlen", xlen}, {"reset_vector", kRamBase}});
-    platform.Add("cpu", "dbt_rise_cpu", more);
+    AddTheCpu(platform, "cpu", more);
     platform.Add("bus", "router",
                  {{"outputs", 2},
                   {"out0.base", kRamBase},
@@ -908,7 +906,7 @@ struct CpuPlatformWithAnImsic {
     platform.SetQuantum(setup.quantum);
     socpuppet::Config cpu = setup.core;
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
-    platform.Add("cpu", "dbt_rise_cpu", cpu);
+    AddTheCpu(platform, "cpu", cpu);
     platform.Add("bus", "router",
                  {{"inputs", 2},
                   {"outputs", 3},
@@ -1104,7 +1102,7 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
      ElaborationIsRefusedAndTheErrorNamesThePort) {
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
-  platform.Add("cpu", "dbt_rise_cpu", {{"xlen", 64}, {"reset_vector", 0}});
+  AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", 0}});
   platform.Add("imsic", "imsic", {{"identities", 63}});
   platform.Bind("cpu.socket", "imsic.machine");
   platform.Bind("imsic.irq", "cpu.irq");
@@ -1168,7 +1166,7 @@ struct CpuPlatformWithPages {
       : platform{WithAProbeAndADeviceThat(interrupts)} {
     socpuppet::Config cpu = TheCoreWithSupervisorMode();
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
-    platform.Add("cpu", "dbt_rise_cpu", cpu);
+    AddTheCpu(platform, "cpu", cpu);
     platform.Add("bus", "router",
                  {{"outputs", 2},
                   {"out0.base", kRamBase},
@@ -2649,8 +2647,7 @@ TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {
             device.Raise();
           })};
   platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
-  platform.Add("cpu", "dbt_rise_cpu",
-               {{"xlen", 64}, {"reset_vector", kRamBase}});
+  AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
   platform.Add("bus", "router",
                {{"outputs", 3},
                 {"out0.base", kRamBase},

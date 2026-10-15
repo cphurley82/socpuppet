@@ -36,6 +36,9 @@ class QboxCpu : public sc_core::sc_module {
   sc_core::sc_in<bool> irq{"irq"};
   // The machine timer interrupt. Left unconnected, it is tied low.
   sc_core::sc_in<bool> timer_irq{"timer_irq"};
+  // The supervisor external interrupt: what an interrupt controller's
+  // output for that mode drives. Left unconnected, it is tied low.
+  sc_core::sc_in<bool> supervisor_irq{"supervisor_irq"};
 
   // `xlen` is the width of its registers in bits, which must be 64: any
   // other is std::invalid_argument. `reset_vector` is the address of the
@@ -61,6 +64,7 @@ class QboxCpu : public sc_core::sc_module {
   void OnReset();
   void OnIrq();
   void OnTimerIrq();
+  void OnSupervisorIrq();
 
   // What an input left unconnected is bound to.
   sc_core::sc_signal<bool> tied_low_{"tied_low"};

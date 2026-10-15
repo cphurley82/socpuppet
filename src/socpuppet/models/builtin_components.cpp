@@ -150,10 +150,12 @@ Registry BuiltinComponents() {
   registry.Add("qbox_cpu", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<QboxCpu>(
         name, parameters.Required("xlen"), parameters.Required("reset_vector"));
-    std::vector<Port> ports{InitiatorPort("socket", module->socket),
-                            WireSinkPort("irq", module->irq),
-                            WireSinkPort("timer_irq", module->timer_irq),
-                            WireSinkPort("reset", module->reset)};
+    std::vector<Port> ports{
+        InitiatorPort("socket", module->socket),
+        WireSinkPort("irq", module->irq),
+        WireSinkPort("timer_irq", module->timer_irq),
+        WireSinkPort("supervisor_irq", module->supervisor_irq),
+        WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
 #else

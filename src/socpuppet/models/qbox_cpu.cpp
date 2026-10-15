@@ -18,10 +18,11 @@ namespace socpuppet {
 
 namespace {
 
-// The numbers RISC-V gives the machine timer and machine external
-// interrupts: their bits in the interrupt-pending register, which is how
-// QBox numbers its CPU's interrupt inputs.
+// The numbers RISC-V gives the interrupts the adapter has inputs for:
+// their bits in the interrupt-pending register, which is how QBox numbers
+// its CPU's interrupt inputs.
 constexpr unsigned kMachineTimerInterrupt = 7;
+constexpr unsigned kSupervisorExternalInterrupt = 9;
 constexpr unsigned kMachineExternalInterrupt = 11;
 
 // The Core below is QBox's cpu_riscv64, in a QEMU built for 64-bit RISC-V
@@ -130,6 +131,9 @@ QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
   SC_METHOD(OnTimerIrq);
   sensitive << timer_irq;
   dont_initialize();
+  SC_METHOD(OnSupervisorIrq);
+  sensitive << supervisor_irq;
+  dont_initialize();
 }
 
 QboxCpu::~QboxCpu() = default;
@@ -146,6 +150,7 @@ void QboxCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(reset, tied_low_);
   TieLowIfUnconnected(irq, tied_low_);
   TieLowIfUnconnected(timer_irq, tied_low_);
+  TieLowIfUnconnected(supervisor_irq, tied_low_);
 }
 
 void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
@@ -161,6 +166,10 @@ void QboxCpu::OnIrq() {
 
 void QboxCpu::OnTimerIrq() {
   core_->SetInterrupt(kMachineTimerInterrupt, timer_irq.read());
+}
+
+void QboxCpu::OnSupervisorIrq() {
+  core_->SetInterrupt(kSupervisorExternalInterrupt, supervisor_irq.read());
 }
 
 }  // namespace socpuppet
