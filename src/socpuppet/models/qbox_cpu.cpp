@@ -142,9 +142,8 @@ QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
     : sc_module(name), core_(MakeCore(*this, xlen, reset_vector)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &QboxCpu::invalidate_direct_mem_ptr);
-  SC_METHOD(OnReset);
-  sensitive << reset;
-  dont_initialize();
+  // A thread, because QBox's CPU waits while it finishes a reset.
+  SC_THREAD(OnReset);
   SC_METHOD(OnIrq);
   sensitive << irq;
   dont_initialize();
@@ -180,7 +179,12 @@ void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
   core_->InvalidateDirectMemory(start, end);
 }
 
-void QboxCpu::OnReset() { core_->SetReset(reset.read()); }
+void QboxCpu::OnReset() {
+  for (;;) {
+    wait(reset.value_changed_event());
+    core_->SetReset(reset.read());
+  }
+}
 
 void QboxCpu::OnIrq() {
   core_->SetInterrupt(kMachineExternalInterrupt, irq.read());

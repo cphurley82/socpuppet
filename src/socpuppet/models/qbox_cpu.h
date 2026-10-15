@@ -66,8 +66,9 @@ class QboxCpu : public sc_core::sc_module {
                                         std::uint64_t reset_vector);
   // A target taking back direct memory access it granted earlier.
   void invalidate_direct_mem_ptr(sc_dt::uint64 start, sc_dt::uint64 end);
-  // Each input, passed on to QBox's CPU when it changes.
-  void OnReset();
+  // Each input, passed on to QBox's CPU when it changes. OnReset() is a
+  // thread, the others are methods.
+  [[noreturn]] void OnReset();
   void OnIrq();
   void OnTimerIrq();
   void OnSupervisorIrq();

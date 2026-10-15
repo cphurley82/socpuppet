@@ -1226,3 +1226,13 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: the same two, one to each project.
 - **Kind**: missing feature.
 - **When it lands**: delete both patch files.
+
+### A reset pulse while a busy CPU is ahead of the clock is not taken
+
+- **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::reset_cb`.
+- **What is wrong**: on reset's rising edge QBox queues a job for QEMU's CPU (`async_safe_run`) that resets it, and on the falling edge waits for that job to have run before it ends the reset. With QEMU as a coroutine, a CPU in a loop that is ahead of the clock had not run the job by the end of a 1 ms run, so the falling edge waits all that time and the CPU never starts over. It also takes about 13 s of the host's time to get there.
+- **How to see it**: `WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock.TheCpuStartsOverAtItsResetVector` in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu`: QBox logs "Start reset" at 250 µs and "Hold reset" at 251 µs, never "Finished reset", and the program counted one start where it should have counted two. A reset while the CPU sleeps, or before it starts, works (the bus-master contract).
+- **What we do**: nothing; it is one of the qbox_cpu's recorded fates.
+- **Upstream fix**: in coroutine mode, run the reset on the SystemC thread when the CPU's coroutine next yields, rather than as safe work for a CPU thread there is not.
+- **Kind**: bug.
+- **When it lands**: the fate goes.
