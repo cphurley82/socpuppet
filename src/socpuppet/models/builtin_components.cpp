@@ -153,6 +153,7 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         InitiatorPort("socket", module->socket),
         InitiatorPort("time", module->time, /*required=*/false),
+        InitiatorPort("csr", module->csr, /*required=*/false),
         WireSinkPort("irq", module->irq),
         WireSinkPort("timer_irq", module->timer_irq),
         WireSinkPort("supervisor_irq", module->supervisor_irq),

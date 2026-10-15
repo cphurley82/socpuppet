@@ -1,0 +1,92 @@
+diff --git a/libqemu/exports.py b/libqemu/exports.py
+index 9ab1bc0c6..7499b94d8 100755
+--- a/libqemu/exports.py
++++ b/libqemu/exports.py
+@@ -444,6 +444,12 @@
+         priv = 'libqemu_cpu_riscv_register_mip_update_callback', arch = 'riscv')
+ ExportedFct('cpu_riscv_register_reset', 'void', [ 'Object *' ],
+         priv = 'libqemu_cpu_riscv_register_reset', arch = 'riscv')
++ExportedFct('cpu_riscv_set_rdtime_fn', 'void',
++        [ 'Object *', 'LibQemuRiscvRdtimeFn', 'void *' ],
++        priv = 'libqemu_cpu_riscv_set_rdtime_fn', arch = 'riscv')
++ExportedFct('cpu_riscv_set_aia_ireg_rmw_fn', 'void',
++        [ 'Object *', 'uint32_t', 'LibQemuRiscvAiaIregRmwFn', 'void *' ],
++        priv = 'libqemu_cpu_riscv_set_aia_ireg_rmw_fn', arch = 'riscv')
+ 
+ # Hexagon specific exports
+ PrivateInclude('libqemu/wrappers/target/hexagon.h', arch = 'hexagon')
+diff --git a/libqemu/wrappers/target/riscv.c b/libqemu/wrappers/target/riscv.c
+index 4594e14ef..bd0110b44 100644
+--- a/libqemu/wrappers/target/riscv.c
++++ b/libqemu/wrappers/target/riscv.c
+@@ -21,6 +21,7 @@
+ 
+ #include "riscv.h"
+ #include "cpu-qom.h"
++#include "cpu.h"
+ #include "riscv-callbacks.h"
+ #include "system/reset.h"
+ 
+@@ -59,3 +60,40 @@ void libqemu_cpu_riscv_register_reset(Object *cpu)
+ {
+     qemu_register_reset(do_cpu_reset, RISCV_CPU(cpu));
+ }
++
++void libqemu_cpu_riscv_set_rdtime_fn(Object *cpu, LibQemuRiscvRdtimeFn fn,
++                                     void *opaque)
++{
++    riscv_cpu_set_rdtime_fn(&RISCV_CPU(cpu)->env, fn, opaque);
++}
++
++/* The board's function, which takes 64-bit values whatever the target. */
++typedef struct AiaIregRmw {
++    LibQemuRiscvAiaIregRmwFn fn;
++    void *opaque;
++} AiaIregRmw;
++
++static int aia_ireg_rmw(void *arg, target_ulong reg, target_ulong *val,
++                        target_ulong new_val, target_ulong write_mask)
++{
++    AiaIregRmw *rmw = arg;
++    uint64_t value = 0;
++    int ret = rmw->fn(rmw->opaque, reg, &value, new_val, write_mask);
++
++    if (val) {
++        *val = value;
++    }
++    return ret;
++}
++
++void libqemu_cpu_riscv_set_aia_ireg_rmw_fn(Object *cpu, uint32_t priv,
++                                           LibQemuRiscvAiaIregRmwFn fn,
++                                           void *opaque)
++{
++    AiaIregRmw *rmw = g_new(AiaIregRmw, 1);
++
++    rmw->fn = fn;
++    rmw->opaque = opaque;
++    riscv_cpu_set_aia_ireg_rmw_fn(&RISCV_CPU(cpu)->env, priv, aia_ireg_rmw,
++                                  rmw);
++}
+diff --git a/libqemu/wrappers/target/riscv.h b/libqemu/wrappers/target/riscv.h
+index d90327299..cf0946a10 100644
+--- a/libqemu/wrappers/target/riscv.h
++++ b/libqemu/wrappers/target/riscv.h
+@@ -31,4 +31,17 @@ void libqemu_cpu_riscv_register_mip_update_callback(LibQemuRiscvMipUpdateCallbac
+                                                   void *opaque);
+ void libqemu_cpu_riscv_register_reset(Object *cpu);
+ 
++typedef uint64_t (*LibQemuRiscvRdtimeFn)(void *opaque);
++
++void libqemu_cpu_riscv_set_rdtime_fn(Object *cpu, LibQemuRiscvRdtimeFn fn,
++                                     void *opaque);
++
++typedef int (*LibQemuRiscvAiaIregRmwFn)(void *opaque, uint64_t reg,
++                                        uint64_t *val, uint64_t new_val,
++                                        uint64_t write_mask);
++
++void libqemu_cpu_riscv_set_aia_ireg_rmw_fn(Object *cpu, uint32_t priv,
++                                           LibQemuRiscvAiaIregRmwFn fn,
++                                           void *opaque);
++
+ #endif

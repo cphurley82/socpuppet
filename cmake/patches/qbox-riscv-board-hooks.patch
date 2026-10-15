@@ -1,8 +1,8 @@
 diff --git a/qemu-components/common/include/libqemu-cxx/target/riscv.h b/qemu-components/common/include/libqemu-cxx/target/riscv.h
-index 0504da09..08cac0f2 100644
+index 0504da09..c3aae7e7 100644
 --- a/qemu-components/common/include/libqemu-cxx/target/riscv.h
 +++ b/qemu-components/common/include/libqemu-cxx/target/riscv.h
-@@ -24,6 +24,10 @@ public:
+@@ -24,6 +24,17 @@ public:
  
      void set_mip_update_callback(MipUpdateCallbackFn cb);
      void register_reset();
@@ -10,14 +10,21 @@ index 0504da09..08cac0f2 100644
 +    /* Has fn(opaque) answer the CPU's reads of its time register. */
 +    using RdtimeFn = uint64_t (*)(void* opaque);
 +    void set_rdtime_fn(RdtimeFn fn, void* opaque);
++
++    /*
++     * Has fn(opaque, reg, val, new_val, write_mask) answer the AIA registers
++     * QEMU leaves to the board for privilege level priv: an IMSIC's.
++     */
++    using AiaIregRmwFn = int (*)(void* opaque, uint64_t reg, uint64_t* val, uint64_t new_val, uint64_t write_mask);
++    void set_aia_ireg_rmw_fn(uint32_t priv, AiaIregRmwFn fn, void* opaque);
  };
  
  class CpuRiscv32 : public CpuRiscv
 diff --git a/qemu-components/common/src/libqemu-cxx/target/riscv.cc b/qemu-components/common/src/libqemu-cxx/target/riscv.cc
-index 133806ad..55a9d02a 100644
+index 133806ad..e264d847 100644
 --- a/qemu-components/common/src/libqemu-cxx/target/riscv.cc
 +++ b/qemu-components/common/src/libqemu-cxx/target/riscv.cc
-@@ -18,4 +18,9 @@ void CpuRiscv::set_mip_update_callback(MipUpdateCallbackFn cb)
+@@ -18,4 +18,14 @@ void CpuRiscv::set_mip_update_callback(MipUpdateCallbackFn cb)
  }
  
  void CpuRiscv::register_reset() { m_int->exports().cpu_riscv_register_reset(m_obj); }
@@ -25,5 +32,10 @@ index 133806ad..55a9d02a 100644
 +void CpuRiscv::set_rdtime_fn(RdtimeFn fn, void* opaque)
 +{
 +    m_int->exports().cpu_riscv_set_rdtime_fn(m_obj, fn, opaque);
++}
++
++void CpuRiscv::set_aia_ireg_rmw_fn(uint32_t priv, AiaIregRmwFn fn, void* opaque)
++{
++    m_int->exports().cpu_riscv_set_aia_ireg_rmw_fn(m_obj, priv, fn, opaque);
 +}
  } // namespace qemu

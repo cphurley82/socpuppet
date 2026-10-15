@@ -1,5 +1,6 @@
 #include "socpuppet/models/qbox_cpu.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -13,12 +14,23 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/hart_adapter.h"
+#include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
 namespace {
+
+// QEMU's numbers for the two modes whose IMSIC registers it hands to the
+// platform, and how it says which register: an IMSIC register's number,
+// as selected, in the low bits, or this for the one a claim is made
+// through (`mtopei` or `stopei`), and the mode two bits above.
+constexpr std::uint32_t kMachineMode = 3;
+constexpr std::uint32_t kSupervisorMode = 1;
+constexpr std::uint64_t kTopei = 0x200;
 
 // The numbers RISC-V gives the interrupts the adapter has inputs for:
 // their bits in the interrupt-pending register, which is how QBox numbers
@@ -53,6 +65,11 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   set("qemu.sync_policy", cci::cci_value(std::string("tlm2")));
   set("qemu.icount", cci::cci_value(true));
   set("core.resetvec", cci::cci_value(reset_vector));
+  // The Advanced Interrupt Architecture's registers for both modes, which
+  // reach an IMSIC through `csr`. QEMU has them whether or not there is one,
+  // because nothing can be asked whether there is before the run starts.
+  set("core.smaia", cci::cci_value(true));
+  set("core.ssaia", cci::cci_value(true));
 }
 
 }  // namespace
@@ -81,6 +98,27 @@ struct QboxCpu::Core {
     qemu::CpuRiscv64(core_.get_qemu_dev())
         .set_rdtime_fn(
             [](void* core) { return static_cast<Core*>(core)->Time(); }, this);
+  }
+
+  // Has QEMU hand the registers that are really an IMSIC's to `csr`, for
+  // machine mode and for supervisor mode. QEMU reads and writes such a
+  // register in one go, with a mask that says which bits are written, and
+  // through `csr` that is a read and then, if there is anything to write,
+  // a write. A patch exports the hook (docs/upstream.md).
+  void AnswerTheImsicsRegistersThroughCsr() {
+    qemu::CpuRiscv64 cpu(core_.get_qemu_dev());
+    for (const std::uint32_t mode : {kMachineMode, kSupervisorMode}) {
+      cpu.set_aia_ireg_rmw_fn(
+          mode,
+          [](void* core, std::uint64_t reg, std::uint64_t* value,
+             std::uint64_t new_value, std::uint64_t write_mask) {
+            return static_cast<Core*>(core)->ThroughCsr(reg, *value, new_value,
+                                                        write_mask)
+                       ? 0
+                       : -1;
+          },
+          this);
+    }
   }
 
   void SetReset(bool high) { core_.reset->write(high); }
@@ -130,6 +168,39 @@ struct QboxCpu::Core {
     return ReadTheTimer(cpu_.time, core_.initiator_get_local_time());
   }
 
+  // QEMU's read-and-write of the IMSIC register `reg` names, through
+  // `csr`. Returns whether there was such a register there.
+  bool ThroughCsr(std::uint64_t reg, std::uint64_t& value,
+                  std::uint64_t new_value, std::uint64_t write_mask) {
+    const bool machine = ((reg >> 16) & 0x3) == kMachineMode;
+    const std::uint64_t selected = reg & 0xFFFF;
+    const std::uint64_t address =
+        selected == kTopei
+            ? HartRegisterAddress(machine ? kMtopei : kStopei)
+            : HartRegisterAddress(machine ? kMireg : kSireg,
+                                  static_cast<std::uint32_t>(selected));
+    // The delay means nothing to whoever answers. It is the CPU's lead all
+    // the same, so that a trace of the socket has the access where the bus
+    // accesses around it are.
+    sc_core::sc_time lead = core_.initiator_get_local_time();
+    std::array<std::uint8_t, kHartRegisterBytes> bytes{};
+    if (Transport(cpu_.csr, tlm::TLM_READ_COMMAND, address, bytes, lead) !=
+        tlm::TLM_OK_RESPONSE) {
+      return false;
+    }
+    value = LoadLittleEndian<std::uint64_t>(bytes);
+    if (write_mask == 0) return true;
+    auto written =
+        LittleEndianBytes((value & ~write_mask) | (new_value & write_mask));
+    if (Transport(cpu_.csr, tlm::TLM_WRITE_COMMAND, address, written, lead) !=
+        tlm::TLM_OK_RESPONSE) {
+      return false;
+    }
+    // A claim may have quieted the IMSIC's line.
+    LetALineThatChangedBeHeard();
+    return true;
+  }
+
   QboxCpu& cpu_;
   tlm_utils::simple_target_socket<Core> from_core_{"from_core"};
   QemuInstanceManager manager_{"qemu_manager"};
@@ -172,7 +243,10 @@ void QboxCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(supervisor_irq, tied_low_);
 }
 
-void QboxCpu::end_of_elaboration() { core_->AnswerTimeFromTheTimer(); }
+void QboxCpu::end_of_elaboration() {
+  core_->AnswerTimeFromTheTimer();
+  core_->AnswerTheImsicsRegistersThroughCsr();
+}
 
 void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
                                         sc_dt::uint64 end) {

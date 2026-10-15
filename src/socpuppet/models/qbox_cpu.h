@@ -32,6 +32,12 @@ class QboxCpu : public sc_core::sc_module {
   // Where the `time` register is read from: a machine timer's `time`
   // socket. Left unconnected, `time` reads zero.
   tlm_utils::simple_initiator_socket<QboxCpu> time{"time"};
+  // Where the registers that are really its IMSIC's are reached, as
+  // models/hart_registers.h says: `mireg` and `mtopei`, and supervisor
+  // mode's `sireg` and `stopei`. QEMU keeps the two selecting registers
+  // itself. Left unconnected, an instruction that names one of the four is
+  // an illegal one.
+  tlm_utils::simple_initiator_socket<QboxCpu> csr{"csr"};
   // While high, the CPU does nothing. When it goes low, the CPU starts from
   // its reset vector. Left unconnected, it is tied low.
   sc_core::sc_in<bool> reset{"reset"};
@@ -53,8 +59,9 @@ class QboxCpu : public sc_core::sc_module {
   // SystemC's last chance to bind a port. By now we know whether anyone
   // connected the inputs.
   void before_end_of_elaboration() override;
-  // By now QBox has made QEMU's CPU, which the `time` register's reads are
-  // handed to. It makes it in its own before_end_of_elaboration.
+  // By now QBox has made QEMU's CPU, which is told who answers its `time`
+  // register and its IMSIC's registers. It makes it in its own
+  // before_end_of_elaboration.
   void end_of_elaboration() override;
 
  private:
