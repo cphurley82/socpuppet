@@ -48,12 +48,25 @@ for name in $(compgen -e); do
   fi
 done
 
-# On Linux the repository's mount keeps the container's user, so the command
-# runs as the caller's, to leave nothing in build/ that only root can
-# remove. Docker Desktop on a Mac does that mapping by itself.
-if [[ "$(uname -s)" == Linux ]]; then
-  options+=(--user "$(id -u):$(id -g)")
-fi
+case "$(uname -s)" in
+  # On Linux the repository's mount keeps the container's user, so the
+  # command runs as the caller's, to leave nothing in build/ that only root
+  # can remove.
+  Linux) options+=(--user "$(id -u):$(id -g)") ;;
+  # Docker Desktop on a Mac maps the user by itself, and reads the
+  # repository through file sharing, which a compiler finds ten times slower
+  # than a Docker volume (docs/twister-spike.md). So QBox's tree and
+  # socpuppet's tree built with it are volumes, at the places in build/ that
+  # tools/build_qbox.sh and the qbox preset use. On the Mac those two
+  # directories stay empty, and `docker volume rm socpuppet-qbox
+  # socpuppet-qbox-dev` throws the trees away.
+  Darwin)
+    options+=(
+      --volume socpuppet-qbox:/workspace/build/qbox
+      --volume socpuppet-qbox-dev:/workspace/build/qbox-dev
+    )
+    ;;
+esac
 
 # From a terminal, the command has one, so that a shell in the container
 # works.
@@ -61,14 +74,6 @@ if [[ -t 0 && -t 1 ]]; then
   options+=(--interactive --tty)
 fi
 
-# QBox's tree and socpuppet's tree built with it are Docker volumes, at the
-# places in build/ that tools/build_qbox.sh and the qbox preset use: a
-# compiler reading through the repository's mount from a Mac is ten times
-# slower (docs/twister-spike.md). On the Mac those two directories stay
-# empty, and `docker volume rm socpuppet-qbox socpuppet-qbox-dev` throws
-# the trees away.
 exec docker run --rm \
   --volume "$repository:/workspace" --workdir /workspace \
-  --volume socpuppet-qbox:/workspace/build/qbox \
-  --volume socpuppet-qbox-dev:/workspace/build/qbox-dev \
   "${options[@]}" "$image" "$@"

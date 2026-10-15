@@ -228,3 +228,13 @@ def test_from_a_script_the_container_is_given_no_terminal(devcontainer):
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     assert "--tty" not in run
+
+
+def test_on_linux_qboxs_trees_are_the_repositorys_own_as_any_other_build_tree(
+    devcontainer,
+):
+    result, calls = devcontainer("true", env={"UNAME": "Linux"})
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert values(run, "--volume") == [f"{REPO}:/workspace"]
