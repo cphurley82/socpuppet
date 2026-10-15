@@ -96,6 +96,20 @@ struct QboxCpu::Core {
     CatchUpIfPastTheQuantum(delay);
     cpu_.socket->b_transport(transaction, delay);
     CatchUpIfPastTheQuantum(delay);
+    LetALineThatChangedBeHeard();
+  }
+  // An access may have changed an interrupt line: a handler's write to its
+  // device is what quiets it. The CPU hears of a line from a method of the
+  // adapter's, which cannot run until this thread yields, and with a
+  // quantum that is a thousand instructions off. Without a yield here the
+  // CPU would return from its handler still seeing the interrupt pending,
+  // and take it again and again. One delta cycle runs the device's method
+  // and updates its line, a second runs the adapter's, as DbtRiseCpu does.
+  static void LetALineThatChangedBeHeard() {
+    for (int delta = 0;
+         delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
+      sc_core::wait(sc_core::SC_ZERO_TIME);
+    }
   }
   static void CatchUpIfPastTheQuantum(sc_core::sc_time& delay) {
     if (delay <= tlm::tlm_global_quantum::instance().get()) return;
