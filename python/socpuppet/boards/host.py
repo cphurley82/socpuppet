@@ -76,9 +76,10 @@ See its devicetree:     socpuppet devicetree <this file>
 
 from __future__ import annotations
 
+import os
 import sys
 import textwrap
-from typing import Any, NamedTuple, Protocol, overload
+from typing import Any, Literal, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
 from socpuppet.boards.boot import ROM_BASE, Boot
@@ -110,12 +111,16 @@ from socpuppet.components import (
     Ns16550,
     PassThroughLink,
     PcieRootComplex,
+    QboxCpu,
     Router,
     SpiFlash,
 )
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
 from socpuppet.time import ms
+
+#: Which of its two CPUs the host has: socpuppet's own, or QEMU's.
+type HostCpu = Literal["dbt_rise_cpu", "qbox_cpu"]
 
 #: Where the RAM starts, and where the CPU starts executing.
 RAM_BASE = 0x8000_0000
@@ -268,6 +273,7 @@ class Host[Drive: PcieDrive](NamedTuple):
 @overload
 def host(
     *,
+    cpu: HostCpu | None = None,
     gdb_port: int = 0,
     boot: Boot | None = None,
     drive_blocks: int | None = None,
@@ -277,6 +283,7 @@ def host(
 @overload
 def host[Drive: PcieDrive](
     *,
+    cpu: HostCpu | None = None,
     gdb_port: int = 0,
     boot: Boot | None = None,
     drive_blocks: int | None = None,
@@ -286,6 +293,7 @@ def host[Drive: PcieDrive](
 ) -> Host[Drive]: ...
 def host(
     *,
+    cpu: HostCpu | None = None,
     gdb_port: int = 0,
     boot: Boot | None = None,
     drive_blocks: int | None = None,
@@ -294,6 +302,14 @@ def host(
     trace: bool = False,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
+
+    `cpu` is which RISC-V CPU it has, by its name in the simulator:
+    `"dbt_rise_cpu"`, socpuppet's own, or `"qbox_cpu"`, QEMU's, which only
+    a build of socpuppet with QBox has (`sp.QboxCpu`). Either is RV64GC
+    with supervisor and user mode, and the board is the same around it.
+    With none it is the one the environment variable SOCPUPPET_CPU names,
+    and else socpuppet's own: so one variable runs every host a program
+    describes on the other CPU.
 
     With a `gdb_port`, the CPU listens for a debugger on that TCP port and
     waits for one to attach before it executes anything.
@@ -335,11 +351,24 @@ def host(
             "Say how many 512-byte blocks it holds: "
             "host(drive_blocks=4096, drive=...)."
         )
+    named_by = "SOCPUPPET_CPU" if cpu is None else "The host's cpu"
+    chosen = cpu or os.environ.get("SOCPUPPET_CPU", DbtRiseCpu.implementation)
+    if chosen not in HOST_CPUS:
+        raise ValueError(
+            f'{named_by} is "{chosen}", and the CPUs the host can have are '
+            + " and ".join(f'"{name}"' for name in HOST_CPUS)
+            + "."
+        )
+    if chosen == QboxCpu.implementation and gdb_port:
+        raise ValueError(
+            "The host was given a gdb_port with QBox's CPU, and the GDB "
+            'server is the other one\'s. Debug on the "dbt_rise_cpu".'
+        )
     platform = Platform()
     compute_group = platform.group("compute")
     io_group = platform.group("io")
     compute = _compute_die(
-        platform, compute_group, gdb_port=gdb_port, boot=boot
+        platform, compute_group, cpu=chosen, gdb_port=gdb_port, boot=boot
     )
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
@@ -410,8 +439,18 @@ class _ComputeDie(NamedTuple):
     rom: Placed | None
 
 
+#: The CPUs the host can have, by their names in the simulator, which are
+#: what `host(cpu=)`, `socpuppet run --cpu` and SOCPUPPET_CPU take.
+HOST_CPUS: tuple[HostCpu, ...] = ("dbt_rise_cpu", "qbox_cpu")
+
+
 def _compute_die(
-    platform: Platform, place: Group, *, gdb_port: int, boot: Boot | None
+    platform: Platform,
+    place: Group,
+    *,
+    cpu: str,
+    gdb_port: int,
+    boot: Boot | None,
 ) -> _ComputeDie:
     """Describe the die the CPU is on, up to its end of the link."""
     bus = place.add("bus", Router())
@@ -420,11 +459,14 @@ def _compute_die(
     # processor has, and the one Linux needs. Zephyr runs on it in machine
     # mode and leaves floating point and the other two modes alone. This
     # core has no PMP, which the RV64IMAC one had.
-    cpu = place.add(
+    reset_vector = RAM_BASE if rom is None else ROM_BASE
+    placed_cpu = place.add(
         "cpu",
-        DbtRiseCpu(
+        QboxCpu(xlen=64, reset_vector=reset_vector)
+        if cpu == QboxCpu.implementation
+        else DbtRiseCpu(
             xlen=64,
-            reset_vector=RAM_BASE if rom is None else ROM_BASE,
+            reset_vector=reset_vector,
             gdb_port=gdb_port,
             isa="gc",
             modes="msu",
@@ -436,12 +478,12 @@ def _compute_die(
     # For a device on this die that only has a wire. Its messages go onto
     # this die's own bus, where the IMSIC's page is.
     aplic = place.add("aplic", Aplic())
-    platform.connect(cpu.socket, bus.target)
+    platform.connect(placed_cpu.socket, bus.target)
     syscon = add_system_controller(
         platform,
         place,
         bus,
-        cpu,
+        placed_cpu,
         die=COMPUTE_DIE,
         boot_address=BOOT_FLASH_BASE + HOST_IMAGE_OFFSET,
     )
@@ -458,14 +500,14 @@ def _compute_die(
         syscon,
         irq=getattr(aplic, f"source{WATCHDOG_SOURCE}"),
     )
-    platform.connect(imsic.irq, cpu.irq)
-    platform.connect(imsic.supervisor_irq, cpu.supervisor_irq)
+    platform.connect(imsic.irq, placed_cpu.irq)
+    platform.connect(imsic.supervisor_irq, placed_cpu.supervisor_irq)
     # The IMSIC's registers are the CPU's to reach, and not on the bus.
-    platform.connect(cpu.csr, imsic.csr)
-    platform.connect(timer.irq, cpu.timer_irq)
+    platform.connect(placed_cpu.csr, imsic.csr)
+    platform.connect(timer.irq, placed_cpu.timer_irq)
     # The CPU's `time` register is the timer's count.
-    platform.connect(cpu.time, timer.time)
-    return _ComputeDie(cpu, bus, imsic, syscon, wdt, rom)
+    platform.connect(placed_cpu.time, timer.time)
+    return _ComputeDie(placed_cpu, bus, imsic, syscon, wdt, rom)
 
 
 class _IoDie(NamedTuple):
@@ -585,8 +627,10 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
     )
 
 
-#: What `socpuppet devicetree` looks for in a description file.
-platform = host().platform
+#: What `socpuppet devicetree` looks for in a description file. The
+#: devicetree is the same with either CPU, and this one does not depend on
+#: what SOCPUPPET_CPU says.
+platform = host(cpu="dbt_rise_cpu").platform
 
 if __name__ == "__main__":
     board = host()

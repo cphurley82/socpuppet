@@ -16,6 +16,18 @@ from socpuppet.components import (
 )
 
 
+def component_classes():
+    """Every class that describes an implementation, however far down."""
+    found = set()
+    unvisited = list(Component.__subclasses__())
+    while unvisited:
+        each = unvisited.pop()
+        unvisited.extend(each.__subclasses__())
+        if "implementation" in vars(each):
+            found.add(each)
+    return found
+
+
 def router_with_one_output():
     router = sp.Router()
     router.add_output(base=0, size=0x100, label="example")
@@ -130,9 +142,7 @@ class TestASpiFlashOfASizeTheChipCannotBe:
 
 class TestTheCatalogue:
     def test_has_an_example_here_for_every_component_class(self):
-        assert {type(example) for example in EXAMPLES} == set(
-            Component.__subclasses__()
-        )
+        assert {type(example) for example in EXAMPLES} == component_classes()
 
     @pytest.mark.platform
     def test_names_exactly_the_implementations_the_simulator_has(self):

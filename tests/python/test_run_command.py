@@ -17,7 +17,7 @@ from cast import (
 from elf_files import elf_file
 from processes import run_socpuppet, start_socpuppet
 from riscv_program import SPIN, a_program_that_says
-from socpuppet import ztest
+from socpuppet import _core, ztest
 from socpuppet.boards import host
 from zephyr_module import BOARDS
 
@@ -256,6 +256,95 @@ class TestWhenTheRunCommandLoadsZephyrsHelloWorldIntoTheHostsRam:
             str(firmware(HELLO_WORLD)),
             "--board",
             "socpuppet_host",
+            "--boot",
+            "ram",
+            "--until",
+            LONG_ENOUGH_TO_SAY_HELLO,
+        )
+
+        assert GREETING in result.stdout
+
+
+class TestWhenTheRunCommandIsAskedForQboxsCpuOnABoardThatHasNoChoice:
+    def test_it_fails_in_one_line_that_says_which_board_has_one(self, tmp_path):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path, xlen=32)),
+            "--board",
+            "socpuppet_ssd",
+            "--cpu",
+            "qbox_cpu",
+            check=False,
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "socpuppet_ssd" in line
+        assert "socpuppet_host" in line
+
+
+class TestWhenSocpuppetCpuNamesACpuThereIsNot:
+    def test_the_run_command_fails_in_one_line_that_names_it_and_the_cpus_there_are(
+        self, tmp_path
+    ):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path)),
+            "--board",
+            "socpuppet_host",
+            check=False,
+            SOCPUPPET_CPU="spam",
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "spam" in line
+        assert "dbt_rise_cpu" in line
+        assert "qbox_cpu" in line
+
+
+@pytest.mark.skipif(_core.has_qbox, reason="this build has QBox's CPU")
+class TestWhenTheRunCommandIsAskedForQboxsCpuInABuildWithoutIt:
+    def test_it_fails_in_one_line_that_says_how_to_build_one(self, tmp_path):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path)),
+            "--board",
+            "socpuppet_host",
+            "--cpu",
+            "qbox_cpu",
+            check=False,
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "tools/build_qbox.sh" in line
+
+    def test_socpuppet_cpu_asks_for_it_as_the_option_does(self, tmp_path):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path)),
+            "--board",
+            "socpuppet_host",
+            check=False,
+            SOCPUPPET_CPU="qbox_cpu",
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "tools/build_qbox.sh" in line
+
+
+@pytest.mark.skipif(not _core.has_qbox, reason="this build has no QBox")
+class TestWhenTheRunCommandLoadsZephyrsHelloWorldIntoTheHostsRamOnQboxsCpu:
+    def test_it_prints_what_the_image_says_on_its_console(self, firmware):
+        result = run_socpuppet(
+            "run",
+            str(firmware(HELLO_WORLD)),
+            "--board",
+            "socpuppet_host",
+            "--cpu",
+            "qbox_cpu",
             "--boot",
             "ram",
             "--until",

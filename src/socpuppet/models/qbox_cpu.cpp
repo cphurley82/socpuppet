@@ -68,6 +68,14 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   set("qemu.sync_policy", cci::cci_value(std::string("tlm2")));
   set("qemu.icount", cci::cci_value(true));
   set("core.resetvec", cci::cci_value(reset_vector));
+  // QBox logs what it does as warnings ("QOM Device creation", "Start
+  // reset"), which would be among the first lines a run prints. Its
+  // errors are reported whatever the level (SCP_ERR in its scp/report.h),
+  // and its warnings only above level 0, so 0 it is, for the CPU and
+  // everything of QBox's under it: the level is looked up by a
+  // component's path, then its parents'.
+  constexpr int kNoWarnings = 0;
+  set("log_level", cci::cci_value(kNoWarnings));
   // The Advanced Interrupt Architecture's registers for both modes, which
   // reach an IMSIC through `csr`. QEMU has them whether or not there is one,
   // because nothing can be asked whether there is before the run starts.

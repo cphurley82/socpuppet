@@ -1,4 +1,8 @@
-"""Debugging firmware: a GDB client attached to the CPU."""
+"""Debugging firmware: a GDB client attached to the CPU.
+
+The GDB server is DBT-RISE's, so a host here has that CPU whatever
+SOCPUPPET_CPU says (docs/models/qbox-cpu.md).
+"""
 
 import functools
 import re
@@ -295,7 +299,7 @@ def two_cpus_waiting_for_debuggers(spams_port, eggs_port):
 class TestWhenTheHostBoardIsGivenAGdbPort:
     def test_a_debugger_finds_its_cpu_stopped_where_the_firmware_starts(self):
         port = free_port()
-        board = host(gdb_port=port)
+        board = host(cpu="dbt_rise_cpu", gdb_port=port)
         board.platform.build()
 
         pc = run_with_a_debugger(
@@ -316,6 +320,7 @@ class TestWhenOneOfTheTwoCpusOfTheHostWithTheSsdIsGivenAGdbPort:
     def test_given_to_the_host_a_debugger_finds_the_hosts_cpu(self):
         port = free_port()
         board = host(
+            cpu="dbt_rise_cpu",
             gdb_port=port,
             drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
             drive=add_ssd,
@@ -331,6 +336,7 @@ class TestWhenOneOfTheTwoCpusOfTheHostWithTheSsdIsGivenAGdbPort:
     def test_given_to_the_ssd_a_debugger_finds_the_ssds_cpu(self):
         port = free_port()
         board = host(
+            cpu="dbt_rise_cpu",
             drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
             drive=functools.partial(add_ssd, gdb_port=port),
         )
@@ -449,6 +455,7 @@ class ThreeDebuggedCpus:
     def __init__(self, firmware):
         self.ports = {who: free_port() for who in ("host", "manager", "ssd")}
         self.board = host(
+            cpu="dbt_rise_cpu",
             gdb_port=self.ports["host"],
             # 2 MiB of drive, as in the exit tests that run this disk test.
             drive_blocks=4096,

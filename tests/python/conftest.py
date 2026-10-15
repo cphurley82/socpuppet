@@ -58,3 +58,18 @@ def zephyr_tree(pytestconfig):
             "takes a few minutes the first time."
         )
     return tree
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "not_on_qbox(reason): a test of the host that QBox's CPU does not "
+        "pass, and why. It is skipped with the reason when SOCPUPPET_CPU is "
+        "qbox_cpu, which the qbox test preset sets (docs/models/qbox-cpu.md).",
+    )
+
+
+def pytest_runtest_setup(item):
+    fate = item.get_closest_marker("not_on_qbox")
+    if fate is not None and os.environ.get("SOCPUPPET_CPU") == "qbox_cpu":
+        pytest.skip(f"on QBox: {fate.args[0]}")

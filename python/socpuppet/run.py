@@ -1,5 +1,6 @@
 """`socpuppet run`: one firmware image run on one of socpuppet's boards."""
 
+import functools
 import os
 import pathlib
 import sys
@@ -9,11 +10,11 @@ from typing import NamedTuple
 from socpuppet import boot_image, ztest
 from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
-from socpuppet.boards.host import host
+from socpuppet.boards.host import HOST_CPUS, HostCpu, host
 from socpuppet.boards.io_manager import io_manager, one_round_trip
 from socpuppet.boards.scripted_host import bring_up_the_drive, idle_host
 from socpuppet.boards.ssd import ssd
-from socpuppet.components import DbtRiseCpu, SystemController
+from socpuppet.components import RiscvCpu, SystemController
 from socpuppet.errors import NvmeError
 from socpuppet.ops import Steps
 from socpuppet.placed import Placed, PlacedUart
@@ -39,14 +40,21 @@ class _Board(NamedTuple):
     #: The shields it takes. 🎓 A shield is Zephyr's word for something
     #: plugged into a board, which an image is built with or without.
     shields: tuple[str, ...]
-    #: Describes it, with the shields that are on it and what its CPU
-    #: starts in.
-    describe: Callable[[Sequence[str], boot.Boot | None], _Stage]
+    #: Describes it, with the shields that are on it, what its CPU starts
+    #: in and, for the host, which CPU that is.
+    #: A board with a choice of CPU also takes `cpu=`.
+    describe: Callable[..., _Stage]
+    #: The CPUs it can have, by `--cpu`, if it has a choice.
+    cpus: tuple[HostCpu, ...] = ()
 
 
-def _host(shields: Sequence[str], how: boot.Boot | None) -> _Stage:
+def _host(
+    shields: Sequence[str], how: boot.Boot | None, cpu: HostCpu | None = None
+) -> _Stage:
     """The host, with 🎭 the stand-in drive if its shield is on."""
-    it = host(boot=how, drive_blocks=_DRIVE_BLOCKS if shields else None)
+    it = host(
+        cpu=cpu, boot=how, drive_blocks=_DRIVE_BLOCKS if shields else None
+    )
     return _Stage(it.platform, it.cpu, it.uart, it.syscon)
 
 
@@ -109,7 +117,7 @@ def _on_a_kit(platform: Platform, cpu: Placed, kit: CpuKit | None) -> _Stage:
 
 #: The boards an image can be run on, by the names Zephyr has for them.
 BOARDS = {
-    "socpuppet_host": _Board(("socpuppet_host_drive",), _host),
+    "socpuppet_host": _Board(("socpuppet_host_drive",), _host, HOST_CPUS),
     "socpuppet_ssd": _Board(("socpuppet_ssd_host",), _ssd),
     "socpuppet_iomgr": _Board((), _iomgr),
 }
@@ -128,6 +136,7 @@ def run(
     *,
     from_rom: bool,
     until: int,
+    host_cpu: HostCpu | None = None,
 ) -> None:
     """Run the ELF file `image` on `board`, and print what it says.
 
@@ -138,6 +147,10 @@ def run(
     verdict, when the simulation has nothing left to do, or after `until`
     of simulated time (see `ms`). It also ends when 🎭 a stand-in that a
     shield puts beside the board cannot do its part, with what it says.
+
+    `host_cpu` is the host's CPU, which only the host has a choice of, by
+    its name in the simulator. With none it is the one SOCPUPPET_CPU names
+    (`host(cpu=)`), so that a test runner can ask for it.
 
     What cannot be run ends the command with one line that says why, and
     so does a verdict that a test failed, with no line: the console has
@@ -161,9 +174,24 @@ def run(
         program = boot_image.from_elf(image)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
-    stage = BOARDS[board].describe(shields, boot.from_rom if from_rom else None)
+    the_board = BOARDS[board]
+    if host_cpu is not None and not the_board.cpus:
+        sys.exit(
+            f"The board {board} has one CPU, and a choice of CPU is for "
+            f"{_listed(tuple(n for n, b in BOARDS.items() if b.cpus))}. Run "
+            "it without --cpu."
+        )
+    describe = (
+        functools.partial(the_board.describe, cpu=host_cpu)
+        if host_cpu is not None
+        else the_board.describe
+    )
+    try:
+        stage = describe(shields, boot.from_rom if from_rom else None)
+    except ValueError as refused:  # a description refused: SOCPUPPET_CPU
+        sys.exit(str(refused))
     cpu = stage.cpu.component
-    assert isinstance(cpu, DbtRiseCpu)  # every board here has one
+    assert isinstance(cpu, RiscvCpu)  # every board here has one
     if program.xlen != cpu.xlen:
         # The first sentence is what the boot ROM would say on the console
         # (firmware/rom). It is said here before anything runs, and for an
@@ -185,7 +213,7 @@ def run(
             )
         syscon = stage.syscon.component
         assert isinstance(syscon, SystemController)
-        platform.build()
+        _build(platform)
         # The ROM's program is what the CPU starts in, and the image goes
         # where the system controller tells that program to look.
         platform.load_elf(rom_program, via=stage.cpu.socket)
@@ -193,7 +221,7 @@ def run(
             syscon.boot_address, program.to_bytes(), via=stage.cpu.socket
         )
     else:
-        platform.build()
+        _build(platform)
         platform.load_elf(image, via=stage.cpu.socket)
     try:
         verdict = _perform(platform, stage.uart, until)
@@ -252,6 +280,17 @@ def _perform(
     if unfinished:
         print(unfinished, flush=True)
     return None
+
+
+def _build(platform: Platform) -> None:
+    """Build the platform, or say in one line what this build cannot make.
+
+    That is QBox's CPU, in a build without QBox.
+    """
+    try:
+        platform.build()
+    except ValueError as refused:
+        sys.exit(str(refused))
 
 
 def _firmware_directory() -> pathlib.Path:

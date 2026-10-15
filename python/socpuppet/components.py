@@ -392,67 +392,25 @@ _CORES: Mapping[tuple[str, str], tuple[int, ...]] = {
 }
 
 
-class DbtRiseCpu(Component):
-    """A RISC-V CPU that runs real firmware.
+class RiscvCpu(Component):
+    """What socpuppet's RISC-V CPUs have alike, `DbtRiseCpu` and `QboxCpu`.
 
-    The model is DBT-RISE-RISCV (Minres), an instruction-set simulator: it
-    executes the firmware's instructions one after another, the way the
-    processor would. `xlen` is the width of its registers in bits, 32 or
-    64 (XLEN is the RISC-V specification's name for it), and `reset_vector`
-    is the address of the first instruction.
-
-    With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
-    waits for one to attach before it executes anything. Each CPU of a
-    simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
-    debugger stops the whole simulation, the other CPUs with it.
-
-    As it comes it is an RV32IMAC or RV64IMAC core in machine mode only: no
-    floating point, and no supervisor or user mode. Build firmware for it
-    with `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
-
-    `isa` is which instruction sets it has, by RISC-V's letters for them:
-    the part of `RV64IMAC` after the number. `modes` is which privilege
-    modes. `isa="gc", modes="msu"` is RV64GC, with single and double
-    precision floating point, and with supervisor and user mode below
-    machine mode. That pair, at 64 bits only, and the default pair,
-    `isa="imac", modes="m"`, at either width, are the cores there are. Any
-    other combination is refused. Firmware built for RV64IMAC runs on the
-    RV64GC core unchanged. ⚠️ Unless it uses physical memory protection
-    (PMP), which the default core has and the RV64GC one has not.
+    The same ports, the same node in a devicetree, the same interrupt
+    numbers and the same checks on an image. `xlen` is the width of its
+    registers in bits (XLEN is the RISC-V specification's name for it),
+    and `reset_vector` is the address of the first instruction. `isa` and
+    `modes` are which instruction sets and privilege modes its core has,
+    by RISC-V's letters for them.
     """
 
-    implementation = "dbt_rise_cpu"
     port_specs = _HART_PORTS
     is_bus_master = True
 
     xlen: int
     reset_vector: int
-    gdb_port: int = 0
-    isa: Literal["imac", "gc"] = not_a_parameter(default="imac")
-    modes: Literal["m", "msu"] = not_a_parameter(default="m")
-
-    def __post_init__(self) -> None:
-        if self.xlen not in _CORES.get((self.isa, self.modes), ()):
-            raise ValueError(
-                f'There is no CPU with xlen={self.xlen}, isa="{self.isa}", '
-                f'modes="{self.modes}". The ones there are: '
-                + ", and ".join(
-                    f'isa="{isa}", modes="{modes}" with xlen='
-                    + " or ".join(str(xlen) for xlen in xlens)
-                    for (isa, modes), xlens in _CORES.items()
-                )
-                + "."
-            )
-
-    @property
-    @override
-    def parameters(self) -> dict[str, int]:
-        # The simulator takes numbers, so the two strings go as two flags.
-        return {
-            **super().parameters,
-            "floating_point": int(self.isa == "gc"),
-            "supervisor_mode": int(self.modes == "msu"),
-        }
+    # Each kind of CPU says which it has.
+    isa: str = dataclasses.field(metadata={"parameter": False})
+    modes: str = dataclasses.field(metadata={"parameter": False})
 
     @override
     def cpu_node(
@@ -554,19 +512,98 @@ class DbtRiseCpu(Component):
         )
 
 
-class QboxCpu(Component):
+class DbtRiseCpu(RiscvCpu):
+    """A RISC-V CPU that runs real firmware.
+
+    The model is DBT-RISE-RISCV (Minres), an instruction-set simulator: it
+    executes the firmware's instructions one after another, the way the
+    processor would. `xlen` is the width of its registers in bits, 32 or
+    64 (XLEN is the RISC-V specification's name for it), and `reset_vector`
+    is the address of the first instruction.
+
+    With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
+    waits for one to attach before it executes anything. Each CPU of a
+    simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
+    debugger stops the whole simulation, the other CPUs with it.
+
+    As it comes it is an RV32IMAC or RV64IMAC core in machine mode only: no
+    floating point, and no supervisor or user mode. Build firmware for it
+    with `-march=rv32imac_zicsr_zifencei` or `-march=rv64imac_zicsr_zifencei`.
+
+    `isa` is which instruction sets it has, by RISC-V's letters for them:
+    the part of `RV64IMAC` after the number. `modes` is which privilege
+    modes. `isa="gc", modes="msu"` is RV64GC, with single and double
+    precision floating point, and with supervisor and user mode below
+    machine mode. That pair, at 64 bits only, and the default pair,
+    `isa="imac", modes="m"`, at either width, are the cores there are. Any
+    other combination is refused. Firmware built for RV64IMAC runs on the
+    RV64GC core unchanged. ⚠️ Unless it uses physical memory protection
+    (PMP), which the default core has and the RV64GC one has not.
+    """
+
+    implementation = "dbt_rise_cpu"
+
+    gdb_port: int = 0
+    isa: Literal["imac", "gc"] = not_a_parameter(default="imac")
+    modes: Literal["m", "msu"] = not_a_parameter(default="m")
+
+    def __post_init__(self) -> None:
+        if self.xlen not in _CORES.get((self.isa, self.modes), ()):
+            raise ValueError(
+                f'There is no CPU with xlen={self.xlen}, isa="{self.isa}", '
+                f'modes="{self.modes}". The ones there are: '
+                + ", and ".join(
+                    f'isa="{isa}", modes="{modes}" with xlen='
+                    + " or ".join(str(xlen) for xlen in xlens)
+                    for (isa, modes), xlens in _CORES.items()
+                )
+                + "."
+            )
+
+    @property
+    @override
+    def parameters(self) -> dict[str, int]:
+        # The simulator takes numbers, so the two strings go as two flags.
+        return {
+            **super().parameters,
+            "floating_point": int(self.isa == "gc"),
+            "supervisor_mode": int(self.modes == "msu"),
+        }
+
+
+class QboxCpu(RiscvCpu):
     """A RISC-V CPU that is QEMU's: QBox, Qualcomm's QEMU inside SystemC.
 
-    Only a build of socpuppet with QBox has it (tools/build_qbox.sh). It
-    has the same ports as `DbtRiseCpu`.
+    QEMU translates the firmware's instructions into the host's as it
+    meets them, where `DbtRiseCpu` interprets them, so it is many times
+    faster, and it is a second hart written by other people: firmware that
+    works on one and not the other says which to look at. Only a build of
+    socpuppet with QBox has it (tools/build_qbox.sh), because QEMU is
+    GPL-2.0 and is never in the wheel.
+
+    It is RV64GC with supervisor and user mode, the core `DbtRiseCpu` has
+    as `isa="gc", modes="msu"`, and has the same ports. It counts a
+    nanosecond for each instruction, where `DbtRiseCpu` counts a hundred.
+    docs/models/qbox-cpu.md says what else it does differently.
     """
 
     implementation = "qbox_cpu"
-    port_specs = _HART_PORTS
-    is_bus_master = True
 
-    xlen: int
-    reset_vector: int
+    isa: Literal["gc"] = not_a_parameter(default="gc")
+    modes: Literal["msu"] = not_a_parameter(default="msu")
+
+    def __post_init__(self) -> None:
+        if self.xlen != 64:
+            raise ValueError(
+                f"A QboxCpu is a 64-bit CPU, and xlen={self.xlen} was asked "
+                "for. A CPU of another width is a DbtRiseCpu."
+            )
+        if (self.isa, self.modes) != ("gc", "msu"):
+            raise ValueError(
+                "A QboxCpu is RV64GC with supervisor and user mode: "
+                'isa="gc", modes="msu", and '
+                f'isa="{self.isa}", modes="{self.modes}" was asked for.'
+            )
 
 
 class DmaEngine(Component):

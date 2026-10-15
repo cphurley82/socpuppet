@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 from socpuppet import address_map, boot_image, interrupt_map, run
 from socpuppet.address_map import MapEntry
+from socpuppet.boards.host import HOST_CPUS
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
 from socpuppet.time import ms
@@ -128,6 +129,16 @@ def main(arguments: Sequence[str] | None = None) -> None:
         ),
     )
     runner.add_argument(
+        "--cpu",
+        choices=HOST_CPUS,
+        metavar="CPU",
+        help=(
+            "the host's CPU: dbt_rise_cpu, socpuppet's own, or qbox_cpu, "
+            "QEMU's, which only a build with QBox has. The default is the "
+            "one SOCPUPPET_CPU names, or else dbt_rise_cpu"
+        ),
+    )
+    runner.add_argument(
         "--until",
         type=int,
         default=30_000,
@@ -146,6 +157,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             options.shield,
             from_rom=options.boot == "rom",
             until=ms(options.until),
+            host_cpu=options.cpu,
         )
     elif options.command == "zephyr-module":
         print(pathlib.Path(__file__).parent / "zephyr_module")
