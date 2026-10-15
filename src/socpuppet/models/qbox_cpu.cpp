@@ -25,11 +25,16 @@ namespace socpuppet {
 namespace {
 
 // QEMU's numbers for the two modes whose IMSIC registers it hands to the
-// platform, and how it says which register: an IMSIC register's number,
-// as selected, in the low bits, or this for the one a claim is made
-// through (`mtopei` or `stopei`), and the mode two bits above.
+// platform, and how it says which register (AIA_MAKE_IREG, in QEMU's
+// target/riscv/cpu.h): in the low sixteen bits, the number of the IMSIC
+// register selected, which is always one of an IMSIC's, from 0x70 to
+// 0xFF, or kTopei for the one a claim is made through (`mtopei` or
+// `stopei`, QEMU's ISELECT_IMSIC_TOPEI); and above them, the mode.
 constexpr std::uint32_t kMachineMode = 3;
 constexpr std::uint32_t kSupervisorMode = 1;
+constexpr std::uint64_t kSelectionBits = 0xFFFF;
+constexpr unsigned kModeShift = 16;
+constexpr std::uint64_t kModeBits = 0x3;
 constexpr std::uint64_t kTopei = 0x200;
 
 // The numbers RISC-V gives the interrupts the adapter has inputs for:
@@ -112,8 +117,8 @@ struct QboxCpu::Core {
           mode,
           [](void* core, std::uint64_t reg, std::uint64_t* value,
              std::uint64_t new_value, std::uint64_t write_mask) {
-            return static_cast<Core*>(core)->ThroughCsr(reg, *value, new_value,
-                                                        write_mask)
+            return static_cast<Core*>(core)->ReadAndWriteThroughCsr(
+                       reg, *value, new_value, write_mask)
                        ? 0
                        : -1;
           },
@@ -170,10 +175,11 @@ struct QboxCpu::Core {
 
   // QEMU's read-and-write of the IMSIC register `reg` names, through
   // `csr`. Returns whether there was such a register there.
-  bool ThroughCsr(std::uint64_t reg, std::uint64_t& value,
-                  std::uint64_t new_value, std::uint64_t write_mask) {
-    const bool machine = ((reg >> 16) & 0x3) == kMachineMode;
-    const std::uint64_t selected = reg & 0xFFFF;
+  bool ReadAndWriteThroughCsr(std::uint64_t reg, std::uint64_t& value,
+                              std::uint64_t new_value,
+                              std::uint64_t write_mask) {
+    const bool machine = ((reg >> kModeShift) & kModeBits) == kMachineMode;
+    const std::uint64_t selected = reg & kSelectionBits;
     const std::uint64_t address =
         selected == kTopei
             ? HartRegisterAddress(machine ? kMtopei : kStopei)
@@ -253,10 +259,17 @@ void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
   core_->InvalidateDirectMemory(start, end);
 }
 
+// QBox can wait while it lets the CPU out of reset, and the line can have
+// gone high again meanwhile, unseen: so the line is passed on until what
+// was passed on is what it is.
 void QboxCpu::OnReset() {
   for (;;) {
     wait(reset.value_changed_event());
-    core_->SetReset(reset.read());
+    bool passed_on = false;
+    do {
+      passed_on = reset.read();
+      core_->SetReset(passed_on);
+    } while (reset.read() != passed_on);
   }
 }
 
