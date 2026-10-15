@@ -29,7 +29,7 @@ Each entry says:
 - **Where**: `src/sysc/CMakeLists.txt`, the `try_compile` that decides `HAVE_STAGE_CALLBACKS`.
 - **What is wrong**: the probe passes `LINK_LIBRARIES SystemC::systemc`. 🎓 `try_compile` configures a small separate project, and a target that the enclosing build is about to compile does not exist there. So when SystemC comes from `FetchContent` or `add_subdirectory`, and not from an installed package, the probe cannot succeed.
 - **How to see it**: fetch SystemC 3.0.2 and SCC with `FetchContent` in one project and configure. The probe only compiles a source file to a static library, so it never needed to link.
-- **What we do**: `cmake/patches/scc-in-tree-systemc.patch` replaces the `LINK_LIBRARIES` line with `CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${systemc_SOURCE_DIR}/src"`.
+- **What we do**: `cmake/patches/scc-in-tree-systemc.patch` replaces the `LINK_LIBRARIES` line with `CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${SOCPUPPET_SYSTEMC_INCLUDE_DIR}"`. `cmake/Dependencies.cmake` sets that to the fetched SystemC's `src`, or, in a build with QBox, to the directory that holds QBox's SystemC headers and nothing else (see QBox's entries below).
 - **Upstream fix**: our patch names the fetched source directory, which is too specific to send as it is. Propose giving the probe SystemC's include directories instead of linking the target, read from the target's properties, so that both an installed and an in-tree SystemC work.
 - **Kind**: build.
 - **When it lands**: delete the patch file and its line in `PATCH_COMMAND`.
@@ -49,10 +49,10 @@ Each entry says:
 - **Where**: SCC's top-level `CMakeLists.txt`, which looks for an installed SystemC through its `SystemCPackage` module, and `src/sysc/CMakeLists.txt`, which stops with "No usable SystemC installation found" when `SystemC_FOUND` is not set.
 - **What is wrong**: a project that already has a `SystemC::systemc` target, because it builds SystemC itself, has no supported way to say so.
 - **How to see it**: add SCC to a project that builds SystemC from source, without setting anything.
-- **What we do**: `set(SystemC_FOUND TRUE)` and `set(SystemC_LIBRARIES SystemC::systemc)` before SCC is added, in `cmake/Dependencies.cmake`.
-- **Upstream fix**: skip the search when the target already exists (`if(TARGET SystemC::systemc)`), and treat that as found.
+- **What we do**: `set(SystemC_FOUND TRUE)` and `set(SystemC_LIBRARIES SystemC::systemc)` before SCC is added, in `cmake/Dependencies.cmake`. In a build with QBox the same goes for CCI: SCC skips its bundled copy when a `SystemC::cci` target exists, and then links `${CCI_LIBRARIES}` if `CCI_FOUND` is set, and a target called `systemc-cci::systemc-cci`, which nothing defines, if it is not. So `CCI_FOUND` and `CCI_LIBRARIES SystemC::cci` are set too.
+- **Upstream fix**: skip the search when the target already exists (`if(TARGET SystemC::systemc)`), and treat that as found. Likewise link `SystemC::cci` when it is the target that made SCC skip its own CCI.
 - **Kind**: build.
-- **When it lands**: delete the two `set` lines and their comment.
+- **When it lands**: delete the `set` lines and their comment.
 
 ### Install rules cannot be switched off
 
@@ -96,6 +96,20 @@ Each entry says:
 - **Upstream fix**: an interface target for the header-only protocols, and the ambiguity in `chi_lwtr.cpp` mended, which is the same one as in "LWTR4SC's `record` is ambiguous" above.
 - **Kind**: build.
 - **When it lands**: link the target, and drop the include path.
+
+## SystemC
+
+[accellera-official/systemc](https://github.com/accellera-official/systemc), pinned at `febde7a3` (after 3.0.2) in `cmake/Dependencies.cmake`, the commit QBox builds. Without QBox it is built from source and linked statically. With QBox, socpuppet links the shared library QBox built, so that a process holds one SystemC kernel.
+
+### A shared SystemC asks every program for `sc_main`
+
+- **Where**: `src/sysc/kernel/sc_main.cpp` and `sc_main_main.cpp`: the library carries a `main()` of its own, which calls `sc_main()`.
+- **What is wrong**: a program that has its own `main()`, or is not a program at all but a Python extension, never calls `sc_main()`, and still has to define it. In a static link the linker leaves `main()` and the call out, since nothing asks for them. A shared `libsystemc.so` keeps both, and its reference to `sc_main` has to be resolved: by the linker for a program, and by Python's loader, which resolves every name at once (`RTLD_NOW`), for an extension.
+- **How to see it**: `nm -D libsystemc.so.3.0.2 | grep sc_main` in QBox's install shows `U sc_main`.
+- **What we do**: `src/socpuppet/platform/sc_main_stub.cpp` defines one that returns 0, visible, linked whole into everything that links the platform, in a build with QBox only.
+- **Upstream fix**: put `main()` and the call to `sc_main()` in a small static library of their own beside the shared one, so that a program that wants the classic entry point links that as well, and one that does not never meets it.
+- **Kind**: build.
+- **When it lands**: delete the stub and its library in `src/socpuppet/CMakeLists.txt`.
 
 ## SystemC CCI
 

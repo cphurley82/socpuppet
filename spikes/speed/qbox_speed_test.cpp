@@ -1,8 +1,12 @@
 // The speed spike's three loops (milestone M26) on QBox: QEMU's RISC-V CPU
 // inside SystemC. The same programs as speed_test.cpp, from loops.h, on a
-// platform of QBox's CPU and a RAM that grants direct access, and nothing
-// of socpuppet's, which QBox's SystemC cannot be linked with. Each test
+// platform of QBox's CPU and a RAM that grants direct access. Each test
 // prints the same line of JSON, with "cpu": "qbox".
+//
+// Built into spike_speed_tests when socpuppet is built with QBox
+// (SOCPUPPET_QBOX_DIR), which links socpuppet to QBox's SystemC. This file
+// is compiled on its own (CMakeLists.txt), because it includes QBox's
+// headers, and QBox's fmt and scp/report.h are not socpuppet's.
 //
 // Two configurations: repeatable, which is QEMU as a coroutine on the
 // SystemC thread counting instructions for time, and threaded, which is
@@ -25,7 +29,6 @@
 #include <gtest/gtest.h>
 #include <qemu-instance.h>
 #include <riscv64.h>
-#include <scp/report.h>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
@@ -259,15 +262,4 @@ TEST(Qbox, HitsThreaded) {
   Measure("hits", true,
           speed::Paging(kPages, kDataLayout, kRounds, /*empty_the_tlb=*/false),
           kResultPage);
-}
-
-// QBox's SystemC is a shared library whose main() refers to sc_main().
-int sc_main(int, char**) { return 0; }
-
-// QBox's parameters need their broker before any component exists.
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  scp::init_logging(scp::LogConfig().logLevel(scp::log::WARNING));
-  gs::ConfigurableBroker broker{};
-  return RUN_ALL_TESTS();
 }

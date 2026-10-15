@@ -255,6 +255,17 @@ target_sources(socpuppet_platform PUBLIC
 target_link_libraries(socpuppet_platform PUBLIC
   socpuppet_core scc::components SystemC::systemc)
 socpuppet_dev_checks(socpuppet_platform)
+# With QBox's shared SystemC, every program and the extension define the
+# sc_main() that SystemC's library calls and never get to
+# (platform/sc_main_stub.cpp). Nothing refers to it from our side, so the
+# whole library is linked.
+if(SOCPUPPET_HAS_QBOX)
+  add_library(socpuppet_sc_main STATIC platform/sc_main_stub.cpp)
+  target_link_libraries(socpuppet_sc_main PRIVATE SystemC::systemc)
+  socpuppet_dev_checks(socpuppet_sc_main)
+  target_link_libraries(socpuppet_platform PUBLIC
+    $<LINK_LIBRARY:WHOLE_ARCHIVE,socpuppet_sc_main>)
+endif()
 
 # models/: the SystemC wrappers. Header-only, apart from the adapters above.
 add_library(socpuppet_models INTERFACE)

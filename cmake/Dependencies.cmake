@@ -5,10 +5,52 @@ include(FetchContent)
 # EXCLUDE_FROM_ALL keeps a dependency's install rules out of our wheel.
 # SYSTEM silences warnings from its headers.
 
-FetchContent_Declare(systemc
-  URL https://github.com/accellera-official/systemc/archive/refs/tags/3.0.2.tar.gz
-  URL_HASH SHA256=9b3693ed286aab958b9e5d79bb0ad3bc523bbc46931100553275352038f4a0c4
-  EXCLUDE_FROM_ALL SYSTEM)
+# --- SystemC, ours or QBox's -------------------------------------------------
+# QBox (Qualcomm's QEMU in SystemC) is a second CPU, built from source by
+# tools/build_qbox.sh because QEMU is GPL. Its libraries link a shared
+# SystemC and CCI of their own, and one process can hold only one SystemC
+# kernel, so a build with QBox links socpuppet to those same two libraries.
+# Without QBox, SystemC is fetched at the commit QBox builds and linked
+# statically, as always, so the two builds run the same kernel.
+set(SOCPUPPET_QBOX_DIR "" CACHE PATH
+  "A QBox install made by tools/build_qbox.sh, to build the qbox_cpu with")
+if(SOCPUPPET_QBOX_DIR)
+  if(NOT EXISTS ${SOCPUPPET_QBOX_DIR}/lib/cmake/qbox-2.0/qboxConfig.cmake)
+    message(FATAL_ERROR "SOCPUPPET_QBOX_DIR is \"${SOCPUPPET_QBOX_DIR}\", "
+      "and there is no QBox installed there. Build it with "
+      "tools/build_qbox.sh, which installs it in build/qbox/install.")
+  endif()
+  list(APPEND CMAKE_PREFIX_PATH ${SOCPUPPET_QBOX_DIR})
+  find_package(SystemCLanguage CONFIG REQUIRED)
+  find_package(SystemCCCI CONFIG REQUIRED)
+  # QBox installs SystemC's headers in one directory with its own copies of
+  # fmt and of a header called scp/report.h, both of which socpuppet has
+  # newer or different ones of. A directory that holds SystemC's and CCI's
+  # headers and nothing else keeps those two out of every file but the
+  # QBox adapter's.
+  set(SOCPUPPET_SYSTEMC_INCLUDE_DIR ${CMAKE_BINARY_DIR}/qbox-systemc/include)
+  file(MAKE_DIRECTORY ${SOCPUPPET_SYSTEMC_INCLUDE_DIR})
+  foreach(_header systemc systemc.h sysc tlm tlm.h tlm_core tlm_utils
+      cci cci_configuration cci_inspection)
+    file(CREATE_LINK ${SOCPUPPET_QBOX_DIR}/include/${_header}
+      ${SOCPUPPET_SYSTEMC_INCLUDE_DIR}/${_header} SYMBOLIC)
+  endforeach()
+  set_target_properties(SystemC::systemc SystemC::cci-config
+    SystemC::cci-inspection PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES ${SOCPUPPET_SYSTEMC_INCLUDE_DIR})
+  set(SOCPUPPET_HAS_QBOX TRUE)
+  message(STATUS "socpuppet: QBox from ${SOCPUPPET_QBOX_DIR}, with its "
+    "SystemC ${SystemCLanguage_VERSION}")
+else()
+  FetchContent_Declare(systemc
+    # The commit QBox builds, after 3.0.2 (tools/build_qbox.sh).
+    GIT_REPOSITORY https://github.com/accellera-official/systemc.git
+    GIT_TAG febde7a3e007ce3030cf574a4cb6fcc13d0ed820
+    EXCLUDE_FROM_ALL SYSTEM)
+  FetchContent_MakeAvailable(systemc)
+  set(SOCPUPPET_SYSTEMC_INCLUDE_DIR ${systemc_SOURCE_DIR}/src)
+  set(SOCPUPPET_HAS_QBOX FALSE)
+endif()
 
 if(SOCPUPPET_BUILD_TESTS)
   set(INSTALL_GTEST OFF)
@@ -28,7 +70,7 @@ FetchContent_Declare(pybind11
   URL_HASH SHA256=ef712655692a2e9bf7bb7874c022564a45f91d847ddee987e720cd9e28849665
   EXCLUDE_FROM_ALL SYSTEM)
 
-FetchContent_MakeAvailable(systemc pybind11)
+FetchContent_MakeAvailable(pybind11)
 
 # --- SCC (SystemC-Components) and what it needs -----------------------------
 # SCC looks its dependencies up with find_package(). OVERRIDE_FIND_PACKAGE
@@ -74,10 +116,23 @@ FetchContent_MakeAvailable(Boost fmt spdlog yaml-cpp)
 # CMake it was written for.
 unset(CMAKE_POLICY_VERSION_MINIMUM)
 
+# QBox's package names the fmt it was built with, and finds ours (the
+# OVERRIDE_FIND_PACKAGE above). Its libraries keep using their own, a
+# shared fmt 9 whose names are in a namespace of their own (fmt::v9).
+if(SOCPUPPET_HAS_QBOX)
+  find_package(qbox CONFIG REQUIRED)
+endif()
+
 # SCC probes for SystemC by compiling against an installed copy. Ours is
 # built in this same tree, so tell SCC it is already found.
 set(SystemC_FOUND TRUE)
 set(SystemC_LIBRARIES SystemC::systemc)
+# And the same for QBox's CCI, which SCC then uses in place of the copy it
+# carries.
+if(SOCPUPPET_HAS_QBOX)
+  set(CCI_FOUND TRUE)
+  set(CCI_LIBRARIES SystemC::cci)
+endif()
 # SCC's optional dependencies would be picked up from the machine if present
 # and end up as shared-library dependencies of the wheel. Keep them out.
 # zlib is the exception: SCC's bundled FST trace writer requires it, and it
