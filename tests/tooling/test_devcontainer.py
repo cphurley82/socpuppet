@@ -9,6 +9,7 @@ without Docker.
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "devcontainer.sh"
+BASH = shutil.which("bash")
 DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
 TAG = (
     "socpuppet-dev:" + hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()[:12]
@@ -59,7 +61,7 @@ def devcontainer(tmp_path):
 
     def run(*args, images=(TAG,), env=None):
         result = subprocess.run(
-            ["bash", str(SCRIPT), *args],
+            [BASH, str(SCRIPT), *args],
             env={
                 **inherited,
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
@@ -182,3 +184,23 @@ def test_on_a_mac_the_container_runs_as_its_own_user(devcontainer):
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     assert values(run, "--user") == []
+
+
+def test_without_docker_the_tool_stops_and_says_to_install_docker_desktop(
+    devcontainer, tmp_path
+):
+    (tmp_path / "bin" / "docker").unlink()
+
+    # Only the stand-ins, since a Linux machine may have Docker in /usr/bin.
+    result, _ = devcontainer("true", env={"PATH": str(tmp_path / "bin")})
+
+    assert result.returncode == 1
+    assert "Docker Desktop" in result.stdout
+
+
+def test_without_a_command_the_usage_is_printed(devcontainer):
+    result, calls = devcontainer()
+
+    assert result.returncode == 2
+    assert "usage: tools/devcontainer.sh" in result.stdout
+    assert not calls

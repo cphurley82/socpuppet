@@ -6,6 +6,16 @@
 #   tools/devcontainer.sh bash
 set -euo pipefail
 
+if [[ $# -eq 0 ]]; then
+  echo "usage: tools/devcontainer.sh COMMAND [ARGUMENT...]" >&2
+  exit 2
+fi
+if ! command -v docker > /dev/null; then
+  echo "tools/devcontainer.sh runs its command in the devcontainer's image, and found no Docker to do that with." >&2
+  echo "Install Docker Desktop, start it, and run this again." >&2
+  exit 1
+fi
+
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 dockerfile="$repository/.devcontainer/Dockerfile"
 
