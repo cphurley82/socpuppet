@@ -349,6 +349,9 @@ FetchContent_Declare(dbt_rise_riscv
   # name the SystemC wrapper never looks up. llvm-init-jit: and nothing in
   # the wrapper set up LLVM's target for the host, which riscv-sim's main()
   # does. llvm-wfi-call: LLVM's `wfi` called the helper as asmjit's did.
+  # topi: the hart with supervisor mode had no `mtopi` or `stopi`, so
+  # OpenSBI, which looks for `mtopi`, left its IMSIC alone, and Linux could
+  # not ask `stopi` which interrupt it took.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -381,6 +384,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-core-names.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-init-jit.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-wfi-call.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-topi.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at

@@ -36,6 +36,16 @@ using ::testing::ThrowsMessage;
 
 namespace {
 
+// The word that a program loaded at `start` left `offset` bytes into its
+// result, read through the CPU's own view of memory.
+std::uint32_t ResultWordOf(socpuppet::Platform& platform, std::uint64_t start,
+                           std::uint64_t offset) {
+  std::array<std::uint8_t, 4> word{};
+  platform.DebugRead("cpu.socket", start + riscv::kResultOffset + offset,
+                     std::as_writable_bytes(std::span{word}));
+  return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+}
+
 // A platform with a CPU and nothing else but a RAM for its program.
 struct CpuPlatform {
   // Not zero, so that a CPU that ignored its reset vector would not pass.
@@ -62,12 +72,10 @@ struct CpuPlatform {
   // they need.
   void RunUntilAsleep() { platform.Run(sc_core::sc_time{1, sc_core::SC_MS}); }
 
-  // The word a program run from the reset vector left as its result.
-  std::uint32_t ResultWord() {
-    std::array<std::uint8_t, 4> word{};
-    platform.DebugRead("cpu.socket", kResetVector + riscv::kResultOffset,
-                       std::as_writable_bytes(std::span{word}));
-    return socpuppet::LoadLittleEndian<std::uint32_t>(word);
+  // The word a program run from the reset vector left `offset` bytes into
+  // its result.
+  std::uint32_t ResultWord(std::uint64_t offset = 0) {
+    return ResultWordOf(platform, kResetVector, offset);
   }
 
   // The byte a program run from the reset vector left as its result.
@@ -80,16 +88,6 @@ struct CpuPlatform {
 
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
 };
-
-// The word that a program loaded at `start` left `offset` bytes into its
-// result, read through the CPU's own view of memory.
-std::uint32_t ResultWordOf(socpuppet::Platform& platform, std::uint64_t start,
-                           std::uint64_t offset) {
-  std::array<std::uint8_t, 4> word{};
-  platform.DebugRead("cpu.socket", start + riscv::kResultOffset + offset,
-                     std::as_writable_bytes(std::span{word}));
-  return socpuppet::LoadLittleEndian<std::uint32_t>(word);
-}
 
 // The one core with supervisor mode is also the one with floating point.
 // socpuppet offers the two together or neither, so both are asked for.
@@ -1137,6 +1135,87 @@ TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
   EXPECT_THAT([&] { platform.Elaborate(); },
               ThrowsMessage<std::runtime_error>(HasSubstr("imsic.csr")));
 }
+
+// Interrupts that a program in machine mode, with interrupts off, hands
+// down, enables and makes pending, and the one each mode would take next.
+struct InterruptsOnTop {
+  const char* name;
+  riscv::Word handed_down;
+  riscv::Word enabled;
+  riscv::Word pending;
+  // The number `mtopi` names, and the one `stopi` names: zero for none.
+  riscv::Word machine_top;
+  riscv::Word supervisor_top;
+};
+
+void PrintTo(const InterruptsOnTop& interrupts, std::ostream* out) {
+  *out << interrupts.name;
+}
+
+// What a register that names a top interrupt says of it: its number, in
+// bits 27 to 16. The priority in the bits below is the hart's own affair:
+// OpenSBI and Linux read the number alone.
+riscv::Word NumberIn(std::uint32_t top) {
+  return (top >> riscv::kTopInterruptShift) & 0xFFF;
+}
+
+// 🎓 Interrupts arrive at a hart as bits in `mip`, and more than one can be
+// waiting. `mtopi` and `stopi` say which is the most urgent for each mode,
+// so that a handler can ask instead of working it out from `mip`, `mie`
+// and `mideleg` itself. OpenSBI's handler asks `mtopi` again and again
+// until it reads zero, and Linux's asks `stopi`. The order among the six
+// standard interrupts is fixed: external, then software, then timer, the
+// machine's three before the supervisor's.
+class WhenMachineModeMakesInterruptsPendingAndReadsWhichIsOnTop
+    : public ::testing::TestWithParam<InterruptsOnTop> {};
+
+TEST_P(WhenMachineModeMakesInterruptsPendingAndReadsWhichIsOnTop,
+       MtopiAndStopiEachNameTheOneTheirModeWouldTakeNext) {
+  const InterruptsOnTop& interrupts = GetParam();
+  CpuPlatform with_cpu{/*xlen=*/64, TheCoreWithSupervisorMode()};
+  with_cpu.Load(riscv::StoreTheTopInterrupts(
+      interrupts.handed_down, interrupts.enabled, interrupts.pending));
+
+  with_cpu.RunUntilAsleep();
+
+  const std::uint32_t mtopi = with_cpu.ResultWord(0);
+  const std::uint32_t stopi = with_cpu.ResultWord(4);
+  const std::uint32_t trap_cause_plus_one = with_cpu.ResultWord(8);
+  ASSERT_EQ(trap_cause_plus_one, 0U) << "A read trapped";
+  EXPECT_EQ(NumberIn(mtopi), interrupts.machine_top);
+  EXPECT_EQ(NumberIn(stopi), interrupts.supervisor_top);
+}
+
+constexpr riscv::Word kSoftware = 1U << riscv::kSupervisorSoftwareInterrupt;
+constexpr riscv::Word kTimer = 1U << riscv::kSupervisorTimerInterrupt;
+constexpr riscv::Word kExternal = 1U << riscv::kSupervisorExternalInterrupt;
+constexpr riscv::Word kAllThree = kSoftware | kTimer | kExternal;
+
+INSTANTIATE_TEST_SUITE_P(
+    EachMixOfTheSupervisorsInterrupts,
+    WhenMachineModeMakesInterruptsPendingAndReadsWhichIsOnTop,
+    ::testing::Values(
+        InterruptsOnTop{"the external interrupt, kept by machine mode", 0,
+                        kExternal, kExternal,
+                        riscv::kSupervisorExternalInterrupt, 0},
+        InterruptsOnTop{"the external interrupt, handed down", kExternal,
+                        kExternal, kExternal, 0,
+                        riscv::kSupervisorExternalInterrupt},
+        InterruptsOnTop{"the external interrupt, pending and not enabled", 0, 0,
+                        kExternal, 0, 0},
+        InterruptsOnTop{"all three, kept", 0, kAllThree, kAllThree,
+                        riscv::kSupervisorExternalInterrupt, 0},
+        InterruptsOnTop{"the software and timer interrupts, kept", 0,
+                        kSoftware | kTimer, kSoftware | kTimer,
+                        riscv::kSupervisorSoftwareInterrupt, 0},
+        InterruptsOnTop{"all three, handed down", kAllThree, kAllThree,
+                        kAllThree, 0, riscv::kSupervisorExternalInterrupt},
+        InterruptsOnTop{
+            "the timer interrupt handed down and the software one kept", kTimer,
+            kSoftware | kTimer, kSoftware | kTimer,
+            riscv::kSupervisorSoftwareInterrupt,
+            riscv::kSupervisorTimerInterrupt}),
+    NamedByWhatItIs{});
 
 // A platform for a program that runs under paging: the core with
 // supervisor mode, and 64 KiB of RAM with Sv39 page tables in it that a
