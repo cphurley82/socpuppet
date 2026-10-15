@@ -21,6 +21,15 @@ if(SOCPUPPET_QBOX_DIR)
       "tools/build_qbox.sh, which installs it in build/qbox/install.")
   endif()
   list(APPEND CMAKE_PREFIX_PATH ${SOCPUPPET_QBOX_DIR})
+  # CMake keeps where it found each package, and looks there first next
+  # time. A tree pointed at another install has to forget all of them.
+  if(NOT SOCPUPPET_QBOX_DIR STREQUAL _SOCPUPPET_QBOX_DIR_FOUND)
+    foreach(_package SystemCLanguage SystemCCCI qbox reporting libqemu)
+      unset(${_package}_DIR CACHE)
+    endforeach()
+    set(_SOCPUPPET_QBOX_DIR_FOUND ${SOCPUPPET_QBOX_DIR} CACHE INTERNAL
+      "The QBox install the packages below were found in")
+  endif()
   find_package(SystemCLanguage CONFIG REQUIRED)
   find_package(SystemCCCI CONFIG REQUIRED)
   # QBox installs SystemC's headers in one directory with its own copies of
