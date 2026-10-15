@@ -37,8 +37,9 @@ class QboxCpu : public sc_core::sc_module {
   // The machine timer interrupt. Left unconnected, it is tied low.
   sc_core::sc_in<bool> timer_irq{"timer_irq"};
 
-  // `xlen` is the width of its registers in bits. `reset_vector` is the
-  // address of the first instruction it executes.
+  // `xlen` is the width of its registers in bits, which must be 64: any
+  // other is std::invalid_argument. `reset_vector` is the address of the
+  // first instruction it executes.
   QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
           std::uint64_t reset_vector);
   ~QboxCpu() override;
@@ -50,8 +51,9 @@ class QboxCpu : public sc_core::sc_module {
  private:
   struct Core;
 
-  // QBox's parts, configured before they are built, as they must be.
-  static std::unique_ptr<Core> MakeCore(QboxCpu& cpu,
+  // QBox's parts, configured before they are built, as they must be, and
+  // refused first if `xlen` is not the 64 they are built for.
+  static std::unique_ptr<Core> MakeCore(QboxCpu& cpu, std::uint64_t xlen,
                                         std::uint64_t reset_vector);
   // A target taking back direct memory access it granted earlier.
   void invalidate_direct_mem_ptr(sc_dt::uint64 start, sc_dt::uint64 end);

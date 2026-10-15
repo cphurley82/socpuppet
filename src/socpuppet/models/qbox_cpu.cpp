@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include <cci_configuration>
@@ -22,6 +23,17 @@ namespace {
 // QBox numbers its CPU's interrupt inputs.
 constexpr unsigned kMachineTimerInterrupt = 7;
 constexpr unsigned kMachineExternalInterrupt = 11;
+
+// The Core below is QBox's cpu_riscv64, in a QEMU built for 64-bit RISC-V
+// only (tools/build_qbox.sh), the width Linux and the host boards are. The
+// 32-bit boards keep the dbt_rise_cpu.
+void RefuseAnyWidthBut64(std::uint64_t xlen) {
+  if (xlen == 64) return;
+  throw std::invalid_argument(
+      "A \"qbox_cpu\" is a 64-bit CPU, and an \"xlen\" of " +
+      std::to_string(xlen) +
+      " was asked for. A 32-bit CPU is a \"dbt_rise_cpu\".");
+}
 
 // QBox's components are configured by CCI parameters, which have to be
 // given values, by name, before each is built. `path` is the CPU's.
@@ -104,9 +116,9 @@ struct QboxCpu::Core {
   cpu_riscv64 core_{"core", instance_, /*hartid=*/0};
 };
 
-QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t /*xlen*/,
+QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
                  std::uint64_t reset_vector)
-    : sc_module(name), core_(MakeCore(*this, reset_vector)) {
+    : sc_module(name), core_(MakeCore(*this, xlen, reset_vector)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &QboxCpu::invalidate_direct_mem_ptr);
   SC_METHOD(OnReset);
@@ -123,7 +135,9 @@ QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t /*xlen*/,
 QboxCpu::~QboxCpu() = default;
 
 std::unique_ptr<QboxCpu::Core> QboxCpu::MakeCore(QboxCpu& cpu,
+                                                 std::uint64_t xlen,
                                                  std::uint64_t reset_vector) {
+  RefuseAnyWidthBut64(xlen);
   Configure(cpu.name(), reset_vector);
   return std::make_unique<Core>(cpu);
 }

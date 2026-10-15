@@ -29,6 +29,19 @@ TEST(WhenTheBuildHasNoQbox, AQboxCpuIsRefusedAndTheErrorSaysHowToBuildOne) {
           HasSubstr("tools/build_qbox.sh"), HasSubstr("SOCPUPPET_QBOX_DIR"))));
 }
 
+#else
+
+TEST(WhenAQboxCpuIsAskedFor32Bits, ItIsRefusedAndTheErrorSaysWhichCpuHasThem) {
+  socpuppet::Platform platform{socpuppet::BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("cpu", "qbox_cpu", {{"xlen", 32}, {"reset_vector", 0}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("32"), HasSubstr("dbt_rise_cpu"))));
+}
+
 #endif
 
 }  // namespace
