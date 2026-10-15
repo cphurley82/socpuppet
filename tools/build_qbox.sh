@@ -105,4 +105,8 @@ cmake --build "$build" --parallel "$jobs"
 cmake --install "$build" > "$root/install.log"
 
 echo "✅ QBox is installed in $root/install, in $(($(date +%s) - start)) s."
-echo "Next: uv run cmake --preset qbox -DSOCPUPPET_QBOX_DIR=$root/install"
+if [[ "$root" == "$repository/build/qbox" ]]; then
+  echo "Next: uv run cmake --preset qbox"
+else
+  echo "Next: uv run cmake --preset qbox -DSOCPUPPET_QBOX_DIR=$root/install"
+fi

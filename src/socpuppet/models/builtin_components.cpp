@@ -164,9 +164,8 @@ Registry BuiltinComponents() {
   registry.Add("qbox_cpu", [](const char*, Parameters&) -> Instance {
     throw std::invalid_argument(
         "This build of socpuppet has no qbox_cpu. Build QBox with "
-        "tools/build_qbox.sh, which installs it in build/qbox/install, and "
-        "configure socpuppet with "
-        "-DSOCPUPPET_QBOX_DIR=build/qbox/install.");
+        "tools/build_qbox.sh, then socpuppet with `cmake --preset qbox`, "
+        "which sets SOCPUPPET_QBOX_DIR to where the tool installs it.");
   });
 #endif
   registry.Add("dma_engine", [](const char* name, Parameters&) {

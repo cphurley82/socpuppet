@@ -39,13 +39,23 @@
       "cacheVariables": {
         "SOCPUPPET_BUILD_SPIKES": "ON"
       }
+    },
+    {
+      "name": "qbox",
+      "displayName": "Development build with QBox's CPU, from tools/build_qbox.sh",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/qbox-dev",
+      "cacheVariables": {
+        "SOCPUPPET_QBOX_DIR": "${sourceDir}/build/qbox/install"
+      }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "coverage", "configurePreset": "coverage" },
     { "name": "asan", "configurePreset": "asan" },
-    { "name": "spike", "configurePreset": "spike" }
+    { "name": "spike", "configurePreset": "spike" },
+    { "name": "qbox", "configurePreset": "qbox" }
   ],
   "testPresets": [
     {
@@ -66,6 +76,13 @@
       "configurePreset": "spike",
       "output": { "outputOnFailure": true },
       "filter": { "include": { "label": "spike" } }
+    },
+    {
+      "name": "qbox",
+      "configurePreset": "qbox",
+      "output": { "outputOnFailure": true },
+      "environment": { "SOCPUPPET_CPU": "qbox_cpu" },
+      "execution": { "jobs": 8 }
     },
     {
       "name": "speed",

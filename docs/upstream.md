@@ -1236,3 +1236,27 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: in coroutine mode, run the reset on the SystemC thread when the CPU's coroutine next yields, rather than as safe work for a CPU thread there is not.
 - **Kind**: bug.
 - **When it lands**: the fate goes.
+
+### An atomic to memory without direct access never completes
+
+- **Where**: QBox's coroutine loop, `QemuCpu::mainloop_thread_coroutine` and `run_cpu_loop` in `qemu-components/common/include/cpu.h`.
+- **What is wrong**: QEMU cannot do an atomic instruction (`amoadd`, `lr`, `sc` and the rest) on memory it reaches through a callback rather than a pointer, so it leaves its loop asking for that one instruction to be run again on its own, with every other CPU stopped (`EXCP_ATOMIC`, which QEMU's own loops answer with `cpu_exec_step_atomic`). QBox's coroutine loop runs the CPU again the same way, which asks again: the CPU spins at the instruction and simulated time stands still.
+- **How to see it**: the "over the bus" cases of `WhenAProgramUsesAnAtomicMemoryOperation` and of the two store-conditional suites in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu`: each runs until CTest's timeout, and a debugger finds the CPU's thread in `mainloop_thread_coroutine`. The same programs on memory that grants direct access pass.
+- **What we do**: nothing; they are qbox_cpu fates (`tests/cpp/support/qbox_fates.h`). socpuppet's RAMs grant direct access, so firmware meets it only with an atomic to a device's registers.
+- **Upstream fix**: answer `EXCP_ATOMIC` in the coroutine loop with `cpu_exec_step_atomic`, as QEMU's TCG loops do.
+- **Kind**: bug.
+- **When it lands**: the fates go.
+
+## QEMU
+
+[qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite and not entries here (docs/models/qbox-cpu.md).
+
+### An atomic at a misaligned address raises a load's cause
+
+- **Where**: `target/riscv`, the translation of the AMOs, which take the address-misaligned exception of a load.
+- **What is wrong**: the specification says an AMO whose address is misaligned raises a store/AMO address-misaligned exception (cause 6). QEMU raises a load address-misaligned one (cause 4). DBT-RISE did the same (`dbt-rise-riscv-misaligned-amo.patch`).
+- **How to see it**: the "an atomic sum" cases of `WhenSupervisorModeUsesAWordAtAnOddAddress` in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu`: the cause stored is 4.
+- **What we do**: nothing; they are qbox_cpu fates.
+- **Upstream fix**: raise the store/AMO cause for an AMO.
+- **Kind**: bug.
+- **When it lands**: the fates go.

@@ -8,7 +8,7 @@
 
 // The CPU the hart's tests run on: the registry's name for it, from
 // SOCPUPPET_CPU, and "dbt_rise_cpu" when that is not set. The `qbox` test
-// preset sets it to "qbox_cpu" (docs/models/qbox-cpu.md).
+// preset (CMakePresets.json) sets it to "qbox_cpu".
 inline std::string TheCpu() {
   // NOLINTNEXTLINE(concurrency-mt-unsafe): read before any thread exists.
   const char* cpu = std::getenv("SOCPUPPET_CPU");

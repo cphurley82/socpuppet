@@ -1,4 +1,5 @@
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -95,6 +96,30 @@ std::uint32_t ResultWordOf(socpuppet::Platform& platform, std::uint64_t start,
 socpuppet::Config TheCoreWithSupervisorMode() {
   return {{"floating_point", 1}, {"supervisor_mode", 1}};
 }
+
+// A parameterized case's name, from what its parameter's PrintTo says of
+// it: "a swap, over the bus" is "ASwapOverTheBus". A name that says what
+// the case is, rather than where it is in the list, is one a skip on QBox
+// can name (tests/cpp/support/qbox_fates.h).
+struct NamedByWhatItIs {
+  template <typename Parameter>
+  std::string operator()(
+      const ::testing::TestParamInfo<Parameter>& info) const {
+    std::string name;
+    bool word_starts = true;
+    for (const char letter : ::testing::PrintToString(info.param)) {
+      if (std::isalnum(static_cast<unsigned char>(letter)) == 0) {
+        word_starts = true;
+        continue;
+      }
+      name += word_starts ? static_cast<char>(std::toupper(
+                                static_cast<unsigned char>(letter)))
+                          : letter;
+      word_starts = false;
+    }
+    return name;
+  }
+};
 
 }  // namespace
 
@@ -1074,7 +1099,8 @@ INSTANTIATE_TEST_SUITE_P(
                       ImsicRegisterOfAHart{riscv::kMtopei, "mtopei"},
                       ImsicRegisterOfAHart{riscv::kSiselect, "siselect"},
                       ImsicRegisterOfAHart{riscv::kSireg, "sireg"},
-                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}));
+                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}),
+    NamedByWhatItIs{});
 
 // The supervisor's three are a way to supervisor mode's file, and a hart
 // with no such mode has no use for one: its IMSIC's second file is nobody's.
@@ -1096,7 +1122,8 @@ INSTANTIATE_TEST_SUITE_P(
     TheThree, WhenACpuWithAnImsicAndNoSupervisorModeWritesARegisterOfThatModes,
     ::testing::Values(ImsicRegisterOfAHart{riscv::kSiselect, "siselect"},
                       ImsicRegisterOfAHart{riscv::kSireg, "sireg"},
-                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}));
+                      ImsicRegisterOfAHart{riscv::kStopei, "stopei"}),
+    NamedByWhatItIs{});
 
 // An IMSIC's files can only be switched on through its hart.
 TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
@@ -1373,7 +1400,8 @@ INSTANTIATE_TEST_SUITE_P(
         UseOfAnAddress{"a store", riscv::Sd(riscv::kT0, riscv::kT1, 0),
                        riscv::kStorePageFault},
         UseOfAnAddress{"a jump", riscv::Jalr(riscv::kZero, riscv::kT1, 0),
-                       riscv::kInstructionPageFault}));
+                       riscv::kInstructionPageFault}),
+    NamedByWhatItIs{});
 
 // A use supervisor mode makes of a page: what the page's entry says, and
 // the instructions that use the page, with its address in t1.
@@ -1436,7 +1464,8 @@ INSTANTIATE_TEST_SUITE_P(
                       UseOfAPage{"a load from a page that may only be executed",
                                  riscv::kPteExecute | riscv::kPteAccessed,
                                  {kLoad},
-                                 riscv::kLoadPageFault}));
+                                 riscv::kLoadPageFault}),
+    NamedByWhatItIs{});
 
 // Supervisor mode's status register has a bit for each of two of those: a
 // kernel sets SUM for as long as it copies to or from a program's memory,
@@ -1472,7 +1501,8 @@ INSTANTIATE_TEST_SUITE_P(
             "a load from a page that may only be executed, with MXR",
             riscv::kPteExecute | riscv::kPteAccessed,
             {riscv::Lui(riscv::kT0, riscv::kMakeExecutableReadableInUpper20),
-             riscv::Csrs(riscv::kSstatus, riscv::kT0), kLoad}}));
+             riscv::Csrs(riscv::kSstatus, riscv::kT0), kLoad}}),
+    NamedByWhatItIs{});
 
 // A hart keeps the translations it has worked out, so as not to walk the
 // tables for every access, and what it keeps of a page that has only been
@@ -1628,7 +1658,8 @@ INSTANTIATE_TEST_SUITE_P(
                                                    riscv::kSstatus)},
                       NamedInstruction{"sfence.vma", riscv::kSfenceVma},
                       NamedInstruction{"sret", riscv::kSret},
-                      NamedInstruction{"mret", riscv::kMret}));
+                      NamedInstruction{"mret", riscv::kMret}),
+    NamedByWhatItIs{});
 
 // Something a program in user mode does with an address, and the page
 // fault it is when the address is not the program's to use.
@@ -1695,7 +1726,8 @@ INSTANTIATE_TEST_SUITE_P(
                           CpuPlatformWithPages::kPages.result},
         ActOfAUserProgram{
             "a jump into it", riscv::JumpTo(CpuPlatformWithPages::kPages.code),
-            riscv::kInstructionPageFault, CpuPlatformWithPages::kPages.code}));
+            riscv::kInstructionPageFault, CpuPlatformWithPages::kPages.code}),
+    NamedByWhatItIs{});
 
 // A kernel calls the monitor under it with `ecall`, and one of the
 // kernel's own interrupts can be pending when it does. Whichever a hart
@@ -1823,7 +1855,8 @@ INSTANTIATE_TEST_SUITE_P(
         ReadOfACounter{"user mode, time", riscv::kUserMode, riscv::kTime,
                        riscv::kMayReadTime, riscv::kMayReadTime},
         ReadOfACounter{"user mode, instret", riscv::kUserMode, riscv::kInstret,
-                       riscv::kMayReadInstret, riscv::kMayReadInstret}));
+                       riscv::kMayReadInstret, riscv::kMayReadInstret}),
+    NamedByWhatItIs{});
 
 // Each row allows every counter but the one it reads, or allows that one
 // in one register only, so that it is that bit which refuses it.
@@ -1862,7 +1895,8 @@ INSTANTIATE_TEST_SUITE_P(
                        kMayReadAll & ~riscv::kMayReadTime},
         ReadOfACounter{"user mode, time, which only supervisor mode allows",
                        riscv::kUserMode, riscv::kTime,
-                       kMayReadAll & ~riscv::kMayReadTime, kMayReadAll}));
+                       kMayReadAll & ~riscv::kMayReadTime, kMayReadAll}),
+    NamedByWhatItIs{});
 
 // The registers are for the modes below machine mode, and say nothing of
 // machine mode itself.
@@ -1884,7 +1918,8 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(
         ReadOfACounter{"cycle", riscv::kMachineMode, riscv::kCycle, 0, 0},
         ReadOfACounter{"time", riscv::kMachineMode, riscv::kTime, 0, 0},
-        ReadOfACounter{"instret", riscv::kMachineMode, riscv::kInstret, 0, 0}));
+        ReadOfACounter{"instret", riscv::kMachineMode, riscv::kInstret, 0, 0}),
+    NamedByWhatItIs{});
 
 TEST(WhenMachineModeWritesTheTwoRegistersThatAllowCountersToBeRead,
      EachReadsBackAsItWasWritten) {
@@ -1981,7 +2016,8 @@ INSTANTIATE_TEST_SUITE_P(
         NamedInstruction{"a read of its control register",
                          riscv::Csrr(riscv::kT0, riscv::kFcsr)},
         NamedInstruction{"a write of its control register",
-                         riscv::Csrw(riscv::kFcsr, riscv::kZero)}));
+                         riscv::Csrw(riscv::kFcsr, riscv::kZero)}),
+    NamedByWhatItIs{});
 
 // Something that changes the floating-point registers or their control
 // register, as an instruction, and the state they were in before it.
@@ -2036,7 +2072,8 @@ INSTANTIATE_TEST_SUITE_P(
         ChangeOfFloatingPointState{
             "a write of its control register, from clean",
             riscv::kFloatingPointClean,
-            riscv::Csrw(riscv::kFcsr, riscv::kZero)}));
+            riscv::Csrw(riscv::kFcsr, riscv::kZero)}),
+    NamedByWhatItIs{});
 
 // What a kernel does once it has saved a program's registers.
 TEST(WhenSupervisorModeMarksDirtyFloatingPointStateClean,
@@ -2249,7 +2286,8 @@ INSTANTIATE_TEST_SUITE_P(
                                      kStoreConditionalToTheCell,
                                      kTheAnswerIsTheResult},
                                     kStored,
-                                    kGiven}})));
+                                    kGiven}})),
+    NamedByWhatItIs{});
 
 // A hart has one reservation, on one address, and any store-conditional
 // gives it up, whether or not it stored. That second half is how a kernel
@@ -2303,7 +2341,8 @@ INSTANTIATE_TEST_SUITE_P(
           kStoreConditionalToTheCell, kTheAnswerIsTheResult},
          kDidNotStore,
          kInTheCell},
-    })));
+    })),
+    NamedByWhatItIs{});
 
 // The ones that do it in one instruction: what was in the cell comes back
 // in a register, and what the operation makes of it and of the register
@@ -2347,7 +2386,8 @@ INSTANTIATE_TEST_SUITE_P(
         {"the greater, with a number below zero", 0x11,
          WithT3(-1, riscv::AmomaxD(riscv::kT0, riscv::kT1, riscv::kT3)), 0x11,
          0x11},
-    })));
+    })),
+    NamedByWhatItIs{});
 
 // A use of a word at an address that is not a multiple of four, by the
 // instruction that makes it, with the address in t1, and the trap it is.
@@ -2409,7 +2449,8 @@ TEST_P(WhenSupervisorModeUsesAWordAtAnOddAddress,
 }
 
 INSTANTIATE_TEST_SUITE_P(EachUse, WhenSupervisorModeUsesAWordAtAnOddAddress,
-                         ::testing::ValuesIn(kEachMisalignedUse));
+                         ::testing::ValuesIn(kEachMisalignedUse),
+                         NamedByWhatItIs{});
 
 // A monitor may hand the two traps down, to a kernel that would sooner see
 // to them itself.
@@ -2436,7 +2477,7 @@ TEST_P(WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIsHandedDown,
 
 INSTANTIATE_TEST_SUITE_P(
     EachUse, WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIsHandedDown,
-    ::testing::ValuesIn(kEachMisalignedUse));
+    ::testing::ValuesIn(kEachMisalignedUse), NamedByWhatItIs{});
 
 // What the handler of such a trap does. Here it is in supervisor mode, as
 // Linux's own is from 6.16, which asks OpenSBI to hand the two traps down.
@@ -2558,7 +2599,8 @@ INSTANTIATE_TEST_SUITE_P(
     EachKind, WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot,
     ::testing::Values(KindOfPaging{"Sv48", 9}, KindOfPaging{"Sv57", 10},
                       KindOfPaging{"one the standard keeps back", 11},
-                      KindOfPaging{"one the standard has not got", 15}));
+                      KindOfPaging{"one the standard has not got", 15}),
+    NamedByWhatItIs{});
 
 // Direct access is to the RAM, by the addresses the RAM has, and a
 // translation ends in one of those. So paging costs a program none of it.
