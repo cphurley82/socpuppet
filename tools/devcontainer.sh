@@ -25,7 +25,7 @@ docker image inspect "$image" > /dev/null 2>&1 ||
 # uv's venv, its cache and its Pythons are kept in build/, so that they
 # outlive the container. The venv and the Python are the ones
 # firmware/twister.sh makes on an Intel Mac, so the two share them.
-environment=(
+options=(
   --env UV_PROJECT_ENVIRONMENT=/workspace/build/linux-venv
   --env UV_PYTHON_INSTALL_DIR=/workspace/build/firmware/python
   --env UV_CACHE_DIR=/workspace/build/linux-uv-cache
@@ -34,9 +34,16 @@ environment=(
 # SOCPUPPET_CPU, go in with the command.
 for name in $(compgen -e); do
   if [[ "$name" == SOCPUPPET_* ]]; then
-    environment+=(--env "$name=${!name}")
+    options+=(--env "$name=${!name}")
   fi
 done
+
+# On Linux the repository's mount keeps the container's user, so the command
+# runs as the caller's, to leave nothing in build/ that only root can
+# remove. Docker Desktop on a Mac does that mapping by itself.
+if [[ "$(uname -s)" == Linux ]]; then
+  options+=(--user "$(id -u):$(id -g)")
+fi
 
 # QBox's tree and socpuppet's tree built with it are Docker volumes, at the
 # places in build/ that tools/build_qbox.sh and the qbox preset use: a
@@ -48,4 +55,4 @@ exec docker run --rm \
   --volume "$repository:/workspace" --workdir /workspace \
   --volume socpuppet-qbox:/workspace/build/qbox \
   --volume socpuppet-qbox-dev:/workspace/build/qbox-dev \
-  "${environment[@]}" "$image" "$@"
+  "${options[@]}" "$image" "$@"

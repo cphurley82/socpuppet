@@ -164,3 +164,21 @@ def test_socpuppet_variables_in_the_callers_environment_reach_the_container(
     environment = values(run, "--env")
     assert "SOCPUPPET_REQUIRE_FIRMWARE=1" in environment
     assert "SOCPUPPET_CPU=qbox_cpu" in environment
+
+
+def test_on_linux_the_container_runs_as_the_caller_so_that_nothing_in_build_is_roots(
+    devcontainer,
+):
+    result, calls = devcontainer("true", env={"UNAME": "Linux"})
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert values(run, "--user") == [f"{os.getuid()}:{os.getgid()}"]
+
+
+def test_on_a_mac_the_container_runs_as_its_own_user(devcontainer):
+    result, calls = devcontainer("true", env={"UNAME": "Darwin"})
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert values(run, "--user") == []
