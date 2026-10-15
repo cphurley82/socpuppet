@@ -30,3 +30,26 @@ class TestWhenFwJumpWouldRunIntoTheNextStage:
     def test_the_stage_is_refused_and_the_error_says_how_big_each_is(self):
         with pytest.raises(ValueError, match=r"2097153 bytes.*2 MiB"):
             opensbi.lay_out(bytes(0x20_0001), EGGS, DEVICETREE, ram=RAM)
+
+
+class TestWhenALayoutIsMadeAnImageForAFlash:
+    """🎓 For a boot ROM, which copies an image to RAM and starts it with
+    the argument the image's header carries in `a1`."""
+
+    def test_the_rom_copies_it_to_the_start_of_ram_and_starts_fw_jump_there(
+        self,
+    ):
+        layout = opensbi.lay_out(SPAM, EGGS, DEVICETREE, ram=RAM)
+
+        image = opensbi.flash_image(layout)
+
+        assert (image.load_address, image.entry, image.payload) == (
+            RAM,
+            RAM,
+            layout.image,
+        )
+
+    def test_it_hands_fw_jump_the_devicetrees_address(self):
+        layout = opensbi.lay_out(SPAM, EGGS, DEVICETREE, ram=RAM)
+
+        assert opensbi.flash_image(layout).argument == layout.devicetree_at

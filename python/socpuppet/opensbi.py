@@ -14,6 +14,14 @@ So the two stages are laid out as one run of bytes from the start of RAM,
     layout = opensbi.lay_out(fw_jump, payload, devicetree, ram=RAM_BASE)
     opensbi.load(platform, layout, rom=ROM_BASE, via=board.cpu.socket)
 
+Or as one image in a flash, for a boot ROM to copy to RAM and start with
+the devicetree's address, which is how silicon boots:
+
+    platform.load_elf("rom_rv64.elf", via=board.cpu.socket)
+    platform.poke(board.syscon.component.boot_address,
+                  opensbi.flash_image(layout).to_bytes(),
+                  via=board.cpu.socket)
+
 `firmware/build.sh` builds `fw_jump.bin`, and `test_payload.bin`, the
 next stage OpenSBI ships.
 """
@@ -23,11 +31,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, NamedTuple
 
 from socpuppet.boards.boot import reset_stub
+from socpuppet.boot_image import BootImage
 
 if TYPE_CHECKING:
     from socpuppet.placed import Port
     from socpuppet.platform import Platform
 
+#: How wide the CPU is that `fw_jump` is built for (`firmware/build.sh`).
+XLEN = 64
 #: Where `fw_jump` jumps, from the start of RAM: FW_JUMP_OFFSET in OpenSBI's
 #: `platform/generic/objects.mk`.
 NEXT_STAGE_OFFSET = 0x20_0000
@@ -85,8 +96,26 @@ def load(platform: Platform, layout: Layout, *, rom: int, via: Port) -> None:
         reset_stub(
             start=layout.load_address,
             argument=layout.devicetree_at,
-            xlen=64,
+            xlen=XLEN,
         ),
         via=via,
     )
     platform.poke(layout.load_address, layout.image, via=via)
+
+
+def flash_image(layout: Layout) -> BootImage:
+    """`layout` as one boot image, for a boot ROM to copy to RAM and start.
+
+    The image starts `fw_jump`, where the layout starts, and its argument,
+    which the ROM hands on in `a1`, is the devicetree's address. ⚠️ The
+    image is the whole run of bytes, the 2 MiB to the next stage with it,
+    so a ROM that checks every byte it copies takes a while over them.
+    """
+    return BootImage(
+        name="fw_jump",
+        xlen=XLEN,
+        load_address=layout.load_address,
+        entry=layout.load_address,
+        payload=layout.image,
+        argument=layout.devicetree_at,
+    )
