@@ -55,6 +55,12 @@ if [[ "$(uname -s)" == Linux ]]; then
   options+=(--user "$(id -u):$(id -g)")
 fi
 
+# From a terminal, the command has one, so that a shell in the container
+# works.
+if [[ -t 0 && -t 1 ]]; then
+  options+=(--interactive --tty)
+fi
+
 # QBox's tree and socpuppet's tree built with it are Docker volumes, at the
 # places in build/ that tools/build_qbox.sh and the qbox preset use: a
 # compiler reading through the repository's mount from a Mac is ten times

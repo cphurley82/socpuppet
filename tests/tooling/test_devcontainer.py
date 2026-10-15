@@ -9,6 +9,7 @@ without Docker.
 import hashlib
 import json
 import os
+import pty
 import shutil
 import subprocess
 import sys
@@ -59,7 +60,9 @@ def devcontainer(tmp_path):
         if not name.startswith("SOCPUPPET_")
     }
 
-    def run(*args, images=(TAG,), env=None):
+    def run(*args, images=(TAG,), env=None, terminal=False):
+        """Run it; with `terminal`, its input and output are a terminal."""
+        ours, theirs = pty.openpty() if terminal else (None, None)
         result = subprocess.run(
             [BASH, str(SCRIPT), *args],
             env={
@@ -69,11 +72,14 @@ def devcontainer(tmp_path):
                 "IMAGES": " ".join(images),
                 **(env or {}),
             },
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
+            stdin=theirs if terminal else subprocess.DEVNULL,
+            stdout=theirs if terminal else subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
         )
+        if terminal:
+            os.close(theirs)
+            os.close(ours)
         lines = log.read_text().splitlines() if log.exists() else []
         return result, [json.loads(line) for line in lines]
 
@@ -204,3 +210,21 @@ def test_without_a_command_the_usage_is_printed(devcontainer):
     assert result.returncode == 2
     assert "usage: tools/devcontainer.sh" in result.stdout
     assert not calls
+
+
+def test_from_a_terminal_the_container_is_given_one_so_that_a_shell_in_it_works(
+    devcontainer,
+):
+    result, calls = devcontainer("bash", terminal=True)
+
+    assert result.returncode == 0
+    (run,) = runs(calls)
+    assert {"--interactive", "--tty"} <= set(run[: run.index(TAG)])
+
+
+def test_from_a_script_the_container_is_given_no_terminal(devcontainer):
+    result, calls = devcontainer("true")
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert "--tty" not in run
