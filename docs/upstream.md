@@ -1247,6 +1247,46 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: the fates go.
 
+### Every libqemu is built with OpenGL, which a Mac cannot have
+
+- **Where**: libqemu's `qemu.cmake`, the `QEMU_CONF_ARGS` it gives QEMU's `configure`, and its SDL display wrappers, `libqemu/wrappers/console.c` and the `sdl2_gl_*` entries of `libqemu/exports.py`, at `libqemu-v11.0-v0.15`.
+- **What is wrong**: `--enable-opengl` is in the list for every build, with no option to leave it out, as there is for virgl and virCL. QEMU's OpenGL needs libepoxy with EGL (`meson.build`: `epoxy/egl.h not found`), and Homebrew's libepoxy has no EGL on macOS, so libqemu cannot be configured on a Mac. With OpenGL turned off, it still does not build: the wrappers use `console_gl_check_format` and nine `sdl2_gl_*` functions, which QEMU compiles only with OpenGL.
+- **How to see it**: `tools/build_qbox.sh` on a Mac with Homebrew's packages and without the patch stops in QEMU's configure at `epoxy/egl.h not found` (M26 found it, [speed-spike.md](speed-spike.md)). Configured with `--disable-opengl` and nothing else, the build then stops at `'console_gl_check_format' undeclared` in `libqemu/wrappers/console.c`.
+- **What we do**: `cmake/patches/libqemu-macos-no-opengl.patch` passes `--disable-opengl` on Apple machines and `--enable-opengl` everywhere else, as before, and gives a build without OpenGL `libqemu/wrappers/stubs/opengl.c`, in the manner of the `gpex` stub beside it. It defines those functions, and any one of them that is called stops the program, which a display with OpenGL would need and a CPU never does. Linux builds exactly what it did.
+- **Upstream fix**: the same, or a `GS_ENABLE_OPENGL` option beside the two for virgl and virCL, off on macOS, with the stubs.
+- **Kind**: portability.
+- **When it lands**: delete the patch file.
+
+### On an Intel Mac, rpclib compiles against Homebrew's asio in place of its own
+
+- **Where**: rpclib's `CMakeLists.txt`, which gives the asio it carries (`dependencies/include`) as a `SYSTEM` include directory. QBox builds rpclib v2.3.0 (`CMakeLists.txt`, with the patches in `patch/rpclib/`), and QEMU builds it again at `463887f1` for its Hexagon target (`subprojects/rpclib.wrap`), whatever the targets asked for.
+- **What is wrong**: Apple's clang searches `/usr/local/include` ahead of every `-isystem` directory, and Homebrew on an Intel Mac keeps its headers there. QBox wants Homebrew's asio for its own socket backend and its web server (`brew install asio`, in its `scripts/install_dependencies.sh`), so rpclib's `#include "asio.hpp"` finds that one, whose names are in `asio`, and not its own, which rpclib renames `clmdep_asio`. Giving the directory again with `-I` does not help: a directory given both ways keeps the system place. On Apple silicon Homebrew is in `/opt/homebrew`, which clang does not search, so QBox's own macOS builds do not meet it.
+- **How to see it**: `tools/build_qbox.sh` on an Intel Mac with `brew install asio`, without the patches: `use of undeclared identifier 'clmdep_asio'` in `rpc/detail/async_writer.h`, first in QBox's rpclib and then in QEMU's.
+- **What we do**: `cmake/patches/qbox-macos-rpclib-asio.patch` adds a third patch to QBox's `patch/rpclib/`, and `cmake/patches/libqemu-macos-rpclib-asio.patch` gives QEMU's wrap the same change as a `diff_files`. On Apple machines, rpclib's own asio is an ordinary include directory, searched before `/usr/local/include`; elsewhere it stays `SYSTEM`, as before.
+- **Upstream fix**: the same in rpclib, and the newer rpclib in QBox.
+- **Kind**: portability.
+- **When it lands**: delete both patch files.
+
+### On a Mac, QBox finds its QEMU only from a program in its own `bin/`
+
+- **Where**: `CMakeLists.txt`, the `if(APPLE)` branch that sets `CMAKE_BUILD_RPATH` and `CMAKE_INSTALL_RPATH`.
+- **What is wrong**: QBox opens QEMU while a platform is built, with `dlopen("libqemu-system-riscv64.dylib")`, and the dynamic loader looks for that name along the run paths of the library that asks. On Linux those are `$ORIGIN/../lib`, the library's own directory. On macOS they are `@executable_path/../lib`, which is relative to the program that is running instead. That is the same place only for QBox's own programs in its `bin/`. A program built elsewhere and linked to QBox, such as Python with socpuppet's extension, does not find QEMU at all. socpuppet's C++ tests find it anyway, because their own run paths name QBox's `lib/`.
+- **How to see it**: `uv run ctest --preset qbox` natively on a Mac, without the patch: every C++ test passes, and the Python tests and the examples stop at `error while loading libqemu library 'libqemu-system-riscv64.dylib'`, listing the places under Python's own directory that it tried.
+- **What we do**: `cmake/patches/qbox-macos-loader-path.patch` makes them `@loader_path`, the Mac's `$ORIGIN`, which for QBox's own programs is the same directory as before.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: delete the patch file.
+
+### QBox's CPU tests look for LLVM only where Homebrew keeps it on Apple silicon
+
+- **Where**: `tests/qbox/CMakeLists.txt`, which looks for `llvm-mc`, `ld.lld` and `llvm-objcopy` on the path and in `/opt/homebrew/opt/llvm/bin`.
+- **What is wrong**: Homebrew's LLVM is not on the path, and an Intel Mac's is in `/usr/local/opt/llvm/bin`, so configuring QBox with its tests stops with `Qbox CPU tests require the LLVM toolchain`.
+- **How to see it**: QBox's configure on an Intel Mac with `brew install llvm`, as `tools/build_qbox.sh` ran it before it turned the tests off.
+- **What we do**: no patch. `tools/build_qbox.sh` configures QBox with `-DBUILD_TESTING=OFF` on every machine, since socpuppet holds QBox's CPU to its own suite and never runs QBox's, and the build is shorter without them.
+- **Upstream fix**: look in `$(brew --prefix llvm)/bin`, as QBox already asks `brew --prefix` for its run paths.
+- **Kind**: portability.
+- **When it lands**: nothing to undo; the tests stay off.
+
 ## QEMU
 
 [qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite and not entries here (docs/models/qbox-cpu.md).

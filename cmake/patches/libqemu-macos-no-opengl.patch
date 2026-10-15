@@ -1,0 +1,147 @@
+diff --git a/libqemu/wrappers/console.c b/libqemu/wrappers/console.c
+index babdd5e..92f2091 100644
+--- a/libqemu/wrappers/console.c
++++ b/libqemu/wrappers/console.c
+@@ -22,6 +22,12 @@
+ 
+ #include "ui/sdl2.h"
+ 
++#ifndef CONFIG_OPENGL
++/* In stubs/opengl.c, for a QEMU built without OpenGL. */
++bool console_gl_check_format(DisplayChangeListener *dcl,
++                             pixman_format_code_t format);
++#endif
++
+ int libqemu_sdl2_init(void)
+ {
+     int result = SDL_Init(SDL_INIT_VIDEO);
+diff --git a/libqemu/wrappers/meson.build b/libqemu/wrappers/meson.build
+index 39e38c2..082d03a 100644
+--- a/libqemu/wrappers/meson.build
++++ b/libqemu/wrappers/meson.build
+@@ -2,6 +2,7 @@ libqemu_ss.add(files('memory.c', 'cpu.c', 'iothread.c', 'gpio.c', 'timer.c',
+                      'chardev.c', 'console.c', 'rcu.c', 'error.c', 'virgl.c',
+ 		     'qdev.c', 'gdbserver.c'))
+ libqemu_ss.add(sdl)
++libqemu_ss.add(when: opengl, if_false: files('stubs/opengl.c'))
+ libqemu_ss.add(when: 'CONFIG_PCI_EXPRESS_GENERIC_BRIDGE', if_true: files('gpex.c'))
+ libqemu_ss.add(when: 'CONFIG_PCI_EXPRESS_GENERIC_BRIDGE', if_false: files('stubs/gpex.c'))
+ 
+diff --git a/libqemu/wrappers/stubs/opengl.c b/libqemu/wrappers/stubs/opengl.c
+new file mode 100644
+index 0000000..1f74b2e
+--- /dev/null
++++ b/libqemu/wrappers/stubs/opengl.c
+@@ -0,0 +1,86 @@
++/*
++ * libqemu
++ *
++ * What the SDL display's OpenGL half would have defined, for a QEMU built
++ * without OpenGL, such as on macOS, which has no EGL for it. Nothing calls
++ * them: a display that uses OpenGL cannot be made in such a build.
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program; if not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "qemu/osdep.h"
++#include "ui/console.h"
++#include "ui/sdl2.h"
++
++bool console_gl_check_format(DisplayChangeListener *dcl,
++                             pixman_format_code_t format);
++
++bool console_gl_check_format(DisplayChangeListener *dcl,
++                             pixman_format_code_t format)
++{
++    return false;
++}
++
++void sdl2_gl_update(DisplayChangeListener *dcl, int x, int y, int w, int h)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_switch(DisplayChangeListener *dcl, DisplaySurface *new_surface)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_refresh(DisplayChangeListener *dcl)
++{
++    g_assert_not_reached();
++}
++
++QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc, QEMUGLParams *params)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_destroy_context(DisplayGLCtx *dgc, QEMUGLContext ctx)
++{
++    g_assert_not_reached();
++}
++
++int sdl2_gl_make_context_current(DisplayGLCtx *dgc, QEMUGLContext ctx)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_scanout_disable(DisplayChangeListener *dcl)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
++                             uint32_t backing_id,
++                             bool backing_y_0_top,
++                             uint32_t backing_width,
++                             uint32_t backing_height,
++                             uint32_t x, uint32_t y,
++                             uint32_t w, uint32_t h,
++                             void *d3d_tex2d)
++{
++    g_assert_not_reached();
++}
++
++void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
++                           uint32_t x, uint32_t y, uint32_t w, uint32_t h)
++{
++    g_assert_not_reached();
++}
+diff --git a/qemu.cmake b/qemu.cmake
+index 8a7df1c..38ecfcb 100644
+--- a/qemu.cmake
++++ b/qemu.cmake
+@@ -36,7 +36,6 @@ set(QEMU_CONF_ARGS
+     --disable-virglrenderer
+     --disable-virclrenderer
+     --disable-virqnnrenderer
+-    --enable-opengl
+     --enable-slirp
+     --disable-vde
+     --disable-vte
+@@ -75,6 +74,13 @@ if (GS_ENABLE_VIRGLRENDERER)
+ endif()
+ 
+ # may be un-necissary in future releases of QEMU?
++# QEMU's OpenGL wants EGL, which macOS has not got.
++if (APPLE)
++    set(QEMU_CONF_ARGS ${QEMU_CONF_ARGS} --disable-opengl)
++else()
++    set(QEMU_CONF_ARGS ${QEMU_CONF_ARGS} --enable-opengl)
++endif()
++
+ if (APPLE)
+     set(QEMU_CONF_ARGS ${QEMU_CONF_ARGS}
+         --enable-hvf

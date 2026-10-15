@@ -1,0 +1,44 @@
+diff --git a/subprojects/packagefiles/rpclib-macos-asio.patch b/subprojects/packagefiles/rpclib-macos-asio.patch
+new file mode 100644
+index 000000000..d744871c8
+--- /dev/null
++++ b/subprojects/packagefiles/rpclib-macos-asio.patch
+@@ -0,0 +1,29 @@
++diff --git a/CMakeLists.txt b/CMakeLists.txt
++index ba17932..6d5f194 100644
++--- a/CMakeLists.txt
+++++ b/CMakeLists.txt
++@@ -192,10 +192,20 @@ target_include_directories(
++   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
++   $<INSTALL_INTERFACE:include>
++   )
++-target_include_directories(
++-  ${PROJECT_NAME} SYSTEM
++-  PRIVATE ${RPCLIB_DEPENDENCIES}/include
++-  )
+++# Apple's clang searches /usr/local/include ahead of every -isystem
+++# directory, and Homebrew on an Intel Mac keeps its own asio there, which
+++# would then be found in place of the one bundled here.
+++if(APPLE)
+++  target_include_directories(
+++    ${PROJECT_NAME}
+++    PRIVATE ${RPCLIB_DEPENDENCIES}/include
+++    )
+++else()
+++  target_include_directories(
+++    ${PROJECT_NAME} SYSTEM
+++    PRIVATE ${RPCLIB_DEPENDENCIES}/include
+++    )
+++endif()
++ 
++ install(TARGETS ${PROJECT_NAME} DESTINATION lib EXPORT rpclibTargets)
++ install(DIRECTORY include/
+diff --git a/subprojects/rpclib.wrap b/subprojects/rpclib.wrap
+index fbf549610..e9d9e6a63 100644
+--- a/subprojects/rpclib.wrap
++++ b/subprojects/rpclib.wrap
+@@ -2,3 +2,4 @@
+ url = https://github.com/rpclib/rpclib
+ revision = 463887f16ffcc4cf9ee0421bf25d49165b5e36f9
+ depth = 1
++diff_files = rpclib-macos-asio.patch

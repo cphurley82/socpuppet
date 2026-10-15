@@ -1,0 +1,47 @@
+diff --git a/patch/rpclib/0003-macOS-find-the-bundled-asio-ahead-of-Homebrew-s.patch b/patch/rpclib/0003-macOS-find-the-bundled-asio-ahead-of-Homebrew-s.patch
+new file mode 100644
+index 00000000..b87fb32f
+--- /dev/null
++++ b/patch/rpclib/0003-macOS-find-the-bundled-asio-ahead-of-Homebrew-s.patch
+@@ -0,0 +1,41 @@
++From 2c5df71058dc168e89638a8ab0a783a373d5b8bb Mon Sep 17 00:00:00 2001
++From: socpuppet <socpuppet@users.noreply.github.com>
++Date: Thu, 15 Oct 2026 07:01:39 -0700
++Subject: [PATCH] macOS: find the bundled asio ahead of Homebrew's
++
++---
++ CMakeLists.txt | 18 ++++++++++++++----
++ 1 file changed, 14 insertions(+), 4 deletions(-)
++
++diff --git a/CMakeLists.txt b/CMakeLists.txt
++index ba17932..6d5f194 100644
++--- a/CMakeLists.txt
+++++ b/CMakeLists.txt
++@@ -192,10 +192,20 @@ target_include_directories(
++   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
++   $<INSTALL_INTERFACE:include>
++   )
++-target_include_directories(
++-  ${PROJECT_NAME} SYSTEM
++-  PRIVATE ${RPCLIB_DEPENDENCIES}/include
++-  )
+++# Apple's clang searches /usr/local/include ahead of every -isystem
+++# directory, and Homebrew on an Intel Mac keeps its own asio there, which
+++# would then be found in place of the one bundled here.
+++if(APPLE)
+++  target_include_directories(
+++    ${PROJECT_NAME}
+++    PRIVATE ${RPCLIB_DEPENDENCIES}/include
+++    )
+++else()
+++  target_include_directories(
+++    ${PROJECT_NAME} SYSTEM
+++    PRIVATE ${RPCLIB_DEPENDENCIES}/include
+++    )
+++endif()
++ 
++ install(TARGETS ${PROJECT_NAME} DESTINATION lib EXPORT rpclibTargets)
++ install(DIRECTORY include/
++-- 
++2.50.1 (Apple Git-155)
++
