@@ -1,0 +1,102 @@
+"""tools/devcontainer.sh, which runs a command in the devcontainer's image.
+
+The script is run for real, with a stand-in for docker on its path that
+writes each command it was given to a log and knows only the images the
+test says exist, so the tests can say what the script asked Docker for
+without Docker.
+"""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "tools" / "devcontainer.sh"
+DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
+TAG = (
+    "socpuppet-dev:" + hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()[:12]
+)
+
+# A docker that logs each command, and has an image only if the test said so.
+DOCKER = """
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["LOG"], "a") as log:
+    log.write(json.dumps(args) + "\\n")
+if args[:2] == ["image", "inspect"]:
+    sys.exit(0 if args[2] in os.environ.get("IMAGES", "").split() else 1)
+"""
+
+# A uname that says what the test wants it to.
+UNAME = """
+import os
+print(os.environ.get("UNAME", "Darwin"))
+"""
+
+
+@pytest.fixture
+def devcontainer(tmp_path):
+    """Run the script with the stand-ins; returns (result, docker's calls)."""
+    bin_directory = tmp_path / "bin"
+    bin_directory.mkdir()
+    log = tmp_path / "log"
+    for name, body in {"docker": DOCKER, "uname": UNAME}.items():
+        program = bin_directory / name
+        program.write_text(f"#!{sys.executable}\n{body}")
+        program.chmod(0o755)
+
+    # The caller's own SOCPUPPET_* variables would reach the container too.
+    inherited = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("SOCPUPPET_")
+    }
+
+    def run(*args, images=(TAG,), env=None):
+        result = subprocess.run(
+            ["bash", str(SCRIPT), *args],
+            env={
+                **inherited,
+                "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
+                "LOG": str(log),
+                "IMAGES": " ".join(images),
+                **(env or {}),
+            },
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding="utf-8",
+        )
+        lines = log.read_text().splitlines() if log.exists() else []
+        return result, [json.loads(line) for line in lines]
+
+    return run
+
+
+def runs(calls):
+    """The arguments of each `docker run` among docker's calls."""
+    return [call[1:] for call in calls if call[0] == "run"]
+
+
+def values(run, option):
+    """What each `option VALUE` of a `docker run` gave, in order."""
+    return [run[i + 1] for i, word in enumerate(run[:-1]) if word == option]
+
+
+def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_workspace(
+    devcontainer,
+):
+    command = ["uv", "run", "pytest", "-k", "spam eggs"]
+
+    result, calls = devcontainer(*command)
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert f"{REPO}:/workspace" in values(run, "--volume")
+    assert values(run, "--workdir") == ["/workspace"]
+    assert run[-len(command) - 1 :] == [TAG, *command]
