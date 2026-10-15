@@ -1,0 +1,91 @@
+name: QBox
+
+# The qbox_cpu, QEMU's RISC-V CPU inside SystemC, as a second hart beside
+# DBT-RISE's (docs/models/qbox-cpu.md). QEMU is GPL-2.0 and built from
+# source by tools/build_qbox.sh, which takes minutes, so this runs every
+# night and when asked, and not on every push: the bus-master contract,
+# the hart's suite with QBox's fates skipped, the Python boots of the
+# host, clang-tidy over the adapter, which CI's tidy never sees, and
+# twister's suites on the host board.
+#
+# On the runner, with the packages the devcontainer's image has for QBox:
+# the same Ubuntu 24.04 and GCC 13, without building the image first.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: qbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qbox:
+    name: Build and test with QBox's CPU
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        # socpuppet's (ci.yml), and QBox's (.devcontainer/Dockerfile).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev device-tree-compiler \
+            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
+            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
+            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
+            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - name: Cache QBox
+        id: qbox
+        uses: actions/cache@v6
+        with:
+          path: build/qbox/install
+          # The tool pins QBox, and the patches are all that is changed.
+          key: qbox-ubuntu-24.04-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+      - name: Build QBox
+        if: steps.qbox.outputs.cache-hit != 'true'
+        run: uv run tools/build_qbox.sh
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/qbox-dev/_deps
+          key: deps-qbox-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - name: Restore Zephyr, its SDK and its venv
+        id: zephyr
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+            build/firmware/zephyr-sdk-*
+          key: zephyr-ubuntu-24.04-${{ hashFiles('firmware/versions.sh') }}
+      - name: Build the firmware
+        # Fetches Zephyr and its SDK too, when the cache had none, as the
+        # twister job does (ci.yml).
+        run: firmware/build.sh
+      - run: uv run cmake --preset qbox
+      - run: uv run cmake --build --preset qbox
+      - run: uv run ctest --preset qbox
+        env:
+          SOCPUPPET_REQUIRE_FIRMWARE: "1"
+      - run: uv run cmake --build --preset qbox --target tidy
+      - run: uv run cmake --build --preset qbox --target check_headers
+      - name: Run every suite of the list on the host board, on QBox's CPU
+        run: firmware/twister.sh --suites -p socpuppet_host
+        env:
+          SOCPUPPET_CPU: qbox_cpu
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: twister-qbox
+          path: |
+            build/twister/out/*/twister.json
+            build/twister/out/*/twister*.xml
+            build/twister/out/*/twister.log
+            build/twister/out/**/build.log
+            build/twister/out/**/handler.log
+            build/twister/out/**/handler_stderr.log
