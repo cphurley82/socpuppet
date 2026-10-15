@@ -75,6 +75,11 @@ jobs:
       - name: Install system packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      # dtc checks the devicetrees the boards generate and compiles the one
+      # a boot under OpenSBI is handed. Without it those tests skip here.
+      - name: Install the devicetree compiler
+        if: runner.os == 'macOS'
+        run: brew install dtc
       - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
         uses: actions/cache@v6
