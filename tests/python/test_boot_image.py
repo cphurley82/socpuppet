@@ -122,6 +122,23 @@ def the_name_in(image):
     return image[header.NAME : header.NAME + header.NAME_SIZE]
 
 
+class TestWhenAnElfFileIsWrappedWithAnArgument:
+    """🎓 A boot ROM hands the program the argument in `a1`: what OpenSBI
+    takes there is the address of its devicetree."""
+
+    def test_the_header_carries_it_in_two_words(self, tmp_path):
+        image = boot_image.wrap(a_program(tmp_path), argument=0x12_8220_0000)
+
+        assert word(image, header.ARGUMENT_LOW) == 0x8220_0000
+        assert word(image, header.ARGUMENT_HIGH) == 0x12
+
+    def test_without_one_the_argument_is_zero(self, tmp_path):
+        image = boot_image.wrap(a_program(tmp_path))
+
+        assert word(image, header.ARGUMENT_LOW) == 0
+        assert word(image, header.ARGUMENT_HIGH) == 0
+
+
 class TestWhenAFileThatIsNoProgramIsWrapped:
     def test_one_that_is_not_there_is_refused_by_name(self, tmp_path):
         with pytest.raises(FileNotFoundError, match=r"no_such\.elf"):
@@ -166,6 +183,11 @@ class TestWhenAnImageIsRead:
 
         assert image.load_address == high
         assert image.entry == high + 4
+
+    def test_it_gives_the_argument_back(self, tmp_path):
+        wrapped = boot_image.wrap(a_program(tmp_path), argument=0x12_8220_0000)
+
+        assert boot_image.read(wrapped).argument == 0x12_8220_0000
 
     def test_bytes_past_the_images_end_are_left_out(self, tmp_path):
         # A flash is read whole, and an image need not fill it.

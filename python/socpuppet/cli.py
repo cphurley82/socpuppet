@@ -96,6 +96,16 @@ def main(arguments: Sequence[str] | None = None) -> None:
         metavar="FILE",
         help="where to write the image",
     )
+    image.add_argument(
+        "--argument",
+        type=lambda number: int(number, 0),
+        default=0,
+        metavar="NUMBER",
+        help=(
+            "what the boot ROM hands the program in a1, such as the "
+            "address of a devicetree (default: 0)"
+        ),
+    )
     commands.add_parser(
         "zephyr-module",
         help="print where socpuppet's Zephyr boards are",
@@ -173,7 +183,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     elif options.command == "zephyr-module":
         print(pathlib.Path(__file__).parent / "zephyr_module")
     elif options.command == "boot-image":
-        print(_boot_image(options.elf, options.output))
+        print(_boot_image(options.elf, options.output, options.argument))
     elif options.command == "address-map":
         maps_of = _maps_as_json if options.json else _maps_as_text
         sys.stdout.write(maps_of(*_maps(options.description, options.via)))
@@ -194,7 +204,7 @@ def _add_description(command: argparse.ArgumentParser) -> None:
     )
 
 
-def _boot_image(elf: str, output: str) -> str:
+def _boot_image(elf: str, output: str, argument: int) -> str:
     """Write the boot image of an ELF file, and say what was written.
 
     A file that is not there or is no program, or an image that cannot be
@@ -202,7 +212,7 @@ def _boot_image(elf: str, output: str) -> str:
     says so.
     """
     try:
-        image = boot_image.from_elf(elf)
+        image = boot_image.from_elf(elf, argument=argument)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
     try:

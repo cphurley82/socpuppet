@@ -12,7 +12,7 @@
 #define SOCPUPPET_REGS_BOOT_IMAGE_HEADER_H_
 
 /* How many bytes of address space the block takes. */
-#define BOOT_IMAGE_HEADER_SIZE 0x40U
+#define BOOT_IMAGE_HEADER_SIZE 0x48U
 
 /* What says this is an image at all. */
 #define BOOT_IMAGE_HEADER_MAGIC        0x00U
@@ -60,5 +60,15 @@
  */
 #define BOOT_IMAGE_HEADER_NAME      0x20U
 #define BOOT_IMAGE_HEADER_NAME_SIZE 0x20U
+
+/*
+ * What the boot ROM hands the program in `a1`, the low 32 bits: for OpenSBI,
+ * the address of its devicetree. Zero for nothing. The hart's number goes in
+ * `a0`.
+ */
+#define BOOT_IMAGE_HEADER_ARGUMENT_LOW 0x40U
+
+/* The high 32 bits, which a 32-bit CPU does not hand on. */
+#define BOOT_IMAGE_HEADER_ARGUMENT_HIGH 0x44U
 
 #endif /* SOCPUPPET_REGS_BOOT_IMAGE_HEADER_H_ */

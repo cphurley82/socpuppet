@@ -10,7 +10,7 @@ Real systems each have their own. U-Boot has its `uImage` header, MCUboot its ow
 
 ## The header
 
-64 bytes, every number little-endian, with the image's bytes straight after it.
+72 bytes, every number little-endian, with the image's bytes straight after it.
 
 <!-- regs:boot_image_header start -->
 
@@ -25,10 +25,12 @@ Real systems each have their own. U-Boot has its `uImage` header, MCUboot its ow
 | `0x18` | `LENGTH` | read | How many bytes the program is: what follows the header. |
 | `0x1C` | `CRC` | read | The CRC-32 of the program's bytes, as zlib and Ethernet compute it. The header is not in it. |
 | `0x20` | `NAME[8]` | read | The image's name, as text, for a boot ROM to say which image it could not start. Up to 32 bytes of UTF-8, with zeros after a shorter one. A name of all 32 bytes has no zero after it. |
+| `0x40` | `ARGUMENT_LOW` | read | What the boot ROM hands the program in `a1`, the low 32 bits: for OpenSBI, the address of its devicetree. Zero for nothing. The hart's number goes in `a0`. |
+| `0x44` | `ARGUMENT_HIGH` | read | The high 32 bits, which a 32-bit CPU does not hand on. |
 
 <!-- regs:boot_image_header end -->
 
-`LOAD_ADDRESS` and `ENTRY` are each two words, so that one header serves a 64-bit CPU and a 32-bit one. The name is there for one reason: a boot ROM that refuses an image can say which.
+`LOAD_ADDRESS`, `ENTRY` and `ARGUMENT` are each two words, so that one header serves a 64-bit CPU and a 32-bit one. The name is there for one reason: a boot ROM that refuses an image can say which.
 
 ## Making one
 

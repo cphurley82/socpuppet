@@ -40,6 +40,9 @@ class BootImage:
     entry: int
     #: The program's bytes.
     payload: bytes
+    #: What the boot ROM hands the program in `a1`, beside the hart's
+    #: number in `a0`: for OpenSBI, the address of its devicetree.
+    argument: int = 0
 
     def to_bytes(self) -> bytes:
         """The image as a flash holds it: the header, then the program."""
@@ -53,6 +56,8 @@ class BootImage:
             (header.ENTRY_HIGH, self.entry >> 32),
             (header.LENGTH, len(self.payload)),
             (header.CRC, zlib.crc32(self.payload)),
+            (header.ARGUMENT_LOW, self.argument & 0xFFFF_FFFF),
+            (header.ARGUMENT_HIGH, self.argument >> 32),
         ):
             struct.pack_into("<I", head, offset, word)
         name = _cut_to_fit(self.name)
@@ -76,8 +81,10 @@ def _word(data: bytes, offset: int) -> int:
     return int(word)
 
 
-def from_elf(path: str | os.PathLike[str]) -> BootImage:
+def from_elf(path: str | os.PathLike[str], *, argument: int = 0) -> BootImage:
     """The image of the program in the ELF file at `path`.
+
+    `argument` is what the boot ROM hands the program in `a1`.
 
     The program's segments are laid out as they will be in memory, from
     the lowest address, with zeros where the file has a gap. The image is
@@ -100,12 +107,16 @@ def from_elf(path: str | os.PathLike[str]) -> BootImage:
         load_address=base,
         entry=program.entry,
         payload=bytes(payload),
+        argument=argument,
     )
 
 
-def wrap(path: str | os.PathLike[str]) -> bytes:
-    """The image of the program in an ELF file, as bytes for a flash."""
-    return from_elf(path).to_bytes()
+def wrap(path: str | os.PathLike[str], *, argument: int = 0) -> bytes:
+    """The image of the program in an ELF file, as bytes for a flash.
+
+    `argument` is what the boot ROM hands the program in `a1`.
+    """
+    return from_elf(path, argument=argument).to_bytes()
 
 
 def read(data: bytes) -> BootImage:
@@ -151,4 +162,6 @@ def read(data: bytes) -> BootImage:
         entry=_word(data, header.ENTRY_LOW)
         | (_word(data, header.ENTRY_HIGH) << 32),
         payload=payload,
+        argument=_word(data, header.ARGUMENT_LOW)
+        | (_word(data, header.ARGUMENT_HIGH) << 32),
     )
