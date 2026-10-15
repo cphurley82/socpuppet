@@ -1,0 +1,17 @@
+diff --git a/systemc-components/common/include/semaphore.h b/systemc-components/common/include/gs_semaphore.h
+similarity index 100%
+rename from systemc-components/common/include/semaphore.h
+rename to systemc-components/common/include/gs_semaphore.h
+diff --git a/systemc-components/common/include/qkmulti-rolling.h b/systemc-components/common/include/qkmulti-rolling.h
+index af4a55dd..72b8fc9c 100644
+--- a/systemc-components/common/include/qkmulti-rolling.h
++++ b/systemc-components/common/include/qkmulti-rolling.h
+@@ -17,7 +17,7 @@
+ #include <scp/report.h>
+ 
+ #include <qkmulti-quantum.h>
+-#include <semaphore.h>
++#include <gs_semaphore.h>
+ #include <libgsutils.h>
+ 
+ namespace gs {

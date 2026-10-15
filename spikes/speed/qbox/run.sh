@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# QBox's rows of the speed spike: builds QBox into $QBOX_ROOT if it is not
-# there, builds the loops against it, runs each three times, and appends
+# QBox's rows of the speed spike: builds QBox with tools/build_qbox.sh if it
+# is not installed, builds the spike's tests in a tree of their own linked
+# with it (build/speed-qbox), runs each QBox test three times, and appends
 # the lines to spikes/speed/results/<env>-qbox.jsonl. Natively on Linux, or
-# in spikes/iss/qbox/Dockerfile's image (README.md).
+# in the devcontainer's image, which has QBox's packages.
 #
-#   QBOX_ROOT=~/qbox spikes/speed/qbox/run.sh --env native-linux-x86_64
+#   spikes/speed/qbox/run.sh --env native-linux-x86_64
 set -euo pipefail
 
 env_label=""
@@ -25,20 +26,19 @@ esac
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository="$(cd "$here/../../.." && pwd)"
-root="${QBOX_ROOT:-/qbox}"
-# Natively, cmake is the one uv installed for socpuppet. In a container
-# the image has its own, and the bind mount's is the host's.
+# Natively, cmake is the one uv installed for socpuppet.
 command -v cmake > /dev/null 2>&1 ||
   export PATH="$repository/.venv/bin:$PATH"
 results="$repository/spikes/speed/results/$env_label-qbox.jsonl"
 host="$(uname -n)"
 commit="$(git -C "$repository" -c safe.directory='*' rev-parse --short HEAD)"
+qbox="$repository/build/qbox"
+tree="$repository/build/speed-qbox"
 
-if [[ ! -f "$root/src/build/install/lib/cmake/qbox/qboxConfig.cmake" &&
-  ! -d "$root/src/build/install/lib/cmake" ]]; then
+if [[ ! -f "$qbox/install/lib/cmake/qbox-2.0/qboxConfig.cmake" ]]; then
   start=$(date +%s)
-  "$here/build.sh" > "$root.build.log" 2>&1 || {
-    echo "qbox/run.sh: QBox did not build, see $root.build.log" >&2
+  "$repository/tools/build_qbox.sh" > "$qbox.build.log" 2>&1 || {
+    echo "qbox/run.sh: QBox did not build, see $qbox.build.log" >&2
     printf '{"host": "%s", "env": "%s", "commit": "%s", "cpu": "qbox", "mode": "deterministic", "status": "build-failed"}\n' \
       "$host" "$env_label" "$commit" >> "$results"
     exit 1
@@ -46,14 +46,14 @@ if [[ ! -f "$root/src/build/install/lib/cmake/qbox/qboxConfig.cmake" &&
   printf '{"host": "%s", "env": "%s", "commit": "%s", "cpu": "qbox", "mode": "deterministic", "status": "qbox-build", "qbox_build_s": %s}\n' \
     "$host" "$env_label" "$commit" "$(($(date +%s) - start))" >> "$results"
 fi
-cmake -S "$here" -B "$root/speed" -G Ninja \
-  -DQBOX_ROOT="$root/src/build/install" > "$root/speed.configure.log"
-cmake --build "$root/speed" > "$root/speed.build.log"
+cmake --preset spike -B "$tree" -DSOCPUPPET_QBOX_DIR="$qbox/install" \
+  -S "$repository" > "$tree.configure.log"
+cmake --build "$tree" --target spike_speed_tests > "$tree.build.log"
 
-binary="$root/speed/spike_speed_qbox_tests"
-qbox="$(git -C "$root/src" -c safe.directory='*' rev-parse --short HEAD)"
+binary="$tree/spikes/speed/spike_speed_tests"
+qbox_commit="$(git -C "$qbox/src" -c safe.directory='*' rev-parse --short HEAD)"
 for ((run = 1; run <= runs; run++)); do
-  for test in $("$binary" --gtest_list_tests | sed -n 's/^  //p'); do
+  for test in $("$binary" --gtest_list_tests | sed -n '/^Qbox\./,/^[^ ]/s/^  //p'); do
     # A test that crashes or is stopped by the alarm is a line that says
     # so, not the end of the run.
     line="$({ SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
@@ -65,7 +65,7 @@ for ((run = 1; run <= runs; run++)); do
       [[ "$test" == *Threaded ]] && mode=threaded
       line="{\"host\": \"$host\", \"env\": \"$env_label\", \"commit\": \"$commit\", \"cpu\": \"qbox\", \"mode\": \"$mode\", \"status\": \"speed-failed\", \"test\": \"$test\", \"run\": $run}"
     else
-      line="{\"status\": \"speed\", \"qbox\": \"$qbox\", ${line#\{}"
+      line="{\"status\": \"speed\", \"qbox\": \"$qbox_commit\", ${line#\{}"
     fi
     echo "$line" | tee -a "$results"
   done

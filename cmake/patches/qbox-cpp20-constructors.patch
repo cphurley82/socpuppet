@@ -1,0 +1,26 @@
+diff --git a/systemc-components/common/include/cciutils.h b/systemc-components/common/include/cciutils.h
+index 62609ab5..1f0299a5 100644
+--- a/systemc-components/common/include/cciutils.h
++++ b/systemc-components/common/include/cciutils.h
+@@ -78,7 +78,7 @@ public:
+     {
+     public:
+         const char* type;
+-        FactoryMaker<T, U...>(const char* _t): type(_t) {}
++        FactoryMaker(const char* _t): type(_t) {}
+     };
+ 
+     const char* type; // maintain a string representation of the type.
+diff --git a/systemc-components/common/include/ports/target-signal-socket.h b/systemc-components/common/include/ports/target-signal-socket.h
+index 05960fbc..49652543 100644
+--- a/systemc-components/common/include/ports/target-signal-socket.h
++++ b/systemc-components/common/include/ports/target-signal-socket.h
+@@ -92,7 +92,7 @@ protected:
+     gs::async_event m_negedge_ev;
+ 
+ public:
+-    TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)
++    TargetSignalSocketProxy(TargetSignalSocket<bool>& parent)
+         : m_parent(parent), m_val(false), m_cb(nullptr), m_ev(false), m_posedge_ev(false), m_negedge_ev(false)
+     {
+     }

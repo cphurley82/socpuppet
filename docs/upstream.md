@@ -1135,7 +1135,7 @@ Two more things read in the same file and not acted on:
 
 ## QBox
 
-[qualcomm/qbox](https://github.com/qualcomm/qbox), which the NPU spike builds at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `spikes/npu/hexagon/build.sh`. Not part of socpuppet's build: it is QEMU underneath (GPL-2.0), so users build it from source in a container.
+[qualcomm/qbox](https://github.com/qualcomm/qbox), pinned at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `tools/build_qbox.sh`, which builds it for the `qbox_cpu`. Not part of the wheel: it is QEMU underneath (GPL-2.0), so whoever wants it builds it from source with that tool, and configures socpuppet with `SOCPUPPET_QBOX_DIR`. The tool applies the `cmake/patches/qbox-*.patch` files to QBox, and the `libqemu-*.patch` files to the QEMU it fetches.
 
 ### The lock file pins a libqemu tag that is not published
 
@@ -1145,14 +1145,54 @@ Two more things read in the same file and not acted on:
 - **What we do**: build the commit before it, `4d63017c`, whose tag is there. The ISS spike's recipe (`spikes/iss/qbox/build.sh`) names a later commit and would fail the same way today.
 - **Upstream fix**: publish the tag, or pin one that is published.
 - **Kind**: build.
-- **When it lands**: the two recipes can move to the head again.
+- **When it lands**: `tools/build_qbox.sh` can move to the head again.
 
 ### The Hexagon components do not compile as C++20
 
 - **Where**: `qemu-components/cpu_hexagon/include/hexagon.h` line 103 and `qemu-components/hexagon_globalreg/include/hexagon_globalreg.h` line 68, `SCP_FATAL(())("Unrecognized Architecture Revision: " + dsp_arch)`.
 - **What is wrong**: `SCP_FATAL` is `fmt::format` underneath, and from C++20 on fmt checks its format string at compile time, so a string built at run time is refused: `the value of 'dsp_arch' is not usable in a constant expression`. QBox builds itself as C++17 and never sees it; a program that links QBox with C++20 code (socpuppet is C++20, and SystemC only links with code built to the same standard) has to build QBox as C++20 too.
 - **How to see it**: `cmake --preset gcc -DLIBQEMU_TARGETS=hexagon -DCMAKE_CXX_STANDARD=20`, then build `hexagon_globalreg`.
-- **What we do**: `spikes/npu/hexagon/build.sh` rewrites both lines to `("Unrecognized Architecture Revision: {}", dsp_arch)` before configuring, as it does for the ISS spike's two C++20 patches.
+- **What we do**: `cmake/patches/qbox-hexagon-fmt.patch` rewrites both lines to `("Unrecognized Architecture Revision: {}", dsp_arch)`. QBox builds the Hexagon components whatever the target, so the RISC-V build needs it too. (`spikes/npu/hexagon/build.sh` does the same with `sed`.)
 - **Upstream fix**: the same two-word change; it is what the macro expects and it reads the same in C++17.
 - **Kind**: portability.
-- **When it lands**: the third `sed` in the recipe.
+- **When it lands**: delete the patch file.
+
+### A header called `semaphore.h` hides the C library's in C++20
+
+- **Where**: `systemc-components/common/include/semaphore.h`, included by `qkmulti-rolling.h`.
+- **What is wrong**: the directory is on the include path, and C++20's `<thread>` and `<semaphore>` include the C library's `<semaphore.h>`, which now finds QBox's instead. QBox builds as C++17, where nothing includes it, so it never sees this.
+- **How to see it**: build QBox with `-DCMAKE_CXX_STANDARD=20` and without the patch. The ISS spike met it first ([iss-spike.md](iss-spike.md)).
+- **What we do**: `cmake/patches/qbox-gs-semaphore.patch` renames it `gs_semaphore.h` and changes the one `#include`.
+- **Upstream fix**: the same rename. A name in QBox's own namespace cannot meet a system header's.
+- **Kind**: portability.
+- **When it lands**: delete the patch file.
+
+### Two class templates name their constructors with template arguments
+
+- **Where**: `systemc-components/common/include/cciutils.h`, `FactoryMaker<T, U...>(const char* _t)`, and `systemc-components/common/include/ports/target-signal-socket.h`, `TargetSignalSocketProxy<bool>(TargetSignalSocket<bool>& parent)`.
+- **What is wrong**: C++20 no longer allows a constructor to be named with its template arguments (a simple-template-id), and GCC refuses both.
+- **How to see it**: build QBox with `-DCMAKE_CXX_STANDARD=20` and without the patch, as the ISS spike did ([iss-spike.md](iss-spike.md)).
+- **What we do**: `cmake/patches/qbox-cpp20-constructors.patch` drops the arguments, which means the same thing in every standard.
+- **Upstream fix**: the same.
+- **Kind**: portability.
+- **When it lands**: delete the patch file.
+
+### SystemC's headers are installed beside a fmt and a `scp/report.h` of QBox's own
+
+- **Where**: QBox's install, `include/`, which every one of its CMake targets puts on the include path, `SystemC::systemc` and `SystemC::cci` among them.
+- **What is wrong**: the same directory holds QBox's fmt 9 and its reporting library's `scp/report.h`. A program that links QBox's SystemC gets both on its include path, ahead of or behind its own fmt and its own `scp/report.h` depending on the order of the targets. socpuppet has fmt 12, and SCC's `scp/report.h`, which is another implementation of the same interface.
+- **How to see it**: configure socpuppet with `SOCPUPPET_QBOX_DIR` and look at a compile command: `-isystem <install>/include` is there for every file that includes SystemC.
+- **What we do**: `cmake/Dependencies.cmake` makes a directory of links to SystemC's and CCI's headers and nothing else, and points the three SystemC targets at it. Only the files that include QBox's own headers see its `include/`, first, and are compiled on their own.
+- **Upstream fix**: install SystemC and CCI, which QBox fetches and builds, under a directory of their own, or install fmt and the reporting library's headers under one each.
+- **Kind**: build.
+- **When it lands**: delete the directory of links and the `set_target_properties` after it.
+
+### Two libraries define the same function of SCP's logging
+
+- **Where**: QBox's `libreporting.so` and SCC's `third_party/scp4scc/scp/report.cc` both define `scp::scp_logger_cache::get_log_verbosity_cached`. They are two implementations of SystemC Common Practices' logging, and that is the one name they share.
+- **What is wrong**: one process holds both, so the dynamic linker resolves QBox's calls to whichever it meets first, which is SCC's, in socpuppet's program. Today that is harmless: the struct is laid out the same in both headers, and SCC's answer comes from the same logging configuration as everything else of socpuppet's. A change to either struct would make it a crash.
+- **How to see it**: `nm -DC libreporting.so | grep scp_logger_cache`, and `nm -C` on SCC's `report.cc.o`.
+- **What we do**: nothing, and this entry. The QBox build's suite runs QBox's components through it.
+- **Upstream fix**: for SCC, say in `scp4scc` that it is an implementation of the same interface as SCP's own library, so that a program has one or the other; for QBox, build its components against the interface and let the program choose.
+- **Kind**: build.
+- **When it lands**: when either changes.

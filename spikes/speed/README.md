@@ -57,13 +57,10 @@ spikes/speed/docker.sh amd64 --llvm --env docker-amd64-on-ubuntu --backends llvm
 
 ⚠️ asmjit makes x86-64 code, so it builds only where the compiler does: natively on an Intel Mac or on Linux, and in an x86-64 container, Rosetta's included.
 
-QBox needs no Docker on Linux, only the packages `spikes/iss/qbox/Dockerfile` installs. On a Mac it runs in that image:
+QBox needs no Docker on Linux, only the packages [docs/setup.md](../../docs/setup.md) lists, which the devcontainer's image has. `qbox/run.sh` builds QBox with `tools/build_qbox.sh` if `build/qbox/install` has none, then the spike's tests in `build/speed-qbox` linked with it, and runs the QBox tests in `qbox_speed_test.cpp`:
 
 ```sh
-QBOX_ROOT=~/qbox JOBS=8 spikes/speed/qbox/run.sh --env native-linux-x86_64
-docker build -t socpuppet-qbox spikes/iss/qbox
-docker run --rm -v socpuppet-qbox:/qbox -v "$PWD:/workspace" -w /workspace \
-  socpuppet-qbox spikes/speed/qbox/run.sh --env docker-amd64-on-macpro
+uv run spikes/speed/qbox/run.sh --env native-linux-x86_64
 ```
 
 ⚠️ Timings are only as quiet as the machine. Run nothing else while a column runs, and keep a laptop on its charger.
@@ -79,6 +76,7 @@ docker run --rm -v socpuppet-qbox:/qbox -v "$PWD:/workspace" -w /workspace \
 | `run.sh` | One environment's column: the build, the suite and the speed tests, into `results/`. |
 | `docker.sh` | `run.sh` in the devcontainer's image, for the Docker columns. `--llvm` adds LLVM 19 to it (`llvm.Dockerfile`). |
 | `collect.py` | `results/` into the report's tables. |
-| `qbox/` | The same three loops on QBox, a project of its own because QBox's SystemC cannot share a program with socpuppet's: `build.sh` builds QBox for RISC-V, `run.sh` builds the loops against it and keeps the lines. |
+| `qbox_speed_test.cpp` | The same three loops on QBox's CPU, built into the same program when socpuppet is built with QBox (M27). |
+| `qbox/run.sh` | QBox's rows: builds QBox and the spike with it, and keeps the lines. |
 | `boot_count.py` | The count of instructions to a Linux shell, on QEMU, for the projection. |
 | `results/` | Every line every run printed, one file per column. |

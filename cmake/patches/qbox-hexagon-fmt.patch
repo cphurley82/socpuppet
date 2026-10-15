@@ -1,0 +1,26 @@
+diff --git a/qemu-components/cpu_hexagon/include/hexagon.h b/qemu-components/cpu_hexagon/include/hexagon.h
+index bb55a68f..76b4d08d 100644
+--- a/qemu-components/cpu_hexagon/include/hexagon.h
++++ b/qemu-components/cpu_hexagon/include/hexagon.h
+@@ -100,7 +100,7 @@ public:
+ 
+         qemu::CpuHexagon::Rev_t dsp_rev = qemu::CpuHexagon::parse_dsp_arch(dsp_arch);
+         if (dsp_rev == qemu::CpuHexagon::unknown_rev) {
+-            SCP_FATAL(())("Unrecognized Architecture Revision: " + dsp_arch);
++            SCP_FATAL(())("Unrecognized Architecture Revision: {}", dsp_arch);
+         }
+         cpu.set_prop_int("dsp-rev", dsp_rev);
+         cpu.set_prop_bool("start-powered-off", p_start_powered_off);
+diff --git a/qemu-components/hexagon_globalreg/include/hexagon_globalreg.h b/qemu-components/hexagon_globalreg/include/hexagon_globalreg.h
+index 96da2ec7..79bf595b 100644
+--- a/qemu-components/hexagon_globalreg/include/hexagon_globalreg.h
++++ b/qemu-components/hexagon_globalreg/include/hexagon_globalreg.h
+@@ -65,7 +65,7 @@ public:
+         const std::string dsp_arch = p_dsp_arch.get_value();
+         qemu::CpuHexagon::Rev_t dsp_rev = qemu::CpuHexagon::parse_dsp_arch(dsp_arch);
+         if (dsp_rev == qemu::CpuHexagon::unknown_rev) {
+-            SCP_FATAL(())("Unrecognized Architecture Revision: " + dsp_arch);
++            SCP_FATAL(())("Unrecognized Architecture Revision: {}", dsp_arch);
+         }
+         hex_greg_devs.set_prop_int("config-table-addr", p_config_table_addr);
+         hex_greg_devs.set_prop_int("boot-evb", p_hexagon_start_addr);
