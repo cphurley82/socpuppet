@@ -6,9 +6,15 @@ its drivers look for. socpuppet writes Zephyr's unless it is asked for
 Linux's. OpenSBI reads Linux's, since it hands the same tree on to Linux.
 """
 
+import textwrap
+
+import socpuppet as sp
 from processes import run_socpuppet
+from socpuppet.regs import system_controller as regs
 from test_devicetree import (
+    cpu_with_a_pcie_root_complex,
     cpu_with_an_aplic,
+    cpu_with_an_imsic,
     cpu_with_its_peripherals,
     description_file,
 )
@@ -61,6 +67,96 @@ class TestWhenTheDevicetreeIsForLinux:
 
         assert "timebase-frequency = <1000000>;" in devicetree
         assert 'mmu-type = "riscv,sv39";' in devicetree
+
+
+class TestWhenAnImsicsTwoPagesAreOnTheCpusBusForLinux:
+    """🎓 Linux's binding has a node for each privilege level's interrupt
+    file, and the level is said only by which of the CPU's interrupts the
+    node names: 11 for machine mode's, 9 for the supervisor's."""
+
+    def test_it_is_a_node_for_each_page_and_exactly_these(self):
+        devicetree = cpu_with_an_imsic(identities=127).devicetree(
+            dialect="linux"
+        )
+
+        nodes = textwrap.dedent(
+            """\
+            imsic_m: interrupt-controller@24000000 {
+            \tcompatible = "riscv,imsics";
+            \treg = <0x0 0x24000000 0x0 0x1000>;
+            \t#address-cells = <0>;
+            \t#interrupt-cells = <0>;
+            \tinterrupt-controller;
+            \tmsi-controller;
+            \t#msi-cells = <0>;
+            \triscv,num-ids = <127>;
+            \tinterrupts-extended = <&cpu_intc 11>;
+            };
+
+            imsic_s: interrupt-controller@28000000 {
+            \tcompatible = "riscv,imsics";
+            \treg = <0x0 0x28000000 0x0 0x1000>;
+            \t#address-cells = <0>;
+            \t#interrupt-cells = <0>;
+            \tinterrupt-controller;
+            \tmsi-controller;
+            \t#msi-cells = <0>;
+            \triscv,num-ids = <127>;
+            \tinterrupts-extended = <&cpu_intc 9>;
+            };
+            """
+        )
+        assert textwrap.indent(nodes, "\t\t") in devicetree
+
+    def test_an_aplics_messages_go_to_the_supervisors_page(self):
+        # Linux, which drives the APLIC, is the supervisor.
+        devicetree = cpu_with_an_aplic().devicetree(dialect="linux")
+
+        assert "msi-parent = <&imsic_s>;" in devicetree
+
+
+class TestWhenACpuHasASystemControllerForLinux:
+    def test_beside_it_are_how_to_reset_the_cpu_and_how_to_switch_it_off(
+        self,
+    ):
+        # 🎓 Two nodes at the top of the tree, which name the system
+        # controller's node and say which register to write and what.
+        platform, bus, _ = cpu_with_its_peripherals()
+        syscon = platform.add("syscon", sp.SystemController())
+        bus.map(syscon.socket, base=0x0010_0000)
+
+        nodes = textwrap.dedent(
+            f"""\
+            syscon_reboot: reboot {{
+            \tcompatible = "syscon-reboot";
+            \tregmap = <&syscon>;
+            \toffset = <{regs.RESET_REQUEST:#x}>;
+            \tvalue = <{regs.RESET_REQUEST_RESET:#x}>;
+            }};
+
+            syscon_poweroff: poweroff {{
+            \tcompatible = "syscon-poweroff";
+            \tregmap = <&syscon>;
+            \toffset = <{regs.POWER_OFF:#x}>;
+            \tvalue = <{regs.POWER_OFF_OFF:#x}>;
+            }};
+            """
+        )
+        assert textwrap.indent(nodes, "\t") in platform.devicetree(
+            dialect="linux"
+        )
+
+
+class TestWhenAPlatformHasAPcieRootComplexForLinux:
+    def test_it_is_a_generic_ecam_host_and_nothing_of_zephyrs(self):
+        # 🎓 ECAM is the standard layout of a PCIe configuration window, and
+        # Linux has a driver for any root complex that is that and no more.
+        platform, _ = cpu_with_a_pcie_root_complex()
+
+        devicetree = platform.devicetree(dialect="linux")
+
+        assert 'compatible = "pci-host-ecam-generic";' in devicetree
+        assert "zephyr" not in devicetree
 
 
 class TestWhenTheDevicetreeCommandIsAskedForLinuxsDialect:

@@ -328,6 +328,22 @@ class TestTheHostDescribedForAMonitor:
 MORE_RAM = 128 * 1024 * 1024
 
 
+class TestTheHostsDevicetreeForLinux:
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_it(self, tmp_path):
+        devicetree = host(sbi=True).platform.devicetree(dialect="linux")
+
+        assert dtc_errors(devicetree, tmp_path) == ""
+
+    def test_both_aplics_send_to_the_supervisors_imsic_node(self):
+        devicetree = host(sbi=True).platform.devicetree(dialect="linux")
+
+        for label in ("compute_aplic", "io_aplic"):
+            assert "msi-parent = <&compute_imsic_s>;" in node_of(
+                label, devicetree
+            )
+
+
 class TestTheHostDescribedWithMoreRam:
     def test_its_ram_is_that_size(self):
         [ram] = [

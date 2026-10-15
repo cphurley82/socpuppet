@@ -74,7 +74,7 @@ class DeviceNode(NamedTuple):
     #: The node's name, before the `@address`.
     name: str
     #: The node's registers, as (address, size) ranges. The first one's
-    #: address is the one after the `@`.
+    #: address is the one after the `@`. A node with none has no `@`.
     reg: tuple[tuple[int, int], ...]
     #: The node's other properties, one line each, such as
     #: `compatible = "x";`. The first should say what the device is.
@@ -106,6 +106,9 @@ class DeviceNode(NamedTuple):
     #: with messages on behalf of other devices. The node then names what
     #: takes them, as `msi-parent`.
     messages: str | None = None
+    #: What the node's label has after the component's, for a component
+    #: with more than one node: `_s` makes `imsic` `imsic_s`.
+    suffix: str = ""
 
 
 def cells(value: int) -> str:
@@ -287,6 +290,19 @@ class Component(ABC):
         """
         return None
 
+    def device_nodes(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
+    ) -> tuple[DeviceNode, ...]:
+        """Each devicetree node of this component, where a bus master finds it.
+
+        Most components are one node, `device_node`'s, and this is that or
+        nothing. A component that is more than one node in a dialect says
+        so here. `label` is the component's own label, for a node that
+        names another of the component's.
+        """
+        node = self.device_node(reached, dialect=dialect)
+        return () if node is None else (node,)
+
     def cpu_node(
         self, label: str, connected: Collection[str]
     ) -> tuple[str, ...] | None:
@@ -329,13 +345,14 @@ class Component(ABC):
         """
         return None
 
-    def takes_messages(self, port: str) -> bool:
+    def takes_messages(self, port: str, *, dialect: Dialect) -> bool:
         """Whether `port` is where firmware's hart is sent its interrupts.
 
-        True of the page of a message controller. A device that sends
-        interrupt messages and can reach that page gets
-        `msi-parent = <&label>` in its devicetree node, with this
-        component's label.
+        True of the page of a message controller that the firmware a
+        devicetree in `dialect` is for is sent its interrupts at. A device
+        that sends interrupt messages and can reach that page gets
+        `msi-parent = <&label>` in its devicetree node, with the label of
+        the node of that page.
         """
         return False
 
@@ -769,34 +786,67 @@ class Imsic(Component):
             )
 
     @override
-    def device_node(
-        self, reached: Mapping[str, Reached], *, dialect: Dialect
-    ) -> DeviceNode | None:
-        # The page for machine mode's messages and that mode's line. Machine
-        # mode is where the firmware a devicetree is generated for runs.
-        if "machine" not in reached:
-            return None
-        return DeviceNode(
-            "interrupt-controller",
-            ((reached["machine"].address, self.mapped_size),),
-            (
-                'compatible = "riscv,imsic";',
-                "#address-cells = <0>;",
-                # An interrupt is named by one number: its identity.
-                "#interrupt-cells = <1>;",
-                "interrupt-controller;",
-                "msi-controller;",
-                f"riscv,num-ids = <{self.identities}>;",
-                # The one hart a socpuppet CPU is.
-                "riscv,hart-id = <0>;",
-            ),
-            interrupts=("irq",),
+    def device_nodes(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
+    ) -> tuple[DeviceNode, ...]:
+        if dialect == "zephyr":
+            # Zephyr's binding has one node, for the page of the mode Zephyr
+            # runs in, machine mode, and that mode's line.
+            if "machine" not in reached:
+                return ()
+            return (
+                DeviceNode(
+                    "interrupt-controller",
+                    ((reached["machine"].address, self.mapped_size),),
+                    (
+                        'compatible = "riscv,imsic";',
+                        "#address-cells = <0>;",
+                        # An interrupt is named by one number: its identity.
+                        "#interrupt-cells = <1>;",
+                        "interrupt-controller;",
+                        "msi-controller;",
+                        f"riscv,num-ids = <{self.identities}>;",
+                        # The one hart a socpuppet CPU is.
+                        "riscv,hart-id = <0>;",
+                    ),
+                    interrupts=("irq",),
+                ),
+            )
+        # 🎓 Linux's binding has a node for each mode's page, and says which
+        # mode's by which of the CPU's interrupts it names, 11 for machine
+        # mode's line and 9 for the supervisor's: there is no other word for
+        # it. A hart is found the same way, so there is no hart's number.
+        # OpenSBI keeps machine mode's for itself and marks its node
+        # disabled before it hands the tree on.
+        return tuple(
+            DeviceNode(
+                "interrupt-controller",
+                ((reached[page].address, self.mapped_size),),
+                (
+                    'compatible = "riscv,imsics";',
+                    "#address-cells = <0>;",
+                    # A message is not named by any number on a wire.
+                    "#interrupt-cells = <0>;",
+                    "interrupt-controller;",
+                    "msi-controller;",
+                    "#msi-cells = <0>;",
+                    f"riscv,num-ids = <{self.identities}>;",
+                ),
+                interrupts=(line,),
+                suffix=suffix,
+            )
+            for page, line, suffix in (
+                ("machine", "irq", "_m"),
+                ("supervisor", "supervisor_irq", "_s"),
+            )
+            if page in reached
         )
 
     @override
-    def takes_messages(self, port: str) -> bool:
-        # Machine mode's page, as the node is machine mode's.
-        return port == "machine"
+    def takes_messages(self, port: str, *, dialect: Dialect) -> bool:
+        # Machine mode's page for Zephyr, which runs in machine mode, and
+        # the supervisor's for Linux, which runs in supervisor mode.
+        return port == ("machine" if dialect == "zephyr" else "supervisor")
 
 
 class MachineTimer(Component):
@@ -963,6 +1013,47 @@ class SystemController(Component):
             ('compatible = "socpuppet,system-controller", "syscon";',),
             # `reset` is not an interrupt.
             interrupts=(),
+        )
+
+    @override
+    def device_nodes(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
+    ) -> tuple[DeviceNode, ...]:
+        nodes = super().device_nodes(reached, dialect=dialect, label=label)
+        if dialect == "zephyr":
+            return nodes
+        # 🎓 How to reset the CPU and how to switch it off, for OpenSBI and
+        # Linux: which `syscon` node to write, at which register, and what.
+        # Each is a node of its own at the top of the tree.
+        return (
+            *nodes,
+            *(
+                DeviceNode(
+                    name,
+                    (),
+                    (
+                        f'compatible = "syscon-{name}";',
+                        f"regmap = <&{label}>;",
+                        f"offset = <{offset:#x}>;",
+                        f"value = <{value:#x}>;",
+                    ),
+                    on_bus=False,
+                    interrupts=(),
+                    suffix=f"_{name}",
+                )
+                for name, offset, value in (
+                    (
+                        "reboot",
+                        system_controller.RESET_REQUEST,
+                        system_controller.RESET_REQUEST_RESET,
+                    ),
+                    (
+                        "poweroff",
+                        system_controller.POWER_OFF,
+                        system_controller.POWER_OFF_OFF,
+                    ),
+                )
+            ),
         )
 
     @override
@@ -1466,7 +1557,12 @@ class PcieRootComplex(Component):
             "pcie",
             ((ecam.address, ecam.limit),),
             (
-                'compatible = "socpuppet,pcie";',
+                # Zephyr's own ECAM driver delivers messages through an
+                # interrupt controller of ARM's only, so it has a driver of
+                # ours. Linux's generic one is all this root complex needs.
+                'compatible = "socpuppet,pcie";'
+                if dialect == "zephyr"
+                else 'compatible = "pci-host-ecam-generic";',
                 'device_type = "pci";',
                 # An address on a PCIe bus is three cells: what kind of
                 # space it is in, then the address, high half first.
