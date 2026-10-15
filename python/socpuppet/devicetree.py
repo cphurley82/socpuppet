@@ -7,22 +7,39 @@ the two from drifting apart. No simulation is needed to do it.
 
 from __future__ import annotations
 
+import subprocess
 from collections.abc import Collection, Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from socpuppet.address_map import Reached, reachable_ports
-from socpuppet.components import DeviceNode, cells
+from socpuppet.components import DeviceNode, Dialect, cells
 
 if TYPE_CHECKING:
     from socpuppet.placed import Placed, Port
     from socpuppet.platform import Connection
 
+#: The `chosen` role whose device is the console, as Zephyr names it. In
+#: Linux's dialect the console is `stdout-path` instead, a path to its node.
+_CONSOLE = "zephyr,console"
+#: The node every device on the bus is under.
+_BUS = "soc"
 
-def generate(connections: Collection[Connection], view: Port) -> str:
+
+def generate(
+    connections: Collection[Connection],
+    view: Port,
+    *,
+    dialect: Dialect = "zephyr",
+    model: str | None = None,
+    bootargs: str | None = None,
+) -> str:
     """The devicetree source for the hardware reachable from the port `view`.
 
     `connections` are the platform's connections.
-    Addresses are the ones a bus master at `view` uses.
+    Addresses are the ones a bus master at `view` uses. `dialect` is whose
+    bindings the tree is in, `model` is the board's name, for the root to
+    give, and `bootargs` is the command line `chosen` hands an operating
+    system.
 
     Each component describes its own node (`Component.device_node`). What
     is decided here is where the nodes go: the CPU under `cpus`, memory at
@@ -30,7 +47,7 @@ def generate(connections: Collection[Connection], view: Port) -> str:
     and `aliases` point at.
     """
     master = view.placed
-    nodes = _nodes(connections, view)
+    nodes = _nodes(connections, view, dialect)
     addresses = _addresses(connections, view)
     _refuse_one_number_for_two_lines(nodes, connections)
     lines = [
@@ -39,6 +56,7 @@ def generate(connections: Collection[Connection], view: Port) -> str:
         "/ {",
         "\t#address-cells = <2>;",
         "\t#size-cells = <2>;",
+        *([f'\tmodel = "{model}";'] if model is not None else []),
     ]
     # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
     # nothing to choose or name devices for.
@@ -46,15 +64,16 @@ def generate(connections: Collection[Connection], view: Port) -> str:
         label(master.path), _connected_ports(connections, master)
     )
     if cpu is not None:
-        lines += ["", *_references("chosen", _roles(nodes))]
+        lines += ["", *_chosen(nodes, dialect, bootargs)]
         aliases = _aliases(nodes)
         if aliases:
             lines += ["", *_references("aliases", aliases)]
-        lines += ["", *_cpus(cpu)]
+        lines += ["", *_cpus(cpu, _timebase(connections, master))]
     for each in _devices(
         nodes,
         connections,
         addresses,
+        dialect,
         soc_properties=(
             'compatible = "simple-bus";',
             "#address-cells = <2>;",
@@ -65,6 +84,35 @@ def generate(connections: Collection[Connection], view: Port) -> str:
         lines += ["", *each]
     lines += ["};", ""]
     return "\n".join(lines)
+
+
+def compile(source: str) -> bytes:
+    """The devicetree blob dtc, the devicetree compiler, makes of `source`.
+
+    🎓 Firmware reads a devicetree as a blob, the flattened devicetree, and
+    not as source: that is what a stage of a boot hands the next one the
+    address of. Raises FileNotFoundError, saying how to install it, if dtc
+    is not installed, and ValueError with what dtc said if it refuses the
+    source.
+    """
+    try:
+        compiled = subprocess.run(
+            ["dtc", "-I", "dts", "-O", "dtb", "-o", "-", "-"],
+            input=source.encode(),
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as missing:
+        raise FileNotFoundError(
+            "dtc, the devicetree compiler, is not installed. On Debian and "
+            "Ubuntu it is the package device-tree-compiler, and with "
+            "Homebrew it is dtc."
+        ) from missing
+    if compiled.returncode != 0:
+        raise ValueError(
+            "dtc refused the devicetree: " + compiled.stderr.decode().strip()
+        )
+    return compiled.stdout
 
 
 def overlay(
@@ -79,7 +127,8 @@ def overlay(
     what `chosen` says of them, for a devicetree that already has the rest
     of what `generate` describes.
     """
-    nodes = _nodes(connections, view)
+    # An overlay is for a Zephyr board's shield.
+    nodes = _nodes(connections, view, "zephyr")
     addresses = _addresses(connections, view)
     _refuse_one_number_for_two_lines(nodes, connections)
     roles = {
@@ -89,6 +138,7 @@ def overlay(
         [(placed, node) for placed, node in nodes if placed in only],
         connections,
         addresses,
+        "zephyr",
     )
     if roles:
         blocks.insert(0, _references("chosen", roles))
@@ -113,7 +163,7 @@ def _connected_ports(
 
 
 def _nodes(
-    connections: Collection[Connection], view: Port
+    connections: Collection[Connection], view: Port, dialect: Dialect
 ) -> list[tuple[Placed, DeviceNode]]:
     """Each component reachable from `view` that has a node, and the node."""
     # Each component's reachable ports, lowest address first. A component
@@ -129,7 +179,8 @@ def _nodes(
     return [
         (placed, node)
         for placed, ports in reached.items()
-        if (node := placed.component.device_node(ports)) is not None
+        if (node := placed.component.device_node(ports, dialect=dialect))
+        is not None
     ]
 
 
@@ -155,6 +206,7 @@ def _devices(
     nodes: list[tuple[Placed, DeviceNode]],
     connections: Collection[Connection],
     addresses: Mapping[tuple[Placed, str], int],
+    dialect: Dialect,
     soc_properties: tuple[str, ...] = (),
 ) -> list[list[str]]:
     """The nodes where they go: memory at the top, the rest under `soc`.
@@ -164,17 +216,17 @@ def _devices(
     have the node yet.
     """
     devices = [
-        _node(placed, node, connections, addresses, depth=1)
+        _node(placed, node, connections, addresses, dialect, depth=1)
         for placed, node in nodes
         if not node.on_bus
     ]
     on_bus = [(placed, node) for placed, node in nodes if node.on_bus]
     if on_bus:
-        soc = ["\tsoc {", *(f"\t\t{each}" for each in soc_properties)]
+        soc = [f"\t{_BUS} {{", *(f"\t\t{each}" for each in soc_properties)]
         for placed, node in on_bus:
             if len(soc) > 1:
                 soc.append("")
-            soc += _node(placed, node, connections, addresses, depth=2)
+            soc += _node(placed, node, connections, addresses, dialect, depth=2)
         devices.append([*soc, "\t};"])
     return devices
 
@@ -184,6 +236,7 @@ def _node(
     node: DeviceNode,
     connections: Collection[Connection],
     addresses: Mapping[tuple[Placed, str], int],
+    dialect: Dialect,
     depth: int,
 ) -> list[str]:
     """One device's node, with its interrupt read off the wire connections.
@@ -196,7 +249,7 @@ def _node(
     )
     first, *rest = node.properties
     lines = [
-        f"{indent}{label(placed.path)}: {node.name}@{node.reg[0][0]:x} {{",
+        f"{indent}{label(placed.path)}: {_name(node)} {{",
         f"{indent}\t{first}",
         f"{indent}\treg = {reg};",
         *(f"{indent}\t{each}" for each in rest),
@@ -215,7 +268,9 @@ def _node(
         key=lambda each: ports.index(each.source.name),
     ):
         sink = each.sink.placed
-        found = sink.component.interrupt_input(each.sink.name, label(sink.path))
+        found = sink.component.interrupt_input(
+            each.sink.name, label(sink.path), dialect=dialect
+        )
         if found is not None:
             interrupts.append(found)
     if interrupts and node.short_interrupts:
@@ -314,16 +369,70 @@ def _message_taker(
     return None
 
 
-def _cpus(cpu: tuple[str, ...]) -> list[str]:
-    """The `cpus` node, around the one CPU's own node."""
+def _timebase(connections: Collection[Connection], cpu: Placed) -> int | None:
+    """How fast the count the CPU reads as `time` goes up, if it has one."""
+    for each in connections:
+        if each.source.placed is cpu:
+            sink = each.sink
+            frequency = sink.placed.component.timebase_frequency(sink.name)
+            if frequency is not None:
+                return frequency
+    return None
+
+
+def _cpus(cpu: tuple[str, ...], timebase: int | None) -> list[str]:
+    """The `cpus` node, around the one CPU's own node.
+
+    `timebase` is how many times a second its `time` register counts, if
+    it has one to read.
+    """
     return [
         "\tcpus {",
         "\t\t#address-cells = <1>;",
         "\t\t#size-cells = <0>;",
+        *(
+            [f"\t\ttimebase-frequency = <{timebase}>;"]
+            if timebase is not None
+            else []
+        ),
         "",
         *(f"\t\t{each}" if each else "" for each in cpu),
         "\t};",
     ]
+
+
+def _chosen(
+    nodes: list[tuple[Placed, DeviceNode]],
+    dialect: Dialect,
+    bootargs: str | None,
+) -> list[str]:
+    """The `chosen` node: what firmware is to use, and its command line.
+
+    Zephyr's names each device it chooses by reference. Linux's names the
+    console only, by the path to its node, in `stdout-path`.
+    """
+    if dialect == "zephyr":
+        chosen = _naming(_roles(nodes))
+    else:
+        console = _roles(nodes).get(_CONSOLE)
+        chosen = [
+            f'stdout-path = "{_path(node)}";'
+            for placed, node in nodes
+            if placed is console
+        ]
+    if bootargs is not None:
+        chosen.insert(0, f'bootargs = "{bootargs}";')
+    return ["\tchosen {", *(f"\t\t{each}" for each in chosen), "\t};"]
+
+
+def _name(node: DeviceNode) -> str:
+    """A node's name, with the address of its first registers after `@`."""
+    return f"{node.name}@{node.reg[0][0]:x}"
+
+
+def _path(node: DeviceNode) -> str:
+    """Where a node is in the tree: under `soc` if it is on the bus."""
+    return f"/{_BUS}/{_name(node)}" if node.on_bus else f"/{_name(node)}"
 
 
 def _roles(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
@@ -356,11 +465,16 @@ def _references(name: str, devices: dict[str, Placed]) -> list[str]:
     """A node at the top of the tree whose properties each name a device."""
     return [
         f"\t{name} {{",
-        *(
-            f"\t\t{property_} = &{label(placed.path)};"
-            for property_, placed in sorted(devices.items())
-        ),
+        *(f"\t\t{each}" for each in _naming(devices)),
         "\t};",
+    ]
+
+
+def _naming(devices: dict[str, Placed]) -> list[str]:
+    """Properties that each name a device by its label, in order of name."""
+    return [
+        f"{property_} = &{label(placed.path)};"
+        for property_, placed in sorted(devices.items())
     ]
 
 

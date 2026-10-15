@@ -6,11 +6,13 @@ import pathlib
 import runpy
 import sys
 import traceback
+import typing
 from collections.abc import Sequence
 
 from socpuppet import address_map, boot_image, interrupt_map, run
 from socpuppet.address_map import MapEntry
 from socpuppet.boards.host import HOST_CPUS
+from socpuppet.components import Dialect
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
 from socpuppet.time import ms
@@ -39,6 +41,15 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "the port of the bus master whose view of memory to print, "
             "such as cpu.socket. Needed when the platform has more than one "
             "bus master."
+        ),
+    )
+    devicetree.add_argument(
+        "--dialect",
+        choices=typing.get_args(Dialect.__value__),
+        default="zephyr",
+        help=(
+            "whose bindings to write it in: Zephyr's (the default), or "
+            "Linux's, which OpenSBI and Linux read"
         ),
     )
     maps = commands.add_parser(
@@ -167,7 +178,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
         maps_of = _maps_as_json if options.json else _maps_as_text
         sys.stdout.write(maps_of(*_maps(options.description, options.via)))
     elif options.command == "devicetree":
-        sys.stdout.write(_devicetree(options.description, options.via))
+        sys.stdout.write(
+            _devicetree(options.description, options.via, options.dialect)
+        )
 
 
 def _add_description(command: argparse.ArgumentParser) -> None:
@@ -203,8 +216,8 @@ def _boot_image(elf: str, output: str) -> str:
     )
 
 
-def _devicetree(path: str, via: str | None) -> str:
-    """The devicetree of the platform a file describes.
+def _devicetree(path: str, via: str | None, dialect: Dialect) -> str:
+    """The devicetree of the platform a file describes, in a dialect.
 
     What is wrong with the file or with the description ends the command
     with one line that says so.
@@ -219,7 +232,9 @@ def _devicetree(path: str, via: str | None) -> str:
             f"--via, such as --via {masters[0].path}.socket."
         )
     try:
-        return platform.devicetree(None if via is None else platform.port(via))
+        return platform.devicetree(
+            None if via is None else platform.port(via), dialect=dialect
+        )
     except (ValueError, LookupError) as refused:
         sys.exit(f"{path}: {refused}")
 
