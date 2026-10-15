@@ -2,6 +2,8 @@
 
 ## What you need
 
+💡 Setting up a machine for the first time? [Setting up a machine for development](setup.md) goes from a bare install to every test passing, QBox included, step by step.
+
 - A C++20 compiler: GCC 13 or newer, or a recent Clang (Apple clang works).
 - [uv](https://docs.astral.sh/uv/). It supplies Python, CMake and Ninja, so none of those need installing.
 - git, and zlib's headers (`zlib1g-dev` on Ubuntu; already there on macOS).

@@ -138,6 +138,7 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 - ✅ [Run Zephyr's tests on the puppet](docs/twister.md): Zephyr's own test suites, and yours, on every board, with socpuppet as the emulator.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
 - 🗺️ [The address map](docs/address-map.md): what answers at which address, on each board.
+- 🛠️ [Setting up a machine for development](docs/setup.md), from a bare install to every test passing.
 - 🔧 [Building and testing](docs/development.md).
 - 🎨 [Style, and the tools that hold us to it](docs/style.md).
 - 📮 [What we owe upstream](docs/upstream.md): the fixes we carry for the projects we borrow from.
