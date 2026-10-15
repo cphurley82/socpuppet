@@ -22,6 +22,15 @@ docker image inspect "$image" > /dev/null 2>&1 ||
   docker build --tag "$image" --tag socpuppet-dev \
     --file "$dockerfile" "$(dirname "$dockerfile")"
 
+# uv's venv, its cache and its Pythons are kept in build/, so that they
+# outlive the container. The venv and the Python are the ones
+# firmware/twister.sh makes on an Intel Mac, so the two share them.
+environment=(
+  --env UV_PROJECT_ENVIRONMENT=/workspace/build/linux-venv
+  --env UV_PYTHON_INSTALL_DIR=/workspace/build/firmware/python
+  --env UV_CACHE_DIR=/workspace/build/linux-uv-cache
+)
+
 # QBox's tree and socpuppet's tree built with it are Docker volumes, at the
 # places in build/ that tools/build_qbox.sh and the qbox preset use: a
 # compiler reading through the repository's mount from a Mac is ten times
@@ -32,4 +41,4 @@ exec docker run --rm \
   --volume "$repository:/workspace" --workdir /workspace \
   --volume socpuppet-qbox:/workspace/build/qbox \
   --volume socpuppet-qbox-dev:/workspace/build/qbox-dev \
-  "$image" "$@"
+  "${environment[@]}" "$image" "$@"

@@ -134,3 +134,18 @@ def test_qboxs_two_trees_are_docker_volumes_at_their_usual_places_under_build(
     volumes = values(run, "--volume")
     assert "socpuppet-qbox:/workspace/build/qbox" in volumes
     assert "socpuppet-qbox-dev:/workspace/build/qbox-dev" in volumes
+
+
+def test_uvs_environment_cache_and_pythons_are_under_build_so_they_outlive_the_container(
+    devcontainer,
+):
+    result, calls = devcontainer("true")
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    environment = dict(each.split("=", 1) for each in values(run, "--env"))
+    # The Linux venv and Python that firmware/twister.sh makes, so that the
+    # two share one.
+    assert environment["UV_PROJECT_ENVIRONMENT"] == "/workspace/build/linux-venv"
+    assert environment["UV_PYTHON_INSTALL_DIR"] == "/workspace/build/firmware/python"
+    assert environment["UV_CACHE_DIR"].startswith("/workspace/build/")
