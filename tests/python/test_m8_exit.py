@@ -129,10 +129,6 @@ class TestWhenAllThreeFirmwaresBootTogether:
     ):
         assert_it_read_and_wrote("\n".join(said_by("host", bootchain)))
 
-    @pytest.mark.not_on_qbox(
-        "the host's ROM, at a nanosecond an instruction, speaks in the same "
-        "quantum as the manager"
-    )
     def test_the_manager_says_the_link_is_up_and_the_die_released_before_the_hosts_first_line(
         self, bootchain
     ):

@@ -582,8 +582,8 @@ class QboxCpu(RiscvCpu):
     GPL-2.0 and is never in the wheel.
 
     It is RV64GC with supervisor and user mode, the core `DbtRiseCpu` has
-    as `isa="gc", modes="msu"`, and has the same ports. It counts a
-    nanosecond for each instruction, where `DbtRiseCpu` counts a hundred.
+    as `isa="gc", modes="msu"`, and has the same ports. It counts
+    128 ns for each instruction, where `DbtRiseCpu` counts 100.
     docs/models/qbox-cpu.md says what else it does differently.
     """
 

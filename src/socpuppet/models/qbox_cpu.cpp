@@ -48,9 +48,9 @@ constexpr unsigned kMachineExternalInterrupt = 11;
 void RefuseAnyWidthBut64(std::uint64_t xlen) {
   if (xlen == 64) return;
   throw std::invalid_argument(
-      "A \"qbox_cpu\" is a 64-bit CPU, and an \"xlen\" of " +
+      R"(A "qbox_cpu" is a 64-bit CPU, and an "xlen" of )" +
       std::to_string(xlen) +
-      " was asked for. A 32-bit CPU is a \"dbt_rise_cpu\".");
+      R"( was asked for. A 32-bit CPU is a "dbt_rise_cpu".)");
 }
 
 // QBox's components are configured by CCI parameters, which have to be
@@ -67,6 +67,13 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   set("qemu.tcg_mode", cci::cci_value(std::string("COROUTINE")));
   set("qemu.sync_policy", cci::cci_value(std::string("tlm2")));
   set("qemu.icount", cci::cci_value(true));
+  // An instruction is 2^7 = 128 ns of simulated time, the nearest QEMU
+  // can count to DbtRiseCpu's 100 (it counts in powers of two of a
+  // nanosecond). At its default of 1 ns, firmware that waits by spinning
+  // spins a hundred times as many instructions for the same wait, and
+  // Zephyr's timer and scheduler suites ran out of twister's time.
+  constexpr int k128NanosecondsAnInstruction = 7;
+  set("qemu.icount_mips_shift", cci::cci_value(k128NanosecondsAnInstruction));
   set("core.resetvec", cci::cci_value(reset_vector));
   // QBox logs what it does as warnings ("QOM Device creation", "Start
   // reset"), which would be among the first lines a run prints. Its

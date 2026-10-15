@@ -450,6 +450,11 @@ class TestWhenTheHostsFirmwareAsksForAResetAndThenStopsFeedingItsWatchdog:
         ]
         assert not [text for text in while_fed if text.startswith(ROM_SAYS)]
 
+    @pytest.mark.not_on_qbox(
+        "QBox charges its CPU for a device's delay only past the quantum, "
+        "so the ROM's copy across the link takes a different time each "
+        "boot (docs/upstream.md)"
+    )
     def test_the_watchdog_bites_one_period_after_it_was_last_fed(
         self, the_hosts_story
     ):
