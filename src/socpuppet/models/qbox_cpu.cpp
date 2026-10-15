@@ -1,18 +1,22 @@
 #include "socpuppet/models/qbox_cpu.h"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
 
 #include <cci_configuration>
+#include <libqemu-cxx/target/riscv.h>
 #include <qemu-instance.h>
 #include <riscv64.h>
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/tie_low.h"
+#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -70,6 +74,17 @@ struct QboxCpu::Core {
     core_.socket.bind(from_core_);
   }
 
+  // Has QEMU read the CPU's `time` register from the machine timer,
+  // through `time`, as DbtRiseCpu does, with the CPU's lead, so that a
+  // CPU ahead of the clock reads the count where it has got to. QEMU has
+  // `time` read by a function of the platform's (a patch exports the
+  // hook: docs/upstream.md), and without one it is an illegal instruction.
+  void AnswerTimeFromTheTimer() {
+    qemu::CpuRiscv64(core_.get_qemu_dev())
+        .set_rdtime_fn(
+            [](void* core) { return static_cast<Core*>(core)->Time(); }, this);
+  }
+
   void SetReset(bool high) { core_.reset->write(high); }
   void SetInterrupt(unsigned number, bool high) {
     core_.irq_in[number]->write(high);
@@ -124,6 +139,19 @@ struct QboxCpu::Core {
     return cpu_.socket->transport_dbg(transaction);
   }
 
+  // The timer's count at the time the CPU has got to, or zero if there is
+  // no timer at the other end of `time`.
+  std::uint64_t Time() {
+    std::array<std::uint8_t, 8> count{};
+    // The CPU's lead, as QBox works it out before a bus access.
+    sc_core::sc_time lead = core_.initiator_get_local_time();
+    const tlm::tlm_response_status response =
+        Transport(cpu_.time, tlm::TLM_READ_COMMAND, 0, count, lead);
+    return response == tlm::TLM_OK_RESPONSE
+               ? LoadLittleEndian<std::uint64_t>(count)
+               : 0;
+  }
+
   QboxCpu& cpu_;
   tlm_utils::simple_target_socket<Core> from_core_{"from_core"};
   QemuInstanceManager manager_{"qemu_manager"};
@@ -166,6 +194,8 @@ void QboxCpu::before_end_of_elaboration() {
   TieLowIfUnconnected(timer_irq, tied_low_);
   TieLowIfUnconnected(supervisor_irq, tied_low_);
 }
+
+void QboxCpu::end_of_elaboration() { core_->AnswerTimeFromTheTimer(); }
 
 void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
                                         sc_dt::uint64 end) {

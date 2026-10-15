@@ -1216,3 +1216,13 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: keep what targets add beside QEMU's clock, as time the CPU owes, and count it in the lead; or move QEMU's virtual clock on by it. And sync before an access whose lead is past the quantum.
 - **Kind**: bug.
 - **When it lands**: the catch-up goes, and the ⚠️ in docs/models/qbox-cpu.md.
+
+### A RISC-V CPU's `time` register cannot be answered from outside QEMU
+
+- **Where**: QEMU's `riscv_cpu_set_rdtime_fn` (`target/riscv/cpu_helper.c`), which libqemu (`libqemu/exports.py`, at the tag QBox pins, `libqemu-v11.0-v0.15`) does not export, and QBox's `qemu::CpuRiscv`, which has no method for it.
+- **What is wrong**: QEMU reads `time` from a function the board gives it, as its `virt` board does with its ACLINT, and without one `time` is an illegal instruction (`target/riscv/csr.c`, `ctr()`). A SystemC platform has its timer outside QEMU, and no way to give QEMU that function, so firmware that reads `time` traps. Linux reads it all the time.
+- **How to see it**: `WhenACpusTimeIsNotConnected.TheTimeRegisterReadsZero` in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu` and without the patches: the program takes an illegal-instruction trap at `rdtime` and never finishes.
+- **What we do**: `cmake/patches/libqemu-riscv-rdtime-export.patch` exports it as `cpu_riscv_set_rdtime_fn`, and `cmake/patches/qbox-riscv-rdtime.patch` gives `qemu::CpuRiscv` a `set_rdtime_fn(fn, opaque)` that calls it. The adapter reads the machine timer's `time` socket from there, with the CPU's lead.
+- **Upstream fix**: the same two, one to each project.
+- **Kind**: missing feature.
+- **When it lands**: delete both patch files.

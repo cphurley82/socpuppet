@@ -29,6 +29,9 @@ class QboxCpu : public sc_core::sc_module {
  public:
   // Every fetch, load and store leaves through here.
   tlm_utils::simple_initiator_socket<QboxCpu> socket{"socket"};
+  // Where the `time` register is read from: a machine timer's `time`
+  // socket. Left unconnected, `time` reads zero.
+  tlm_utils::simple_initiator_socket<QboxCpu> time{"time"};
   // While high, the CPU does nothing. When it goes low, the CPU starts from
   // its reset vector. Left unconnected, it is tied low.
   sc_core::sc_in<bool> reset{"reset"};
@@ -50,6 +53,9 @@ class QboxCpu : public sc_core::sc_module {
   // SystemC's last chance to bind a port. By now we know whether anyone
   // connected the inputs.
   void before_end_of_elaboration() override;
+  // By now QBox has made QEMU's CPU, which the `time` register's reads are
+  // handed to. It makes it in its own before_end_of_elaboration.
+  void end_of_elaboration() override;
 
  private:
   struct Core;

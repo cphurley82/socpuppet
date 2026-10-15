@@ -1,0 +1,29 @@
+diff --git a/qemu-components/common/include/libqemu-cxx/target/riscv.h b/qemu-components/common/include/libqemu-cxx/target/riscv.h
+index 0504da09..08cac0f2 100644
+--- a/qemu-components/common/include/libqemu-cxx/target/riscv.h
++++ b/qemu-components/common/include/libqemu-cxx/target/riscv.h
+@@ -24,6 +24,10 @@ public:
+ 
+     void set_mip_update_callback(MipUpdateCallbackFn cb);
+     void register_reset();
++
++    /* Has fn(opaque) answer the CPU's reads of its time register. */
++    using RdtimeFn = uint64_t (*)(void* opaque);
++    void set_rdtime_fn(RdtimeFn fn, void* opaque);
+ };
+ 
+ class CpuRiscv32 : public CpuRiscv
+diff --git a/qemu-components/common/src/libqemu-cxx/target/riscv.cc b/qemu-components/common/src/libqemu-cxx/target/riscv.cc
+index 133806ad..55a9d02a 100644
+--- a/qemu-components/common/src/libqemu-cxx/target/riscv.cc
++++ b/qemu-components/common/src/libqemu-cxx/target/riscv.cc
+@@ -18,4 +18,9 @@ void CpuRiscv::set_mip_update_callback(MipUpdateCallbackFn cb)
+ }
+ 
+ void CpuRiscv::register_reset() { m_int->exports().cpu_riscv_register_reset(m_obj); }
++
++void CpuRiscv::set_rdtime_fn(RdtimeFn fn, void* opaque)
++{
++    m_int->exports().cpu_riscv_set_rdtime_fn(m_obj, fn, opaque);
++}
+ } // namespace qemu

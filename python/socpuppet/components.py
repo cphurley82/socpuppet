@@ -555,14 +555,16 @@ class QboxCpu(Component):
     """A RISC-V CPU that is QEMU's: QBox, Qualcomm's QEMU inside SystemC.
 
     Only a build of socpuppet with QBox has it (tools/build_qbox.sh). It
-    has the socket and the three inputs every CPU here has, and the
-    supervisor external interrupt. 🚧 Not yet `time` or `csr`, which
+    has the socket and the three inputs every CPU here has, the
+    supervisor external interrupt, and `time`. 🚧 Not yet `csr`, which
     `DbtRiseCpu` has.
     """
 
     implementation = "qbox_cpu"
     port_specs = (
         *_CPU_PORTS,
+        # Where its `time` register is read from: a machine timer's `time`.
+        initiator("time", required=False),
         # The supervisor external interrupt.
         wire_in("supervisor_irq"),
     )

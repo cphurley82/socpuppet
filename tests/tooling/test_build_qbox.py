@@ -17,6 +17,9 @@ REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "build_qbox.sh"
 PIN = "4d63017c88a147839d49028d0c60666d691460cc"
 QBOX_PATCHES = sorted(p.name for p in (REPO / "cmake/patches").glob("qbox-*"))
+QEMU_PATCHES = sorted(
+    p.name for p in (REPO / "cmake/patches").glob("libqemu-*")
+)
 
 # A git that clones by making the directory, and applies a patch by noting
 # its name: `apply --check` passes for a patch not yet applied, and
@@ -147,6 +150,23 @@ def test_qbox_is_configured_for_riscv64_as_cpp20_without_virgl_and_installed_und
     assert str(tmp_path / "qbox" / "install") in result.stdout
 
 
+def test_each_qemu_patch_is_applied_once_to_the_qemu_that_qbox_fetched(
+    build_qbox, tmp_path
+):
+    result, lines = build_qbox()
+
+    assert result.returncode == 0, result.stdout
+    qemu = tmp_path / "qbox" / "build" / "_deps" / "libqemu-src"
+    for patch in QEMU_PATCHES:
+        applied = [
+            line
+            for line in calls(lines, "git", "apply")
+            if line.endswith(patch) and "--check" not in line
+        ]
+        assert len(applied) == 1, patch
+        assert str(qemu) in applied[0].split()
+
+
 def test_a_second_run_applies_no_patch_again(build_qbox):
     build_qbox()
     result, lines = build_qbox()
@@ -155,7 +175,7 @@ def test_a_second_run_applies_no_patch_again(build_qbox):
     applied = [
         line for line in calls(lines, "git", "apply") if "--check" not in line
     ]
-    assert len(applied) == len(QBOX_PATCHES)
+    assert len(applied) == len(QBOX_PATCHES) + len(QEMU_PATCHES)
 
 
 def test_the_jobs_option_is_how_many_files_are_compiled_at_once(build_qbox):
