@@ -22,6 +22,14 @@ docker image inspect "$image" > /dev/null 2>&1 ||
   docker build --tag "$image" --tag socpuppet-dev \
     --file "$dockerfile" "$(dirname "$dockerfile")"
 
+# QBox's tree and socpuppet's tree built with it are Docker volumes, at the
+# places in build/ that tools/build_qbox.sh and the qbox preset use: a
+# compiler reading through the repository's mount from a Mac is ten times
+# slower (docs/twister-spike.md). On the Mac those two directories stay
+# empty, and `docker volume rm socpuppet-qbox socpuppet-qbox-dev` throws
+# the trees away.
 exec docker run --rm \
   --volume "$repository:/workspace" --workdir /workspace \
+  --volume socpuppet-qbox:/workspace/build/qbox \
+  --volume socpuppet-qbox-dev:/workspace/build/qbox-dev \
   "$image" "$@"

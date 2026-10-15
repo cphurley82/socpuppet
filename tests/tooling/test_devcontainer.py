@@ -122,3 +122,15 @@ def test_an_image_already_built_from_this_dockerfile_is_not_built_again(
 
     assert result.returncode == 0, result.stdout
     assert not [call for call in calls if call[0] == "build"]
+
+
+def test_qboxs_two_trees_are_docker_volumes_at_their_usual_places_under_build(
+    devcontainer,
+):
+    result, calls = devcontainer("true")
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    volumes = values(run, "--volume")
+    assert "socpuppet-qbox:/workspace/build/qbox" in volumes
+    assert "socpuppet-qbox-dev:/workspace/build/qbox-dev" in volumes
