@@ -223,3 +223,13 @@ def test_qemus_sdl_and_slirp_are_among_the_libraries_the_build_stops_without(
     assert result.returncode != 0
     assert package in result.stdout
     assert not calls(lines, "cmake")
+
+
+def test_qboxs_own_tests_are_not_built_since_socpuppet_holds_its_cpu_to_its_own(
+    build_qbox,
+):
+    result, lines = build_qbox()
+
+    assert result.returncode == 0, result.stdout
+    (configure,) = calls(lines, "cmake", "-S")
+    assert "-DBUILD_TESTING=OFF" in configure.split()

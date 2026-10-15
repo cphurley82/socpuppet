@@ -94,12 +94,15 @@ done
 # RISC-V's 64-bit QEMU only. C++20, because SystemC only links with code
 # built to the same standard as itself, and socpuppet is C++20. No virgl and
 # no virCL: QEMU's bundled virclrenderer does not compile against glibc
-# 2.42's C11 threads, and nothing here draws.
+# 2.42's C11 threads, and nothing here draws. And none of QBox's own tests,
+# which socpuppet does not run, and which on a Mac look for LLVM's tools
+# only where Homebrew keeps them on Apple silicon.
 build="$root/build"
 cmake -S "$source" -B "$build" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="$root/install" \
   -DCPM_DOWNLOAD_ALL=ON \
+  -DBUILD_TESTING=OFF \
   -DLIBQEMU_TARGETS=riscv64 \
   -DCMAKE_CXX_STANDARD=20 \
   -DGS_ENABLE_VIRGLRENDERER=OFF \
