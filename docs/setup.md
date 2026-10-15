@@ -14,8 +14,8 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   cmake --preset  ──▶  SystemC, SCC, DBT-RISE, Boost and friends   (build/dev/_deps)
   firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python     (build/firmware)
   tools/build_qbox.sh ▶ QBox and its QEMU                          (build/qbox)
-  Docker Desktop  ──▶  the devcontainer's image, on a Mac: QBox,   (Docker's own disk)
-                       and the firmware on an Intel Mac
+  Docker Desktop  ──▶  the devcontainer's image: the firmware      (Docker's own disk)
+                       on an Intel Mac, and QBox for Linux, if wanted
 ```
 
 💡 Only the first row needs root. Everything else lives in your home directory or in the checkout, so deleting `build/` takes the machine back to where it started.
@@ -56,7 +56,13 @@ xcode-select --install       # Apple clang, git, make
 brew install dtc
 ```
 
-⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox wants Docker Desktop on either kind of Mac: it is built and run in the devcontainer's image, which is Linux, by `tools/devcontainer.sh` (step 5).
+For QBox (step 5), add its Homebrew packages, which are QBox's own list without the LLVM that only its tests use:
+
+```sh
+brew install asio glib jpeg-turbo libelf libslirp libzip meson ninja pixman pkgconf sdl2
+```
+
+⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox builds natively on a Mac with the packages above, and it can be built in the devcontainer's image instead, with Docker Desktop (step 5).
 
 ## 2. uv
 
@@ -104,7 +110,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset dev
 
 ⚠️ QEMU is GPL-2.0. QBox is always built from source beside socpuppet and never goes into the wheel.
 
-On Linux, with the packages from step 1:
+On Linux or a Mac, with the packages from step 1:
 
 ```sh
 uv run tools/build_qbox.sh            # QBox and its QEMU, into build/qbox/install: about 5 to 10 minutes
@@ -119,7 +125,9 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 
 ⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-On a Mac, the same four commands run in the devcontainer's image, which has QBox's packages. `tools/devcontainer.sh` goes in front of each:
+⚠️ The native build on a Mac was walked through on an Intel one (a 2019 Mac Pro, macOS 26), where it took 9 minutes and the suite 4. It takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)). An Apple silicon Mac gets the same patches and has not been tried.
+
+On a Mac the same four commands can also run in the devcontainer's image, which is Linux with GCC, as CI builds, and has QBox's packages already. `tools/devcontainer.sh` goes in front of each:
 
 ```sh
 tools/devcontainer.sh uv run tools/build_qbox.sh     # about 10 minutes on a 2019 Mac Pro
@@ -128,7 +136,7 @@ tools/devcontainer.sh uv run cmake --build --preset qbox
 SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.sh uv run ctest --preset qbox
 ```
 
-💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees, `build/qbox` and `build/qbox-dev`, on Docker volumes (`socpuppet-qbox` and `socpuppet-qbox-dev`), because a compiler reading the Mac's files through Docker is ten times slower. So on the Mac those two directories stay empty, and `docker volume rm socpuppet-qbox socpuppet-qbox-dev` is how to start again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
+💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees on Docker volumes (`socpuppet-qbox` and `socpuppet-qbox-dev`), because a compiler reading the Mac's files through Docker is ten times slower. In the container the volumes sit where `build/qbox` and `build/qbox-dev` are, in front of whatever the Mac has there, so a native build and this one do not disturb each other. `docker volume rm socpuppet-qbox socpuppet-qbox-dev` is how to start this one again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
 
 ## 6. Before your first push
 
@@ -146,4 +154,4 @@ uv run cmake --build --preset dev --target check_headers   # each header compile
 - **`uv: command not found`** after installing it: the shell was started before the installer changed its start-up files. Open a new terminal, or `source ~/.local/bin/env`.
 - **CMake cannot find a C++ compiler**: the compiler from step 1 is missing. On Ubuntu, `build-essential`; on a Mac, `xcode-select --install`.
 - **A test fails after a `git pull` that changed `cmake/patches/`**: the build tree still holds the dependency patched the old way. Delete `build/dev/_deps/<dependency>-*` and configure again ([development.md](development.md#dependencies)).
-- **QBox's build stops at a missing header or `pkg-config` package**: one of QBox's packages from step 1 is missing. The log is in the terminal; the package is usually the header's name with `-dev` on the end.
+- **QBox's build stops at a missing header or `pkg-config` package**: one of QBox's packages from step 1 is missing. `tools/build_qbox.sh` checks for most of them before it starts, and names what is missing for apt and for Homebrew. Past that the log is in the terminal, and on Ubuntu the package is usually the header's name with `-dev` on the end.

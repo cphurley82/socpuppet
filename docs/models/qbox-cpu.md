@@ -19,7 +19,7 @@ uv run cmake --build --preset qbox
 uv run ctest --preset qbox      # everything, with the hart's tests on QBox's CPU
 ```
 
-[setup.md](../setup.md) lists the packages the tool needs. A build without QBox still knows the name `qbox_cpu`, and refuses it with how to build one.
+[setup.md](../setup.md) lists the packages the tool needs, on Linux and on a Mac, and on a Mac the same four commands can run in the devcontainer's image instead, through `tools/devcontainer.sh`. A build without QBox still knows the name `qbox_cpu`, and refuses it with how to build one.
 
 ⚠️ A build with QBox links socpuppet to QBox's own SystemC and CCI, which are shared libraries, because one program can hold only one SystemC kernel. The build without QBox fetches the same SystemC commit and links it statically, so the two run the same kernel.
 
@@ -65,10 +65,9 @@ The hart's suite runs on it with `ctest --preset qbox`, and what it does not pas
 - **A device's delay inside the quantum.** QBox keeps the CPU's time in QEMU's clock, which counts instructions, and forgets what a target adds to an access unless the CPU has to wait for SystemC there and then. ⚠️ At the boards' 100 µs a device that takes 3 µs costs this CPU nothing. Time a device against `dbt_rise_cpu` ([upstream.md](../upstream.md)).
 - **A no-quantum run that keeps time.** With no quantum, a CPU running from memory it reaches directly never waits for SystemC's clock, which then stands still while it runs. The boards set 100 µs. M26's 1 ms for 33.5 million instructions was that.
 - **QEMU's threaded configuration**, a thread for each CPU with nothing to keep it in step. It hung in every environment M26 tried, and it would give up repeatability, which is the point of a second opinion.
-- **A Mac.** QBox's build stops at QEMU's OpenGL check with Homebrew's packages. On a Mac it is built in the devcontainer's image, which has QBox's packages.
 
 ## Where it comes from
 
 💡 Borrowed. The CPU is QEMU's, through [QBox](https://github.com/qualcomm/qbox) at `4d63017c`, built by `tools/build_qbox.sh` with the patches in `cmake/patches/qbox-*.patch` and `cmake/patches/libqemu-*.patch`. socpuppet's adapter is `src/socpuppet/models/qbox_cpu.cpp`: it funnels QBox's bus socket into its own, passes reset and the three interrupts on as they change, sets QBox's parameters before it is built, and answers the `time` register and the IMSIC's registers through hooks of QEMU's that a patch exports. Its one source file is the only one that sees QBox's headers.
 
-What was changed, and why, is in [upstream.md](../upstream.md): three patches for C++20, and four for what the contract and the suite found (a sleeping CPU that stopped time, the two hooks, and the reset handler's thread). The nightly workflow (`.github/workflows/qbox.yml`) builds it and runs all of the above, and twister's suites on the host board.
+What was changed, and why, is in [upstream.md](../upstream.md): three patches for C++20, four for what the contract and the suite found (a sleeping CPU that stopped time, the two hooks, and the reset handler's thread), and four so that it builds and runs on a Mac (QEMU without OpenGL, rpclib's own asio before Homebrew's, twice, and QEMU found from inside Python). The nightly workflow (`.github/workflows/qbox.yml`) builds it and runs all of the above, and twister's suites on the host board.

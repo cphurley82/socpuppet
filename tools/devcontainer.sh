@@ -56,9 +56,9 @@ case "$(uname -s)" in
   # repository through file sharing, which a compiler finds ten times slower
   # than a Docker volume (docs/twister-spike.md). So QBox's tree and
   # socpuppet's tree built with it are volumes, at the places in build/ that
-  # tools/build_qbox.sh and the qbox preset use. On the Mac those two
-  # directories stay empty, and `docker volume rm socpuppet-qbox
-  # socpuppet-qbox-dev` throws the trees away.
+  # tools/build_qbox.sh and the qbox preset use, in front of whatever the
+  # Mac has there, a native build included. `docker volume rm
+  # socpuppet-qbox socpuppet-qbox-dev` throws them away.
   Darwin)
     options+=(
       --volume socpuppet-qbox:/workspace/build/qbox
