@@ -29,6 +29,9 @@
 #include "socpuppet/models/pcie_endpoint.h"
 #include "socpuppet/models/pcie_root_complex.h"
 #include "socpuppet/models/plic.h"
+#if SOCPUPPET_HAS_QBOX
+#include "socpuppet/models/qbox_cpu.h"
+#endif
 #include "socpuppet/models/rom.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
@@ -53,6 +56,9 @@ static_assert(NvmeFunctionSlot<BehavioralNvme>);
 static_assert(NandSlot<IdealNand>);
 static_assert(CpuSlot<ScriptedBusMaster>);
 static_assert(CpuSlot<DbtRiseCpu>);
+#if SOCPUPPET_HAS_QBOX
+static_assert(CpuSlot<QboxCpu>);
+#endif
 
 namespace {
 
@@ -140,6 +146,17 @@ Registry BuiltinComponents() {
   // QBox's CPU is QEMU's, which is GPL, so it is built only by whoever
   // asks for it (tools/build_qbox.sh). The name is here either way, so that
   // a build without it says how to get one.
+#if SOCPUPPET_HAS_QBOX
+  registry.Add("qbox_cpu", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<QboxCpu>(
+        name, parameters.Required("xlen"), parameters.Required("reset_vector"));
+    std::vector<Port> ports{InitiatorPort("socket", module->socket),
+                            WireSinkPort("irq", module->irq),
+                            WireSinkPort("timer_irq", module->timer_irq),
+                            WireSinkPort("reset", module->reset)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+#else
   registry.Add("qbox_cpu", [](const char*, Parameters&) -> Instance {
     throw std::invalid_argument(
         "This build of socpuppet has no qbox_cpu. Build QBox with "
@@ -147,6 +164,7 @@ Registry BuiltinComponents() {
         "configure socpuppet with "
         "-DSOCPUPPET_QBOX_DIR=build/qbox/install.");
   });
+#endif
   registry.Add("dma_engine", [](const char* name, Parameters&) {
     auto module = std::make_unique<DmaEngine>(name);
     std::vector<Port> ports{TargetPort("cpu", module->cpu),

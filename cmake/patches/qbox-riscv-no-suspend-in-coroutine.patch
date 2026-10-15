@@ -1,0 +1,20 @@
+diff --git a/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h b/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h
+index daba470c..2c5cd86c 100644
+--- a/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h
++++ b/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h
+@@ -67,6 +67,15 @@ public:
+     {
+         QemuCpu::before_end_of_elaboration();
+ 
++        /*
++         * As a coroutine, QEMU runs on the SystemC thread, and notifies the
++         * event from there. Nothing outside the kernel can, so the kernel
++         * need not wait for it, and a CPU asleep in wfi must not stop time.
++         */
++        if (m_inst.get_tcg_mode() == QemuInstance::TCG_COROUTINE) {
++            m_irq_ev.async_detach_suspending();
++        }
++
+         qemu::CpuRiscv64 cpu(get_qemu_dev());
+         cpu.set_prop_int("hartid", m_hartid);
+ 

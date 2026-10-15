@@ -130,6 +130,20 @@ target_compile_definitions(socpuppet_dbt_rise_cpu PRIVATE
   SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
 socpuppet_dev_checks(socpuppet_dbt_rise_cpu)
 
+# The second CPU: QBox's, which is QEMU's, in a build with QBox only. Its
+# source file is the one that sees QBox's headers (socpuppet_qbox, in
+# cmake/Dependencies.cmake).
+if(SOCPUPPET_HAS_QBOX)
+  add_library(socpuppet_qbox_cpu STATIC models/qbox_cpu.cpp)
+  target_sources(socpuppet_qbox_cpu PUBLIC
+    FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+      models/qbox_cpu.h)
+  target_link_libraries(socpuppet_qbox_cpu
+    PUBLIC SystemC::systemc
+    PRIVATE socpuppet_qbox)
+  socpuppet_dev_checks(socpuppet_qbox_cpu)
+endif()
+
 # The UART: VPV-Peripherals' PULPino UART.
 add_library(socpuppet_ns16550 STATIC models/ns16550.cpp)
 target_sources(socpuppet_ns16550 PUBLIC
@@ -296,7 +310,8 @@ target_sources(socpuppet_models INTERFACE
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
-  socpuppet_spi_flash socpuppet_watchdog)
+  socpuppet_spi_flash socpuppet_watchdog
+  $<$<BOOL:${SOCPUPPET_HAS_QBOX}>:socpuppet_qbox_cpu>)
 
 # The registry of everything above, by name. Compiled on its own, so that a
 # file that only wants the registry does not compile every model to get it.
@@ -318,6 +333,9 @@ socpuppet_check_headers(
   socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic socpuppet_spi_flash socpuppet_watchdog)
+if(SOCPUPPET_HAS_QBOX)
+  socpuppet_check_headers(socpuppet_qbox_cpu)
+endif()
 
 # What the extension below is made of, besides its one source file. Listed
 # as a library of their own so that `check_headers` compiles each alone.

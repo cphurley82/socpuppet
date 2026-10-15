@@ -554,14 +554,13 @@ class DbtRiseCpu(Component):
 class QboxCpu(Component):
     """A RISC-V CPU that is QEMU's: QBox, Qualcomm's QEMU inside SystemC.
 
-    🚧 Only a build of socpuppet with QBox has it (tools/build_qbox.sh),
-    and this description is all there is of it so far.
+    Only a build of socpuppet with QBox has it (tools/build_qbox.sh). It
+    has the socket and the three inputs every CPU here has. 🚧 Not yet the
+    supervisor's interrupt, `time` or `csr`, which `DbtRiseCpu` has.
     """
 
     implementation = "qbox_cpu"
-    # The same ports as the other CPU's, so that either fits a board. The
-    # build with QBox is what says they are there (test_catalogue.py).
-    port_specs = DbtRiseCpu.port_specs
+    port_specs = _CPU_PORTS
     is_bus_master = True
 
     xlen: int

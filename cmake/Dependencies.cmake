@@ -130,6 +130,20 @@ unset(CMAKE_POLICY_VERSION_MINIMUM)
 # shared fmt 9 whose names are in a namespace of their own (fmt::v9).
 if(SOCPUPPET_HAS_QBOX)
   find_package(qbox CONFIG REQUIRED)
+  # What a file that includes QBox's headers is compiled and linked with.
+  # QBox's include directory comes first: it holds QBox's fmt and its
+  # scp/report.h, which have to win over socpuppet's fmt and SCC's
+  # (docs/upstream.md). QBox's headers instantiate fmt 9 with names from
+  # its shared library, which nothing of QBox's passes on. Its CPUs are
+  # plug-ins, with their headers beside them.
+  find_library(_qbox_fmt NAMES fmt PATHS ${SOCPUPPET_QBOX_DIR}/lib
+    NO_DEFAULT_PATH NO_CACHE REQUIRED)
+  add_library(socpuppet_qbox INTERFACE)
+  target_include_directories(socpuppet_qbox SYSTEM INTERFACE
+    ${SOCPUPPET_QBOX_DIR}/include
+    ${SOCPUPPET_QBOX_DIR}/qemu-components/cpu_riscv/cpu_riscv64/include)
+  target_compile_definitions(socpuppet_qbox INTERFACE FMT_SHARED)
+  target_link_libraries(socpuppet_qbox INTERFACE ${_qbox_fmt} qbox::qbox)
 endif()
 
 # SCC probes for SystemC by compiling against an installed copy. Ours is

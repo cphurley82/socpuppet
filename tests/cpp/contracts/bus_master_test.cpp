@@ -73,40 +73,60 @@ struct ScriptedRig {
   }
 };
 
-// The CPU: told what to do with a program in its RAM.
-struct DbtRiseRig {
-  using Contract = BusMasterContract<DbtRiseRig>;
+// A RISC-V CPU is told what to do with a program in its RAM. Every CPU
+// runs the same ones.
+template <typename Rig>
+void LoadProgram(socpuppet::Platform& platform, Behavior behavior) {
+  using Contract = BusMasterContract<Rig>;
+  riscv::Program program;
+  switch (behavior) {
+    case Behavior::kWriteToTheProbe:
+      program = riscv::StoreWordThenSleep(Contract::kProbeBase);
+      break;
+    case Behavior::kWriteToTheProbeTwice:
+      program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/2);
+      break;
+    case Behavior::kWriteToTheProbeFourTimes:
+      program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/4);
+      break;
+    case Behavior::kWaitForTheInterruptThenWriteToTheProbe:
+      program = riscv::SleepUntilTheExternalInterruptThenStoreWord(
+          Contract::kProbeBase);
+      break;
+    case Behavior::kTakeInterruptsThroughThePlic:
+      program = riscv::HandleInterruptsThroughAPlic(Contract::kPlicBase,
+                                                    Contract::kDeviceBase);
+      break;
+  }
+  platform.DebugWrite("cpu.socket", Contract::kProgramBase,
+                      std::as_bytes(std::span{program}));
+}
 
+// DBT-RISE's CPU.
+struct DbtRiseRig {
   static const char* Implementation() { return "dbt_rise_cpu"; }
   static socpuppet::Config Config() {
-    return {{"xlen", 64}, {"reset_vector", Contract::kProgramBase}};
+    return {{"xlen", 64},
+            {"reset_vector", BusMasterContract<DbtRiseRig>::kProgramBase}};
   }
-
   static void Load(socpuppet::Platform& platform, Behavior behavior) {
-    riscv::Program program;
-    switch (behavior) {
-      case Behavior::kWriteToTheProbe:
-        program = riscv::StoreWordThenSleep(Contract::kProbeBase);
-        break;
-      case Behavior::kWriteToTheProbeTwice:
-        program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/2);
-        break;
-      case Behavior::kWriteToTheProbeFourTimes:
-        program = riscv::StoreWordThenSleep(Contract::kProbeBase, /*times=*/4);
-        break;
-      case Behavior::kWaitForTheInterruptThenWriteToTheProbe:
-        program = riscv::SleepUntilTheExternalInterruptThenStoreWord(
-            Contract::kProbeBase);
-        break;
-      case Behavior::kTakeInterruptsThroughThePlic:
-        program = riscv::HandleInterruptsThroughAPlic(Contract::kPlicBase,
-                                                      Contract::kDeviceBase);
-        break;
-    }
-    platform.DebugWrite("cpu.socket", Contract::kProgramBase,
-                        std::as_bytes(std::span{program}));
+    LoadProgram<DbtRiseRig>(platform, behavior);
   }
 };
+
+#if SOCPUPPET_HAS_QBOX
+// QBox's CPU, which is QEMU's.
+struct QboxRig {
+  static const char* Implementation() { return "qbox_cpu"; }
+  static socpuppet::Config Config() {
+    return {{"xlen", 64},
+            {"reset_vector", BusMasterContract<QboxRig>::kProgramBase}};
+  }
+  static void Load(socpuppet::Platform& platform, Behavior behavior) {
+    LoadProgram<QboxRig>(platform, behavior);
+  }
+};
+#endif
 
 }  // namespace
 
@@ -114,6 +134,10 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Scripted, BusMasterContract,
                                ::testing::Types<ScriptedRig>);
 INSTANTIATE_TYPED_TEST_SUITE_P(DbtRise, BusMasterContract,
                                ::testing::Types<DbtRiseRig>);
+#if SOCPUPPET_HAS_QBOX
+INSTANTIATE_TYPED_TEST_SUITE_P(Qbox, BusMasterContract,
+                               ::testing::Types<QboxRig>);
+#endif
 
 // What follows is the scripted master's alone. A CPU model keeps its own
 // time, and DBT-RISE's goes to sleep without letting the clock catch up

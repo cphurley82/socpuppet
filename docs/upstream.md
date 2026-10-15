@@ -1196,3 +1196,23 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: for SCC, say in `scp4scc` that it is an implementation of the same interface as SCP's own library, so that a program has one or the other; for QBox, build its components against the interface and let the program choose.
 - **Kind**: build.
 - **When it lands**: when either changes.
+
+### A RISC-V CPU asleep in `wfi` stops simulated time
+
+- **Where**: `qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h`, `m_irq_ev(true)` in `QemuCpuRiscv64`'s constructor, under the comment "We have no choice but to attach-suspend here".
+- **What is wrong**: the event that wakes the CPU when its interrupt-pending register changes is attached as *suspending*: 🎓 SystemC 3 then waits for it, from outside the kernel, rather than move time on when nothing else is scheduled. That is what a QEMU on threads of its own needs. As a coroutine, QEMU runs on SystemC's thread and notifies the event from there, so nothing outside can, and a CPU asleep in `wfi` holds simulated time where it is: a run for a fixed time never returns, and a run with no limit never ends.
+- **How to see it**: the bus-master contract on the `qbox_cpu` without the patch (`tests/cpp/contracts/bus_master_test.cpp`): every scenario whose program ends in `wfi` and has nothing else scheduled hangs. QBox's own speed loops worked around it with a thread that waits 100 µs at a time.
+- **What we do**: `cmake/patches/qbox-riscv-no-suspend-in-coroutine.patch` detaches it in `before_end_of_elaboration` when the instance's TCG mode is `COROUTINE`.
+- **Upstream fix**: the same, in each CPU that attaches such an event, or once in `QemuCpu`, which knows its mode.
+- **Kind**: bug.
+- **When it lands**: delete the patch file.
+
+### A target's delay is forgotten, and a lead can pass the quantum
+
+- **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::QuantumKeeperSync::get_local_time` and `set_local_time`, and `ports/initiator.h`, `do_regular_access`.
+- **What is wrong**: QBox keeps the CPU's time in QEMU's clock, which with `icount` counts instructions, and works the CPU's lead over SystemC's clock out from it before each access. What the target adds to the delay is written back to the quantum keeper after the access, and the next access works the lead out from QEMU's clock again, which never had it. So a target's delay is lost to the CPU unless it makes the CPU wait for the kernel then and there. And the lead is held to the quantum only when QEMU's timer for the end of a quantum fires, so an access can arrive with a lead longer than the quantum, and with no quantum at all, with one.
+- **How to see it**: the contract's `TimeATargetAddsDelaysTheMastersNextAccess` and `WithNoQuantumEveryAccessArrivesWithNoDelay` on the `qbox_cpu`, without the catch-up below: the second access arrives 2 ns after the first, behind a target that takes 3 µs, and every access arrives 2 ns ahead with no quantum.
+- **What we do**: `src/socpuppet/models/qbox_cpu.cpp` lets the clock catch up when a lead before an access, or after what the target added, is longer than the quantum. ⚠️ A target's delay that stays inside the quantum is still lost: at the boards' 100 µs, a device that takes 3 µs costs QBox's CPU nothing. Time a device against `dbt_rise_cpu`.
+- **Upstream fix**: keep what targets add beside QEMU's clock, as time the CPU owes, and count it in the lead; or move QEMU's virtual clock on by it. And sync before an access whose lead is past the quantum.
+- **Kind**: bug.
+- **When it lands**: the catch-up goes, and the ⚠️ in docs/models/qbox-cpu.md.

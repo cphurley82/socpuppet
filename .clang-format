@@ -16,8 +16,9 @@ IncludeCategories:
     Priority: 1
   - Regex: '^<(sys|arpa|netinet)/.*\.h>$'
     Priority: 1
-  # SystemC's two extensionless headers look like standard library ones.
-  - Regex: '^<(systemc|tlm)>$'
+  # SystemC's and CCI's extensionless headers look like standard library
+  # ones.
+  - Regex: '^<(systemc|tlm|cci_configuration)>$'
     Priority: 3
   # Third-party: anything in angle brackets with a directory or an extension.
   - Regex: '^<.*[/.].*>$'
