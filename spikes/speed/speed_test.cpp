@@ -32,6 +32,7 @@
 #include "spikes/speed/loops.h"
 #include "tests/cpp/support/counting_probe.h"
 #include "tests/cpp/support/riscv_program.h"
+#include "tests/cpp/support/the_cpu.h"
 
 #ifndef SPEED_COMPILER
 #define SPEED_COMPILER "unknown"
@@ -68,11 +69,13 @@ struct SpeedPlatform {
   explicit SpeedPlatform(const sc_core::sc_time& quantum)
       : platform{WithAProbe()} {
     platform.SetQuantum(quantum);
-    platform.Add("cpu", "dbt_rise_cpu",
-                 {{"xlen", 64},
-                  {"reset_vector", kRamBase},
-                  {"floating_point", 1},
-                  {"supervisor_mode", 1}});
+    // The CPU SOCPUPPET_CPU names: DBT-RISE's, or QBox's in a build with
+    // it (qbox/run.sh).
+    AddTheCpu(platform, "cpu",
+              {{"xlen", 64},
+               {"reset_vector", kRamBase},
+               {"floating_point", 1},
+               {"supervisor_mode", 1}});
     platform.Add("probe", "counting_probe");
     platform.Add("ram", "memory", {{"size", kRamSize}});
     platform.Add(
@@ -168,25 +171,28 @@ void Measure(const std::string& name, const sc_core::sc_time& quantum,
   const double seconds = elapsed.count();
   std::ostringstream line;
   line.precision(6);
-  line << "[speed] {"
-       << R"("host": ")" << Environment("SPEED_HOST", "unknown") << R"(", )"
-       << R"("env": ")" << Environment("SPEED_ENV", "unlabelled") << R"(", )"
-       << R"("commit": ")" << Environment("SPEED_COMMIT", "unknown") << R"(", )"
-       << R"("run": )" << Environment("SPEED_RUN", "0") << ", "
-       << R"("cpu": "dbt-rise", )"
-       << R"("backend": ")"
-       << speed.platform.ModuleAt<socpuppet::DbtRiseCpu>("cpu").Backend()
-       << R"(", )"
-       << R"("compiler": ")" << SPEED_COMPILER << R"(", )"
-       << R"("loop": ")" << name << R"(", )"
-       << R"("quantum_us": )" << quantum.to_seconds() * 1e6 << ", "
-       << R"("instructions": )" << loop.instructions << ", "
-       << R"("walks": )" << loop.walks << ", "
-       << R"("seconds": )" << seconds << ", "
-       << R"("mips": )"
-       << (static_cast<double>(loop.instructions) / seconds / 1e6) << ", "
-       << R"("transactions": )" << transactions << ", "
-       << R"("simulated_s": )" << speed.platform.Time().to_seconds() << "}";
+  line
+      << "[speed] {"
+      << R"("host": ")" << Environment("SPEED_HOST", "unknown") << R"(", )"
+      << R"("env": ")" << Environment("SPEED_ENV", "unlabelled") << R"(", )"
+      << R"("commit": ")" << Environment("SPEED_COMMIT", "unknown") << R"(", )"
+      << R"("run": )" << Environment("SPEED_RUN", "0") << ", "
+      << (TheCpu() == "qbox_cpu"
+              ? R"("cpu": "qbox", "backend": "qemu", "mode": "deterministic", )"
+              : R"("cpu": "dbt-rise", "backend": ")" +
+                    speed.platform.ModuleAt<socpuppet::DbtRiseCpu>("cpu")
+                        .Backend() +
+                    R"(", )")
+      << R"("compiler": ")" << SPEED_COMPILER << R"(", )"
+      << R"("loop": ")" << name << R"(", )"
+      << R"("quantum_us": )" << quantum.to_seconds() * 1e6 << ", "
+      << R"("instructions": )" << loop.instructions << ", "
+      << R"("walks": )" << loop.walks << ", "
+      << R"("seconds": )" << seconds << ", "
+      << R"("mips": )"
+      << (static_cast<double>(loop.instructions) / seconds / 1e6) << ", "
+      << R"("transactions": )" << transactions << ", "
+      << R"("simulated_s": )" << speed.platform.Time().to_seconds() << "}";
   std::cout << line.str() << '\n' << std::flush;
 }
 

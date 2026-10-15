@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # QBox's rows of the speed spike: builds QBox with tools/build_qbox.sh if it
 # is not installed, builds the spike's tests in a tree of their own linked
-# with it (build/speed-qbox), runs each QBox test three times, and appends
-# the lines to spikes/speed/results/<env>-qbox.jsonl. Natively on Linux, or
-# in the devcontainer's image, which has QBox's packages.
+# with it (build/speed-qbox), runs each of the spike's loops three times on
+# the qbox_cpu, and appends the lines to
+# spikes/speed/results/<env>-qbox.jsonl. Natively on Linux, or in the
+# devcontainer's image, which has QBox's packages.
 #
 #   spikes/speed/qbox/run.sh --env native-linux-x86_64
 set -euo pipefail
@@ -53,17 +54,16 @@ cmake --build "$tree" --target spike_speed_tests > "$tree.build.log"
 binary="$tree/spikes/speed/spike_speed_tests"
 qbox_commit="$(git -C "$qbox/src" -c safe.directory='*' rev-parse --short HEAD)"
 for ((run = 1; run <= runs; run++)); do
-  for test in $("$binary" --gtest_list_tests | sed -n '/^Qbox\./,/^[^ ]/s/^  //p'); do
+  for test in $("$binary" --gtest_list_tests | sed -n 's/^  //p'); do
     # A test that crashes or is stopped by the alarm is a line that says
     # so, not the end of the run.
     line="$({ SPEED_HOST="$host" SPEED_ENV="$env_label" SPEED_COMMIT="$commit" \
-      SPEED_RUN="$run" perl -e "alarm 600; exec @ARGV" "$binary" \
-      --gtest_filter="Qbox.$test" 2>&1 || true; } |
+      SPEED_RUN="$run" SOCPUPPET_CPU=qbox_cpu \
+      perl -e "alarm 600; exec @ARGV" "$binary" \
+      --gtest_filter="Speed.$test" 2>&1 || true; } |
       sed -n 's/^\[speed\] //p')"
     if [[ -z "$line" ]]; then
-      mode=deterministic
-      [[ "$test" == *Threaded ]] && mode=threaded
-      line="{\"host\": \"$host\", \"env\": \"$env_label\", \"commit\": \"$commit\", \"cpu\": \"qbox\", \"mode\": \"$mode\", \"status\": \"speed-failed\", \"test\": \"$test\", \"run\": $run}"
+      line="{\"host\": \"$host\", \"env\": \"$env_label\", \"commit\": \"$commit\", \"cpu\": \"qbox\", \"mode\": \"deterministic\", \"status\": \"speed-failed\", \"test\": \"$test\", \"run\": $run}"
     else
       line="{\"status\": \"speed\", \"qbox\": \"$qbox_commit\", ${line#\{}"
     fi

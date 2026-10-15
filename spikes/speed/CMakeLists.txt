@@ -16,19 +16,6 @@ target_include_directories(spike_speed_tests PRIVATE ${PROJECT_SOURCE_DIR})
 target_compile_definitions(spike_speed_tests PRIVATE
   SPEED_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 socpuppet_dev_checks(spike_speed_tests)
-# The same loops on QBox's CPU, when socpuppet is built with QBox. The one
-# file that includes QBox's headers is compiled on its own
-# (socpuppet_qbox, in cmake/Dependencies.cmake). The tests register
-# themselves, so the whole library is linked.
-if(SOCPUPPET_HAS_QBOX)
-  add_library(spike_speed_qbox STATIC qbox_speed_test.cpp)
-  target_include_directories(spike_speed_qbox PRIVATE ${PROJECT_SOURCE_DIR})
-  target_compile_definitions(spike_speed_qbox PRIVATE
-    SPEED_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
-  target_link_libraries(spike_speed_qbox PRIVATE socpuppet_qbox GTest::gtest)
-  target_link_libraries(spike_speed_tests PRIVATE
-    $<LINK_LIBRARY:WHOLE_ARCHIVE,spike_speed_qbox>)
-endif()
 # Each test starts the SystemC kernel, so each runs in its own process,
 # and they are timed, so never two at once (the `speed` test preset).
 gtest_discover_tests(spike_speed_tests PROPERTIES LABELS speed)
