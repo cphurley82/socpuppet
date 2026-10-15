@@ -279,6 +279,8 @@ def host(
     drive_blocks: int | None = None,
     manager: AddManager | None = None,
     trace: bool = False,
+    ram: int = RAM_SIZE,
+    sbi: bool = False,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -290,6 +292,8 @@ def host[Drive: PcieDrive](
     drive: AddDrive[Drive],
     manager: AddManager | None = None,
     trace: bool = False,
+    ram: int = RAM_SIZE,
+    sbi: bool = False,
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -300,6 +304,8 @@ def host(
     drive: AddDrive[Any] | None = None,
     manager: AddManager | None = None,
     trace: bool = False,
+    ram: int = RAM_SIZE,
+    sbi: bool = False,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -344,7 +350,24 @@ def host(
     is recorded, in `platform.trace`: what each die sends the other, and
     on the real link its management traffic, the sideband, apart from
     that (`socpuppet.ucie` reads its packets back).
+
+    `ram` is how many bytes of RAM the CPU has: 64 MiB unless it is said,
+    and with a ROM no less, since the ROM keeps its stack at the top of
+    64 MiB.
+
+    With `sbi=True` the host is described for firmware that is a monitor
+    in machine mode with an operating system below it in supervisor mode,
+    as OpenSBI is with Linux: both APLICs send their messages to the
+    IMSIC's page for supervisor mode, since neither of those says where.
+    Without it nobody has said, and Zephyr's driver says where when it
+    reads that.
     """
+    if boot is not None and ram < RAM_SIZE:
+        raise ValueError(
+            f"The host was given {ram:#x} bytes of RAM and a ROM, whose "
+            "program keeps its stack at the top of 64 MiB of RAM. Give it "
+            "64 MiB or more."
+        )
     if drive is not None and drive_blocks is None:
         raise ValueError(
             "The host was given a `drive` and not told how big it is. "
@@ -367,12 +390,21 @@ def host(
     platform = Platform()
     compute_group = platform.group("compute")
     io_group = platform.group("io")
+    # Where an APLIC sends its messages before firmware says, if it never
+    # will.
+    messages_to = IMSIC_SUPERVISOR_BASE if sbi else 0
     compute = _compute_die(
-        platform, compute_group, cpu=chosen, gdb_port=gdb_port, boot=boot
+        platform,
+        compute_group,
+        cpu=chosen,
+        gdb_port=gdb_port,
+        boot=boot,
+        ram=ram,
+        messages_to=messages_to,
     )
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
-    io = _io_die(platform, io_group)
+    io = _io_die(platform, io_group, messages_to=messages_to)
     placed_manager = None
     if manager is not None:
         # The link's end holds the host's CPU until the manager lets it
@@ -451,6 +483,8 @@ def _compute_die(
     cpu: str,
     gdb_port: int,
     boot: Boot | None,
+    ram: int,
+    messages_to: int,
 ) -> _ComputeDie:
     """Describe the die the CPU is on, up to its end of the link."""
     bus = place.add("bus", Router())
@@ -472,12 +506,12 @@ def _compute_die(
             modes="msu",
         ),
     )
-    ram = place.add("ram", Memory(size=RAM_SIZE))
+    placed_ram = place.add("ram", Memory(size=ram))
     imsic = place.add("imsic", Imsic())
     timer = place.add("timer", MachineTimer(frequency_hz=TIMER_HZ))
     # For a device on this die that only has a wire. Its messages go onto
     # this die's own bus, where the IMSIC's page is.
-    aplic = place.add("aplic", Aplic())
+    aplic = place.add("aplic", Aplic(messages_to=messages_to))
     platform.connect(placed_cpu.socket, bus.target)
     syscon = add_system_controller(
         platform,
@@ -487,7 +521,7 @@ def _compute_die(
         die=COMPUTE_DIE,
         boot_address=BOOT_FLASH_BASE + HOST_IMAGE_OFFSET,
     )
-    bus.map(ram.socket, base=RAM_BASE)
+    bus.map(placed_ram.socket, base=RAM_BASE)
     bus.map(timer.socket, base=TIMER_BASE)
     bus.map(imsic.machine, base=IMSIC_BASE)
     bus.map(imsic.supervisor, base=IMSIC_SUPERVISOR_BASE)
@@ -525,11 +559,11 @@ class _IoDie(NamedTuple):
     boot_flash_bus: PlacedRouter
 
 
-def _io_die(platform: Platform, place: Group) -> _IoDie:
+def _io_die(platform: Platform, place: Group, *, messages_to: int) -> _IoDie:
     """Describe the die the devices are on, up to its end of the link."""
     bus = place.add("bus", Router())
     uart = place.add("uart", Ns16550())
-    aplic = place.add("aplic", Aplic())
+    aplic = place.add("aplic", Aplic(messages_to=messages_to))
     up = place.add("up", Router())
     boot_flash = place.add("boot_flash", SpiFlash(size=BOOT_FLASH_SIZE))
     boot_flash_bus = place.add("boot_flash_bus", Router())

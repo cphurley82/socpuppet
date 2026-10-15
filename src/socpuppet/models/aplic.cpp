@@ -50,15 +50,26 @@ void AnswerAsReserved(tlm::tlm_generic_payload& transaction) {
 }
 
 // The borrowed APLIC as this adapter has it: delivering by message from
-// the start. It can also interrupt a hart over a line, and that is what
-// its reset leaves it doing.
+// the start, and to `messages_to` until firmware says otherwise. It can
+// also interrupt a hart over a line, and that is what its reset leaves it
+// doing, with nowhere for a message to go.
 struct ByMessage : PoweredOn<vpvper::rvi::aplic> {
-  using PoweredOn::PoweredOn;
+  ByMessage(const sc_core::sc_module_name& name, std::uint64_t messages_to)
+      : PoweredOn(name), messages_to_(messages_to) {}
 
   void start_of_simulation() override {
     PoweredOn::start_of_simulation();
     regs->r_domaincfg.deliverymode = 1;
+    // The registers hold the number of the page, its address without the
+    // low twelve bits: the low 32 bits of it in one, and the rest in the
+    // other's lowest field.
+    const std::uint64_t page = messages_to_ >> 12;
+    regs->r_mmsiaddrcfg = static_cast<std::uint32_t>(page);
+    regs->r_mmsiaddrcfgh.highbaseppn = static_cast<std::uint32_t>(page >> 32);
   }
+
+ private:
+  std::uint64_t messages_to_;
 };
 
 }  // namespace
@@ -71,7 +82,8 @@ struct ByMessage : PoweredOn<vpvper::rvi::aplic> {
 // timed" kind, which binds only to its like, so they are taken here and passed
 // on.
 struct Aplic::Model {
-  explicit Model(Aplic& owner) : owner_(owner) {
+  Model(Aplic& owner, std::uint64_t messages_to)
+      : owner_(owner), aplic_("aplic", messages_to) {
     aplic_.rst_i.bind(reset_tied_low_);
     aplic_.core_interrupt_o.bind(line_unread_);
     aplic_.msi_o.bind(messages_);
@@ -101,15 +113,15 @@ struct Aplic::Model {
   // (see plic.cpp), so it is told not to check.
   sc_core::sc_signal<bool, sc_core::SC_UNCHECKED_WRITERS> line_unread_{
       "line_unread"};
-  ByMessage aplic_{"aplic"};
+  ByMessage aplic_;
   tlm_utils::simple_target_socket<Model, scc::LT> messages_{"messages"};
 
  public:
   BorrowedSocket registers{aplic_.socket};
 };
 
-Aplic::Aplic(const sc_core::sc_module_name& name)
-    : sc_module(name), model_(std::make_unique<Model>(*this)) {
+Aplic::Aplic(const sc_core::sc_module_name& name, std::uint64_t messages_to)
+    : sc_module(name), model_(std::make_unique<Model>(*this, messages_to)) {
   socket.register_b_transport(this, &Aplic::b_transport);
 }
 

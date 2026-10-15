@@ -2,6 +2,7 @@
 #define SOCPUPPET_MODELS_APLIC_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include <systemc>
@@ -20,7 +21,10 @@ namespace socpuppet {
 //
 // Firmware says where the messages go and, for each source, which
 // interrupt identity to send. It switches a source on by giving it a mode
-// and enabling it.
+// and enabling it. Where firmware never says where messages go, as
+// OpenSBI and Linux do not for an APLIC that serves supervisor mode alone,
+// `messages_to` is the address of the page to send them to until it does,
+// as the registers that say so read. Zero is nowhere: firmware will say.
 //
 // The model is borrowed: the APLIC from VPV-Peripherals (Qualcomm's),
 // with delivery by message added to it. This class is the adapter that
@@ -38,7 +42,8 @@ class Aplic : public sc_core::sc_module {
   // the address firmware gave for the hart's page.
   tlm_utils::simple_initiator_socket<Aplic> msi{"msi"};
 
-  explicit Aplic(const sc_core::sc_module_name& name);
+  explicit Aplic(const sc_core::sc_module_name& name,
+                 std::uint64_t messages_to = 0);
   ~Aplic() override;
 
   // SystemC's last chance to bind a port. By now we know which sources

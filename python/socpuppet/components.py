@@ -1435,11 +1435,17 @@ class Aplic(Component):
     its devices, on another die than the CPU, with nothing but a bus
     between them.
 
-    Connect `msi` to a bus that the IMSIC's `machine` page is on, or to
-    something that leads to one. Firmware says where the page is and which
+    Connect `msi` to a bus that the IMSIC's pages are on, or to
+    something that leads to them. Firmware says which page and which
     identity each source sends. This APLIC only delivers by message: it
     has no line to a CPU. The model is borrowed from VPV-Peripherals, with
     delivery by message added.
+
+    `messages_to` is where its messages go until firmware says otherwise:
+    the address of an IMSIC's page. Zero, the default, is nowhere, for
+    firmware that says, as Zephyr's driver does when it reads zero there.
+    OpenSBI and Linux say nothing for an APLIC that serves supervisor mode
+    alone, and leave it to whoever built the platform.
     """
 
     implementation = "aplic"
@@ -1452,6 +1458,18 @@ class Aplic(Component):
     )
     #: The APLIC's registers, as far as the lines to harts it does not have.
     mapped_size = 0x8000
+
+    messages_to: int = 0
+
+    def __post_init__(self) -> None:
+        # The registers that say where messages go hold a page's number,
+        # and an IMSIC's page is 4 KiB.
+        if self.messages_to % 0x1000 != 0:
+            raise ValueError(
+                f"An APLIC sends its messages to the start of an IMSIC's "
+                f"page, which is a multiple of 4 KiB, and "
+                f"{self.messages_to:#x} is not one."
+            )
 
     @override
     def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:

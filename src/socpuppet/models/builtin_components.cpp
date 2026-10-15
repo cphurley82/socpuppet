@@ -113,8 +113,9 @@ void AddNumberedPorts(std::vector<Port>& ports, const std::string& prefix,
 
 Registry BuiltinComponents() {
   Registry registry;
-  registry.Add("aplic", [](const char* name, Parameters&) {
-    auto module = std::make_unique<Aplic>(name);
+  registry.Add("aplic", [](const char* name, Parameters& parameters) {
+    auto module =
+        std::make_unique<Aplic>(name, parameters.Optional("messages_to", 0));
     std::vector<Port> ports{TargetPort("socket", module->socket),
                             InitiatorPort("msi", module->msi)};
     AddNumberedPorts(ports, "source", 1, module->sources, WireSinkPort);
