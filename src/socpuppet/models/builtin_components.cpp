@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -135,6 +136,16 @@ Registry BuiltinComponents() {
         WireSinkPort("supervisor_irq", module->supervisor_irq),
         WireSinkPort("reset", module->reset)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  // QBox's CPU is QEMU's, which is GPL, so it is built only by whoever
+  // asks for it (tools/build_qbox.sh). The name is here either way, so that
+  // a build without it says how to get one.
+  registry.Add("qbox_cpu", [](const char*, Parameters&) -> Instance {
+    throw std::invalid_argument(
+        "This build of socpuppet has no qbox_cpu. Build QBox with "
+        "tools/build_qbox.sh, which installs it in build/qbox/install, and "
+        "configure socpuppet with "
+        "-DSOCPUPPET_QBOX_DIR=build/qbox/install.");
   });
   registry.Add("dma_engine", [](const char* name, Parameters&) {
     auto module = std::make_unique<DmaEngine>(name);

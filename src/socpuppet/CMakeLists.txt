@@ -308,6 +308,10 @@ target_link_libraries(socpuppet_builtin_components
   PUBLIC socpuppet_platform
   PRIVATE socpuppet_models)
 socpuppet_dev_checks(socpuppet_builtin_components)
+# Whether the build has QBox's CPU (cmake/Dependencies.cmake), for the
+# registry and for whatever asks it.
+target_compile_definitions(socpuppet_builtin_components PUBLIC
+  SOCPUPPET_HAS_QBOX=$<BOOL:${SOCPUPPET_HAS_QBOX}>)
 
 socpuppet_check_headers(
   socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller

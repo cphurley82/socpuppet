@@ -136,6 +136,9 @@ PYBIND11_MODULE(_core, m) {
   // be checked against the registry (tests/python/test_catalogue.py).
   m.def("implementations",
         [] { return socpuppet::BuiltinComponents().Implementations(); });
+  // Whether this build has QBox's CPU. Every build has the name
+  // "qbox_cpu", and one without QBox refuses it.
+  m.attr("has_qbox") = SOCPUPPET_HAS_QBOX != 0;
 
   py::class_<NativePlatform>(m, "Platform")
       .def(py::init<bool>(), py::arg("color_log"))

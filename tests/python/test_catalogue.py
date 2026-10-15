@@ -55,6 +55,7 @@ EXAMPLES = [
     ),
     sp.PcieRootComplex(),
     sp.Plic(),
+    sp.QboxCpu(xlen=64, reset_vector=0x8000_0000),
     sp.Rom(size=0x100),
     router_with_one_output(),
     router_with_two_inputs(),
@@ -152,6 +153,8 @@ class TestTheCatalogue:
     ):
         from socpuppet import _core
 
+        if example.implementation == "qbox_cpu" and not _core.has_qbox:
+            pytest.skip("this build has no QBox, and refuses a qbox_cpu")
         native = _core.Platform(color_log=False)
         # As a platform does: what the component is told outright, and what
         # it works out from where it is. Here every port is at address 0.

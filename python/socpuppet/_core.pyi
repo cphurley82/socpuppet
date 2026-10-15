@@ -7,6 +7,9 @@ describes it to type checkers, which cannot read a compiled extension.
 from socpuppet.components import Script
 
 def implementations() -> list[str]: ...
+
+has_qbox: bool
+
 def global_quantum_in_picoseconds() -> int: ...
 
 # (word size in bits, entry point, [(physical address, bytes), ...])
