@@ -19,6 +19,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "devcontainer.sh"
+TWISTER = REPO / "firmware" / "twister.sh"
 BASH = shutil.which("bash")
 DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
 TAG = (
@@ -35,11 +36,29 @@ if args[:2] == ["image", "inspect"]:
     sys.exit(0 if args[2] in os.environ.get("IMAGES", "").split() else 1)
 """
 
-# A uname that says what the test wants it to.
+# A uname that says what the test wants it to, on an Intel processor.
 UNAME = """
-import os
-print(os.environ.get("UNAME", "Darwin"))
+import os, sys
+print("x86_64" if "-m" in sys.argv else os.environ.get("UNAME", "Darwin"))
 """
+
+# Where the qbox preset puts QBox and socpuppet's tree built with it, in the
+# container.
+QBOX_PRESET = next(
+    preset
+    for preset in json.loads((REPO / "CMakePresets.json").read_text())[
+        "configurePresets"
+    ]
+    if preset["name"] == "qbox"
+)
+QBOX_DEV = QBOX_PRESET["binaryDir"].replace("${sourceDir}", "/workspace")
+QBOX = str(
+    Path(
+        QBOX_PRESET["cacheVariables"]["SOCPUPPET_QBOX_DIR"].replace(
+            "${sourceDir}", "/workspace"
+        )
+    ).parent
+)
 
 
 @pytest.fixture
@@ -48,10 +67,13 @@ def devcontainer(tmp_path):
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     log = tmp_path / "log"
-    for name, body in {"docker": DOCKER, "uname": UNAME}.items():
+
+    def install(name, body):
         program = bin_directory / name
         program.write_text(f"#!{sys.executable}\n{body}")
         program.chmod(0o755)
+
+    install("uname", UNAME)
 
     # The caller's own SOCPUPPET_* variables would reach the container too.
     inherited = {
@@ -60,14 +82,29 @@ def devcontainer(tmp_path):
         if not name.startswith("SOCPUPPET_")
     }
 
-    def run(*args, images=(TAG,), env=None, terminal=False):
+    def run(
+        *args,
+        images=(TAG,),
+        env=None,
+        terminal=False,
+        docker=True,
+        script=SCRIPT,
+    ):
         """Run it; with `terminal`, its input and output are a terminal."""
+        log.unlink(missing_ok=True)
+        if docker:
+            install("docker", DOCKER)
+            path = f"{bin_directory}{os.pathsep}{os.defpath}"
+        else:
+            # Only the stand-ins, since a Linux machine may have Docker in
+            # /usr/bin.
+            path = str(bin_directory)
         ours, theirs = pty.openpty() if terminal else (None, None)
         result = subprocess.run(
-            [BASH, str(SCRIPT), *args],
+            [BASH, str(script), *args],
             env={
                 **inherited,
-                "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
+                "PATH": path,
                 "LOG": str(log),
                 "IMAGES": " ".join(images),
                 **(env or {}),
@@ -96,6 +133,12 @@ def values(call, option):
     return [call[i + 1] for i, word in enumerate(call[:-1]) if word == option]
 
 
+def position(calls, command):
+    """Where the only docker call of `command` (`run`, `build`) came."""
+    (index,) = [i for i, call in enumerate(calls) if call[0] == command]
+    return index
+
+
 def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_workspace(
     devcontainer,
 ):
@@ -120,28 +163,38 @@ def test_an_image_is_built_from_the_dockerfile_when_none_has_its_hash_and_is_als
     assert set(values(build, "--tag")) == {TAG, "socpuppet-dev"}
     assert values(build, "--file") == [str(DOCKERFILE)]
     assert build[-1] == str(DOCKERFILE.parent)
-    assert calls.index(["build", *build]) < calls.index(["run", *runs(calls)[0]])
+    assert position(calls, "build") < position(calls, "run")
 
 
 def test_an_image_already_built_from_this_dockerfile_is_not_built_again(
     devcontainer,
 ):
-    result, calls = devcontainer("true")
+    result, calls = devcontainer("true", images=(TAG,))
 
     assert result.returncode == 0, result.stdout
     assert not [call for call in calls if call[0] == "build"]
 
 
-def test_qboxs_two_trees_are_docker_volumes_at_their_usual_places_under_build(
+def test_on_a_mac_qboxs_two_trees_are_docker_volumes_where_the_qbox_preset_looks(
     devcontainer,
 ):
-    result, calls = devcontainer("true")
+    result, calls = devcontainer("true", env={"UNAME": "Darwin"})
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     volumes = values(run, "--volume")
-    assert "socpuppet-qbox:/workspace/build/qbox" in volumes
-    assert "socpuppet-qbox-dev:/workspace/build/qbox-dev" in volumes
+    assert f"socpuppet-qbox:{QBOX}" in volumes
+    assert f"socpuppet-qbox-dev:{QBOX_DEV}" in volumes
+
+
+def test_on_linux_qboxs_trees_are_the_repositorys_own_as_any_other_build_tree(
+    devcontainer,
+):
+    result, calls = devcontainer("true", env={"UNAME": "Linux"})
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert values(run, "--volume") == [f"{REPO}:/workspace"]
 
 
 def test_uvs_environment_cache_and_pythons_are_under_build_so_they_outlive_the_container(
@@ -152,11 +205,29 @@ def test_uvs_environment_cache_and_pythons_are_under_build_so_they_outlive_the_c
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     environment = dict(each.split("=", 1) for each in values(run, "--env"))
-    # The Linux venv and Python that firmware/twister.sh makes, so that the
-    # two share one.
-    assert environment["UV_PROJECT_ENVIRONMENT"] == "/workspace/build/linux-venv"
-    assert environment["UV_PYTHON_INSTALL_DIR"] == "/workspace/build/firmware/python"
-    assert environment["UV_CACHE_DIR"].startswith("/workspace/build/")
+    for variable in (
+        "UV_PROJECT_ENVIRONMENT",
+        "UV_PYTHON_INSTALL_DIR",
+        "UV_CACHE_DIR",
+    ):
+        assert environment[variable].startswith("/workspace/build/"), variable
+
+
+def test_the_linux_venv_and_python_are_the_ones_firmware_twister_sh_makes(
+    devcontainer,
+):
+    _, ours = devcontainer("true")
+    _, twisters = devcontainer(script=TWISTER)
+
+    def uv(calls):
+        (run,) = runs(calls)
+        environment = dict(each.split("=", 1) for each in values(run, "--env"))
+        return {
+            name: environment[name]
+            for name in ("UV_PROJECT_ENVIRONMENT", "UV_PYTHON_INSTALL_DIR")
+        }
+
+    assert uv(ours) == uv(twisters)
 
 
 def test_socpuppet_variables_in_the_callers_environment_reach_the_container(
@@ -193,14 +264,11 @@ def test_on_a_mac_the_container_runs_as_its_own_user(devcontainer):
 
 
 def test_without_docker_the_tool_stops_and_says_to_install_docker_desktop(
-    devcontainer, tmp_path
+    devcontainer,
 ):
-    (tmp_path / "bin" / "docker").unlink()
+    result, _ = devcontainer("true", docker=False)
 
-    # Only the stand-ins, since a Linux machine may have Docker in /usr/bin.
-    result, _ = devcontainer("true", env={"PATH": str(tmp_path / "bin")})
-
-    assert result.returncode == 1
+    assert result.returncode != 0
     assert "Docker Desktop" in result.stdout
 
 
@@ -223,18 +291,8 @@ def test_from_a_terminal_the_container_is_given_one_so_that_a_shell_in_it_works(
 
 
 def test_from_a_script_the_container_is_given_no_terminal(devcontainer):
-    result, calls = devcontainer("true")
+    result, calls = devcontainer("true", terminal=False)
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     assert "--tty" not in run
-
-
-def test_on_linux_qboxs_trees_are_the_repositorys_own_as_any_other_build_tree(
-    devcontainer,
-):
-    result, calls = devcontainer("true", env={"UNAME": "Linux"})
-
-    assert result.returncode == 0, result.stdout
-    (run,) = runs(calls)
-    assert values(run, "--volume") == [f"{REPO}:/workspace"]

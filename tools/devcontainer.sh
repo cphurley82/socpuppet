@@ -41,11 +41,10 @@ options=(
   --env UV_CACHE_DIR=/workspace/build/linux-uv-cache
 )
 # And socpuppet's own variables, such as SOCPUPPET_REQUIRE_FIRMWARE and
-# SOCPUPPET_CPU, go in with the command.
-for name in $(compgen -e); do
-  if [[ "$name" == SOCPUPPET_* ]]; then
-    options+=(--env "$name=${!name}")
-  fi
+# SOCPUPPET_CPU, go in with the command. A path in one is read in the
+# container, where the repository is /workspace: a relative one still works.
+for name in $(compgen -e SOCPUPPET_); do
+  options+=(--env "$name=${!name}")
 done
 
 case "$(uname -s)" in
