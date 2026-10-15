@@ -10,7 +10,7 @@ This plan keeps the handoff's Decisions and reorders its suggested steps around 
 2. **Standalone subsystem boot**: three independent tracks, one per firmware image.
 3. **Full bootchain**: combine the images, swapping one stand-in per milestone.
 4. **The cast of a real SoC**: the interrupt architecture, the boot ROM and Zephyr's own tests, with Zephyr still the firmware that boots.
-5. **The road to Linux**: the hart and the board exercised the way Linux will use them, then OpenSBI, then the kernel.
+5. **The road to Linux**: the hart and the board exercised the way Linux will use them, then OpenSBI, then UEFI, then the kernel.
 6. **Linux grows**: Ethernet, the IOMMU, the AI processor and the small parts, each under Linux's own driver.
 7. **The rest of the cast, and fidelity.**
 
@@ -45,7 +45,8 @@ Changes from the handoff's step order:
 | M26 | The fast hart (time-boxed spike) | none | none | M22 | Report + recommendation: the host's core timed on a counted loop and on one that walks page tables, on every CPU that can be built here, with the wall time of a kernel's boot worked out for each; which one ships in the wheel, and whether a faster one is offered beside it |
 | M27 | **QBox, the second hart** (optional, built from source) | none | none | M26 | The bus-master contract, the hart's suite and the host board's Python boots pass on a QBox CPU built from source, on demand and nightly rather than on every push; a skipped test says why |
 | M23 | **OpenSBI boots** | none | Python's ELF loader → OpenSBI as the stage after the ROM | M14, M22 | OpenSBI's banner and its own test payload's output on the console, from the ROM and the quick tier, on a devicetree in Linux's bindings made from `host()` |
-| M25 | Virtio spike (time-boxed) | none | none | M23 | 🎭 `virtio-console`, `virtio-blk` and `virtio-net` behind `virtio-mmio`, with Python at the far end of each; Zephyr's own virtio drivers use the console and the network, and Python drives the block device; report + recommendation on which stay as stand-ins for M20 |
+| M28 | **UEFI boots** | none | OpenSBI's test payload → EDK2 as the stage after OpenSBI | M23 | The UEFI shell's prompt on the console, with paging on and the timer ticking in supervisor mode, from the ROM and the quick tier; Python types `ver` and `memmap` and reads the answers, and `reset` brings the ROM back |
+| M25 | Virtio spike (time-boxed) | none | none | M23, M28 | 🎭 `virtio-console`, `virtio-blk` and `virtio-net` behind `virtio-mmio`, with Python at the far end of each; Zephyr's own virtio drivers use the console and the network, and Python and then UEFI's own driver drive the block device; report + recommendation on which stay as stand-ins for M20 |
 | M20 | **Linux boots** | none | Zephyr on the host → OpenSBI + Linux | M23, M25 | A shell prompt on the console, from an initramfs; Python types `uname -a` and reads the answer |
 | M24 | **A root filesystem on the drive** | none | none | M8, M20 | Linux's own NVMe driver mounts its root filesystem on the Zephyr SSD across the link; a file written from Linux is read back by Python |
 | M17 | **Ethernet** | none | none (Python is the far end of the cable) | M13, M20 | Zephyr's `echo_server` answers a datagram that Python sends down the cable, and Linux answers Python's `ping`; the run's capture opens in Wireshark |
@@ -57,7 +58,7 @@ Changes from the handoff's step order:
 | M10 | Validation scenarios | 9 | none | M8, M9 | Scenario suite (below) |
 | M11 | Stretch: power/telemetry | 10 | none | M8 | To be defined |
 
-The numbers are the order milestones were planned in, and the table is the order they are done in. A milestone keeps its number when it moves, so that nothing already written about it changes its meaning: M9 to M11 have been behind newer milestones since 2026-10-10, M22 to M26 were added on 2026-10-12, when the table was put in the order of the road to Linux, and M27 on 2026-10-14, after M26's report.
+The numbers are the order milestones were planned in, and the table is the order they are done in. A milestone keeps its number when it moves, so that nothing already written about it changes its meaning: M9 to M11 have been behind newer milestones since 2026-10-10, M22 to M26 were added on 2026-10-12, when the table was put in the order of the road to Linux, M27 on 2026-10-14, after M26's report, and M28 on 2026-10-15, after M27.
 
 ```text
 M0 ─┬─ M1 (ISS gate) ── M3 host ──────────────┐
@@ -71,14 +72,16 @@ From M8, Phase 4 and the road to Linux:
 
 ```text
 M8 ─┬─ M12 (NPU gate)
-    ├─ M13 AIA ─────────┬─ M21 twister ── M22 the hart ── M26 speed spike ── M27 QBox ── M23 OpenSBI ── M25 virtio spike ── M20 Linux ─┬─ M24 rootfs on the drive ── M15 IOMMU ── M19 NPU
-    └─ M14 ROM, flash ──┘                                                                                                  ├─ M17 Ethernet
-                                                                                                                           └─ M18 the small essentials
+    ├─ M13 AIA ─────────┬─ M21 twister ── M22 the hart ── M26 speed spike ── M27 QBox ── M23 OpenSBI ── M28 UEFI ── M25 virtio spike ── M20 Linux ─┬─ M24 rootfs on the drive ── M15 IOMMU ── M19 NPU
+    └─ M14 ROM, flash ──┘                                                                                                                          ├─ M17 Ethernet
+                                                                                                                                                   └─ M18 the small essentials
 ```
 
-M22 depends on M13 and nothing else, and could have run beside M21; it comes after because every later milestone gets a board tested by Zephyr's own suites, and the tests of M22 run under them too. M26 wants a hart that pages, to time one, and is a spike, so M20 waits only for its report. M23 wants the ROM and the hart. M25 wants M23's devicetree dialect and is a spike, so M20 waits only for its report. M20 wants OpenSBI and the stand-ins the spike kept: its first root filesystem is in memory, and a virtio device stands in for any real one that is not ready. After M20 the three branches are independent, and the suggested serial order is M24, M17, M15, M19, M18. Then Phase 7: M16, M9, M10, M11, in any order.
+M22 depends on M13 and nothing else, and could have run beside M21; it comes after because every later milestone gets a board tested by Zephyr's own suites, and the tests of M22 run under them too. M26 wants a hart that pages, to time one, and is a spike, so M20 waits only for its report. M23 wants the ROM and the hart. M28 wants OpenSBI and nothing else, and comes before M25 so that the spike's block device meets a driver nobody here wrote. M25 wants M23's devicetree dialect and is a spike, so M20 waits only for its report. M20 wants OpenSBI and the stand-ins the spike kept: its first root filesystem is in memory, and a virtio device stands in for any real one that is not ready. M20 does not need UEFI: a kernel boots from `fw_jump` with no bootloader between, and UEFI is a second way to the same prompt, which M20 keeps as a tier. After M20 the three branches are independent, and the suggested serial order is M24, M17, M15, M19, M18. Then Phase 7: M16, M9, M10, M11, in any order.
 
 M21 was added on 2026-10-11, after M14: it is test infrastructure (Zephyr's own test suites run on the boards by Zephyr's own runner), and every milestone after it gets a driver and a board tested that way.
+
+M28 was added on 2026-10-15, after M27, asked for by the maintainer: Linux does not need UEFI, but UEFI does most of what Linux does to a hart and a board, in a program that is smaller, is written by somebody else, and stops at a prompt where it can be asked questions. It is a rehearsal of the model before the kernel's lift, and the firmware a RISC-V server really runs.
 
 ## Phase 1: Foundation
 
@@ -625,7 +628,7 @@ Order: 0 is done; 1 and 2 first, because every later run of Zephyr's tests wants
 
 The host's firmware is about to change from Zephyr, which runs in machine mode with the hart's memory as it is, to Linux, which runs in supervisor mode under OpenSBI, with page tables, with user programs below it, and with its drivers written against bindings of its own. Phase 4 built each block to what Linux's driver for it will ask, and each milestone there ends with that list. What no milestone has done is run the hart the way Linux will run it: nothing in socpuppet has ever turned paging on, dropped to user mode, or taken a supervisor's interrupt through the supervisor's own registers, because Zephyr needs none of it. ⚠️ A borrowed model is trusted only as far as its contract, and M13 found that a core which had never run with interrupts had a bug in how it took one; M21 found two more the first time Zephyr's own suites ran. The same will be true of paging, and a kernel is the worst place to find out.
 
-So this phase goes in steps, each one a smaller thing to debug than the next. First the hart alone, with bare-metal programs that do what Linux does and nothing else (M22). Then a spike that times the hart, since a kernel's boot is hundreds of millions of instructions and nobody has measured what this core makes of one (M26). Then OpenSBI with its own test payload, which is the first supervisor-mode program and the first reader of a devicetree in Linux's bindings (M23). Then a spike of 🎭 virtio stand-ins, so that when the kernel comes it can be given a console, a disk and a network that Linux's own drivers know by heart, and a real block that misbehaves can be swapped out while it is looked at (M25). Then the kernel, with its root filesystem in memory so that nothing but the console stands between it and the prompt (M20). The drive comes after the prompt (M24), and Ethernet, the IOMMU and the AI processor after that, each under Linux's own driver (Phase 6).
+So this phase goes in steps, each one a smaller thing to debug than the next. First the hart alone, with bare-metal programs that do what Linux does and nothing else (M22). Then a spike that times the hart, since a kernel's boot is hundreds of millions of instructions and nobody has measured what this core makes of one (M26). Then OpenSBI with its own test payload, which is the first supervisor-mode program and the first reader of a devicetree in Linux's bindings (M23). Then UEFI, EDK2's RISC-V port, which is the first program to turn paging on from supervisor mode, take a timer interrupt there and read the devicetree whole, and does each the way Linux will, in a program that stops at a prompt and answers questions (M28). Then a spike of 🎭 virtio stand-ins, so that when the kernel comes it can be given a console, a disk and a network that Linux's own drivers know by heart, and a real block that misbehaves can be swapped out while it is looked at (M25). Then the kernel, with its root filesystem in memory so that nothing but the console stands between it and the prompt (M20). The drive comes after the prompt (M24), and Ethernet, the IOMMU and the AI processor after that, each under Linux's own driver (Phase 6).
 
 **Decided on 2026-10-12, planning Phase 5.**
 
@@ -635,6 +638,12 @@ So this phase goes in steps, each one a smaller thing to debug than the next. Fi
 - 🎭 **Virtio stand-ins are spiked before the kernel, and not planned as blocks.** Asked by the maintainer on 2026-10-12: a console, a disk and a network that every Linux drives are worth having in hand before the first boot, as the stand-ins the plan has used since M0 are: to hold a real block's place while it is brought up, and to tell a kernel that does not boot from a device that does not work. No real SoC has them, so they stay stand-ins, and M25's report says which of the three earned a place.
 - **Every fix to the borrowed CPU is a patch with its entry in [upstream.md](upstream.md)**, as M13's and M21's were, and every test of M22 is checked with a mutation, as M8's were.
 - **The step tables come later.** Each milestone below has its decisions, what planning found and its exit test. Its steps are written when it is planned, one `/tdd` session each, as Phase 4's were. M22's were, on 2026-10-12.
+
+**Decided on 2026-10-15, adding M28.**
+
+- **UEFI is a milestone of its own, before the kernel, though the kernel does not need it.** Asked by the maintainer: a kernel finds a fault in the model by hanging, hundreds of millions of instructions in, and the tools for it are a debugger and a trace. EDK2 finds the same fault earlier and says so, since it prints every driver's progress to the console as it goes, and what boots stops at a shell that can be asked what it found. The rehearsal is cheaper than the performance, and it uses the same stage: `fw_jump`, `a0` and `a1`, the devicetree in Linux's bindings, the 16550 and the timer.
+- **It is EDK2 and not U-Boot.** Both run in supervisor mode on OpenSBI, read the devicetree and drive the 16550, and U-Boot is the smaller build with an EFI loader of its own. But U-Boot never turns paging on, which is the thing most worth rehearsing, and a RISC-V server boots EDK2. 🚧 The embedded board's chain (U-Boot SPL, then OpenSBI, then U-Boot) is a line for Phase 7 if anyone asks for it.
+- **The kernel's road does not change.** M20's exit is still `fw_jump` with the kernel where it jumps, in the quick tier. UEFI loading the kernel through its EFI stub is a tier of M20 and of M24, the way a server does it, and not their exit.
 
 ### M22 — The hart Linux needs
 
@@ -857,7 +866,44 @@ What planning found:
 
 Exit: OpenSBI's banner on the console, naming the platform from the devicetree, and `test_payload`'s output after it, from the ROM and from the quick tier; the devicetree the generator wrote validates with `dtc` and is the one OpenSBI read; and the SBI timer, console and reset each seen to reach their model.
 
-What Linux will ask: `fw_jump` with the kernel at the address it jumps to, and the devicetree that this milestone made.
+What Linux will ask: `fw_jump` with the kernel at the address it jumps to, and the devicetree that this milestone made. What UEFI will ask first: the same, with EDK2 where the kernel would be.
+
+### M28 — UEFI boots
+
+🎓 **UEFI**, the Unified Extensible Firmware Interface, is the firmware a PC or a server kernel is loaded by: it finds a kernel on a disk or the network, loads it, hands it a memory map and the devicetree (or ACPI tables), and stays resident for a few services, such as variables and the clock. **EDK2** is TianoCore's reference implementation, the one in every PC and the one QEMU boots as OVMF. Its RISC-V port (`OvmfPkg/RiscVVirt`, written for QEMU's `virt`) runs in supervisor mode as OpenSBI's payload, with the hart's id in `a0` and the devicetree's address in `a1`, which is exactly the contract a kernel takes. It has no PEI phase: a small **SEC** stage sets up a stack and the memory map, and the **DXE** core then loads a few dozen drivers, each saying so on the console, until the boot manager finds nothing to boot and lands in the **UEFI shell**, `Shell>`, which takes commands. Linux's kernel is itself a UEFI application when it is built with the **EFI stub**, which is how a server's firmware starts it.
+
+What it rehearses that OpenSBI's test payload does not, and the kernel will, each read in EDK2's sources on 2026-10-15 and not run:
+
+- **Paging, turned on from supervisor mode, by a program that was not written here.** `BaseRiscVMmuLib` builds an identity map of every region of RAM and MMIO it knows, with blocks of 1 GiB and 2 MiB where they fit, and turns it on by writing `satp` with Sv57, then Sv48, then Sv39, keeping the first that reads back. That probe is the one M22 step 2 patched the hart to answer, and the 2 MiB block is the page M22 left undone. It then runs the rest of its boot, and the shell, through those tables, with `sfence.vma` where it changes them.
+- **A supervisor's trap handler with interrupts on.** `CpuDxeRiscV64` installs `stvec` and takes the timer's interrupt in supervisor mode, with the timer set through SBI's call (`CpuTimerDxeRiscV64`) and `time` read from supervisor mode by `mcounteren`'s leave (M22 step 5). Every tick is an interrupt delegated by OpenSBI, taken by the mode it belongs to (M22 step 4), and returned from with `sret`. ⚠️ Nothing of the AIA: EDK2 has no APLIC or IMSIC driver, so interrupts as messages wait for Linux.
+- **The devicetree read whole.** `FdtClientDxe` takes the tree from `a1` and the drivers ask it: `memory` for RAM, `cpus` for `timebase-frequency`, `virtio,mmio` for devices, `chosen` for the console. The tree is M23's, in Linux's dialect, read by its second reader.
+- **The 16550, through a driver that has only its address.** `SerialDxe` is built for a UART at `0x1000_0000` with a byte to a register, which is where socpuppet's is and how it reads (M23, what planning found). The console is `TerminalDxe` on top, which is what `Shell>` is typed at.
+- **SBI's reset, from a shell command.** `reset` goes through `ResetSystemRuntimeDxe` to SBI's system reset, to the system controller, and the ROM starts again. `reset -s`, a shutdown, is the call that has no model to reach yet.
+- **A boot timed.** M26 counted a kernel's boot at 1,849 million instructions and timed the interpreter at 17 to 41 million a second. Nobody has counted EDK2's; this milestone does, on the interpreter and on QBox, and writes it beside M26's figures. It is the first boot long enough to say whether the interpreter is where the Linux work can live.
+
+What it needs of the platform that is not there, read in `RiscVVirtQemu.dsc` and `.fdf`:
+
+- **An address.** EDK2 is linked to run from where it is loaded, a build-time constant (`CODE_BASE_ADDRESS` in `RiscVVirt.fdf.inc`), and QEMU's port has it at QEMU's flash, `0x2000_0000`. Here it is where `fw_jump` jumps, in RAM, which is one define. If the changes to QEMU's port grow past a handful, a platform description of our own (`Platform/Socpuppet/`, the shape every real board has in `edk2-platforms`) is the honest one, and this milestone says which.
+- **Somewhere for variables.** UEFI keeps its boot entries and settings in a writable flash, and `VirtNorFlashDxe` wants a memory-mapped NOR flash to write them to. `sp.SpiFlash`'s window refuses a write (M14 step 8). The first answer is the store in RAM (`EmuVariableFvbRuntimeDxe`), which forgets at reset; the exit test needs nothing to survive one. 🎭 A NOR flash stand-in, or a write path through the SPI controller, is the step that makes a boot entry persist, and it is not this milestone's.
+- **No `fw_cfg`.** QEMU's port takes its kernel, its ACPI tables and a few settings from QEMU through `fw_cfg`, a device no real board has. `QemuKernelLoaderFsDxe` and `AcpiPlatformDxe` must find none and say so quietly. 🚧 ACPI is for later: the devicetree goes to the kernel as a UEFI configuration table, which is what the Linux dialect is for, and what a RISC-V server without ACPI does today.
+- **RAM.** The host has 64 MiB and M23 makes it a parameter. EDK2's own examples run with a gigabyte; the least it boots with is found here and written down.
+- **A toolchain, and the build.** EDK2's `GCC5` build for RISC-V takes a cross-compiler prefix; whether the Zephyr SDK's gcc serves or the devcontainer wants Ubuntu's `gcc-riscv64-linux-gnu` is found first. `BaseTools` must be built, and the version is a tag (`edk2-stable*`, quarterly) in `firmware/versions.sh`, built by `firmware/build.sh` as the ROM and OpenSBI are: a fourth thing in it that is no Zephyr.
+
+And how it is run:
+
+- **Both tiers, as M23 has them.** The quick tier is `load_elf` of `fw_jump` through the CPU and `load_binary` of EDK2's flash image and the devicetree where `fw_jump` expects them. The ROM tier is as M23 settled it, and runs on demand: the image is a few megabytes, and the ROM checks them a byte at a time.
+- 🧵 **Python at the keyboard.** `uart.output` and a write to the UART are what the Zephyr shell test uses (M13), and the UEFI shell is typed at the same way. `ver` says which EDK2; `memmap` says what RAM the devicetree gave and what paging mapped; `dh -p` and `devices` list the drivers that bound, which from M25 is where a virtio device first shows up to anyone but Python.
+- **Every fault in the borrowed CPU is a patch and an entry**, as M22's were; every fault in EDK2's port that is ours (the address, the variables, `fw_cfg`) is a patch in `cmake/patches/` with its entry in [upstream.md](upstream.md), as every borrowed thing's is.
+
+What planning found:
+
+- **The devicetree is already the right one.** EDK2 wants the same bindings as Linux, and the one place it is stricter is none: the UART's address is a build-time constant and not read from the tree at all.
+- **EDK2 brings drivers the later milestones can use as a second opinion.** `VirtioBlkDxe` and `VirtioNetDxe` over `virtio-mmio` from the devicetree (`VirtioFdtDxe`), for M25's stand-ins; `NvmExpressDxe` over `PciHostBridgeDxe`, which finds the drive through the root complex before Linux does, for M24, and is a second answer to M23's question about ECAM; a FAT driver and the EFI stub, which together are how a server loads its kernel from the **EFI System Partition**, the FAT partition every UEFI machine boots from.
+- **What it leaves out of the rehearsal**: user mode (nothing in UEFI runs below the firmware), the AIA, floating point, and the second hart. Those stay the kernel's to find.
+
+Exit: `Shell>` on the console with paging on, from the ROM and the quick tier; Python types `ver` and reads EDK2's version, types `memmap` and reads the RAM the devicetree gave, and types `reset` and sees the ROM's first line again; in CI, in the quick tier. The boot's instruction count and wall time are written beside M26's.
+
+What Linux will ask: nothing it did not ask already. What M20 and M24 may take: the EFI stub, from a FAT image on the virtio block device or on the drive's own partition, as a tier.
 
 ### M25 — Virtio spike (time-boxed; only M20 waits on it)
 
@@ -866,7 +912,7 @@ What Linux will ask: `fw_jump` with the kernel at the address it jumps to, and t
 No real SoC has one, which is why none is on the road to Linux as a block: the console is the 16550, the first root filesystem is in memory, the drive is the real NVMe under Linux's own driver (M24), and the network is the Minres MAC with a driver of ours (M17). They are here as 🎭 stand-ins, in the sense the plan has used since M0: they hold a block's place so that the rest of the cast can rehearse. A kernel that boots with a virtio console and not with the 16550 has said where to look. A root filesystem on `virtio-blk` lets M24 take its time over the root complex. A `virtio-net` gives Linux a network before M17's driver exists.
 
 - **Three devices behind one transport**, each a model of ours: `virtio-mmio` as the register block and the virtqueue walker, written once, and `virtio-console`, `virtio-blk` and `virtio-net` as what hangs off it. 🧵 Python is at the far end of each: the console's text is `uart.output`'s twin, the block device is backed by a file or bytes Python gives it, and the network hands Python each frame as M17's `sp.EthernetCable` will.
-- **Exercised without a kernel.** Zephyr 4.4.2 has a `virtio-mmio` transport driver, a `virtio-console` driver, a `virtio-net` driver and a `virtio-rng` driver, and no block driver. So the console and the network are run by Zephyr's own code, which is the point of a spike: a driver nobody here wrote against a model somebody here did. The block device is driven by Python through the scripted bus master, as M2's Python host drove the NVMe stand-in before any firmware existed, and Linux's driver is its first real one.
+- **Exercised without a kernel.** Zephyr 4.4.2 has a `virtio-mmio` transport driver, a `virtio-console` driver, a `virtio-net` driver and a `virtio-rng` driver, and no block driver. So the console and the network are run by Zephyr's own code, which is the point of a spike: a driver nobody here wrote against a model somebody here did. The block device is driven by Python through the scripted bus master, as M2's Python host drove the NVMe stand-in before any firmware existed, and then by EDK2's `VirtioBlkDxe` from M28, the first driver for it that nobody here wrote: a FAT image Python made shows up as `fs0:` in the UEFI shell, and `ls` reads it. Linux's driver is its second.
 - **The devicetree in both dialects.** `virtio,mmio` is one node with `reg` and `interrupts`, and the device behind it says what it is in a register; Zephyr's binding and Linux's are the same node. The interrupt is a line to the compute die's APLIC.
 - **Borrowing was looked at.** VCML has the transport and the three devices, and was ruled out in M2 for ending the process on an error. QBox has QEMU's, from source and GPL. rust-vmm's are not SystemC. If the spike finds one worth the adapter, it says so.
 - **Time-boxed, with a report.** `docs/virtio-spike.md`: what each device took, what Zephyr's drivers found, and a recommendation on which of the three become models with contracts before M20, which wait for a stall, and which are not worth it. Then a stop for a decision.
@@ -878,7 +924,7 @@ What planning found:
 - **The exit test is on the 16550, the stand-ins beside it.** Zephyr's console driver exists, so the first run of `virtio-console` on the puppet is Zephyr's `hello_world` saying hello through it, with the 16550 silent.
 - **Python at the far end is the stand-in's test.** Each device's contract is written from the specification, and run with Python as the driver, before Zephyr's driver meets it.
 
-Exit: a report with a recommendation, and each of the three devices behind the draft transport taking buffers from a virtqueue and saying so with an interrupt: the console and the network from Zephyr's own drivers, the block device from Python. Then a stop. What the decision keeps becomes `/tdd` steps with contracts before M20's plan is written.
+Exit: a report with a recommendation, and each of the three devices behind the draft transport taking buffers from a virtqueue and saying so with an interrupt: the console and the network from Zephyr's own drivers, the block device from Python and then from the UEFI shell. Then a stop. What the decision keeps becomes `/tdd` steps with contracts before M20's plan is written.
 
 What Linux will ask: `virtio,mmio` nodes, which this spike writes in the Linux dialect, and nothing else: its drivers are in every kernel.
 
@@ -890,6 +936,7 @@ The host's firmware becomes what a RISC-V server runs: OpenSBI, which M23 booted
 - **Interrupts through AIA**, with the supervisor's interrupt file and its registers (M22 c) and the fix to supervisor interrupts in DBT-RISE that M13 made ([upstream.md](upstream.md)).
 - **The quick tier in CI.** Python puts `fw_jump`, the kernel and the devicetree where they go, as M23's quick tier does. The ROM tier, which checks a kernel's megabytes a byte at a time, is M14's honest price and runs on demand; its time is measured and written down.
 - **What a kernel's boot shows that a payload's does not**: paging on for good, user programs, the scheduler on the timer, and a thousand devicetree properties read. GDB on the host with the kernel's symbols, and the instruction trace M13 step 4 used, are the tools for what goes wrong.
+- **The server's path, as a tier.** UEFI (M28) loads the same kernel through its EFI stub from a FAT image on the virtio block device, the way a server's firmware loads it from an EFI System Partition, and hands it the devicetree as a configuration table. On demand, not in the quick tier; and a kernel that boots one way and not the other has said which side the fault is on.
 - 🎭 **The virtio stand-ins M25 kept are the second console, the spare disk and the only network.** A kernel that speaks on `virtio-console` and not on the 16550 has said which side the fault is on. The exit test is on the 16550 with the initramfs, as the real SoC would be; the stand-ins are what the plan for this milestone reaches for when a step stalls, and what M24 and M17 swap out for the real thing.
 
 Exit: a shell prompt on the console; Python types `uname -a` and reads the answer, with the kernel's version in it; in CI, in the quick tier.
@@ -902,6 +949,7 @@ The drive has been a Zephyr host's since M3b and a Linux kernel's never. This mi
 - **MSI-X as messages to the IMSIC**, which is how the drive's interrupts already travel: the root complex's node says `msi-parent`, and Linux's PCI MSI code aims each vector at the IMSIC's page as socpuppet's Zephyr driver does.
 - **A filesystem Python wrote.** A disk image with a root filesystem on it is loaded into the drive from Python, as the drive's contents are today, and `root=/dev/nvme0n1p1` takes it from there.
 - **Data checked from outside.** A file written from Linux's shell is read back by Python through the NVMe host stand-in (`bring_up_the_drive`), as the exit tests of M6 to M8 check the Zephyr host's writes.
+- **UEFI's own NVMe driver, as a second opinion.** EDK2's `NvmExpressDxe` (M28) finds the drive through the root complex before Linux does, which is the second driver to answer the question about ECAM, and a kernel on an EFI System Partition on the drive is how a server really boots. A tier, on demand; the exit is Linux's driver and `root=`.
 
 Exit: Linux boots to a prompt with its root filesystem on the drive; a file written at the prompt is read back by Python, byte for byte, from the drive the Zephyr SSD firmware runs.
 
@@ -1019,7 +1067,7 @@ A power/telemetry model on the IO die. 🦜 The Verilator RTL block behind a TLM
 | A die of its own for the AI processor; host DRAM on the IO die | After M16 | one compute die a socket, DRAM on the compute die |
 | Which CPU the host runs by default and ships in the wheel, and whether a faster one is offered beside it | M26's report recommends the interpreter in the wheel, and nothing beside it until a translating backend passes the hart's suite, LLVM first ([speed-spike.md](speed-spike.md)); the maintainer decides | DBT-RISE's interpreter. QBox is offered beside it since M27, built from source, as a second opinion on a boot rather than a faster default ([models/qbox-cpu.md](models/qbox-cpu.md)) |
 | Is the root complex a generic ECAM host to Linux (`pci-host-ecam-generic`, no driver of ours), or does it need one? | M23 | check first; a driver of ours only if the check says so |
-| Which OpenSBI and which kernel to pin | M23 and M20 | OpenSBI's latest release; a kernel of 6.10 or later, where the AIA drivers landed |
+| Which OpenSBI, which EDK2 and which kernel to pin | M23, M28 and M20 | OpenSBI's latest release; EDK2's latest `edk2-stable` tag; a kernel of 6.10 or later, where the AIA drivers landed |
 
 Settled on 2026-10-10, planning Phase 4, having been left open until after M8: the bootchain has a ROM stage for each image ([M14](#m14--boot-rom-flash-system-controller-watchdog)), and a second SoC, which is more than the second compute die this table used to ask about, comes with [M16](#m16--shrm-and-the-two-socket-board). Settled the same day at M12's gate: the AI processor is 🎭 a behavioral one of ours, on the compute die, with its arithmetic a Python function written with numpy for now and the library interchangeable ([npu-spike.md](npu-spike.md), under Decisions). The row about a die of its own stays open: the gate kept it on the compute die for want of a reason to move it, not for good.
 
