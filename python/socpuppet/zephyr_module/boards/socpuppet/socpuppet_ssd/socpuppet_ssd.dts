@@ -17,6 +17,7 @@
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
+		timebase-frequency = <10000000>;
 
 		ssd_cpu: cpu@0 {
 			device_type = "cpu";

@@ -222,9 +222,13 @@ class TestWhenTheDevicetreeCommandIsGivenAFileThatIsNotThere:
         assert "Traceback" not in result.stderr
 
 
-def cpu_with_its_peripherals(*, xlen=64, **described):
+def cpu_with_its_peripherals(
+    *, xlen=64, time_from_the_timer=False, timer_hz=None, **described
+):
     """A CPU with a RAM, an interrupt controller, a timer and a UART.
 
+    With `time_from_the_timer`, the CPU reads its `time` register from the
+    timer, which counts `timer_hz` times a second if that is said.
     `described` is anything more to describe the CPU with than its word
     size.
     """
@@ -236,7 +240,12 @@ def cpu_with_its_peripherals(*, xlen=64, **described):
     bus = platform.add("bus", sp.Router())
     ram = platform.add("ram", sp.Memory(size=0x10_0000))
     plic = platform.add("plic", sp.Plic())
-    timer = platform.add("timer", sp.MachineTimer())
+    timer = platform.add(
+        "timer",
+        sp.MachineTimer()
+        if timer_hz is None
+        else sp.MachineTimer(frequency_hz=timer_hz),
+    )
     uart = platform.add("uart", sp.Ns16550())
     platform.connect(cpu.socket, bus.target)
     bus.map(ram.socket, base=0x8000_0000)
@@ -245,6 +254,8 @@ def cpu_with_its_peripherals(*, xlen=64, **described):
     bus.map(uart.socket, base=0x1000_0000)
     platform.connect(plic.irq, cpu.irq)
     platform.connect(timer.irq, cpu.timer_irq)
+    if time_from_the_timer:
+        platform.connect(cpu.time, timer.time)
     return platform, bus, plic
 
 
@@ -344,6 +355,64 @@ class TestWhenAPlatformHasACpuWithItsPeripherals:
             'riscv,isa-extensions = "i", "m", "a", "f", "d", "c", "zicsr", '
             '"zifencei";' in platform.devicetree()
         )
+
+
+class TestWhenACpuReadsItsTimeFromATimer:
+    def test_cpus_says_how_many_times_a_second_the_timer_counts(self):
+        platform, _, _ = cpu_with_its_peripherals(
+            time_from_the_timer=True, timer_hz=1_000_000
+        )
+
+        assert (
+            textwrap.indent(
+                textwrap.dedent(
+                    """\
+                cpus {
+                \t#address-cells = <1>;
+                \t#size-cells = <0>;
+                \ttimebase-frequency = <1000000>;
+                """
+                ),
+                "\t",
+            )
+            in platform.devicetree()
+        )
+
+
+class TestWhenACpuHasSupervisorMode:
+    def test_its_node_says_it_translates_addresses_with_sv39(self):
+        platform, _, _ = cpu_with_its_peripherals(isa="gc", modes="msu")
+
+        assert 'mmu-type = "riscv,sv39";' in platform.devicetree()
+
+
+class TestWhenACpuHasMachineModeOnly:
+    def test_its_node_says_nothing_of_an_mmu(self):
+        platform, _, _ = cpu_with_its_peripherals(isa="imac", modes="m")
+
+        assert "mmu-type" not in platform.devicetree()
+
+
+@needs_dtc
+class TestWhenADevicetreeIsCompiled:
+    def test_the_blob_starts_with_the_devicetrees_magic_number(self):
+        platform, _, _ = cpu_with_its_peripherals()
+
+        blob = sp.devicetree.compile(platform.devicetree())
+
+        assert blob[:4] == bytes.fromhex("d00dfeed")
+
+    def test_a_source_dtc_refuses_is_refused_in_dtcs_own_words(self):
+        with pytest.raises(ValueError, match="syntax error"):
+            sp.devicetree.compile("/dts-v1/;\n/ { spam\n")
+
+
+class TestWhenADevicetreeIsCompiledWithNoDtcInstalled:
+    def test_the_error_names_dtc_and_how_to_install_it(self, monkeypatch):
+        monkeypatch.setenv("PATH", "")
+
+        with pytest.raises(FileNotFoundError, match="device-tree-compiler"):
+            sp.devicetree.compile("/dts-v1/;\n/ { };\n")
 
 
 class TestWhenACpuHasARomBelowItsRam:

@@ -46,6 +46,13 @@ from socpuppet.regs import (
     ucie_link,
 )
 
+#: Whose bindings a devicetree is written in. 🎓 A devicetree says what
+#: hardware there is, and each operating system's drivers look for their
+#: own names, numbers of cells and shapes of nodes: its bindings. Zephyr's
+#: are what socpuppet's boards are built with, and Linux's are what OpenSBI
+#: and Linux read, and EDK2 after them.
+type Dialect = Literal["zephyr", "linux"]
+
 if TYPE_CHECKING:
     from socpuppet import _core
     from socpuppet.address_map import Reached
@@ -76,6 +83,8 @@ class DeviceNode(NamedTuple):
     #: Memory does not: by convention it sits at the top of the tree.
     on_bus: bool = True
     #: The `chosen` properties this node can fill, such as `zephyr,console`.
+    #: They are named as Zephyr names them in either dialect: in Linux's,
+    #: the node that can be `zephyr,console` is the one `stdout-path` is.
     chosen: tuple[str, ...] = ()
     #: The names in `aliases` this node can take, such as `watchdog0`.
     #: 🎓 An alias is a name firmware agrees on beforehand for "the board's
@@ -265,13 +274,16 @@ class Component(ABC):
         """
         return None
 
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
         """The devicetree node for this component, where a bus master finds it.
 
         `reached` has each of the component's ports that the bus master can
         reach, by name: the address it finds the port at, and how many
-        bytes of it can be reached there. None is returned for a component
-        that firmware has no driver for and need not know about.
+        bytes of it can be reached there. `dialect` is whose bindings the
+        node is in. None is returned for a component that firmware has no
+        driver for and need not know about.
         """
         return None
 
@@ -295,13 +307,25 @@ class Component(ABC):
         """
         return None
 
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_input(
+        self, port: str, label: str, *, dialect: Dialect
+    ) -> str | None:
         """How a devicetree refers to an interrupt arriving at `port`.
 
         A device whose interrupt line is connected to this port gets
         `interrupts-extended = <...>` with what this returns inside, such
-        as `&plic 5 1`. `label` is this component's own label. None if
-        `port` is not an interrupt input.
+        as `&plic 5 1`. `label` is this component's own label, and
+        `dialect` whose bindings the reference is in. None if `port` is not
+        an interrupt input.
+        """
+        return None
+
+    def timebase_frequency(self, port: str) -> int | None:
+        """How many times a second the count a CPU reads at `port` goes up.
+
+        A CPU whose `time` register is connected to `port` counts time in
+        those ticks, and its devicetree says so. None if `port` is no such
+        count, which is so of most.
         """
         return None
 
@@ -427,13 +451,17 @@ class RiscvCpu(Component):
         # and `mireg`). ⚠️ The extension's name promises more than the CPU
         # has: five more such windows. It is here because it is what
         # Zephyr's IMSIC driver looks for. Ssaia is the same for a CPU
-        # with supervisor mode: that mode's window and the register it
-        # claims through (`siselect`, `sireg` and `stopei`), which is what
-        # Linux's IMSIC driver looks for. ⚠️ Its name promises more too:
-        # `stopi`, which says which of all a hart's interrupts comes first,
-        # is not there. Smaia, the same name for machine mode, is left out
-        # until something asks for it.
+        # with supervisor mode: that mode's window, the register it claims
+        # through (`siselect`, `sireg` and `stopei`) and `stopi`, which
+        # says which of its interrupts comes first. It is what Linux's
+        # IMSIC driver looks for. ⚠️ Its name promises more too: the
+        # priorities software may give interrupts. Smaia, the same for
+        # machine mode, is left out: OpenSBI, the one program that wants it,
+        # finds it by reading `mtopi` and not from the devicetree.
         reaches_an_imsic = "csr" in connected
+        # A CPU with supervisor mode translates addresses, and this one's
+        # MMU walks Sv39 page tables and no other kind.
+        pages = ('\tmmu-type = "riscv,sv39";',) if "s" in self.modes else ()
         extensions = ", ".join(
             f'"{each}"'
             for each in (
@@ -451,6 +479,7 @@ class RiscvCpu(Component):
             "\treg = <0>;",
             f'\triscv,isa-base = "rv{self.xlen}i";',
             f"\triscv,isa-extensions = {extensions};",
+            *pages,
             "",
             f"\t{label}_intc: interrupt-controller {{",
             '\t\tcompatible = "riscv,cpu-intc";',
@@ -469,7 +498,9 @@ class RiscvCpu(Component):
         return {"timer_irq": 7, "irq": 11, "supervisor_irq": 9}.get(port)
 
     @override
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_input(
+        self, port: str, label: str, *, dialect: Dialect
+    ) -> str | None:
         number = self.interrupt_number(port)
         return None if number is None else f"&{label}_intc {number}"
 
@@ -629,7 +660,9 @@ class DmaEngine(Component):
     mapped_size = dma_engine.SIZE
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "dma-controller",
             ((reached["cpu"].address, self.mapped_size),),
@@ -659,7 +692,9 @@ class FlashController(Component):
     mapped_size = flash_controller.SIZE
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "nand-controller",
             ((reached["cpu"].address, self.mapped_size),),
@@ -734,7 +769,9 @@ class Imsic(Component):
             )
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
         # The page for machine mode's messages and that mode's line. Machine
         # mode is where the firmware a devicetree is generated for runs.
         if "machine" not in reached:
@@ -789,7 +826,9 @@ class MachineTimer(Component):
     frequency_hz: int = 10_000_000
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         base = reached["socket"].address
         mtime = base + 0xBFF8
         mtimecmp = base + 0x4000
@@ -797,10 +836,19 @@ class MachineTimer(Component):
             "timer",
             ((mtime, 8), (mtimecmp, 8)),
             (
-                'compatible = "riscv,machine-timer";',
+                # Zephyr's name for it, and the ACLINT's machine timer, which
+                # is what OpenSBI looks for: an ACLINT is a CLINT cut into
+                # its parts, and this is that part.
+                'compatible = "riscv,machine-timer";'
+                if dialect == "zephyr"
+                else 'compatible = "riscv,aclint-mtimer";',
                 'reg-names = "mtime", "mtimecmp";',
             ),
         )
+
+    @override
+    def timebase_frequency(self, port: str) -> int | None:
+        return self.frequency_hz if port == "time" else None
 
 
 class Memory(Component):
@@ -815,7 +863,9 @@ class Memory(Component):
         self.mapped_size = self.size
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         socket = reached["socket"]
         size = (
             self.size if socket.limit is None else min(self.size, socket.limit)
@@ -901,7 +951,9 @@ class SystemController(Component):
                 )
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "syscon",
             ((reached["socket"].address, self.mapped_size),),
@@ -992,7 +1044,9 @@ class Watchdog(Component):
     mapped_size = 0x1000
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "watchdog",
             ((reached["socket"].address, self.mapped_size),),
@@ -1044,9 +1098,12 @@ class Ns16550(Component):
         return PlacedUart(platform, path, self)
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
-            "uart",
+            # Linux's bindings name a node by what it is, generically.
+            "uart" if dialect == "zephyr" else "serial",
             ((reached["socket"].address, self.mapped_size),),
             (
                 'compatible = "ns16550";',
@@ -1115,7 +1172,9 @@ class NvmeFrontend(Component):
         return {"bar0": self.BAR0_SIZE, "cpu": self.CPU_SIZE}.get(port)
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
         # The node is for the SSD's own firmware, which reaches the CPU's
         # register block. A host finds the other one by scanning its PCIe
         # bus, as an NVMe drive's.
@@ -1213,7 +1272,9 @@ class D2dLinkEndpoint(Component):
         return ()
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
         registers = reached.get("sideband")
         if registers is None:
             return None
@@ -1379,7 +1440,9 @@ class PcieRootComplex(Component):
         return {"mmio_base": mmio_base}
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode | None:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
         ecam = reached.get("ecam")
         mmio = reached.get("mmio")
         # Firmware can do nothing with one window and not the other.
@@ -1472,16 +1535,20 @@ class Aplic(Component):
             )
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "interrupt-controller",
             ((reached["socket"].address, self.mapped_size),),
             (
                 'compatible = "riscv,aplic";',
                 "#address-cells = <0>;",
-                # An interrupt is named by three numbers: the source, a
-                # priority, and how its line asks.
-                "#interrupt-cells = <3>;",
+                # An interrupt is named by its source and how its line
+                # asks, and in Zephyr's binding by a priority between them.
+                "#interrupt-cells = <3>;"
+                if dialect == "zephyr"
+                else "#interrupt-cells = <2>;",
                 "interrupt-controller;",
                 f"riscv,num-sources = <{self.SOURCES}>;",
             ),
@@ -1495,12 +1562,18 @@ class Aplic(Component):
         return int(port.removeprefix("source"))
 
     @override
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_input(
+        self, port: str, label: str, *, dialect: Dialect
+    ) -> str | None:
         number = self.interrupt_number(port)
-        # The source's number, a priority, which only counts when an APLIC
-        # interrupts over a line, and 4, the devicetree's number for a line
-        # that asks while it is high, as every line in socpuppet does.
-        return None if number is None else f"&{label} {number} 1 4"
+        if number is None:
+            return None
+        # The source's number, then for Zephyr a priority, which only counts
+        # when an APLIC interrupts over a line, and 4, the devicetree's
+        # number for a line that asks while it is high, as every line in
+        # socpuppet does.
+        priority = " 1" if dialect == "zephyr" else ""
+        return f"&{label} {number}{priority} 4"
 
 
 class Plic(Component):
@@ -1524,7 +1597,9 @@ class Plic(Component):
     mapped_size = 0x400_0000
 
     @override
-    def device_node(self, reached: Mapping[str, Reached]) -> DeviceNode:
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
         return DeviceNode(
             "interrupt-controller",
             ((reached["socket"].address, self.mapped_size),),
@@ -1547,10 +1622,14 @@ class Plic(Component):
         return int(port.removeprefix("source"))
 
     @override
-    def interrupt_input(self, port: str, label: str) -> str | None:
+    def interrupt_input(
+        self, port: str, label: str, *, dialect: Dialect
+    ) -> str | None:
         number = self.interrupt_number(port)
         # The source's number, and the priority the firmware gives it unless
-        # it chooses another: 1, the lowest that can interrupt.
+        # it chooses another: 1, the lowest that can interrupt. ⚠️ That is
+        # Zephyr's binding in both dialects. Linux's has the source alone,
+        # and nothing that reads Linux's has a PLIC here yet.
         return None if number is None else f"&{label} {number} 1"
 
 

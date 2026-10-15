@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, elf, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
-from socpuppet.components import Component, DbtRiseCpu, LinkModel
+from socpuppet.components import Component, DbtRiseCpu, Dialect, LinkModel
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.terminal import stdout_wants_color
@@ -382,13 +382,31 @@ class Platform:
                 "them starts, and how big it is."
             ) from nothing_there
 
-    def devicetree(self, via: Port | None = None) -> str:
+    def devicetree(
+        self,
+        via: Port | None = None,
+        *,
+        dialect: Dialect = "zephyr",
+        model: str | None = None,
+        bootargs: str | None = None,
+    ) -> str:
         """The devicetree source for what a bus master can reach.
 
         `via` is the master's port, as in `peek32`. Works on a description;
         nothing needs to be built.
+
+        `dialect` is whose bindings it is in: Zephyr's, which socpuppet's
+        boards are built with, or Linux's, which OpenSBI and Linux read.
+        `model` is the board's name, which the root gives, and `bootargs`
+        the command line an operating system is handed.
         """
-        return devicetree.generate(self._connections, self._view(via))
+        return devicetree.generate(
+            self._connections,
+            self._view(via),
+            dialect=dialect,
+            model=model,
+            bootargs=bootargs,
+        )
 
     def devicetree_overlay(
         self, only: Collection[Placed], via: Port | None = None
