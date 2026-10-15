@@ -32,6 +32,13 @@ Checks:
   # Addresses, sizes and test data are numbers; naming each one would bury
   # the code.
   - -readability-magic-numbers
+  # A virtual function called from a constructor or a destructor that is
+  # not pure, and so merely does not reach an override. A pure one, which
+  # is undefined behaviour, is clang-analyzer-cplusplus.PureVirtualCall's,
+  # and stays on. The analyzer follows a path from the QBox CPU's adapter
+  # into QBox's own destructor, which calls one of its own, and reports it
+  # there, in a header nothing here can mark (docs/upstream.md).
+  - -clang-analyzer-optin.cplusplus.VirtualCall
   # Leaving a parameter unnamed is how C++ says it is unused.
   - -readability-named-parameter
 
@@ -67,7 +74,8 @@ CheckOptions:
   #     anyone who has met TLM elsewhere knows them.
   #   - The compiler calls a coroutine's promise and awaiters by these names
   #     (see core/script.h).
-  readability-identifier-naming.FunctionIgnoredRegexp: '^(b_transport|nb_transport_fw|nb_transport_bw|transport_dbg|get_direct_mem_ptr|invalidate_direct_mem_ptr|get_return_object|initial_suspend|final_suspend|return_void|return_value|unhandled_exception|await_transform|await_ready|await_suspend|await_resume|yield_value)$'
+  #   - SystemC's library calls sc_main (platform/sc_main_stub.cpp).
+  readability-identifier-naming.FunctionIgnoredRegexp: '^(sc_main|b_transport|nb_transport_fw|nb_transport_bw|transport_dbg|get_direct_mem_ptr|invalidate_direct_mem_ptr|get_return_object|initial_suspend|final_suspend|return_void|return_value|unhandled_exception|await_transform|await_ready|await_suspend|await_resume|yield_value)$'
   readability-identifier-naming.StructIgnoredRegexp: '^promise_type$'
   readability-identifier-naming.VariableCase: lower_case
   readability-identifier-naming.ParameterCase: lower_case

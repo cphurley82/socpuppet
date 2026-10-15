@@ -1260,3 +1260,13 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: raise the store/AMO cause for an AMO.
 - **Kind**: bug.
 - **When it lands**: the fates go.
+
+### The CPU's destructor calls a virtual function of its own
+
+- **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::~QemuCpu`, which calls `end_of_simulation()` "to catch the case we exited abnormally".
+- **What is wrong**: in a destructor a virtual call goes to the destructor's own class, so an override in a CPU derived from `QemuCpu` is not run there. If none is meant to be, the call says more than it does.
+- **How to see it**: clang-tidy's `clang-analyzer-optin.cplusplus.VirtualCall` on `src/socpuppet/models/qbox_cpu.cpp`, which follows the adapter's destructor into QBox's header and reports it there.
+- **What we do**: `.clang-tidy` switches that check off, since a header of QBox's cannot be marked. A pure virtual call, which is undefined behaviour, is another check's, `cplusplus.PureVirtualCall`, which stays on.
+- **Upstream fix**: call `QemuCpu::end_of_simulation()` by its qualified name, which says the override is not wanted, or move what it does into a non-virtual function both call.
+- **Kind**: portability.
+- **When it lands**: the check goes back on in `.clang-tidy`.
