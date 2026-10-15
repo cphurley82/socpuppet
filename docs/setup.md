@@ -1,6 +1,6 @@
 # Setting up a machine for development
 
-This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want it) has QBox built and ready. It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 12-core, 24-thread AMD machine.
+This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want it) has QBox built and ready. It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 24-core Intel machine (a Core Ultra 9 285K).
 
 🧦 Once it is done, [Building and testing](development.md) is the everyday page.
 
@@ -13,10 +13,10 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
                        clang-format, clang-tidy, ruff, the linters
   cmake --preset  ──▶  SystemC, SCC, DBT-RISE, Boost and friends   (build/dev/_deps)
   firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python     (build/firmware)
-  QBox's recipe   ──▶  QBox and its QEMU                           (~/qbox)
+  tools/build_qbox.sh ▶ QBox and its QEMU                          (build/qbox)
 ```
 
-💡 Only the first row needs root. Everything else lives in your home directory or in the checkout, so deleting `build/` and `~/qbox` takes the machine back to where it started.
+💡 Only the first row needs root. Everything else lives in your home directory or in the checkout, so deleting `build/` takes the machine back to where it started.
 
 💡 **clang-format and clang-tidy come from uv, not from apt or Homebrew.** `pyproject.toml` pins them as Python wheels (`uv sync` installs them), so that every machine and CI format and check the code with exactly the same versions. A clang-format of another version formats some lines differently, and the lint check would fail on code that looks right to you. You do not need a system clang at all: the build uses GCC on Linux and Apple clang on a Mac.
 
@@ -37,7 +37,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates. Two tests skip without it |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
 
-For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones `spikes/iss/qbox/Dockerfile` installs:
+For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
 
 ```sh
 sudo apt-get install -y \
@@ -54,7 +54,7 @@ xcode-select --install       # Apple clang, git, make
 brew install dtc
 ```
 
-⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox does not build natively on either kind of Mac today; it builds in a container (step 5).
+⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox does not build natively on either kind of Mac today; it builds in the devcontainer's image (step 5).
 
 ## 2. uv
 
@@ -98,40 +98,26 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset dev
 
 ## 5. QBox (optional)
 
-🎓 [QBox](https://github.com/qualcomm/qbox) is Qualcomm's library for putting QEMU's CPUs inside a SystemC simulation. QEMU translates the guest's instructions into the host's instead of interpreting them, which makes it many times faster than socpuppet's default CPU. It is the second hart that [M27](plan.md#m27--qbox-the-second-hart-optional-built-from-source) is making into a CPU of socpuppet's.
-
-🚧 Today QBox is built on its own, by the speed spike's recipe, and is not yet part of socpuppet's build: its SystemC cannot yet share a program with socpuppet's, which is M27's first step. So this step gets the machine ready for that work and lets you run the spike's QBox loops. When M27 lands, this section will name `tools/build_qbox.sh` and the `SOCPUPPET_QBOX_DIR` option instead.
+🎓 [QBox](https://github.com/qualcomm/qbox) is Qualcomm's library for putting QEMU's CPUs inside a SystemC simulation. QEMU translates the guest's instructions into the host's instead of interpreting them, which makes it many times faster than socpuppet's default CPU. socpuppet has it as a second hart, the `qbox_cpu` ([models/qbox-cpu.md](models/qbox-cpu.md)), for telling a bug in a hart from a bug in the firmware.
 
 ⚠️ QEMU is GPL-2.0. QBox is always built from source beside socpuppet and never goes into the wheel.
 
 On Linux, with the packages from step 1:
 
 ```sh
-QBOX_ROOT=~/qbox JOBS=$(nproc) uv run spikes/speed/qbox/build.sh   # about 5 to 10 minutes
+uv run tools/build_qbox.sh            # QBox and its QEMU, into build/qbox/install: about 5 to 10 minutes
+uv run cmake --preset qbox            # socpuppet linked with it, in build/qbox-dev
+uv run cmake --build --preset qbox
+SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 ```
 
-💡 `uv run` is there to put uv's CMake on the path for the recipe. QBox and its QEMU end up in `~/qbox` (about 3 GB), installed under `~/qbox/src/build/install`.
+💡 `uv run` is there to put uv's CMake on the path for the tool. QBox's tree is about 3 GB, in `build/qbox`. The `qbox` test preset runs everything with the hart's tests on QBox's CPU (`SOCPUPPET_CPU=qbox_cpu`).
 
-To see it run, build the speed spike's three loops against it and run one:
+✅ You should see `100% tests passed`, with QBox's fates among the skipped, each saying why: what QBox's CPU does differently ([models/qbox-cpu.md](models/qbox-cpu.md)).
 
-```sh
-uv run cmake -S spikes/speed/qbox -B ~/qbox/speed -G Ninja \
-  -DQBOX_ROOT=$HOME/qbox/src/build/install
-uv run cmake --build ~/qbox/speed
-~/qbox/speed/spike_speed_qbox_tests --gtest_filter=Qbox.CountedRepeatable
-```
+⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-✅ It prints one `[speed]` line, several hundred million instructions a second, and `OK`.
-
-⚠️ Run one test per process, as above. The SystemC kernel cannot be restarted, so the second test in the same process fails. `spikes/speed/qbox/run.sh` runs each test on its own and records the results, which is how the report's tables were made ([speed-spike.md](speed-spike.md)).
-
-On a Mac, build it in the container instead:
-
-```sh
-docker build -t socpuppet-qbox spikes/iss/qbox
-docker run --rm -v socpuppet-qbox:/qbox -v "$PWD:/workspace" -w /workspace \
-  socpuppet-qbox spikes/speed/qbox/build.sh
-```
+On a Mac, QBox's native build stops at QEMU's OpenGL check with Homebrew's packages. Build it in the devcontainer's image, which has QBox's packages.
 
 ## 6. Before your first push
 

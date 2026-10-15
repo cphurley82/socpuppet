@@ -104,6 +104,24 @@ uv run cmake --preset dev
 
 Configuring prints a note when the tree is in one of the two special modes.
 
+## QBox, the second hart
+
+🎓 The `qbox_cpu` is QEMU's RISC-V CPU inside SystemC, by way of Qualcomm's QBox, beside the DBT-RISE CPU ([models/qbox-cpu.md](models/qbox-cpu.md)). QEMU is GPL-2.0, so it is built from source by whoever wants it, and it has a tree of its own:
+
+```sh
+uv run tools/build_qbox.sh               # QBox at its pin, with cmake/patches/qbox-* and libqemu-*, into build/qbox/install
+uv run cmake --preset qbox               # build/qbox-dev, with SOCPUPPET_QBOX_DIR=build/qbox/install
+uv run cmake --build --preset qbox
+uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=qbox_cpu
+```
+
+- **`SOCPUPPET_QBOX_DIR`** names a QBox install. With it, socpuppet links QBox's shared SystemC and CCI, since a program holds one SystemC kernel, and builds the adapter. Without it, SystemC is fetched at the commit QBox builds and linked statically, as always.
+- **`SOCPUPPET_CPU`**, `dbt_rise_cpu` or `qbox_cpu`, is the CPU the hart's C++ tests run on (`tests/cpp/support/the_cpu.h`), and the host's CPU wherever a Python program does not name one (`host(cpu=)`), which is how the `qbox` test preset runs the host boots and how twister's runs follow it.
+- **The fates.** What QBox's CPU does differently is skipped on QBox with the reason: the hart's C++ cases are in one table (`tests/cpp/support/qbox_fates.h`), and a Python test has `@pytest.mark.not_on_qbox(reason)`. A failure that is in neither is new.
+- 💡 The nightly workflow (`.github/workflows/qbox.yml`) does all of this, with clang-tidy over the adapter and twister on the host board, every night and when run by hand: `gh workflow run qbox.yml`.
+- ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree.
+- ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.sh` applies a patch once. Delete `build/qbox` and run it again.
+
 ## Spikes
 
 Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted.
@@ -119,7 +137,7 @@ uv run ctest --preset spike            # only the tests labelled `spike`
 
 The speed spike ([spikes/speed](../spikes/speed/README.md), report in [speed-spike.md](speed-spike.md)) is behind the same option and stays, unlike the others, so that every later change to the core can be timed against its results. `uv run ctest --preset speed` runs its three loops one at a time, verbosely, and `spikes/speed/run.sh` does one machine's whole column into `spikes/speed/results/`.
 
-The earlier spikes have gone. The twister spike asked whether Zephyr's test runner could run Zephyr's own tests on socpuppet's boards ([twister-spike.md](twister-spike.md)). It was scripts and a few Zephyr files, and it was deleted when M21's steps had rebuilt what it found test-first, as `socpuppet run`, the boards' two files for twister and `firmware/twister.sh`; the report names the commit that holds it. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the recipe for QBox, which builds on its own in a container and is not part of any preset or CI job. The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
+The earlier spikes have gone. The twister spike asked whether Zephyr's test runner could run Zephyr's own tests on socpuppet's boards ([twister-spike.md](twister-spike.md)). It was scripts and a few Zephyr files, and it was deleted when M21's steps had rebuilt what it found test-first, as `socpuppet run`, the boards' two files for twister and `firmware/twister.sh`; the report names the commit that holds it. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the spike's own QBox integration; socpuppet's is the `qbox_cpu`, built by `tools/build_qbox.sh` (M27). The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
 
 ## Firmware
 
@@ -176,6 +194,8 @@ Pinned in `cmake/Dependencies.cmake` and fetched at configure time. Third-party 
 The register maps in `regs/` are compiled by [systemrdl-compiler](https://github.com/SystemRDL/systemrdl-compiler) (MIT), which `uv sync` installs with the linters. It is a developer's tool and not a dependency of the package: what `tools/regs.py` generates with it is checked in, so a build needs only a compiler and an installed socpuppet has no use for it. ⚠️ After changing a `.rdl`, run `uv run python tools/lint.py --fix`, and then `firmware/build.sh`, because the firmware images are built from the generated headers too.
 
 SCC needed a few accommodations to build inside this tree, each commented where it is made: two small patches (`cmake/patches/`), one to a configure-time probe and one so that clang-tidy can read the CCI headers it bundles, its install rules switched off, our SystemC declared as already found, and Boost.Filesystem linked explicitly.
+
+QBox, the second CPU, is not fetched at all: `tools/build_qbox.sh` builds it at its pin, applying `cmake/patches/qbox-*.patch` to it and `libqemu-*.patch` to the QEMU it fetches ([QBox, the second hart](#qbox-the-second-hart)).
 
 DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with the patches named `dbt-rise-*` in `cmake/patches/`, to it and to the core library under it, and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
 

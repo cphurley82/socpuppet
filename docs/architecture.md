@@ -287,6 +287,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 
 - [Command device](models/command-device.md), which is what the DMA engine and the flash controller share
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
+- [CPU (QBox)](models/qbox-cpu.md), QEMU's, in a build with QBox
 - [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)
 - [Flash controller](models/flash-controller.md)

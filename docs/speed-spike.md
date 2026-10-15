@@ -165,11 +165,22 @@ What each took to build, within M1's allowance of four patches of about twenty l
 
 ## QBox
 
-QBox is QEMU's RISC-V CPU inside SystemC, behind the CPU slot M1's spike built for it (`spikes/speed/qbox/`), with the same three loops on a RAM that grants direct access. It builds at the commit M12's spike builds, as C++20 with the NPU spike's three source patches, and without virgl and virCL, which neither Ubuntu 26.04's glibc nor Homebrew would compile for it. Natively on the Ubuntu box it built in 221 s; in the Air's arm64 container it built; in the Mac Pro's container it built on the second attempt (the first lost its log); natively on the Macs it did not, one missing Homebrew package at a time (`libzip`, `epoxy`, `sdl2`), until QEMU's configure asked for `epoxy/egl.h`, which Homebrew's libepoxy does not have on macOS. QEMU's OpenGL display is nothing a CPU needs, so the next attempt there passes `-Dopengl=disabled` through to QEMU's configure.
+QBox is QEMU's RISC-V CPU inside SystemC, as M26 measured it behind the CPU slot M1's spike built for it (`spikes/speed/qbox/` then), with the same three loops on a RAM that grants direct access. It builds at the commit M12's spike builds, as C++20 with the NPU spike's three source patches, and without virgl and virCL, which neither Ubuntu 26.04's glibc nor Homebrew would compile for it. Natively on the Ubuntu box it built in 221 s; in the Air's arm64 container it built; in the Mac Pro's container it built on the second attempt (the first lost its log); natively on the Macs it did not, one missing Homebrew package at a time (`libzip`, `epoxy`, `sdl2`), until QEMU's configure asked for `epoxy/egl.h`, which Homebrew's libepoxy does not have on macOS. QEMU's OpenGL display is nothing a CPU needs, so the next attempt there passes `-Dopengl=disabled` through to QEMU's configure.
 
 What it measured, in its repeatable configuration (QEMU as a coroutine on the SystemC thread, counting instructions for time): **350 to 370 million instructions a second on the counted loop and 450 to 590 on the hits loop, nine to twenty times the interpreter and two to five times LLVM, and 10 to 27 million on the walking loop, slower than every DBT-RISE core on the same machine.** 🎓 QEMU keeps translated code keyed by physical address and throws it all away on `sfence.vma`, and the walking loop fences every round, so there it translates the loop again 2¹⁷ times. A kernel fences far less often than that, so its boot would land near the hits figure. The threaded configuration (QEMU on threads of its own, nothing keeping it in step with SystemC) crashed on every loop, on both machines, and has no row; M1 measured it at 3,800 million on its own, and it was never repeatable.
 
-What QBox cannot be measured on: `cpu_test.cpp`, the bus-master contract and the Python suite, since its SystemC cannot be linked with socpuppet's. Its CPU tests are M1's candidate suite, which is the to-do it already was. And it is GPL-2.0, so it is a build from source beside the wheel, never in it.
+🦜 What QBox could not be measured on, when this report was written, was `cpu_test.cpp`, the bus-master contract and the Python suite, since its SystemC could not be linked with socpuppet's. [M27](plan.md#m27--qbox-the-second-hart-optional-built-from-source) made it a CPU of socpuppet's, the `qbox_cpu`, held to all three ([models/qbox-cpu.md](models/qbox-cpu.md)). It is GPL-2.0, so it is built from source beside the wheel, never in it.
+
+### Through the adapter (M27)
+
+The same loops, through socpuppet's own platform and the `qbox_cpu`'s adapter, at the boards' 100 µs, three runs each, on the machine M27 was done on: the A51, a Ubuntu 26.04 box with an Intel Core Ultra 9 285K (24 cores), natively, GCC 15. Not the Ubuntu box of the tables above, so DBT-RISE's interpreter was run beside it from the same build, and the two rows are the ones to set side by side. Millions of instructions a second:
+
+| CPU | counted | walks | hits |
+|---|---|---|---|
+| DBT-RISE, interpreter | 22.2 to 22.5 | 13.6 to 13.7 | 18.0 to 18.1 |
+| QBox, through the adapter | 270 to 305 | 17.4 to 17.5 | 611 to 612 |
+
+That is twelve to thirteen times the interpreter on the counted loop, thirty-four on the hits loop, and a little more than it when every load is a walk, as M26 found. The adapter costs nothing that shows: the spike's slot gave 200 to 245 on the counted loop on the same machine. 💡 M26's 1 ms of simulated time for the counted loop was QBox run with no quantum, where its CPU never waits for SystemC's clock. Through the adapter, at 128 ns an instruction (the `qbox_cpu`'s clock), the loop's 33.5 million instructions take 4.3 s of simulated time, as they should. To measure it again: `uv run spikes/speed/qbox/run.sh --env <label>`, or `SOCPUPPET_CPU=qbox_cpu` on a spike tree built with `SOCPUPPET_QBOX_DIR`.
 
 ## The projection
 
