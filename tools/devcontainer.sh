@@ -30,6 +30,13 @@ environment=(
   --env UV_PYTHON_INSTALL_DIR=/workspace/build/firmware/python
   --env UV_CACHE_DIR=/workspace/build/linux-uv-cache
 )
+# And socpuppet's own variables, such as SOCPUPPET_REQUIRE_FIRMWARE and
+# SOCPUPPET_CPU, go in with the command.
+for name in $(compgen -e); do
+  if [[ "$name" == SOCPUPPET_* ]]; then
+    environment+=(--env "$name=${!name}")
+  fi
+done
 
 # QBox's tree and socpuppet's tree built with it are Docker volumes, at the
 # places in build/ that tools/build_qbox.sh and the qbox preset use: a

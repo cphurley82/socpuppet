@@ -149,3 +149,18 @@ def test_uvs_environment_cache_and_pythons_are_under_build_so_they_outlive_the_c
     assert environment["UV_PROJECT_ENVIRONMENT"] == "/workspace/build/linux-venv"
     assert environment["UV_PYTHON_INSTALL_DIR"] == "/workspace/build/firmware/python"
     assert environment["UV_CACHE_DIR"].startswith("/workspace/build/")
+
+
+def test_socpuppet_variables_in_the_callers_environment_reach_the_container(
+    devcontainer,
+):
+    result, calls = devcontainer(
+        "true",
+        env={"SOCPUPPET_REQUIRE_FIRMWARE": "1", "SOCPUPPET_CPU": "qbox_cpu"},
+    )
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    environment = values(run, "--env")
+    assert "SOCPUPPET_REQUIRE_FIRMWARE=1" in environment
+    assert "SOCPUPPET_CPU=qbox_cpu" in environment
