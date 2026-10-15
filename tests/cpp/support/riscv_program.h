@@ -321,6 +321,12 @@ inline constexpr Word kMtopei = 0x35C;
 inline constexpr Word kSiselect = 0x150;
 inline constexpr Word kSireg = 0x151;
 inline constexpr Word kStopei = 0x15C;
+// The registers that say which interrupt a mode would take next: the
+// highest-priority one that is pending and enabled and that is that mode's
+// to take, its number in bits 27 to 16, or zero for none.
+inline constexpr Word kMtopi = 0xFB0;
+inline constexpr Word kStopi = 0xDB0;
+inline constexpr Word kTopInterruptShift = 16;
 // Two of a file's registers, by the numbers they are selected with:
 // whether the file may interrupt at all, and which identities firmware
 // wants to hear of, a bit each.
@@ -335,6 +341,8 @@ inline constexpr Word kMideleg = 0x303;
 inline constexpr Word kSupervisorExternalInterrupt = 9;
 // The bit of the supervisor software interrupt, which software asks for.
 inline constexpr Word kSupervisorSoftwareInterrupt = 1;
+// The bit of the supervisor timer interrupt.
+inline constexpr Word kSupervisorTimerInterrupt = 5;
 // Supervisor mode's own view of the interrupt enables, and the register
 // that holds the address a trap taken in supervisor mode jumps to.
 inline constexpr Word kSie = 0x104;
@@ -504,6 +512,41 @@ class Assembler {
 
 inline void AppendSleepForEver(Assembler& program) {
   program.Emit({kWfi, Jal(kZero, -4)});
+}
+
+// A program that, in machine mode with interrupts off, hands down the
+// interrupts `handed_down` has a bit for in `mideleg`, enables those
+// `enabled` has in `mie`, and sets those `pending` has pending in `mip`,
+// which for a program are the supervisor's three. Each is below 2048. It
+// then stores what `mtopi` reads as the first word of its result and what
+// `stopi` reads as the second, and sleeps. A read that traps has machine
+// mode's handler store the cause with one added as the third word, which
+// is zero when nothing trapped, and sleep.
+inline Program StoreTheTopInterrupts(Word handed_down, Word enabled,
+                                     Word pending) {
+  Program program{
+      Auipc(kT3, 0),
+      Auipc(kT1, 0),
+      0,  // addi t1, t1, to the handler: below, once it is known
+      Csrw(kMtvec, kT1),
+      Li(kT1, static_cast<std::int32_t>(handed_down)),
+      Csrw(kMideleg, kT1),
+      Li(kT1, static_cast<std::int32_t>(enabled)),
+      Csrw(kMie, kT1),
+      Li(kT1, static_cast<std::int32_t>(pending)),
+      Csrs(kMip, kT1),
+      Csrr(kT0, kMtopi),
+      Sw(kT0, kT3, kResultOffset),
+      Csrr(kT0, kStopi),
+      Sw(kT0, kT3, kResultOffset + 4),
+  };
+  AppendSleepForEver(program);
+  const auto handler_is = static_cast<std::int32_t>((program.size() - 1) * 4);
+  program[2] = Addi(kT1, kT1, handler_is);
+  program.insert(program.end(), {Csrr(kT1, kMcause), Addi(kT1, kT1, 1),
+                                 Sw(kT1, kT3, kResultOffset + 8)});
+  AppendSleepForEver(program);
+  return program;
 }
 
 // A program that stores `value` as its result and then sleeps. It finds the

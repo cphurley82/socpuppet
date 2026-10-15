@@ -566,6 +566,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The hart with supervisor mode has no `mtopi` or `stopi`
+
+- **Where**: `src/iss/arch/riscv_hart_msu_vp.h`, the constructor's table of registers, and the register numbers in `src/iss/arch/riscv_hart_common.h`.
+- **What is wrong**: the Advanced Interrupt Architecture gives a hart two registers that say which interrupt each mode would take next, `mtopi` (0xFB0) and `stopi` (0xDB0): the highest-priority one that is pending and enabled and is that mode's to take, its number in bits 27 to 16. Neither is registered, so a read of either is an illegal instruction. OpenSBI decides whether a hart has the AIA's machine-mode half by reading `mtopi`, and on one that traps it leaves the IMSIC alone; on one that does not, its trap handler asks `mtopi` which interrupt to see to until it reads zero. Linux's interrupt controller for the AIA reads `stopi` to learn which interrupt it took.
+- **How to see it**: machine mode, with interrupts off, hands some of the supervisor's three interrupts down, enables them and sets them pending, and reads the two (`WhenMachineModeMakesInterruptsPendingAndReadsWhichIsOnTop` in `tests/cpp/platform/cpu_test.cpp`).
+- **What we do**: `cmake/patches/dbt-rise-riscv-topi.patch`: both are read-only registers of the hart with supervisor mode, worked out from `mip`, `mie` and `mideleg` when they are read, in the default order (the machine's external, software and timer interrupts, then the supervisor's) and with a priority of 1, which the specification allows when no priority can be configured.
+- **Upstream fix**: the same, behind the AIA feature the cores are built with, and `mtopi` alone on the hart with machine mode only. ⚠️ Not done here: the interrupts above 15, the local ones, which nothing here raises; and the priorities a hart may let software configure, through `miselect` from 0x30 to 0x3F. ⚠️ And the hart does not take its interrupts in the order the two registers name. `check_interrupt` takes the machine's before the supervisor's, as it should, and then the lowest-numbered first, against its own comment: with the supervisor's software and external interrupts both pending it takes the software one, and `stopi` says the external one. OpenSBI and Linux each ask the register until it reads zero, so nothing is lost. The fix is one order for both, in `check_interrupt` too.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
 ### The translating backends' cores specialize a private template of GCC's standard library
 
 - **Where**: every file in `src/vm/asmjit/` and `src/vm/llvm/` that opens `namespace std` after `using uint128_t = unsigned __int128;`.
