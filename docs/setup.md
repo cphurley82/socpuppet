@@ -14,6 +14,8 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   cmake --preset  ──▶  SystemC, SCC, DBT-RISE, Boost and friends   (build/dev/_deps)
   firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python     (build/firmware)
   tools/build_qbox.sh ▶ QBox and its QEMU                          (build/qbox)
+  Docker Desktop  ──▶  the devcontainer's image, on a Mac: QBox,   (Docker's own disk)
+                       and the firmware on an Intel Mac
 ```
 
 💡 Only the first row needs root. Everything else lives in your home directory or in the checkout, so deleting `build/` takes the machine back to where it started.
@@ -54,7 +56,7 @@ xcode-select --install       # Apple clang, git, make
 brew install dtc
 ```
 
-⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox does not build natively on either kind of Mac today; it builds in the devcontainer's image (step 5).
+⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox wants Docker Desktop on either kind of Mac: it is built and run in the devcontainer's image, which is Linux, by `tools/devcontainer.sh` (step 5).
 
 ## 2. uv
 
@@ -117,7 +119,16 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 
 ⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-On a Mac, QBox's native build stops at QEMU's OpenGL check with Homebrew's packages. Build it in the devcontainer's image, which has QBox's packages.
+On a Mac, the same four commands run in the devcontainer's image, which has QBox's packages. `tools/devcontainer.sh` goes in front of each:
+
+```sh
+tools/devcontainer.sh uv run tools/build_qbox.sh     # about 10 minutes on a 2019 Mac Pro
+tools/devcontainer.sh uv run cmake --preset qbox
+tools/devcontainer.sh uv run cmake --build --preset qbox
+SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.sh uv run ctest --preset qbox
+```
+
+💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees, `build/qbox` and `build/qbox-dev`, on Docker volumes (`socpuppet-qbox` and `socpuppet-qbox-dev`), because a compiler reading the Mac's files through Docker is ten times slower. So on the Mac those two directories stay empty, and `docker volume rm socpuppet-qbox socpuppet-qbox-dev` is how to start again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
 
 ## 6. Before your first push
 

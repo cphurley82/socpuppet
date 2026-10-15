@@ -84,15 +84,12 @@ uv run cmake --build --preset dev --target check_headers   # each header compile
 - **GCC, on Linux.** On a Mac the compiler is Apple's clang, and GCC has warnings it lacks. To have them here, keep a second build tree in the devcontainer's image, which is what CI builds in. The first build is long and later ones are incremental:
 
 ```sh
-docker run --rm -v "$PWD":/workspace -w /workspace \
-  -e UV_PROJECT_ENVIRONMENT=/workspace/build/linux-venv -e UV_LINK_MODE=copy \
-  socpuppet-dev bash -c 'uv sync --quiet &&
-    uv run cmake -S . -B build/linux -G Ninja \
-      -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSOCPUPPET_DEVELOPER_MODE=ON &&
-    uv run cmake --build build/linux'
+tools/devcontainer.sh uv run cmake -S . -B build/linux -G Ninja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSOCPUPPET_DEVELOPER_MODE=ON
+tools/devcontainer.sh uv run cmake --build build/linux
 ```
 
-💡 `firmware/build.sh` builds that image the first time it runs on an Intel Mac. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.sh` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
+💡 `tools/devcontainer.sh` runs any command in the devcontainer's image, with the repository at `/workspace` (`tools/devcontainer.sh bash` is a shell there). It names the image after a hash of `.devcontainer/Dockerfile`, so it builds the image the first time and again whenever the Dockerfile changes. uv's Linux venv, its cache and its Python are kept in `build/`, so they outlive each container, and your `SOCPUPPET_*` variables go in with the command. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.sh` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
 
 ## One build tree, three kinds of build
 
@@ -121,6 +118,7 @@ uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=q
 - 💡 The nightly workflow (`.github/workflows/qbox.yml`) does all of this, with clang-tidy over the adapter and twister on the host board, every night and when run by hand: `gh workflow run qbox.yml`.
 - ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree.
 - ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.sh` applies a patch once. Delete `build/qbox` and run it again.
+- ⚠️ **On a Mac, put `tools/devcontainer.sh` in front of each of the four commands**, as [setup.md](setup.md#5-qbox-optional) shows. `build/qbox` and `build/qbox-dev` are then Docker volumes, `socpuppet-qbox` and `socpuppet-qbox-dev`, mounted in the container where the preset looks for them, because a compiler reading through Docker's file sharing is ten times slower than one reading a volume ([twister-spike.md](twister-spike.md)). On the Mac those two directories stay empty. To start over, `docker volume rm socpuppet-qbox socpuppet-qbox-dev` stands in for deleting them.
 
 ## Spikes
 
@@ -150,7 +148,7 @@ firmware/build.sh        # into build/firmware
 - The script downloads the SDK's RISC-V toolchain (about 225 MB), Zephyr 4.4.2, and a Python for Zephyr's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
 - 💡 On an Apple silicon Mac the script runs on macOS itself: the SDK has a toolchain for one, and nothing else has to be installed. Every image builds in a minute there.
 - 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one. It builds that image the first time, as `socpuppet-dev`. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
-- ⚠️ The image is not rebuilt when `.devcontainer/Dockerfile` changes. After such a change: `docker build -t socpuppet-dev -f .devcontainer/Dockerfile .devcontainer`.
+- ⚠️ The script does not rebuild the image when `.devcontainer/Dockerfile` changes. `tools/devcontainer.sh` does, and names the new image `socpuppet-dev` too, so after such a change run `tools/devcontainer.sh true` once.
 - ⚠️ The toolchain an Intel Mac ends up with in `build/firmware` is Linux's, GDB included. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
