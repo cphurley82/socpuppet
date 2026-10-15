@@ -23,9 +23,12 @@
 #                     then stops feeding its watchdog, and says why it
 #                     started each time
 #
-# And one thing that is no Zephyr at all: the boot ROM in firmware/rom,
+# And two things that are no Zephyr at all. The boot ROM in firmware/rom,
 # which is what a CPU that boots from a flash runs first. It is built with
 # the same compiler, once for each kind of CPU, as rom_rv32 and rom_rv64.
+# And OpenSBI, the machine-mode firmware a RISC-V kernel sits on, built for
+# the host as fw_jump, with test_payload, the supervisor-mode program
+# OpenSBI ships, for it to jump to.
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
@@ -33,11 +36,12 @@
 #   <name>_<board>.elf          the image, with symbols
 #   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
 #   <name>_<board>.opcodes.txt  how often each instruction appears in it
-# and for the boot ROM, rom_rv32 and rom_rv64, each an .elf and a .bin.
+# and for the boot ROM, rom_rv32 and rom_rv64, each an .elf and a .bin, as
+# are fw_jump and test_payload.
 #
-# Everything it downloads (the Zephyr SDK's RISC-V toolchain, Zephyr itself,
-# and a Python with the packages Zephyr's build needs) stays in the output
-# directory. A second run reuses what is there.
+# Everything it downloads (the Zephyr SDK's RISC-V toolchain, OpenSBI,
+# Zephyr itself, and a Python with the packages Zephyr's build needs) stays
+# in the output directory. A second run reuses what is there.
 #
 # The Zephyr SDK has no toolchain for an Intel Mac. There the script runs
 # itself in the devcontainer's image, which is Linux, and needs Docker for
@@ -111,17 +115,30 @@ case "$(uname -s)-$(uname -m)" in
     ;;
 esac
 
-# Downloads one file of the SDK release and checks it against the release's
-# list of checksums.
+# Downloads one file of the SDK release into the output directory and
+# checks it against the release's list of checksums.
 fetch_sdk_file() {
   local file=$1
   local release=https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${sdk_version}
-  curl --fail --silent --show-error --location --remote-name "${release}/${file}"
-  if command -v sha256sum > /dev/null; then
-    grep " ${file}\$" sha256.sum | sha256sum --check --quiet -
-  else
-    grep " ${file}\$" sha256.sum | shasum --algorithm 256 --check --quiet -
-  fi
+  (
+    cd "${out}"
+    curl --fail --silent --show-error --location --remote-name "${release}/sha256.sum"
+    curl --fail --silent --show-error --location --remote-name "${release}/${file}"
+    if command -v sha256sum > /dev/null; then
+      grep " ${file}\$" sha256.sum | sha256sum --check --quiet -
+    else
+      grep " ${file}\$" sha256.sum | shasum --algorithm 256 --check --quiet -
+    fi
+  )
+}
+
+# Says what kind of program an image is, where it starts, and how many
+# bytes it is, for the image at <path>.elf and <path>.bin.
+report_image() {
+  local image=$1
+  "${toolchain}/bin/riscv64-zephyr-elf-readelf" --file-header "${image}.elf" |
+    grep --extended-regexp "Class|Entry point"
+  echo "  $(wc -c < "${image}.bin" | tr -d ' ') bytes in ${image}.bin"
 }
 
 # The toolchain: the SDK's small base bundle, plus the one RISC-V compiler,
@@ -130,20 +147,31 @@ sdk=${out}/zephyr-sdk-${sdk_version}
 toolchain=${sdk}/gnu/riscv64-zephyr-elf
 if [[ ! -d ${toolchain} ]]; then
   echo "Fetching the Zephyr SDK ${sdk_version} RISC-V toolchain for ${host}"
-  (
-    cd "${out}"
-    release=https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${sdk_version}
-    curl --fail --silent --show-error --location --remote-name "${release}/sha256.sum"
-    bundle=zephyr-sdk-${sdk_version}_${host}_minimal.tar.xz
-    fetch_sdk_file "${bundle}"
-    tar xf "${bundle}"
-    rm "${bundle}"
-    compiler=toolchain_gnu_${host}_riscv64-zephyr-elf.tar.xz
-    fetch_sdk_file "${compiler}"
-    mkdir -p "${sdk}/gnu"
-    tar xf "${compiler}" -C "${sdk}/gnu"
-    rm "${compiler}"
-  )
+  bundle=zephyr-sdk-${sdk_version}_${host}_minimal.tar.xz
+  fetch_sdk_file "${bundle}"
+  tar xf "${out}/${bundle}" -C "${out}"
+  rm "${out}/${bundle}"
+  compiler=toolchain_gnu_${host}_riscv64-zephyr-elf.tar.xz
+  fetch_sdk_file "${compiler}"
+  mkdir -p "${sdk}/gnu"
+  tar xf "${out}/${compiler}" -C "${sdk}/gnu"
+  rm "${out}/${compiler}"
+fi
+
+# The SDK's LLVM, for OpenSBI alone. 🎓 OpenSBI runs wherever it is put,
+# which it does by being linked as a position-independent executable, and
+# the GNU linker above is built for bare-metal programs and cannot make
+# one. LLVM's linker can, for any target. It is kept beside the SDK and
+# not in it: it is two gigabytes, and what copies or caches the SDK for
+# Zephyr (firmware/twister.sh, and CI) would carry it for nothing.
+llvm=${out}/llvm-${sdk_version}
+if [[ ! -d ${llvm} ]]; then
+  echo "Fetching the Zephyr SDK ${sdk_version} LLVM toolchain for ${host}"
+  compiler=toolchain_llvm_${host}.tar.xz
+  fetch_sdk_file "${compiler}"
+  mkdir -p "${llvm}"
+  tar xf "${out}/${compiler}" -C "${llvm}" --strip-components=1
+  rm "${out}/${compiler}"
 fi
 
 # The boot ROM: a program with no operating system and no C library under
@@ -167,9 +195,45 @@ for each in "rv64 rv64imac_zicsr lp64" "rv32 rv32imac_zicsr ilp32"; do
     -T "${rom}/rom.ld" \
     "${rom}/start.S" "${rom}"/*.c -o "${image}.elf"
   "${toolchain}/bin/riscv64-zephyr-elf-objcopy" -O binary "${image}.elf" "${image}.bin"
-  "${toolchain}/bin/riscv64-zephyr-elf-readelf" --file-header "${image}.elf" |
-    grep --extended-regexp "Class|Entry point"
-  echo "  $(wc -c < "${image}.bin" | tr -d ' ') bytes in ${image}.bin"
+  report_image "${image}"
+done
+
+# OpenSBI, at the release socpuppet is pinned to, for the host, built with
+# the SDK's LLVM. It needs nothing of Zephyr's either.
+#
+# 🎓 `fw_jump` is the build of OpenSBI that jumps to a next stage somebody
+# else has put in RAM: on the generic platform, 2 MiB into it, which is
+# where Linux wants to be. The generic platform also builds fw_payload,
+# which carries its next stage inside it, and test_payload, the payload it
+# carries when it is given none; FW_PAYLOAD_OFFSET links test_payload where
+# fw_jump jumps. OpenSBI runs wherever it is put, and FW_TEXT_START is only
+# where its ELF file says it goes: the start of the host's RAM, so that
+# Python can load it there.
+#
+# ⚠️ The SDK's clang knows which C libraries it has, and refuses flags it
+# has none for. OpenSBI links no C library at all, so the refusal is
+# turned off.
+opensbi=${out}/opensbi
+if [[ ! -d ${opensbi} ]]; then
+  echo "Fetching OpenSBI ${opensbi_version}"
+  git clone --quiet --depth 1 --branch "${opensbi_version}" \
+    -c advice.detachedHead=false \
+    https://github.com/riscv-software-src/opensbi "${opensbi}"
+fi
+echo "Building OpenSBI for the host"
+make -C "${opensbi}" O="${out}/build_opensbi" \
+  LLVM="${llvm}/bin/" CC="${llvm}/bin/clang -Wno-missing-multilib" \
+  PLATFORM=generic PLATFORM_RISCV_XLEN=64 PLATFORM_RISCV_ABI=lp64 \
+  PLATFORM_RISCV_ISA=rv64imafdc_zicsr_zifencei \
+  FW_TEXT_START=0x80000000 FW_PAYLOAD_OFFSET=0x200000 \
+  > "${out}/build_opensbi.log" 2>&1 ||
+  { tail -n 40 "${out}/build_opensbi.log" >&2; exit 1; }
+built=${out}/build_opensbi/platform/generic/firmware
+for each in "fw_jump fw_jump" "test_payload payloads/test"; do
+  read -r name file <<< "${each}"
+  cp "${built}/${file}.elf" "${out}/${name}.elf"
+  cp "${built}/${file}.bin" "${out}/${name}.bin"
+  report_image "${out}/${name}"
 done
 
 # Zephyr itself, at the release socpuppet is pinned to. Nothing built here
@@ -241,7 +305,5 @@ for each in "${images[@]}"; do
     awk -F '\t' '$1 ~ /:$/ && NF >= 2 { count[$2]++ }
                  END { for (each in count) print count[each], each }' |
     sort --numeric-sort --reverse > "${image}.opcodes.txt"
-  "${toolchain}/bin/riscv64-zephyr-elf-readelf" --file-header "${image}.elf" |
-    grep --extended-regexp "Class|Entry point"
-  echo "  $(wc -c < "${image}.bin" | tr -d ' ') bytes in ${image}.bin"
+  report_image "${image}"
 done

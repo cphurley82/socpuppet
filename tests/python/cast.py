@@ -26,6 +26,8 @@ from ssd_zephyr_firmware import IMAGE as SSD
 __all__ = [
     "DISK_TEST",
     "FROM_THEIR_ROMS",
+    "FW_JUMP",
+    "FW_JUMP_BIN",
     "GREETING",
     "HELLO_WORLD",
     "LOADED_BY_PYTHON",
@@ -35,6 +37,7 @@ __all__ = [
     "SHELL",
     "SSD",
     "SYNCHRONIZATION",
+    "TEST_PAYLOAD",
     "boot",
 ]
 
@@ -47,6 +50,12 @@ GREETING = "Hello World! socpuppet_host"
 #: The boot ROM's program (firmware/rom), built for each kind of CPU.
 ROM_FOR_A_64_BIT_CPU = "rom_rv64.elf"
 ROM_FOR_A_32_BIT_CPU = "rom_rv32.elf"
+#: OpenSBI (firmware/build.sh): `fw_jump`, the machine-mode firmware a
+#: kernel sits on, as an ELF file and as its bytes; and `test_payload`, the
+#: supervisor-mode program OpenSBI ships for it to jump to.
+FW_JUMP = "fw_jump.elf"
+FW_JUMP_BIN = "fw_jump.bin"
+TEST_PAYLOAD = "test_payload.elf"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what
