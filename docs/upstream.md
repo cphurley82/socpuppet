@@ -1143,6 +1143,20 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: `measured=False` and `unmeasured()` go.
 
+## OpenSBI
+
+[riscv-software-src/opensbi](https://github.com/riscv-software-src/opensbi), pinned at `v1.9` in `firmware/versions.sh` and built by `firmware/build.sh`, which applies `cmake/patches/opensbi-*.patch` to it. It is the machine-mode firmware the host boots Linux's way with (M23).
+
+### A syscon regmap refuses every register past the first quarter of its block
+
+- **Where**: `lib/utils/regmap/fdt_regmap_syscon.c`, `regmap_syscon_init`, and `regmap_reg_valid` in `lib/utils/regmap/regmap.c`.
+- **What is wrong**: `regmap_syscon_init` sets `reg_max` to the block's size divided by the width of a register, which is how many registers it has. `regmap_reg_valid` compares a register's offset in bytes with it, and checks the offset against `reg_stride`, which is in bytes too. So with 32-bit registers only an offset below a quarter of the block's size is valid, and a write to any other is refused with `SBI_EINVAL`. `syscon-reboot` and `syscon-poweroff` write through it, and refused, OpenSBI goes on to hang the hart, so a reset or a shutdown does nothing and says nothing. QEMU's `virt` never meets it: its syscon has a register at offset 0 in a block of 4 KiB.
+- **How to see it**: socpuppet's system controller is a block of 32 bytes with `RESET_REQUEST` at 0xC and `POWER_OFF` at 0x10, and OpenSBI's test payload asks for a shutdown (`test_the_payloads_shutdown_switches_the_cpu_off_and_nothing_more_is_said` in `tests/python/test_m23_exit.py`): `POWER_OFF` reads zero afterwards.
+- **What we do**: `cmake/patches/opensbi-syscon-regmap-size.patch`: `reg_max` is the block's size in bytes.
+- **Upstream fix**: the same, or a `regmap_reg_valid` that divides by `reg_stride` before it compares. Every regmap OpenSBI has is a syscon's, so either does.
+- **Kind**: bug.
+- **When it lands**: drop the patch, and the loop in `firmware/build.sh` that applies it if it is the last.
+
 ## QBox
 
 [qualcomm/qbox](https://github.com/qualcomm/qbox), pinned at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `tools/build_qbox.sh`, which builds it for the `qbox_cpu`. Not part of the wheel: it is QEMU underneath (GPL-2.0), so whoever wants it builds it from source with that tool, and configures socpuppet with `SOCPUPPET_QBOX_DIR`. The tool applies the `cmake/patches/qbox-*.patch` files to QBox, and the `libqemu-*.patch` files to the QEMU it fetches.

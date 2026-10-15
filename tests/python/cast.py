@@ -38,6 +38,7 @@ __all__ = [
     "SSD",
     "SYNCHRONIZATION",
     "TEST_PAYLOAD",
+    "TEST_PAYLOAD_BIN",
     "boot",
 ]
 
@@ -56,6 +57,7 @@ ROM_FOR_A_32_BIT_CPU = "rom_rv32.elf"
 FW_JUMP = "fw_jump.elf"
 FW_JUMP_BIN = "fw_jump.bin"
 TEST_PAYLOAD = "test_payload.elf"
+TEST_PAYLOAD_BIN = "test_payload.bin"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

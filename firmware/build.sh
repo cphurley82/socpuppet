@@ -220,6 +220,13 @@ if [[ ! -d ${opensbi} ]]; then
     -c advice.detachedHead=false \
     https://github.com/riscv-software-src/opensbi "${opensbi}"
 fi
+# What socpuppet changes in OpenSBI, each a patch with its entry in
+# docs/upstream.md. They are applied to a clean tree every time, so that a
+# patch that changes is the one built.
+git -C "${opensbi}" checkout --quiet -- .
+for patch in "${repository}"/cmake/patches/opensbi-*.patch; do
+  git -C "${opensbi}" apply "${patch}"
+done
 echo "Building OpenSBI for the host"
 make -C "${opensbi}" O="${out}/build_opensbi" \
   LLVM="${llvm}/bin/" CC="${llvm}/bin/clang -Wno-missing-multilib" \
