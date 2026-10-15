@@ -125,12 +125,12 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 
 ⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-⚠️ The native build on a Mac was walked through on an Intel one (a 2019 Mac Pro, macOS 26), where it took 9 minutes and the suite 4. It takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)). An Apple silicon Mac gets the same patches and has not been tried.
+💡 The native build on a Mac takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)), and it works on both kinds. On an Apple silicon MacBook Air (M4, macOS 26) QBox took 5½ minutes, socpuppet 2 and the suite 1; on an Intel 2019 Mac Pro, 9 minutes for QBox and 4 for the suite. The nightly workflow builds it natively on an Apple silicon runner too.
 
 On a Mac the same four commands can also run in the devcontainer's image, which is Linux with GCC, as CI builds, and has QBox's packages already. `tools/devcontainer.sh` goes in front of each:
 
 ```sh
-tools/devcontainer.sh uv run tools/build_qbox.sh     # about 10 minutes on a 2019 Mac Pro
+tools/devcontainer.sh uv run tools/build_qbox.sh     # about 7 minutes on an M4 Air, 10 on a 2019 Mac Pro
 tools/devcontainer.sh uv run cmake --preset qbox
 tools/devcontainer.sh uv run cmake --build --preset qbox
 SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.sh uv run ctest --preset qbox
