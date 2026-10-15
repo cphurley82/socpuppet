@@ -200,3 +200,26 @@ def test_an_unknown_option_is_refused_with_the_usage(build_qbox):
 
     assert result.returncode == 2
     assert "usage: tools/build_qbox.sh" in result.stdout
+
+
+def test_a_missing_library_is_also_named_as_the_homebrew_formula_a_mac_installs(
+    build_qbox,
+):
+    result, lines = build_qbox(missing="pixman-1")
+
+    assert result.returncode != 0
+    assert "brew install pixman" in result.stdout
+    assert not calls(lines, "cmake")
+
+
+@pytest.mark.parametrize(
+    ("library", "package"), [("sdl2", "libsdl2-dev"), ("slirp", "libslirp-dev")]
+)
+def test_qemus_sdl_and_slirp_are_among_the_libraries_the_build_stops_without(
+    build_qbox, library, package
+):
+    result, lines = build_qbox(missing=library)
+
+    assert result.returncode != 0
+    assert package in result.stdout
+    assert not calls(lines, "cmake")

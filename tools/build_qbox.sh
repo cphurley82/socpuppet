@@ -36,21 +36,30 @@ done
 mkdir -p "$root"
 root="$(cd "$root" && pwd)"
 
-# What QBox's build stops without, and the Ubuntu package each comes in.
-missing=()
-for tool in git:git cmake:cmake ninja:ninja-build pkg-config:pkg-config \
-  meson:meson bison:bison flex:flex; do
-  command -v "${tool%%:*}" > /dev/null 2>&1 || missing+=("${tool#*:}")
+# What QBox's build stops without, each as the name it is looked for by,
+# the Ubuntu package it comes in and the Homebrew formula. SDL and slirp are
+# for QEMU's configure, which asks for both whatever the target.
+missing=() apt=() brew=()
+lacks() {
+  IFS=: read -r name package formula <<< "$1"
+  missing+=("$name") apt+=("$package") brew+=("$formula")
+}
+for tool in git:git:git cmake:cmake:cmake ninja:ninja-build:ninja \
+  pkg-config:pkg-config:pkgconf meson:meson:meson bison:bison:bison \
+  flex:flex:flex; do
+  command -v "${tool%%:*}" > /dev/null 2>&1 || lacks "$tool"
 done
 if command -v pkg-config > /dev/null 2>&1; then
-  for library in glib-2.0:libglib2.0-dev pixman-1:libpixman-1-dev \
-    libzip:libzip-dev libelf:libelf-dev; do
-    pkg-config --exists "${library%%:*}" || missing+=("${library#*:}")
+  for library in glib-2.0:libglib2.0-dev:glib pixman-1:libpixman-1-dev:pixman \
+    libzip:libzip-dev:libzip libelf:libelf-dev:libelf sdl2:libsdl2-dev:sdl2 \
+    slirp:libslirp-dev:libslirp; do
+    pkg-config --exists "${library%%:*}" || lacks "$library"
   done
 fi
 if [[ ${#missing[@]} -gt 0 ]]; then
   echo "build_qbox.sh: QBox cannot be built without ${missing[*]}." >&2
-  echo "On Ubuntu: sudo apt install ${missing[*]}" >&2
+  echo "On Ubuntu: sudo apt install ${apt[*]}" >&2
+  echo "On a Mac: brew install ${brew[*]}" >&2
   echo "docs/setup.md lists every package QBox needs." >&2
   exit 1
 fi
