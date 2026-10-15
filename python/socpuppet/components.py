@@ -373,6 +373,17 @@ _CPU_PORTS = (
 )
 
 
+#: What a RISC-V hart here has besides: where its `time` register is read
+#: from (a machine timer's `time`), the supervisor external interrupt, and
+#: where its registers that are really an IMSIC's are reached.
+_HART_PORTS = (
+    *_CPU_PORTS,
+    initiator("time", required=False),
+    wire_in("supervisor_irq"),
+    initiator("csr", required=False),
+)
+
+
 #: The cores a `DbtRiseCpu` can be: what `isa` and `modes` may be together,
 #: and at which `xlen`.
 _CORES: Mapping[tuple[str, str], tuple[int, ...]] = {
@@ -411,15 +422,7 @@ class DbtRiseCpu(Component):
     """
 
     implementation = "dbt_rise_cpu"
-    port_specs = (
-        *_CPU_PORTS,
-        # Where its `time` register is read from: a machine timer's `time`.
-        initiator("time", required=False),
-        # The supervisor external interrupt, for a core with that mode.
-        wire_in("supervisor_irq"),
-        # Where its registers that are really an IMSIC's are reached.
-        initiator("csr", required=False),
-    )
+    port_specs = _HART_PORTS
     is_bus_master = True
 
     xlen: int
@@ -559,7 +562,7 @@ class QboxCpu(Component):
     """
 
     implementation = "qbox_cpu"
-    port_specs = DbtRiseCpu.port_specs
+    port_specs = _HART_PORTS
     is_bus_master = True
 
     xlen: int

@@ -62,6 +62,20 @@ static_assert(CpuSlot<QboxCpu>);
 
 namespace {
 
+// The ports of a RISC-V hart here: the bus, `time` from a machine timer,
+// `csr` to an IMSIC, and the interrupt and reset inputs. Both CPUs have
+// them.
+template <typename Hart>
+std::vector<Port> HartPorts(Hart& hart) {
+  return {InitiatorPort("socket", hart.socket),
+          InitiatorPort("time", hart.time, /*required=*/false),
+          InitiatorPort("csr", hart.csr, /*required=*/false),
+          WireSinkPort("irq", hart.irq),
+          WireSinkPort("timer_irq", hart.timer_irq),
+          WireSinkPort("supervisor_irq", hart.supervisor_irq),
+          WireSinkPort("reset", hart.reset)};
+}
+
 // How many interrupt vectors a PCIe function may have, and so how many
 // anything that takes its interrupt messages may. MSI-X, the capability
 // that tells the host about them, has room for 2048.
@@ -133,14 +147,7 @@ Registry BuiltinComponents() {
             .floating_point = parameters.Optional("floating_point", 0) != 0,
             .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0},
         /*backend=*/std::nullopt);
-    std::vector<Port> ports{
-        InitiatorPort("socket", module->socket),
-        InitiatorPort("time", module->time, /*required=*/false),
-        InitiatorPort("csr", module->csr, /*required=*/false),
-        WireSinkPort("irq", module->irq),
-        WireSinkPort("timer_irq", module->timer_irq),
-        WireSinkPort("supervisor_irq", module->supervisor_irq),
-        WireSinkPort("reset", module->reset)};
+    std::vector<Port> ports = HartPorts(*module);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // QBox's CPU is QEMU's, which is GPL, so it is built only by whoever
@@ -150,14 +157,7 @@ Registry BuiltinComponents() {
   registry.Add("qbox_cpu", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<QboxCpu>(
         name, parameters.Required("xlen"), parameters.Required("reset_vector"));
-    std::vector<Port> ports{
-        InitiatorPort("socket", module->socket),
-        InitiatorPort("time", module->time, /*required=*/false),
-        InitiatorPort("csr", module->csr, /*required=*/false),
-        WireSinkPort("irq", module->irq),
-        WireSinkPort("timer_irq", module->timer_irq),
-        WireSinkPort("supervisor_irq", module->supervisor_irq),
-        WireSinkPort("reset", module->reset)};
+    std::vector<Port> ports = HartPorts(*module);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
 #else

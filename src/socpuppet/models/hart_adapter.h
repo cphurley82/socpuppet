@@ -3,11 +3,13 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include <systemc>
 #include <tlm>
 
 #include "socpuppet/core/little_endian.h"
+#include "socpuppet/models/hart_registers.h"
 #include "socpuppet/platform/transport.h"
 
 // What the adapters around a borrowed CPU (dbt_rise_cpu.cpp, qbox_cpu.cpp)
@@ -42,6 +44,37 @@ inline void LetALineThatChangedBeHeard() {
        delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
     sc_core::wait(sc_core::SC_ZERO_TIME);
   }
+}
+
+// A read of a register that another block keeps for a hart, at `address`
+// (models/hart_registers.h), through the hart's `csr` socket, or nothing
+// if the block has no such register. `lead` means nothing to whoever
+// answers. It is the CPU's all the same, so that a trace of the socket has
+// the access where the bus accesses around it are.
+template <typename Socket>
+std::optional<std::uint64_t> ReadHartRegister(Socket& csr,
+                                              std::uint64_t address,
+                                              sc_core::sc_time lead) {
+  std::array<std::uint8_t, kHartRegisterBytes> bytes{};
+  if (Transport(csr, tlm::TLM_READ_COMMAND, address, bytes, lead) !=
+      tlm::TLM_OK_RESPONSE) {
+    return std::nullopt;
+  }
+  return LoadLittleEndian<std::uint64_t>(bytes);
+}
+
+// A write of one, after which a line the write changed is heard: a claim
+// is what quiets an IMSIC's. Returns whether the block had such a register.
+template <typename Socket>
+bool WriteHartRegister(Socket& csr, std::uint64_t address, std::uint64_t value,
+                       sc_core::sc_time lead) {
+  auto bytes = LittleEndianBytes(value);
+  if (Transport(csr, tlm::TLM_WRITE_COMMAND, address, bytes, lead) !=
+      tlm::TLM_OK_RESPONSE) {
+    return false;
+  }
+  LetALineThatChangedBeHeard();
+  return true;
 }
 
 }  // namespace socpuppet

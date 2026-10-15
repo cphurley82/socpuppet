@@ -1,8 +1,8 @@
 #include "socpuppet/models/qbox_cpu.h"
 
-#include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -14,11 +14,9 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
-#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/hart_adapter.h"
 #include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
-#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -185,26 +183,15 @@ struct QboxCpu::Core {
             ? HartRegisterAddress(machine ? kMtopei : kStopei)
             : HartRegisterAddress(machine ? kMireg : kSireg,
                                   static_cast<std::uint32_t>(selected));
-    // The delay means nothing to whoever answers. It is the CPU's lead all
-    // the same, so that a trace of the socket has the access where the bus
-    // accesses around it are.
-    sc_core::sc_time lead = core_.initiator_get_local_time();
-    std::array<std::uint8_t, kHartRegisterBytes> bytes{};
-    if (Transport(cpu_.csr, tlm::TLM_READ_COMMAND, address, bytes, lead) !=
-        tlm::TLM_OK_RESPONSE) {
-      return false;
-    }
-    value = LoadLittleEndian<std::uint64_t>(bytes);
-    if (write_mask == 0) return true;
-    auto written =
-        LittleEndianBytes((value & ~write_mask) | (new_value & write_mask));
-    if (Transport(cpu_.csr, tlm::TLM_WRITE_COMMAND, address, written, lead) !=
-        tlm::TLM_OK_RESPONSE) {
-      return false;
-    }
-    // A claim may have quieted the IMSIC's line.
-    LetALineThatChangedBeHeard();
-    return true;
+    const sc_core::sc_time lead = core_.initiator_get_local_time();
+    const std::optional<std::uint64_t> read =
+        ReadHartRegister(cpu_.csr, address, lead);
+    if (!read) return false;
+    value = *read;
+    return write_mask == 0 ||
+           WriteHartRegister(cpu_.csr, address,
+                             (value & ~write_mask) | (new_value & write_mask),
+                             lead);
   }
 
   QboxCpu& cpu_;

@@ -1,12 +1,10 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <format>
 #include <memory>
 #include <optional>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -17,11 +15,9 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
-#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/hart_adapter.h"
 #include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
-#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -256,34 +252,27 @@ struct DbtRiseCpu::Core {
   // is no timer at the other end of `time`.
   std::uint64_t Time() { return ReadTheTimer(cpu_.time, complex_.Lead()); }
 
-  iss::status ReadThroughCsr(unsigned number, std::uint64_t& value) {
-    std::array<std::uint8_t, kHartRegisterBytes> bytes{};
-    if (!ThroughCsr(tlm::TLM_READ_COMMAND, number, bytes)) return iss::Err;
-    value = LoadLittleEndian<std::uint64_t>(bytes);
-    return iss::Ok;
-  }
-
-  iss::status WriteThroughCsr(unsigned number, std::uint64_t value) {
-    auto bytes = LittleEndianBytes(value);
-    if (!ThroughCsr(tlm::TLM_WRITE_COMMAND, number, bytes)) return iss::Err;
-    LetALineThatChangedBeHeard();
-    return iss::Ok;
-  }
-
   // An access to a window or to a register a claim is made through, sent
-  // to whatever is at the other end of `csr`. Returns whether that had
-  // such a register.
-  bool ThroughCsr(tlm::tlm_command command, unsigned number,
-                  std::span<std::uint8_t> data) {
+  // to whatever is at the other end of `csr`.
+  iss::status ReadThroughCsr(unsigned number, std::uint64_t& value) {
+    const std::optional<std::uint64_t> read =
+        ReadHartRegister(cpu_.csr, AddressOf(number), complex_.Lead());
+    if (!read) return iss::Err;
+    value = *read;
+    return iss::Ok;
+  }
+  iss::status WriteThroughCsr(unsigned number, std::uint64_t value) {
+    return WriteHartRegister(cpu_.csr, AddressOf(number), value,
+                             complex_.Lead())
+               ? iss::Ok
+               : iss::Err;
+  }
+
+  // The address of an access to the CSR numbered `number` through `csr`,
+  // with what was selected, if it is a window.
+  std::uint64_t AddressOf(unsigned number) {
     const bool is_a_window = number == kMireg || number == kSireg;
-    const std::uint64_t address =
-        HartRegisterAddress(number, is_a_window ? SelectedFor(number) : 0);
-    // The delay means nothing to whoever answers. It is the core's lead all
-    // the same, so that a trace of the socket has the access where the bus
-    // accesses around it are.
-    sc_core::sc_time lead = complex_.Lead();
-    return Transport(cpu_.csr, command, address, data, lead) ==
-           tlm::TLM_OK_RESPONSE;
+    return HartRegisterAddress(number, is_a_window ? SelectedFor(number) : 0);
   }
 
   // Whether there is an IMSIC at the other end of `csr`, found by reading
@@ -295,8 +284,9 @@ struct DbtRiseCpu::Core {
   // selects a register of one.
   bool HasAnImsic() {
     if (!has_an_imsic_) {
-      std::array<std::uint8_t, kHartRegisterBytes> unused{};
-      has_an_imsic_ = ThroughCsr(tlm::TLM_READ_COMMAND, kMtopei, unused);
+      has_an_imsic_ = ReadHartRegister(cpu_.csr, HartRegisterAddress(kMtopei),
+                                       complex_.Lead())
+                          .has_value();
     }
     return *has_an_imsic_;
   }
