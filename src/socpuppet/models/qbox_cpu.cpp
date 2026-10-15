@@ -1,6 +1,5 @@
 #include "socpuppet/models/qbox_cpu.h"
 
-#include <array>
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -14,9 +13,8 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
-#include "socpuppet/core/little_endian.h"
+#include "socpuppet/models/hart_adapter.h"
 #include "socpuppet/models/tie_low.h"
-#include "socpuppet/platform/transport.h"
 
 namespace socpuppet {
 
@@ -113,19 +111,6 @@ struct QboxCpu::Core {
     CatchUpIfPastTheQuantum(delay);
     LetALineThatChangedBeHeard();
   }
-  // An access may have changed an interrupt line: a handler's write to its
-  // device is what quiets it. The CPU hears of a line from a method of the
-  // adapter's, which cannot run until this thread yields, and with a
-  // quantum that is a thousand instructions off. Without a yield here the
-  // CPU would return from its handler still seeing the interrupt pending,
-  // and take it again and again. One delta cycle runs the device's method
-  // and updates its line, a second runs the adapter's, as DbtRiseCpu does.
-  static void LetALineThatChangedBeHeard() {
-    for (int delta = 0;
-         delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
-      sc_core::wait(sc_core::SC_ZERO_TIME);
-    }
-  }
   static void CatchUpIfPastTheQuantum(sc_core::sc_time& delay) {
     if (delay <= tlm::tlm_global_quantum::instance().get()) return;
     sc_core::wait(delay);
@@ -139,17 +124,10 @@ struct QboxCpu::Core {
     return cpu_.socket->transport_dbg(transaction);
   }
 
-  // The timer's count at the time the CPU has got to, or zero if there is
-  // no timer at the other end of `time`.
+  // The timer's count at the time the CPU has got to, with its lead as
+  // QBox works it out before a bus access.
   std::uint64_t Time() {
-    std::array<std::uint8_t, 8> count{};
-    // The CPU's lead, as QBox works it out before a bus access.
-    sc_core::sc_time lead = core_.initiator_get_local_time();
-    const tlm::tlm_response_status response =
-        Transport(cpu_.time, tlm::TLM_READ_COMMAND, 0, count, lead);
-    return response == tlm::TLM_OK_RESPONSE
-               ? LoadLittleEndian<std::uint64_t>(count)
-               : 0;
+    return ReadTheTimer(cpu_.time, core_.initiator_get_local_time());
   }
 
   QboxCpu& cpu_;

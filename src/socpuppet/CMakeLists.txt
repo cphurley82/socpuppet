@@ -290,6 +290,7 @@ target_sources(socpuppet_models INTERFACE
     models/d2d_link.h
     models/dma_engine.h
     models/flash_controller.h
+    models/hart_adapter.h
     models/hart_registers.h
     models/ideal_nand.h
     models/imsic.h

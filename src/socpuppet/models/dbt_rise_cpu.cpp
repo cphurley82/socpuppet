@@ -18,6 +18,7 @@
 #include <tlm_utils/simple_target_socket.h>
 
 #include "socpuppet/core/little_endian.h"
+#include "socpuppet/models/hart_adapter.h"
 #include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
 #include "socpuppet/platform/transport.h"
@@ -253,15 +254,7 @@ struct DbtRiseCpu::Core {
 
   // The timer's count at the time the core has got to, or zero if there
   // is no timer at the other end of `time`.
-  std::uint64_t Time() {
-    std::array<std::uint8_t, 8> count{};
-    sc_core::sc_time lead = complex_.Lead();
-    const tlm::tlm_response_status response =
-        Transport(cpu_.time, tlm::TLM_READ_COMMAND, 0, count, lead);
-    return response == tlm::TLM_OK_RESPONSE
-               ? LoadLittleEndian<std::uint64_t>(count)
-               : 0;
-  }
+  std::uint64_t Time() { return ReadTheTimer(cpu_.time, complex_.Lead()); }
 
   iss::status ReadThroughCsr(unsigned number, std::uint64_t& value) {
     std::array<std::uint8_t, kHartRegisterBytes> bytes{};
@@ -275,21 +268,6 @@ struct DbtRiseCpu::Core {
     if (!ThroughCsr(tlm::TLM_WRITE_COMMAND, number, bytes)) return iss::Err;
     LetALineThatChangedBeHeard();
     return iss::Ok;
-  }
-
-  // A write to the IMSIC may have changed its interrupt line: a claim is
-  // what quiets it. The core hears of a line from a method, which cannot
-  // run until this thread yields, and with a quantum that is a thousand
-  // instructions off. Without a yield here the core would return from its
-  // handler still seeing the interrupt pending, and take it again and
-  // again. DBT-RISE is patched to do the same after a bus access
-  // (interrupt-after-access), with the same count: one delta cycle runs
-  // the IMSIC's method and updates the signal, a second runs the core's.
-  static void LetALineThatChangedBeHeard() {
-    for (int delta = 0;
-         delta < 2 && sc_core::sc_pending_activity_at_current_time(); ++delta) {
-      sc_core::wait(sc_core::SC_ZERO_TIME);
-    }
   }
 
   // An access to a window or to a register a claim is made through, sent
