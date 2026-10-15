@@ -1,6 +1,7 @@
 """The host platform and the Zephyr board that is generated from it."""
 
 import functools
+import json
 import re
 
 import pytest
@@ -20,6 +21,7 @@ from socpuppet.boards.cpu_kit import (
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     ECAM_OFFSET,
+    IMSIC_SUPERVISOR_BASE,
     IO_BASE,
     IO_SIZE,
     RAM_BASE,
@@ -300,6 +302,62 @@ class TestTheHostsAplics:
         ]
 
         assert sorted(wired) == sorted(set(wired))
+
+
+class TestTheHostDescribedForAMonitor:
+    """🎓 With `sbi=True` the host is described for firmware that is a
+    monitor in machine mode with an operating system below it, as OpenSBI
+    is with Linux. Neither says where an APLIC that serves the operating
+    system sends its messages: that is the platform's to know."""
+
+    def test_both_its_aplics_send_to_the_supervisors_page(self):
+        board = host(sbi=True)
+
+        assert where_the_aplics_send(board) == {
+            "compute": IMSIC_SUPERVISOR_BASE,
+            "io": IMSIC_SUPERVISOR_BASE,
+        }
+
+    def test_without_it_neither_aplic_is_told(self):
+        # Zephyr's driver says where, when it reads that nobody has.
+        assert where_the_aplics_send(host()) == {"compute": 0, "io": 0}
+
+
+#: More RAM than the host has unless it is told: Linux with its files in
+#: memory wants more than 64 MiB.
+MORE_RAM = 128 * 1024 * 1024
+
+
+class TestTheHostDescribedWithMoreRam:
+    def test_its_ram_is_that_size(self):
+        [ram] = [
+            each
+            for each in host(ram=MORE_RAM).platform.address_map()
+            if each.component == "compute.ram"
+        ]
+
+        assert ram.size == MORE_RAM
+
+    def test_its_memory_node_says_how_much(self):
+        devicetree = host(ram=MORE_RAM).platform.devicetree()
+
+        assert f"reg = <0x0 {RAM_BASE:#x} 0x0 {MORE_RAM:#x}>;" in node_of(
+            "compute_ram", devicetree
+        )
+
+    def test_less_than_64_mib_is_refused_with_a_rom(self):
+        # The ROM keeps its stack at the top of the RAM it was written for.
+        with pytest.raises(ValueError, match="64 MiB"):
+            host(boot=from_rom, ram=32 * 1024 * 1024)
+
+
+def where_the_aplics_send(board):
+    """Where each of a host's APLICs is configured to send, by its die."""
+    components = json.loads(board.platform.to_json())["components"]
+    return {
+        die: components[f"{die}.aplic"]["parameters"]["messages_to"]
+        for die in ("compute", "io")
+    }
 
 
 def the_hosts_aplics():

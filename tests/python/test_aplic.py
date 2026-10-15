@@ -18,8 +18,14 @@ IDENTITY = 40
 
 def set_up_the_aplic_and_the_uart():
     """What firmware does: the APLIC first, and then the device."""
-    # Where messages go, as a page number, and the domain's interrupts on.
+    # Where messages go, as a page number.
     yield sp.write32(APLIC_BASE + 0x1BC0, PAGE >> 12)
+    yield from set_up_the_rest()
+
+
+def set_up_the_rest():
+    """What firmware does when it need not say where messages go."""
+    # The domain's interrupts on.
     yield sp.write32(APLIC_BASE + 0x0000, 1 << 8)
     # The source asks while its line is high, sends IDENTITY, and is enabled.
     yield sp.write32(APLIC_BASE + 4 * SOURCE, 6)
@@ -29,17 +35,16 @@ def set_up_the_aplic_and_the_uart():
     yield sp.write(UART_BASE + 1, b"\x01")
 
 
-def a_uart_at_an_aplic():
+def a_uart_at_an_aplic(script=set_up_the_aplic_and_the_uart, **described):
     """A UART whose line goes to an APLIC, set up by a stand-in for a CPU.
 
-    Returns the platform and the UART.
+    `script` is what the stand-in does, and the APLIC is described with
+    what `described` says. Returns the platform and the UART.
     """
     platform = sp.Platform()
-    cpu = platform.add(
-        "cpu", sp.ScriptedBusMaster(set_up_the_aplic_and_the_uart)
-    )
+    cpu = platform.add("cpu", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
-    aplic = platform.add("aplic", sp.Aplic())
+    aplic = platform.add("aplic", sp.Aplic(**described))
     uart = platform.add("uart", sp.Ns16550())
     page = platform.add("page", sp.Memory(size=0x1000))
     platform.connect(cpu.socket, bus.target)
@@ -74,3 +79,26 @@ class TestWhenADeviceAtAnAplicsSourceIsQuiet:
         platform.run(sp.us(1))
 
         assert platform.peek32(PAGE) == 0
+
+
+@pytest.mark.platform
+class TestWhenAnAplicIsDescribedWithWhereItsMessagesGo:
+    """🎓 For a platform whose firmware never says, as OpenSBI and Linux
+    do not for an APLIC that serves supervisor mode alone."""
+
+    def test_a_source_that_fires_writes_there_with_nothing_written_to_say_so(
+        self,
+    ):
+        platform, uart = a_uart_at_an_aplic(set_up_the_rest, messages_to=PAGE)
+        platform.run(sp.us(1))
+
+        uart.write("A")
+        platform.run(sp.us(1))
+
+        assert platform.peek32(PAGE) == IDENTITY
+
+
+class TestWhenAnAplicIsDescribedWithAnAddressThatIsNotAPage:
+    def test_it_is_refused_and_the_error_says_what_a_page_is(self):
+        with pytest.raises(ValueError, match="4 KiB"):
+            sp.Aplic(messages_to=PAGE + 4)
