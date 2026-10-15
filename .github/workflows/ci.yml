@@ -38,10 +38,11 @@ jobs:
             build/firmware/*.bin
             build/firmware/*.elf
             build/firmware/*.opcodes.txt
-          # The board the images are built for is part of what they are.
-          # What twister is run from builds no image: its script, its lists,
-          # and what it reads of each application.
-          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**') }}
+          # The board the images are built for is part of what they are,
+          # and so are the patches OpenSBI is built with. What twister is
+          # run from builds no image: its script, its lists, and what it
+          # reads of each application.
+          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/opensbi-*') }}
       - name: Build the images
         if: steps.images.outputs.cache-hit != 'true'
         run: firmware/build.sh
