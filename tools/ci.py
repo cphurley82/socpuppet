@@ -168,8 +168,20 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
             ),
         )
     else:
-        system = "manylinux" if platform.system() == "Linux" else "macosx"
+        system = "manylinux" if ON_LINUX else "macosx"
         sdists = f"{WHEELHOUSE}/sdist"
+        # test_wheel.py tests the same wheel below, with the firmware, which
+        # cibuildwheel's own test has not got.
+        env = {"CIBW_TEST_SKIP": "*"}
+        if ON_LINUX:
+            # The container is thrown away after each build, and its compiler
+            # cache with it, so the cache is kept here, which it sees under
+            # /host. It runs as root, so what it caches is left for anyone to
+            # remove, and so for any user of this machine to write to.
+            env |= {
+                "CCACHE_DIR": f"/host{REPO}/build/ccache",
+                "CCACHE_UMASK": "000",
+            }
         build = (
             Step("sdist", ("uv", "build", "--sdist", "--out-dir", sdists)),
             Step(
@@ -180,9 +192,7 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
                     *("--output-dir", WHEELHOUSE),
                     Glob(f"{sdists}/*.tar.gz"),
                 ),
-                # test_wheel.py tests the same wheel below, with the
-                # firmware, which cibuildwheel's own test has not got.
-                env={"CIBW_TEST_SKIP": "*"},
+                env=env,
             ),
         )
     firmware = {

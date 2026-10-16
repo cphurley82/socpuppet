@@ -45,9 +45,9 @@ FetchContent_Declare(Ham_Core
 # for: FAIL_ON names a word, and a command that holds it fails (a program
 # is named by its file's name). It takes as many seconds as SLOW says, and
 # makes the files MAKES asks for: a JSON {word: [path, ...]}, where a
-# command that holds the word makes the paths, empty. Each
-# command is also written to the log's .json, with the variables of
-# RECORDED and when it started and ended, and its process id to the log's .pids when it
+# command that holds the word makes the paths, empty. Each command is also
+# written to the log's .json, with the variables whose names begin as
+# RECORDED says and when it started and ended, and its process id to the log's .pids when it
 # starts.
 STAND_IN = """\
 import json, os, sys, time
@@ -70,7 +70,7 @@ with open(os.environ["LOG"] + ".json", "a") as log:
     log.write(json.dumps({
         "command": command,
         "env": {k: v for k, v in os.environ.items()
-                if k.startswith(("SOCPUPPET_", "CIBW_", "CCACHE_"))},
+                if k.startswith(tuple(os.environ["RECORDED"].split()))},
         "start": started,
         "end": time.time(),
     }) + "\\n")
@@ -157,7 +157,7 @@ def ci(tmp_path):
     sent, run.lines() are the commands so far,
     run.commands() the commands that ended, with their variables and times,
     run.command(name) the one of them named, run.command_with(word) the
-    first that holds the word, run.pids() the process ids
+    one that holds the word, run.pids() the process ids
     of the commands that started, and run.doctor_asked() the arguments the
     doctor was given each time it was asked.
     """
@@ -192,6 +192,7 @@ def ci(tmp_path):
                 },
                 "PATH": f"{bin_directory}{os.pathsep}{os.environ['PATH']}",
                 "LOG": str(log),
+                "RECORDED": " ".join(RECORDED),
                 **env,
             },
             stdout=stdout,
@@ -240,7 +241,8 @@ def ci(tmp_path):
         return next(c for c in commands() if c["command"] == name)
 
     def command_with(word):
-        return next(c for c in commands() if word in c["command"].split())
+        (command,) = [c for c in commands() if word in c["command"].split()]
+        return command
 
     def doctor_asked():
         path = Path(f"{log}.doctor")
@@ -983,6 +985,32 @@ def test_wheel_here_leaves_testing_the_wheel_to_test_wheel_py(ci):
 
     # test_wheel.py tests the same wheel, and boots the firmware too.
     assert ci.command_with("cibuildwheel")["env"]["CIBW_TEST_SKIP"] == "*"
+
+
+# A Mac builds its wheel outside a container, beside ccache's own cache.
+ON_LINUX_ONLY = pytest.mark.skipif(
+    platform.system() != "Linux", reason="Linux builds its wheel in a container"
+)
+
+
+@ON_LINUX_ONLY
+def test_wheel_here_keeps_the_containers_compiler_cache_in_build_ccache(ci):
+    ci("wheel", makes=ONE_WHEEL)
+
+    env = ci.command_with("cibuildwheel")["env"]
+    # The container sees this machine's files under /host.
+    assert env["CCACHE_DIR"] == f"/host{ci.root}/build/ccache"
+
+
+@ON_LINUX_ONLY
+def test_wheel_here_leaves_the_containers_compiler_cache_for_anyone_to_remove(
+    ci,
+):
+    ci("wheel", makes=ONE_WHEEL)
+
+    # The container runs as root.
+    env = ci.command_with("cibuildwheel")["env"]
+    assert env["CCACHE_UMASK"] == "000"
 
 
 def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):

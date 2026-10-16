@@ -665,7 +665,6 @@ jobs:
     env:
       CCACHE_DIR: ${{ startsWith(matrix.os, 'ubuntu') && '/host/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
       CCACHE_COMPRESS: "1"
-      CIBW_ENVIRONMENT_PASS_LINUX: CCACHE_DIR CCACHE_COMPRESS
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
