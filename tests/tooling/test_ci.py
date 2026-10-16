@@ -995,7 +995,13 @@ def alive(pid):
 
 
 def files_in(directory):
-    return sorted(directory.rglob("*"))
+    """The files of a working tree, and not of git's own store, which git
+    may tidy by itself after a commit."""
+    return sorted(
+        path
+        for path in directory.rglob("*")
+        if ".git" not in path.relative_to(directory).parts
+    )
 
 
 def command_to_run_here(output):
