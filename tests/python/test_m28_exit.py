@@ -10,7 +10,9 @@ for its shell, and stops at `Shell>`.
 
 🎭 The quick way: Python puts `fw_jump`, EDK2 and the devicetree in RAM
 where `fw_jump` expects them, and QEMU's reset vector in the ROM hands
-`fw_jump` the hart's number and the devicetree's address, as in M23.
+`fw_jump` the hart's number and the devicetree's address, as in M23. And
+the way silicon boots: the three are one image in the flash, which the
+boot ROM copies to RAM, checks and starts.
 
 🧵 Python is the keyboard at the console, as at Zephyr's shell in M13.
 """
@@ -21,7 +23,7 @@ from typing import NamedTuple
 import pytest
 
 import socpuppet as sp
-from cast import FW_JUMP_BIN, UEFI_FD
+from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU, UEFI_FD
 from devicetree_compiler import needs_dtc
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
@@ -39,8 +41,16 @@ BOOT_MANAGERS_COUNTDOWN = re.compile(r"Press ESCAPE within (\d+) seconds")
 SHELLS_COUNTDOWN = re.compile(r"Press ESC in (\d+) seconds")
 #: QBox's hart reaches the prompt in about 90 s of its time and the
 #: interpreter in about 65: SEC unpacks the rest of EDK2, 6 MB compressed
-#: with LZMA, for 25 to 40 s of it, and the two countdowns wait 10 s.
+#: with LZMA, for 25 to 40 s of it, and the two countdowns wait 10 s. From
+#: the flash the boot ROM's check of the image comes first, which is about
+#: 4 s for each 2 MiB.
 LONG_ENOUGH = sp.ms(150_000)
+#: What the boot ROM says when it starts an image from the flash.
+ROMS_LINE = re.compile(r"rom: \S+: \d+ bytes to ")
+#: After a reset the ROM copies the image again, a little over 4 MiB, and
+#: checks it a byte at a time before it says its line: about 9 s, at the
+#: 4 s for each 2 MiB that M23 measured.
+REBOOTS_WITHIN = sp.ms(20_000)
 #: The slowest command typed here is `memmap`, which takes 28 s of QBox's
 #: time to give its hundred and fifty rows, and 22 s of the interpreter's.
 ANSWERS_WITHIN = sp.ms(60_000)
@@ -60,16 +70,7 @@ def uefi_at_its_shell(firmware):
 
     Or for `LONG_ENOUGH`, if the prompt never comes.
     """
-    board = host(boot=from_rom, sbi=True)
-    layout = opensbi.lay_out(
-        firmware(FW_JUMP_BIN).read_bytes(),
-        firmware(UEFI_FD).read_bytes(),
-        devicetree.compile(
-            board.platform.devicetree(dialect="linux", model="socpuppet host")
-        ),
-        ram=RAM_BASE,
-    )
-    board.platform.build()
+    board, layout = a_host_with_uefi(firmware)
     opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
     board.platform.run_until(
         lambda: BOOT_MANAGERS_COUNTDOWN.search(board.uart.output),
@@ -112,6 +113,54 @@ class TestWhenPythonTypesAtUefisShell:
 
         assert re.search(r"UEFI v2\.\d+ \(EDK II, ", version)
         assert span(memory_map) == (RAM_BASE, RAM_BASE + RAM_SIZE)
+
+
+@pytest.mark.platform
+class TestWhenUefiBootsFromTheFlash:
+    def test_the_rom_starts_it_and_reset_at_the_prompt_starts_the_rom_again(
+        self, firmware
+    ):
+        board, layout = a_host_with_uefi(firmware)
+        in_the_flash(board, layout, firmware)
+        board.platform.run_until(
+            lambda: PROMPT in board.uart.output, timeout=LONG_ENOUGH
+        )
+
+        board.uart.write("reset\r")
+        board.platform.run_until(
+            lambda: len(ROMS_LINE.findall(board.uart.output)) == 2,
+            timeout=REBOOTS_WITHIN,
+        )
+
+        assert in_order(plain(board.uart.output), ROMS_LINE, PROMPT, ROMS_LINE)
+
+
+def a_host_with_uefi(firmware):
+    """A host described for OpenSBI and built, and OpenSBI's layout for it,
+    with EDK2 as the stage it starts."""
+    board = host(boot=from_rom, sbi=True)
+    layout = opensbi.lay_out(
+        firmware(FW_JUMP_BIN).read_bytes(),
+        firmware(UEFI_FD).read_bytes(),
+        devicetree.compile(
+            board.platform.devicetree(dialect="linux", model="socpuppet host")
+        ),
+        ram=RAM_BASE,
+    )
+    board.platform.build()
+    return board, layout
+
+
+def in_the_flash(board, layout, firmware):
+    """Load the host's ROM, and `layout` as one image in its flash."""
+    board.platform.load_elf(
+        firmware(ROM_FOR_A_64_BIT_CPU), via=board.cpu.socket
+    )
+    board.platform.poke(
+        board.syscon.component.boot_address,
+        opensbi.flash_image(layout).to_bytes(),
+        via=board.cpu.socket,
+    )
 
 
 def type_and_wait_for_the_prompt(board, command):
