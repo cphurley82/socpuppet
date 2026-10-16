@@ -653,8 +653,8 @@ def name_of(image):
 
 
 def most_at_once(calls):
-    """The most of the calls that ran at the same time."""
+    """The most of the calls that were running at any one moment."""
     return max(
-        sum(1 for b in calls if b["start"] < a["end"] and a["start"] < b["end"])
+        sum(1 for b in calls if b["start"] <= a["start"] < b["end"])
         for a in calls
     )

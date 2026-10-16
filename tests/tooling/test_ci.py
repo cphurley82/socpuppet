@@ -87,6 +87,11 @@ SCRIPTS = (
 PYTHON = "3.13"
 TAG = "cp313"
 
+SDIST = "build/wheelhouse/sdist/socpuppet-0.0.1.tar.gz"
+OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
+# What the sdist and cibuildwheel stand-ins leave, to build one wheel here.
+ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
+
 # What a terminal is sent to color what follows.
 GREEN, RED = "\x1b[32m", "\x1b[31m"
 
@@ -107,7 +112,11 @@ RUNNER_MODULE = load_runner()
 JOBS = RUNNER_MODULE.JOBS
 JOBS_BY_NAME = {job.name: job for job in JOBS}
 # The jobs that run here with no option given, and the jobs in Docker.
-JOBS_HERE = [job for job in JOBS if not job.docker]
+JOBS_HERE = [
+    job
+    for job in JOBS
+    if not job.docker and job.only_on in ("", platform.system())
+]
 DOCKER_JOBS = [job.name for job in JOBS if job.docker]
 LINUX_JOBS = [job.name for job in JOBS if job.only_on == "Linux"]
 DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
@@ -312,12 +321,12 @@ def test_the_command_to_run_a_job_here_names_what_it_needs_before_it(ci, job):
 
 
 def test_with_no_job_named_every_job_that_can_run_here_runs_and_passes(ci):
-    result, _ = ci()
+    result, _ = ci(makes=ONE_WHEEL)
 
     assert result.returncode == 0, result.stdout
     assert verdicts(result.stdout) == {
-        job.name: "✅" for job in JOBS if not job.docker
-    } | {job.name: "⏭" for job in JOBS if job.docker}
+        job.name: "✅" if job in JOBS_HERE else "⏭" for job in JOBS
+    }
 
 
 def test_a_failed_step_shows_where_its_output_is_and_how_it_ends(ci):
@@ -415,7 +424,7 @@ def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
 
 
 def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
-    names = ["tidy", "firmware-rom", "lint"]
+    names = ["coverage", "firmware-rom", "lint"]
 
     _, lines = ci("-j", "1", *names)
 
@@ -503,7 +512,7 @@ def test_an_interrupted_run_stops_its_steps_and_says_how_far_it_got(ci):
 def test_without_docker_asked_for_the_jobs_in_docker_are_skipped_saying_so(
     ci,
 ):
-    result, _ = ci()
+    result, _ = ci(makes=ONE_WHEEL)
 
     assert result.returncode == 0, result.stdout
     for name in DOCKER_JOBS:
@@ -806,12 +815,6 @@ def test_qbox_tidy_runs_clang_tidy_then_the_header_check_on_the_qbox_tree(ci):
         "uv run cmake --build --preset qbox --target tidy",
         "uv run cmake --build --preset qbox --target check_headers",
     ]
-
-
-SDIST = "build/wheelhouse/sdist/socpuppet-0.0.1.tar.gz"
-OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
-# What the sdist and cibuildwheel stand-ins leave, to build one wheel here.
-ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
 
 
 def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
