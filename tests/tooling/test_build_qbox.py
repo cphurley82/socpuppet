@@ -55,10 +55,19 @@ elif args[0] == "apply":
 """
 
 # A cmake that, configuring, leaves QEMU's source where QBox's fetch would.
+# With CONFIGURE set to "offline" it fails, having left the empty CPM.cmake
+# that QBox's configure leaves when GitHub does not answer, and with "fails"
+# it fails before that.
 CMAKE = """
+import os
 from pathlib import Path
 if "-B" in sys.argv:
     build = Path(sys.argv[sys.argv.index("-B") + 1])
+    if os.environ["CONFIGURE"] == "offline":
+        (build / "cmake").mkdir(parents=True, exist_ok=True)
+        (build / "cmake" / "CPM.cmake").write_text("")
+    if os.environ["CONFIGURE"]:
+        sys.exit(1)
     (build / "_deps" / "libqemu-src" / ".git").mkdir(parents=True, exist_ok=True)
 """
 
@@ -90,7 +99,7 @@ def build_qbox(tmp_path):
         program.write_text(f"#!{sys.executable}\nimport sys\n{logger}{body}")
         program.chmod(0o755)
 
-    def run(*args, missing=""):
+    def run(*args, missing="", configure=""):
         result = subprocess.run(
             [
                 sys.executable,
@@ -103,6 +112,7 @@ def build_qbox(tmp_path):
                 **os.environ,
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
                 "MISSING": missing,
+                "CONFIGURE": configure,
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -244,3 +254,21 @@ def test_qboxs_own_tests_are_not_built_since_socpuppet_holds_its_cpu_to_its_own(
     assert result.returncode == 0, result.stdout
     (configure,) = calls(lines, "cmake", "-S")
     assert "-DBUILD_TESTING=OFF" in configure.split()
+
+
+def test_a_configure_that_could_not_fetch_cpm_says_to_check_the_network(
+    build_qbox,
+):
+    result, _ = build_qbox(configure="offline")
+
+    assert result.returncode != 0
+    assert "tools/doctor.py network" in result.stdout
+
+
+def test_a_configure_that_fails_otherwise_says_nothing_of_the_network(
+    build_qbox,
+):
+    result, _ = build_qbox(configure="fails")
+
+    assert result.returncode != 0
+    assert "network" not in result.stdout

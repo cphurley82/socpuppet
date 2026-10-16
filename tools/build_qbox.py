@@ -107,25 +107,9 @@ def build(root: Path, jobs: int) -> None:
     for patch in sorted(PATCHES.glob("qbox-*.patch")):
         apply(source, patch, root)
 
-    # RISC-V's 64-bit QEMU only. C++20, because SystemC only links with code
-    # built to the same standard as itself, and socpuppet is C++20. No virgl
-    # and no virCL: QEMU's bundled virclrenderer does not compile against
-    # glibc 2.42's C11 threads, and nothing here draws. And none of QBox's
-    # own tests, which socpuppet does not run, and which on a Mac look for
-    # LLVM's tools only where Homebrew keeps them on Apple silicon.
     tree = root / "build"
     install = root / "install"
-    command(
-        *("cmake", "-S", str(source), "-B", str(tree), "-G", "Ninja"),
-        "-DCMAKE_BUILD_TYPE=Release",
-        f"-DCMAKE_INSTALL_PREFIX={install}",
-        "-DCPM_DOWNLOAD_ALL=ON",
-        "-DBUILD_TESTING=OFF",
-        "-DLIBQEMU_TARGETS=riscv64",
-        "-DCMAKE_CXX_STANDARD=20",
-        "-DGS_ENABLE_VIRGLRENDERER=OFF",
-        "-DGS_ENABLE_VIRCLRENDERER=OFF",
-    )
+    configure(source, tree, install)
     # QEMU is fetched while QBox is configured, and built after. Its
     # patches go in between.
     for patch in sorted(PATCHES.glob("libqemu-*.patch")):
@@ -142,6 +126,41 @@ def build(root: Path, jobs: int) -> None:
         print(
             f"Next: uv run cmake --preset qbox -DSOCPUPPET_QBOX_DIR={install}"
         )
+
+
+def configure(source: Path, tree: Path, install: Path) -> None:
+    """Configure QBox, which fetches QEMU, and say so if CPM could not be.
+
+    RISC-V's 64-bit QEMU only. C++20, because SystemC only links with code
+    built to the same standard as itself, and socpuppet is C++20. No virgl
+    and no virCL: QEMU's bundled virclrenderer does not compile against
+    glibc 2.42's C11 threads, and nothing here draws. And none of QBox's
+    own tests, which socpuppet does not run, and which on a Mac look for
+    LLVM's tools only where Homebrew keeps them on Apple silicon.
+    """
+    try:
+        command(
+            *("cmake", "-S", str(source), "-B", str(tree), "-G", "Ninja"),
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DCMAKE_INSTALL_PREFIX={install}",
+            "-DCPM_DOWNLOAD_ALL=ON",
+            "-DBUILD_TESTING=OFF",
+            "-DLIBQEMU_TARGETS=riscv64",
+            "-DCMAKE_CXX_STANDARD=20",
+            "-DGS_ENABLE_VIRGLRENDERER=OFF",
+            "-DGS_ENABLE_VIRCLRENDERER=OFF",
+        )
+    except Failed as failure:
+        # QBox's configure downloads CPM.cmake from GitHub every time, and
+        # goes on with an empty file when it cannot (docs/upstream.md).
+        cpm = tree / "cmake" / "CPM.cmake"
+        if cpm.exists() and cpm.stat().st_size == 0:
+            raise Failed(
+                f"{failure}\nQBox's configure could not download CPM.cmake "
+                "from GitHub, and left it empty. Check the network with "
+                "`uv run python tools/doctor.py network`, then run this again."
+            ) from failure
+        raise
 
 
 def check_what_it_needs() -> None:
