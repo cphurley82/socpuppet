@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import enum
 import hashlib
+import json
 import os
 import platform
 import queue
@@ -39,6 +40,7 @@ REPO = Path(__file__).resolve().parents[1]
 LOGS = REPO / "build" / "ci"
 # Where the wheel job leaves the wheels, from the top of the repository.
 WHEELHOUSE = "build/wheelhouse"
+ON_LINUX = platform.system() == "Linux"
 
 
 class Mode(enum.Enum):
@@ -123,6 +125,13 @@ class Job:
     # A path it runs for a change to, as CI's paths filter has it: here, it
     # runs when the path differs from main's.
     changed: str = ""
+    # What it needs of this machine, as the areas tools/doctor.py checks.
+    # A job in Docker needs Docker too.
+    areas: tuple[str, ...] = ()
+
+    def every_area(self) -> tuple[str, ...]:
+        """What it needs of this machine, Docker included."""
+        return (*self.areas, "docker") if self.docker else self.areas
 
     def steps_for(self, mode: Mode) -> tuple[Step, ...]:
         """Its steps, where it runs."""
@@ -224,11 +233,13 @@ JOBS = [
         "fetch-sdk",
         "fetch the Zephyr SDK's RISC-V toolchain",
         steps=(Step("fetch", ("uv", "run", "firmware/build.py", "sdk")),),
+        areas=("firmware",),
     ),
     Job(
         "fetch-llvm",
         "fetch the Zephyr SDK's LLVM, which builds OpenSBI and EDK2",
         steps=(Step("fetch", ("uv", "run", "firmware/build.py", "llvm")),),
+        areas=("firmware",),
     ),
     Job(
         "fetch-zephyr",
@@ -236,30 +247,35 @@ JOBS = [
         steps=(
             Step("fetch", ("uv", "run", "firmware/build.py", "zephyr-tree")),
         ),
+        areas=("firmware",),
     ),
     Job(
         "firmware-rom",
         "build the boot ROMs, and the payload of ours for OpenSBI",
         needs=("fetch-sdk",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "rom")),),
+        areas=("firmware",),
     ),
     Job(
         "firmware-opensbi",
         "build OpenSBI for the host",
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "opensbi")),),
+        areas=("firmware",),
     ),
     Job(
         "firmware-zephyr",
         "build Zephyr's images for the boards",
         needs=("fetch-sdk", "fetch-zephyr"),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "zephyr")),),
+        areas=("firmware",),
     ),
     Job(
         "firmware-edk2",
         "build EDK2, UEFI, for the host",
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "edk2")),),
+        areas=("firmware", "edk2"),
     ),
     Job(
         "test",
@@ -277,6 +293,7 @@ JOBS = [
                 env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
             ),
         ),
+        areas=("build",),
     ),
     Job(
         "tidy",
@@ -286,6 +303,7 @@ JOBS = [
         # clang-tidy reads GCC's compile commands and standard library, so
         # it reads our code the way the Linux build compiles it.
         only_on="Linux",
+        areas=("build",),
     ),
     Job(
         "twister",
@@ -310,6 +328,7 @@ JOBS = [
             Step("twister", ("uv", "run", "firmware/twister.py", "--suites")),
         ),
         uses=("build/dev", "extension", "build/twister"),
+        areas=("build",),
     ),
     Job(
         "coverage",
@@ -326,6 +345,7 @@ JOBS = [
         ),
         uses=("build/dev", "extension"),
         reconfigures_dev=True,
+        areas=("build",),
     ),
     Job(
         "sanitizers",
@@ -339,12 +359,14 @@ JOBS = [
         ),
         uses=("build/dev", "extension"),
         reconfigures_dev=True,
+        areas=("build",),
     ),
     Job(
         "qbox-build",
         "build QBox, QEMU in SystemC, for the second hart",
         steps=(Step("build", ("uv", "run", "tools/build_qbox.py")),),
         uses=("build/qbox",),
+        areas=("build", "qbox", "network"),
     ),
     Job(
         "qbox-tidy",
@@ -353,6 +375,7 @@ JOBS = [
         steps=tidy_steps("qbox"),
         uses=("build/qbox-dev",),
         only_on="Linux",
+        areas=("build",),
     ),
     Job(
         "qbox",
@@ -378,6 +401,7 @@ JOBS = [
             ),
         ),
         uses=("build/qbox-dev", "extension", "build/twister"),
+        areas=("build",),
     ),
     Job(
         "wheel",
@@ -385,8 +409,10 @@ JOBS = [
         needs=FIRMWARE,
         steps=wheel_steps,
         fresh=(WHEELHOUSE,),
-        # cibuildwheel builds Linux's wheels in a manylinux container.
-        docker=platform.system() == "Linux",
+        # cibuildwheel builds Linux's wheels in a manylinux container, and
+        # a Mac's here. Each fetches its build's packages from PyPI.
+        docker=ON_LINUX,
+        areas=("network",) if ON_LINUX else ("build", "network"),
     ),
     Job(
         "devcontainer",
@@ -501,13 +527,14 @@ def list_jobs(docker: bool) -> None:
     Docker were asked for.
     """
     indent = " " * (NAME_WIDTH + 2)
+    settled = settle(JOBS, docker)
     for job in JOBS:
         print(f"{job.name:<{NAME_WIDTH}}  {job.blurb}")
         if job.needs:
             print(f"{indent}needs {', '.join(job.needs)}")
-        reason = why_skipped(job, docker)
-        if reason:
-            print(f"{indent}{Verdict.SKIPPED.mark()} {reason}")
+        outcome = settled.get(job.name)
+        if outcome:
+            print(f"{indent}{outcome.verdict.mark()} {outcome.describe()}")
         print(f"{indent}{command_for(job)}")
 
 
@@ -548,17 +575,20 @@ class Outcome:
     """How a job ended, and what to say of it."""
 
     verdict: Verdict
-    seconds: float = 0
+    # How long it ran, or None if it failed before it started.
+    seconds: float | None = 0
     # The step it failed at, or why it was skipped.
     detail: str = ""
 
     def describe(self) -> str:
         """What a person is told: 41s, 3m02s at build, or why it skipped."""
-        took = duration(self.seconds)
-        if self.verdict is Verdict.FAILED:
-            return f"{took} at {self.detail}"
         if self.verdict is Verdict.PASSED:
-            return took
+            return duration(self.seconds or 0)
+        if self.verdict is Verdict.FAILED:
+            at = f"at {self.detail}"
+            return (
+                at if self.seconds is None else f"{duration(self.seconds)} {at}"
+            )
         return self.detail
 
 
@@ -596,11 +626,89 @@ def run_here(names: list[str], parallel: int, docker: bool, clean: bool) -> int:
     `docker` says whether the jobs in Docker were asked for, and `clean`
     whether to drop the patched dependencies whatever the patches are.
     """
+    started = time.monotonic()
     jobs = [job for job in JOBS if not names or job.name in names]
     LOGS.mkdir(parents=True, exist_ok=True)
     drop_stale_dependencies(clean)
     # A job in Docker that was named was asked for.
-    return Run(jobs, parallel, docker or bool(names)).go()
+    settled = settle(jobs, docker or bool(names))
+    return Run(jobs, parallel, settled, started).go()
+
+
+@dataclass(frozen=True)
+class Checked:
+    """How tools/doctor.py found an area of this machine."""
+
+    title: str
+    # Whether the jobs that need it are skipped without it, not failed.
+    optional: bool
+    problems: list[str]
+    # What to do about them.
+    fix: list[str]
+
+
+def settle(jobs: list[Job], docker: bool) -> dict[str, Outcome]:
+    """How each job that will not run ends, before any starts, by its name.
+
+    A job is skipped for a reason why_skipped gives. Of the rest, a job
+    fails if this machine is missing what it needs, and is skipped if what
+    is missing is optional, as tools/doctor.py says when it is asked, once,
+    about the areas of every job left. `docker` says whether the jobs in
+    Docker were asked for.
+    """
+    settled = {
+        job.name: Outcome(Verdict.SKIPPED, detail=reason)
+        for job in jobs
+        if (reason := why_skipped(job, docker))
+    }
+    left = [job for job in jobs if job.name not in settled]
+    areas = list(
+        dict.fromkeys(area for job in left for area in job.every_area())
+    )
+    if not areas:
+        return settled
+    checked = ask_the_doctor(areas)
+    for job in left:
+        missing = [
+            checked[area] for area in job.every_area() if checked[area].problems
+        ]
+        required = [each for each in missing if not each.optional]
+        if required:
+            detail = f"the check of {required[0].title}"
+            settled[job.name] = Outcome(Verdict.FAILED, None, detail)
+        elif missing:
+            detail = f"needs {missing[0].title}: {missing[0].problems[0]}"
+            settled[job.name] = Outcome(Verdict.SKIPPED, detail=detail)
+    return settled
+
+
+def ask_the_doctor(areas: list[str]) -> dict[str, Checked]:
+    """Ask tools/doctor.py how this machine is in each area, and say so."""
+    answer = subprocess.run(
+        [sys.executable, str(REPO / "tools" / "doctor.py"), "--json", *areas],
+        cwd=REPO,
+        # What goes wrong with the doctor itself is said on its error
+        # output, which goes to the terminal.
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    checked = {
+        area["name"]: Checked(
+            area["title"], area["optional"], area["problems"], area["fix"]
+        )
+        for area in json.loads(answer.stdout)["areas"]
+    }
+    wrong = [each for each in checked.values() if each.problems]
+    if not wrong:
+        print("🩺 this machine has what the jobs need")
+    else:
+        print("🩺 this machine is missing what some jobs need")
+    for each in wrong:
+        mark = "⚠️" if each.optional else Verdict.FAILED.mark()
+        print(f"   {mark} {each.title}: {'; '.join(each.problems)}")
+        for fix in each.fix:
+            print(f"        {fix}")
+    return checked
 
 
 def drop_stale_dependencies(clean: bool) -> None:
@@ -681,9 +789,10 @@ def patched_dependencies() -> set[str]:
 def why_skipped(job: Job, docker: bool) -> str | None:
     """Why a run here skips a job, or None if it runs it.
 
-    A job is skipped when this machine cannot run it, when it was not asked
+    A job is skipped when it runs on another system, when it was not asked
     for, or when CI would skip it too. `docker` says whether the jobs in
-    Docker were asked for. The cheaper questions are asked first.
+    Docker were asked for. Whether this machine has what a job needs is
+    tools/doctor.py's to say.
     """
     if job.only_on and platform.system() != job.only_on:
         return f"runs on {job.only_on} alone"
@@ -691,13 +800,6 @@ def why_skipped(job: Job, docker: bool) -> str | None:
         return "runs in Docker, which --docker asks for"
     if job.changed and not changed_from_main(job.changed):
         return f"{job.changed} is the same as main's, so CI skips it too"
-    if job.docker and not shutil.which("docker"):
-        return "needs Docker, which is not installed"
-    if job.docker and not docker_answers():
-        return (
-            "needs Docker, and `docker info` fails: is the daemon running, "
-            "and are you in the docker group?"
-        )
     return None
 
 
@@ -720,16 +822,6 @@ def git(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def docker_answers() -> bool:
-    """Whether Docker's daemon is running, and lets this user in."""
-    info = subprocess.run(
-        ["docker", "info"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return info.returncode == 0
-
-
 class Run:
     """A run of jobs on this machine, each step's output in a log.
 
@@ -739,14 +831,20 @@ class Run:
     is printed from here, as the threads report what they did.
     """
 
-    def __init__(self, jobs: list[Job], parallel: int, docker: bool) -> None:
+    def __init__(
+        self,
+        jobs: list[Job],
+        parallel: int,
+        settled: dict[str, Outcome],
+        started: float,
+    ) -> None:
         self.jobs = jobs
-        # Whether a job is skipped is settled before any starts.
-        self.skipped = {
-            job.name: reason
-            for job in jobs
-            if (reason := why_skipped(job, docker))
-        }
+        # When the run started, by time.monotonic(), before the check of
+        # this machine.
+        self.started = started
+        # How each job that will not run ends, which is settled before any
+        # starts.
+        self.settled = settled
         self.named = {job.name for job in jobs}
         self.parallel = parallel
         # What only this thread reads and writes.
@@ -803,11 +901,15 @@ class Run:
                 ),
                 None,
             )
-            if job.name in self.skipped:
-                reason = self.skipped[job.name]
-                self.end(job.name, Outcome(Verdict.SKIPPED, detail=reason))
+            if job.name in self.settled:
+                self.end(job.name, self.settled[job.name])
             elif unmet:
-                reason = f"needs {unmet}, which failed"
+                how = (
+                    "was skipped"
+                    if self.outcomes[unmet].verdict is Verdict.SKIPPED
+                    else "failed"
+                )
+                reason = f"needs {unmet}, which {how}"
                 self.end(job.name, Outcome(Verdict.SKIPPED, detail=reason))
             elif self.ready(job):
                 self.running.add(job.name)
@@ -942,8 +1044,9 @@ class Run:
         print(f"{line} [ {tally} ]")
 
     def summarize(self) -> None:
-        """Say how each job ended, in the table's order."""
-        print("\n🧦 Summary")
+        """Say how long the run took, and how each job ended, in order."""
+        took = duration(time.monotonic() - self.started)
+        print(f"\n🧦 Summary, {took} in all")
         for job in self.jobs:
             outcome = self.outcomes.get(job.name, INTERRUPTED)
             mark = outcome.verdict.mark()

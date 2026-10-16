@@ -1,9 +1,9 @@
 """tools/ci.py, which runs CI's jobs: every one on this machine, or one in CI.
 
 The runner is run for real in a throwaway copy of the repository, with
-stand-ins for uv, docker and the scripts the jobs call. Each stand-in writes the
-command it was given to a log, so the tests can say what the runner ran, and
-in what order, without building anything.
+stand-ins for uv, the scripts the jobs call and tools/doctor.py. Each
+stand-in writes the command it was given to a log, so the tests can say what
+the runner ran, and in what order, without building anything.
 """
 
 import importlib.util
@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import pty
+import re
 import shutil
 import signal
 import subprocess
@@ -76,6 +77,22 @@ with open(os.environ["LOG"] + ".json", "a") as log:
 sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 """
 
+# The doctor, which logs what it was asked to a log of its own, and says, as
+# tools/doctor.py does in JSON, how each area asked about is: well, unless
+# DOCTOR gives it a report, a JSON {area: {"problems": [...], ...}}.
+DOCTOR = """\
+import json, os, sys
+asked = sys.argv[1:]
+with open(os.environ["LOG"] + ".doctor", "a") as log:
+    log.write(json.dumps(asked) + "\\n")
+found = json.loads(os.environ.get("DOCTOR", "{}"))
+print(json.dumps({"areas": [
+    {"name": area, "title": f"the {area}", "optional": False,
+     "problems": [], "fix": [], **found.get(area, {})}
+    for area in asked if area != "--json"
+]}))
+"""
+
 # The scripts in the repository that the jobs call.
 SCRIPTS = (
     "tools/build_qbox.py",
@@ -100,17 +117,19 @@ GREEN, RED = "\x1b[32m", "\x1b[31m"
 DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR")
 
 
-def load_runner():
-    """tools/ci.py as a module, for what its table says."""
-    spec = importlib.util.spec_from_file_location("ci", RUNNER)
+def load(path):
+    """A script of the repository's as a module, for what its tables say."""
+    spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-RUNNER_MODULE = load_runner()
+RUNNER_MODULE = load(RUNNER)
 JOBS = RUNNER_MODULE.JOBS
 JOBS_BY_NAME = {job.name: job for job in JOBS}
+# The areas of this machine tools/doctor.py checks, by their names.
+AREAS = {area.name: area for area in load(REPO / "tools" / "doctor.py").AREAS}
 # The jobs that run here with no option given, and the jobs in Docker.
 JOBS_HERE = [
     job
@@ -134,14 +153,16 @@ def ci(tmp_path):
     runs it with its output going to a terminal and returns what that was
     sent, run.lines() are the commands so far,
     run.commands() the commands that ended, with their variables and times,
-    run.command(name) the one of them named, and run.pids() the process ids
-    of the commands that started.
+    run.command(name) the one of them named, run.pids() the process ids
+    of the commands that started, and run.doctor_asked() the arguments the
+    doctor was given each time it was asked.
     """
     root = tmp_path / "repo"
     (root / "tools").mkdir(parents=True)
     shutil.copy(RUNNER, root / "tools" / "ci.py")
     for script in SCRIPTS:
         write_stand_in(root / script)
+    write_stand_in(root / "tools" / "doctor.py", DOCTOR)
     (root / "cmake" / "patches").mkdir(parents=True)
     (root / "cmake" / "Dependencies.cmake").write_text(DEPENDENCIES)
     (root / "cmake" / "patches" / "eggs-fix.patch").write_text("one\n")
@@ -149,8 +170,7 @@ def ci(tmp_path):
     git(root, "init", "-q", "-b", "main")
     commit_everything(root)
     bin_directory = tmp_path / "bin"
-    for program in ("uv", "docker"):
-        write_stand_in(bin_directory / program)
+    write_stand_in(bin_directory / "uv")
     log = tmp_path / "log"
 
     def start(*args, stdout=subprocess.PIPE, makes=None, **env):
@@ -215,6 +235,12 @@ def ci(tmp_path):
     def command(name):
         return next(c for c in commands() if c["command"] == name)
 
+    def doctor_asked():
+        path = Path(f"{log}.doctor")
+        if not path.exists():
+            return []
+        return [json.loads(line) for line in path.read_text().splitlines()]
+
     run.root = root
     run.start = start
     run.on_a_terminal = on_a_terminal
@@ -222,6 +248,7 @@ def ci(tmp_path):
     run.commands = commands
     run.pids = pids
     run.command = command
+    run.doctor_asked = doctor_asked
     return run
 
 
@@ -509,6 +536,100 @@ def test_an_interrupted_run_stops_its_steps_and_says_how_far_it_got(ci):
     wait_for(lambda: not alive(step))
 
 
+def test_the_doctor_is_asked_once_about_every_area_the_jobs_need(ci):
+    named = ("lint", "firmware-edk2", "test")
+
+    ci(*named)
+
+    (asked,) = ci.doctor_asked()
+    assert "--json" in asked
+    assert set(asked) - {"--json"} == {
+        area for name in named for area in JOBS_BY_NAME[name].every_area()
+    }
+
+
+def test_jobs_that_need_nothing_of_this_machine_do_not_ask_the_doctor(ci):
+    ci("lint")
+
+    assert ci.doctor_asked() == []
+
+
+def test_the_doctor_is_asked_about_docker_when_a_job_in_docker_will_run(ci):
+    change_what_the_docker_jobs_run_for(ci.root)
+
+    ci("devcontainer")
+    ci("test")
+
+    with_docker, without = ci.doctor_asked()
+    assert "docker" in with_docker
+    assert "docker" not in without
+
+
+def test_a_job_this_machine_cannot_run_fails_before_any_starts_and_the_rest_run(
+    ci,
+):
+    missing = {
+        "edk2": {
+            "problems": ["iasl is not installed"],
+            "fix": ["sudo apt-get install -y acpica-tools"],
+        }
+    }
+
+    result, lines = ci(
+        "lint", "firmware-edk2", "firmware-rom", DOCTOR=json.dumps(missing)
+    )
+
+    assert result.returncode == 1
+    assert verdicts(result.stdout) == {
+        "lint": "✅",
+        "firmware-edk2": "❌",
+        "firmware-rom": "✅",
+    }
+    assert not set(commands_of("firmware-edk2")) & set(lines)
+    said = before_any_job_started(result.stdout)
+    assert "iasl is not installed" in said
+    assert "sudo apt-get install -y acpica-tools" in said
+
+
+def test_a_job_missing_something_optional_is_skipped_saying_what(ci):
+    missing = {
+        "qbox": {"optional": True, "problems": ["meson is not installed"]}
+    }
+
+    result, lines = ci("lint", "qbox-build", DOCTOR=json.dumps(missing))
+
+    assert result.returncode == 0, result.stdout
+    assert summary_of(result.stdout, "qbox-build") == (
+        "⏭  qbox-build: needs the qbox: meson is not installed"
+    )
+    assert lines == commands_of("lint")
+    said = before_any_job_started(result.stdout)
+    assert "⚠️ the qbox: meson is not installed" in said
+
+
+def test_a_job_whose_need_was_skipped_is_skipped_saying_so(ci):
+    missing = {
+        "qbox": {"optional": True, "problems": ["meson is not installed"]}
+    }
+
+    result, _ = ci("qbox-build", "qbox", DOCTOR=json.dumps(missing))
+
+    assert summary_of(result.stdout, "qbox") == (
+        "⏭  qbox: needs qbox-build, which was skipped"
+    )
+
+
+def test_the_summary_says_how_long_the_whole_run_took(ci):
+    result, _ = ci("lint", SLOW="1")
+
+    took = re.search(r"🧦 Summary, (\d+)s in all", result.stdout)
+    ran = ci.commands()
+    assert took
+    assert int(took[1]) >= int(
+        max(c["end"] for c in ran) - min(c["start"] for c in ran)
+    )
+
+
 def test_without_docker_asked_for_the_jobs_in_docker_are_skipped_saying_so(
     ci,
 ):
@@ -519,32 +640,26 @@ def test_without_docker_asked_for_the_jobs_in_docker_are_skipped_saying_so(
         assert "--docker" in summary_of(result.stdout, name)
 
 
-def test_with_docker_asked_for_and_not_installed_its_jobs_are_skipped(
-    ci, tmp_path
+def test_with_docker_asked_for_and_missing_its_jobs_are_skipped_saying_why(
+    ci,
 ):
     change_what_the_docker_jobs_run_for(ci.root)
+    missing = {
+        "docker": {
+            "optional": AREAS["docker"].optional,
+            "problems": ["docker is not installed"],
+        }
+    }
 
-    result, lines = ci(
-        "--docker", *DOCKER_JOBS, PATH=path_without_docker(tmp_path)
-    )
+    result, lines = ci("--docker", *DOCKER_JOBS, DOCTOR=json.dumps(missing))
 
     assert result.returncode == 0, result.stdout
     for name in DOCKER_JOBS:
         assert summary_of(result.stdout, name) == (
-            f"⏭  {name}: needs Docker, which is not installed"
+            f"⏭  {name}: needs the docker: docker is not installed"
         )
+    # Docker is the doctor's to ask about.
     assert lines == []
-
-
-def test_with_docker_asked_for_and_not_answering_its_jobs_are_skipped(ci):
-    change_what_the_docker_jobs_run_for(ci.root)
-
-    result, lines = ci("--docker", *DOCKER_JOBS, FAIL_ON="info")
-
-    assert result.returncode == 0, result.stdout
-    for name in DOCKER_JOBS:
-        assert "`docker info` fails" in summary_of(result.stdout, name)
-        assert not set(commands_of(name)) & set(lines)
 
 
 def test_a_job_in_docker_named_on_its_own_runs_without_docker_asked_for(ci):
@@ -646,6 +761,25 @@ def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
     for name in DOCKER_JOBS:
         assert "⏭" in entries[name]
         assert "--docker" in entries[name]
+
+
+def test_the_list_says_which_jobs_this_machine_is_missing_something_for(ci):
+    missing = {
+        "edk2": {"problems": ["iasl is not installed"]},
+        "qbox": {"optional": True, "problems": ["meson is not installed"]},
+    }
+
+    result, _ = ci("--list", DOCTOR=json.dumps(missing))
+
+    entries = listed(result.stdout)
+    assert "❌ at the check of the edk2" in entries["firmware-edk2"]
+    assert "⏭  needs the qbox: meson is not installed" in entries["qbox-build"]
+
+
+def test_run_in_ci_does_not_ask_the_doctor(ci):
+    ci("run", "test")
+
+    assert ci.doctor_asked() == []
 
 
 def test_when_the_patches_change_the_patched_dependencies_are_dropped(ci):
@@ -821,7 +955,7 @@ def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
     result, _ = ci("wheel", makes=ONE_WHEEL)
 
     assert result.returncode == 0, result.stdout
-    commands = [step["command"].split() for step in steps_run(ci)]
+    commands = [step["command"].split() for step in ci.commands()]
     assert commands[0][:3] == ["uv", "build", "--sdist"]
     build = commands[1]
     assert build[:3] == ["uv", "run", "cibuildwheel"]
@@ -840,7 +974,7 @@ def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):
     ci("wheel", makes=ONE_WHEEL)
 
     installs = [
-        step for step in steps_run(ci) if "test_wheel.py" in step["command"]
+        step for step in ci.commands() if "test_wheel.py" in step["command"]
     ]
     assert installs
     for install in installs:
@@ -905,9 +1039,9 @@ def test_devcontainer_builds_and_tests_the_linux_tree_in_docker(ci):
     ]
 
 
-def write_stand_in(path):
+def write_stand_in(path, program=STAND_IN):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"#!{sys.executable}\n{STAND_IN}")
+    path.write_text(f"#!{sys.executable}\n{program}")
     path.chmod(0o755)
 
 
@@ -971,14 +1105,6 @@ def change_what_the_docker_jobs_run_for(root):
             change_what_it_runs_for(root, JOBS_BY_NAME[name])
 
 
-def path_without_docker(tmp_path):
-    """A PATH with git on it, and no docker."""
-    directory = tmp_path / "no-docker"
-    directory.mkdir()
-    (directory / "git").symlink_to(shutil.which("git"))
-    return str(directory)
-
-
 def wait_for(condition, seconds=10):
     deadline = time.monotonic() + seconds
     while not condition():
@@ -1015,7 +1141,7 @@ def verdicts(output):
     """What the summary at the end of a run says of each job: ✅, ❌, ⏭ or 🛑."""
     summary = output.split("🧦 Summary", 1)[1]
     found = {}
-    for line in summary.splitlines():
+    for line in summary.splitlines()[1:]:
         if line.strip():
             verdict, name = line.split()[:2]
             found[name.rstrip(":")] = verdict
@@ -1043,9 +1169,9 @@ def commands_of(name):
     ]
 
 
-def steps_run(ci):
-    """The commands the jobs' steps ran, without the runner's own."""
-    return [c for c in ci.commands() if not c["command"].startswith("docker")]
+def before_any_job_started(output):
+    """What a run said before the first of its jobs started."""
+    return output.split("🚀", 1)[0]
 
 
 def summary_of(output, name):
@@ -1053,7 +1179,7 @@ def summary_of(output, name):
     summary = output.split("🧦 Summary", 1)[1]
     return next(
         line.strip()
-        for line in summary.splitlines()
+        for line in summary.splitlines()[1:]
         if line.split()[1:2] in ([name], [f"{name}:"])
     )
 

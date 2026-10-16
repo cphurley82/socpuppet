@@ -77,6 +77,13 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 It adds `~/.local/bin` to your shell's start-up files, so open a new terminal (or `source ~/.local/bin/env`) before going on. On a Mac, `brew install uv` works too.
 
+🩺 To see what this machine still lacks, ask the doctor. It checks each area (socpuppet's build, the firmware's, EDK2's, QBox's packages, the network and Docker), marks each ✅, ❌ or, for what is optional, ⚠️, and gives the command that installs whatever is missing:
+
+```sh
+uv run python tools/doctor.py              # every area
+uv run python tools/doctor.py qbox docker  # just those
+```
+
 ## 3. Build socpuppet and run the tests
 
 ```sh
@@ -160,7 +167,9 @@ uv run python tools/ci.py               # add --docker for the wheels and the de
 
 ## When something goes wrong
 
+- **Something seems to be missing**: `uv run python tools/doctor.py` says what, and how to install it. `tools/ci.py` asks it the same before every run.
 - **`uv: command not found`** after installing it: the shell was started before the installer changed its start-up files. Open a new terminal, or `source ~/.local/bin/env`.
 - **CMake cannot find a C++ compiler**: the compiler from step 1 is missing. On Ubuntu, `build-essential`; on a Mac, `xcode-select --install`.
 - **A test fails after a `git pull` that changed `cmake/patches/`**: the build tree still holds the dependency patched the old way. Delete `build/dev/_deps/<dependency>-*` and configure again ([development.md](development.md#dependencies)).
+- **QBox's configure stops at `Unknown CMake command "CPMUsePackageLock"`**: QBox's configure downloads `CPM.cmake` from GitHub every time, and it carries on with an empty file when the download fails. Check the network (`uv run python tools/doctor.py network`) and run it again.
 - **QBox's build stops at a missing header or `pkg-config` package**: one of QBox's packages from step 1 is missing. `tools/build_qbox.py` checks for most of them before it starts, and names what is missing for apt and for Homebrew. Past that the log is in the terminal, and on Ubuntu the package is usually the header's name with `-dev` on the end.

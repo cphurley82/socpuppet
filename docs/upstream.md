@@ -1205,6 +1205,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: build.
 - **When it lands**: `tools/build_qbox.py` can move to the head again.
 
+### The configure fetches CPM.cmake every time, and goes on when it cannot
+
+- **Where**: `CMakeLists.txt` lines 86–91, `file(DOWNLOAD https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.5/CPM.cmake ...)` and then `include()` of what it wrote.
+- **What is wrong**: the download happens on every configure, so QBox cannot be configured offline even when everything it fetches is fetched already, and its status is not checked, so a failed download leaves an empty `CPM.cmake` that is included as if it were CPM. The error is then about something else: `Unknown CMake command "CPMUsePackageLock"`, at line 98.
+- **How to see it**: configure with the network down, or with `HTTPS_PROXY` pointing nowhere.
+- **What we do**: no patch. `tools/ci.py` asks `tools/doctor.py` whether GitHub answers before it starts `qbox-build`, and [setup.md](setup.md#when-something-goes-wrong) says what the error means.
+- **Upstream fix**: download only when the file is missing, pass `STATUS` to `file(DOWNLOAD)` and stop with a message when it fails, or take CPM's own `get_cpm.cmake`, which does both and honours `CPM_SOURCE_CACHE`.
+- **Kind**: build.
+- **When it lands**: drop the setup.md entry.
+
 ### The Hexagon components do not compile as C++20
 
 - **Where**: `qemu-components/cpu_hexagon/include/hexagon.h` line 103 and `qemu-components/hexagon_globalreg/include/hexagon_globalreg.h` line 68, `SCP_FATAL(())("Unrecognized Architecture Revision: " + dsp_arch)`.
