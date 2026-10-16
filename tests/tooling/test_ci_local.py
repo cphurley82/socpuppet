@@ -73,7 +73,13 @@ def ci_local(tmp_path):
             ["bash", str(root / "tools" / "ci_local.sh"), *args],
             cwd=root,
             env={
-                **os.environ,
+                # Less what the script is to set itself, which CI's own test
+                # job has set around the tests already.
+                **{
+                    name: value
+                    for name, value in os.environ.items()
+                    if name != "SOCPUPPET_REQUIRE_FIRMWARE"
+                },
                 "PATH": f"{bin_directory}{os.pathsep}{os.environ['PATH']}",
                 "LOG": str(log),
                 **env,
