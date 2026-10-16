@@ -29,8 +29,11 @@ The build puts the Python extension next to the Python sources, so the package r
 
 ```sh
 uv run pytest                            # just the Python tests
+uv run pytest -n auto --dist loadscope --no-loadscope-reorder   # the same, on every core
 PYTHONPATH=python uv run python examples/m0_passthrough.py
 ```
+
+💡 `ctest` runs the Python tests on every core with [pytest-xdist](https://pytest-xdist.readthedocs.io), which takes about a minute where one core takes six. `--dist loadscope` keeps the tests of one class on one worker, so a board the class shares is built once. The boots of OpenSBI and UEFI take most of a minute each, so they are marked `@pytest.mark.long` and handed out first: started last, one would keep the whole run waiting while every other core sat idle. `--no-loadscope-reorder` stops xdist from putting the classes with the most tests first instead.
 
 ## The tests
 
@@ -208,6 +211,8 @@ uv run python tools/ci.py wheel     # this machine's wheel, for the pinned Pytho
 ```
 
 - 💡 It builds from a source distribution and not from the checkout, because cibuildwheel copies the whole directory it is given into its container, and `build/` is far too big to copy.
+- On Linux the container's compiler cache is kept in `build/ccache`, so the second build takes the dependencies from the first. The container runs as root, so the cache is left for anyone on the machine to write to and remove.
+- cibuildwheel's own test of the wheel is skipped here, since the job then installs the same wheel with uv and with pip and tests it with the firmware. In CI it tests every wheel.
 - The macOS wheels need macOS 13.3 or newer. The code uses C++20's `std::format` for floating-point numbers, which the system's C++ library has had since that release.
 - 🚧 Nothing is published yet. CI keeps the wheels as artifacts of each run.
 
