@@ -869,7 +869,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.sh` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The last two were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.py` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The last two were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -1145,7 +1145,7 @@ Two more things read in the same file and not acted on:
 
 ## OpenSBI
 
-[riscv-software-src/opensbi](https://github.com/riscv-software-src/opensbi), pinned at `v1.9` in `firmware/versions.sh` and built by `firmware/build.sh`, which applies `cmake/patches/opensbi-*.patch` to it. It is the machine-mode firmware the host boots Linux's way with (M23).
+[riscv-software-src/opensbi](https://github.com/riscv-software-src/opensbi), pinned at `v1.9` in `firmware/versions.toml` and built by `firmware/build.py`, which applies `cmake/patches/opensbi-*.patch` to it. It is the machine-mode firmware the host boots Linux's way with (M23).
 
 ### A syscon regmap refuses every register past the first quarter of its block
 
@@ -1155,11 +1155,11 @@ Two more things read in the same file and not acted on:
 - **What we do**: `cmake/patches/opensbi-syscon-regmap-size.patch`: `reg_max` is the block's size in bytes.
 - **Upstream fix**: the same, or a `regmap_reg_valid` that divides by `reg_stride` before it compares. Every regmap OpenSBI has is a syscon's, so either does.
 - **Kind**: bug.
-- **When it lands**: drop the patch, and the loop in `firmware/build.sh` that applies it if it is the last.
+- **When it lands**: drop the patch, and the loop in `firmware/build.py` that applies it if it is the last.
 
 ## EDK2
 
-[tianocore/edk2](https://github.com/tianocore/edk2), pinned at `edk2-stable202608` in `firmware/versions.sh` and built by `firmware/build.sh`, which applies `cmake/patches/edk2-*.patch` to it. Its port for QEMU's RISC-V `virt` (`OvmfPkg/RiscVVirt`) is the UEFI the host boots on OpenSBI (M28), built to run from RAM where OpenSBI's `fw_jump` jumps.
+[tianocore/edk2](https://github.com/tianocore/edk2), pinned at `edk2-stable202608` in `firmware/versions.toml` and built by `firmware/build.py`, which applies `cmake/patches/edk2-*.patch` to it. Its port for QEMU's RISC-V `virt` (`OvmfPkg/RiscVVirt`) is the UEFI the host boots on OpenSBI (M28), built to run from RAM where OpenSBI's `fw_jump` jumps.
 
 ### SEC maps a 16550 only if it is a 16550A
 
@@ -1169,7 +1169,7 @@ Two more things read in the same file and not acted on:
 - **What we do**: `cmake/patches/edk2-sec-maps-ns16550.patch` looks for `ns16550` as well.
 - **Upstream fix**: the same line. A list of the 8250 family's names, as Linux's `of_serial` has, would do it for good.
 - **Kind**: bug.
-- **When it lands**: drop the patch. The loop in `firmware/build.sh` that applies EDK2's patches can stay, since it does nothing when there are none.
+- **When it lands**: drop the patch. The loop in `firmware/build.py` that applies EDK2's patches can stay, since it does nothing when there are none.
 
 ### SEC gives DXE the RAM it runs from as free
 

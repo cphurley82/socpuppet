@@ -16,7 +16,7 @@ It reaches the hardware through three drivers in socpuppet's Zephyr module (`pyt
 
 💡 `python/socpuppet/ssd_firmware.py` is the same firmware as a Python script, section for section. It stands in for this one where there is no CPU, and the two are held to the same tests, `tests/python/test_ssd_firmware.py`.
 
-Build it as any Zephyr application for the board, or with `firmware/build.sh`, which builds every image the tests boot:
+Build it as any Zephyr application for the board, or with `firmware/build.py`, which builds every image the tests boot:
 
 ```sh
 west build -b socpuppet_ssd firmware/ssd -- \

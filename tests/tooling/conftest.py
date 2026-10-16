@@ -36,7 +36,7 @@ LINT = REPO / "tools" / "lint.py"
 
 @pytest.fixture
 def zephyr_tree():
-    """Zephyr's own sources, where `firmware/build.sh` fetched them.
+    """Zephyr's own sources, where `firmware/build.py` fetched them.
 
     A test that reads one of Zephyr's files is skipped where they are not,
     which is everywhere but a machine the firmware was built on and CI's
@@ -45,7 +45,7 @@ def zephyr_tree():
     tree = REPO / "build/firmware/zephyr"
     if not tree.is_dir():
         pytest.skip(
-            f"There is no {tree}. `firmware/build.sh` fetches Zephyr, which "
+            f"There is no {tree}. `firmware/build.py` fetches Zephyr, which "
             "takes a few minutes the first time."
         )
     return tree

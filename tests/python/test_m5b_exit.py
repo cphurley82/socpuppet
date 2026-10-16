@@ -4,7 +4,7 @@ The board is `socpuppet_iomgr`: a 32-bit RISC-V core with an SRAM, a UART,
 a timer and an interrupt controller, and the die-to-die link's registers
 beside them. Its devicetree is generated from the board's description, as
 the manager's own CPU sees it, and the firmware here was built for it by
-`firmware/build.sh`.
+`firmware/build.py`.
 
 The firmware is Zephyr's `hello_world`, which knows nothing of links or
 dies. 🎭 The compute die is a stand-in, and stays held in reset: nothing

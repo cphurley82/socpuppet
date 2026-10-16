@@ -2,7 +2,7 @@
 
 The board is `socpuppet_host`. Its devicetree is generated from the host
 platform description, and the firmware here was built for it by
-`firmware/build.sh`.
+`firmware/build.py`.
 """
 
 import pytest

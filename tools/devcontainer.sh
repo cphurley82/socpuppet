@@ -21,7 +21,7 @@ dockerfile="$repository/.devcontainer/Dockerfile"
 
 # The image is named after its Dockerfile's contents, so a change to the
 # Dockerfile builds it again. It is socpuppet-dev too, the name
-# firmware/build.sh and firmware/twister.sh look for.
+# firmware/twister.sh looks for.
 if command -v sha256sum > /dev/null; then
   hash="$(sha256sum "$dockerfile")"
 else

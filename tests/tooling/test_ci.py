@@ -78,7 +78,6 @@ sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 
 # The scripts in the repository that the jobs call.
 SCRIPTS = (
-    "firmware/build.sh",
     "firmware/twister.sh",
     "tools/build_qbox.sh",
     "tools/devcontainer.sh",
@@ -299,7 +298,8 @@ def test_run_opens_with_the_command_that_runs_the_job_and_its_needs_here(ci):
     result, _ = ci("run", "test")
 
     assert command_to_run_here(result.stdout) == (
-        "uv run python tools/ci.py firmware test"
+        "uv run python tools/ci.py fetch-sdk fetch-llvm fetch-zephyr "
+        "firmware-rom firmware-opensbi firmware-zephyr firmware-edk2 test"
     )
 
 
@@ -342,18 +342,18 @@ def test_a_failed_step_shows_where_its_output_is_and_how_it_ends(ci):
 
 
 def test_a_failed_job_does_not_stop_the_jobs_that_do_not_need_it(ci):
-    result, _ = ci("lint", "firmware", FAIL_ON="tools/lint.py")
+    result, _ = ci("lint", "firmware-rom", FAIL_ON="tools/lint.py")
 
     assert result.returncode == 1
-    assert verdicts(result.stdout) == {"lint": "❌", "firmware": "✅"}
+    assert verdicts(result.stdout) == {"lint": "❌", "firmware-rom": "✅"}
 
 
 def test_a_job_whose_need_failed_is_skipped_and_the_summary_says_why(ci):
-    result, lines = ci("firmware", "test", FAIL_ON="build.sh")
+    result, lines = ci("firmware-rom", "test", FAIL_ON="rom")
 
     assert result.returncode == 1
     assert summary_of(result.stdout, "test") == (
-        "⏭  test: needs firmware, which failed"
+        "⏭  test: needs firmware-rom, which failed"
     )
     assert not set(commands_of("test")) & set(lines)
 
@@ -363,13 +363,14 @@ def test_a_job_named_alone_runs_without_the_jobs_it_needs(ci):
 
     assert result.returncode == 0, result.stdout
     assert verdicts(result.stdout) == {"test": "✅"}
-    assert not set(commands_of("firmware")) & set(lines)
+    for need in JOBS_BY_NAME["test"].needs:
+        assert not set(commands_of(need)) & set(lines)
 
 
 def test_jobs_named_in_any_order_run_after_the_jobs_they_need(ci):
-    _, lines = ci("test", "firmware")
+    _, lines = ci("test", "firmware-rom")
 
-    last_of_firmware = lines.index(commands_of("firmware")[-1])
+    last_of_firmware = lines.index(commands_of("firmware-rom")[-1])
     assert last_of_firmware < lines.index(commands_of("test")[0])
 
 
@@ -415,7 +416,7 @@ def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
 
 
 def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
-    names = ["tidy", "firmware", "lint"]
+    names = ["tidy", "firmware-rom", "lint"]
 
     _, lines = ci("-j", "1", *names)
 
@@ -426,7 +427,7 @@ def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
 def test_a_run_says_how_many_jobs_it_has_and_how_many_at_a_time_before_any(
     ci,
 ):
-    result, _ = ci("-j", "2", "lint", "firmware", "test")
+    result, _ = ci("-j", "2", "lint", "firmware-rom", "test")
 
     output = result.stdout.splitlines()
     opening = next(i for i, line in enumerate(output) if line.startswith("🧦"))
@@ -438,7 +439,7 @@ def test_a_run_says_how_many_jobs_it_has_and_how_many_at_a_time_before_any(
 
 
 def test_a_run_says_at_each_job_how_far_the_whole_run_has_got(ci):
-    result, _ = ci("-j", "2", "lint", "firmware", "test", FAIL_ON="build.sh")
+    result, _ = ci("-j", "2", "lint", "firmware-rom", "test", FAIL_ON="rom")
 
     events = {
         (line.split()[0], line.split()[1]): tally(line)
@@ -448,13 +449,13 @@ def test_a_run_says_at_each_job_how_far_the_whole_run_has_got(ci):
     assert set(events) == {
         ("🚀", "lint"),
         ("✅", "lint"),
-        ("🚀", "firmware"),
-        ("❌", "firmware"),
+        ("🚀", "firmware-rom"),
+        ("❌", "firmware-rom"),
         ("⏭", "test"),
     }
     for counts in events.values():
         assert sum(counts.values()) == 3
-    assert events["❌", "firmware"]["❌"] == 1
+    assert events["❌", "firmware-rom"]["❌"] == 1
 
 
 def test_a_failed_job_says_which_step_it_failed_at(ci):
@@ -712,22 +713,20 @@ def test_a_dev_tree_that_cannot_be_put_back_is_named_in_a_warning(ci):
 
 
 def test_on_a_terminal_a_job_that_passes_is_green_and_one_that_fails_red(ci):
-    sent = ci.on_a_terminal("lint", "firmware", FAIL_ON="build.sh")
+    sent = ci.on_a_terminal("lint", "firmware-rom", FAIL_ON="rom")
 
     assert f"{GREEN}✅ lint" in sent
-    assert f"{RED}❌ firmware" in sent
+    assert f"{RED}❌ firmware-rom" in sent
 
 
 def test_with_no_color_asked_for_a_terminal_is_sent_no_color(ci):
-    sent = ci.on_a_terminal(
-        "lint", "firmware", FAIL_ON="build.sh", NO_COLOR="1"
-    )
+    sent = ci.on_a_terminal("lint", "firmware-rom", FAIL_ON="rom", NO_COLOR="1")
 
     assert "\x1b[" not in sent
 
 
 def test_output_to_a_pipe_is_not_colored(ci):
-    result, _ = ci("lint", "firmware", FAIL_ON="build.sh")
+    result, _ = ci("lint", "firmware-rom", FAIL_ON="rom")
 
     assert "\x1b[" not in result.stdout
 

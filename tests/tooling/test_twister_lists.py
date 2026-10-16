@@ -2,7 +2,7 @@
 
 `firmware/twister-suites.txt` names the suites of the board-compliance run,
 and `firmware/twister-quarantine.yaml` what is left out of them, and why.
-Both name things in Zephyr's tree, which `firmware/build.sh` fetches into
+Both name things in Zephyr's tree, which `firmware/build.py` fetches into
 build/firmware, so these tests are skipped where it has not been run.
 """
 

@@ -28,10 +28,10 @@ After any of the ❌ lines the CPU stops, in `wfi`, and nothing is started.
 
 ## Build it
 
-`firmware/build.sh` builds it before anything else, with the Zephyr SDK's compiler:
+`firmware/build.py` builds it before anything else, with the Zephyr SDK's compiler:
 
 ```sh
-firmware/build.sh
+uv run firmware/build.py
 ```
 
 Where the UART, the system controller and the top of RAM are is in `board_rv64.h` and `board_rv32.h`, one for each kind of socpuppet board, and `tests/python/test_rom_firmware.py` holds each to the boards. The header's layout is generated from `regs/boot_image_header.rdl`, which is also what Python writes an image from.

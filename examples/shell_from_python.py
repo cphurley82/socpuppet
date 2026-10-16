@@ -11,7 +11,7 @@ interrupt line stops at an APLIC beside it, which writes a message across
 the link to the CPU's IMSIC (see socpuppet/boards/host.py). The example
 counts those messages at the end.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/shell_from_python.py
 
 The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
@@ -73,7 +73,8 @@ if __name__ == "__main__":
     if not IMAGE.exists():
         missing = (
             f"There is no {IMAGE} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(missing)

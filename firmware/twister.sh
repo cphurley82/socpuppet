@@ -18,12 +18,12 @@
 # build.log, its handler.log, which is its console, and its
 # handler_stderr.log, where `socpuppet run` says how a run ended.
 #
-# It wants what firmware/build.sh leaves in build/firmware (the SDK, Zephyr,
+# It wants what firmware/build.py leaves in build/firmware (the SDK, Zephyr,
 # a venv, the boot ROMs) and a socpuppet built for this machine, which
 # `cmake --build --preset dev` leaves importable from python/.
 #
 # On an Intel Mac it runs itself in the devcontainer's image, as
-# firmware/build.sh does, since the Zephyr SDK has no toolchain for one.
+# firmware/build.py does, since the Zephyr SDK has no toolchain for one.
 # There it builds a socpuppet for Linux in build/linux first, and keeps
 # Zephyr, the SDK, a venv and twister's build directories on a Docker
 # volume, socpuppet-twister: a compiler that reads its headers through
@@ -34,14 +34,14 @@
 set -euo pipefail
 
 repository=$(cd "$(dirname "$0")/.." && pwd)
-# sdk_version.
-# shellcheck source=firmware/versions.sh
-source "${repository}/firmware/versions.sh"
+# The SDK's version, from the [sdk] table of firmware/versions.toml.
+sdk_version=$(sed -n '/^\[sdk\]/,/^\[/s/^version = "\(.*\)"$/\1/p' \
+  "${repository}/firmware/versions.toml")
 sdk_name=zephyr-sdk-${sdk_version}
 
 if [[ "$(uname -s)-$(uname -m)" == Darwin-x86_64 ]]; then
   command -v docker > /dev/null || {
-    echo "On an Intel Mac twister runs in Docker, as firmware/build.sh" \
+    echo "On an Intel Mac twister runs in Docker, as firmware/build.py" \
       "does. Install Docker and start it." >&2
     exit 1
   }
@@ -49,7 +49,7 @@ if [[ "$(uname -s)-$(uname -m)" == Darwin-x86_64 ]]; then
     docker build --tag socpuppet-dev \
       --file "${repository}/.devcontainer/Dockerfile" \
       "${repository}/.devcontainer"
-  # The venv and its Python are both under build/, as firmware/build.sh
+  # The venv and its Python are both under build/, as firmware/build.py
   # keeps Zephyr's, so that they outlive the container.
   exec docker run --rm --volume "${repository}:/workspace" \
     --workdir /workspace \
@@ -65,7 +65,7 @@ cd "${repository}"
 firmware=${repository}/build/firmware
 for each in zephyr venv/bin/python "${sdk_name}" rom_rv32.elf rom_rv64.elf; do
   [[ -e ${firmware}/${each} ]] || {
-    echo "There is no ${firmware}/${each}. Run firmware/build.sh first," \
+    echo "There is no ${firmware}/${each}. Run uv run firmware/build.py first," \
       "which fetches Zephyr and its SDK and builds the boot ROMs." >&2
     exit 1
   }
@@ -113,12 +113,10 @@ PYTHONPATH=${repository}/python "${project_venv}/bin/python" \
   exit 1
 }
 
-# What twister imports beyond what a build needs: the small part of
-# Zephyr's scripts/requirements-build-test.txt and
-# requirements-run-test.txt that it loads. Not the whole of either, which
-# bring gcovr, mypy, opencv and pyocd with them.
-twister_needs=(psutil tabulate natsort anytree junitparser colorama ply
-  pyserial pytest packaging python-dotenv)
+# What twister imports beyond what a build needs, which
+# firmware/build.py puts in Zephyr's venv, and the modules it imports them
+# as.
+twister_needs=${repository}/firmware/twister-requirements.txt
 twister_imports="import psutil, tabulate, natsort, anytree, junitparser"
 twister_imports+=", colorama, ply, serial, pytest, packaging, dotenv"
 
@@ -147,7 +145,7 @@ if [[ -n ${home} ]]; then
       --python-preference only-managed "${home}/venv"
     uv pip install --quiet --python "${home}/venv/bin/python" \
       --requirement "${home}/zephyr/scripts/requirements-base.txt" \
-      cmake ninja "${twister_needs[@]}"
+      --requirement "${twister_needs}" cmake ninja
   fi
   zephyr=${home}/zephyr
   sdk=${home}/${sdk_name}
@@ -159,7 +157,8 @@ else
   venv=${firmware}/venv
   out=${back}
   "${venv}/bin/python" -c "${twister_imports}" 2> /dev/null ||
-    uv pip install --quiet --python "${venv}/bin/python" "${twister_needs[@]}"
+    uv pip install --quiet --python "${venv}/bin/python" \
+      --requirement "${twister_needs}"
 fi
 
 # The emulator, by the name the boards' platform files give it. Twister

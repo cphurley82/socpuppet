@@ -522,7 +522,7 @@ The first line is the ROM's, and nothing was in RAM before it.
 
 Nothing is built differently. The two ways show firmware the same devicetree, so the image that boots one way boots the other.
 
-- **The ROM is `firmware/rom`**, a start in assembly and two pages of C with no Zephyr in it. `firmware/build.sh` builds it for each kind of CPU: `rom_rv64.elf` for the host, `rom_rv32.elf` for the SSD and the manager. [Its README](../firmware/rom/README.md) has every line it can say.
+- **The ROM is `firmware/rom`**, a start in assembly and two pages of C with no Zephyr in it. `firmware/build.py` builds it for each kind of CPU: `rom_rv64.elf` for the host, `rom_rv32.elf` for the SSD and the manager. [Its README](../firmware/rom/README.md) has every line it can say.
 - 🎓 **A boot image is the ELF file with the reading done.** A ROM of a kilobyte cannot read ELF, so `boot_image.wrap(file)` lays the program out as it will be in memory and puts a header of 72 bytes in front: a name, which kind of CPU, where the bytes go, where to start, a CRC, and an argument for the program. `socpuppet boot-image zephyr.elf -o zephyr.img` writes one to a file, and `platform.load_binary("zephyr.img", at=..., via=...)` loads it.
 - **Where the image goes is the system controller's `boot_address`.** Each CPU's ROM asks [its system controller](models/system-controller.md) where to look. For the host that is the start of the flash, `0x1020_0000`. The IO die's manager shares that flash and looks 2 MiB further in. So ask the board, as above, and do not write the address down.
 - **The flash is across the link.** The host's flash is on the IO die, so every byte of the image crosses the die-to-die link on its way to RAM. With `trace=True` the reads are in the trace, which `examples/boot_from_flash.py` counts.
@@ -534,7 +534,7 @@ Nothing is built differently. The two ways show firmware the same devicetree, so
 
 ## Booting OpenSBI
 
-🧦 [OpenSBI](https://github.com/riscv-software-src/opensbi) is the machine-mode firmware a RISC-V kernel sits on, and the host boots it the way a server does. 🎓 SBI, the Supervisor Binary Interface, is how a program in supervisor mode asks machine mode for what only machine mode can do: set the timer, write to the console before it has a driver, reset the machine. OpenSBI's `fw_jump` is told two things as it starts, the hart's number in `a0` and the address of a devicetree in `a1`, and it jumps to whatever is 2 MiB into RAM. `firmware/build.sh` builds it, with its own `test_payload` and one of ours, `sbi_payload`.
+🧦 [OpenSBI](https://github.com/riscv-software-src/opensbi) is the machine-mode firmware a RISC-V kernel sits on, and the host boots it the way a server does. 🎓 SBI, the Supervisor Binary Interface, is how a program in supervisor mode asks machine mode for what only machine mode can do: set the timer, write to the console before it has a driver, reset the machine. OpenSBI's `fw_jump` is told two things as it starts, the hart's number in `a0` and the address of a devicetree in `a1`, and it jumps to whatever is 2 MiB into RAM. `firmware/build.py` builds it, with its own `test_payload` and one of ours, `sbi_payload`.
 
 ```python
 import socpuppet as sp
@@ -587,7 +587,7 @@ What is different from booting Zephyr:
 
 ## Booting UEFI
 
-🧦 [EDK2](https://github.com/tianocore/edk2) is UEFI, the firmware a PC or a server loads its kernel with, and its RISC-V port runs on OpenSBI where a kernel would: in supervisor mode, 2 MiB into RAM, with the hart's number in `a0` and the devicetree in `a1`. 🎓 It boots in phases. **SEC** sets up a stack and unpacks the rest; **DXE** loads a few dozen drivers, each saying so on the console; and **BDS**, the boot manager, finds nothing to boot and starts the **UEFI shell**, which takes commands at `Shell>`. On the way it turns paging on and takes the timer's interrupt in supervisor mode, which makes it the first program here not written for the puppet to do either. `firmware/build.sh` builds it as `uefi.fd`, QEMU's port of it built for where `fw_jump` jumps.
+🧦 [EDK2](https://github.com/tianocore/edk2) is UEFI, the firmware a PC or a server loads its kernel with, and its RISC-V port runs on OpenSBI where a kernel would: in supervisor mode, 2 MiB into RAM, with the hart's number in `a0` and the devicetree in `a1`. 🎓 It boots in phases. **SEC** sets up a stack and unpacks the rest; **DXE** loads a few dozen drivers, each saying so on the console; and **BDS**, the boot manager, finds nothing to boot and starts the **UEFI shell**, which takes commands at `Shell>`. On the way it turns paging on and takes the timer's interrupt in supervisor mode, which makes it the first program here not written for the puppet to do either. `firmware/build.py` builds it as `uefi.fd`, QEMU's port of it built for where `fw_jump` jumps.
 
 ```python
 import re
@@ -758,7 +758,7 @@ riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
 (gdb) continue
 ```
 
-💡 On an Intel Mac the Zephyr SDK has no GDB, and `firmware/build.sh` has left Linux's in `build/firmware`. Run that one in the image the firmware was built in. From in there the Mac is called `host.docker.internal`:
+💡 On an Intel Mac the Zephyr SDK has no GDB, and `firmware/build.py` has left Linux's in `build/firmware`. Run that one in the image the firmware was built in. From in there the Mac is called `host.docker.internal`:
 
 ```sh
 docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
@@ -855,7 +855,7 @@ Run it with twister, from a Zephyr workspace:
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)   # where the boards are
-export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/build.sh in a checkout
+export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/build.py in a checkout
 west twister -p socpuppet_host -T my_test
 ```
 

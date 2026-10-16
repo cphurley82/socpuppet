@@ -32,50 +32,273 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv run python tools/ci.py run lint
 
-  firmware:
-    # The firmware images the tests boot: Zephyr samples, the boot ROMs,
-    # OpenSBI and EDK2, built once here and handed to the jobs that need
-    # them. An ELF image is the same file whatever machine the simulator
-    # runs on.
-    name: Firmware
+  fetch-sdk:
+    # The Zephyr SDK's RISC-V toolchain, for the machine it runs on, kept
+    # in a cache keyed on its version, and fetched only when that changes.
+    # The jobs that build with it restore it from there.
+    name: Zephyr SDK (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Look for it in the cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          lookup-only: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.cache.outputs.cache-hit != 'true'
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run fetch-sdk
+      - name: Keep it
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  fetch-llvm:
+    # The SDK's LLVM, which builds OpenSBI and EDK2: two gigabytes, so
+    # kept apart from the SDK, and cached as it is.
+    name: Zephyr SDK's LLVM
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Look for it in the cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/llvm-*
+          key: llvm-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          lookup-only: true
       - uses: astral-sh/setup-uv@v7
+        if: steps.cache.outputs.cache-hit != 'true'
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run fetch-llvm
+      - name: Keep it
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: build/firmware/llvm-*
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  fetch-zephyr:
+    # Zephyr itself, at its tag, and a venv with what its build scripts and
+    # twister import, whose Python is a program for the runner it was made
+    # on. Cached as the SDK is.
+    name: Zephyr (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Look for it in the cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          lookup-only: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.cache.outputs.cache-hit != 'true'
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run fetch-zephyr
+      - name: Keep it
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  firmware-rom:
+    # The boot ROMs, and sbi_payload, built with the SDK's compiler. An ELF
+    # image is the same file whatever machine the simulator runs on, so
+    # each part of the firmware is built once, here, and handed to the
+    # jobs that boot it. Each is cached on what it is built from.
+    name: Firmware (the boot ROMs)
+    needs: fetch-sdk
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
       - name: Cache the images
         id: images
         uses: actions/cache@v6
         with:
           path: |
-            build/firmware/*.bin
-            build/firmware/*.elf
-            build/firmware/*.fd
-            build/firmware/*.opcodes.txt
-          # The board the images are built for is part of what they are,
-          # and so are the patches OpenSBI and EDK2 are built with. What
-          # twister is run from builds no image: its script, its lists, and
-          # what it reads of each application.
-          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/opensbi-*', 'cmake/patches/edk2-*') }}
+            build/firmware/rom_*.bin
+            build/firmware/rom_*.elf
+            build/firmware/sbi_payload.bin
+            build/firmware/sbi_payload.elf
+          key: firmware-rom-${{ hashFiles('firmware/rom/**', 'firmware/sbi_payload/**', 'python/socpuppet/zephyr_module/include/**', 'firmware/build.py', 'firmware/versions.toml') }}
+      - name: Restore the Zephyr SDK
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.images.outputs.cache-hit != 'true'
+      - if: steps.images.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware-rom
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-rom
+          path: |
+            build/firmware/rom_*.bin
+            build/firmware/rom_*.elf
+            build/firmware/sbi_payload.bin
+            build/firmware/sbi_payload.elf
+          if-no-files-found: error
+
+  firmware-opensbi:
+    # OpenSBI for the host, built with the SDK's LLVM, and patched.
+    name: Firmware (OpenSBI)
+    needs: fetch-llvm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache the images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/fw_jump.bin
+            build/firmware/fw_jump.elf
+            build/firmware/test_payload.bin
+            build/firmware/test_payload.elf
+          key: firmware-opensbi-${{ hashFiles('cmake/patches/opensbi-*', 'firmware/build.py', 'firmware/versions.toml') }}
+      - name: Restore the SDK's LLVM
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/llvm-*
+          key: llvm-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.images.outputs.cache-hit != 'true'
+      - if: steps.images.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware-opensbi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-opensbi
+          path: |
+            build/firmware/fw_jump.bin
+            build/firmware/fw_jump.elf
+            build/firmware/test_payload.bin
+            build/firmware/test_payload.elf
+          if-no-files-found: error
+
+  firmware-zephyr:
+    # Zephyr's images, for the boards. The board an image is built for is
+    # part of what it is. What twister is run from builds no image: its
+    # script, its lists, and what it reads of each application.
+    name: Firmware (Zephyr's images)
+    needs: [fetch-sdk, fetch-zephyr]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache the images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/*_qemu_riscv*.elf
+            build/firmware/*_qemu_riscv*.bin
+            build/firmware/*_qemu_riscv*.opcodes.txt
+            build/firmware/*_socpuppet_*.elf
+            build/firmware/*_socpuppet_*.bin
+            build/firmware/*_socpuppet_*.opcodes.txt
+          key: firmware-zephyr-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**') }}
+      - name: Restore the Zephyr SDK
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - name: Restore Zephyr and its venv
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+          key: zephyr-ubuntu-24.04-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          fail-on-cache-miss: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.images.outputs.cache-hit != 'true'
+      - if: steps.images.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware-zephyr
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-zephyr
+          path: |
+            build/firmware/*_qemu_riscv*.elf
+            build/firmware/*_qemu_riscv*.bin
+            build/firmware/*_qemu_riscv*.opcodes.txt
+            build/firmware/*_socpuppet_*.elf
+            build/firmware/*_socpuppet_*.bin
+            build/firmware/*_socpuppet_*.opcodes.txt
+          if-no-files-found: error
+
+  firmware-edk2:
+    # EDK2, UEFI, for the host, built with the SDK's LLVM, and patched.
+    name: Firmware (EDK2)
+    needs: fetch-llvm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache the images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/uefi.fd
+          key: firmware-edk2-${{ hashFiles('cmake/patches/edk2-*', 'firmware/build.py', 'firmware/versions.toml') }}
       # EDK2's BaseTools are built with the runner's own gcc, and want
       # libuuid's header; and EDK2 compiles ACPI tables with iasl.
       - name: Install system packages
         if: steps.images.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y uuid-dev acpica-tools
+      - name: Restore the SDK's LLVM
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/llvm-*
+          key: llvm-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.images.outputs.cache-hit != 'true'
       - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware
+        run: uv run python tools/ci.py run firmware-edk2
       - uses: actions/upload-artifact@v7
         with:
-          name: firmware
+          name: firmware-edk2
           path: |
-            build/firmware/*.bin
-            build/firmware/*.elf
-            build/firmware/*.fd
-            build/firmware/*.opcodes.txt
+            build/firmware/uefi.fd
           if-no-files-found: error
 
   test:
     name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
-    needs: firmware
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -105,9 +328,11 @@ jobs:
         with:
           path: build/dev/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - uses: actions/download-artifact@v8
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
         with:
-          name: firmware
+          pattern: firmware-*
+          merge-multiple: true
           path: build/firmware
       - run: uv run python tools/ci.py run test
 
@@ -134,13 +359,13 @@ jobs:
     # Zephyr's test runner, with socpuppet as the emulator: the
     # board-compliance run (docs/twister.md). Twister builds an image and
     # runs it in one breath, so this one job has both what builds firmware
-    # and what runs it: Zephyr, its SDK and its venv, which are cached.
+    # and what runs it: Zephyr, its SDK and its venv, from their caches.
     #
     # On Linux and on a Mac. The Mac's runner is Apple silicon, the one Mac
     # the Zephyr SDK has a toolchain for, and so the one place twister runs
     # on macOS itself: an Intel Mac runs it in the devcontainer's image.
     name: Twister (Zephyr's tests on the boards, ${{ matrix.os }})
-    needs: firmware
+    needs: [fetch-sdk, fetch-zephyr, firmware-rom]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -157,8 +382,13 @@ jobs:
         with:
           path: build/dev/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Restore Zephyr, its SDK and its venv
-        id: zephyr
+      - name: Restore the Zephyr SDK
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - name: Restore Zephyr and its venv
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -166,41 +396,12 @@ jobs:
             build/firmware/python
             build/firmware/venv
             build/firmware/zephyr
-            build/firmware/zephyr-sdk-*
-          # The version of each, and the machine: the SDK's compiler and
-          # the venv's Python are programs for the runner they were
-          # fetched on.
-          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
-      # What the firmware job needs to build EDK2 too, which it does on
-      # the way.
-      - name: Install EDK2's build packages
-        if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'Linux'
-        run: sudo apt-get install -y uuid-dev acpica-tools
-      - name: Install EDK2's build packages
-        if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'macOS'
-        run: brew install acpica
-      - name: Fetch Zephyr and its SDK
-        # The firmware job is what fetches what builds the images, so this
-        # builds every image again too. Once for each version.
-        if: steps.zephyr.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware
-      - name: Keep Zephyr, its SDK and its venv
-        # Saved here and not when the job is over, where a scenario that
-        # fails would have every later run fetch it all again.
-        if: steps.zephyr.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
-            build/firmware/zephyr
-            build/firmware/zephyr-sdk-*
-          key: ${{ steps.zephyr.outputs.cache-primary-key }}
-      # The boot ROMs, which every run starts in, with the other images.
+          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          fail-on-cache-miss: true
+      # The boot ROMs, which every run starts in.
       - uses: actions/download-artifact@v8
         with:
-          name: firmware
+          name: firmware-rom
           path: build/firmware
       - run: uv run python tools/ci.py run twister
       - uses: actions/upload-artifact@v7
@@ -360,7 +561,14 @@ jobs:
     # (docs/setup.md): nothing but this leg would say that the patches
     # QBox needs on a Mac (docs/upstream.md) had stopped working there.
     name: Build and test with QBox's CPU (${{ matrix.os }})
-    needs: [firmware, qbox-build]
+    needs:
+      - fetch-sdk
+      - fetch-zephyr
+      - firmware-rom
+      - firmware-opensbi
+      - firmware-zephyr
+      - firmware-edk2
+      - qbox-build
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -398,8 +606,13 @@ jobs:
         with:
           path: build/qbox-dev/_deps
           key: deps-qbox-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Restore Zephyr, its SDK and its venv
-        id: zephyr
+      - name: Restore the Zephyr SDK
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/zephyr-sdk-*
+          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - name: Restore Zephyr and its venv
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -407,15 +620,13 @@ jobs:
             build/firmware/python
             build/firmware/venv
             build/firmware/zephyr
-            build/firmware/zephyr-sdk-*
-          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
-      - name: Fetch Zephyr and its SDK
-        # As the twister job does, when the cache had none.
-        if: steps.zephyr.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware
-      - uses: actions/download-artifact@v8
+          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          fail-on-cache-miss: true
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
         with:
-          name: firmware
+          pattern: firmware-*
+          merge-multiple: true
           path: build/firmware
       - run: uv run python tools/ci.py run qbox
       - uses: actions/upload-artifact@v7
@@ -445,7 +656,7 @@ jobs:
     # take them from last time. On Linux the build runs in a container,
     # which sees the runner's files under /host.
     name: Portable wheels (${{ matrix.os }})
-    needs: firmware
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -473,9 +684,11 @@ jobs:
           else
             sudo apt-get update && sudo apt-get install -y device-tree-compiler
           fi
-      - uses: actions/download-artifact@v8
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
         with:
-          name: firmware
+          pattern: firmware-*
+          merge-multiple: true
           path: build/firmware
       - run: uv run python tools/ci.py run wheel
       - uses: actions/upload-artifact@v7

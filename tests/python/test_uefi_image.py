@@ -1,11 +1,11 @@
-"""EDK2, as `firmware/build.sh` builds it, is OpenSBI's next stage.
+"""EDK2, as `firmware/build.py` builds it, is OpenSBI's next stage.
 
 🎓 EDK2 builds a flash device image, an FD: firmware volumes one after
 another, each a header and then files, padded to the size the platform's
 flash description gives. The RISC-V port's first volume holds SEC, the
 stage that runs first, unpacked, and the rest of EDK2 compressed. The FD
 is not position-independent. SEC is linked for the address its bytes will
-have when the FD sits where it was built for, and `firmware/build.sh`
+have when the FD sits where it was built for, and `firmware/build.py`
 builds it for where `fw_jump` jumps, 2 MiB into the host's RAM, and
 from a flash it is in one image with OpenSBI and the devicetree.
 """

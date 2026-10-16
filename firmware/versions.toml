@@ -1,0 +1,17 @@
+# The Zephyr that socpuppet's firmware is built with and tested against,
+# the SDK whose compiler builds it, the OpenSBI the host boots Linux's way
+# with, and the EDK2 that boots on it as UEFI. Read by firmware/build.py,
+# which fetches all four, and by firmware/twister.sh, which runs the Zephyr
+# and the SDK it fetched. CI keys its caches of each on this file.
+
+[zephyr]
+version = "v4.4.2"
+
+[sdk]
+version = "1.0.1"
+
+[opensbi]
+version = "v1.9"
+
+[edk2]
+version = "edk2-stable202608"

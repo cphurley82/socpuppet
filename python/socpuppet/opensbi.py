@@ -22,7 +22,7 @@ the devicetree's address, which is how silicon boots:
                   opensbi.flash_image(layout).to_bytes(),
                   via=board.cpu.socket)
 
-`firmware/build.sh` builds `fw_jump.bin`, and `test_payload.bin`, the
+`firmware/build.py` builds `fw_jump.bin`, and `test_payload.bin`, the
 next stage OpenSBI ships.
 """
 
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
     from socpuppet.placed import Port
     from socpuppet.platform import Platform
 
-#: How wide the CPU is that `fw_jump` is built for (`firmware/build.sh`).
+#: How wide the CPU is that `fw_jump` is built for (`firmware/build.py`).
 XLEN = 64
 #: Where `fw_jump` jumps, from the start of RAM: FW_JUMP_OFFSET in OpenSBI's
 #: `platform/generic/objects.mk`.

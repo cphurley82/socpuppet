@@ -1,7 +1,7 @@
 """Milestone M3b's exit test: Zephyr does block I/O on the host's SSD.
 
 The firmware is Zephyr's own test of its disk interface (its
-`tests/drivers/disk/disk_access`), built by `firmware/build.sh` for the
+`tests/drivers/disk/disk_access`), built by `firmware/build.py` for the
 board `socpuppet_host` with the shield `socpuppet_host_drive`. Nothing in
 it knows about socpuppet. It finds the drive by scanning the PCIe bus,
 starts it with Zephyr's stock NVMe driver, and reads and writes runs of

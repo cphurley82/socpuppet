@@ -145,7 +145,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "how the CPU gets the image: from its boot ROM, which finds it "
             "in the flash as silicon does (the default), or loaded straight "
             "into RAM, which is quicker. The ROM's own program is one that "
-            "firmware/build.sh builds, looked for in SOCPUPPET_FIRMWARE_DIR "
+            "firmware/build.py builds, looked for in SOCPUPPET_FIRMWARE_DIR "
             "or else in build/firmware"
         ),
     )

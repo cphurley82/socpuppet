@@ -20,7 +20,7 @@ RAM: the ROM's own program, and an image for the flash.
                   via=board.cpu.socket)
 
 `firmware/rom` is the ROM, built for each kind of CPU by
-`firmware/build.sh`.
+`firmware/build.py`.
 
 A stage that wants two registers set as it starts, as OpenSBI does, is
 started the quick way from a ROM too, which holds `reset_stub`: 🎭 QEMU's

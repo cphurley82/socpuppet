@@ -46,7 +46,7 @@ class TestWhenAnExampleThatBootsFirmwareFindsNone:
         )
 
         assert result.returncode == COULD_NOT_RUN
-        assert "firmware/build.sh" in result.stdout
+        assert "firmware/build.py" in result.stdout
 
     def test_it_looks_where_it_is_told_the_firmware_is(self, example, tmp_path):
         result = run_file(
@@ -65,4 +65,4 @@ class TestWhenAnExampleThatBootsFirmwareFindsNone:
         )
 
         assert result.returncode == 1
-        assert "firmware/build.sh" in result.stderr
+        assert "firmware/build.py" in result.stderr

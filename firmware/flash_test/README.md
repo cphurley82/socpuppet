@@ -12,4 +12,4 @@ Zephyr has a test that any driver of its flash class should pass: `tests/drivers
 | `prj.conf` | What Zephyr's test asks for, and three settings for a NAND: the test writes whole pages, from bigger buffers, and is told the size to expect. |
 | `boards/socpuppet_ssd.overlay` | A partition called `storage_partition`, which is where the test looks for somewhere to write. |
 
-`firmware/build.sh` builds it, and `tests/python/test_zephyr_flash_driver.py` boots it and reads the verdict off the console.
+`firmware/build.py` builds it, and `tests/python/test_zephyr_flash_driver.py` boots it and reads the verdict off the console.

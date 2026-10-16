@@ -18,8 +18,8 @@ It reaches the link through one driver in socpuppet's Zephyr module (`python/soc
 
 💡 `python/socpuppet/io_manager.py` is 🎭 the same firmware as a Python script, step for step. It stands in for this one where there is no CPU on the IO die.
 
-Build it as any Zephyr application for the board, or with `firmware/build.sh`, which builds every image the tests boot:
+Build it as any Zephyr application for the board, or with `firmware/build.py`, which builds every image the tests boot:
 
 ```sh
-firmware/build.sh
+uv run firmware/build.py
 ```

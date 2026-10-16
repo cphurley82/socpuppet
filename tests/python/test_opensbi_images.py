@@ -1,4 +1,4 @@
-"""OpenSBI, as `firmware/build.sh` builds it, fits the host's RAM.
+"""OpenSBI, as `firmware/build.py` builds it, fits the host's RAM.
 
 🎓 OpenSBI's `fw_jump` runs first in RAM and jumps to the next stage at
 an address fixed when it is built: 2 MiB in, on the generic platform.

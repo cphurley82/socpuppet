@@ -83,7 +83,7 @@ The firmware in `firmware/` and the drivers in socpuppet's Zephyr module (`pytho
 
 - **clang-format** lays it out, as it does the C++. Each of the two directories has a `.clang-format` of its own with Zephyr's settings, and clang-format goes by the nearest one.
 - **cpplint is not run on it.** It checks Google's C++ style. A `CPPLINT.cfg` in each directory says to leave the files alone.
-- **Zephyr's build** compiles it, with Zephyr's warnings. `firmware/build.sh` builds every image the tests boot.
+- **Zephyr's build** compiles it, with Zephyr's warnings. `firmware/build.py` builds every image the tests boot.
 - A header's guard is the header's name as Zephyr would spell it, such as `SOCPUPPET_DRIVERS_DMA_ENGINE_H_`, and not its path from `src/`.
 - **A driver's functions are named for its device**: `nvme_frontend_wait`, `dma_engine_copy_to_host`. C has one namespace, so where the device's own name is one Zephyr already uses for a whole subsystem, the name starts with `socpuppet_`, as `socpuppet_pcie_*` does. The header says whose it is either way: `<socpuppet/drivers/nvme_frontend.h>`.
 

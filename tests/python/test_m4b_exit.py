@@ -3,7 +3,7 @@
 The board is `socpuppet_ssd`: a 32-bit RISC-V core with an SRAM, a UART, a
 timer and an interrupt controller, and the SSD's three devices around it.
 Its devicetree is generated from the SSD's description, as the SSD's CPU
-sees it, and the firmware here was built for it by `firmware/build.sh`.
+sees it, and the firmware here was built for it by `firmware/build.py`.
 
 The firmware is Zephyr's `hello_world`, which knows nothing of being an
 SSD. There is a host on the PCIe link, and it does nothing.

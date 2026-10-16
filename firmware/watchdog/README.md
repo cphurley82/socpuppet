@@ -24,6 +24,6 @@ reset cause: watchdog
 
 Nothing in it is socpuppet's but one header, for the name of the register it reads. The watchdog is driven through Zephyr's watchdog API by Zephyr's own driver (`sifive,wdt`), the system controller is read through Zephyr's `syscon` driver, and `sys_reboot()` is Zephyr's. socpuppet's SoC supplies the one function Zephyr leaves to a SoC, `sys_arch_reboot()`, which writes the system controller's `RESET_REQUEST`.
 
-It is built by `firmware/build.sh` for `socpuppet_host` and `socpuppet_ssd`, which is one board for each kind of CPU and of interrupt controller.
+It is built by `firmware/build.py` for `socpuppet_host` and `socpuppet_ssd`, which is one board for each kind of CPU and of interrupt controller.
 
 💡 What tells the three starts apart is the system controller's `RESET_CAUSE`, and nothing the firmware kept: a reset loses what was in memory. Booted from a ROM, the image is copied out of the flash again each time.

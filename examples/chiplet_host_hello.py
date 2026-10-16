@@ -21,7 +21,7 @@ every character of its greeting crosses the link to reach the UART.
 The firmware is `host_hello.py`'s, the same image. It cannot tell which
 link it has.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/chiplet_host_hello.py
 
 The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
@@ -65,7 +65,8 @@ if __name__ == "__main__":
     if not IMAGE.exists():
         missing = (
             f"There is no {IMAGE} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(missing)

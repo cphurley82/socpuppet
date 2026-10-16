@@ -53,7 +53,7 @@ GREETING = "Hello World! socpuppet_host"
 #: The boot ROM's program (firmware/rom), built for each kind of CPU.
 ROM_FOR_A_64_BIT_CPU = "rom_rv64.elf"
 ROM_FOR_A_32_BIT_CPU = "rom_rv32.elf"
-#: OpenSBI (firmware/build.sh): `fw_jump`, the machine-mode firmware a
+#: OpenSBI (firmware/build.py): `fw_jump`, the machine-mode firmware a
 #: kernel sits on, as an ELF file and as its bytes; and `test_payload`, the
 #: supervisor-mode program OpenSBI ships for it to jump to.
 FW_JUMP = "fw_jump.elf"
@@ -63,7 +63,7 @@ TEST_PAYLOAD_BIN = "test_payload.bin"
 #: A next stage for OpenSBI of socpuppet's own (firmware/sbi_payload), which
 #: makes the calls of SBI's that `test_payload` does not.
 SBI_PAYLOAD_BIN = "sbi_payload.bin"
-#: EDK2's RISC-V port (firmware/build.sh): UEFI, as a flash device image
+#: EDK2's RISC-V port (firmware/build.py): UEFI, as a flash device image
 #: built to run where `fw_jump` jumps.
 UEFI_FD = "uefi.fd"
 

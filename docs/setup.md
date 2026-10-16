@@ -13,7 +13,7 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   uv              ──▶  Python 3.13, CMake, Ninja, pytest,          (your home, no root)
                        clang-format, clang-tidy, ruff, the linters
   cmake --preset  ──▶  SystemC, SCC, DBT-RISE, Boost and friends   (build/dev/_deps)
-  firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python,    (build/firmware)
+  firmware/build.py ─▶  the Zephyr SDK, Zephyr, Zephyr's Python,    (build/firmware)
                        OpenSBI, EDK2
   tools/build_qbox.sh ▶ QBox and its QEMU                          (build/qbox)
   Docker Desktop  ──▶  the devcontainer's image: the firmware      (Docker's own disk)
@@ -39,7 +39,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `git`, `curl`, `xz-utils` | fetching the dependencies at configure time, and the Zephyr SDK |
 | `zlib1g-dev` | SCC's FST trace writer, which waveform viewers such as GTKWave open, needs it |
 | `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates and compiles the one OpenSBI is handed. The tests that need it skip without it |
-| `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.sh` |
+| `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.py` |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
 
 For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
@@ -65,7 +65,7 @@ For QBox (step 5), add its Homebrew packages, which are QBox's own list without 
 brew install asio glib jpeg-turbo libelf libslirp libzip meson ninja pixman pkgconf sdl2
 ```
 
-⚠️ On an Intel Mac, `firmware/build.sh` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox builds natively on a Mac with the packages above, and it can be built in the devcontainer's image instead, with Docker Desktop (step 5).
+⚠️ On an Intel Mac, `firmware/build.py` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox builds natively on a Mac with the packages above, and it can be built in the devcontainer's image instead, with Docker Desktop (step 5).
 
 ## 2. uv
 
@@ -94,7 +94,7 @@ At this point the boot tests that want firmware are skipped, and each says so. T
 ## 4. Build the firmware
 
 ```sh
-firmware/build.sh                        # about 6 minutes the first time
+uv run firmware/build.py                 # about 6 minutes the first time
 ```
 
 The first run downloads the Zephyr SDK's RISC-V toolchain and its LLVM, OpenSBI, EDK2 with its submodules, Zephyr itself, and a Python for Zephyr's and EDK2's build scripts into `build/firmware` (about 4 GB on disk, half of it EDK2's sources and build), then builds every image the tests boot. Later runs take a minute or two, most of it EDK2's.

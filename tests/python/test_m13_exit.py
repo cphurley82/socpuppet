@@ -13,7 +13,7 @@ console's here, and the drive's in the disk test (M3b to M8), which runs
 on the same board.
 
 The image is `samples/subsys/shell/shell_module` for `socpuppet_host`, as
-`firmware/build.sh` builds it, with nothing of socpuppet's in the
+`firmware/build.py` builds it, with nothing of socpuppet's in the
 application.
 """
 

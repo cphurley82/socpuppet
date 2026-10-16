@@ -40,7 +40,7 @@ def a_program(directory, *, xlen=64):
 def boot_from_rom(firmware, rom, *arguments):
     """Run the command where it finds the boot ROM that `firmware` found.
 
-    The ROM is one of the images `firmware/build.sh` builds, so a test
+    The ROM is one of the images `firmware/build.py` builds, so a test
     without them is skipped.
     """
     return run_socpuppet(
@@ -246,7 +246,7 @@ class TestWhenTheRunCommandIsToBootFromARomAndThereIsNoRomWhereItLooks:
         assert result.returncode != 0
         [line] = result.stderr.strip().splitlines()
         assert str(nothing_built / ROM_FOR_A_64_BIT_CPU) in line
-        assert "firmware/build.sh" in line
+        assert "firmware/build.py" in line
 
 
 class TestWhenTheRunCommandLoadsZephyrsHelloWorldIntoTheHostsRam:

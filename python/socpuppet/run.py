@@ -124,7 +124,7 @@ BOARDS = {
 #: How many 512-byte blocks the drive of the shield `socpuppet_host_drive`
 #: has.
 _DRIVE_BLOCKS = 4096
-#: The boot ROM's program for each kind of CPU, as `firmware/build.sh`
+#: The boot ROM's program for each kind of CPU, as `firmware/build.py`
 #: names the two it builds from `firmware/rom`.
 _ROMS = {32: "rom_rv32.elf", 64: "rom_rv64.elf"}
 
@@ -207,7 +207,7 @@ def run(
         if not rom_program.exists():
             sys.exit(
                 f"There is no boot ROM at {rom_program}. Build it with "
-                "firmware/build.sh, say where it is with "
+                "`uv run firmware/build.py`, say where it is with "
                 "SOCPUPPET_FIRMWARE_DIR, or load the image straight into "
                 "RAM with --boot ram."
             )
@@ -294,7 +294,7 @@ def _build(platform: Platform) -> None:
 
 
 def _firmware_directory() -> pathlib.Path:
-    """Where `firmware/build.sh` left what it built."""
+    """Where `firmware/build.py` left what it built."""
     return pathlib.Path(
         os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
     )

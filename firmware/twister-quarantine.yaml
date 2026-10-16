@@ -33,6 +33,6 @@
     - libraries\.libc\.common\.stdio\..*
   comment: >-
     These include ff.h, from the FatFs module, to test stdio on a file
-    system. firmware/build.sh fetches Zephyr and none of its external
+    system. firmware/build.py fetches Zephyr and none of its external
     modules, since nothing socpuppet builds needs one, so they do not
     build. The rest of the C library's suite runs.

@@ -14,7 +14,7 @@ application in firmware/ssd, built for the board `socpuppet_ssd`.
 🎭 The host is still a script, and it is ssd_hello.py's, unchanged. It
 cannot tell which firmware it got.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/ssd_firmware_hello.py
 
 The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
@@ -67,7 +67,8 @@ if __name__ == "__main__":
     if not IMAGE.exists():
         missing = (
             f"There is no {IMAGE} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(missing)

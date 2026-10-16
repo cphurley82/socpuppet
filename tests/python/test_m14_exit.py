@@ -7,7 +7,7 @@ its image is, finds it in the flash, copies it to RAM and jumps to it.
 
 The firmware is the same image the other milestones' tests load: what is
 in the flash is that ELF file, wrapped (`socpuppet.boot_image`). The ROM
-is `firmware/rom`, which `firmware/build.sh` builds for each kind of CPU.
+is `firmware/rom`, which `firmware/build.py` builds for each kind of CPU.
 """
 
 import dataclasses

@@ -204,6 +204,15 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
 RESTORE_DEV = ("uv", "run", "cmake", "--preset", "dev")
 
 
+# The jobs that build the firmware, every image of which the tests boot.
+FIRMWARE = (
+    "firmware-rom",
+    "firmware-opensbi",
+    "firmware-zephyr",
+    "firmware-edk2",
+)
+
+
 # Quick first: when two jobs could start, the one higher in the table does.
 JOBS = [
     Job(
@@ -212,14 +221,50 @@ JOBS = [
         steps=(Step("lint", ("uv", "run", "python", "tools/lint.py")),),
     ),
     Job(
-        "firmware",
-        "build the firmware images the tests boot",
-        steps=(Step("build", ("firmware/build.sh",)),),
+        "fetch-sdk",
+        "fetch the Zephyr SDK's RISC-V toolchain",
+        steps=(Step("fetch", ("uv", "run", "firmware/build.py", "sdk")),),
+    ),
+    Job(
+        "fetch-llvm",
+        "fetch the Zephyr SDK's LLVM, which builds OpenSBI and EDK2",
+        steps=(Step("fetch", ("uv", "run", "firmware/build.py", "llvm")),),
+    ),
+    Job(
+        "fetch-zephyr",
+        "fetch Zephyr, and make a venv for its build scripts and twister",
+        steps=(
+            Step("fetch", ("uv", "run", "firmware/build.py", "zephyr-tree")),
+        ),
+    ),
+    Job(
+        "firmware-rom",
+        "build the boot ROMs, and the payload of ours for OpenSBI",
+        needs=("fetch-sdk",),
+        steps=(Step("build", ("uv", "run", "firmware/build.py", "rom")),),
+    ),
+    Job(
+        "firmware-opensbi",
+        "build OpenSBI for the host",
+        needs=("fetch-llvm",),
+        steps=(Step("build", ("uv", "run", "firmware/build.py", "opensbi")),),
+    ),
+    Job(
+        "firmware-zephyr",
+        "build Zephyr's images for the boards",
+        needs=("fetch-sdk", "fetch-zephyr"),
+        steps=(Step("build", ("uv", "run", "firmware/build.py", "zephyr")),),
+    ),
+    Job(
+        "firmware-edk2",
+        "build EDK2, UEFI, for the host",
+        needs=("fetch-llvm",),
+        steps=(Step("build", ("uv", "run", "firmware/build.py", "edk2")),),
     ),
     Job(
         "test",
         "build the dev tree and run every test",
-        needs=("firmware",),
+        needs=FIRMWARE,
         uses=("build/dev", "extension"),
         steps=(
             Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
@@ -245,7 +290,9 @@ JOBS = [
     Job(
         "twister",
         "Zephyr's test suites, and ours, on every board, run by twister",
-        needs=("firmware",),
+        # Twister builds its own images, with Zephyr and the SDK, and each
+        # boots from the ROM.
+        needs=("fetch-sdk", "fetch-zephyr", "firmware-rom"),
         steps=(
             Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
             Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
@@ -310,7 +357,7 @@ JOBS = [
     Job(
         "qbox",
         "build and test with QBox's CPU as the second hart, then twister on it",
-        needs=("firmware", "qbox-build"),
+        needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
         steps=(
             Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
             Step(
@@ -332,7 +379,7 @@ JOBS = [
     Job(
         "wheel",
         "build the wheels a user installs, and test one installed two ways",
-        needs=("firmware",),
+        needs=FIRMWARE,
         steps=wheel_steps,
         fresh=(WHEELHOUSE,),
         # cibuildwheel builds Linux's wheels in a manylinux container.

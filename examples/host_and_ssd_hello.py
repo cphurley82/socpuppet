@@ -23,7 +23,7 @@ scripted host. Each CPU has a console of its own, and this prints the two
 as one story, in the order things were said. 🎓 That order is good to a
 quantum, the tenth of a millisecond each CPU may run ahead of the other.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/host_and_ssd_hello.py
 
 The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
@@ -73,7 +73,8 @@ if __name__ == "__main__":
     if missing:
         message = (
             f"There is no {missing} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(message)

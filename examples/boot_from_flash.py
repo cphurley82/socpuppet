@@ -23,7 +23,7 @@ it. Each time it starts it reads why from the system controller, and each
 time the ROM has to load it again, because a reset leaves nothing in RAM
 that can be trusted.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/boot_from_flash.py
 
 The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
@@ -86,7 +86,8 @@ if __name__ == "__main__":
     if missing:
         message = (
             f"There is no {missing} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(message)

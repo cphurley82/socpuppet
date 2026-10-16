@@ -7,8 +7,8 @@ Zephyr comes with thousands of tests of itself: of its scheduler, its timers, it
 ## One command
 
 ```sh
-firmware/build.sh             # once: fetches Zephyr and its SDK, builds the boot ROMs
-firmware/twister.sh --suites  # every suite of the list, on every board
+uv run firmware/build.py rom zephyr-tree   # once: fetches Zephyr and its SDK, builds the boot ROMs
+firmware/twister.sh --suites               # every suite of the list, on every board
 ```
 
 The first prints nothing of interest. The second ends like this, once for each run of twister it makes:
@@ -21,7 +21,7 @@ Verdicts and logs: build/twister/out
 
 💡 Read the second number of the first line with the third and fourth. The twelve configurations that did not pass did not fail either: they are the ones [left out on purpose](#what-is-left-out-and-why), which twister counts among the executed.
 
-It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Apple silicon Mac that is all it needs: the Zephyr SDK has a compiler for one, `firmware/build.sh` fetches it, and twister runs on macOS itself, with no Docker. The whole list takes six and a half minutes there, on a ten-core M4. On an Intel Mac it runs itself in Docker, as `firmware/build.sh` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes seven and a half minutes on the sixteen-core machine it was measured on. [In CI](#in-ci) has the four places side by side.
+It needs a socpuppet built for the machine it runs on (`uv run cmake --build --preset dev`, see [development.md](development.md)). On an Apple silicon Mac that is all it needs: the Zephyr SDK has a compiler for one, `firmware/build.py` fetches it, and twister runs on macOS itself, with no Docker. The whole list takes six and a half minutes there, on a ten-core M4. On an Intel Mac it runs itself in Docker, as `firmware/build.py` does, because the Zephyr SDK has no compiler for one. ⚠️ The first run there builds socpuppet for Linux, which takes about ten minutes, and copies Zephyr and its SDK to a Docker volume called `socpuppet-twister`. After that the whole list takes seven and a half minutes on the sixteen-core machine it was measured on. [In CI](#in-ci) has the four places side by side.
 
 To run less, give twister's own options after the script's name, or after `--suites`:
 
@@ -67,7 +67,7 @@ flowchart LR
 3. **`socpuppet run`** describes the board, puts the image where the board's boot ROM will find it, and runs the simulation, printing each line of the console as it becomes whole.
 4. **Twister reads those lines.** For a ztest suite it waits for the verdict. For a sample it looks for the lines the sample's own `sample.yaml` says should appear. Then it ends the run.
 
-`firmware/twister.sh` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, those three are all you need, and twister is run as for any other board. 🚧 The boot ROMs are not in the package yet, so the second line names where `firmware/build.sh` built them in a checkout:
+`firmware/twister.sh` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, those three are all you need, and twister is run as for any other board. 🚧 The boot ROMs are not in the package yet, so the second line names where `firmware/build.py` built them in a checkout:
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)
@@ -151,7 +151,7 @@ Two more lines of the list are directories of this repository, and every suite u
 
 - **`drivers.watchdog`, on every board: Zephyr's test and Zephyr's driver disagree.** The test resets the CPU with the watchdog three times, and each time the CPU comes back from its ROM and the test carries on, which is the part that is socpuppet's. Its third case then sets up a timeout that resets the SoC *and* calls a function first, and expects the function to have run. The SiFive watchdog, which is the one socpuppet models, cannot do both, and Zephyr's driver for it says so in a comment, sets up the reset alone and reports success. The test provides for a driver that refuses (`-ENOTSUP`), and this one does not refuse. A real SiFive board would fail the same way. 📮 It is an entry in [upstream.md](upstream.md).
 - **`arch.riscv64.fatal.*`, on the two 32-bit boards: it is a test for a 64-bit CPU.** It makes the kernel panic and matches the dump of registers digit for digit, sixteen digits to a register. A 32-bit CPU prints eight. On `socpuppet_host` all four scenarios pass.
-- **`libraries.libc.common.stdio.*`, on every board: they want a module socpuppet does not fetch.** These test `stdio` on a file system and include `ff.h` from FatFs, one of Zephyr's external modules. `firmware/build.sh` fetches Zephyr alone, because nothing socpuppet builds needs a module, so they do not build. The rest of the C library's suite runs.
+- **`libraries.libc.common.stdio.*`, on every board: they want a module socpuppet does not fetch.** These test `stdio` on a file system and include `ff.h` from FatFs, one of Zephyr's external modules. `firmware/build.py` fetches Zephyr alone, because nothing socpuppet builds needs a module, so they do not build. The rest of the C library's suite runs.
 
 🚧 Not in the list at all yet, because the CPU cannot run them: Zephyr's tests of user mode and memory protection (`tests/kernel/mem_protect`, `tests/arch/riscv/userspace`). They want a core with user mode behind a PMP, which is a to-do in [plan.md](plan.md).
 
@@ -169,7 +169,7 @@ Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict
 
 ## In CI
 
-The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`, once on Linux and once on a Mac (`ubuntu-24.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.sh`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-24.04` and `twister-macos-15`. `uv run python tools/ci.py firmware twister` runs the same job here, and the `qbox` job does the same on the host board with QBox's CPU.
+The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`, once on Linux and once on a Mac (`ubuntu-24.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.py`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-24.04` and `twister-macos-15`. `uv run python tools/ci.py firmware twister` runs the same job here, and the `qbox` job does the same on the host board with QBox's CPU.
 
 💡 The Mac is there because its runner is Apple silicon, which is the one place twister runs on macOS itself. An Intel Mac runs it in a Linux container, so without this leg nothing would say that the scripts had stopped working on a Mac's own tools.
 

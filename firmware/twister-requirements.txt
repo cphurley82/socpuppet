@@ -1,0 +1,16 @@
+# What twister imports beyond what a build needs: the small part of
+# Zephyr's scripts/requirements-build-test.txt and requirements-run-test.txt
+# that it loads. Not the whole of either, which bring gcovr, mypy, opencv
+# and pyocd with them. firmware/build.py puts them in Zephyr's venv from
+# the start, and firmware/twister.sh in a venv of its own that lacks them.
+psutil
+tabulate
+natsort
+anytree
+junitparser
+colorama
+ply
+pyserial
+pytest
+packaging
+python-dotenv

@@ -2,7 +2,7 @@
 
 🎓 A directory is a suite to twister when it has a `testcase.yaml`: which
 boards to build the application for, and how to judge what it prints. One
-with no such file is built by `firmware/build.sh` and never judged by
+with no such file is built by `firmware/build.py` and never judged by
 twister, however many tests are in it.
 
 Ours are under `firmware/` and under the Zephyr module's `tests/`.

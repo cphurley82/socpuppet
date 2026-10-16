@@ -5,7 +5,7 @@ controller on one die, and a UART on another (see socpuppet/boards/host.py).
 This loads Zephyr's hello_world, built for the board `socpuppet_host`, runs
 it and prints what the firmware printed.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/host_hello.py
 
 The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
@@ -30,7 +30,8 @@ if __name__ == "__main__":
     if not IMAGE.exists():
         missing = (
             f"There is no {IMAGE} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(missing)

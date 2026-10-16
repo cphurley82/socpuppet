@@ -31,7 +31,7 @@ lines is not known, and they are printed in the order manager, ssd, host.
 None of the images was built for this. Each is the one that boots on its
 own board: socpuppet_iomgr, socpuppet_host with its drive, socpuppet_ssd.
 
-Build the firmware first:      firmware/build.sh
+Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/full_bootchain.py
 
 The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
@@ -92,7 +92,8 @@ if __name__ == "__main__":
     if missing:
         message = (
             f"There is no {missing} yet. Build the firmware with "
-            "`firmware/build.sh`, which takes a few minutes the first time."
+            "`uv run firmware/build.py`, which takes a few minutes the "
+            "first time."
         )
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(message)
