@@ -19,7 +19,9 @@ import argparse
 import contextlib
 import enum
 import os
+import platform
 import queue
+import shutil
 import signal
 import subprocess
 import sys
@@ -60,6 +62,21 @@ class Job:
     uses: tuple[str, ...] = ()
     # Whether it runs in Docker.
     docker: bool = False
+    # The one system it runs on (platform.system()'s name), if not every.
+    only_on: str = ""
+    # A path it runs for a change to, as CI's paths filter has it: here, it
+    # runs when the path differs from main's.
+    changed: str = ""
+
+
+def tidy_steps(preset: str) -> tuple[Step, ...]:
+    """Configure a tree, then run clang-tidy and the header check over it."""
+    build = ("uv", "run", "cmake", "--build", "--preset", preset)
+    return (
+        Step("configure", ("uv", "run", "cmake", "--preset", preset)),
+        Step("tidy", (*build, "--target", "tidy")),
+        Step("check_headers", (*build, "--target", "check_headers")),
+    )
 
 
 # Quick first: when two jobs could start, the one higher in the table does.
@@ -94,20 +111,25 @@ JOBS = [
     Job(
         "tidy",
         "clang-tidy over our C++, and each header compiled on its own",
-        steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
-            *(
-                Step(
-                    target,
-                    (
-                        *("uv", "run", "cmake", "--build", "--preset", "dev"),
-                        *("--target", target),
-                    ),
-                )
-                for target in ("tidy", "check_headers")
-            ),
-        ),
+        steps=tidy_steps("dev"),
         uses=("build/dev",),
+        # clang-tidy reads GCC's compile commands and standard library, so
+        # it reads our code the way the Linux build compiles it.
+        only_on="Linux",
+    ),
+    Job(
+        "qbox-build",
+        "build QBox, QEMU in SystemC, for the second hart",
+        steps=(Step("build", ("uv", "run", "tools/build_qbox.sh")),),
+        uses=("build/qbox",),
+    ),
+    Job(
+        "qbox-tidy",
+        "clang-tidy over the QBox adapter, which the dev tree leaves out",
+        needs=("qbox-build",),
+        steps=tidy_steps("qbox"),
+        uses=("build/qbox-dev",),
+        only_on="Linux",
     ),
     Job(
         "devcontainer",
@@ -122,6 +144,7 @@ JOBS = [
             )
         ),
         docker=True,
+        changed=".devcontainer",
     ),
 ]
 
@@ -142,9 +165,9 @@ def main() -> int:
         return run_for_ci(parse_run(arguments[1:]).jobs)
     args = parse_here(arguments)
     if args.list:
-        list_jobs()
+        list_jobs(args.docker)
         return 0
-    return run_here(args.jobs, args.parallel)
+    return run_here(args.jobs, args.parallel, args.docker)
 
 
 def parse_here(arguments: list[str]) -> argparse.Namespace:
@@ -161,6 +184,12 @@ def parse_here(arguments: list[str]) -> argparse.Namespace:
         metavar="job",
         help="run only these (default: every one that can run here): "
         "%(choices)s",
+    )
+    parser.add_argument(
+        "--docker",
+        action="store_true",
+        help="run the jobs in Docker too: "
+        + ", ".join(job.name for job in JOBS if job.docker),
     )
     parser.add_argument(
         "--list",
@@ -202,11 +231,21 @@ def parse_run(arguments: list[str]) -> argparse.Namespace:
     return parser.parse_args(arguments)
 
 
-def list_jobs() -> None:
-    """Print each job, what it is for, and the command that runs it here."""
+def list_jobs(docker: bool) -> None:
+    """Print each job: what it is for, what it needs, and how to run it here.
+
+    A job that cannot run here says why. `docker` says whether the jobs in
+    Docker were asked for.
+    """
+    indent = " " * (NAME_WIDTH + 2)
     for job in JOBS:
         print(f"{job.name:<{NAME_WIDTH}}  {job.blurb}")
-        print(f"{'':<{NAME_WIDTH}}  {command_for(job)}")
+        if job.needs:
+            print(f"{indent}needs {', '.join(job.needs)}")
+        reason = why_skipped(job, docker)
+        if reason:
+            print(f"{indent}{Verdict.SKIPPED.mark()} {reason}")
+        print(f"{indent}{command_for(job)}")
 
 
 def run_for_ci(names: list[str]) -> int:
@@ -275,18 +314,67 @@ class JobEnded:
     outcome: Outcome
 
 
-def run_here(names: list[str], parallel: int) -> int:
-    """Run the jobs named, or every one, here. Returns the exit status."""
+def run_here(names: list[str], parallel: int, docker: bool) -> int:
+    """Run the jobs named, or every one, here. Returns the exit status.
+
+    `docker` says whether the jobs in Docker were asked for.
+    """
     jobs = [job for job in JOBS if not names or job.name in names]
     LOGS.mkdir(parents=True, exist_ok=True)
-    return Run(jobs, parallel).go()
+    # A job in Docker that was named was asked for.
+    return Run(jobs, parallel, docker or bool(names)).go()
 
 
-def why_not_here(job: Job) -> str | None:
-    """Why a job cannot run on this machine, or None if it can."""
-    if job.docker:
-        return "needs Docker"
+def why_skipped(job: Job, docker: bool) -> str | None:
+    """Why a run here skips a job, or None if it runs it.
+
+    A job is skipped when this machine cannot run it, when it was not asked
+    for, or when CI would skip it too. `docker` says whether the jobs in
+    Docker were asked for. The cheaper questions are asked first.
+    """
+    if job.only_on and platform.system() != job.only_on:
+        return f"runs on {job.only_on} alone"
+    if job.docker and not docker:
+        return "runs in Docker, which --docker asks for"
+    if job.changed and not changed_from_main(job.changed):
+        return f"{job.changed} is the same as main's, so CI skips it too"
+    if job.docker and not shutil.which("docker"):
+        return "needs Docker, which is not installed"
+    if job.docker and not docker_answers():
+        return (
+            "needs Docker, and `docker info` fails: is the daemon running, "
+            "and are you in the docker group?"
+        )
     return None
+
+
+def changed_from_main(path: str) -> bool:
+    """Whether this branch has changed a path, committed or not, or added to it.
+
+    As CI's paths filter does for a pull request, it compares with where
+    the branch left main, so that what main has done since does not count.
+    """
+    base = git("merge-base", "main", "HEAD").stdout.strip()
+    untracked = git("ls-files", "--others", "--exclude-standard", "--", path)
+    differs = git("diff", "--quiet", base, "--", path)
+    return bool(untracked.stdout) or differs.returncode != 0
+
+
+def git(*args: str) -> subprocess.CompletedProcess[str]:
+    """Ask git something about the repository."""
+    return subprocess.run(
+        ["git", *args], cwd=REPO, capture_output=True, text=True
+    )
+
+
+def docker_answers() -> bool:
+    """Whether Docker's daemon is running, and lets this user in."""
+    info = subprocess.run(
+        ["docker", "info"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return info.returncode == 0
 
 
 class Run:
@@ -298,8 +386,14 @@ class Run:
     is printed from here, as the threads report what they did.
     """
 
-    def __init__(self, jobs: list[Job], parallel: int) -> None:
+    def __init__(self, jobs: list[Job], parallel: int, docker: bool) -> None:
         self.jobs = jobs
+        # Whether a job is skipped is settled before any starts.
+        self.skipped = {
+            job.name: reason
+            for job in jobs
+            if (reason := why_skipped(job, docker))
+        }
         self.named = {job.name for job in jobs}
         self.parallel = parallel
         # What only this thread reads and writes.
@@ -355,8 +449,8 @@ class Run:
                 ),
                 None,
             )
-            reason = why_not_here(job)
-            if reason:
+            if job.name in self.skipped:
+                reason = self.skipped[job.name]
                 self.end(job.name, Outcome(Verdict.SKIPPED, detail=reason))
             elif unmet:
                 reason = f"needs {unmet}, which failed"
@@ -490,8 +584,7 @@ def header(job: Job) -> str:
 def command_for(job: Job) -> str:
     """The command that runs a job here, with the jobs it needs first."""
     names = [other.name for other in JOBS if other.name in needed_by(job)]
-    docker = ["--docker"] if job.docker else []
-    return " ".join(["uv run python tools/ci.py", *docker, *names, job.name])
+    return " ".join(["uv run python tools/ci.py", *names, job.name])
 
 
 def needed_by(job: Job) -> set[str]:

@@ -1,7 +1,7 @@
 """tools/ci.py, which runs CI's jobs: every one on this machine, or one in CI.
 
 The runner is run for real in a throwaway copy of the repository, with
-stand-ins for uv and the scripts the jobs call. Each stand-in writes the
+stand-ins for uv, docker and the scripts the jobs call. Each stand-in writes the
 command it was given to a log, so the tests can say what the runner ran, and
 in what order, without building anything.
 """
@@ -10,6 +10,7 @@ import importlib.util
 import itertools
 import json
 import os
+import platform
 import shutil
 import signal
 import subprocess
@@ -53,7 +54,7 @@ sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 """
 
 # The scripts in the repository that the jobs call.
-SCRIPTS = ("firmware/build.sh", "tools/devcontainer.sh")
+SCRIPTS = ("firmware/build.sh", "tools/build_qbox.sh", "tools/devcontainer.sh")
 
 # What the runner is told by the environment it runs in, which the tests
 # decide for themselves.
@@ -70,8 +71,11 @@ def load_runner():
 
 JOBS = load_runner().JOBS
 JOBS_BY_NAME = {job.name: job for job in JOBS}
-# The jobs that run here with no option given.
+# The jobs that run here with no option given, and the jobs in Docker.
 JOBS_HERE = [job for job in JOBS if not job.docker]
+DOCKER_JOBS = [job.name for job in JOBS if job.docker]
+LINUX_JOBS = [job.name for job in JOBS if job.only_on == "Linux"]
+DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
 
 
 @pytest.fixture
@@ -90,8 +94,11 @@ def ci(tmp_path):
     shutil.copy(RUNNER, root / "tools" / "ci.py")
     for script in SCRIPTS:
         write_stand_in(root / script)
+    git(root, "init", "-q", "-b", "main")
+    commit_everything(root)
     bin_directory = tmp_path / "bin"
-    write_stand_in(bin_directory / "uv")
+    for program in ("uv", "docker"):
+        write_stand_in(bin_directory / program)
     log = tmp_path / "log"
 
     def start(*args, **env):
@@ -238,14 +245,6 @@ def test_the_command_to_run_a_job_here_names_what_it_needs_before_it(ci, job):
     named = command_to_run_here(result.stdout).split()
     for need in job.needs:
         assert named.index(need) < named.index(job.name)
-
-
-def test_run_of_a_job_in_docker_says_to_run_it_here_with_docker(ci):
-    docker_job = next(job for job in JOBS if job.docker)
-
-    result, _ = ci("run", docker_job.name)
-
-    assert "--docker" in command_to_run_here(result.stdout).split()
 
 
 def test_with_no_job_named_every_job_that_can_run_here_runs_and_passes(ci):
@@ -428,10 +427,180 @@ def test_an_interrupted_run_stops_its_steps_and_says_how_far_it_got(ci):
     wait_for(lambda: not alive(step))
 
 
+def test_without_docker_asked_for_the_jobs_in_docker_are_skipped_saying_so(
+    ci,
+):
+    result, _ = ci()
+
+    assert result.returncode == 0, result.stdout
+    for name in DOCKER_JOBS:
+        assert "--docker" in summary_of(result.stdout, name)
+
+
+def test_with_docker_asked_for_and_not_installed_its_jobs_are_skipped(
+    ci, tmp_path
+):
+    change_what_the_docker_jobs_run_for(ci.root)
+
+    result, lines = ci(
+        "--docker", *DOCKER_JOBS, PATH=path_without_docker(tmp_path)
+    )
+
+    assert result.returncode == 0, result.stdout
+    for name in DOCKER_JOBS:
+        assert summary_of(result.stdout, name) == (
+            f"⏭  {name}: needs Docker, which is not installed"
+        )
+    assert lines == []
+
+
+def test_with_docker_asked_for_and_not_answering_its_jobs_are_skipped(ci):
+    change_what_the_docker_jobs_run_for(ci.root)
+
+    result, lines = ci("--docker", *DOCKER_JOBS, FAIL_ON="info")
+
+    assert result.returncode == 0, result.stdout
+    for name in DOCKER_JOBS:
+        assert "`docker info` fails" in summary_of(result.stdout, name)
+        assert not set(commands_of(name)) & set(lines)
+
+
+def test_a_job_in_docker_named_on_its_own_runs_without_docker_asked_for(ci):
+    change_what_the_docker_jobs_run_for(ci.root)
+
+    result, _ = ci(*DOCKER_JOBS)
+
+    assert verdicts(result.stdout) == dict.fromkeys(DOCKER_JOBS, "✅")
+
+
+def test_the_devcontainer_is_skipped_when_it_is_the_same_as_mains(ci):
+    result, lines = ci("devcontainer")
+
+    assert result.returncode == 0, result.stdout
+    assert summary_of(result.stdout, "devcontainer") == (
+        f"⏭  devcontainer: {DEVCONTAINER.changed} is the same as main's, "
+        "so CI skips it too"
+    )
+    assert lines == []
+
+
+def test_the_devcontainer_runs_for_a_change_not_yet_committed(ci):
+    change_what_it_runs_for(ci.root, DEVCONTAINER)
+
+    result, _ = ci("devcontainer")
+
+    assert verdicts(result.stdout) == {"devcontainer": "✅"}
+
+
+def test_the_devcontainer_runs_for_a_change_committed_on_a_branch(ci):
+    git = [
+        "git",
+        "-C",
+        str(ci.root),
+        "-c",
+        "user.name=spam",
+        "-c",
+        "user.email=-",
+    ]
+    subprocess.run([*git, "switch", "-q", "-c", "spam"], check=True)
+    change_what_it_runs_for(ci.root, DEVCONTAINER)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "eggs"], check=True)
+
+    result, _ = ci("devcontainer")
+
+    assert verdicts(result.stdout) == {"devcontainer": "✅"}
+
+
+def test_the_devcontainer_is_skipped_for_a_change_main_made_since_the_branch(
+    ci,
+):
+    git = [
+        "git",
+        "-C",
+        str(ci.root),
+        "-c",
+        "user.name=spam",
+        "-c",
+        "user.email=-",
+    ]
+    subprocess.run([*git, "branch", "spam"], check=True)
+    change_what_it_runs_for(ci.root, DEVCONTAINER)
+    subprocess.run([*git, "add", "."], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "eggs"], check=True)
+    subprocess.run([*git, "switch", "-q", "spam"], check=True)
+
+    result, _ = ci("devcontainer")
+
+    assert verdicts(result.stdout) == {"devcontainer": "⏭"}
+
+
+@pytest.mark.skipif(platform.system() == "Linux", reason="for another system")
+def test_off_linux_the_jobs_for_linux_alone_are_skipped_saying_so(ci):
+    result, lines = ci(*LINUX_JOBS)
+
+    assert result.returncode == 0, result.stdout
+    for name in LINUX_JOBS:
+        assert summary_of(result.stdout, name) == (
+            f"⏭  {name}: runs on Linux alone"
+        )
+    assert lines == []
+
+
+@pytest.mark.skipif(platform.system() != "Linux", reason="for Linux")
+def test_on_linux_the_jobs_for_linux_alone_run(ci):
+    result, _ = ci(*LINUX_JOBS)
+
+    assert verdicts(result.stdout) == dict.fromkeys(LINUX_JOBS, "✅")
+
+
+def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
+    result, _ = ci("--list")
+
+    entries = listed(result.stdout)
+    for job in JOBS:
+        for need in job.needs:
+            assert need in needs_line(entries[job.name])
+    for name in DOCKER_JOBS:
+        assert "⏭" in entries[name]
+        assert "--docker" in entries[name]
+
+
 def write_stand_in(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!{sys.executable}\n{STAND_IN}")
     path.chmod(0o755)
+
+
+def git(root, *args):
+    who = ["-c", "user.name=spam", "-c", "user.email=-"]
+    subprocess.run(["git", "-C", str(root), *who, *args], check=True)
+
+
+def commit_everything(root):
+    git(root, "add", ".")
+    git(root, "commit", "-q", "-m", "spam")
+
+
+def change_what_it_runs_for(root, job):
+    """Add a file where a job that runs for a change looks for one."""
+    path = root / job.changed / "spam"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("eggs\n")
+
+
+def change_what_the_docker_jobs_run_for(root):
+    for name in DOCKER_JOBS:
+        if JOBS_BY_NAME[name].changed:
+            change_what_it_runs_for(root, JOBS_BY_NAME[name])
+
+
+def path_without_docker(tmp_path):
+    """A PATH with git on it, and no docker."""
+    directory = tmp_path / "no-docker"
+    directory.mkdir()
+    (directory / "git").symlink_to(shutil.which("git"))
+    return str(directory)
 
 
 def wait_for(condition, seconds=10):
@@ -499,6 +668,23 @@ def summary_of(output, name):
         line.strip()
         for line in summary.splitlines()
         if line.split()[1:2] in ([name], [f"{name}:"])
+    )
+
+
+def listed(output):
+    """What --list says of each job: {name: its lines, as one text}."""
+    entries = {}
+    for line in output.splitlines():
+        if line and not line.startswith(" "):
+            name = line.split()[0]
+            entries[name] = ""
+        entries[name] += line + "\n"
+    return entries
+
+
+def needs_line(entry):
+    return next(
+        line for line in entry.splitlines() if line.strip().startswith("needs")
     )
 
 
