@@ -26,7 +26,7 @@ in it. The boot ROM, fw_jump, test_payload and sbi_payload are each an .elf
 and a .bin, and EDK2 is uefi.fd, its flash device image.
 
 The Zephyr SDK has no toolchain for an Intel Mac. There the build runs in
-the devcontainer's image, which is Linux, by way of tools/devcontainer.sh,
+the devcontainer's image, which is Linux, by way of tools/devcontainer.py,
 and needs Docker for that; --in-docker does the same anywhere. The images
 come out the same: they are RISC-V programs, and do not care what built
 them.
@@ -205,7 +205,7 @@ def in_docker(parts: list[str], out: Path, jobs: int) -> int:
     inside = Path("/workspace") / out.relative_to(REPOSITORY)
     return subprocess.run(
         [
-            str(REPOSITORY / "tools" / "devcontainer.sh"),
+            str(REPOSITORY / "tools" / "devcontainer.py"),
             *("python3", "firmware/build.py", *parts),
             *("--out", str(inside), "-j", str(jobs)),
         ],

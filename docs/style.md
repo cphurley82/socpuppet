@@ -11,7 +11,7 @@ socpuppet is meant to be read. A learner should be able to open any file and fin
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
 | Markdown | one paragraph per line | rumdl |
 | SystemRDL, for register maps | one block to a file, in `regs/` | `tools/regs.py`, which lint runs |
-| CI workflows, shell scripts | | actionlint, shellcheck |
+| CI workflows, and the spikes' shell scripts | | actionlint, shellcheck |
 
 ```sh
 uv run python tools/lint.py          # every linter, over the whole tree

@@ -626,7 +626,7 @@ class QboxCpu(RiscvCpu):
     meets them, where `DbtRiseCpu` interprets them, so it is many times
     faster, and it is a second hart written by other people: firmware that
     works on one and not the other says which to look at. Only a build of
-    socpuppet with QBox has it (tools/build_qbox.sh), because QEMU is
+    socpuppet with QBox has it (tools/build_qbox.py), because QEMU is
     GPL-2.0 and is never in the wheel.
 
     It is RV64GC with supervisor and user mode, the core `DbtRiseCpu` has

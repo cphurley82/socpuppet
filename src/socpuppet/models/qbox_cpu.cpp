@@ -43,7 +43,7 @@ constexpr unsigned kSupervisorExternalInterrupt = 9;
 constexpr unsigned kMachineExternalInterrupt = 11;
 
 // The Core below is QBox's cpu_riscv64, in a QEMU built for 64-bit RISC-V
-// only (tools/build_qbox.sh), the width Linux and the host boards are. The
+// only (tools/build_qbox.py), the width Linux and the host boards are. The
 // 32-bit boards keep the dbt_rise_cpu.
 void RefuseAnyWidthBut64(std::uint64_t xlen) {
   if (xlen == 64) return;

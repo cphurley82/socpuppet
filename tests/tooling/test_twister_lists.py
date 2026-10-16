@@ -1,4 +1,4 @@
-"""The two lists firmware/twister.sh runs twister from.
+"""The two lists firmware/twister.py runs twister from.
 
 `firmware/twister-suites.txt` names the suites of the board-compliance run,
 and `firmware/twister-quarantine.yaml` what is left out of them, and why.

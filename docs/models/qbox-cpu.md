@@ -13,13 +13,13 @@ The same RISC-V processor core as the [DBT-RISE CPU](dbt-rise-cpu.md)'s RV64GC w
 QEMU is GPL-2.0, so it is never in socpuppet's wheel. Whoever wants it builds it:
 
 ```sh
-uv run tools/build_qbox.sh      # QBox and its QEMU, into build/qbox/install: about five minutes
+uv run tools/build_qbox.py      # QBox and its QEMU, into build/qbox/install: about five minutes
 uv run cmake --preset qbox      # socpuppet with it, in build/qbox-dev
 uv run cmake --build --preset qbox
 uv run ctest --preset qbox      # everything, with the hart's tests on QBox's CPU
 ```
 
-[setup.md](../setup.md) lists the packages the tool needs, on Linux and on a Mac, and on a Mac the same four commands can run in the devcontainer's image instead, through `tools/devcontainer.sh`. A build without QBox still knows the name `qbox_cpu`, and refuses it with how to build one.
+[setup.md](../setup.md) lists the packages the tool needs, on Linux and on a Mac, and on a Mac the same four commands can run in the devcontainer's image instead, through `tools/devcontainer.py`. A build without QBox still knows the name `qbox_cpu`, and refuses it with how to build one.
 
 ⚠️ A build with QBox links socpuppet to QBox's own SystemC and CCI, which are shared libraries, because one program can hold only one SystemC kernel. The build without QBox fetches the same SystemC commit and links it statically, so the two run the same kernel.
 
@@ -70,6 +70,6 @@ The hart's suite runs on it with `ctest --preset qbox`, and what it does not pas
 
 ## Where it comes from
 
-💡 Borrowed. The CPU is QEMU's, through [QBox](https://github.com/qualcomm/qbox) at `4d63017c`, built by `tools/build_qbox.sh` with the patches in `cmake/patches/qbox-*.patch` and `cmake/patches/libqemu-*.patch`. socpuppet's adapter is `src/socpuppet/models/qbox_cpu.cpp`: it funnels QBox's bus socket into its own, passes reset and the three interrupts on as they change, sets QBox's parameters before it is built, and answers the `time` register and the IMSIC's registers through hooks of QEMU's that a patch exports. Its one source file is the only one that sees QBox's headers.
+💡 Borrowed. The CPU is QEMU's, through [QBox](https://github.com/qualcomm/qbox) at `4d63017c`, built by `tools/build_qbox.py` with the patches in `cmake/patches/qbox-*.patch` and `cmake/patches/libqemu-*.patch`. socpuppet's adapter is `src/socpuppet/models/qbox_cpu.cpp`: it funnels QBox's bus socket into its own, passes reset and the three interrupts on as they change, sets QBox's parameters before it is built, and answers the `time` register and the IMSIC's registers through hooks of QEMU's that a patch exports. Its one source file is the only one that sees QBox's headers.
 
 What was changed, and why, is in [upstream.md](../upstream.md): three patches for C++20, four for what the contract and the suite found (a sleeping CPU that stopped time, the two hooks, and the reset handler's thread), one for what OpenSBI found (a parameter to switch Sstc off), and four so that it builds and runs on a Mac (QEMU without OpenGL, rpclib's own asio before Homebrew's, twice, and QEMU found from inside Python). CI builds it, when its pin or its patches change, and on every push runs all of the above, and twister's suites on the host board, on Linux and natively on an Apple silicon Mac: the `qbox-build`, `qbox` and `qbox-tidy` jobs of `.github/workflows/ci.yml`, which `uv run python tools/ci.py qbox-build qbox qbox-tidy` runs here.

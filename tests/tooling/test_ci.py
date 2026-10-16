@@ -78,10 +78,9 @@ sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 
 # The scripts in the repository that the jobs call.
 SCRIPTS = (
-    "firmware/twister.sh",
-    "tools/build_qbox.sh",
-    "tools/devcontainer.sh",
-    "tools/test_wheel.sh",
+    "tools/build_qbox.py",
+    "tools/devcontainer.py",
+    "tools/test_wheel.py",
 )
 
 # The Python the tools are pinned to, which the wheels are tested under.
@@ -753,7 +752,7 @@ def test_twister_builds_the_dev_tree_checks_its_files_then_runs_the_suites(
         "uv run cmake --build --preset dev",
         "uv run pytest tests/python/test_twister_boards.py",
         "uv run pytest tests/tooling -k twister",
-        "twister.sh --suites",
+        "uv run firmware/twister.py --suites",
     ]
 
 
@@ -779,7 +778,7 @@ def test_sanitizers_builds_and_tests_the_asan_tree(ci):
 def test_qbox_build_builds_qbox(ci):
     _, lines = ci("run", "qbox-build")
 
-    assert lines == ["uv run tools/build_qbox.sh"]
+    assert lines == ["uv run tools/build_qbox.py"]
 
 
 def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_qboxs_cpu(
@@ -793,7 +792,7 @@ def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_q
         ("uv run cmake --build --preset qbox", {}),
         ("uv run ctest --preset qbox", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
         (
-            "twister.sh --suites -p socpuppet_host",
+            "uv run firmware/twister.py --suites -p socpuppet_host",
             {"SOCPUPPET_CPU": "qbox_cpu"},
         ),
     ]
@@ -829,8 +828,8 @@ def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
     assert SDIST in build
     assert commands[2:] == [
         ["uv", "run", "python", "tools/check_wheel.py", OUR_WHEEL],
-        ["test_wheel.sh", "uv", OUR_WHEEL],
-        ["test_wheel.sh", "pip", OUR_WHEEL],
+        ["test_wheel.py", "uv", OUR_WHEEL],
+        ["test_wheel.py", "pip", OUR_WHEEL],
     ]
 
 
@@ -838,7 +837,7 @@ def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):
     ci("wheel", makes=ONE_WHEEL)
 
     installs = [
-        step for step in steps_run(ci) if "test_wheel.sh" in step["command"]
+        step for step in steps_run(ci) if "test_wheel.py" in step["command"]
     ]
     assert installs
     for install in installs:
@@ -862,8 +861,8 @@ def test_wheel_in_ci_builds_every_wheel_in_place_checks_each_and_installs_ours(
     assert [c["command"] for c in ci.commands()] == [
         "uv run cibuildwheel --output-dir build/wheelhouse",
         "uv run python tools/check_wheel.py " + " ".join(wheels),
-        f"test_wheel.sh uv {ours}",
-        f"test_wheel.sh pip {ours}",
+        f"test_wheel.py uv {ours}",
+        f"test_wheel.py pip {ours}",
     ]
 
 
@@ -897,9 +896,9 @@ def test_devcontainer_builds_and_tests_the_linux_tree_in_docker(ci):
     _, lines = ci("run", "devcontainer")
 
     assert lines == [
-        "devcontainer.sh uv run cmake --preset linux",
-        "devcontainer.sh uv run cmake --build --preset linux",
-        "devcontainer.sh uv run ctest --preset linux",
+        "devcontainer.py uv run cmake --preset linux",
+        "devcontainer.py uv run cmake --build --preset linux",
+        "devcontainer.py uv run ctest --preset linux",
     ]
 
 
@@ -911,7 +910,7 @@ def write_stand_in(path):
 
 # The dependencies a run finds in the build trees: those of socpuppet's
 # trees (the presets' binaryDir), as FetchContent names them, and QBox's own
-# two (tools/build_qbox.sh's tree).
+# two (tools/build_qbox.py's tree).
 DEPENDENCY_DIRECTORIES = [
     f"{tree}/_deps/{name}-{part}"
     for tree in ("build/dev", "build/qbox-dev")
@@ -924,7 +923,7 @@ DEPENDENCY_DIRECTORIES = [
 ]
 # The ones that are patched: FetchContent's that have a PATCH_COMMAND, and
 # QBox's rpclib, which CPM patches. libqemu is patched by
-# tools/build_qbox.sh, which keeps its own account.
+# tools/build_qbox.py, which keeps its own account.
 PATCHED = {
     directory
     for directory in DEPENDENCY_DIRECTORIES

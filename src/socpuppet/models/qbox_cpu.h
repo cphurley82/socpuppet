@@ -18,7 +18,7 @@ namespace socpuppet {
 // not on the other says which hart to look at.
 //
 // QEMU is GPL-2.0, so only a build with QBox has this class
-// (tools/build_qbox.sh, SOCPUPPET_QBOX_DIR). QEMU runs as a coroutine on
+// (tools/build_qbox.py, SOCPUPPET_QBOX_DIR). QEMU runs as a coroutine on
 // SystemC's thread and counts instructions for time, so that two runs of
 // one program agree.
 //

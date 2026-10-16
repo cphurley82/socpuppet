@@ -1005,7 +1005,7 @@ Two more things read in the same file and not acted on:
 
 - **Where**: `drivers/watchdog/wdt_sifive.c`, `wdt_sifive_install_timeout`.
 - **What is wrong**: Zephyr's watchdog API lets a timeout have a callback, which is to run when the watchdog runs out and before any reset. The SiFive watchdog either resets or interrupts, and for a timeout with `WDT_FLAG_RESET_SOC` the driver has the comment "WDT supports global SoC reset but cannot callback", sets the watchdog up to reset, and returns success whether a callback was given or not. The callback is then never called, and nothing has told the application so.
-- **How to see it**: Zephyr's own `tests/drivers/watchdog/wdt_basic_api` on any board with this driver, which `firmware/twister.sh -p socpuppet_host -T tests/drivers/watchdog/wdt_basic_api` runs if its entry is taken out of `firmware/twister-quarantine.yaml`. Its case `test_wdt_callback_1` installs such a timeout with a callback and, after the reset, expects the callback to have left a value. It fails at `test_wdt.c:495`. The test provides for a driver that cannot: `-ENOTSUP` from `wdt_install_timeout` is "CB1 not supported on platform" and a pass.
+- **How to see it**: Zephyr's own `tests/drivers/watchdog/wdt_basic_api` on any board with this driver, which `uv run firmware/twister.py -p socpuppet_host -T tests/drivers/watchdog/wdt_basic_api` runs if its entry is taken out of `firmware/twister-quarantine.yaml`. Its case `test_wdt_callback_1` installs such a timeout with a callback and, after the reset, expects the callback to have left a value. It fails at `test_wdt.c:495`. The test provides for a driver that cannot: `-ENOTSUP` from `wdt_install_timeout` is "CB1 not supported on platform" and a pass.
 - **What we do**: nothing to the driver. The model does what the driver asks of it, and the CPU is reset and comes back each time. The suite is in `firmware/twister-quarantine.yaml` with this as its reason.
 - **Upstream fix**: return `-ENOTSUP` from `wdt_sifive_install_timeout` for a timeout that has both `WDT_FLAG_RESET_SOC` and a callback.
 - **Kind**: bug.
@@ -1193,7 +1193,7 @@ Two more things read in the same file and not acted on:
 
 ## QBox
 
-[qualcomm/qbox](https://github.com/qualcomm/qbox), pinned at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `tools/build_qbox.sh`, which builds it for the `qbox_cpu`. Not part of the wheel: it is QEMU underneath (GPL-2.0), so whoever wants it builds it from source with that tool, and configures socpuppet with `SOCPUPPET_QBOX_DIR`. The tool applies the `cmake/patches/qbox-*.patch` files to QBox, and the `libqemu-*.patch` files to the QEMU it fetches.
+[qualcomm/qbox](https://github.com/qualcomm/qbox), pinned at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `tools/build_qbox.py`, which builds it for the `qbox_cpu`. Not part of the wheel: it is QEMU underneath (GPL-2.0), so whoever wants it builds it from source with that tool, and configures socpuppet with `SOCPUPPET_QBOX_DIR`. The tool applies the `cmake/patches/qbox-*.patch` files to QBox, and the `libqemu-*.patch` files to the QEMU it fetches.
 
 ### The lock file pins a libqemu tag that is not published
 
@@ -1203,7 +1203,7 @@ Two more things read in the same file and not acted on:
 - **What we do**: build the commit before it, `4d63017c`, whose tag is there. The ISS spike's recipe (`spikes/iss/qbox/build.sh`) names a later commit and would fail the same way today.
 - **Upstream fix**: publish the tag, or pin one that is published.
 - **Kind**: build.
-- **When it lands**: `tools/build_qbox.sh` can move to the head again.
+- **When it lands**: `tools/build_qbox.py` can move to the head again.
 
 ### The Hexagon components do not compile as C++20
 
@@ -1319,7 +1319,7 @@ Two more things read in the same file and not acted on:
 
 - **Where**: libqemu's `qemu.cmake`, the `QEMU_CONF_ARGS` it gives QEMU's `configure`, and its SDL display wrappers, `libqemu/wrappers/console.c` and the `sdl2_gl_*` entries of `libqemu/exports.py`, at `libqemu-v11.0-v0.15`.
 - **What is wrong**: `--enable-opengl` is in the list for every build, with no option to leave it out, as there is for virgl and virCL. QEMU's OpenGL needs libepoxy with EGL (`meson.build`: `epoxy/egl.h not found`), and Homebrew's libepoxy has no EGL on macOS, so libqemu cannot be configured on a Mac. With OpenGL turned off, it still does not build: the wrappers use `console_gl_check_format` and nine `sdl2_gl_*` functions, which QEMU compiles only with OpenGL.
-- **How to see it**: `tools/build_qbox.sh` on a Mac with Homebrew's packages and without the patch stops in QEMU's configure at `epoxy/egl.h not found` (M26 found it, [speed-spike.md](speed-spike.md)). Configured with `--disable-opengl` and nothing else, the build then stops at `'console_gl_check_format' undeclared` in `libqemu/wrappers/console.c`.
+- **How to see it**: `tools/build_qbox.py` on a Mac with Homebrew's packages and without the patch stops in QEMU's configure at `epoxy/egl.h not found` (M26 found it, [speed-spike.md](speed-spike.md)). Configured with `--disable-opengl` and nothing else, the build then stops at `'console_gl_check_format' undeclared` in `libqemu/wrappers/console.c`.
 - **What we do**: `cmake/patches/libqemu-macos-no-opengl.patch` passes `--disable-opengl` on Apple machines and `--enable-opengl` everywhere else, as before, and gives a build without OpenGL `libqemu/wrappers/stubs/opengl.c`, in the manner of the `gpex` stub beside it. It defines those functions, and any one of them that is called stops the program, which a display with OpenGL would need and a CPU never does. Linux builds exactly what it did.
 - **Upstream fix**: the same, or a `GS_ENABLE_OPENGL` option beside the two for virgl and virCL, off on macOS, with the stubs.
 - **Kind**: portability.
@@ -1329,7 +1329,7 @@ Two more things read in the same file and not acted on:
 
 - **Where**: rpclib's `CMakeLists.txt`, which gives the asio it carries (`dependencies/include`) as a `SYSTEM` include directory. QBox builds rpclib v2.3.0 (`CMakeLists.txt`, with the patches in `patch/rpclib/`), and QEMU builds it again at `463887f1` for its Hexagon target (`subprojects/rpclib.wrap`), whatever the targets asked for.
 - **What is wrong**: Apple's clang searches `/usr/local/include` ahead of every `-isystem` directory, and Homebrew on an Intel Mac keeps its headers there. QBox wants Homebrew's asio for its own socket backend and its web server (`brew install asio`, in its `scripts/install_dependencies.sh`), so rpclib's `#include "asio.hpp"` finds that one, whose names are in `asio`, and not its own, which rpclib renames `clmdep_asio`. Giving the directory again with `-I` does not help: a directory given both ways keeps the system place. On Apple silicon Homebrew is in `/opt/homebrew`, which clang does not search, so QBox's own macOS builds do not meet it.
-- **How to see it**: `tools/build_qbox.sh` on an Intel Mac with `brew install asio`, without the patches: `use of undeclared identifier 'clmdep_asio'` in `rpc/detail/async_writer.h`, first in QBox's rpclib and then in QEMU's.
+- **How to see it**: `tools/build_qbox.py` on an Intel Mac with `brew install asio`, without the patches: `use of undeclared identifier 'clmdep_asio'` in `rpc/detail/async_writer.h`, first in QBox's rpclib and then in QEMU's.
 - **What we do**: `cmake/patches/qbox-macos-rpclib-asio.patch` adds a third patch to QBox's `patch/rpclib/`, and `cmake/patches/libqemu-macos-rpclib-asio.patch` gives QEMU's wrap the same change as a `diff_files`. On Apple machines, rpclib's own asio is an ordinary include directory, searched before `/usr/local/include`; elsewhere it stays `SYSTEM`, as before.
 - **Upstream fix**: the same in rpclib, and the newer rpclib in QBox.
 - **Kind**: portability.
@@ -1349,8 +1349,8 @@ Two more things read in the same file and not acted on:
 
 - **Where**: `tests/qbox/CMakeLists.txt`, which looks for `llvm-mc`, `ld.lld` and `llvm-objcopy` on the path and in `/opt/homebrew/opt/llvm/bin`.
 - **What is wrong**: Homebrew's LLVM is not on the path, and an Intel Mac's is in `/usr/local/opt/llvm/bin`, so configuring QBox with its tests stops with `Qbox CPU tests require the LLVM toolchain`.
-- **How to see it**: QBox's configure on an Intel Mac with `brew install llvm`, as `tools/build_qbox.sh` ran it before it turned the tests off.
-- **What we do**: no patch. `tools/build_qbox.sh` configures QBox with `-DBUILD_TESTING=OFF` on every machine, since socpuppet holds QBox's CPU to its own suite and never runs QBox's, and the build is shorter without them.
+- **How to see it**: QBox's configure on an Intel Mac with `brew install llvm`, as `tools/build_qbox.py` ran it before it turned the tests off.
+- **What we do**: no patch. `tools/build_qbox.py` configures QBox with `-DBUILD_TESTING=OFF` on every machine, since socpuppet holds QBox's CPU to its own suite and never runs QBox's, and the build is shorter without them.
 - **Upstream fix**: look in `$(brew --prefix llvm)/bin`, as QBox already asks `brew --prefix` for its run paths.
 - **Kind**: portability.
 - **When it lands**: nothing to undo; the tests stay off.

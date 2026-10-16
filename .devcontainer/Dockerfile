@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# What tools/build_qbox.sh needs to build QBox and its QEMU, for the
+# What tools/build_qbox.py needs to build QBox and its QEMU, for the
 # qbox_cpu (docs/setup.md).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \

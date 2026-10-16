@@ -1,4 +1,4 @@
-# What firmware/twister.sh --suites runs: Zephyr's own suites on every
+# What firmware/twister.py --suites runs: Zephyr's own suites on every
 # board, which is the board-compliance run, and then socpuppet's own, each
 # on the boards it names. A line is a directory to look for suites in, and
 # then any flags that one suite needs. The directory is in Zephyr's tree,

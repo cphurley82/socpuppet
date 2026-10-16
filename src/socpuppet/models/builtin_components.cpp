@@ -152,7 +152,7 @@ Registry BuiltinComponents() {
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // QBox's CPU is QEMU's, which is GPL, so it is built only by whoever
-  // asks for it (tools/build_qbox.sh). The name is here either way, so that
+  // asks for it (tools/build_qbox.py). The name is here either way, so that
   // a build without it says how to get one.
 #if SOCPUPPET_HAS_QBOX
   registry.Add("qbox_cpu", [](const char* name, Parameters& parameters) {
@@ -165,7 +165,7 @@ Registry BuiltinComponents() {
   registry.Add("qbox_cpu", [](const char*, Parameters&) -> Instance {
     throw std::invalid_argument(
         "This build of socpuppet has no qbox_cpu. Build QBox with "
-        "tools/build_qbox.sh, then socpuppet with `cmake --preset qbox`, "
+        "tools/build_qbox.py, then socpuppet with `cmake --preset qbox`, "
         "which sets SOCPUPPET_QBOX_DIR to where the tool installs it.");
   });
 #endif

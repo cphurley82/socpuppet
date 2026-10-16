@@ -26,7 +26,7 @@ TEST(WhenTheBuildHasNoQbox, AQboxCpuIsRefusedAndTheErrorSaysHowToBuildOne) {
         platform.Add("cpu", "qbox_cpu", {{"xlen", 64}, {"reset_vector", 0}});
       },
       ThrowsMessage<std::invalid_argument>(AllOf(
-          HasSubstr("tools/build_qbox.sh"), HasSubstr("SOCPUPPET_QBOX_DIR"))));
+          HasSubstr("tools/build_qbox.py"), HasSubstr("SOCPUPPET_QBOX_DIR"))));
 }
 
 #else

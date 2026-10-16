@@ -1,4 +1,4 @@
-"""tools/build_qbox.sh, which builds QBox for the qbox_cpu.
+"""tools/build_qbox.py, which builds QBox for the qbox_cpu.
 
 The script is run for real, with stand-ins for git, cmake and the rest on
 its path. Each stand-in writes the command it was given to a log, and git's
@@ -14,8 +14,13 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = REPO / "tools" / "build_qbox.sh"
-PIN = "4d63017c88a147839d49028d0c60666d691460cc"
+SCRIPT = REPO / "tools" / "build_qbox.py"
+# The commit QBox is pinned to, as the tool says.
+PIN = next(
+    line.split('"')[1]
+    for line in SCRIPT.read_text().splitlines()
+    if line.startswith("QBOX_COMMIT = ")
+)
 QBOX_PATCHES = sorted(p.name for p in (REPO / "cmake/patches").glob("qbox-*"))
 QEMU_PATCHES = sorted(
     p.name for p in (REPO / "cmake/patches").glob("libqemu-*")
@@ -87,7 +92,13 @@ def build_qbox(tmp_path):
 
     def run(*args, missing=""):
         result = subprocess.run(
-            ["bash", str(SCRIPT), "--root", str(tmp_path / "qbox"), *args],
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--root",
+                str(tmp_path / "qbox"),
+                *args,
+            ],
             env={
                 **os.environ,
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
@@ -199,7 +210,7 @@ def test_an_unknown_option_is_refused_with_the_usage(build_qbox):
     result, _ = build_qbox("--spam")
 
     assert result.returncode == 2
-    assert "usage: tools/build_qbox.sh" in result.stdout
+    assert "usage: tools/build_qbox.py" in result.stdout
 
 
 def test_a_missing_library_is_also_named_as_the_homebrew_formula_a_mac_installs(

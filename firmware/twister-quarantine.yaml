@@ -1,4 +1,4 @@
-# What firmware/twister.sh leaves out, and why. Twister reads this list
+# What firmware/twister.py leaves out, and why. Twister reads this list
 # (--quarantine-list), skips what an entry matches, and copies the entry's
 # comment into its reports, so the reason travels with the results.
 #

@@ -41,8 +41,8 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 | `tests/cpp/platform/` | composed platforms | one process per test |
 | `tests/python/` | the Python API | `@pytest.mark.platform` tests get a process each |
 | `tests/tooling/` | the lint runner and the build-time checks | each makes a throwaway repository or CMake project |
-| `python/socpuppet/zephyr_module/tests/`, `firmware/**/testcase.yaml` | ztest suites and applications that run inside Zephyr, on a board | by twister, with `firmware/twister.sh`. Not part of `ctest` |
-| Zephyr's own `tests/` and `samples/` | the board-compliance run: Zephyr's suites on every board | by twister, with `firmware/twister.sh --suites`, and in CI's `twister` job |
+| `python/socpuppet/zephyr_module/tests/`, `firmware/**/testcase.yaml` | ztest suites and applications that run inside Zephyr, on a board | by twister, with `firmware/twister.py`. Not part of `ctest` |
+| Zephyr's own `tests/` and `samples/` | the board-compliance run: Zephyr's suites on every board | by twister, with `uv run firmware/twister.py --suites`, and in CI's `twister` job |
 
 💡 "One process per test" is because the SystemC kernel cannot be restarted. Run the C++ kernel tests through `ctest`, not by launching the test binary by hand: launched directly, the second test in the binary would find the kernel already used.
 
@@ -85,12 +85,12 @@ uv run cmake --build --preset dev --target check_headers   # each header compile
 - **GCC, on Linux.** On a Mac the compiler is Apple's clang, and GCC has warnings it lacks. To have them here, keep a second build tree in the devcontainer's image, which is what CI builds in. The first build is long and later ones are incremental:
 
 ```sh
-tools/devcontainer.sh uv run cmake --preset linux        # build/linux, the dev preset's configuration
-tools/devcontainer.sh uv run cmake --build --preset linux
-tools/devcontainer.sh uv run ctest --preset linux
+tools/devcontainer.py uv run cmake --preset linux        # build/linux, the dev preset's configuration
+tools/devcontainer.py uv run cmake --build --preset linux
+tools/devcontainer.py uv run ctest --preset linux
 ```
 
-💡 `tools/devcontainer.sh` runs any command in the devcontainer's image, with the repository at `/workspace` (`tools/devcontainer.sh bash` is a shell there). It names the image after a hash of `.devcontainer/Dockerfile`, so it builds the image the first time and again whenever the Dockerfile changes. uv's Linux venv, its cache and its Python are kept in `build/`, so they outlive each container, and your `SOCPUPPET_*` variables go in with the command. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.sh` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
+💡 `tools/devcontainer.py` runs any command in the devcontainer's image, with the repository at `/workspace` (`tools/devcontainer.py bash` is a shell there). It names the image after a hash of `.devcontainer/Dockerfile`, so it builds the image the first time and again whenever the Dockerfile changes. uv's Linux venv, its cache and its Python are kept in `build/`, so they outlive each container, and your `SOCPUPPET_*` variables go in with the command. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.py` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
 
 ## Running CI's jobs here
 
@@ -112,7 +112,7 @@ uv run python tools/ci.py --list          # the jobs, what each needs, and why o
 - 💡 **Jobs that build into the same tree take turns.** `test`, `twister`, `coverage` and `sanitizers` all write the extension into `python/socpuppet/`, whichever tree they build, so at most one of them runs at once, and `-j` cannot change that. After `coverage` or `sanitizers`, the run configures `build/dev` for `dev` again.
 - 🎓 This is your machine and not CI's runner, so it runs your compiler and your libraries. A difference between the two, such as a newer GCC with a warning CI's lacks, shows up here as a failure, which is the point. The QBox jobs need the packages [setup.md](setup.md#1-system-packages) lists for QBox, and `qbox-build` takes the better part of ten minutes the first time.
 
-⚠️ A build tree whose dependencies were patched by an older set of patches fails to configure with `patch does not apply`, because `git apply` does not apply a patch twice ([Dependencies](#dependencies)). The runner keeps a hash of `cmake/patches/`, `cmake/Dependencies.cmake` and `tools/build_qbox.sh` in `build/ci/.patches`. When it has changed, or there is none, it deletes the patched dependencies in `build/dev`, `build/qbox-dev` and `build/linux`, and QBox's rpclib, so that they are fetched and patched again. Everything not patched is kept, libqemu included.
+⚠️ A build tree whose dependencies were patched by an older set of patches fails to configure with `patch does not apply`, because `git apply` does not apply a patch twice ([Dependencies](#dependencies)). The runner keeps a hash of `cmake/patches/`, `cmake/Dependencies.cmake` and `tools/build_qbox.py` in `build/ci/.patches`. When it has changed, or there is none, it deletes the patched dependencies in `build/dev`, `build/qbox-dev` and `build/linux`, and QBox's rpclib, so that they are fetched and patched again. Everything not patched is kept, libqemu included.
 
 ## One build tree, three kinds of build
 
@@ -129,7 +129,7 @@ Configuring prints a note when the tree is in one of the two special modes.
 🎓 The `qbox_cpu` is QEMU's RISC-V CPU inside SystemC, by way of Qualcomm's QBox, beside the DBT-RISE CPU ([models/qbox-cpu.md](models/qbox-cpu.md)). QEMU is GPL-2.0, so it is built from source by whoever wants it, and it has a tree of its own:
 
 ```sh
-uv run tools/build_qbox.sh               # QBox at its pin, with cmake/patches/qbox-* and libqemu-*, into build/qbox/install
+uv run tools/build_qbox.py               # QBox at its pin, with cmake/patches/qbox-* and libqemu-*, into build/qbox/install
 uv run cmake --preset qbox               # build/qbox-dev, with SOCPUPPET_QBOX_DIR=build/qbox/install
 uv run cmake --build --preset qbox
 uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=qbox_cpu
@@ -140,8 +140,8 @@ uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=q
 - **The fates.** What QBox's CPU does differently is skipped on QBox with the reason: the hart's C++ cases are in one table (`tests/cpp/support/qbox_fates.h`), and a Python test has `@pytest.mark.not_on_qbox(reason)`. A failure that is in neither is new.
 - 💡 CI does all of this on every push, on Linux and natively on an Apple silicon Mac, with twister on the host board on both and clang-tidy over the adapter on Linux: the `qbox-build`, `qbox` and `qbox-tidy` jobs, which `uv run python tools/ci.py qbox-build qbox qbox-tidy` runs here. QBox itself is built only when its pin or its patches change, and cached.
 - ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree.
-- ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.sh` applies a patch once. Delete `build/qbox` and run it again.
-- **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU ([setup.md](setup.md#5-qbox-optional), [upstream.md](upstream.md)). They also work with `tools/devcontainer.sh` in front of each, which builds for Linux with GCC, as CI does. ⚠️ There `build/qbox` and `build/qbox-dev` are Docker volumes, `socpuppet-qbox` and `socpuppet-qbox-dev`, mounted where the preset looks for them, because a compiler reading through Docker's file sharing is ten times slower than one reading a volume ([twister-spike.md](twister-spike.md)). They stand in front of the Mac's own two directories, so a native build and the container's never meet. To start the container's over, `docker volume rm socpuppet-qbox socpuppet-qbox-dev` stands in for deleting them.
+- ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.py` applies a patch once. Delete `build/qbox` and run it again.
+- **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU ([setup.md](setup.md#5-qbox-optional), [upstream.md](upstream.md)). They also work with `tools/devcontainer.py` in front of each, which builds for Linux with GCC, as CI does. ⚠️ There `build/qbox` and `build/qbox-dev` are Docker volumes, `socpuppet-qbox` and `socpuppet-qbox-dev`, mounted where the preset looks for them, because a compiler reading through Docker's file sharing is ten times slower than one reading a volume ([twister-spike.md](twister-spike.md)). They stand in front of the Mac's own two directories, so a native build and the container's never meet. To start the container's over, `docker volume rm socpuppet-qbox socpuppet-qbox-dev` stands in for deleting them.
 
 ## Spikes
 
@@ -158,7 +158,7 @@ uv run ctest --preset spike            # only the tests labelled `spike`
 
 The speed spike ([spikes/speed](../spikes/speed/README.md), report in [speed-spike.md](speed-spike.md)) is behind the same option and stays, unlike the others, so that every later change to the core can be timed against its results. `uv run ctest --preset speed` runs its three loops one at a time, verbosely, and `spikes/speed/run.sh` does one machine's whole column into `spikes/speed/results/`.
 
-The earlier spikes have gone. The twister spike asked whether Zephyr's test runner could run Zephyr's own tests on socpuppet's boards ([twister-spike.md](twister-spike.md)). It was scripts and a few Zephyr files, and it was deleted when M21's steps had rebuilt what it found test-first, as `socpuppet run`, the boards' two files for twister and `firmware/twister.sh`; the report names the commit that holds it. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the spike's own QBox integration; socpuppet's is the `qbox_cpu`, built by `tools/build_qbox.sh` (M27). The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
+The earlier spikes have gone. The twister spike asked whether Zephyr's test runner could run Zephyr's own tests on socpuppet's boards ([twister-spike.md](twister-spike.md)). It was scripts and a few Zephyr files, and it was deleted when M21's steps had rebuilt what it found test-first, as `socpuppet run`, the boards' two files for twister and `firmware/twister.py`; the report names the commit that holds it. The GDB spike asked whether each of three CPUs can have a debugger at once ([gdb-spike.md](gdb-spike.md)). It was two scripts and no C++, so it needed no option and no preset, and it was deleted when M8's step 4 had rebuilt what it found test-first; the report names the commit that holds it. The ISS spike answered its question (see [iss-spike.md](iss-spike.md)) and was cleared away when M3a finished. What is left of it, [spikes/iss](../spikes/iss/README.md), is the spike's own QBox integration; socpuppet's is the `qbox_cpu`, built by `tools/build_qbox.py` (M27). The PCIe spike answered its question at M2 ([pcie-spike.md](pcie-spike.md)) and was deleted after; the report names the commit that holds it. The boot spike answered four questions ahead of M14 ([boot-spike.md](boot-spike.md)) and was deleted when that milestone's steps had rebuilt what it found test-first; the report names the commit that holds it.
 
 ## Firmware
 
@@ -176,17 +176,16 @@ The parts are `sdk`, `llvm` and `zephyr-tree`, which fetch what the rest is buil
 - 🎓 **So is EDK2**, whose build links every module with `-z notext`, which the SDK's GNU linker refuses. Its `BaseTools` are built with the machine's own compiler, which is why it needs libuuid's headers, and a driver or two have ACPI tables that `iasl` compiles. The script says so and stops when there is no `iasl`.
 - 📮 **OpenSBI's and EDK2's patches** are `cmake/patches/opensbi-*.patch` and `cmake/patches/edk2-*.patch`, each with its entry in [upstream.md](upstream.md), and the script applies them to a clean tree every time, so that a patch that changes is the one built.
 - 💡 On an Apple silicon Mac the script runs on macOS itself: the SDK has a toolchain for one, and nothing else has to be installed but `iasl`. Every image builds in a minute there. ⚠️ EDK2's part of it has been run on Linux only so far: CI builds it there, and nothing builds it on a Mac yet.
-- 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one. It builds that image the first time, as `socpuppet-dev`. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
-- ⚠️ The script does not rebuild the image when `.devcontainer/Dockerfile` changes. `tools/devcontainer.sh` does, and names the new image `socpuppet-dev` too, so after such a change run `tools/devcontainer.sh true` once.
+- 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one, by way of `tools/devcontainer.py`, which builds the image the first time and again when `.devcontainer/Dockerfile` changes. `--in-docker` does the same on any machine. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
 - ⚠️ The toolchain an Intel Mac ends up with in `build/firmware` is Linux's, GDB included. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
 
-`firmware/twister.sh` is the other thing to run there. It has twister, Zephyr's test runner, build Zephyr's own test suites and ours for each board and run every one on socpuppet, which is how a change to a model, a driver or a board is held to several thousand tests nobody here wrote. It takes six and a half minutes for the whole list on an Apple silicon Mac and about eight on an Intel one, where it runs in Docker, so it is for before a push and for CI, and not for the inner loop. [twister.md](twister.md) is its page.
+`firmware/twister.py` is the other thing to run there. It has twister, Zephyr's test runner, build Zephyr's own test suites and ours for each board and run every one on socpuppet, which is how a change to a model, a driver or a board is held to several thousand tests nobody here wrote. It takes six and a half minutes for the whole list on an Apple silicon Mac and about eight on an Intel one, where it runs in Docker, so it is for before a push and for CI, and not for the inner loop. [twister.md](twister.md) is its page.
 
 ```sh
-firmware/twister.sh --suites                                   # everything, on every board
-firmware/twister.sh -T python/socpuppet/zephyr_module/tests    # the drivers' own tests
+uv run firmware/twister.py --suites                                   # everything, on every board
+uv run firmware/twister.py -T python/socpuppet/zephyr_module/tests    # the drivers' own tests
 ```
 
 ## The package
@@ -194,8 +193,8 @@ firmware/twister.sh -T python/socpuppet/zephyr_module/tests    # the drivers' ow
 ```sh
 uv build --wheel
 uv run python tools/check_wheel.py dist/*.whl     # contents are what they should be
-tools/test_wheel.sh uv dist/*.whl                 # install in a clean env, run the tests there
-tools/test_wheel.sh pip dist/*.whl
+tools/test_wheel.py uv dist/*.whl                 # install in a clean env, run the tests there
+tools/test_wheel.py pip dist/*.whl
 ```
 
 The wheel is self-contained: SystemC, SCC and their dependencies are linked statically into the one extension module.
@@ -222,7 +221,7 @@ The register maps in `regs/` are compiled by [systemrdl-compiler](https://github
 
 SCC needed a few accommodations to build inside this tree, each commented where it is made: two small patches (`cmake/patches/`), one to a configure-time probe and one so that clang-tidy can read the CCI headers it bundles, its install rules switched off, our SystemC declared as already found, and Boost.Filesystem linked explicitly.
 
-QBox, the second CPU, is not fetched at all: `tools/build_qbox.sh` builds it at its pin, applying `cmake/patches/qbox-*.patch` to it and `libqemu-*.patch` to the QEMU it fetches ([QBox, the second hart](#qbox-the-second-hart)).
+QBox, the second CPU, is not fetched at all: `tools/build_qbox.py` builds it at its pin, applying `cmake/patches/qbox-*.patch` to it and `libqemu-*.patch` to the QEMU it fetches ([QBox, the second hart](#qbox-the-second-hart)).
 
 DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, with the patches named `dbt-rise-*` in `cmake/patches/`, to it and to the core library under it, and a few accommodations of the same kind. ⚠️ `git apply` does not apply a patch twice. When a patch file changes, or a build tree still holds a dependency patched the old way, delete `build/<tree>/_deps/<dependency>-*` and configure again.
 

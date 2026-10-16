@@ -1,4 +1,4 @@
-"""The files firmware/twister.sh runs twister from, as the tests read them."""
+"""The files firmware/twister.py runs twister from, as the tests read them."""
 
 from conftest import REPO
 
@@ -6,7 +6,7 @@ SUITES = REPO / "firmware/twister-suites.txt"
 
 
 def directory_of(suite, zephyr_tree):
-    """Where firmware/twister.sh looks for a line's suites (its `resolve`).
+    """Where firmware/twister.py looks for a line's suites (its `resolve`).
 
     In Zephyr's tree, unless the line is `firmware` or `python`, or under
     one of them: those are this repository's.

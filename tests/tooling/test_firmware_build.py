@@ -461,7 +461,7 @@ def test_in_docker_the_same_build_runs_in_the_devcontainers_image(firmware):
     result = firmware.run("--in-docker", "rom", "-j", "3")
 
     assert result.returncode == 0, result.stdout
-    (call,) = firmware.calls("devcontainer.sh")
+    (call,) = firmware.calls("devcontainer.py")
     command = call["args"]
     assert command[:3] == ["python3", "firmware/build.py", "rom"]
     assert command[command.index("--out") + 1] == "/workspace/build/firmware"
@@ -476,7 +476,7 @@ def test_in_docker_an_output_directory_outside_the_repository_is_refused(
 
     assert result.returncode == 1
     assert "outside the repository" in result.stdout
-    assert firmware.calls("devcontainer.sh") == []
+    assert firmware.calls("devcontainer.py") == []
 
 
 def test_when_no_part_is_named_every_part_is_built(firmware):
@@ -529,7 +529,7 @@ class Firmware:
         ):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text("spam\n")
-        self.install(self.root / "tools" / "devcontainer.sh")
+        self.install(self.root / "tools" / "devcontainer.py")
         for program in ("curl", "git", "make", "uv", "iasl", "build"):
             self.install(self.bin / program)
 

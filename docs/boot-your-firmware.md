@@ -859,7 +859,7 @@ export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/b
 west twister -p socpuppet_host -T my_test
 ```
 
-In a checkout of socpuppet, `firmware/twister.sh -p socpuppet_host -T /path/to/my_test` sets those up for you. Either way twister ends with how many cases passed, and each scenario's console is in `handler.log` under its output directory.
+In a checkout of socpuppet, `uv run firmware/twister.py -p socpuppet_host -T /path/to/my_test` sets those up for you. Either way twister ends with how many cases passed, and each scenario's console is in `handler.log` under its output directory.
 
 💡 **While you are working on one test, skip twister.** Build the image once, as in [step 2](#2-build), and run it directly. It takes a second or two, the console is printed as it comes, and the command's exit status is the verdict:
 

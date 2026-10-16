@@ -42,13 +42,13 @@
     },
     {
       "name": "linux",
-      "displayName": "Development build in the devcontainer's image, from tools/devcontainer.sh",
+      "displayName": "Development build in the devcontainer's image, from tools/devcontainer.py",
       "inherits": "dev",
       "binaryDir": "${sourceDir}/build/linux"
     },
     {
       "name": "qbox",
-      "displayName": "Development build with QBox's CPU, from tools/build_qbox.sh",
+      "displayName": "Development build with QBox's CPU, from tools/build_qbox.py",
       "inherits": "dev",
       "binaryDir": "${sourceDir}/build/qbox-dev",
       "cacheVariables": {

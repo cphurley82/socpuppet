@@ -191,10 +191,10 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
             ),
         ),
         Step(
-            "test_wheel_uv", ("tools/test_wheel.sh", "uv", ours), env=firmware
+            "test_wheel_uv", ("tools/test_wheel.py", "uv", ours), env=firmware
         ),
         Step(
-            "test_wheel_pip", ("tools/test_wheel.sh", "pip", ours), env=firmware
+            "test_wheel_pip", ("tools/test_wheel.py", "pip", ours), env=firmware
         ),
     )
 
@@ -307,7 +307,7 @@ JOBS = [
                 "tooling",
                 ("uv", "run", "pytest", "tests/tooling", "-k", "twister"),
             ),
-            Step("twister", ("firmware/twister.sh", "--suites")),
+            Step("twister", ("uv", "run", "firmware/twister.py", "--suites")),
         ),
         uses=("build/dev", "extension", "build/twister"),
     ),
@@ -343,7 +343,7 @@ JOBS = [
     Job(
         "qbox-build",
         "build QBox, QEMU in SystemC, for the second hart",
-        steps=(Step("build", ("uv", "run", "tools/build_qbox.sh")),),
+        steps=(Step("build", ("uv", "run", "tools/build_qbox.py")),),
         uses=("build/qbox",),
     ),
     Job(
@@ -370,7 +370,10 @@ JOBS = [
             ),
             Step(
                 "twister",
-                ("firmware/twister.sh", "--suites", "-p", "socpuppet_host"),
+                (
+                    *("uv", "run", "firmware/twister.py", "--suites"),
+                    *("-p", "socpuppet_host"),
+                ),
                 env={"SOCPUPPET_CPU": "qbox_cpu"},
             ),
         ),
@@ -390,7 +393,7 @@ JOBS = [
         "build and test in the devcontainer's image, as Linux with GCC",
         # In build/linux, so that the host's own build/dev is left alone.
         steps=tuple(
-            Step(label, ("tools/devcontainer.sh", "uv", "run", *argv))
+            Step(label, ("tools/devcontainer.py", "uv", "run", *argv))
             for label, argv in (
                 ("configure", ("cmake", "--preset", "linux")),
                 ("build", ("cmake", "--build", "--preset", "linux")),
@@ -617,9 +620,9 @@ def drop_stale_dependencies(clean: bool) -> None:
     if same and not clean:
         return
     # socpuppet's trees, as the presets name them, and QBox's own patch to
-    # rpclib in tools/build_qbox.sh's tree, which CPM applies with `git am`
+    # rpclib in tools/build_qbox.py's tree, which CPM applies with `git am`
     # and which applied twice stops the configure. libqemu is left alone:
-    # it is the slow one, and tools/build_qbox.sh keeps its own patches.
+    # it is the slow one, and tools/build_qbox.py keeps its own patches.
     patched = patched_dependencies()
     stale = [
         (REPO / tree / "_deps", name)
@@ -651,7 +654,7 @@ def patches_hash() -> str:
     for path in (
         REPO / "cmake" / "Dependencies.cmake",
         *sorted((REPO / "cmake" / "patches").glob("*")),
-        REPO / "tools" / "build_qbox.sh",
+        REPO / "tools" / "build_qbox.py",
     ):
         digest.update(path.read_bytes())
     return digest.hexdigest()

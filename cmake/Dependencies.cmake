@@ -7,18 +7,18 @@ include(FetchContent)
 
 # --- SystemC, ours or QBox's -------------------------------------------------
 # QBox (Qualcomm's QEMU in SystemC) is a second CPU, built from source by
-# tools/build_qbox.sh because QEMU is GPL. Its libraries link a shared
+# tools/build_qbox.py because QEMU is GPL. Its libraries link a shared
 # SystemC and CCI of their own, and one process can hold only one SystemC
 # kernel, so a build with QBox links socpuppet to those same two libraries.
 # Without QBox, SystemC is fetched at the commit QBox builds and linked
 # statically, as always, so the two builds run the same kernel.
 set(SOCPUPPET_QBOX_DIR "" CACHE PATH
-  "A QBox install made by tools/build_qbox.sh, to build the qbox_cpu with")
+  "A QBox install made by tools/build_qbox.py, to build the qbox_cpu with")
 if(SOCPUPPET_QBOX_DIR)
   if(NOT EXISTS ${SOCPUPPET_QBOX_DIR}/lib/cmake/qbox-2.0/qboxConfig.cmake)
     message(FATAL_ERROR "SOCPUPPET_QBOX_DIR is \"${SOCPUPPET_QBOX_DIR}\", "
       "and there is no QBox installed there. Build it with "
-      "tools/build_qbox.sh, which installs it in build/qbox/install.")
+      "tools/build_qbox.py, which installs it in build/qbox/install.")
   endif()
   list(APPEND CMAKE_PREFIX_PATH ${SOCPUPPET_QBOX_DIR})
   # CMake keeps where it found each package, and looks there first next
@@ -52,7 +52,7 @@ if(SOCPUPPET_QBOX_DIR)
     "SystemC ${SystemCLanguage_VERSION}")
 else()
   FetchContent_Declare(systemc
-    # The commit QBox builds, after 3.0.2 (tools/build_qbox.sh).
+    # The commit QBox builds, after 3.0.2 (tools/build_qbox.py).
     GIT_REPOSITORY https://github.com/accellera-official/systemc.git
     GIT_TAG febde7a3e007ce3030cf574a4cb6fcc13d0ed820
     EXCLUDE_FROM_ALL SYSTEM)

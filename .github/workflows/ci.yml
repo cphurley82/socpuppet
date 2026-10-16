@@ -490,7 +490,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/qbox/install
-          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
           lookup-only: true
       - name: Install QBox's packages
         # As the devcontainer's image has them (.devcontainer/Dockerfile).
@@ -542,7 +542,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/qbox/install
-          key: qbox-ubuntu-24.04-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          key: qbox-ubuntu-24.04-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
           fail-on-cache-miss: true
       - name: Cache fetched dependencies
         uses: actions/cache@v6
@@ -599,7 +599,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/qbox/install
-          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
           fail-on-cache-miss: true
       - name: Cache fetched dependencies
         uses: actions/cache@v6

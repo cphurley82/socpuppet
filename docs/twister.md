@@ -8,7 +8,7 @@ Zephyr comes with thousands of tests of itself: of its scheduler, its timers, it
 
 ```sh
 uv run firmware/build.py rom zephyr-tree   # once: fetches Zephyr and its SDK, builds the boot ROMs
-firmware/twister.sh --suites               # every suite of the list, on every board
+uv run firmware/twister.py --suites               # every suite of the list, on every board
 ```
 
 The first prints nothing of interest. The second ends like this, once for each run of twister it makes:
@@ -26,9 +26,9 @@ It needs a socpuppet built for the machine it runs on (`uv run cmake --build --p
 To run less, give twister's own options after the script's name, or after `--suites`:
 
 ```sh
-firmware/twister.sh --suites -p socpuppet_host                 # the list, on one board
-firmware/twister.sh -p socpuppet_ssd -T tests/kernel/sleep -v  # one suite of Zephyr's
-firmware/twister.sh -p socpuppet_ssd -T firmware/flash_test    # one of ours
+uv run firmware/twister.py --suites -p socpuppet_host                 # the list, on one board
+uv run firmware/twister.py -p socpuppet_ssd -T tests/kernel/sleep -v  # one suite of Zephyr's
+uv run firmware/twister.py -p socpuppet_ssd -T firmware/flash_test    # one of ours
 ```
 
 `-T` names a directory to look for suites in. A relative one is in Zephyr's tree, unless it is `firmware` or `python`, or under one of them: those are this repository's. `-p` names a board, and `-v` prints each scenario's verdict as it comes.
@@ -67,7 +67,7 @@ flowchart LR
 3. **`socpuppet run`** describes the board, puts the image where the board's boot ROM will find it, and runs the simulation, printing each line of the console as it becomes whole.
 4. **Twister reads those lines.** For a ztest suite it waits for the verdict. For a sample it looks for the lines the sample's own `sample.yaml` says should appear. Then it ends the run.
 
-`firmware/twister.sh` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, those three are all you need, and twister is run as for any other board. 🚧 The boot ROMs are not in the package yet, so the second line names where `firmware/build.py` built them in a checkout:
+`firmware/twister.py` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, those three are all you need, and twister is run as for any other board. 🚧 The boot ROMs are not in the package yet, so the second line names where `firmware/build.py` built them in a checkout:
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)
@@ -169,7 +169,7 @@ Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict
 
 ## In CI
 
-The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`, once on Linux and once on a Mac (`ubuntu-24.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.py`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `firmware/twister.sh --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-24.04` and `twister-macos-15`. `uv run python tools/ci.py firmware twister` runs the same job here, and the `qbox` job does the same on the host board with QBox's CPU.
+The `twister` job of `.github/workflows/ci.yml` does the same for every pull request and every push to `main`, once on Linux and once on a Mac (`ubuntu-24.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.py`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `uv run firmware/twister.py --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-24.04` and `twister-macos-15`. `uv run python tools/ci.py firmware twister` runs the same job here, and the `qbox` job does the same on the host board with QBox's CPU.
 
 💡 The Mac is there because its runner is Apple silicon, which is the one place twister runs on macOS itself. An Intel Mac runs it in a Linux container, so without this leg nothing would say that the scripts had stopped working on a Mac's own tools.
 

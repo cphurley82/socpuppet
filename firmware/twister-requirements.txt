@@ -2,7 +2,7 @@
 # Zephyr's scripts/requirements-build-test.txt and requirements-run-test.txt
 # that it loads. Not the whole of either, which bring gcovr, mypy, opencv
 # and pyocd with them. firmware/build.py puts them in Zephyr's venv from
-# the start, and firmware/twister.sh in a venv of its own that lacks them.
+# the start, and firmware/twister.py in a venv of its own that lacks them.
 psutil
 tabulate
 natsort

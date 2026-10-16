@@ -321,7 +321,7 @@ class TestWhenTheRunCommandIsAskedForQboxsCpuInABuildWithoutIt:
 
         assert result.returncode != 0
         [line] = result.stderr.strip().splitlines()
-        assert "tools/build_qbox.sh" in line
+        assert "tools/build_qbox.py" in line
 
     def test_socpuppet_cpu_asks_for_it_as_the_option_does(self, tmp_path):
         result = run_socpuppet(
@@ -338,7 +338,7 @@ class TestWhenTheRunCommandIsAskedForQboxsCpuInABuildWithoutIt:
 
         assert result.returncode != 0
         [line] = result.stderr.strip().splitlines()
-        assert "tools/build_qbox.sh" in line
+        assert "tools/build_qbox.py" in line
 
 
 @pytest.mark.skipif(not _core.has_qbox, reason="this build has no QBox")
