@@ -23,12 +23,13 @@
 #                     then stops feeding its watchdog, and says why it
 #                     started each time
 #
-# And two things that are no Zephyr at all. The boot ROM in firmware/rom,
+# And three things that are no Zephyr at all. The boot ROM in firmware/rom,
 # which is what a CPU that boots from a flash runs first. It is built with
 # the same compiler, once for each kind of CPU, as rom_rv32 and rom_rv64.
 # And OpenSBI, the machine-mode firmware a RISC-V kernel sits on, built for
 # the host as fw_jump, with test_payload, the supervisor-mode program
-# OpenSBI ships, for it to jump to.
+# OpenSBI ships, for it to jump to. And sbi_payload, a program of ours for
+# OpenSBI to jump to instead, in firmware/sbi_payload.
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
@@ -37,7 +38,7 @@
 #   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
 #   <name>_<board>.opcodes.txt  how often each instruction appears in it
 # and for the boot ROM, rom_rv32 and rom_rv64, each an .elf and a .bin, as
-# are fw_jump and test_payload.
+# are fw_jump, test_payload and sbi_payload.
 #
 # Everything it downloads (the Zephyr SDK's RISC-V toolchain, OpenSBI,
 # Zephyr itself, and a Python with the packages Zephyr's build needs) stays
@@ -242,6 +243,22 @@ for each in "fw_jump fw_jump" "test_payload payloads/test"; do
   cp "${built}/${file}.bin" "${out}/${name}.bin"
   report_image "${out}/${name}"
 done
+
+# A next stage for OpenSBI of socpuppet's own, in firmware/sbi_payload: a
+# program in supervisor mode that makes the calls of SBI's that OpenSBI's
+# test_payload does not. It is built as the ROM is, for where fw_jump
+# jumps, and finds the system controller where the ROM does.
+payload=${repository}/firmware/sbi_payload
+echo "Building the payload of ours for OpenSBI"
+image=${out}/sbi_payload
+"${toolchain}/bin/riscv64-zephyr-elf-gcc" \
+  -march=rv64imac_zicsr -mabi=lp64 -mcmodel=medany \
+  -Os -g -Wall -Wextra -Werror -ffreestanding -nostdlib -nostartfiles \
+  -I "${module}/include" -include "${rom}/board_rv64.h" \
+  -T "${payload}/payload.ld" \
+  "${payload}/start.S" "${payload}"/*.c -o "${image}.elf"
+"${toolchain}/bin/riscv64-zephyr-elf-objcopy" -O binary "${image}.elf" "${image}.bin"
+report_image "${image}"
 
 # Zephyr itself, at the release socpuppet is pinned to. Nothing built here
 # needs any of Zephyr's external modules, so only the one repository is

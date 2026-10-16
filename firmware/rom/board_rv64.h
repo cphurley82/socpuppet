@@ -1,7 +1,7 @@
 /*
  * Where the host has the three things its boot ROM uses: socpuppet's one
  * board with a 64-bit CPU. tests/python/test_rom_firmware.py holds each to
- * the board.
+ * the board. firmware/sbi_payload finds the system controller here too.
  */
 #ifndef SOCPUPPET_FIRMWARE_ROM_BOARD_RV64_H_
 #define SOCPUPPET_FIRMWARE_ROM_BOARD_RV64_H_

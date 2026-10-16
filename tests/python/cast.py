@@ -34,6 +34,7 @@ __all__ = [
     "MANAGER",
     "ROM_FOR_A_32_BIT_CPU",
     "ROM_FOR_A_64_BIT_CPU",
+    "SBI_PAYLOAD_BIN",
     "SHELL",
     "SSD",
     "SYNCHRONIZATION",
@@ -58,6 +59,9 @@ FW_JUMP = "fw_jump.elf"
 FW_JUMP_BIN = "fw_jump.bin"
 TEST_PAYLOAD = "test_payload.elf"
 TEST_PAYLOAD_BIN = "test_payload.bin"
+#: A next stage for OpenSBI of socpuppet's own (firmware/sbi_payload), which
+#: makes the calls of SBI's that `test_payload` does not.
+SBI_PAYLOAD_BIN = "sbi_payload.bin"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

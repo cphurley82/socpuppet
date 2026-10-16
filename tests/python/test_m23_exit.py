@@ -20,7 +20,12 @@ import re
 import pytest
 
 import socpuppet as sp
-from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU, TEST_PAYLOAD_BIN
+from cast import (
+    FW_JUMP_BIN,
+    ROM_FOR_A_64_BIT_CPU,
+    SBI_PAYLOAD_BIN,
+    TEST_PAYLOAD_BIN,
+)
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import SYSCON_BASE
@@ -38,12 +43,15 @@ TEST_PAYLOAD_RUNNING = "Test payload running"
 LONG_ENOUGH = sp.ms(10_000)
 
 
-def a_host_with_opensbi(firmware):
-    """A host described for OpenSBI and built, and OpenSBI's layout for it."""
+def a_host_with_opensbi(firmware, payload=TEST_PAYLOAD_BIN):
+    """A host described for OpenSBI and built, and OpenSBI's layout for it.
+
+    `payload` is the image of the stage OpenSBI is to start.
+    """
     board = host(boot=from_rom, sbi=True)
     layout = opensbi.lay_out(
         firmware(FW_JUMP_BIN).read_bytes(),
-        firmware(TEST_PAYLOAD_BIN).read_bytes(),
+        firmware(payload).read_bytes(),
         devicetree.compile(
             board.platform.devicetree(dialect="linux", model=MODEL)
         ),
@@ -184,6 +192,112 @@ class TestWhenOpenSbiBootsWithItsTestPayload:
             RAM_BASE + opensbi.DEVICETREE_COPY_OFFSET, 4, via=board.cpu.socket
         )
         assert copy == bytes.fromhex("d00dfeed")
+
+
+#: What our payload says when it is about to ask for a reset, whichever.
+ASKING = "payload: asking"
+
+
+@pytest.fixture(
+    params=[
+        pytest.param(loaded_by_python, id="loaded by Python"),
+        pytest.param(in_the_flash, id="from the flash"),
+    ]
+)
+def our_payload_on_opensbi(request, firmware):
+    """A host that has run OpenSBI and our payload until it asked to reset.
+
+    Booted each way, in turn.
+    """
+    board, layout = a_host_with_opensbi(firmware, payload=SBI_PAYLOAD_BIN)
+    request.param(board, layout, firmware)
+    board.platform.run_until(
+        lambda: ASKING in board.uart.output, timeout=LONG_ENOUGH
+    )
+    return board
+
+
+@pytest.mark.platform
+class TestWhenOurPayloadRunsOnOpenSbi:
+    """🎓 Our payload is the first program here that makes SBI's calls of its
+    own accord, as a kernel will. Each line it says is one call or one
+    thing OpenSBI did for it."""
+
+    def test_it_says_so_through_sbis_console_call(self, our_payload_on_opensbi):
+        assert "payload: hello from supervisor mode" in (
+            our_payload_on_opensbi.uart.output
+        )
+
+    def test_it_finds_the_devicetree_where_a1_says(
+        self, our_payload_on_opensbi
+    ):
+        assert "payload: devicetree magic 0xd00dfeed" in (
+            our_payload_on_opensbi.uart.output
+        )
+
+    def test_sbis_timer_call_wakes_it_with_the_supervisors_timer_interrupt(
+        self, our_payload_on_opensbi
+    ):
+        assert "payload: timer interrupt taken in supervisor mode" in (
+            our_payload_on_opensbi.uart.output
+        )
+
+    def test_opensbi_makes_a_misaligned_load_on_its_behalf(
+        self, our_payload_on_opensbi
+    ):
+        # The four bytes from one past the start of 11 22 33 44 55 66 77 88.
+        assert "payload: misaligned load read 0x55443322" in (
+            our_payload_on_opensbi.uart.output
+        )
+
+    def test_it_reads_that_the_power_came_on(self, our_payload_on_opensbi):
+        assert "payload: reset cause power-on" in (
+            our_payload_on_opensbi.uart.output
+        )
+
+
+@pytest.fixture
+def our_payload_rebooted_from_the_flash(firmware):
+    """A host that has run OpenSBI and our payload from its flash, until the
+    payload has asked for a reboot and then to be switched off."""
+    board, layout = a_host_with_opensbi(firmware, payload=SBI_PAYLOAD_BIN)
+    in_the_flash(board, layout, firmware)
+    board.platform.run_until(
+        lambda: switched_off(board), timeout=2 * LONG_ENOUGH
+    )
+    return board
+
+
+@pytest.mark.platform
+class TestWhenOurPayloadAsksOpenSbiForAColdRebootFromTheFlash:
+    """🎓 SBI's reset call goes through OpenSBI's `syscon-reboot` to the
+    system controller, which resets the CPU: the ROM starts again, copies
+    OpenSBI from the flash afresh, and the payload runs a second time."""
+
+    def test_the_rom_and_opensbi_start_twice(
+        self, our_payload_rebooted_from_the_flash
+    ):
+        output = our_payload_rebooted_from_the_flash.uart.output
+        rom_lines = [
+            each for each in output.splitlines() if each.startswith("rom: ")
+        ]
+
+        assert (len(rom_lines), output.count(BANNER)) == (2, 2)
+
+    def test_the_second_time_the_payload_reads_a_software_reset(
+        self, our_payload_rebooted_from_the_flash
+    ):
+        assert "payload: reset cause software" in (
+            our_payload_rebooted_from_the_flash.uart.output
+        )
+
+    def test_then_it_asks_to_be_switched_off_and_is(
+        self, our_payload_rebooted_from_the_flash
+    ):
+        board = our_payload_rebooted_from_the_flash
+
+        assert "payload: asking to be switched off" in board.uart.output
+        assert switched_off(board)
 
 
 def switched_off(board):
