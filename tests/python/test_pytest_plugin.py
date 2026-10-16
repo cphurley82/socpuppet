@@ -175,8 +175,12 @@ class TestWhenAPlatformTestIsTheLastOneInItsClass:
 class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     @pytest.fixture
     def result(self, session_with_socpuppet):
+        # The clock starts with the child's interpreter, so the limit has to
+        # leave room for it to start. That takes a fifth of a second here,
+        # and has taken more than a second on a machine busy with a whole CI
+        # run, which stopped the child before it reached the test.
         session_with_socpuppet.makeini(
-            "[pytest]\nsocpuppet_platform_timeout = 1\n"
+            "[pytest]\nsocpuppet_platform_timeout = 5\n"
         )
         session_with_socpuppet.makepyfile(
             """
@@ -198,7 +202,7 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
 
     def test_the_failure_names_the_setting_that_raises_the_limit(self, result):
         result.stdout.fnmatch_lines(
-            ["*longer than 1 second*socpuppet_platform_timeout*"]
+            ["*longer than 5 seconds*socpuppet_platform_timeout*"]
         )
 
     def test_the_failure_shows_where_the_test_was(self, result):
