@@ -884,7 +884,7 @@ What planning found on 2026-10-15, reading OpenSBI v1.9's sources and not yet ru
 - **The SDK's gcc ignores a linker script given as `-Wl,-T`** (`firmware/build.sh`), which is how OpenSBI's Makefile gives its own.
 - **`dtc` is installed on CI's Linux test runner and not on its Mac.**
 - **The model's UART says it has no FIFO**, which is a 16550 and not a 16550A, so its name stays `ns16550` in both dialects. Linux's 8250 driver and OpenSBI's take that name.
-- **QBox's hart differs from DBT-RISE's in four places this milestone meets**: it has PMP, it has Sstc (so OpenSBI sets the supervisor's timer through `stimecmp`), it makes misaligned loads itself, and it has `mtopi` and `stopi` of its own.
+- **QBox's hart differs from DBT-RISE's in four places this milestone meets**: it has PMP, it has Sstc (so OpenSBI sets the supervisor's timer through `stimecmp`), it makes misaligned loads itself, and it has `mtopi` and `stopi` of its own. ⚠️ The nightly found the Sstc one the hard way: QEMU times `stimecmp` with its own ACLINT, which it took the adapter for, and divided by zero. A patch gives QBox's CPU a parameter for Sstc and the adapter switches it off, so both harts set the supervisor's timer through `mtimecmp` ([upstream.md](upstream.md)).
 
 **Decided on 2026-10-15, planning M23.**
 
@@ -1168,7 +1168,7 @@ What M23 found that will matter again:
 - **A debugger with breakpoints at the firmware's symbols is the tool for a boot that prints nothing**, and the tests' GDB client is enough of one.
 - ⚠️ **A reboot from the quick way does not come back**: nothing loads RAM again.
 
-What M23 did not do: a second APLIC domain with delegation, the faithful shape, which OpenSBI's own setup is written for; the hart's interrupt order made the specification's; Linux's binding for the PLIC; the boot ROM handing on an argument on a 32-bit CPU, which no image asks of it; and the exit test on QBox, whose nightly runs it next, with its one fate named (QEMU's PMP).
+What M23 did not do: a second APLIC domain with delegation, the faithful shape, which OpenSBI's own setup is written for; the hart's interrupt order made the specification's; Linux's binding for the PLIC; and the boot ROM handing on an argument on a 32-bit CPU, which no image asks of it. The exit test runs on QBox too, with one fate (QEMU's PMP), once the adapter switched off QBox's Sstc.
 
 What M27 delivered: a second opinion on a boot. Its exit is `uv run ctest --preset qbox` on a build with QBox: the contract, the hart's suite with its fates skipped and named, and the Python suite with every host boot on QEMU's hart.
 

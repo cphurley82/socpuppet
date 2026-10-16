@@ -1123,6 +1123,20 @@ INSTANTIATE_TEST_SUITE_P(
                       ImsicRegisterOfAHart{riscv::kStopei, "stopei"}),
     NamedByWhatItIs{});
 
+// The hart has no Sstc, the extension that gives supervisor mode a timer
+// compare of its own. Its timer is the machine timer's, which it asks
+// machine mode for: OpenSBI's set_timer call writes `mtimecmp`.
+TEST(WhenMachineModeWritesTheSupervisorsTimerCompare,
+     ItTakesAnIllegalInstructionTrap) {
+  CpuPlatform with_cpu{/*xlen=*/64, TheCoreWithSupervisorMode()};
+  with_cpu.Load(riscv::StoreWhyWritingACsrTrapped(riscv::kStimecmp));
+
+  with_cpu.RunUntilAsleep();
+
+  // The program stores the cause with one added, and zero for no trap.
+  EXPECT_EQ(with_cpu.ResultWord(), riscv::kIllegalInstruction + 1);
+}
+
 // An IMSIC's files can only be switched on through its hart.
 TEST(WhenAnImsicsWayInForItsHartGoesNowhere,
      ElaborationIsRefusedAndTheErrorNamesThePort) {

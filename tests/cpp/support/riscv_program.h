@@ -349,6 +349,8 @@ inline constexpr Word kSie = 0x104;
 inline constexpr Word kStvec = 0x105;
 // And its view of which interrupts are pending.
 inline constexpr Word kSip = 0x144;
+// The supervisor's own timer compare, which only a hart with Sstc has.
+inline constexpr Word kStimecmp = 0x14D;
 // Supervisor mode's view of the status register, and two of its bits, by
 // their place in the upper twenty that `lui` sets: SUM lets supervisor
 // mode use user mode's pages, and MXR lets a load read a page that may

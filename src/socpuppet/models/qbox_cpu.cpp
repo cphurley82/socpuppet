@@ -88,6 +88,13 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   // because nothing can be asked whether there is before the run starts.
   set("core.smaia", cci::cci_value(true));
   set("core.ssaia", cci::cci_value(true));
+  // No Sstc, supervisor mode's own timer compare, which DbtRiseCpu has not
+  // got either. QEMU times `stimecmp` with its own ACLINT, which it takes
+  // the argument of the `time` hook to be, and here that is the adapter:
+  // it would read a frequency from the wrong object and divide by it
+  // (docs/upstream.md). Supervisor mode's timer is then the machine
+  // timer's, which OpenSBI sets through `mtimecmp`.
+  set("core.sstc", cci::cci_value(false));
 }
 
 }  // namespace

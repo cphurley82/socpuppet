@@ -1,0 +1,26 @@
+--- a/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h
++++ b/qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h
+@@ -29,6 +29,7 @@
+     cci::cci_param<bool> p_pmp;
+     cci::cci_param<bool> p_smaia;
+     cci::cci_param<bool> p_ssaia;
++    cci::cci_param<bool> p_sstc;
+ 
+ protected:
+     uint64_t m_hartid;
+@@ -56,6 +57,7 @@
+         , p_pmp("pmp", false, "Enable Physical Memory Protection")
+         , p_smaia("smaia", false, "Enable Smaia (AIA M-mode CSRs)")
+         , p_ssaia("ssaia", false, "Enable Ssaia (AIA S-mode CSRs)")
++        , p_sstc("sstc", true, "Enable Sstc (S-mode timer compare CSRs)")
+     {
+         m_external_ev |= m_irq_ev;
+         for (auto& irq : irq_in) {
+@@ -88,6 +90,7 @@
+         if (p_ssaia) {
+             cpu.set_prop_bool("ssaia", true);
+         }
++        cpu.set_prop_bool("sstc", p_sstc);
+ 
+         cpu.set_mip_update_callback(std::bind(&QemuCpuRiscv64::mip_update_cb, this, std::placeholders::_1));
+     }
