@@ -1003,6 +1003,15 @@ def test_wheel_here_keeps_the_containers_compiler_cache_in_build_ccache(ci):
 
 
 @ON_LINUX_ONLY
+def test_wheel_here_makes_build_ccache_itself_before_the_container_can(ci):
+    ci("wheel", makes=ONE_WHEEL)
+
+    # Made by the container, it would be root's, and this user could not
+    # empty it.
+    assert (ci.root / "build" / "ccache").is_dir()
+
+
+@ON_LINUX_ONLY
 def test_wheel_here_leaves_the_containers_compiler_cache_for_anyone_to_remove(
     ci,
 ):

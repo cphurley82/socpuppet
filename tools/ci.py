@@ -40,6 +40,8 @@ REPO = Path(__file__).resolve().parents[1]
 LOGS = REPO / "build" / "ci"
 # Where the wheel job leaves the wheels, from the top of the repository.
 WHEELHOUSE = "build/wheelhouse"
+# Where a wheel built here on Linux keeps its container's compiler cache.
+CCACHE = "build/ccache"
 ON_LINUX = platform.system() == "Linux"
 
 
@@ -122,6 +124,9 @@ class Job:
     only_on: str = ""
     # Directories emptied before its steps, of what an earlier run left.
     fresh: tuple[str, ...] = ()
+    # Directories made before its steps if they are not there, so that they
+    # are the user's who runs it, and not the root of a container's.
+    made: tuple[str, ...] = ()
     # A path it runs for a change to, as CI's paths filter has it: here, it
     # runs when the path differs from main's.
     changed: str = ""
@@ -179,7 +184,7 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
             # /host. It runs as root, so what it caches is left for anyone to
             # remove, and so for any user of this machine to write to.
             env |= {
-                "CCACHE_DIR": f"/host{REPO}/build/ccache",
+                "CCACHE_DIR": f"/host{REPO}/{CCACHE}",
                 "CCACHE_UMASK": "000",
             }
         build = (
@@ -422,6 +427,7 @@ JOBS = [
         needs=FIRMWARE,
         steps=wheel_steps,
         fresh=(WHEELHOUSE,),
+        made=(CCACHE,) if ON_LINUX else (),
         # cibuildwheel builds Linux's wheels in a manylinux container, and
         # a Mac's here. Each fetches its build's packages from PyPI.
         docker=ON_LINUX,
@@ -556,7 +562,7 @@ def run_for_ci(names: list[str]) -> int:
     for name in names:
         job = JOBS_BY_NAME[name]
         print(header(job))
-        empty(job.fresh)
+        prepare(job)
         for step in job.steps_for(Mode.CI):
             if not run_in_ci(f"{name} ▸ {step.label}", step):
                 return 1
@@ -567,6 +573,13 @@ def empty(directories: tuple[str, ...]) -> None:
     """Throw away what is in each directory, the directory too."""
     for directory in directories:
         shutil.rmtree(REPO / directory, ignore_errors=True)
+
+
+def prepare(job: Job) -> None:
+    """Leave the directories a job asks for as it asks for them."""
+    empty(job.fresh)
+    for directory in job.made:
+        (REPO / directory).mkdir(parents=True, exist_ok=True)
 
 
 class Verdict(enum.Enum):
@@ -954,7 +967,7 @@ class Run:
         each step's end, then the job's.
         """
         started = time.monotonic()
-        empty(job.fresh)
+        prepare(job)
         for step in job.steps_for(Mode.HERE):
             log = LOGS / f"{job.name}-{step.label}.log"
             step_started = time.monotonic()
