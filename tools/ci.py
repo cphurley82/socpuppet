@@ -18,9 +18,11 @@ first that fails.
 import argparse
 import contextlib
 import enum
+import hashlib
 import os
 import platform
 import queue
+import re
 import shutil
 import signal
 import subprocess
@@ -62,6 +64,12 @@ class Job:
     uses: tuple[str, ...] = ()
     # Whether it runs in Docker.
     docker: bool = False
+    # Whether it configures build/dev with a preset other than dev, which
+    # shares the tree. A run here configures it for dev again at the end.
+    # What it built stays as it was until the next dev build: after the
+    # coverage job, the extension in python/socpuppet is the one built to
+    # measure coverage.
+    reconfigures_dev: bool = False
     # The one system it runs on (platform.system()'s name), if not every.
     only_on: str = ""
     # A path it runs for a change to, as CI's paths filter has it: here, it
@@ -77,6 +85,11 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
         Step("tidy", (*build, "--target", "tidy")),
         Step("check_headers", (*build, "--target", "check_headers")),
     )
+
+
+# What configures build/dev for dev again, after a job that configured it
+# with another preset.
+RESTORE_DEV = ("uv", "run", "cmake", "--preset", "dev")
 
 
 # Quick first: when two jobs could start, the one higher in the table does.
@@ -116,6 +129,35 @@ JOBS = [
         # clang-tidy reads GCC's compile commands and standard library, so
         # it reads our code the way the Linux build compiles it.
         only_on="Linux",
+    ),
+    Job(
+        "coverage",
+        "which lines of our C++ and Python the tests run, against a floor",
+        steps=(
+            Step("configure", ("uv", "run", "cmake", "--preset", "coverage")),
+            Step(
+                "coverage",
+                (
+                    *("uv", "run", "cmake", "--build", "--preset", "coverage"),
+                    *("--target", "coverage"),
+                ),
+            ),
+        ),
+        uses=("build/dev", "extension"),
+        reconfigures_dev=True,
+    ),
+    Job(
+        "sanitizers",
+        "the C++ tests, built to stop at a memory error or undefined behavior",
+        steps=(
+            Step("configure", ("uv", "run", "cmake", "--preset", "asan")),
+            Step(
+                "build", ("uv", "run", "cmake", "--build", "--preset", "asan")
+            ),
+            Step("ctest", ("uv", "run", "ctest", "--preset", "asan")),
+        ),
+        uses=("build/dev", "extension"),
+        reconfigures_dev=True,
     ),
     Job(
         "qbox-build",
@@ -167,7 +209,7 @@ def main() -> int:
     if args.list:
         list_jobs(args.docker)
         return 0
-    return run_here(args.jobs, args.parallel, args.docker)
+    return run_here(args.jobs, args.parallel, args.docker, args.clean)
 
 
 def parse_here(arguments: list[str]) -> argparse.Namespace:
@@ -190,6 +232,11 @@ def parse_here(arguments: list[str]) -> argparse.Namespace:
         action="store_true",
         help="run the jobs in Docker too: "
         + ", ".join(job.name for job in JOBS if job.docker),
+    )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="drop the patched dependencies first, to fetch them again",
     )
     parser.add_argument(
         "--list",
@@ -294,6 +341,12 @@ class Outcome:
 
 INTERRUPTED = Outcome(Verdict.INTERRUPTED, detail="interrupted")
 
+COLORS: dict[Verdict | None, str] = {
+    Verdict.PASSED: "\x1b[32m",
+    Verdict.FAILED: "\x1b[31m",
+}
+RESET = "\x1b[0m"
+
 
 @dataclass(frozen=True)
 class StepEnded:
@@ -314,15 +367,92 @@ class JobEnded:
     outcome: Outcome
 
 
-def run_here(names: list[str], parallel: int, docker: bool) -> int:
+def run_here(names: list[str], parallel: int, docker: bool, clean: bool) -> int:
     """Run the jobs named, or every one, here. Returns the exit status.
 
-    `docker` says whether the jobs in Docker were asked for.
+    `docker` says whether the jobs in Docker were asked for, and `clean`
+    whether to drop the patched dependencies whatever the patches are.
     """
     jobs = [job for job in JOBS if not names or job.name in names]
     LOGS.mkdir(parents=True, exist_ok=True)
+    drop_stale_dependencies(clean)
     # A job in Docker that was named was asked for.
     return Run(jobs, parallel, docker or bool(names)).go()
+
+
+def drop_stale_dependencies(clean: bool) -> None:
+    """Drop the patched dependencies when the patches have changed.
+
+    git apply does not apply a patch twice, so a build tree whose
+    dependencies an older set of patches was applied to stops at configure
+    with "patch does not apply". A hash of what the patches are made from
+    is kept in build/ci/, and when it has changed, or there is none, or
+    `clean` asks, each patched dependency is dropped from the trees, to be
+    fetched and patched again. What is not patched is slow to build, and
+    is kept.
+    """
+    stamp = LOGS / ".patches"
+    current = patches_hash()
+    same = stamp.exists() and stamp.read_text().strip() == current
+    if same and not clean:
+        return
+    # socpuppet's trees, as the presets name them, and QBox's own patch to
+    # rpclib in tools/build_qbox.sh's tree, which CPM applies with `git am`
+    # and which applied twice stops the configure. libqemu is left alone:
+    # it is the slow one, and tools/build_qbox.sh keeps its own patches.
+    patched = patched_dependencies()
+    stale = [
+        (REPO / tree / "_deps", name)
+        for tree in ("build/dev", "build/qbox-dev")
+        for name in patched
+    ] + [(REPO / "build" / "qbox" / "build" / "_deps", "rpclib")]
+    if any((deps / f"{name}-src").exists() for deps, name in stale):
+        why = (
+            "--clean asks"
+            if same
+            else "the patches have changed since they were applied, or "
+            "there is no record of them"
+        )
+        print(f"🧹 dropping the patched dependencies, as {why}")
+    for deps, name in stale:
+        for part in ("src", "build", "subbuild"):
+            shutil.rmtree(deps / f"{name}-{part}", ignore_errors=True)
+    stamp.write_text(current + "\n")
+
+
+def patches_hash() -> str:
+    """A hash of what the patches are, and of what applies them.
+
+    The first two are what CI's cache of build/dev/_deps is keyed on, so
+    that a change to Dependencies.cmake, a comment even, drops here what
+    CI fetches again.
+    """
+    digest = hashlib.sha256()
+    for path in (
+        REPO / "cmake" / "Dependencies.cmake",
+        *sorted((REPO / "cmake" / "patches").glob("*")),
+        REPO / "tools" / "build_qbox.sh",
+    ):
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def patched_dependencies() -> set[str]:
+    """The dependencies cmake/Dependencies.cmake patches.
+
+    Each is the FetchContent_Declare that a PATCH_COMMAND sits in, by the
+    name FetchContent gives its directories, which is lowercased.
+    """
+    patched = set()
+    name = ""
+    text = (REPO / "cmake" / "Dependencies.cmake").read_text()
+    for line in text.splitlines():
+        declared = re.search(r"FetchContent_Declare\(\s*([\w-]+)", line)
+        if declared:
+            name = declared[1].lower()
+        if "PATCH_COMMAND" in line:
+            patched.add(name)
+    return patched
 
 
 def why_skipped(job: Job, docker: bool) -> str | None:
@@ -428,6 +558,7 @@ class Run:
             self.stop()
             self.summarize()
             return 130
+        self.restore_dev()
         self.summarize()
         failed = any(
             outcome.verdict is Verdict.FAILED
@@ -458,7 +589,7 @@ class Run:
             elif self.ready(job):
                 self.running.add(job.name)
                 self.held.update(job.uses)
-                self.say("🚀", job.name, "starting")
+                self.say(job.name, "starting")
                 threading.Thread(
                     target=self.work, args=(job,), daemon=True
                 ).start()
@@ -512,6 +643,26 @@ class Run:
         took = time.monotonic() - started
         self.events.put(JobEnded(job.name, Outcome(Verdict.PASSED, took)))
 
+    def restore_dev(self) -> None:
+        """Configure build/dev for dev again, if a job configured it otherwise.
+
+        The presets other than qbox share build/dev, which holds whichever
+        was configured last.
+        """
+        if not any(job.reconfigures_dev for job in self.jobs):
+            return
+        print("🔧 configuring build/dev for dev again")
+        log = LOGS / "restore-dev.log"
+        with log.open("w") as output:
+            restored = subprocess.run(
+                RESTORE_DEV,
+                cwd=REPO,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
+        if restored.returncode != 0:
+            print(f"⚠️  build/dev was not configured for dev again: see {log}")
+
     def stop(self) -> None:
         """Stop the steps that are running, and start no more.
 
@@ -529,22 +680,27 @@ class Run:
     def end(self, name: str, outcome: Outcome) -> None:
         """Record how a job ended, and say so."""
         self.outcomes[name] = outcome
-        self.say(outcome.verdict.mark(), name, outcome.describe())
+        self.say(name, outcome.describe(), outcome.verdict)
 
-    def say(self, mark: str, name: str, text: str) -> None:
-        """Print what happened to a job, and how far the whole run has got."""
+    def say(self, name: str, text: str, verdict: Verdict | None = None) -> None:
+        """Print what happened to a job, and how far the whole run has got.
+
+        A job with no verdict has just started.
+        """
         verdicts = [outcome.verdict for outcome in self.outcomes.values()]
         waiting = len(self.jobs) - len(self.outcomes) - len(self.running)
         counts = [
             *(
-                f"{verdicts.count(verdict):2} {verdict.mark()}"
-                for verdict in (Verdict.PASSED, Verdict.FAILED, Verdict.SKIPPED)
+                f"{verdicts.count(kind):2} {kind.mark()}"
+                for kind in (Verdict.PASSED, Verdict.FAILED, Verdict.SKIPPED)
             ),
             f"{len(self.running):2} 🏃",
             f"{waiting:2} ⏳",
         ]
         tally = " ".join(counts)
-        print(f"{mark} {name:<{NAME_WIDTH}}  {text:<40} [ {tally} ]")
+        mark = verdict.mark() if verdict else "🚀"
+        line = paint(f"{mark} {name:<{NAME_WIDTH}}  {text:<40}", verdict)
+        print(f"{line} [ {tally} ]")
 
     def summarize(self) -> None:
         """Say how each job ended, in the table's order."""
@@ -553,20 +709,34 @@ class Run:
             outcome = self.outcomes.get(job.name, INTERRUPTED)
             mark = outcome.verdict.mark()
             if outcome.verdict in (Verdict.PASSED, Verdict.FAILED):
-                print(f"   {mark} {job.name} ({outcome.describe()})")
+                line = f"{mark} {job.name} ({outcome.describe()})"
             else:
-                print(f"   {mark} {job.name}: {outcome.describe()}")
+                line = f"{mark} {job.name}: {outcome.describe()}"
+            print(f"   {paint(line, outcome.verdict)}")
 
 
 def report_step(step: StepEnded) -> None:
     """Say how a step ended, and for one that failed, how its output ends."""
     title = f"{step.job} ▸ {step.label}"
-    verdict = "✅" if step.passed else "❌"
-    print(f"   {title:<40} {verdict} {duration(step.seconds)}")
+    verdict = Verdict.PASSED if step.passed else Verdict.FAILED
+    ended = paint(f"{verdict.mark()} {duration(step.seconds)}", verdict)
+    print(f"   {title:<40} {ended}")
     if not step.passed:
         print(f"     output: {step.log.relative_to(REPO)}")
         for line in step.log.read_text(errors="replace").splitlines()[-15:]:
             print(f"     | {line}")
+
+
+def paint(text: str, verdict: Verdict | None) -> str:
+    """Color what a verdict says, for a person at a terminal.
+
+    Green for a pass and red for a failure, unless the output is not a
+    terminal or the person set NO_COLOR.
+    """
+    color = COLORS.get(verdict)
+    if not color or not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+        return text
+    return f"{color}{text}{RESET}"
 
 
 def header(job: Job) -> str:

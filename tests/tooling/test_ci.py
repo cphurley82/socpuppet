@@ -11,6 +11,7 @@ import itertools
 import json
 import os
 import platform
+import pty
 import shutil
 import signal
 import subprocess
@@ -22,6 +23,21 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 RUNNER = REPO / "tools" / "ci.py"
+
+# Three dependencies, two of them patched, one of those with a name that
+# FetchContent lowercases.
+DEPENDENCIES = """\
+FetchContent_Declare(spam
+  GIT_REPOSITORY https://example.invalid/spam.git
+)
+FetchContent_Declare(eggs
+  GIT_REPOSITORY https://example.invalid/eggs.git
+  PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/cmake/patches/eggs-fix.patch
+)
+FetchContent_Declare(Ham_Core
+  PATCH_COMMAND git apply ${CMAKE_SOURCE_DIR}/cmake/patches/ham-fix.patch
+)
+"""
 
 # A program that logs its command line, says it on its output, then says
 # as many lines more as LINES asks, and exits with the status the test asked
@@ -56,9 +72,12 @@ sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 # The scripts in the repository that the jobs call.
 SCRIPTS = ("firmware/build.sh", "tools/build_qbox.sh", "tools/devcontainer.sh")
 
+# What a terminal is sent to color what follows.
+GREEN, RED = "\x1b[32m", "\x1b[31m"
+
 # What the runner is told by the environment it runs in, which the tests
 # decide for themselves.
-DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS",)
+DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR")
 
 
 def load_runner():
@@ -84,7 +103,9 @@ def ci(tmp_path):
 
     run returns the finished process and the commands the stand-ins were
     given, in order. run.root is the copy, run.start(*args, **env) starts
-    the runner and returns the process, run.lines() are the commands so far,
+    the runner and returns the process, run.on_a_terminal(*args, **env)
+    runs it with its output going to a terminal and returns what that was
+    sent, run.lines() are the commands so far,
     run.commands() the commands that ended, with their variables and times,
     run.command(name) the one of them named, and run.pids() the process ids
     of the commands that started.
@@ -94,6 +115,9 @@ def ci(tmp_path):
     shutil.copy(RUNNER, root / "tools" / "ci.py")
     for script in SCRIPTS:
         write_stand_in(root / script)
+    (root / "cmake" / "patches").mkdir(parents=True)
+    (root / "cmake" / "Dependencies.cmake").write_text(DEPENDENCIES)
+    (root / "cmake" / "patches" / "eggs-fix.patch").write_text("one\n")
     git(root, "init", "-q", "-b", "main")
     commit_everything(root)
     bin_directory = tmp_path / "bin"
@@ -101,7 +125,7 @@ def ci(tmp_path):
         write_stand_in(bin_directory / program)
     log = tmp_path / "log"
 
-    def start(*args, **env):
+    def start(*args, stdout=subprocess.PIPE, **env):
         return subprocess.Popen(
             [sys.executable, str(root / "tools" / "ci.py"), *args],
             cwd=root,
@@ -116,10 +140,27 @@ def ci(tmp_path):
                 "LOG": str(log),
                 **env,
             },
-            stdout=subprocess.PIPE,
+            stdout=stdout,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
         )
+
+    def on_a_terminal(*args, **env):
+        ours, theirs = pty.openpty()
+        process = start(*args, stdout=theirs, **env)
+        os.close(theirs)
+        sent = b""
+        while True:
+            try:
+                chunk = os.read(ours, 4096)
+            except OSError:  # Linux reports the far end closing as an error.
+                break
+            if not chunk:
+                break
+            sent += chunk
+        os.close(ours)
+        process.wait()
+        return sent.decode("utf-8")
 
     def run(*args, **env):
         process = start(*args, **env)
@@ -146,6 +187,7 @@ def ci(tmp_path):
 
     run.root = root
     run.start = start
+    run.on_a_terminal = on_a_terminal
     run.lines = lines
     run.commands = commands
     run.pids = pids
@@ -358,10 +400,18 @@ def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
     assert started == [job.name for job in JOBS if job.name in names]
 
 
-def test_a_run_opens_with_how_many_jobs_and_how_many_at_a_time(ci):
+def test_a_run_says_how_many_jobs_it_has_and_how_many_at_a_time_before_any(
+    ci,
+):
     result, _ = ci("-j", "2", "lint", "firmware", "test")
 
-    assert result.stdout.startswith("🧦 3 jobs, 2 at a time")
+    output = result.stdout.splitlines()
+    opening = next(i for i, line in enumerate(output) if line.startswith("🧦"))
+    first_job = next(
+        i for i, line in enumerate(output) if line.startswith("🚀")
+    )
+    assert output[opening].startswith("🧦 3 jobs, 2 at a time")
+    assert opening < first_job
 
 
 def test_a_run_says_at_each_job_how_far_the_whole_run_has_got(ci):
@@ -566,10 +616,140 @@ def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
         assert "--docker" in entries[name]
 
 
+def test_when_the_patches_change_the_patched_dependencies_are_dropped(ci):
+    ci("lint")
+    (ci.root / "cmake" / "patches" / "eggs-fix.patch").write_text("two\n")
+    dependencies = make_dependencies(ci.root)
+
+    ci("lint")
+
+    assert dropped(dependencies) == PATCHED
+
+
+def test_when_the_patches_are_the_same_nothing_is_dropped(ci):
+    ci("lint")
+    dependencies = make_dependencies(ci.root)
+
+    ci("lint")
+
+    assert dropped(dependencies) == set()
+
+
+def test_a_tree_from_before_any_run_is_taken_to_be_stale(ci):
+    dependencies = make_dependencies(ci.root)
+
+    ci("lint")
+
+    assert dropped(dependencies) == PATCHED
+
+
+def test_clean_drops_the_patched_dependencies_though_the_patches_are_the_same(
+    ci,
+):
+    ci("lint")
+    dependencies = make_dependencies(ci.root)
+
+    ci("--clean", "lint")
+
+    assert dropped(dependencies) == PATCHED
+
+
+def test_run_in_ci_leaves_the_dependencies_alone_and_keeps_no_record(ci):
+    dependencies = make_dependencies(ci.root)
+
+    ci("run", "lint")
+
+    assert dropped(dependencies) == set()
+    ci("lint")
+    assert dropped(dependencies) == PATCHED
+
+
+@pytest.mark.parametrize("job", ["coverage", "sanitizers"])
+@pytest.mark.parametrize("fails", [False, True], ids=["passes", "fails"])
+def test_after_a_job_that_configures_the_dev_tree_otherwise_it_is_put_back(
+    ci, job, fails
+):
+    ci(job, FAIL_ON="--build" if fails else "@")
+
+    assert ci.lines()[-1] == "uv run cmake --preset dev"
+
+
+def test_after_a_job_that_configures_the_dev_tree_for_dev_it_is_left_as_is(
+    ci,
+):
+    _, lines = ci("test")
+
+    assert lines.count("uv run cmake --preset dev") == 1
+
+
+def test_a_dev_tree_that_cannot_be_put_back_is_named_in_a_warning(ci):
+    result, _ = ci("coverage", FAIL_ON="dev")
+
+    assert "⚠️  build/dev was not configured for dev again" in result.stdout
+
+
+def test_on_a_terminal_a_job_that_passes_is_green_and_one_that_fails_red(ci):
+    sent = ci.on_a_terminal("lint", "firmware", FAIL_ON="build.sh")
+
+    assert f"{GREEN}✅ lint" in sent
+    assert f"{RED}❌ firmware" in sent
+
+
+def test_with_no_color_asked_for_a_terminal_is_sent_no_color(ci):
+    sent = ci.on_a_terminal(
+        "lint", "firmware", FAIL_ON="build.sh", NO_COLOR="1"
+    )
+
+    assert "\x1b[" not in sent
+
+
+def test_output_to_a_pipe_is_not_colored(ci):
+    result, _ = ci("lint", "firmware", FAIL_ON="build.sh")
+
+    assert "\x1b[" not in result.stdout
+
+
 def write_stand_in(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!{sys.executable}\n{STAND_IN}")
     path.chmod(0o755)
+
+
+# The dependencies a run finds in the build trees: those of socpuppet's
+# trees (the presets' binaryDir), as FetchContent names them, and QBox's own
+# two (tools/build_qbox.sh's tree).
+DEPENDENCY_DIRECTORIES = [
+    f"{tree}/_deps/{name}-{part}"
+    for tree in ("build/dev", "build/qbox-dev")
+    for name in ("spam", "eggs", "ham_core")
+    for part in ("src", "build", "subbuild")
+] + [
+    f"build/qbox/build/_deps/{name}-{part}"
+    for name in ("rpclib", "libqemu")
+    for part in ("src", "build", "subbuild")
+]
+# The ones that are patched: FetchContent's that have a PATCH_COMMAND, and
+# QBox's rpclib, which CPM patches. libqemu is patched by
+# tools/build_qbox.sh, which keeps its own account.
+PATCHED = {
+    directory
+    for directory in DEPENDENCY_DIRECTORIES
+    if "/eggs-" in directory
+    or "/ham_core-" in directory
+    or "/rpclib-" in directory
+}
+
+
+def make_dependencies(root):
+    """Fill the build trees with dependencies; returns their directories."""
+    for directory in DEPENDENCY_DIRECTORIES:
+        (root / directory).mkdir(parents=True)
+        (root / directory / "file").write_text("old\n")
+    return {directory: root / directory for directory in DEPENDENCY_DIRECTORIES}
+
+
+def dropped(dependencies):
+    return {name for name, path in dependencies.items() if not path.exists()}
 
 
 def git(root, *args):
