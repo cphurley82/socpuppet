@@ -7,10 +7,10 @@ What a socpuppet CPU runs first when its board is described with `boot=from_rom`
 What this one does, in order:
 
 1. **Asks where the image is.** The CPU's [system controller](../../docs/models/system-controller.md) has the address in its `BOOT_ADDRESS` register, which is somewhere in the board's [flash](../../docs/models/spi-flash.md).
-2. **Reads the header there.** A [boot image](../../docs/models/boot-image.md) starts with 64 bytes that say what the program is called, which kind of CPU it is for, where it goes in memory and where it starts.
+2. **Reads the header there.** A [boot image](../../docs/models/boot-image.md) starts with 72 bytes that say what the program is called, which kind of CPU it is for, where it goes in memory, where it starts, and what to hand it.
 3. **Copies the program into RAM**, a register's width at a time.
 4. **Checks the copy**, by its CRC-32, against the one in the header.
-5. **Says what it loaded, and jumps to it.**
+5. **Says what it loaded, and jumps to it**, with the hart's number in `a0` and the argument from the header in `a1`, as every RISC-V stage of a boot starts the next: OpenSBI takes the address of its devicetree there.
 
 ## What it says
 

@@ -139,13 +139,15 @@ The earlier spikes have gone. The twister spike asked whether Zephyr's test runn
 
 ## Firmware
 
-Some tests boot real firmware: Zephyr samples and applications of ours, built with the Zephyr SDK, and the boot ROM in `firmware/rom`, which is bare-metal C built with the SDK's compiler and no Zephyr.
+Some tests boot real firmware: Zephyr samples and applications of ours, built with the Zephyr SDK; the boot ROM in `firmware/rom`, which is bare-metal C built with the SDK's compiler and no Zephyr; OpenSBI v1.9, for the host, with its `test_payload`; and `firmware/sbi_payload`, a payload of ours for OpenSBI, built as the ROM is.
 
 ```sh
 firmware/build.sh        # into build/firmware
 ```
 
-- The script downloads the SDK's RISC-V toolchain (about 225 MB), Zephyr 4.4.2, and a Python for Zephyr's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- The script downloads the SDK's RISC-V toolchain (about 225 MB), the SDK's LLVM (about 260 MB, two gigabytes unpacked), OpenSBI, Zephyr 4.4.2, and a Python for Zephyr's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- 🎓 **OpenSBI is built with the SDK's LLVM and not its GCC.** OpenSBI runs wherever it is put, by being linked as a position-independent executable, and the SDK's GNU linker is built for bare-metal programs and cannot make one. LLVM's can, for any target. It is kept beside the SDK, in `build/firmware/llvm-<version>`, so that what copies or caches the SDK for Zephyr does not carry it.
+- 📮 **OpenSBI's patches** are `cmake/patches/opensbi-*.patch`, each with its entry in [upstream.md](upstream.md), and the script applies them to a clean tree every time, so that a patch that changes is the one built.
 - 💡 On an Apple silicon Mac the script runs on macOS itself: the SDK has a toolchain for one, and nothing else has to be installed. Every image builds in a minute there.
 - 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one. It builds that image the first time, as `socpuppet-dev`. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
 - ⚠️ The script does not rebuild the image when `.devcontainer/Dockerfile` changes. `tools/devcontainer.sh` does, and names the new image `socpuppet-dev` too, so after such a change run `tools/devcontainer.sh true` once.

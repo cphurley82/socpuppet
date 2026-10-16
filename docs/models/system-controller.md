@@ -54,6 +54,26 @@ syscon: syscon@100000 {
 
 🎓 `syscon` is what Zephyr and Linux both call a block of registers that other code reaches into. Zephyr has a driver for any node of that name, so firmware needs none of ours: `syscon_read_reg()` with an offset from `socpuppet/regs/system_controller.h`. [`firmware/watchdog`](../../firmware/watchdog/README.md) reads why it was reset that way.
 
+In Linux's dialect two more nodes stand beside it, at the top of the tree, for OpenSBI and Linux: how to reset the CPU and how to switch it off, each the system controller's node, a register and what to write there.
+
+```dts
+compute_syscon_reboot: reboot {
+	compatible = "syscon-reboot";
+	regmap = <&compute_syscon>;
+	offset = <0xc>;
+	value = <0x1>;
+};
+
+compute_syscon_poweroff: poweroff {
+	compatible = "syscon-poweroff";
+	regmap = <&compute_syscon>;
+	offset = <0x10>;
+	value = <0x1>;
+};
+```
+
+⚠️ OpenSBI v1.9 refused both, since its syscon took only the first quarter of a block's registers: socpuppet patches it ([upstream.md](../upstream.md)).
+
 💡 Zephyr's `sys_reboot()` ends here too. RISC-V has no common way to reset a system, so Zephyr leaves the last step, `sys_arch_reboot()`, to the SoC, and socpuppet's SoC writes `RESET_REQUEST` (`soc/socpuppet/reboot.c` in the Zephyr module, built when `CONFIG_REBOOT` is on and the devicetree has a system controller).
 
 ## What it leaves out

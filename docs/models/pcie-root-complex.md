@@ -50,6 +50,8 @@ io_rc: pcie@10100000 {
 
 💡 The compatible is socpuppet's own. Zephyr has a generic driver for a root complex like this one, and it cannot deliver a message-signalled interrupt on RISC-V, so socpuppet's Zephyr module brings a driver ([upstream.md](../upstream.md) has the story).
 
+In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for any root complex whose configuration window is laid out as ECAM, the standard layout, and has nothing more to it. This one is, so Linux needs no driver of ours. That is read from the node and the model, and not yet run: M24 runs it.
+
 ## What it leaves out
 
 - **The link itself.** No packets, lanes, training, flow control or errors. The link is a pair of ordinary TLM sockets, and a transaction on it is marked only with whether it is a configuration access.

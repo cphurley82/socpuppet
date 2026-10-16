@@ -532,6 +532,59 @@ Nothing is built differently. The two ways show firmware the same devicetree, so
 - **All three CPUs can.** `host(boot=from_rom, manager=functools.partial(add_manager, boot=from_rom), drive=functools.partial(add_ssd, boot=from_rom))` is three ROMs and two flashes, the IO die's holding the host's image and the manager's, and the SSD's its own. Each is loaded through its own CPU, at its own system controller's `boot_address`. Or mix them: a board can boot one CPU from its ROM and load another the quick way.
 - `tests/python/test_m14_exit.py` is a complete example, and `tests/python/cast.py` has the loading for three CPUs in one function.
 
+## Booting OpenSBI
+
+🧦 [OpenSBI](https://github.com/riscv-software-src/opensbi) is the machine-mode firmware a RISC-V kernel sits on, and the host boots it the way a server does. 🎓 SBI, the Supervisor Binary Interface, is how a program in supervisor mode asks machine mode for what only machine mode can do: set the timer, write to the console before it has a driver, reset the machine. OpenSBI's `fw_jump` is told two things as it starts, the hart's number in `a0` and the address of a devicetree in `a1`, and it jumps to whatever is 2 MiB into RAM. `firmware/build.sh` builds it, with its own `test_payload` and one of ours, `sbi_payload`.
+
+```python
+import socpuppet as sp
+from socpuppet import devicetree, opensbi
+from socpuppet.boards.boot import ROM_BASE, from_rom
+from socpuppet.boards.host import RAM_BASE, host
+
+board = host(boot=from_rom, sbi=True)
+layout = opensbi.lay_out(
+    open("build/firmware/fw_jump.bin", "rb").read(),
+    open("build/firmware/test_payload.bin", "rb").read(),
+    devicetree.compile(
+        board.platform.devicetree(dialect="linux", model="socpuppet host")
+    ),
+    ram=RAM_BASE,
+)
+board.platform.build()
+opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
+board.platform.run_until(
+    lambda: "Test payload running" in board.uart.output, timeout=sp.ms(3000)
+)
+print(board.uart.output)
+```
+
+```text
+OpenSBI v1.9
+   ____                    _____ ____ _____
+  ...
+Platform Name               : socpuppet host
+Platform Timer Device       : aclint-mtimer @ 10000000Hz
+Platform Console Device     : uart8250
+Platform Reboot Device      : syscon-reboot
+Platform Shutdown Device    : syscon-poweroff
+  ...
+Boot HART ISA Extensions    : smaia,zicntr,smcsrind,f,d
+Boot HART PMP Count         : 0
+  ...
+Test payload running
+```
+
+What is different from booting Zephyr:
+
+- **`sbi=True` describes the host for a monitor**, with an operating system below it. Neither OpenSBI nor Linux says where an APLIC that serves supervisor mode sends its messages, so with it both APLICs are built knowing: the IMSIC's page for supervisor mode ([aplic.md](models/aplic.md)).
+- **The devicetree is in Linux's dialect**, `dialect="linux"`, which OpenSBI reads and hands on. It names the board after `model`, gives a command line in `chosen` when it is given `bootargs`, and has the nodes OpenSBI looks for: one IMSIC node for each mode, a `syscon-reboot` and a `syscon-poweroff`, an ACLINT timer. `socpuppet devicetree --dialect linux <file>` prints it. OpenSBI reads the blob, which `devicetree.compile` makes with `dtc`.
+- 🎭 **The quick way puts QEMU's reset vector in the ROM.** `fw_jump` wants two registers set, and nothing outside a CPU can set them, so `opensbi.load` puts six instructions in the ROM that do (`boot.reset_stub`), as QEMU's `virt` machine has at the same address. The ROM still has to be there: `host(boot=from_rom)`.
+- **From the flash**, `opensbi.flash_image(layout)` is the whole layout as one boot image, its argument the devicetree's address, which the ROM hands on in `a1`. It is 2 MiB of zeros and a little more, which the ROM checks in about four seconds of the CPU's time, three on the clock on the wall.
+- **About a second of the CPU's time** passes before the payload runs: most of it is OpenSBI's banner, a character at a time through a UART on the other die. The wall clock says about the same.
+- ⚠️ **A reboot from the quick way does not come back.** Nothing loads RAM again, and `fw_jump` started a second time finds its choice of which hart boots already made. To see a reboot, boot from the flash, where the ROM copies OpenSBI afresh.
+- `tests/python/test_m23_exit.py` boots both ways, with OpenSBI's payload and with ours, which takes a timer interrupt, has a misaligned load made for it, reboots once and is then switched off.
+
 ## When the watchdog bites
 
 Every socpuppet CPU has a [watchdog](models/watchdog.md) and a [system controller](models/system-controller.md), and Zephyr drives both with drivers of its own. 🎓 A watchdog is a counter that resets the CPU when it runs out, and firmware keeps it from running out by feeding it. Firmware that hangs stops feeding, and the reset puts it back on its feet. The system controller then says why the CPU was reset, which is how firmware knows that it happened.
