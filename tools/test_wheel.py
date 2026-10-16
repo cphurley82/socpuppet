@@ -16,6 +16,11 @@ from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
+# What the tests need besides the wheel, and how they are run: on every
+# core, as ctest runs them (tests/python/CMakeLists.txt says why).
+TEST_PACKAGES = ("pytest", "pytest-xdist")
+ON_EVERY_CORE = ("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder")
+
 
 def main() -> int:
     """Install the wheel and test it. Returns the tests' exit status."""
@@ -42,7 +47,7 @@ def main() -> int:
             run(
                 scratch,
                 *("uv", "pip", "install", "--quiet", "--python", interpreter),
-                *(str(wheel), "pytest"),
+                *(str(wheel), *TEST_PACKAGES),
             )
         else:
             run(
@@ -53,10 +58,11 @@ def main() -> int:
             run(
                 scratch,
                 *(interpreter, "-m", "pip", "install", "--quiet"),
-                *(str(wheel), "pytest"),
+                *(str(wheel), *TEST_PACKAGES),
             )
         return subprocess.run(
-            [interpreter, "-m", "pytest", "tests"], cwd=scratch
+            [interpreter, "-m", "pytest", *ON_EVERY_CORE, "tests"],
+            cwd=scratch,
         ).returncode
 
 

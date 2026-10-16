@@ -122,6 +122,21 @@ def test_the_python_tests_run_from_a_copy_outside_the_source_tree(
     assert not Path(tests["cwd"]).is_relative_to(REPO)
 
 
+@pytest.mark.parametrize("installer", ["uv", "pip"])
+def test_the_python_tests_run_on_every_core_as_ctest_runs_them(
+    test_wheel, installer
+):
+    _, calls = test_wheel(installer)
+
+    (install,) = [c["args"] for c in calls if "install" in c["args"]]
+    assert "pytest-xdist" in install
+    (tests,) = [c["args"] for c in calls if c["args"][:2] == ["-m", "pytest"]]
+    assert tests[2:] == [
+        *("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder"),
+        "tests",
+    ]
+
+
 def test_an_unknown_installer_is_refused_with_the_usage(test_wheel):
     result, calls = test_wheel("spam")
 
