@@ -7,7 +7,8 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
 ## What gets installed, and by whom
 
 ```text
-  apt / Homebrew  ──▶  the C++ compiler, git, zlib, dtc            (root, once)
+  apt / Homebrew  ──▶  the C++ compiler, git, zlib, dtc,           (root, once)
+                       libuuid and iasl for EDK2
                        QBox's build packages, if you want QBox
   uv              ──▶  Python 3.13, CMake, Ninja, pytest,          (your home, no root)
                        clang-format, clang-tidy, ruff, the linters
@@ -28,7 +29,7 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
 
 ```sh
 sudo apt-get update && sudo apt-get install -y \
-  build-essential git curl xz-utils zlib1g-dev device-tree-compiler gdb
+  build-essential git curl xz-utils zlib1g-dev device-tree-compiler uuid-dev acpica-tools gdb
 ```
 
 | Package | Why |
@@ -37,6 +38,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `git`, `curl`, `xz-utils` | fetching the dependencies at configure time, and the Zephyr SDK |
 | `zlib1g-dev` | SCC's FST trace writer, which waveform viewers such as GTKWave open, needs it |
 | `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates and compiles the one OpenSBI is handed. The tests that need it skip without it |
+| `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.sh` |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
 
 For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
@@ -53,7 +55,7 @@ sudo apt-get install -y \
 
 ```sh
 xcode-select --install       # Apple clang, git, make
-brew install dtc
+brew install dtc acpica
 ```
 
 For QBox (step 5), add its Homebrew packages, which are QBox's own list without the LLVM that only its tests use:

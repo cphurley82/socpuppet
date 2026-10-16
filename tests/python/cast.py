@@ -40,6 +40,7 @@ __all__ = [
     "SYNCHRONIZATION",
     "TEST_PAYLOAD",
     "TEST_PAYLOAD_BIN",
+    "UEFI_FD",
     "boot",
 ]
 
@@ -62,6 +63,9 @@ TEST_PAYLOAD_BIN = "test_payload.bin"
 #: A next stage for OpenSBI of socpuppet's own (firmware/sbi_payload), which
 #: makes the calls of SBI's that `test_payload` does not.
 SBI_PAYLOAD_BIN = "sbi_payload.bin"
+#: EDK2's RISC-V port (firmware/build.sh): UEFI, as a flash device image
+#: built to run where `fw_jump` jumps.
+UEFI_FD = "uefi.fd"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

@@ -2,12 +2,14 @@
 FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        acpica-tools \
         build-essential \
         ca-certificates \
         curl \
         device-tree-compiler \
         gdb \
         git \
+        uuid-dev \
         zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 

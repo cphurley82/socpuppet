@@ -23,13 +23,14 @@
 #                     then stops feeding its watchdog, and says why it
 #                     started each time
 #
-# And three things that are no Zephyr at all. The boot ROM in firmware/rom,
+# And four things that are no Zephyr at all. The boot ROM in firmware/rom,
 # which is what a CPU that boots from a flash runs first. It is built with
 # the same compiler, once for each kind of CPU, as rom_rv32 and rom_rv64.
 # And OpenSBI, the machine-mode firmware a RISC-V kernel sits on, built for
 # the host as fw_jump, with test_payload, the supervisor-mode program
 # OpenSBI ships, for it to jump to. And sbi_payload, a program of ours for
-# OpenSBI to jump to instead, in firmware/sbi_payload.
+# OpenSBI to jump to instead, in firmware/sbi_payload. And EDK2, which is
+# UEFI, for OpenSBI to jump to as a kernel's loader, as uefi.fd.
 #
 #   firmware/build.sh [output directory]    (default: build/firmware)
 #
@@ -38,10 +39,11 @@
 #   <name>_<board>.bin          the same as flat bytes, loaded at the start of RAM
 #   <name>_<board>.opcodes.txt  how often each instruction appears in it
 # and for the boot ROM, rom_rv32 and rom_rv64, each an .elf and a .bin, as
-# are fw_jump, test_payload and sbi_payload.
+# are fw_jump, test_payload and sbi_payload; and uefi.fd, EDK2's flash
+# device image.
 #
 # Everything it downloads (the Zephyr SDK's RISC-V toolchain, OpenSBI,
-# Zephyr itself, and a Python with the packages Zephyr's build needs) stays
+# EDK2, Zephyr itself, and a Python with the packages Zephyr's build needs) stays
 # in the output directory. A second run reuses what is there.
 #
 # The Zephyr SDK has no toolchain for an Intel Mac. There the script runs
@@ -115,6 +117,15 @@ case "$(uname -s)-$(uname -m)" in
     exit 1
     ;;
 esac
+
+# EDK2's build, at the end, compiles a driver's ACPI tables with iasl, which
+# is the one thing it needs that is not fetched here. It is looked for
+# first, so that a machine without it is told before the downloads.
+if ! command -v iasl > /dev/null; then
+  echo "EDK2's build needs iasl, ACPICA's compiler, and there is none." >&2
+  echo "Install it: \`sudo apt-get install acpica-tools\` on Ubuntu, \`brew install acpica\` on a Mac." >&2
+  exit 1
+fi
 
 # Downloads one file of the SDK release into the output directory and
 # checks it against the release's list of checksums.
@@ -338,3 +349,75 @@ for each in "${images[@]}"; do
     sort --numeric-sort --reverse > "${image}.opcodes.txt"
   report_image "${image}"
 done
+
+# EDK2, at the stable tag socpuppet is pinned to: UEFI, built from its port
+# for QEMU's RISC-V `virt` as OpenSBI's next stage on the host. It needs
+# nothing of Zephyr's, only a Python, which is the one Zephyr's build has.
+# It is built last, as it takes longest.
+#
+# 🎓 EDK2's build is a tool of its own, `build`, written in Python, which
+# reads a platform's description (a .dsc, what to build, and a .fdf, how to
+# lay it out in flash) and drives the compiler. Some of what it runs is in
+# C, `BaseTools`, which is built first with the machine's own compiler and
+# wants libuuid's header. A driver or two have ACPI tables written in ASL,
+# compiled by ACPICA's iasl, which the system provides. EDK2 reads the
+# include directories of every submodule a package declares, used or not,
+# so all of them are fetched, each one commit deep.
+#
+# ⚠️ It is built with the SDK's LLVM, as OpenSBI is. EDK2 links every
+# module with `-z notext`, which the SDK's GNU linker, built for bare-metal
+# programs, refuses.
+#
+# 💡 The image is not position-independent: it runs where its FD (its flash
+# device image) was built for, which is QEMU's flash on QEMU. PFLASH0_BASE
+# is a define of the port's .fdf, and a define on the command line wins, so
+# it is built for 2 MiB into the host's RAM, where fw_jump jumps. There is
+# no flash to keep UEFI's variables in, so they are kept in RAM, and forgotten
+# at reset (PcdEmuVariableNvModeEnable). The port's FD is 8 MiB, of which
+# EDK2 fills under 2, so it is built as 2 MiB, which is 6 MiB less for a
+# boot ROM to check, in blocks of the port's 4 KiB, each number in hex, as
+# an .fdf has it. It is a DEBUG build,
+# which says on the console what each driver does as it loads: the boot is
+# a rehearsal, and the console is where it is watched.
+edk2=${out}/edk2
+uefi_size=$((2 * 1024 * 1024))
+edk2_target=DEBUG
+edk2_toolchain=CLANGDWARF
+if [[ ! -d ${edk2} ]]; then
+  echo "Fetching EDK2 ${edk2_version}"
+  git clone --quiet --depth 1 --branch "${edk2_version}" \
+    -c advice.detachedHead=false \
+    https://github.com/tianocore/edk2 "${edk2}"
+  git -C "${edk2}" submodule --quiet update --init --depth 1
+fi
+# What socpuppet changes in EDK2, each a patch with its entry in
+# docs/upstream.md, applied to a clean tree every time, as OpenSBI's are.
+git -C "${edk2}" checkout --quiet -- .
+for patch in "${repository}"/cmake/patches/edk2-*.patch; do
+  [[ -e ${patch} ]] || continue
+  git -C "${edk2}" apply "${patch}"
+done
+echo "Building EDK2 for the host"
+make -C "${edk2}/BaseTools" --jobs > "${out}/build_edk2_basetools.log" 2>&1 ||
+  { tail -n 40 "${out}/build_edk2_basetools.log" >&2; exit 1; }
+(
+  # EDK2's set-up script reads variables it has not set.
+  set +u
+  export WORKSPACE=${out}/build_edk2 PACKAGES_PATH=${edk2}
+  export EDK_TOOLS_PATH=${edk2}/BaseTools CONF_PATH=${out}/build_edk2/Conf
+  export PYTHON_COMMAND=${venv}/bin/python
+  export CLANGDWARF_BIN=${llvm}/bin/
+  mkdir -p "${CONF_PATH}"
+  # shellcheck source=/dev/null
+  source "${edk2}/edksetup.sh" BaseTools
+  build -a RISCV64 -t "${edk2_toolchain}" -b "${edk2_target}" \
+    -p OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc \
+    -n "$(getconf _NPROCESSORS_ONLN)" -D PFLASH0_BASE=0x80200000 \
+    -D "CODE_SIZE=$(printf %#x "${uefi_size}")" \
+    -D "CODE_BLOCKS=$(printf %#x $((uefi_size / 0x1000)))" \
+    --pcd gEfiMdeModulePkgTokenSpaceGuid.PcdEmuVariableNvModeEnable=TRUE
+) > "${out}/build_edk2.log" 2>&1 ||
+  { tail -n 40 "${out}/build_edk2.log" >&2; exit 1; }
+cp "${out}/build_edk2/Build/RiscVVirtQemu/${edk2_target}_${edk2_toolchain}/FV/RISCV_VIRT_CODE.fd" \
+  "${out}/uefi.fd"
+echo "  $(wc -c < "${out}/uefi.fd" | tr -d ' ') bytes in ${out}/uefi.fd"

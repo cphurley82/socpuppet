@@ -35,11 +35,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
-        # socpuppet's (ci.yml), and QBox's (.devcontainer/Dockerfile).
+        # socpuppet's and the firmware's (ci.yml), and QBox's
+        # (.devcontainer/Dockerfile).
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y zlib1g-dev device-tree-compiler \
+          sudo apt-get install -y zlib1g-dev device-tree-compiler uuid-dev acpica-tools \
             bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
             libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
             libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
@@ -48,7 +49,7 @@ jobs:
         # QBox's, as docs/setup.md lists them for a Mac.
         if: runner.os == 'macOS'
         run: |
-          brew install asio glib jpeg-turbo libelf libslirp libzip meson \
+          brew install acpica asio glib jpeg-turbo libelf libslirp libzip meson \
             ninja pixman pkgconf sdl2
       - uses: astral-sh/setup-uv@v7
       - run: uv sync

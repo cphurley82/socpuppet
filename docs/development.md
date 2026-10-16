@@ -8,6 +8,7 @@
 - [uv](https://docs.astral.sh/uv/). It supplies Python, CMake and Ninja, so none of those need installing.
 - git, and zlib's headers (`zlib1g-dev` on Ubuntu; already there on macOS).
 - `dtc`, the devicetree compiler (`device-tree-compiler` on Ubuntu, `brew install dtc` on macOS). Two Python tests that check generated devicetrees skip without it.
+- For `firmware/build.sh`, which builds EDK2: libuuid's headers (`uuid-dev` on Ubuntu; already there on macOS) and `iasl`, ACPICA's compiler (`acpica-tools` on Ubuntu, `brew install acpica` on macOS).
 
 Ubuntu 24.04 and macOS are both supported and both run in CI. Ubuntu 26.04 (GCC 15) is not in CI, and every job's steps have been run on it and pass: [Running CI's jobs here](#running-cis-jobs-here) is how to check that again. If you would rather not set anything up, open the repo in the devcontainer (`.devcontainer/`), which is the CI environment.
 
@@ -155,16 +156,17 @@ The earlier spikes have gone. The twister spike asked whether Zephyr's test runn
 
 ## Firmware
 
-Some tests boot real firmware: Zephyr samples and applications of ours, built with the Zephyr SDK; the boot ROM in `firmware/rom`, which is bare-metal C built with the SDK's compiler and no Zephyr; OpenSBI v1.9, for the host, with its `test_payload`; and `firmware/sbi_payload`, a payload of ours for OpenSBI, built as the ROM is.
+Some tests boot real firmware: Zephyr samples and applications of ours, built with the Zephyr SDK; the boot ROM in `firmware/rom`, which is bare-metal C built with the SDK's compiler and no Zephyr; OpenSBI v1.9, for the host, with its `test_payload`; `firmware/sbi_payload`, a payload of ours for OpenSBI, built as the ROM is; and EDK2 `edk2-stable202608`, which is UEFI, built from its port for QEMU's RISC-V `virt` as `uefi.fd`, to run where OpenSBI jumps.
 
 ```sh
 firmware/build.sh        # into build/firmware
 ```
 
-- The script downloads the SDK's RISC-V toolchain (about 225 MB), the SDK's LLVM (about 260 MB, two gigabytes unpacked), OpenSBI, Zephyr 4.4.2, and a Python for Zephyr's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes seconds.
+- The script downloads the SDK's RISC-V toolchain (about 225 MB), the SDK's LLVM (about 260 MB, two gigabytes unpacked), OpenSBI, EDK2 with its submodules, Zephyr 4.4.2, and a Python for Zephyr's and EDK2's build scripts into `build/firmware` the first time, which takes a few minutes. After that it takes a minute or two, most of it EDK2's.
 - 🎓 **OpenSBI is built with the SDK's LLVM and not its GCC.** OpenSBI runs wherever it is put, by being linked as a position-independent executable, and the SDK's GNU linker is built for bare-metal programs and cannot make one. LLVM's can, for any target. It is kept beside the SDK, in `build/firmware/llvm-<version>`, so that what copies or caches the SDK for Zephyr does not carry it.
-- 📮 **OpenSBI's patches** are `cmake/patches/opensbi-*.patch`, each with its entry in [upstream.md](upstream.md), and the script applies them to a clean tree every time, so that a patch that changes is the one built.
-- 💡 On an Apple silicon Mac the script runs on macOS itself: the SDK has a toolchain for one, and nothing else has to be installed. Every image builds in a minute there.
+- 🎓 **So is EDK2**, whose build links every module with `-z notext`, which the SDK's GNU linker refuses. Its `BaseTools` are built with the machine's own compiler, which is why it needs libuuid's headers, and a driver or two have ACPI tables that `iasl` compiles. The script says so and stops when there is no `iasl`.
+- 📮 **OpenSBI's and EDK2's patches** are `cmake/patches/opensbi-*.patch` and `cmake/patches/edk2-*.patch`, each with its entry in [upstream.md](upstream.md), and the script applies them to a clean tree every time, so that a patch that changes is the one built.
+- 💡 On an Apple silicon Mac the script runs on macOS itself: the SDK has a toolchain for one, and nothing else has to be installed but `iasl`. Every image builds in a minute there. ⚠️ EDK2's part of it has been run on Linux only so far, and CI's QBox nightly is the first to build it on a Mac.
 - 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one. It builds that image the first time, as `socpuppet-dev`. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
 - ⚠️ The script does not rebuild the image when `.devcontainer/Dockerfile` changes. `tools/devcontainer.sh` does, and names the new image `socpuppet-dev` too, so after such a change run `tools/devcontainer.sh true` once.
 - ⚠️ The toolchain an Intel Mac ends up with in `build/firmware` is Linux's, GDB included. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).

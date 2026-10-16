@@ -37,12 +37,18 @@ jobs:
           path: |
             build/firmware/*.bin
             build/firmware/*.elf
+            build/firmware/*.fd
             build/firmware/*.opcodes.txt
           # The board the images are built for is part of what they are,
-          # and so are the patches OpenSBI is built with. What twister is
+          # and so are the patches OpenSBI and EDK2 are built with. What twister is
           # run from builds no image: its script, its lists, and what it
           # reads of each application.
-          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/opensbi-*') }}
+          key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/opensbi-*', 'cmake/patches/edk2-*') }}
+      # EDK2's BaseTools are built with the runner's own gcc, and want
+      # libuuid's header; and EDK2 compiles ACPI tables with iasl.
+      - name: Install system packages
+        if: steps.images.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y uuid-dev acpica-tools
       - name: Build the images
         if: steps.images.outputs.cache-hit != 'true'
         run: firmware/build.sh
@@ -52,6 +58,7 @@ jobs:
           path: |
             build/firmware/*.bin
             build/firmware/*.elf
+            build/firmware/*.fd
             build/firmware/*.opcodes.txt
           if-no-files-found: error
 
@@ -145,6 +152,13 @@ jobs:
           # the venv's Python are programs for the runner they were
           # fetched on.
           key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
+      # What the script needs to build EDK2 too, which it does on the way.
+      - name: Install EDK2's build packages
+        if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: sudo apt-get install -y uuid-dev acpica-tools
+      - name: Install EDK2's build packages
+        if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install acpica
       - name: Fetch Zephyr and its SDK
         # The script that builds the images is the one that fetches what
         # builds them, so this builds every image again too. Once for each
