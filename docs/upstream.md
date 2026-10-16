@@ -1251,6 +1251,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: missing feature.
 - **When it lands**: delete both patch files.
 
+### A RISC-V CPU's Sstc cannot be switched off, and QEMU times it with an ACLINT it takes the `time` hook's argument for
+
+- **Where**: QBox's `QemuCpuRiscv64` (`qemu-components/cpu_riscv/cpu_riscv64/include/riscv64.h`), which has parameters for `pmp`, `smaia` and `ssaia` and none for `sstc`. And QEMU's `riscv_timer_write_timecmp` (`target/riscv/time_helper.c`), which reads the timer's frequency from `env->rdtime_fn_arg` as if it were QEMU's own ACLINT (`RISCVAclintMTimerState`).
+- **What is wrong**: QEMU's hart has Sstc unless it is told not to: a timer compare of supervisor mode's own, `stimecmp`, which QEMU times itself. Once machine mode turns it on (`menvcfg.STCE`, which OpenSBI does on any hart that has it), a write to `stimecmp` divides by the frequency it finds through the `time` hook's argument. A SystemC platform's timer is outside QEMU, so that argument is the platform's own object, and the frequency is whatever is there. On Linux it was zero, and the process ended with SIGFPE.
+- **How to see it**: `WhenMachineModeWritesTheSupervisorsTimerCompare.ItTakesAnIllegalInstructionTrap` in `tests/cpp/platform/cpu_test.cpp` with `SOCPUPPET_CPU=qbox_cpu` and without the patch: the write does not trap. And `TestWhenOurPayloadRunsOnOpenSbi` in `tests/python/test_m23_exit.py` on Linux: the payload's SBI `set_timer` ends the process with SIGFPE.
+- **What we do**: `cmake/patches/qbox-riscv-sstc-parameter.patch` gives `QemuCpuRiscv64` an `sstc` parameter, true by default as QEMU has it, and the adapter sets it false. The hart then has no Sstc, as DbtRiseCpu has none, and OpenSBI sets supervisor mode's timer through the machine timer's `mtimecmp`.
+- **Upstream fix**: the parameter, to QBox. To QEMU, a timer frequency of the CPU's own for Sstc (or the `time` hook's), so that a board without QEMU's ACLINT can have Sstc.
+- **Kind**: missing feature (QBox), bug (QEMU).
+- **When it lands**: delete the patch, and keep the adapter's setting until QEMU times Sstc without its ACLINT.
+
 ### A reset pulse while a busy CPU is ahead of the clock is not taken
 
 - **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::reset_cb`.
