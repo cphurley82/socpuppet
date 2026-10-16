@@ -26,11 +26,15 @@ from cast import (
     SBI_PAYLOAD_BIN,
     TEST_PAYLOAD_BIN,
 )
+from devicetree_compiler import needs_dtc
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import SYSCON_BASE
 from socpuppet.boards.host import RAM_BASE, host
 from socpuppet.regs import system_controller
+
+#: OpenSBI is handed the devicetree compiled, and dtc compiles it.
+pytestmark = needs_dtc
 
 #: What the devicetree names the board, which OpenSBI's banner repeats.
 MODEL = "socpuppet host"

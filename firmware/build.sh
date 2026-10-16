@@ -214,6 +214,12 @@ done
 # ⚠️ The SDK's clang knows which C libraries it has, and refuses flags it
 # has none for. OpenSBI links no C library at all, so the refusal is
 # turned off.
+#
+# ⚠️ On macOS OpenSBI's Makefile asks for greadlink, GNU's readlink from
+# Homebrew's coreutils, for `readlink -f`. macOS's own has had -f since
+# macOS 12.3, so it is given that one instead. It says nothing of a path
+# that does not exist yet, where GNU's says the path, so the directory
+# OpenSBI builds in is made first.
 opensbi=${out}/opensbi
 if [[ ! -d ${opensbi} ]]; then
   echo "Fetching OpenSBI ${opensbi_version}"
@@ -229,9 +235,10 @@ for patch in "${repository}"/cmake/patches/opensbi-*.patch; do
   git -C "${opensbi}" apply "${patch}"
 done
 echo "Building OpenSBI for the host"
+mkdir -p "${out}/build_opensbi"
 make -C "${opensbi}" O="${out}/build_opensbi" \
   LLVM="${llvm}/bin/" CC="${llvm}/bin/clang -Wno-missing-multilib" \
-  PLATFORM=generic PLATFORM_RISCV_XLEN=64 PLATFORM_RISCV_ABI=lp64 \
+  READLINK=readlink PLATFORM=generic PLATFORM_RISCV_XLEN=64 PLATFORM_RISCV_ABI=lp64 \
   PLATFORM_RISCV_ISA=rv64imafdc_zicsr_zifencei \
   FW_TEXT_START=0x80000000 FW_PAYLOAD_OFFSET=0x200000 \
   > "${out}/build_opensbi.log" 2>&1 ||
