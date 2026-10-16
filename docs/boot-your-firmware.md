@@ -99,7 +99,7 @@ The host can have an SSD on a PCIe link: 🎭 the [behavioral NVMe](models/behav
 | What | Where | Zephyr driver |
 |---|---|---|
 | PCIe root complex, configuration window | `0x1010_0000`, one bus | `socpuppet,pcie`, from socpuppet's module |
-| PCIe root complex, memory window | `0x1080_0000`, 1 MB | |
+| PCIe root complex, memory window | `0x1120_0000`, 1 MB | |
 | NVMe drive | found by the scan | `nvme-controller` |
 
 🎓 Zephyr calls hardware that is plugged into a board a *shield*. The drive, and the host's side of its link, are the shield `socpuppet_host_drive`. Name it when you build:

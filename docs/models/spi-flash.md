@@ -14,7 +14,7 @@ A flash is read in two ways, and a real controller offers both:
 ## What it does
 
 ```python
-flash = io.add("boot_flash", sp.SpiFlash(size=4 * 1024 * 1024))
+flash = io.add("boot_flash", sp.SpiFlash(size=16 * 1024 * 1024))
 bus.map(flash.xip, base=0x1020_0000)       # the flash, read like memory
 bus.map(flash.socket, base=0x100D_0000)    # the controller's registers
 platform.build()

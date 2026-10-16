@@ -31,7 +31,7 @@ flowchart LR
     subgraph compute["🧠 the compute die's bus: what the CPU sees"]
         direction TB
         timer["timer<br/>0x0200_0000&nbsp;·&nbsp;64&nbsp;KiB"]
-        win["window&nbsp;onto&nbsp;the&nbsp;IO&nbsp;die<br/>0x1000_0000&nbsp;·&nbsp;16&nbsp;MiB"]
+        win["window&nbsp;onto&nbsp;the&nbsp;IO&nbsp;die<br/>0x1000_0000&nbsp;·&nbsp;32&nbsp;MiB"]
         imsic["IMSIC,&nbsp;machine&nbsp;mode's&nbsp;page<br/>0x2400_0000&nbsp;·&nbsp;4&nbsp;KiB"]
         simsic["IMSIC,&nbsp;the&nbsp;supervisor's&nbsp;page<br/>0x2800_0000&nbsp;·&nbsp;4&nbsp;KiB"]
         ram["RAM<br/>0x8000_0000&nbsp;·&nbsp;64&nbsp;MiB"]
@@ -41,7 +41,7 @@ flowchart LR
         direction TB
         uart["UART<br/>+0x00_0000&nbsp;·&nbsp;8&nbsp;bytes"]
         ecam["PCIe&nbsp;config&nbsp;window<br/>+0x10_0000&nbsp;·&nbsp;1&nbsp;MiB"]
-        mmio["PCIe&nbsp;memory&nbsp;window<br/>+0x80_0000&nbsp;·&nbsp;1&nbsp;MiB"]
+        mmio["PCIe&nbsp;memory&nbsp;window<br/>+0x120_0000&nbsp;·&nbsp;1&nbsp;MiB"]
         uart ~~~ ecam ~~~ mmio
     end
     subgraph drive["🎭 the drive: what is in the two PCIe windows"]
@@ -80,7 +80,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
 | `0x100C_0000` | 32 KiB | `io.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | `compute.bus` from `0x1000_0000` |
 | `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000` |
-| `0x1020_0000` | 4 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000`, then `io.bus` from `0x1020_0000` |
+| `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000`, then `io.bus` from `0x1020_0000` |
 | `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x2800_0000` | 4 KiB | `compute.imsic.supervisor` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x8000_0000` | 64 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
@@ -94,7 +94,7 @@ With a drive, two more things answer:
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x1010_0000` | 1 MiB | `io.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
-| `0x1080_0000` | 1 MiB | `io.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
+| `0x1120_0000` | 1 MiB | `io.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | `compute.bus` from `0x1000_0000` |
 
 <!-- address-map:host-drive end -->
 
@@ -117,9 +117,9 @@ A drive adds no line. Its interrupts are messages: identities 32 and 33, one for
 The constants are at the top of `python/socpuppet/boards/host.py`.
 
 - **What they are for.** `io.uart` is the console. `compute.ram` is where firmware is loaded, and the CPU starts executing at its first address. `compute.imsic.machine` is where interrupt messages are sent, the drive's among them, and `compute.imsic.supervisor` is the same for an operating system that runs below machine mode. `io.rc.ecam` is the PCIe configuration window, and `io.rc.mmio` the PCIe memory window, with the drive's registers somewhere in it.
-- **What a boot uses.** `compute.syscon` is the [system controller](models/system-controller.md): it tells a boot ROM where the image is, says why the CPU was last reset, and is the one thing that drives the CPU's reset. `compute.wdt` is the [watchdog](models/watchdog.md) that has it do so. `io.boot_flash.xip` is the [flash](models/spi-flash.md) read as memory, 4 MiB of it, and `io.boot_flash.socket` its controller's registers. ⚠️ The [boot ROM](models/rom.md) is in no table here, because the tables are of the board as `host()` describes it, which starts its CPU in RAM. With `host(boot=from_rom)` there is one more row, `compute.rom` at `0x1000`, 60 KiB, and the CPU starts there. The devicetree is the same either way: a ROM is nothing firmware needs to be told about.
+- **What a boot uses.** `compute.syscon` is the [system controller](models/system-controller.md): it tells a boot ROM where the image is, says why the CPU was last reset, and is the one thing that drives the CPU's reset. `compute.wdt` is the [watchdog](models/watchdog.md) that has it do so. `io.boot_flash.xip` is the [flash](models/spi-flash.md) read as memory, 16 MiB of it, and `io.boot_flash.socket` its controller's registers. ⚠️ The [boot ROM](models/rom.md) is in no table here, because the tables are of the board as `host()` describes it, which starts its CPU in RAM. With `host(boot=from_rom)` there is one more row, `compute.rom` at `0x1000`, 60 KiB, and the CPU starts there. The devicetree is the same either way: a ROM is nothing firmware needs to be told about.
 - 💡 **A window translates.** A [router](models/router.md) hands a target the offset from the start of the range that matched. So the IO die's bus counts from zero: the UART is at `0` there and the PCIe configuration window at `0x10_0000`, and the CPU finds them at `0x1000_0000` and `0x1010_0000`. Firmware sees one flat map and cannot tell where the die boundary is, which is the point: the split can change without the firmware changing.
-- 🎓 **The two PCIe windows are two kinds of address.** The configuration window is how a host asks what is on the link. Every function a bus could hold has 4 KiB of it, laid out by bus, device and function number, so 1 MiB is one whole bus. The drive's NVMe registers are something else: 8 KiB that the host places wherever it likes in the memory window, by writing an address into the drive's *base address register* (BAR). 🎭 The scripted host puts them at the start, `0x1080_0000`.
+- 🎓 **The two PCIe windows are two kinds of address.** The configuration window is how a host asks what is on the link. Every function a bus could hold has 4 KiB of it, laid out by bus, device and function number, so 1 MiB is one whole bus. The drive's NVMe registers are something else: 8 KiB that the host places wherever it likes in the memory window, by writing an address into the drive's *base address register* (BAR). 🎭 The scripted host puts them at the start, `0x1120_0000`. The memory window is after the boot flash, which is why the IO die's window is 32 MiB.
 - **What comes back up sees the same map.** A drive reads and writes the host's memory by itself, which is DMA, and it interrupts by writing a small message to an address the host chose. Both come up the PCIe link, back across the die-to-die link, and onto the compute die's bus through an input of their own. From there the RAM is at `0x8000_0000` for the data, and the IMSIC's page at `0x2400_0000` for the message.
 - **Everywhere else there is nothing.** An access to an address that no range covers gets an address error. A script that makes one stops with `BusError`, naming the address.
 - 🎓 **The numbers are borrowed.** RAM at `0x8000_0000`, the timer at `0x0200_0000`, the IMSIC's two pages at `0x2400_0000` and `0x2800_0000` and a UART at `0x1000_0000` are where QEMU's RISC-V `virt` machine has them, so they are the addresses a learner is most likely to have met already.
@@ -136,7 +136,7 @@ flowchart LR
         direction TB
         hmsi["MSI&nbsp;receiver<br/>0x0200_0000&nbsp;·&nbsp;4&nbsp;bytes"]
         hecam["PCIe&nbsp;config&nbsp;window<br/>0x1010_0000&nbsp;·&nbsp;1&nbsp;MiB"]
-        hmmio["PCIe&nbsp;memory&nbsp;window<br/>0x1080_0000&nbsp;·&nbsp;1&nbsp;MiB"]
+        hmmio["PCIe&nbsp;memory&nbsp;window<br/>0x1120_0000&nbsp;·&nbsp;1&nbsp;MiB"]
         hram["RAM<br/>0x8000_0000&nbsp;·&nbsp;1&nbsp;MiB"]
         hmsi ~~~ hecam ~~~ hmmio ~~~ hram
     end
@@ -188,7 +188,7 @@ What the SSD's own CPU sees (`ssd.cpu.socket`):
 | `0x1002_0000` | 32 bytes | `ssd.dma.cpu` | [DMA engine](models/dma-engine.md) | |
 | `0x1003_0000` | 48 bytes | `ssd.flash.cpu` | [Flash controller](models/flash-controller.md) | |
 | `0x100D_0000` | 4 KiB | `ssd.boot_flash.socket` | [SPI flash](models/spi-flash.md) | |
-| `0x1020_0000` | 4 MiB | `ssd.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
+| `0x1020_0000` | 16 MiB | `ssd.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
 | `0x2000_0000` | 256 KiB | `ssd.sram.socket` | [Memory](models/memory.md) | |
 | `0x4000_0000` | 4 MiB | `ssd.buffer.socket` | [Memory](models/memory.md) | |
 
@@ -216,7 +216,7 @@ And for comparison, what 🎭 the scripted host in front of it sees (`host.cpu.s
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x1010_0000` | 1 MiB | `host.rc.ecam` | [PCIe root complex](models/pcie-root-complex.md) | |
-| `0x1080_0000` | 1 MiB | `host.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | |
+| `0x1120_0000` | 1 MiB | `host.rc.mmio` | [PCIe root complex](models/pcie-root-complex.md) | |
 | `0x2400_0000` | 4 bytes | `host.msi.socket` | [🎭 MSI receiver](models/msi-receiver.md) | |
 | `0x8000_0000` | 1 MiB | `host.ram.socket` | [Memory](models/memory.md) | |
 
@@ -280,7 +280,7 @@ What the manager's CPU sees (`io.cpu.socket`):
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
 | `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | |
-| `0x1020_0000` | 4 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
+| `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
 | `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | |
 | `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | |
 
@@ -299,7 +299,7 @@ What 🎭 the compute die sees (`compute.cpu.socket`), which is the same again t
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus`, same addresses |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | `compute.bus`, same addresses |
 | `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | `compute.bus`, same addresses |
-| `0x1020_0000` | 4 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus`, same addresses |
+| `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus`, same addresses |
 | `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |
 | `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |
 | `0x8000_0000` | 1 MiB | `compute.ram.socket` | [Memory](models/memory.md) | |
@@ -337,7 +337,7 @@ The interrupt lines:
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
-| `0x1020_0000` | 4 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `io.manager.bus` from `0x1020_0000` |
+| `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `io.manager.bus` from `0x1020_0000` |
 
 <!-- address-map:host-manager end -->
 
@@ -353,14 +353,14 @@ The interrupt lines:
 | `0x0C00_0000` | 64 MiB | `io.manager.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.manager.uart.socket` | [UART (16550)](models/ns16550.md) | |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
-| `0x1020_0000` | 4 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `io.manager.bus` from `0x1020_0000` |
+| `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `io.manager.bus` from `0x1020_0000` |
 | `0x2000_0000` | 256 KiB | `io.manager.sram.socket` | [Memory](models/memory.md) | |
 
 <!-- address-map:host-manager-cpu end -->
 
 - **That is the IO manager board's map without its scratch memory**, at the same addresses, with the link on the same interrupt source. So the firmware for it is the firmware built for `socpuppet_iomgr`, the same image: `platform.load_elf(file, via=board.manager.cpu.socket)`. The scratch was there for 🎭 a compute die to have something to reach, and here the compute die is the host's, which has the IO die's UART to reach, and with a drive the root complex's windows.
-- 🎓 **Why a bus of its own.** A manager on the bus the traffic goes through would see the root complex's memory window at `0x0080_0000`, where the host's CPU sees it at `0x1080_0000`, and a platform refuses to say where a port is when two bus masters find it at different addresses. The devicetree generated for the host would also gain a node for the link's registers, so there would be a second board to build firmware for. On a bus of its own the manager has nothing to disagree about, and the host's map has none of the link's registers in it. That is the usual arrangement in a chip, too: a management core sits on a small bus with what it manages, apart from the bus the traffic takes.
-- **The flash is the one thing both CPUs reach**, and they find it at the same address, `0x1020_0000`: the host's CPU through the link, and the manager through a small router in front of the flash, `io.boot_flash_bus`, which has an input for each. One flash holds both images, the host's at its start and the manager's 2 MiB in, and each CPU's system controller tells its boot ROM which.
+- 🎓 **Why a bus of its own.** A manager on the bus the traffic goes through would see the root complex's memory window at `0x0120_0000`, where the host's CPU sees it at `0x1120_0000`, and a platform refuses to say where a port is when two bus masters find it at different addresses. The devicetree generated for the host would also gain a node for the link's registers, so there would be a second board to build firmware for. On a bus of its own the manager has nothing to disagree about, and the host's map has none of the link's registers in it. That is the usual arrangement in a chip, too: a management core sits on a small bus with what it manages, apart from the bus the traffic takes.
+- **The flash is the one thing both CPUs reach**, and they find it at the same address, `0x1020_0000`: the host's CPU through the link, and the manager through a small router in front of the flash, `io.boot_flash_bus`, which has an input for each. One flash holds both images, the host's at its start and the manager's in its last 2 MiB, 14 MiB in, and each CPU's system controller tells its boot ROM which. The host's image can be up to 14 MiB, and OpenSBI with UEFI comes to a little over 4.
 - **The window still translates**, which is the difference from the IO manager board. A window that keeps the other die's addresses has to start at address 0, and to reach as far as the IO die's bus does. The host's compute die has a timer and an interrupt controller of its own down there, at `0x0200_0000` and `0x0C00_0000`, and a router refuses two ranges that overlap. So each die's map stands on its own and the window is the only thing between them.
 - ⚠️ **The compute die's end of the link has registers that are in no map**, as on the IO manager board. The manager reaches them through the sideband mailbox, which is how it lets the host's CPU out of reset.
 - **The host's own interrupt lines are the ones in the tables above.** 🎭 A script has one interrupt input and it has no number, so the link's line to it is in no table. A manager with a CPU adds three lines of its own, the ones under [The IO manager](#the-io-manager) with `io.manager` where that board has `io`.

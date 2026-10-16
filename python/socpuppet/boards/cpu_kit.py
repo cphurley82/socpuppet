@@ -60,10 +60,11 @@ SYSCON_BASE = 0x0010_0000
 WATCHDOG_BASE = 0x0010_1000
 #: The flash a CPU boots from, which its system controller's boot address
 #: is inside. It is one address for every socpuppet CPU, so that a boot ROM
-#: finds its flash in the same place on every board. 4 MiB is room for two
-#: images, which the IO die's flash holds.
+#: finds its flash in the same place on every board. 16 MiB is room for
+#: the two images the IO die's flash holds: the host's, which with OpenSBI
+#: and UEFI is a little over 4 MiB, and the manager's.
 BOOT_FLASH_BASE = 0x1020_0000
-BOOT_FLASH_SIZE = 4 * 1024 * 1024
+BOOT_FLASH_SIZE = 16 * 1024 * 1024
 #: The registers of the flash's SPI controller, which no firmware uses yet.
 BOOT_FLASH_CONTROLLER_BASE = 0x100D_0000
 #: The dies of the chiplet host, by the number each one's system
@@ -71,9 +72,9 @@ BOOT_FLASH_CONTROLLER_BASE = 0x100D_0000
 COMPUTE_DIE = 0
 IO_DIE = 1
 #: Where each image is in the IO die's flash, which holds two: the host's
-#: from its start, and the IO die's manager's from half way through.
+#: from its start, and the IO die's manager's in its last 2 MiB.
 HOST_IMAGE_OFFSET = 0
-MANAGER_IMAGE_OFFSET = 0x20_0000
+MANAGER_IMAGE_OFFSET = BOOT_FLASH_SIZE - 2 * 1024 * 1024
 #: The machine timer, and how many times a second it counts. The firmware
 #: has to be told the same number: CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC in
 #: Zephyr.

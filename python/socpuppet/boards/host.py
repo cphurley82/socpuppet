@@ -134,8 +134,10 @@ RAM_SIZE = 64 * 1024 * 1024
 IMSIC_BASE = 0x2400_0000
 IMSIC_SUPERVISOR_BASE = 0x2800_0000
 #: Everything on the IO die is inside this window of the compute die's map.
+#: 32 MiB, so that it reaches past the PCIe memory window, which is after
+#: the 16 MiB boot flash.
 IO_BASE = 0x1000_0000
-IO_SIZE = 0x0100_0000
+IO_SIZE = 0x0200_0000
 #: Where things are on the IO die, counted from the start of its window.
 UART_OFFSET = 0x0000
 #: The IO die's interrupt controller, which sends a message for each
@@ -162,10 +164,11 @@ UPLINK_REACH = 1 << 63
 #: With a drive: the PCIe root complex's configuration window and its
 #: memory window, which is where the host places the drive's registers.
 #: Both are on the IO die, counted from the start of its window. The
-#: configuration window is 1 MiB, which is one bus.
+#: configuration window is 1 MiB, which is one bus, and the memory window
+#: is after the boot flash.
 ECAM_OFFSET = 0x10_0000
 ECAM_SIZE = 0x10_0000
-PCIE_WINDOW_OFFSET = 0x80_0000
+PCIE_WINDOW_OFFSET = 0x120_0000
 PCIE_WINDOW_SIZE = 0x10_0000
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
