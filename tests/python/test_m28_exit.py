@@ -11,6 +11,8 @@ for its shell, and stops at `Shell>`.
 🎭 The quick way: Python puts `fw_jump`, EDK2 and the devicetree in RAM
 where `fw_jump` expects them, and QEMU's reset vector in the ROM hands
 `fw_jump` the hart's number and the devicetree's address, as in M23.
+
+🧵 Python is the keyboard at the console, as at Zephyr's shell in M13.
 """
 
 import re
@@ -23,7 +25,7 @@ from cast import FW_JUMP_BIN, UEFI_FD
 from devicetree_compiler import needs_dtc
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
-from socpuppet.boards.host import RAM_BASE, host
+from socpuppet.boards.host import RAM_BASE, RAM_SIZE, host
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it.
 pytestmark = needs_dtc
@@ -36,9 +38,12 @@ PAGING_ON = re.compile(r"SATP mode \d+ successfully configured")
 BOOT_MANAGERS_COUNTDOWN = re.compile(r"Press ESCAPE within (\d+) seconds")
 SHELLS_COUNTDOWN = re.compile(r"Press ESC in (\d+) seconds")
 #: QBox's hart reaches the prompt in about 90 s of its time and the
-#: interpreter in about 60: SEC unpacks the rest of EDK2, 6 MB compressed
+#: interpreter in about 65: SEC unpacks the rest of EDK2, 6 MB compressed
 #: with LZMA, for 25 to 40 s of it, and the two countdowns wait 10 s.
 LONG_ENOUGH = sp.ms(150_000)
+#: The slowest command typed here is `memmap`, which takes 28 s of QBox's
+#: time to give its hundred and fifty rows, and 22 s of the interpreter's.
+ANSWERS_WITHIN = sp.ms(60_000)
 
 
 class AtItsShell(NamedTuple):
@@ -93,6 +98,50 @@ class TestWhenUefiBootsTheQuickWay:
             PROMPT,
         )
         assert board.platform.time - countdown_began >= promised_wait(console)
+
+
+@pytest.mark.platform
+class TestWhenPythonTypesAtUefisShell:
+    def test_ver_names_edk2_and_memmap_maps_the_ram_the_devicetree_gave(
+        self, uefi_at_its_shell
+    ):
+        board, _ = uefi_at_its_shell
+
+        version = type_and_wait_for_the_prompt(board, "ver")
+        memory_map = type_and_wait_for_the_prompt(board, "memmap")
+
+        assert re.search(r"UEFI v2\.\d+ \(EDK II, ", version)
+        assert span(memory_map) == (RAM_BASE, RAM_BASE + RAM_SIZE)
+
+
+def type_and_wait_for_the_prompt(board, command):
+    """Type `command` and Enter at the shell, and run until it prompts again.
+
+    Gives what the shell said in between, as plain text.
+    """
+    said_before = len(board.uart.output)
+    board.uart.write(command + "\r")
+    prompted = board.platform.run_until(
+        lambda: PROMPT in plain(board.uart.output[said_before:]),
+        timeout=ANSWERS_WITHIN,
+    )
+    assert prompted, f"The shell did not prompt again after {command!r}"
+    return plain(board.uart.output[said_before:])
+
+
+def span(memory_map):
+    """Where the first region in `memory_map` starts and the last one ends.
+
+    `memmap` gives a row to each region, with its type, its first address
+    and its last, in hex.
+    """
+    regions = [
+        (int(first, 16), int(last, 16) + 1)
+        for first, last in re.findall(
+            r"^\S+\s+([0-9A-F]{16})-([0-9A-F]{16}) ", memory_map, re.MULTILINE
+        )
+    ]
+    return min(first for first, _ in regions), max(end for _, end in regions)
 
 
 def plain(console):
