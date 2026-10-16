@@ -1,0 +1,12 @@
+diff --git a/OvmfPkg/RiscVVirt/Library/PlatformSecLib/Platform.c b/OvmfPkg/RiscVVirt/Library/PlatformSecLib/Platform.c
+index 13028e4..af806cb 100644
+--- a/OvmfPkg/RiscVVirt/Library/PlatformSecLib/Platform.c
++++ b/OvmfPkg/RiscVVirt/Library/PlatformSecLib/Platform.c
+@@ -115,6 +115,7 @@ PlatformInitialization (
+   *FdtHobData = (UINTN)NewBase;
+ 
+   PopulateIoResources (Base, "ns16550a");
++  PopulateIoResources (Base, "ns16550");
+   PopulateIoResources (Base, "qemu,fw-cfg-mmio");
+   PopulateIoResources (Base, "virtio,mmio");
+ 

@@ -1157,6 +1157,40 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch, and the loop in `firmware/build.sh` that applies it if it is the last.
 
+## EDK2
+
+[tianocore/edk2](https://github.com/tianocore/edk2), pinned at `edk2-stable202608` in `firmware/versions.sh` and built by `firmware/build.sh`, which applies `cmake/patches/edk2-*.patch` to it. Its port for QEMU's RISC-V `virt` (`OvmfPkg/RiscVVirt`) is the UEFI the host boots on OpenSBI (M28), built to run from RAM where OpenSBI's `fw_jump` jumps.
+
+### SEC maps a 16550 only if it is a 16550A
+
+- **Where**: `OvmfPkg/RiscVVirt/Library/PlatformSecLib/Platform.c`, `PlatformInitialization`.
+- **What is wrong**: SEC tells DXE which devices' registers to map by looking in the devicetree for three `compatible` strings, and the UART's is `ns16550a` alone. A UART that says `ns16550`, a 16550 without the FIFO, is left out of the memory map. When DXE turns paging on, the page tables have no entry for the console, and its first print after writing `satp` faults, as does every print the fault handler then tries. QEMU's `virt` says `ns16550a`, so it never meets it. The serial library itself is the same for both chips, and Linux's and OpenSBI's drivers take both names.
+- **How to see it**: socpuppet's UART says `ns16550`, since the model has no FIFO (M23). In the boot in `tests/python/test_m28_exit.py`, the console's last line is `InitializeCpu: mBootHartId = 0x0.`, the one just before `RiscVConfigureMmu` would say paging is on, on both harts.
+- **What we do**: `cmake/patches/edk2-sec-maps-ns16550.patch` looks for `ns16550` as well.
+- **Upstream fix**: the same line. A list of the 8250 family's names, as Linux's `of_serial` has, would do it for good.
+- **Kind**: bug.
+- **When it lands**: drop the patch. The loop in `firmware/build.sh` that applies EDK2's patches can stay, since it does nothing when there are none.
+
+### SEC gives DXE the RAM it runs from as free
+
+- **Where**: `OvmfPkg/RiscVVirt/Library/PlatformSecLib/Memory.c`, `MemoryInitialization`.
+- **What is wrong**: SEC describes every `memory` node of the devicetree as free RAM, less what `reserved-memory` and the devicetree's reserve map name. The FD, the image EDK2 runs from, is not among them, because on QEMU it is a flash outside RAM. Built to run from RAM, as it is here, its 2 MiB at `0x8020_0000` can be handed out by DXE's allocator while the volume in it is still listed for DXE to read. ArmVirt's port reserves its own image in the same place.
+- **How to see it**: nothing fails yet. DXE allocates from the top of RAM down and reaches `Shell>` long before it gets near, in `tests/python/test_m28_exit.py`.
+- **What we do**: nothing yet. A test that fills RAM, or a loader that asks for low addresses, as Linux's EFI stub may, is the one that will need it.
+- **Upstream fix**: reserve `[PcdOvmfFdBaseAddress, +PcdOvmfFirmwareFdSize)` with a memory allocation HOB when it lies in system memory, as `ArmVirtPkg`'s memory initialization does.
+- **Kind**: bug.
+- **When it lands**: nothing to do.
+
+### Every module is linked with sections 64 bytes apart, so none of them can be protected
+
+- **Where**: `BaseTools/Conf/tools_def.template`, the RISC-V link flags of both toolchains, `GCC` and `CLANGDWARF`: `-z common-page-size=0x40`.
+- **What is wrong**: DXE's memory protection makes each loaded image's code read-only and its data not executable, which needs the image's sections on 4 KiB pages. With them 64 bytes apart it gives up on each image, and says so in a line of exclamation marks for every driver it loads: `Image Section Alignment(0x40) does not match Required Alignment (0x1000)`. Nothing else goes wrong, and the boot is the same.
+- **How to see it**: any boot of `uefi.fd` with the console's output kept, such as `tests/python/test_m28_exit.py`'s.
+- **What we do**: nothing. Read past the exclamation marks.
+- **Upstream fix**: 4 KiB alignment for the DXE modules of a RISC-V build, as AArch64's have.
+- **Kind**: limitation.
+- **When it lands**: nothing to do.
+
 ## QBox
 
 [qualcomm/qbox](https://github.com/qualcomm/qbox), pinned at `4d63017c` ("libqemu: Switch to version libqemu-v11.0-v0.15", 2026-09-24) in `tools/build_qbox.sh`, which builds it for the `qbox_cpu`. Not part of the wheel: it is QEMU underneath (GPL-2.0), so whoever wants it builds it from source with that tool, and configures socpuppet with `SOCPUPPET_QBOX_DIR`. The tool applies the `cmake/patches/qbox-*.patch` files to QBox, and the `libqemu-*.patch` files to the QEMU it fetches.
