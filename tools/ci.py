@@ -29,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,6 +37,33 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 # Where a run on this machine keeps each step's output.
 LOGS = REPO / "build" / "ci"
+# Where the wheel job leaves the wheels, from the top of the repository.
+WHEELHOUSE = "build/wheelhouse"
+
+
+class Mode(enum.Enum):
+    """Where a job runs: here, or in CI."""
+
+    HERE = enum.auto()
+    CI = enum.auto()
+
+
+class NoMatch(Exception):
+    """A step's file pattern that matches no file."""
+
+
+@dataclass(frozen=True)
+class Glob:
+    """A pattern of paths from the top of the repository, in a command.
+
+    It stands for the files it matches when its step starts, in order. One
+    that matches none fails the step.
+    """
+
+    pattern: str
+
+    def __str__(self) -> str:
+        return self.pattern
 
 
 @dataclass(frozen=True)
@@ -44,9 +71,27 @@ class Step:
     """One command of a job, and what it is called in the job's output."""
 
     label: str
-    argv: tuple[str, ...]
+    argv: tuple[str | Glob, ...]
     # Variables set for this step alone.
     env: Mapping[str, str] = field(default_factory=dict)
+
+    def command(self) -> list[str]:
+        """The command, with each pattern replaced by the files it matches.
+
+        Raises NoMatch, naming the pattern, if one matches no file.
+        """
+        command = []
+        for word in self.argv:
+            if isinstance(word, str):
+                command.append(word)
+                continue
+            matches = sorted(
+                str(path.relative_to(REPO)) for path in REPO.glob(word.pattern)
+            )
+            if not matches:
+                raise NoMatch(f"no file matches {word}")
+            command.extend(matches)
+        return command
 
 
 @dataclass(frozen=True)
@@ -55,7 +100,8 @@ class Job:
 
     name: str
     blurb: str
-    steps: tuple[Step, ...]
+    # Its steps, or what makes them for where it runs.
+    steps: tuple[Step, ...] | Callable[[Mode], tuple[Step, ...]]
     # The jobs whose output this one reads, which come before it in JOBS.
     needs: tuple[str, ...] = ()
     # What it builds in, or writes to, that no other job may use while it
@@ -72,9 +118,15 @@ class Job:
     reconfigures_dev: bool = False
     # The one system it runs on (platform.system()'s name), if not every.
     only_on: str = ""
+    # Directories emptied before its steps, of what an earlier run left.
+    fresh: tuple[str, ...] = ()
     # A path it runs for a change to, as CI's paths filter has it: here, it
     # runs when the path differs from main's.
     changed: str = ""
+
+    def steps_for(self, mode: Mode) -> tuple[Step, ...]:
+        """Its steps, where it runs."""
+        return self.steps if isinstance(self.steps, tuple) else self.steps(mode)
 
 
 def tidy_steps(preset: str) -> tuple[Step, ...]:
@@ -84,6 +136,66 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
         Step("configure", ("uv", "run", "cmake", "--preset", preset)),
         Step("tidy", (*build, "--target", "tidy")),
         Step("check_headers", (*build, "--target", "check_headers")),
+    )
+
+
+def wheel_steps(mode: Mode) -> tuple[Step, ...]:
+    """Build the wheels, check what each holds, and install ours two ways.
+
+    In CI, cibuildwheel builds every wheel pyproject.toml asks for, in the
+    checkout, where the compiler cache is. Here it builds the one for this
+    machine and the Python the tools are pinned to, from a source
+    distribution: given a directory, it copies all of it into its
+    container, build/ too. Ours is then installed with uv and with pip,
+    away from the source tree, and boots the firmware.
+    """
+    python = (REPO / ".python-version").read_text().strip()
+    tag = "cp" + python.replace(".", "")
+    if mode is Mode.CI:
+        build: tuple[Step, ...] = (
+            Step(
+                "cibuildwheel",
+                ("uv", "run", "cibuildwheel", "--output-dir", WHEELHOUSE),
+            ),
+        )
+    else:
+        system = "manylinux" if platform.system() == "Linux" else "macosx"
+        sdists = f"{WHEELHOUSE}/sdist"
+        build = (
+            Step("sdist", ("uv", "build", "--sdist", "--out-dir", sdists)),
+            Step(
+                "cibuildwheel",
+                (
+                    *("uv", "run", "cibuildwheel"),
+                    *("--only", f"{tag}-{system}_{platform.machine()}"),
+                    *("--output-dir", WHEELHOUSE),
+                    Glob(f"{sdists}/*.tar.gz"),
+                ),
+            ),
+        )
+    firmware = {
+        "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+        "SOCPUPPET_FIRMWARE_DIR": str(REPO / "build" / "firmware"),
+    }
+    ours = Glob(f"{WHEELHOUSE}/*-{tag}-*.whl")
+    return (
+        *build,
+        Step(
+            "check_wheel",
+            (
+                "uv",
+                "run",
+                "python",
+                "tools/check_wheel.py",
+                Glob(f"{WHEELHOUSE}/*.whl"),
+            ),
+        ),
+        Step(
+            "test_wheel_uv", ("tools/test_wheel.sh", "uv", ours), env=firmware
+        ),
+        Step(
+            "test_wheel_pip", ("tools/test_wheel.sh", "pip", ours), env=firmware
+        ),
     )
 
 
@@ -131,6 +243,28 @@ JOBS = [
         only_on="Linux",
     ),
     Job(
+        "twister",
+        "Zephyr's test suites, and ours, on every board, run by twister",
+        needs=("firmware",),
+        steps=(
+            Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
+            Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
+            # The tests that read Zephyr's tree, which only this job has.
+            # One directory to a run of pytest, as ctest has it: each has
+            # a conftest.py of its own.
+            Step(
+                "boards",
+                ("uv", "run", "pytest", "tests/python/test_twister_boards.py"),
+            ),
+            Step(
+                "tooling",
+                ("uv", "run", "pytest", "tests/tooling", "-k", "twister"),
+            ),
+            Step("twister", ("firmware/twister.sh", "--suites")),
+        ),
+        uses=("build/dev", "extension", "build/twister"),
+    ),
+    Job(
         "coverage",
         "which lines of our C++ and Python the tests run, against a floor",
         steps=(
@@ -174,6 +308,37 @@ JOBS = [
         only_on="Linux",
     ),
     Job(
+        "qbox",
+        "build and test with QBox's CPU as the second hart, then twister on it",
+        needs=("firmware", "qbox-build"),
+        steps=(
+            Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
+            Step(
+                "build", ("uv", "run", "cmake", "--build", "--preset", "qbox")
+            ),
+            Step(
+                "ctest",
+                ("uv", "run", "ctest", "--preset", "qbox"),
+                env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+            ),
+            Step(
+                "twister",
+                ("firmware/twister.sh", "--suites", "-p", "socpuppet_host"),
+                env={"SOCPUPPET_CPU": "qbox_cpu"},
+            ),
+        ),
+        uses=("build/qbox-dev", "extension", "build/twister"),
+    ),
+    Job(
+        "wheel",
+        "build the wheels a user installs, and test one installed two ways",
+        needs=("firmware",),
+        steps=wheel_steps,
+        fresh=(WHEELHOUSE,),
+        # cibuildwheel builds Linux's wheels in a manylinux container.
+        docker=platform.system() == "Linux",
+    ),
+    Job(
         "devcontainer",
         "build and test in the devcontainer's image, as Linux with GCC",
         # In build/linux, so that the host's own build/dev is left alone.
@@ -185,6 +350,7 @@ JOBS = [
                 ("ctest", ("ctest", "--preset", "linux")),
             )
         ),
+        uses=("build/linux", "extension"),
         docker=True,
         changed=".devcontainer",
     ),
@@ -300,10 +466,17 @@ def run_for_ci(names: list[str]) -> int:
     for name in names:
         job = JOBS_BY_NAME[name]
         print(header(job))
-        for step in job.steps:
+        empty(job.fresh)
+        for step in job.steps_for(Mode.CI):
             if not run_in_ci(f"{name} ▸ {step.label}", step):
                 return 1
     return 0
+
+
+def empty(directories: tuple[str, ...]) -> None:
+    """Throw away what is in each directory, the directory too."""
+    for directory in directories:
+        shutil.rmtree(REPO / directory, ignore_errors=True)
 
 
 class Verdict(enum.Enum):
@@ -403,7 +576,7 @@ def drop_stale_dependencies(clean: bool) -> None:
     patched = patched_dependencies()
     stale = [
         (REPO / tree / "_deps", name)
-        for tree in ("build/dev", "build/qbox-dev")
+        for tree in ("build/dev", "build/qbox-dev", "build/linux")
         for name in patched
     ] + [(REPO / "build" / "qbox" / "build" / "_deps", "rpclib")]
     if any((deps / f"{name}-src").exists() for deps, name in stale):
@@ -616,22 +789,13 @@ class Run:
         each step's end, then the job's.
         """
         started = time.monotonic()
-        for step in job.steps:
+        empty(job.fresh)
+        for step in job.steps_for(Mode.HERE):
             log = LOGS / f"{job.name}-{step.label}.log"
             step_started = time.monotonic()
-            with log.open("w") as output, self.lock:
-                if self.stopping.is_set():
-                    return
-                process = subprocess.Popen(
-                    step.argv,
-                    cwd=REPO,
-                    env={**os.environ, **step.env},
-                    stdout=output,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True,
-                )
-                self.processes[job.name] = process
-            passed = process.wait() == 0
+            passed = self.run_step(job, step, log)
+            if passed is None:
+                return
             took = time.monotonic() - step_started
             ended = StepEnded(job.name, step.label, passed, took, log)
             self.events.put(ended)
@@ -642,6 +806,31 @@ class Run:
                 return
         took = time.monotonic() - started
         self.events.put(JobEnded(job.name, Outcome(Verdict.PASSED, took)))
+
+    def run_step(self, job: Job, step: Step, log: Path) -> bool | None:
+        """Run one step with its output in a log. Returns whether it passed.
+
+        Returns None if the run is stopping, and the step was not started.
+        """
+        with log.open("w") as output:
+            try:
+                command = step.command()
+            except NoMatch as no_match:
+                output.write(f"{no_match}\n")
+                return False
+            with self.lock:
+                if self.stopping.is_set():
+                    return None
+                process = subprocess.Popen(
+                    command,
+                    cwd=REPO,
+                    env={**os.environ, **step.env},
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+                self.processes[job.name] = process
+        return process.wait() == 0
 
     def restore_dev(self) -> None:
         """Configure build/dev for dev again, if a job configured it otherwise.
@@ -775,12 +964,15 @@ def run_in_ci(title: str, step: Step) -> bool:
     Returns True if it passed. On GitHub Actions the output is folded into
     a group named after the step, which the job's page opens on a click.
     """
+    try:
+        command = step.command()
+    except NoMatch as no_match:
+        print(f"❌ {title}: {no_match}")
+        return False
     folded = os.environ.get("GITHUB_ACTIONS") == "true"
     print(f"::group::{title}" if folded else f"▶ {title}")
     started = time.monotonic()
-    finished = subprocess.run(
-        step.argv, cwd=REPO, env={**os.environ, **step.env}
-    )
+    finished = subprocess.run(command, cwd=REPO, env={**os.environ, **step.env})
     if folded:
         print("::endgroup::")
     took = duration(time.monotonic() - started)

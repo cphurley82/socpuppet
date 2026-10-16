@@ -42,7 +42,9 @@ FetchContent_Declare(Ham_Core
 # A program that logs its command line, says it on its output, then says
 # as many lines more as LINES asks, and exits with the status the test asked
 # for: FAIL_ON names a word, and a command that holds it fails (a program
-# is named by its file's name). It takes as many seconds as SLOW says. Each
+# is named by its file's name). It takes as many seconds as SLOW says, and
+# makes the files MAKES asks for: a JSON {word: [path, ...]}, where a
+# command that holds the word makes the paths, empty. Each
 # command is also written to the log's .json, with socpuppet's variables and
 # when it started and ended, and its process id to the log's .pids when it
 # starts.
@@ -58,6 +60,11 @@ print("spam spam spam " + command)
 for line in range(1, int(os.environ.get("LINES", "0")) + 1):
     print(f"eggs {line}")
 time.sleep(float(os.environ.get("SLOW", "0")))
+for word, paths in json.loads(os.environ.get("MAKES", "{}")).items():
+    if word in command.split():
+        for path in paths:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w").close()
 with open(os.environ["LOG"] + ".json", "a") as log:
     log.write(json.dumps({
         "command": command,
@@ -70,7 +77,17 @@ sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 """
 
 # The scripts in the repository that the jobs call.
-SCRIPTS = ("firmware/build.sh", "tools/build_qbox.sh", "tools/devcontainer.sh")
+SCRIPTS = (
+    "firmware/build.sh",
+    "firmware/twister.sh",
+    "tools/build_qbox.sh",
+    "tools/devcontainer.sh",
+    "tools/test_wheel.sh",
+)
+
+# The Python the tools are pinned to, which the wheels are tested under.
+PYTHON = "3.13"
+TAG = "cp313"
 
 # What a terminal is sent to color what follows.
 GREEN, RED = "\x1b[32m", "\x1b[31m"
@@ -88,7 +105,8 @@ def load_runner():
     return module
 
 
-JOBS = load_runner().JOBS
+RUNNER_MODULE = load_runner()
+JOBS = RUNNER_MODULE.JOBS
 JOBS_BY_NAME = {job.name: job for job in JOBS}
 # The jobs that run here with no option given, and the jobs in Docker.
 JOBS_HERE = [job for job in JOBS if not job.docker]
@@ -100,6 +118,8 @@ DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
 @pytest.fixture
 def ci(tmp_path):
     """Run the runner in a copy of the repo; returns run(*args, **env).
+
+    `makes` is what the stand-ins make (see STAND_IN's MAKES).
 
     run returns the finished process and the commands the stand-ins were
     given, in order. run.root is the copy, run.start(*args, **env) starts
@@ -118,6 +138,7 @@ def ci(tmp_path):
     (root / "cmake" / "patches").mkdir(parents=True)
     (root / "cmake" / "Dependencies.cmake").write_text(DEPENDENCIES)
     (root / "cmake" / "patches" / "eggs-fix.patch").write_text("one\n")
+    (root / ".python-version").write_text(f"{PYTHON}\n")
     git(root, "init", "-q", "-b", "main")
     commit_everything(root)
     bin_directory = tmp_path / "bin"
@@ -125,7 +146,9 @@ def ci(tmp_path):
         write_stand_in(bin_directory / program)
     log = tmp_path / "log"
 
-    def start(*args, stdout=subprocess.PIPE, **env):
+    def start(*args, stdout=subprocess.PIPE, makes=None, **env):
+        if makes:
+            env["MAKES"] = json.dumps(makes)
         return subprocess.Popen(
             [sys.executable, str(root / "tools" / "ci.py"), *args],
             cwd=root,
@@ -162,8 +185,8 @@ def ci(tmp_path):
         process.wait()
         return sent.decode("utf-8")
 
-    def run(*args, **env):
-        process = start(*args, **env)
+    def run(*args, makes=None, **env):
+        process = start(*args, makes=makes, **env)
         stdout, _ = process.communicate()
         result = subprocess.CompletedProcess(
             process.args, process.returncode, stdout
@@ -520,7 +543,7 @@ def test_a_job_in_docker_named_on_its_own_runs_without_docker_asked_for(ci):
 
     result, _ = ci(*DOCKER_JOBS)
 
-    assert verdicts(result.stdout) == dict.fromkeys(DOCKER_JOBS, "✅")
+    assert "⏭" not in verdicts(result.stdout).values()
 
 
 def test_the_devcontainer_is_skipped_when_it_is_the_same_as_mains(ci):
@@ -709,6 +732,178 @@ def test_output_to_a_pipe_is_not_colored(ci):
     assert "\x1b[" not in result.stdout
 
 
+def test_tidy_configures_the_dev_tree_and_runs_clang_tidy_then_the_header_check(
+    ci,
+):
+    _, lines = ci("run", "tidy")
+
+    assert lines == [
+        "uv run cmake --preset dev",
+        "uv run cmake --build --preset dev --target tidy",
+        "uv run cmake --build --preset dev --target check_headers",
+    ]
+
+
+def test_twister_builds_the_dev_tree_checks_its_files_then_runs_the_suites(
+    ci,
+):
+    _, lines = ci("run", "twister")
+
+    assert lines == [
+        "uv run cmake --preset dev",
+        "uv run cmake --build --preset dev",
+        "uv run pytest tests/python/test_twister_boards.py",
+        "uv run pytest tests/tooling -k twister",
+        "twister.sh --suites",
+    ]
+
+
+def test_coverage_builds_its_target_in_the_coverage_tree(ci):
+    _, lines = ci("run", "coverage")
+
+    assert lines == [
+        "uv run cmake --preset coverage",
+        "uv run cmake --build --preset coverage --target coverage",
+    ]
+
+
+def test_sanitizers_builds_and_tests_the_asan_tree(ci):
+    _, lines = ci("run", "sanitizers")
+
+    assert lines == [
+        "uv run cmake --preset asan",
+        "uv run cmake --build --preset asan",
+        "uv run ctest --preset asan",
+    ]
+
+
+def test_qbox_build_builds_qbox(ci):
+    _, lines = ci("run", "qbox-build")
+
+    assert lines == ["uv run tools/build_qbox.sh"]
+
+
+def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_qboxs_cpu(
+    ci,
+):
+    ci("run", "qbox")
+
+    commands = [(c["command"], c["env"]) for c in ci.commands()]
+    assert commands == [
+        ("uv run cmake --preset qbox", {}),
+        ("uv run cmake --build --preset qbox", {}),
+        ("uv run ctest --preset qbox", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
+        (
+            "twister.sh --suites -p socpuppet_host",
+            {"SOCPUPPET_CPU": "qbox_cpu"},
+        ),
+    ]
+
+
+def test_qbox_tidy_runs_clang_tidy_then_the_header_check_on_the_qbox_tree(ci):
+    _, lines = ci("run", "qbox-tidy")
+
+    assert lines == [
+        "uv run cmake --preset qbox",
+        "uv run cmake --build --preset qbox --target tidy",
+        "uv run cmake --build --preset qbox --target check_headers",
+    ]
+
+
+SDIST = "build/wheelhouse/sdist/socpuppet-0.0.1.tar.gz"
+OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
+# What the sdist and cibuildwheel stand-ins leave, to build one wheel here.
+ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
+
+
+def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
+    result, _ = ci("wheel", makes=ONE_WHEEL)
+
+    assert result.returncode == 0, result.stdout
+    commands = [step["command"].split() for step in steps_run(ci)]
+    assert commands[0][:3] == ["uv", "build", "--sdist"]
+    build = commands[1]
+    assert build[:3] == ["uv", "run", "cibuildwheel"]
+    only = build[build.index("--only") + 1]
+    assert only.startswith(f"{TAG}-")
+    assert only.endswith(platform.machine())
+    assert SDIST in build
+    assert commands[2:] == [
+        ["uv", "run", "python", "tools/check_wheel.py", OUR_WHEEL],
+        ["test_wheel.sh", "uv", OUR_WHEEL],
+        ["test_wheel.sh", "pip", OUR_WHEEL],
+    ]
+
+
+def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):
+    ci("wheel", makes=ONE_WHEEL)
+
+    installs = [
+        step for step in steps_run(ci) if "test_wheel.sh" in step["command"]
+    ]
+    assert installs
+    for install in installs:
+        assert install["env"] == {
+            "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+            "SOCPUPPET_FIRMWARE_DIR": str(ci.root / "build" / "firmware"),
+        }
+
+
+def test_wheel_in_ci_builds_every_wheel_in_place_checks_each_and_installs_ours(
+    ci,
+):
+    wheels = [
+        f"build/wheelhouse/socpuppet-0.0.1-{tag}-spam.whl"
+        for tag in sorted({"cp312", TAG, "cp314"})
+    ]
+    ours = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-spam.whl"
+
+    ci("run", "wheel", makes={"cibuildwheel": wheels})
+
+    assert [c["command"] for c in ci.commands()] == [
+        "uv run cibuildwheel --output-dir build/wheelhouse",
+        "uv run python tools/check_wheel.py " + " ".join(wheels),
+        f"test_wheel.sh uv {ours}",
+        f"test_wheel.sh pip {ours}",
+    ]
+
+
+@pytest.mark.parametrize(
+    "where", [("wheel",), ("run", "wheel")], ids=["here", "in CI"]
+)
+def test_a_wheel_left_by_an_earlier_run_is_not_checked(ci, where):
+    old = ci.root / "build" / "wheelhouse" / "socpuppet-0.0.0-spam.whl"
+    old.parent.mkdir(parents=True)
+    old.touch()
+
+    _, lines = ci(*where, makes=ONE_WHEEL)
+
+    checked = next(line for line in lines if "check_wheel.py" in line)
+    assert checked == f"uv run python tools/check_wheel.py {OUR_WHEEL}"
+
+
+@pytest.mark.parametrize(
+    "where", [("wheel",), ("run", "wheel")], ids=["here", "in CI"]
+)
+def test_a_step_whose_files_are_not_there_fails_and_names_what_it_wanted(
+    ci, where
+):
+    result, _ = ci(*where)
+
+    assert result.returncode == 1
+    assert "no file matches build/wheelhouse/" in result.stdout
+
+
+def test_devcontainer_builds_and_tests_the_linux_tree_in_docker(ci):
+    _, lines = ci("run", "devcontainer")
+
+    assert lines == [
+        "devcontainer.sh uv run cmake --preset linux",
+        "devcontainer.sh uv run cmake --build --preset linux",
+        "devcontainer.sh uv run ctest --preset linux",
+    ]
+
+
 def write_stand_in(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!{sys.executable}\n{STAND_IN}")
@@ -836,9 +1031,14 @@ def independent(a, b):
 def commands_of(name):
     """A job's commands, as the stand-ins log them."""
     return [
-        " ".join([Path(step.argv[0]).name, *step.argv[1:]])
-        for step in JOBS_BY_NAME[name].steps
+        " ".join([Path(step.argv[0]).name, *map(str, step.argv[1:])])
+        for step in JOBS_BY_NAME[name].steps_for(RUNNER_MODULE.Mode.HERE)
     ]
+
+
+def steps_run(ci):
+    """The commands the jobs' steps ran, without the runner's own."""
+    return [c for c in ci.commands() if not c["command"].startswith("docker")]
 
 
 def summary_of(output, name):

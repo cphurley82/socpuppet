@@ -1,6 +1,6 @@
 """Check that a built wheel is self-contained and holds nothing it should not.
 
-Usage: python tools/check_wheel.py dist/socpuppet-*.whl
+Usage: python tools/check_wheel.py WHEEL [WHEEL ...]
 """
 
 import sys
@@ -67,19 +67,23 @@ def problems_with(names):
             yield f"unexpected file outside the package: {name}"
 
 
-def main(wheel_path):
-    """Print the verdict on the wheel at `wheel_path`.
+def main(wheel_paths):
+    """Print the verdict on each wheel in `wheel_paths`.
 
-    Returns the exit status.
+    Returns the exit status, which is 1 if any wheel is wrong.
     """
-    with zipfile.ZipFile(wheel_path) as wheel:
-        problems = list(problems_with(wheel.namelist()))
-    for problem in problems:
-        print(f"❌ {problem}")
-    if not problems:
-        print(f"✅ {wheel_path} looks right")
-    return 1 if problems else 0
+    status = 0
+    for wheel_path in wheel_paths:
+        with zipfile.ZipFile(wheel_path) as wheel:
+            problems = list(problems_with(wheel.namelist()))
+        for problem in problems:
+            print(f"❌ {wheel_path}: {problem}")
+        if problems:
+            status = 1
+        else:
+            print(f"✅ {wheel_path} looks right")
+    return status
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1]))
+    sys.exit(main(sys.argv[1:]))

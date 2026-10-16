@@ -118,14 +118,14 @@ def python_without_the_linters(tmp_path_factory):
 
 @pytest.fixture
 def check_wheel():
-    """Run tools/check_wheel.py on a wheel."""
+    """Run tools/check_wheel.py on one wheel or more."""
 
-    def run(wheel):
+    def run(*wheels):
         return subprocess.run(
             [
                 sys.executable,
                 str(REPO / "tools" / "check_wheel.py"),
-                str(wheel),
+                *map(str, wheels),
             ],
             capture_output=True,
             text=True,

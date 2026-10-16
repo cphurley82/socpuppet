@@ -15,9 +15,9 @@ GOOD = (
 )
 
 
-def wheel_holding(directory, names):
+def wheel_holding(directory, names, tag="cp313"):
     """A wheel in `directory` with an empty file for each of `names`."""
-    wheel = directory / "socpuppet-0.0.1-cp313-cp313-macosx_11_0_arm64.whl"
+    wheel = directory / f"socpuppet-0.0.1-{tag}-{tag}-macosx_11_0_arm64.whl"
     with zipfile.ZipFile(wheel, "w") as contents:
         for name in names:
             contents.writestr(name, "")
@@ -77,3 +77,16 @@ def test_when_there_is_no_register_map_at_all_the_wheel_is_refused_and_the_outpu
 
     assert result.returncode != 0
     assert "register map" in result.stdout
+
+
+def test_when_one_of_several_wheels_is_wrong_they_are_refused_and_it_is_named(
+    tmp_path, check_wheel
+):
+    good = wheel_holding(tmp_path, GOOD, tag="cp312")
+    bad = wheel_holding(tmp_path, GOOD[1:], tag="cp313")
+
+    result = check_wheel(good, bad)
+
+    assert result.returncode != 0
+    assert f"❌ {bad}" in result.stdout
+    assert f"❌ {good}" not in result.stdout

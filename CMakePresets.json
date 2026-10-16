@@ -41,6 +41,12 @@
       }
     },
     {
+      "name": "linux",
+      "displayName": "Development build in the devcontainer's image, from tools/devcontainer.sh",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/linux"
+    },
+    {
       "name": "qbox",
       "displayName": "Development build with QBox's CPU, from tools/build_qbox.sh",
       "inherits": "dev",
@@ -55,6 +61,7 @@
     { "name": "coverage", "configurePreset": "coverage" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "spike", "configurePreset": "spike" },
+    { "name": "linux", "configurePreset": "linux" },
     { "name": "qbox", "configurePreset": "qbox" }
   ],
   "testPresets": [
@@ -76,6 +83,12 @@
       "configurePreset": "spike",
       "output": { "outputOnFailure": true },
       "filter": { "include": { "label": "spike" } }
+    },
+    {
+      "name": "linux",
+      "configurePreset": "linux",
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 8 }
     },
     {
       "name": "qbox",
