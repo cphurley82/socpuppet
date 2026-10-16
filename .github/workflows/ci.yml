@@ -1,13 +1,25 @@
 name: CI
 
+# Every job here is a thin wrapper around tools/ci.py, which holds each
+# job's steps: what is left in this file is GitHub's plumbing, the checkout,
+# the packages, the caches and the artifacts. A job's log opens with the
+# command that runs the same job on a developer's machine, and
+# `uv run python tools/ci.py` runs every one that can run there.
+# tests/tooling/test_ci_workflow.py keeps the two to the same jobs.
+#
+# Nothing waits for lint: a job waits only for a job whose output it reads.
+
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
+# A newer push to a pull request stops the run of the one before. A run on
+# main always finishes, since main's caches are the ones every branch reads.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -18,13 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync
-      - run: uv run python tools/lint.py
+      - run: uv run python tools/ci.py run lint
 
   firmware:
-    # The firmware images the tests boot: Zephyr samples, built once here
-    # with the Zephyr SDK and handed to the jobs that need them. An ELF image
-    # is the same file whatever machine the simulator runs on.
+    # The firmware images the tests boot: Zephyr samples, the boot ROMs,
+    # OpenSBI and EDK2, built once here and handed to the jobs that need
+    # them. An ELF image is the same file whatever machine the simulator
+    # runs on.
     name: Firmware
     runs-on: ubuntu-24.04
     steps:
@@ -40,18 +52,17 @@ jobs:
             build/firmware/*.fd
             build/firmware/*.opcodes.txt
           # The board the images are built for is part of what they are,
-          # and so are the patches OpenSBI and EDK2 are built with. What twister is
-          # run from builds no image: its script, its lists, and what it
-          # reads of each application.
+          # and so are the patches OpenSBI and EDK2 are built with. What
+          # twister is run from builds no image: its script, its lists, and
+          # what it reads of each application.
           key: firmware-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/opensbi-*', 'cmake/patches/edk2-*') }}
       # EDK2's BaseTools are built with the runner's own gcc, and want
       # libuuid's header; and EDK2 compiles ACPI tables with iasl.
       - name: Install system packages
         if: steps.images.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y uuid-dev acpica-tools
-      - name: Build the images
-        if: steps.images.outputs.cache-hit != 'true'
-        run: firmware/build.sh
+      - if: steps.images.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware
       - uses: actions/upload-artifact@v7
         with:
           name: firmware
@@ -80,11 +91,11 @@ jobs:
       UV_PYTHON: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v7
+      # dtc checks the devicetrees the boards generate and compiles the one
+      # a boot under OpenSBI is handed. Without it those tests skip here.
       - name: Install system packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      # dtc checks the devicetrees the boards generate and compiles the one
-      # a boot under OpenSBI is handed. Without it those tests skip here.
       - name: Install the devicetree compiler
         if: runner.os == 'macOS'
         run: brew install dtc
@@ -98,28 +109,36 @@ jobs:
         with:
           name: firmware
           path: build/firmware
-      - run: uv sync
-      - run: uv run cmake --preset dev
-      - run: uv run cmake --build --preset dev
-      - run: uv run ctest --preset dev
-        env:
-          # A missing firmware image fails its boot test instead of
-          # skipping it.
-          SOCPUPPET_REQUIRE_FIRMWARE: "1"
+      - run: uv run python tools/ci.py run test
+
+  tidy:
+    # clang-tidy over our own C++, and each of our headers compiled on its
+    # own. Nothing else is built: clang-tidy reads the sources and the
+    # compile commands that configuring writes, which are GCC's.
+    name: clang-tidy and header check
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/dev/_deps
+          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - run: uv run python tools/ci.py run tidy
 
   twister:
     # Zephyr's own test suites, and ours, run on every board by twister,
     # Zephyr's test runner, with socpuppet as the emulator: the
     # board-compliance run (docs/twister.md). Twister builds an image and
     # runs it in one breath, so this one job has both what builds firmware
-    # and what runs it: Zephyr, its SDK and its venv, which are cached, and
-    # a socpuppet built here as the test job builds it.
+    # and what runs it: Zephyr, its SDK and its venv, which are cached.
     #
-    # On Linux and on a Mac, as the test job is. The Mac's runner is Apple
-    # silicon, the one Mac the Zephyr SDK has a toolchain for, and so the
-    # one place twister runs on macOS itself: an Intel Mac runs it in the
-    # devcontainer's image, which is Linux. Nothing but this leg would say
-    # that the scripts had stopped working there.
+    # On Linux and on a Mac. The Mac's runner is Apple silicon, the one Mac
+    # the Zephyr SDK has a toolchain for, and so the one place twister runs
+    # on macOS itself: an Intel Mac runs it in the devcontainer's image.
     name: Twister (Zephyr's tests on the boards, ${{ matrix.os }})
     needs: firmware
     runs-on: ${{ matrix.os }}
@@ -152,7 +171,8 @@ jobs:
           # the venv's Python are programs for the runner they were
           # fetched on.
           key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
-      # What the script needs to build EDK2 too, which it does on the way.
+      # What the firmware job needs to build EDK2 too, which it does on
+      # the way.
       - name: Install EDK2's build packages
         if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: sudo apt-get install -y uuid-dev acpica-tools
@@ -160,11 +180,10 @@ jobs:
         if: steps.zephyr.outputs.cache-hit != 'true' && runner.os == 'macOS'
         run: brew install acpica
       - name: Fetch Zephyr and its SDK
-        # The script that builds the images is the one that fetches what
-        # builds them, so this builds every image again too. Once for each
-        # version.
+        # The firmware job is what fetches what builds the images, so this
+        # builds every image again too. Once for each version.
         if: steps.zephyr.outputs.cache-hit != 'true'
-        run: firmware/build.sh
+        run: uv run python tools/ci.py run firmware
       - name: Keep Zephyr, its SDK and its venv
         # Saved here and not when the job is over, where a scenario that
         # fails would have every later run fetch it all again.
@@ -183,18 +202,7 @@ jobs:
         with:
           name: firmware
           path: build/firmware
-      - run: uv sync
-      - run: uv run cmake --preset dev
-      - run: uv run cmake --build --preset dev
-      - name: Hold the files twister reads to Zephyr's own schemas
-        # The tests that read Zephyr's tree, which no other job has.
-        # One directory to a run of pytest, as ctest has it: each has a
-        # conftest.py of its own.
-        run: |
-          uv run pytest tests/python/test_twister_boards.py
-          uv run pytest tests/tooling -k twister
-      - name: Run every suite of the list on every board
-        run: firmware/twister.sh --suites
+      - run: uv run python tools/ci.py run twister
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -209,30 +217,6 @@ jobs:
             build/twister/out/**/build.log
             build/twister/out/**/handler.log
             build/twister/out/**/handler_stderr.log
-
-  tidy:
-    # clang-tidy over our own C++, and each of our headers compiled on its
-    # own. Nothing else is built: clang-tidy reads the sources and the
-    # compile commands that configuring writes.
-    #
-    # Those are GCC's compile commands and GCC's standard library, so
-    # clang-tidy reads our code the way the Linux build compiles it.
-    name: clang-tidy and header check
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv sync
-      - run: uv run cmake --preset dev
-      - run: uv run cmake --build --preset dev --target tidy
-      - run: uv run cmake --build --preset dev --target check_headers
 
   coverage:
     # Which lines of our own C++ and Python the tests run. The job fails if
@@ -249,9 +233,7 @@ jobs:
         with:
           path: build/dev/_deps
           key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv sync
-      - run: uv run cmake --preset coverage
-      - run: uv run cmake --build --preset coverage --target coverage
+      - run: uv run python tools/ci.py run coverage
       - name: Show the figures on the job's page
         if: always()
         run: |
@@ -284,17 +266,177 @@ jobs:
         with:
           path: build/dev/_deps
           key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv sync
-      - run: uv run cmake --preset asan
-      - run: uv run cmake --build --preset asan
-      - run: uv run ctest --preset asan
+      - run: uv run python tools/ci.py run sanitizers
+
+  qbox-build:
+    # QBox, Qualcomm's QEMU in SystemC, which the qbox_cpu is built on. It
+    # is GPL-2.0 and built from source, which takes a quarter of an hour on
+    # CI's Linux runner, so what it installs is cached, keyed on QBox's pin
+    # and its patches, and this job builds it only when those change. The
+    # system's libraries it links are the runner's, so the key names the
+    # runner too.
+    name: QBox (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Look for QBox in the cache
+        id: qbox
+        uses: actions/cache/restore@v6
+        with:
+          path: build/qbox/install
+          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          lookup-only: true
+      - name: Install QBox's packages
+        # As the devcontainer's image has them (.devcontainer/Dockerfile).
+        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
+            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
+            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
+            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
+      - name: Install QBox's packages
+        # As docs/setup.md lists them for a Mac.
+        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: |
+          brew install asio glib jpeg-turbo libelf libslirp libzip meson \
+            ninja pixman pkgconf sdl2
+      - uses: astral-sh/setup-uv@v7
+        if: steps.qbox.outputs.cache-hit != 'true'
+      - if: steps.qbox.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run qbox-build
+      - name: Keep QBox
+        if: steps.qbox.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: build/qbox/install
+          key: ${{ steps.qbox.outputs.cache-primary-key }}
+
+  qbox-tidy:
+    # clang-tidy over the adapter of QBox's CPU, which the tidy job's tree
+    # leaves out.
+    name: clang-tidy and header check with QBox
+    needs: qbox-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        # socpuppet's, and QBox's (.devcontainer/Dockerfile).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev device-tree-compiler \
+            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
+            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
+            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
+            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
+      - uses: astral-sh/setup-uv@v7
+      - name: Restore QBox
+        uses: actions/cache/restore@v6
+        with:
+          path: build/qbox/install
+          key: qbox-ubuntu-24.04-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          fail-on-cache-miss: true
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/qbox-dev/_deps
+          key: deps-qbox-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - run: uv run python tools/ci.py run qbox-tidy
+
+  qbox:
+    # The qbox_cpu, QEMU's RISC-V CPU inside SystemC, as a second hart
+    # beside DBT-RISE's (docs/models/qbox-cpu.md): the bus-master contract,
+    # the hart's suite with QBox's fates skipped, the Python boots of the
+    # host, and twister's suites on the host board.
+    #
+    # On Linux, and on a Mac natively, with Homebrew's packages
+    # (docs/setup.md): nothing but this leg would say that the patches
+    # QBox needs on a Mac (docs/upstream.md) had stopped working there.
+    name: Build and test with QBox's CPU (${{ matrix.os }})
+    needs: [firmware, qbox-build]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        # socpuppet's and the firmware's, and QBox's
+        # (.devcontainer/Dockerfile).
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev device-tree-compiler uuid-dev acpica-tools \
+            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
+            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
+            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
+            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
+      - name: Install Homebrew's packages
+        # QBox's, as docs/setup.md lists them for a Mac, and dtc.
+        if: runner.os == 'macOS'
+        run: |
+          brew install acpica asio dtc glib jpeg-turbo libelf libslirp libzip \
+            meson ninja pixman pkgconf sdl2
+      - uses: astral-sh/setup-uv@v7
+      - name: Restore QBox
+        uses: actions/cache/restore@v6
+        with:
+          path: build/qbox/install
+          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.sh', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          fail-on-cache-miss: true
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/qbox-dev/_deps
+          key: deps-qbox-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - name: Restore Zephyr, its SDK and its venv
+        id: zephyr
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            build/firmware/.west
+            build/firmware/python
+            build/firmware/venv
+            build/firmware/zephyr
+            build/firmware/zephyr-sdk-*
+          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.sh') }}
+      - name: Fetch Zephyr and its SDK
+        # As the twister job does, when the cache had none.
+        if: steps.zephyr.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: build/firmware
+      - run: uv run python tools/ci.py run qbox
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: twister-qbox-${{ matrix.os }}
+          path: |
+            build/twister/out/*/twister.json
+            build/twister/out/*/twister*.xml
+            build/twister/out/*/twister.log
+            build/twister/out/**/build.log
+            build/twister/out/**/handler.log
+            build/twister/out/**/handler_stderr.log
 
   wheel:
     # The wheels a user will install, built by cibuildwheel as configured in
     # pyproject.toml: one per Python version, for Linux on Intel and Arm
     # (manylinux) and for macOS on Apple silicon. cibuildwheel installs each
-    # into a fresh environment and runs the Python tests against it.
-    # Nothing is published from here.
+    # into a fresh environment and runs the Python tests against it, and
+    # then one is installed the way a user would, with uv and with pip, and
+    # boots real firmware. Nothing is published from here.
     #
     # Nearly all of a wheel is the dependencies, which are the same for
     # every Python version. A compiler cache (ccache, set up in
@@ -323,20 +465,6 @@ jobs:
           # Saved once for each set of dependencies. Our own few files are
           # compiled every time, which is what a change to them needs.
           key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
-      - uses: pypa/cibuildwheel@v4.3.0
-      - name: Check what each wheel holds
-        run: |
-          for wheel in wheelhouse/*.whl; do
-            uv run --no-project python tools/check_wheel.py "$wheel"
-          done
-      # cibuildwheel installed the wheels with pip, inside its own
-      # environments. Install one the way a user would, with uv and with
-      # pip, on this machine.
-      # This is also where an installed wheel boots real firmware.
-      - uses: actions/download-artifact@v8
-        with:
-          name: firmware
-          path: build/firmware
       # dtc compiles the devicetree a boot under OpenSBI is handed.
       - name: Install the devicetree compiler
         run: |
@@ -345,38 +473,29 @@ jobs:
           else
             sudo apt-get update && sudo apt-get install -y device-tree-compiler
           fi
-      # The wheel for the Python that test_wheel.sh installs it under,
-      # which is the one in .python-version: 3.13 is tagged cp313.
-      - name: Install a wheel with uv and with pip, and boot firmware
-        run: |
-          tag="cp$(tr -d . < .python-version)"
-          tools/test_wheel.sh uv wheelhouse/*-"$tag"-*.whl
-          tools/test_wheel.sh pip wheelhouse/*-"$tag"-*.whl
-        env:
-          SOCPUPPET_FIRMWARE_DIR: ${{ github.workspace }}/build/firmware
-          SOCPUPPET_REQUIRE_FIRMWARE: "1"
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: build/firmware
+      - run: uv run python tools/ci.py run wheel
       - uses: actions/upload-artifact@v7
         with:
           name: wheels-${{ matrix.os }}
-          path: wheelhouse/*.whl
+          path: build/wheelhouse/*.whl
 
   devcontainer:
+    # The tests, built in the devcontainer's image: Linux with GCC, which
+    # is what a contributor's editor builds in. Only when the image changes.
     name: Build and test (devcontainer)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - uses: dorny/paths-filter@v4
         id: changed
         with:
           filters: |
             devcontainer:
               - '.devcontainer/**'
-      - name: Build the image and run the tests inside it
-        if: steps.changed.outputs.devcontainer == 'true'
-        run: |
-          docker build -t socpuppet-dev .devcontainer
-          # The checkout belongs to the runner's user and the container runs
-          # as root, so git has to be told the mounted directory is safe to
-          # read. The lint test lists files with git.
-          docker run --rm -v "$PWD:/workspace" -w /workspace socpuppet-dev \
-            bash -c "git config --global --add safe.directory /workspace && uv sync && uv run cmake --preset dev && uv run cmake --build --preset dev && uv run ctest --preset dev"
+      - if: steps.changed.outputs.devcontainer == 'true'
+        run: uv run python tools/ci.py run devcontainer
