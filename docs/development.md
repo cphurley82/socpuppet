@@ -9,7 +9,7 @@
 - git, and zlib's headers (`zlib1g-dev` on Ubuntu; already there on macOS).
 - `dtc`, the devicetree compiler (`device-tree-compiler` on Ubuntu, `brew install dtc` on macOS). Two Python tests that check generated devicetrees skip without it.
 
-Ubuntu 24.04 and macOS are both supported and both run in CI. If you would rather not set anything up, open the repo in the devcontainer (`.devcontainer/`), which is the CI environment.
+Ubuntu 24.04 and macOS are both supported and both run in CI. Ubuntu 26.04 (GCC 15) is not in CI, and every job's steps have been run on it and pass: [Running CI's jobs here](#running-cis-jobs-here) is how to check that again. If you would rather not set anything up, open the repo in the devcontainer (`.devcontainer/`), which is the CI environment.
 
 ## The loop
 
@@ -90,6 +90,22 @@ tools/devcontainer.sh uv run cmake --build build/linux
 ```
 
 💡 `tools/devcontainer.sh` runs any command in the devcontainer's image, with the repository at `/workspace` (`tools/devcontainer.sh bash` is a shell there). It names the image after a hash of `.devcontainer/Dockerfile`, so it builds the image the first time and again whenever the Dockerfile changes. uv's Linux venv, its cache and its Python are kept in `build/`, so they outlive each container, and your `SOCPUPPET_*` variables go in with the command. ⚠️ A second build tree has its own copy of every dependency, patched when it was fetched. After a change to a file in `cmake/patches/`, that tree's copy is stale too: delete it and configure again, as [Dependencies](#dependencies) says. `firmware/twister.sh` keeps the same tree, `build/linux`, on an Intel Mac, and does that by itself.
+
+## Running CI's jobs here
+
+`tools/ci_local.sh` runs the steps of every job in `ci.yml` and `qbox.yml` on this machine, in the workflows' order, so that a push is not the first time they run:
+
+```sh
+tools/ci_local.sh                    # every job, which takes the better part of an hour
+tools/ci_local.sh lint tidy test     # just those
+tools/ci_local.sh --clean test       # drop the patched dependencies first
+```
+
+The jobs are `lint`, `firmware`, `test`, `tidy`, `twister`, `coverage`, `sanitizers`, `qbox`, `wheel` and `devcontainer`. A step that fails ends its job and the next job still runs, as in CI. The summary at the end says which passed, and each step's output is in `build/ci-local/`. The `wheel` and `devcontainer` jobs need Docker and are skipped, with the reason, when Docker is missing or `docker info` fails (your user has to be in the `docker` group), and `devcontainer` runs only when `.devcontainer/` differs from `main`, as CI's does.
+
+🎓 This is your machine and not CI's runner, so it runs your compiler and your libraries. A difference between the two, such as a newer GCC with a warning CI's lacks, shows up here as a failure, which is the point. The `qbox` job needs the packages [setup.md](setup.md#1-system-packages) lists for QBox.
+
+⚠️ A build tree whose dependencies were patched by an older set of patches fails to configure with `patch does not apply`, because `git apply` does not apply a patch twice ([Dependencies](#dependencies)). The script keeps a hash of `cmake/patches/` and `cmake/Dependencies.cmake` in `build/.ci-local-patches`. When it has changed, or there is none, the script deletes the patched dependencies in `build/dev` and `build/qbox-dev`, and QBox's rpclib, so that they are fetched and patched again. Everything not patched is kept, libqemu included.
 
 ## One build tree, three kinds of build
 
