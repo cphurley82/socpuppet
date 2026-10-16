@@ -95,6 +95,22 @@ compute_imsic: interrupt-controller@24000000 {
 
 The node is the page for machine mode's messages and that mode's line, since machine mode is where the firmware a devicetree is generated for runs. A root complex's node points here with `msi-parent`. The CPU's node gains `smcsrind` in its list of extensions when its `csr` is connected, which is what Zephyr switches its IMSIC driver on for, and `ssaia` beside it on a core with supervisor mode, which is what Linux's looks for.
 
+In Linux's dialect it is a node for each page, `riscv,imsics`, and the mode is said only by which of the CPU's interrupts each names: 11, machine mode's external interrupt, and 9, the supervisor's. A hart is found the same way, so there is no `riscv,hart-id`. OpenSBI keeps machine mode's for itself and marks its node disabled before it hands the tree on, so Linux sees only the supervisor's.
+
+```dts
+compute_imsic_s: interrupt-controller@28000000 {
+	compatible = "riscv,imsics";
+	reg = <0x0 0x28000000 0x0 0x1000>;
+	#address-cells = <0>;
+	#interrupt-cells = <0>;
+	interrupt-controller;
+	msi-controller;
+	#msi-cells = <0>;
+	riscv,num-ids = <63>;
+	interrupts-extended = <&compute_cpu_intc 9>;
+};
+```
+
 ⚠️ `identities` is the highest identity a file has, and the specification allows 63, 127 and so on up to 2047. The host has 63. Zephyr 4.4's driver enables the wrong register for an identity above 63 on a 64-bit hart, which is in [upstream.md](../upstream.md).
 
 ## Under the hood

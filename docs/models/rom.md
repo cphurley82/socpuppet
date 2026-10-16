@@ -13,6 +13,7 @@ A read-only memory: the few kilobytes of a chip that are written when it is made
 - **Address errors.** A read that runs past the end is answered with an address-error response.
 - **DMI, for reading.** It grants direct memory access to the whole ROM, to read through and not to write through, so a CPU fetches its instructions from it at full speed.
 - **Loading.** 🧵 `platform.load_elf(...)` and `platform.poke(...)` put the ROM's program there before the first run, by debug transport, as they load a RAM.
+- **Holds whatever program it is given.** socpuppet's boot ROM, `firmware/rom`, starts an image from a flash with the hart's number in `a0` and the argument the image carries in `a1`, which is how every RISC-V stage of a boot starts the next. 🎭 For OpenSBI the quick way, it holds QEMU's reset vector instead (`boot.reset_stub`): a few instructions that set the same two registers and jump to what Python put in RAM.
 - ⚠️ **Loaded once.** The ROM takes a debugger's write until its bus master first comes to it, with a transaction or a request for direct memory access. From then on the chip is made: `poke` and `load_elf` are refused with a `PermissionError` that names the ROM, as a debugger cannot patch a ROM on a board. `peek` always works.
 
 ```python

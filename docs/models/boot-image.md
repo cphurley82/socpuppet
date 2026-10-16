@@ -55,7 +55,6 @@ platform.poke(BOOT_FLASH_BASE, image, via=board.cpu.socket)
 - **A signature.** A CRC catches a flash that has rotted or an image cut short. It does not catch one that was changed on purpose: anyone who can write the flash can write a new CRC. A boot that checks who made the image is a secure boot, and the plan leaves it open.
 - **A CRC of the header.** The sum is of the program's bytes. A damaged length is nearly always caught, since it changes which bytes are summed. A damaged load address or entry is not caught at all: the boot ROM copies to the wrong place, or jumps to it.
 - **More than one segment.** An image is one run of bytes at one address. A program whose segments are far apart becomes one large image, mostly zeros.
-- **Anything for the next stage.** A real header says what to pass on: a devicetree's address, a boot argument. This one has no word for it yet.
 - **Compression, versions and a second copy** to fall back to, all of which real ones have.
 
 ## Under the hood

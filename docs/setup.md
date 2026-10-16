@@ -36,7 +36,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `build-essential` | GCC and make. socpuppet needs C++20, which GCC 13 (24.04) and GCC 15 (26.04) both have |
 | `git`, `curl`, `xz-utils` | fetching the dependencies at configure time, and the Zephyr SDK |
 | `zlib1g-dev` | SCC's FST trace writer, which waveform viewers such as GTKWave open, needs it |
-| `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates. Two tests skip without it |
+| `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates and compiles the one OpenSBI is handed. The tests that need it skip without it |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
 
 For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
@@ -94,7 +94,7 @@ At this point the boot tests that want firmware are skipped, and each says so. T
 firmware/build.sh                        # about 3 minutes the first time
 ```
 
-The first run downloads the Zephyr SDK's RISC-V toolchain, Zephyr itself, and a Python for Zephyr's build scripts into `build/firmware` (about 2 GB on disk), then builds every image the tests boot. Later runs take seconds.
+The first run downloads the Zephyr SDK's RISC-V toolchain and its LLVM, OpenSBI, Zephyr itself, and a Python for Zephyr's build scripts into `build/firmware` (about 4 GB on disk), then builds every image the tests boot. Later runs take seconds.
 
 Now run the suite as CI does, where a missing image is a failure and not a skip:
 

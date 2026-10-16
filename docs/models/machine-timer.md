@@ -27,6 +27,19 @@ platform.connect(timer.irq, cpu.timer_irq)
 - **More than one CPU.** One `mtimecmp`, one interrupt.
 - **Drift and jitter.** The count is exact.
 
+## In a devicetree
+
+```dts
+compute_timer: timer@200bff8 {
+	compatible = "riscv,machine-timer";
+	reg = <0x0 0x200bff8 0x0 0x8>, <0x0 0x2004000 0x0 0x8>;
+	reg-names = "mtime", "mtimecmp";
+	interrupts-extended = <&compute_cpu_intc 7>;
+};
+```
+
+`riscv,machine-timer` is Zephyr's name for it. In Linux's dialect it is `riscv,aclint-mtimer`, the machine timer of the ACLINT, which is a CLINT cut into its parts, and what OpenSBI looks for. A CPU whose `time` is connected to the timer has `timebase-frequency` in its `cpus` node, how many times a second `mtime` counts, in both dialects: OpenSBI waits for ever without it.
+
 ## Where it comes from
 
 💡 This one is borrowed. The model is the ACLINT from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), written by Minres, who use it with the same CPU model in their own reference platform. socpuppet's adapter (`src/socpuppet/models/machine_timer.cpp`) gives it its tick rate and exposes the timer interrupt.
