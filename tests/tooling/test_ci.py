@@ -46,8 +46,8 @@ FetchContent_Declare(Ham_Core
 # is named by its file's name). It takes as many seconds as SLOW says, and
 # makes the files MAKES asks for: a JSON {word: [path, ...]}, where a
 # command that holds the word makes the paths, empty. Each
-# command is also written to the log's .json, with socpuppet's variables and
-# when it started and ended, and its process id to the log's .pids when it
+# command is also written to the log's .json, with the variables of
+# RECORDED and when it started and ended, and its process id to the log's .pids when it
 # starts.
 STAND_IN = """\
 import json, os, sys, time
@@ -70,7 +70,7 @@ with open(os.environ["LOG"] + ".json", "a") as log:
     log.write(json.dumps({
         "command": command,
         "env": {k: v for k, v in os.environ.items()
-                if k.startswith("SOCPUPPET_")},
+                if k.startswith(("SOCPUPPET_", "CIBW_", "CCACHE_"))},
         "start": started,
         "end": time.time(),
     }) + "\\n")
@@ -115,6 +115,9 @@ GREEN, RED = "\x1b[32m", "\x1b[31m"
 # What the runner is told by the environment it runs in, which the tests
 # decide for themselves.
 DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR")
+# The variables a stand-in records: socpuppet's, and cibuildwheel's and
+# ccache's. The tests' own environment has none of them.
+RECORDED = ("SOCPUPPET_", "CIBW_", "CCACHE_")
 
 
 def load(path):
@@ -153,7 +156,8 @@ def ci(tmp_path):
     runs it with its output going to a terminal and returns what that was
     sent, run.lines() are the commands so far,
     run.commands() the commands that ended, with their variables and times,
-    run.command(name) the one of them named, run.pids() the process ids
+    run.command(name) the one of them named, run.command_with(word) the
+    first that holds the word, run.pids() the process ids
     of the commands that started, and run.doctor_asked() the arguments the
     doctor was given each time it was asked.
     """
@@ -183,7 +187,7 @@ def ci(tmp_path):
                 **{
                     name: value
                     for name, value in os.environ.items()
-                    if not name.startswith("SOCPUPPET_")
+                    if not name.startswith(RECORDED)
                     and name not in DECIDED_BY_THE_TEST
                 },
                 "PATH": f"{bin_directory}{os.pathsep}{os.environ['PATH']}",
@@ -235,6 +239,9 @@ def ci(tmp_path):
     def command(name):
         return next(c for c in commands() if c["command"] == name)
 
+    def command_with(word):
+        return next(c for c in commands() if word in c["command"].split())
+
     def doctor_asked():
         path = Path(f"{log}.doctor")
         if not path.exists():
@@ -248,6 +255,7 @@ def ci(tmp_path):
     run.commands = commands
     run.pids = pids
     run.command = command
+    run.command_with = command_with
     run.doctor_asked = doctor_asked
     return run
 
@@ -968,6 +976,13 @@ def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
         ["test_wheel.py", "uv", OUR_WHEEL],
         ["test_wheel.py", "pip", OUR_WHEEL],
     ]
+
+
+def test_wheel_here_leaves_testing_the_wheel_to_test_wheel_py(ci):
+    ci("wheel", makes=ONE_WHEEL)
+
+    # test_wheel.py tests the same wheel, and boots the firmware too.
+    assert ci.command_with("cibuildwheel")["env"]["CIBW_TEST_SKIP"] == "*"
 
 
 def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):

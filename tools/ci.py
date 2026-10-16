@@ -180,6 +180,9 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
                     *("--output-dir", WHEELHOUSE),
                     Glob(f"{sdists}/*.tar.gz"),
                 ),
+                # test_wheel.py tests the same wheel below, with the
+                # firmware, which cibuildwheel's own test has not got.
+                env={"CIBW_TEST_SKIP": "*"},
             ),
         )
     firmware = {
