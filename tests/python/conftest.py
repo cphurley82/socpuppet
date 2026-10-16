@@ -70,8 +70,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "long: a test that boots real firmware, for seconds or most of a "
-        "minute. The long tests are collected first.",
+        "long: a test that takes seconds, or most of a minute, on its own: "
+        "the boots of OpenSBI and UEFI. The long tests are collected first, "
+        "so that none of them starts last.",
     )
 
 

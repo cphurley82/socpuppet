@@ -123,7 +123,7 @@ def test_the_python_tests_run_from_a_copy_outside_the_source_tree(
 
 
 @pytest.mark.parametrize("installer", ["uv", "pip"])
-def test_the_python_tests_run_on_every_core_as_ctest_runs_them(
+def test_the_python_tests_run_on_every_core_long_ones_first(
     test_wheel, installer
 ):
     _, calls = test_wheel(installer)
