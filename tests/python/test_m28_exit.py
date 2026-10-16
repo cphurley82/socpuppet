@@ -25,8 +25,9 @@ from devicetree_compiler import needs_dtc
 from opensbi_boots import a_host_with_opensbi, in_the_flash, loaded_by_python
 from socpuppet.boards.host import RAM_BASE, RAM_SIZE
 
-#: OpenSBI is handed the devicetree compiled, and dtc compiles it.
-pytestmark = needs_dtc
+#: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
+#: boot of UEFI takes seconds, so the tests are handed out first.
+pytestmark = [needs_dtc, pytest.mark.long]
 
 PROMPT = "Shell>"
 #: What EDK2's paging library says once `satp` has kept what it wrote.

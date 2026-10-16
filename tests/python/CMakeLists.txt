@@ -1,8 +1,16 @@
 # Run the Python tests as part of ctest, against the extension just built.
 # SOCPUPPET_TEST_PYTHON is the interpreter, under coverage.py when coverage
 # is being measured (cmake/DevChecks.cmake).
+#
+# pytest-xdist runs them on every core. --dist loadscope keeps the tests of
+# a class, or of a module of functions, on one worker, so that a fixture
+# shared by the class is made once and not once on each worker. Without
+# --no-loadscope-reorder it hands out the classes with the most tests
+# first, and the boots of firmware, each a class of one long test, would
+# start last (tests/python/conftest.py puts them first).
 add_test(NAME pytest
   COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest
+          -n auto --dist loadscope --no-loadscope-reorder
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # The examples are documentation that runs. Keep them running.

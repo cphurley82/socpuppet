@@ -58,6 +58,7 @@ dev = [
     "mypy>=1.18",
     "ninja>=1.11",
     "pytest>=9",
+    "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16",
     "rumdl==0.2.78",

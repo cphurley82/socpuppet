@@ -68,6 +68,21 @@ def pytest_configure(config):
         "pass, and why. It is skipped with the reason when SOCPUPPET_CPU is "
         "qbox_cpu, which the qbox test preset sets (docs/models/qbox-cpu.md).",
     )
+    config.addinivalue_line(
+        "markers",
+        "long: a test that boots real firmware, for seconds or most of a "
+        "minute. The long tests are collected first.",
+    )
+
+
+def pytest_collection_modifyitems(items):
+    """Put the long tests first, and the rest in the order they were in.
+
+    pytest-xdist hands the tests out to its workers in this order. Started
+    last, a long test would keep the whole run waiting while every other
+    worker sat idle.
+    """
+    items.sort(key=lambda item: item.get_closest_marker("long") is None)
 
 
 def pytest_runtest_setup(item):

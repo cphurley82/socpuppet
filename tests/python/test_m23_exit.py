@@ -29,8 +29,9 @@ from socpuppet.boards.cpu_kit import SYSCON_BASE
 from socpuppet.boards.host import RAM_BASE
 from socpuppet.regs import system_controller
 
-#: OpenSBI is handed the devicetree compiled, and dtc compiles it.
-pytestmark = needs_dtc
+#: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
+#: boot of OpenSBI takes seconds, so the tests are handed out first.
+pytestmark = [needs_dtc, pytest.mark.long]
 
 BANNER = "OpenSBI v"
 TEST_PAYLOAD_RUNNING = "Test payload running"
