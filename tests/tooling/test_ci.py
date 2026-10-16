@@ -7,11 +7,14 @@ in what order, without building anything.
 """
 
 import importlib.util
+import itertools
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -19,23 +22,34 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 RUNNER = REPO / "tools" / "ci.py"
 
-# A program that logs its command line, says it on its output, and exits
-# with the status the test asked for: FAIL_ON names a word, and a command
-# that holds it fails. Each command is also written to the log's .json, with
-# socpuppet's variables.
+# A program that logs its command line, says it on its output, then says
+# as many lines more as LINES asks, and exits with the status the test asked
+# for: FAIL_ON names a word, and a command that holds it fails (a program
+# is named by its file's name). It takes as many seconds as SLOW says. Each
+# command is also written to the log's .json, with socpuppet's variables and
+# when it started and ended, and its process id to the log's .pids when it
+# starts.
 STAND_IN = """\
-import json, os, sys
+import json, os, sys, time
 command = " ".join([os.path.basename(sys.argv[0]), *sys.argv[1:]])
+started = time.time()
 with open(os.environ["LOG"], "a") as log:
     log.write(command + "\\n")
+with open(os.environ["LOG"] + ".pids", "a") as log:
+    log.write(f"{os.getpid()}\\n")
 print("spam spam spam " + command)
+for line in range(1, int(os.environ.get("LINES", "0")) + 1):
+    print(f"eggs {line}")
+time.sleep(float(os.environ.get("SLOW", "0")))
 with open(os.environ["LOG"] + ".json", "a") as log:
     log.write(json.dumps({
         "command": command,
         "env": {k: v for k, v in os.environ.items()
                 if k.startswith("SOCPUPPET_")},
+        "start": started,
+        "end": time.time(),
     }) + "\\n")
-sys.exit(1 if os.environ.get("FAIL_ON", "@") in sys.argv[1:] else 0)
+sys.exit(1 if os.environ.get("FAIL_ON", "@") in command.split() else 0)
 """
 
 # The scripts in the repository that the jobs call.
@@ -55,6 +69,9 @@ def load_runner():
 
 
 JOBS = load_runner().JOBS
+JOBS_BY_NAME = {job.name: job for job in JOBS}
+# The jobs that run here with no option given.
+JOBS_HERE = [job for job in JOBS if not job.docker]
 
 
 @pytest.fixture
@@ -62,8 +79,11 @@ def ci(tmp_path):
     """Run the runner in a copy of the repo; returns run(*args, **env).
 
     run returns the finished process and the commands the stand-ins were
-    given, in order. run.root is the copy, and run.commands() the commands
-    with their variables.
+    given, in order. run.root is the copy, run.start(*args, **env) starts
+    the runner and returns the process, run.lines() are the commands so far,
+    run.commands() the commands that ended, with their variables and times,
+    run.command(name) the one of them named, and run.pids() the process ids
+    of the commands that started.
     """
     root = tmp_path / "repo"
     (root / "tools").mkdir(parents=True)
@@ -74,8 +94,8 @@ def ci(tmp_path):
     write_stand_in(bin_directory / "uv")
     log = tmp_path / "log"
 
-    def run(*args, **env):
-        result = subprocess.run(
+    def start(*args, **env):
+        return subprocess.Popen(
             [sys.executable, str(root / "tools" / "ci.py"), *args],
             cwd=root,
             env={
@@ -93,7 +113,20 @@ def ci(tmp_path):
             stderr=subprocess.STDOUT,
             encoding="utf-8",
         )
-        return result, log.read_text().splitlines() if log.exists() else []
+
+    def run(*args, **env):
+        process = start(*args, **env)
+        stdout, _ = process.communicate()
+        result = subprocess.CompletedProcess(
+            process.args, process.returncode, stdout
+        )
+        return result, lines()
+
+    def lines():
+        return log.read_text().splitlines() if log.exists() else []
+
+    def pids():
+        return [int(line) for line in Path(f"{log}.pids").read_text().split()]
 
     def commands():
         path = Path(f"{log}.json")
@@ -101,8 +134,15 @@ def ci(tmp_path):
             return []
         return [json.loads(line) for line in path.read_text().splitlines()]
 
+    def command(name):
+        return next(c for c in commands() if c["command"] == name)
+
     run.root = root
+    run.start = start
+    run.lines = lines
     run.commands = commands
+    run.pids = pids
+    run.command = command
     return run
 
 
@@ -208,10 +248,205 @@ def test_run_of_a_job_in_docker_says_to_run_it_here_with_docker(ci):
     assert "--docker" in command_to_run_here(result.stdout).split()
 
 
+def test_with_no_job_named_every_job_that_can_run_here_runs_and_passes(ci):
+    result, _ = ci()
+
+    assert result.returncode == 0, result.stdout
+    assert verdicts(result.stdout) == {
+        job.name: "✅" for job in JOBS if not job.docker
+    } | {job.name: "⏭" for job in JOBS if job.docker}
+
+
+def test_a_failed_step_shows_where_its_output_is_and_how_it_ends(ci):
+    result, _ = ci("lint", FAIL_ON="tools/lint.py", LINES="20")
+
+    assert result.returncode == 1
+    shown = next(
+        line.split("output:", 1)[1].strip()
+        for line in result.stdout.splitlines()
+        if "output:" in line
+    )
+    log = (ci.root / shown).read_text()
+    assert "spam spam spam uv run python tools/lint.py" in log
+    # The last fifteen lines of the twenty it said, and none before them.
+    ends = [
+        line.split()[-1]
+        for line in result.stdout.splitlines()
+        if "eggs" in line
+    ]
+    assert ends == [str(line) for line in range(6, 21)]
+
+
+def test_a_failed_job_does_not_stop_the_jobs_that_do_not_need_it(ci):
+    result, _ = ci("lint", "firmware", FAIL_ON="tools/lint.py")
+
+    assert result.returncode == 1
+    assert verdicts(result.stdout) == {"lint": "❌", "firmware": "✅"}
+
+
+def test_a_job_whose_need_failed_is_skipped_and_the_summary_says_why(ci):
+    result, lines = ci("firmware", "test", FAIL_ON="build.sh")
+
+    assert result.returncode == 1
+    assert summary_of(result.stdout, "test") == (
+        "⏭  test: needs firmware, which failed"
+    )
+    assert not set(commands_of("test")) & set(lines)
+
+
+def test_a_job_named_alone_runs_without_the_jobs_it_needs(ci):
+    result, lines = ci("test")
+
+    assert result.returncode == 0, result.stdout
+    assert verdicts(result.stdout) == {"test": "✅"}
+    assert not set(commands_of("firmware")) & set(lines)
+
+
+def test_jobs_named_in_any_order_run_after_the_jobs_they_need(ci):
+    _, lines = ci("test", "firmware")
+
+    last_of_firmware = lines.index(commands_of("firmware")[-1])
+    assert last_of_firmware < lines.index(commands_of("test")[0])
+
+
+# SLOW holds each command open for half a second, far longer than a process
+# takes to start, so that two jobs run together are seen to overlap.
+
+
+def test_two_at_a_time_runs_jobs_that_share_nothing_together(ci):
+    first, second = next(
+        (a, b)
+        for a, b in itertools.combinations(JOBS_HERE, 2)
+        if independent(a, b)
+        and not set(commands_of(a.name)) & set(commands_of(b.name))
+    )
+
+    result, _ = ci("-j", "2", first.name, second.name, SLOW="0.5")
+
+    assert result.returncode == 0, result.stdout
+    a, b = (
+        [c for c in ci.commands() if c["command"] in commands_of(job.name)]
+        for job in (first, second)
+    )
+    assert a[0]["start"] < b[-1]["end"]
+    assert b[0]["start"] < a[-1]["end"]
+
+
+def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
+    ci,
+):
+    first, second = next(
+        (a, b)
+        for a, b in itertools.combinations(JOBS_HERE, 2)
+        if independent(a, b) and set(a.uses) & set(b.uses)
+    )
+
+    result, _ = ci("-j", "2", first.name, second.name, SLOW="0.5")
+
+    assert result.returncode == 0, result.stdout
+    # No command overlaps another, of its own job or of the other.
+    commands = sorted(ci.commands(), key=lambda command: command["start"])
+    for before, after in itertools.pairwise(commands):
+        assert after["start"] >= before["end"]
+
+
+def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
+    names = ["tidy", "firmware", "lint"]
+
+    _, lines = ci("-j", "1", *names)
+
+    started = sorted(names, key=lambda name: lines.index(commands_of(name)[0]))
+    assert started == [job.name for job in JOBS if job.name in names]
+
+
+def test_a_run_opens_with_how_many_jobs_and_how_many_at_a_time(ci):
+    result, _ = ci("-j", "2", "lint", "firmware", "test")
+
+    assert result.stdout.startswith("🧦 3 jobs, 2 at a time")
+
+
+def test_a_run_says_at_each_job_how_far_the_whole_run_has_got(ci):
+    result, _ = ci("-j", "2", "lint", "firmware", "test", FAIL_ON="build.sh")
+
+    events = {
+        (line.split()[0], line.split()[1]): tally(line)
+        for line in result.stdout.splitlines()
+        if line.endswith("]")
+    }
+    assert set(events) == {
+        ("🚀", "lint"),
+        ("✅", "lint"),
+        ("🚀", "firmware"),
+        ("❌", "firmware"),
+        ("⏭", "test"),
+    }
+    for counts in events.values():
+        assert sum(counts.values()) == 3
+    assert events["❌", "firmware"]["❌"] == 1
+
+
+def test_a_failed_job_says_which_step_it_failed_at(ci):
+    first, step = JOBS_BY_NAME["test"].steps[:2]
+    (word,) = set(step.argv) - set(first.argv)
+
+    result, _ = ci("test", FAIL_ON=word)
+
+    failed = next(
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("❌ test")
+    )
+    assert f"at {step.label}" in failed
+
+
+def test_the_list_shows_a_command_that_runs_each_job_here_and_runs_none(ci):
+    result, lines = ci("--list")
+
+    assert result.returncode == 0, result.stdout
+    commands = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip().startswith("uv run python tools/ci.py")
+    ]
+    assert [command.split()[-1] for command in commands] == [
+        job.name for job in JOBS
+    ]
+    assert lines == []
+
+
+def test_an_interrupted_run_stops_its_steps_and_says_how_far_it_got(ci):
+    # Far longer than the test waits for the step to be stopped.
+    run = ci.start("lint", SLOW="30")
+    wait_for(lambda: ci.lines())
+
+    run.send_signal(signal.SIGINT)
+    stdout, _ = run.communicate(timeout=10)
+
+    assert run.returncode == 130
+    assert verdicts(stdout) == {"lint": "🛑"}
+    (step,) = ci.pids()
+    wait_for(lambda: not alive(step))
+
+
 def write_stand_in(path):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!{sys.executable}\n{STAND_IN}")
     path.chmod(0o755)
+
+
+def wait_for(condition, seconds=10):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.05)
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def files_in(directory):
@@ -223,6 +458,57 @@ def command_to_run_here(output):
     marker = "To run this on your machine:"
     line = next(line for line in output.splitlines() if marker in line)
     return line.split(marker, 1)[1].strip()
+
+
+def verdicts(output):
+    """What the summary at the end of a run says of each job: ✅, ❌, ⏭ or 🛑."""
+    summary = output.split("🧦 Summary", 1)[1]
+    found = {}
+    for line in summary.splitlines():
+        if line.strip():
+            verdict, name = line.split()[:2]
+            found[name.rstrip(":")] = verdict
+    return found
+
+
+def needed_by(job):
+    """The jobs a job needs, and the jobs they need, from the table."""
+    needed = set(job.needs)
+    for need in job.needs:
+        needed |= needed_by(JOBS_BY_NAME[need])
+    return needed
+
+
+def independent(a, b):
+    """Whether neither of two jobs needs the other."""
+    return a.name not in needed_by(b) and b.name not in needed_by(a)
+
+
+def commands_of(name):
+    """A job's commands, as the stand-ins log them."""
+    return [
+        " ".join([Path(step.argv[0]).name, *step.argv[1:]])
+        for step in JOBS_BY_NAME[name].steps
+    ]
+
+
+def summary_of(output, name):
+    """The line the summary at the end of a run has for one job."""
+    summary = output.split("🧦 Summary", 1)[1]
+    return next(
+        line.strip()
+        for line in summary.splitlines()
+        if line.split()[1:2] in ([name], [f"{name}:"])
+    )
+
+
+def tally(line):
+    """The counts at the end of a line: {"✅": passed, "❌": failed, ...}."""
+    words = line.rsplit("[", 1)[1].rstrip("]").split()
+    return {
+        emoji: int(count)
+        for count, emoji in zip(words[::2], words[1::2], strict=True)
+    }
 
 
 def groups(output):
