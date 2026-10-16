@@ -215,6 +215,20 @@ A boot to the shell is 1849 million instructions (median of 6).
 
 ⚠️ It is a distribution kernel with a 41 MB initrd, booted by OpenSBI on QEMU's devicetree with one hart, so its count is an upper bound for M20's boot of a small kernel with a busybox in memory. And the walking rate is the floor of a kernel's rate, not what a kernel runs at: a kernel walks the tables after every change of address space and hits its TLB the rest of the time, so its boot lands between the two columns and nearer the first.
 
+### A boot that ran: OpenSBI and UEFI, to the shell (M28)
+
+The first workload of any size to run on socpuppet's harts is EDK2's boot on OpenSBI to `Shell>` ([M28](plan.md#m28--uefi-boots)), timed on the A51 on 2026-10-16, the quick way, built with both of its countdowns at zero so that the hart is never asleep waiting for a key. Neither CPU counts instructions, and each charges a fixed time for one, so a count is the CPU's time over that: 100 ns on the interpreter, 128 ns on QBox. The two counts agree to within one percent, which is the check that the method works.
+
+| Phase | Instructions | Interpreter: CPU's time, wall | QBox: CPU's time, wall |
+|---|---|---|---|
+| OpenSBI, to its hand-over | 11 million | 1.1 s, 0.7 s | 1.4 s, 0.1 s |
+| SEC, which unpacks the rest of EDK2 (LZMA) | 344 million | 34.4 s, 19.5 s | 44.0 s, 0.5 s |
+| DXE, the drivers | 112 million | 11.3 s, 7.8 s | 14.3 s, 0.7 s |
+| BDS and the shell, to `Shell>` | 84 million | 8.6 s, 6.4 s | 10.6 s, 0.3 s |
+| **The whole boot** | **550 million** | **55.3 s, 34.4 s** | **70.2 s, 1.6 s** |
+
+That is 16 million instructions a second on the interpreter, between its walking and hits rates on this machine (above), and 343 million on QBox, above its counted rate. 💡 Most of the boot is one tight loop, LZMA's decoder, which neither walks page tables nor fences, so it is QBox's best case. The interpreter at 16 million a second would take a kernel's 1849 million in about two minutes on the A51. As built, with a countdown of 5 s from each, the prompt comes at 66 s of the interpreter's time and 87 of QBox's: the countdowns cost more than their 10 s, because the shell paints its question again each second.
+
 ## Not exercised
 
 - **LLVM 20 on the Ubuntu box**, between two versions that worked, and LLVM 23 anywhere but the Air.
@@ -223,7 +237,7 @@ A boot to the shell is 1849 million instructions (median of 6).
 - **TinyCC**, which has no 64-bit core.
 - **QBox natively on macOS**, which stopped at Homebrew's packages (above), and QBox threaded, which crashed.
 - **More than one run of the suite per backend.** The pass and fail counts were the same on every machine a backend ran on, so a second run on each was not taken.
-- **A real workload on the speed tests.** Three loops, none of them a kernel; the projection is the bridge.
+- **A real workload on the speed tests.** Three loops, none of them a kernel; the projection is the bridge. UEFI's boot (M28, above) is the first workload that ran, and it is not a kernel either.
 
 ## Decisions
 
