@@ -13,7 +13,8 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   uv              ──▶  Python 3.13, CMake, Ninja, pytest,          (your home, no root)
                        clang-format, clang-tidy, ruff, the linters
   cmake --preset  ──▶  SystemC, SCC, DBT-RISE, Boost and friends   (build/dev/_deps)
-  firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python     (build/firmware)
+  firmware/build.sh ─▶  the Zephyr SDK, Zephyr, Zephyr's Python,    (build/firmware)
+                       OpenSBI, EDK2
   tools/build_qbox.sh ▶ QBox and its QEMU                          (build/qbox)
   Docker Desktop  ──▶  the devcontainer's image: the firmware      (Docker's own disk)
                        on an Intel Mac, and QBox for Linux, if wanted
@@ -93,10 +94,10 @@ At this point the boot tests that want firmware are skipped, and each says so. T
 ## 4. Build the firmware
 
 ```sh
-firmware/build.sh                        # about 3 minutes the first time
+firmware/build.sh                        # about 6 minutes the first time
 ```
 
-The first run downloads the Zephyr SDK's RISC-V toolchain and its LLVM, OpenSBI, Zephyr itself, and a Python for Zephyr's build scripts into `build/firmware` (about 4 GB on disk), then builds every image the tests boot. Later runs take seconds.
+The first run downloads the Zephyr SDK's RISC-V toolchain and its LLVM, OpenSBI, EDK2 with its submodules, Zephyr itself, and a Python for Zephyr's and EDK2's build scripts into `build/firmware` (about 4 GB on disk, half of it EDK2's sources and build), then builds every image the tests boot. Later runs take a minute or two, most of it EDK2's.
 
 Now run the suite as CI does, where a missing image is a failure and not a skip:
 

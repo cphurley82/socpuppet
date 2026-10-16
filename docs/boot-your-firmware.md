@@ -585,6 +585,77 @@ What is different from booting Zephyr:
 - ⚠️ **A reboot from the quick way does not come back.** Nothing loads RAM again, and `fw_jump` started a second time finds its choice of which hart boots already made. To see a reboot, boot from the flash, where the ROM copies OpenSBI afresh.
 - `tests/python/test_m23_exit.py` boots both ways, with OpenSBI's payload and with ours, which takes a timer interrupt, has a misaligned load made for it, reboots once and is then switched off.
 
+## Booting UEFI
+
+🧦 [EDK2](https://github.com/tianocore/edk2) is UEFI, the firmware a PC or a server loads its kernel with, and its RISC-V port runs on OpenSBI where a kernel would: in supervisor mode, 2 MiB into RAM, with the hart's number in `a0` and the devicetree in `a1`. 🎓 It boots in phases. **SEC** sets up a stack and unpacks the rest; **DXE** loads a few dozen drivers, each saying so on the console; and **BDS**, the boot manager, finds nothing to boot and starts the **UEFI shell**, which takes commands at `Shell>`. On the way it turns paging on and takes the timer's interrupt in supervisor mode, which makes it the first program here not written for the puppet to do either. `firmware/build.sh` builds it as `uefi.fd`, QEMU's port of it built for where `fw_jump` jumps.
+
+```python
+import re
+
+import socpuppet as sp
+from socpuppet import devicetree, opensbi
+from socpuppet.boards.boot import ROM_BASE, from_rom
+from socpuppet.boards.host import RAM_BASE, host
+
+board = host(boot=from_rom, sbi=True)
+layout = opensbi.lay_out(
+    open("build/firmware/fw_jump.bin", "rb").read(),
+    open("build/firmware/uefi.fd", "rb").read(),
+    devicetree.compile(
+        board.platform.devicetree(dialect="linux", model="socpuppet host")
+    ),
+    ram=RAM_BASE,
+)
+board.platform.build()
+opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
+board.platform.run_until(
+    lambda: "Shell>" in board.uart.output, timeout=sp.ms(150_000)
+)
+
+said = len(board.uart.output)
+board.uart.write("ver\r")
+board.platform.run_until(
+    lambda: "Shell>" in board.uart.output[said:], timeout=sp.ms(10_000)
+)
+# The console is a terminal: take out its colours and cursor moves.
+print(re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", board.uart.output))
+```
+
+```text
+OpenSBI v1.9
+  ...
+SecStartupPlatform() BootHartId: 0x0, DeviceTreeAddress=0x82200000
+  ...
+Loading driver at 0x00082DD2000 EntryPoint=0x00082DD227C DevicePathDxe.efi
+  ...
+RiscVConfigureMmu: SATP mode 8 successfully configured
+  ...
+Press ESCAPE within 5 seconds for boot options
+  ...
+UEFI Interactive Shell v2.2
+EDK II
+UEFI v2.70 (EDK II, 0x00010000)
+  ...
+Press ESC in 1 seconds to skip startup.nsh or any other key to continue.
+Shell> ver
+UEFI Interactive Shell v2.2
+EDK II
+UEFI v2.70 (EDK II, 0x00010000)
+Shell>
+```
+
+What is different from booting OpenSBI's payloads:
+
+- **It takes a minute of the CPU's time.** About 66 s on the interpreter and 87 on QBox, which is 44 s and 2 s on the wall of a quick machine. Half of it is SEC unpacking the rest of EDK2, 6 MB compressed with LZMA, and 10 s of it is two countdowns of 5 s, the boot manager's and the shell's, each waiting for a key, asleep between the timer's interrupts. 550 million instructions in all: [speed-spike.md](speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28) has them by phase.
+- **Paging goes on in the hart's biggest mode.** EDK2 writes Sv57, Sv48 and Sv39 to `satp` in turn and keeps the first that reads back: mode 8, Sv39, on DBT-RISE's hart, and mode 10, Sv57, on QBox's.
+- 🧵 **Type at it as at Zephyr's shell**, with `board.uart.write`, and Enter is `"\r"`. The console is a terminal, so `uart.output` has escape sequences in it for colour and the cursor, which the example takes out. `memmap` lists every region of the 64 MiB the devicetree gave, OpenSBI's own at the start marked reserved, and takes 22 s of the interpreter's time to print.
+- **`reset` reboots**, through SBI's reset call to the system controller. From the flash the ROM copies the image again and the boot starts over; the quick way does not come back, as with OpenSBI.
+- **From the flash** it is `opensbi.flash_image(layout)`, as with OpenSBI: `fw_jump`, the 2 MiB to where it jumps, the 2 MiB of EDK2 and the devicetree, 4.2 MB, which the ROM checks in about 9 s of the CPU's time. The boot flash is 16 MiB, so it fits before the manager's image.
+- **Its variables are kept in RAM** and forgotten at reset: there is no flash UEFI can write them to. The boot manager registers the shell as a boot option again at each boot, so nothing is lost that a test needs.
+- ⚠️ **A line of exclamation marks for most drivers it loads**, `Image Section Alignment(0x40) does not match Required Alignment (0x1000)`, is EDK2's own build for RISC-V, which links its modules with sections too close together to protect. The boot is unaffected ([upstream.md](upstream.md)).
+- **Nothing of the AIA.** EDK2 has no driver for the APLIC or the IMSIC, so its console is polled and its only interrupt is the timer's.
+- `tests/python/test_m28_exit.py` boots both ways, types `ver` and `memmap`, and resets from the flash.
+
 ## When the watchdog bites
 
 Every socpuppet CPU has a [watchdog](models/watchdog.md) and a [system controller](models/system-controller.md), and Zephyr drives both with drivers of its own. 🎓 A watchdog is a counter that resets the CPU when it runs out, and firmware keeps it from running out by feeding it. Firmware that hangs stops feeding, and the reset puts it back on its feet. The system controller then says why the CPU was reset, which is how firmware knows that it happened.
