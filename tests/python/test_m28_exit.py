@@ -8,11 +8,8 @@ reads the devicetree whole. It says what each of its drivers does as it
 loads, counts down twice on the timer, once for its boot manager and once
 for its shell, and stops at `Shell>`.
 
-🎭 The quick way: Python puts `fw_jump`, EDK2 and the devicetree in RAM
-where `fw_jump` expects them, and QEMU's reset vector in the ROM hands
-`fw_jump` the hart's number and the devicetree's address, as in M23. And
-the way silicon boots: the three are one image in the flash, which the
-boot ROM copies to RAM, checks and starts.
+It boots both ways M23's tests do (`opensbi_boots`): the quick way, with
+Python as the stage before, and from the flash, as silicon does.
 
 🧵 Python is the keyboard at the console, as at Zephyr's shell in M13.
 """
@@ -23,11 +20,10 @@ from typing import NamedTuple
 import pytest
 
 import socpuppet as sp
-from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU, UEFI_FD
+from cast import UEFI_FD
 from devicetree_compiler import needs_dtc
-from socpuppet import devicetree, opensbi
-from socpuppet.boards.boot import ROM_BASE, from_rom
-from socpuppet.boards.host import RAM_BASE, RAM_SIZE, host
+from opensbi_boots import a_host_with_opensbi, in_the_flash, loaded_by_python
+from socpuppet.boards.host import RAM_BASE, RAM_SIZE
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it.
 pytestmark = needs_dtc
@@ -70,8 +66,8 @@ def uefi_at_its_shell(firmware):
 
     Or for `LONG_ENOUGH`, if the prompt never comes.
     """
-    board, layout = a_host_with_uefi(firmware)
-    opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
+    board, layout = a_host_with_opensbi(firmware, UEFI_FD)
+    loaded_by_python(board, layout, firmware)
     board.platform.run_until(
         lambda: BOOT_MANAGERS_COUNTDOWN.search(board.uart.output),
         timeout=LONG_ENOUGH,
@@ -120,7 +116,7 @@ class TestWhenUefiBootsFromTheFlash:
     def test_the_rom_starts_it_and_reset_at_the_prompt_starts_the_rom_again(
         self, firmware
     ):
-        board, layout = a_host_with_uefi(firmware)
+        board, layout = a_host_with_opensbi(firmware, UEFI_FD)
         in_the_flash(board, layout, firmware)
         board.platform.run_until(
             lambda: PROMPT in board.uart.output, timeout=LONG_ENOUGH
@@ -133,34 +129,6 @@ class TestWhenUefiBootsFromTheFlash:
         )
 
         assert in_order(plain(board.uart.output), ROMS_LINE, PROMPT, ROMS_LINE)
-
-
-def a_host_with_uefi(firmware):
-    """A host described for OpenSBI and built, and OpenSBI's layout for it,
-    with EDK2 as the stage it starts."""
-    board = host(boot=from_rom, sbi=True)
-    layout = opensbi.lay_out(
-        firmware(FW_JUMP_BIN).read_bytes(),
-        firmware(UEFI_FD).read_bytes(),
-        devicetree.compile(
-            board.platform.devicetree(dialect="linux", model="socpuppet host")
-        ),
-        ram=RAM_BASE,
-    )
-    board.platform.build()
-    return board, layout
-
-
-def in_the_flash(board, layout, firmware):
-    """Load the host's ROM, and `layout` as one image in its flash."""
-    board.platform.load_elf(
-        firmware(ROM_FOR_A_64_BIT_CPU), via=board.cpu.socket
-    )
-    board.platform.poke(
-        board.syscon.component.boot_address,
-        opensbi.flash_image(layout).to_bytes(),
-        via=board.cpu.socket,
-    )
 
 
 def type_and_wait_for_the_prompt(board, command):

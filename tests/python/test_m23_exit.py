@@ -7,12 +7,8 @@ console and the interrupt controllers, says so in a banner, and jumps to
 its test payload, which prints through SBI's console call and then asks
 to be switched off.
 
-Each test runs both ways the host boots. 🎭 The quick way: Python puts
-`fw_jump`, the payload and the devicetree in RAM where `fw_jump` expects
-them, and QEMU's reset vector in the ROM hands `fw_jump` the hart's number
-and the devicetree's address. And the way silicon boots: the three are one
-image in the flash, which the boot ROM copies to RAM, checks, and starts
-with the devicetree's address from the image's header.
+Each test runs both ways the host boots (`opensbi_boots`): the quick way,
+with Python as the stage before, and from the flash, as silicon does.
 """
 
 import re
@@ -20,24 +16,22 @@ import re
 import pytest
 
 import socpuppet as sp
-from cast import (
-    FW_JUMP_BIN,
-    ROM_FOR_A_64_BIT_CPU,
-    SBI_PAYLOAD_BIN,
-    TEST_PAYLOAD_BIN,
-)
+from cast import SBI_PAYLOAD_BIN, TEST_PAYLOAD_BIN
 from devicetree_compiler import needs_dtc
-from socpuppet import devicetree, opensbi
-from socpuppet.boards.boot import ROM_BASE, from_rom
+from opensbi_boots import (
+    MODEL,
+    a_host_with_opensbi,
+    in_the_flash,
+    loaded_by_python,
+)
+from socpuppet import opensbi
 from socpuppet.boards.cpu_kit import SYSCON_BASE
-from socpuppet.boards.host import RAM_BASE, host
+from socpuppet.boards.host import RAM_BASE
 from socpuppet.regs import system_controller
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it.
 pytestmark = needs_dtc
 
-#: What the devicetree names the board, which OpenSBI's banner repeats.
-MODEL = "socpuppet host"
 BANNER = "OpenSBI v"
 TEST_PAYLOAD_RUNNING = "Test payload running"
 #: OpenSBI's boot to its payload is about a second of the CPU's time: a
@@ -45,46 +39,6 @@ TEST_PAYLOAD_RUNNING = "Test payload running"
 #: the ROM first checks the image's 2 MiB a byte at a time, which is four
 #: seconds more.
 LONG_ENOUGH = sp.ms(10_000)
-
-
-def a_host_with_opensbi(firmware, payload=TEST_PAYLOAD_BIN):
-    """A host described for OpenSBI and built, and OpenSBI's layout for it.
-
-    `payload` is the image of the stage OpenSBI is to start.
-    """
-    board = host(boot=from_rom, sbi=True)
-    layout = opensbi.lay_out(
-        firmware(FW_JUMP_BIN).read_bytes(),
-        firmware(payload).read_bytes(),
-        devicetree.compile(
-            board.platform.devicetree(dialect="linux", model=MODEL)
-        ),
-        ram=RAM_BASE,
-    )
-    board.platform.build()
-    return board, layout
-
-
-def loaded_by_python(board, layout, firmware):
-    """🎭 Put `layout` in the host's RAM, and QEMU's reset vector in its ROM."""
-    opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
-
-
-def in_the_flash(board, layout, firmware):
-    """Load the host's ROM, and `layout` as one image in its flash.
-
-    Gives the image.
-    """
-    image = opensbi.flash_image(layout)
-    board.platform.load_elf(
-        firmware(ROM_FOR_A_64_BIT_CPU), via=board.cpu.socket
-    )
-    board.platform.poke(
-        board.syscon.component.boot_address,
-        image.to_bytes(),
-        via=board.cpu.socket,
-    )
-    return image
 
 
 @pytest.fixture(
@@ -99,7 +53,7 @@ def opensbi_with_its_test_payload(request, firmware):
     Booted each way, in turn. It is run until the payload has had its CPU
     switched off, or for `LONG_ENOUGH` if that never comes.
     """
-    board, layout = a_host_with_opensbi(firmware)
+    board, layout = a_host_with_opensbi(firmware, TEST_PAYLOAD_BIN)
     request.param(board, layout, firmware)
     board.platform.run_until(lambda: switched_off(board), timeout=LONG_ENOUGH)
     return board
@@ -108,7 +62,7 @@ def opensbi_with_its_test_payload(request, firmware):
 @pytest.mark.platform
 class TestWhenTheBootRomStartsOpenSbiFromTheFlash:
     def test_it_says_it_did_before_opensbi_says_anything(self, firmware):
-        board, layout = a_host_with_opensbi(firmware)
+        board, layout = a_host_with_opensbi(firmware, TEST_PAYLOAD_BIN)
         image = in_the_flash(board, layout, firmware)
 
         board.platform.run_until(
@@ -213,7 +167,7 @@ def our_payload_on_opensbi(request, firmware):
 
     Booted each way, in turn.
     """
-    board, layout = a_host_with_opensbi(firmware, payload=SBI_PAYLOAD_BIN)
+    board, layout = a_host_with_opensbi(firmware, SBI_PAYLOAD_BIN)
     request.param(board, layout, firmware)
     board.platform.run_until(
         lambda: ASKING in board.uart.output, timeout=LONG_ENOUGH
@@ -264,7 +218,7 @@ class TestWhenOurPayloadRunsOnOpenSbi:
 def our_payload_rebooted_from_the_flash(firmware):
     """A host that has run OpenSBI and our payload from its flash, until the
     payload has asked for a reboot and then to be switched off."""
-    board, layout = a_host_with_opensbi(firmware, payload=SBI_PAYLOAD_BIN)
+    board, layout = a_host_with_opensbi(firmware, SBI_PAYLOAD_BIN)
     in_the_flash(board, layout, firmware)
     board.platform.run_until(
         lambda: switched_off(board), timeout=2 * LONG_ENOUGH
