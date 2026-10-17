@@ -51,10 +51,17 @@ class Virtqueue {
         Load16(layout_.avail + 4 + 2 * (seen_ % layout_.size));
     ++seen_;
     Chain chain{.head = head, .readable = {}, .writable = {}};
-    const Descriptor descriptor = LoadDescriptor(head);
-    chain.readable.push_back(
-        {.address = descriptor.address, .length = descriptor.length});
-    return chain;
+    std::uint16_t index = head;
+    while (true) {
+      const Descriptor descriptor = LoadDescriptor(index);
+      (descriptor.flags & kWrite ? chain.writable : chain.readable)
+          .push_back(
+              {.address = descriptor.address, .length = descriptor.length});
+      if (!(descriptor.flags & kNext)) {
+        return chain;
+      }
+      index = descriptor.next;
+    }
   }
 
   // The bytes of a chain's readable buffers, in order.
@@ -77,6 +84,9 @@ class Virtqueue {
     std::uint16_t next;
   };
   static constexpr std::uint64_t kDescriptorBytes = 16;
+  // Its flags: the chain goes on at `next`; the device writes this buffer.
+  static constexpr std::uint16_t kNext = 1;
+  static constexpr std::uint16_t kWrite = 2;
 
   Descriptor LoadDescriptor(std::uint16_t index) {
     std::array<std::uint8_t, kDescriptorBytes> bytes{};

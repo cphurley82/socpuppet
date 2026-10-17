@@ -113,6 +113,31 @@ TEST(WhenTheDriverMakesAChainOfOneReadableDescriptorAvailable,
   EXPECT_EQ(driver.queue.Read(*chain), bytes);
 }
 
+TEST(WhenTheDriverMakesAChainOfThreeDescriptorsAvailable,
+     TheDeviceFollowsNextAndSplitsWhatItReadsFromWhatItWrites) {
+  Driver driver;
+  const std::vector<std::uint8_t> first = SomeBytes(16);
+  const std::vector<std::uint8_t> second = SomeBytes(300);
+  driver.Describe(0, static_cast<std::uint32_t>(first.size()),
+                  kReadable | kNext, 1);
+  driver.Describe(1, static_cast<std::uint32_t>(second.size()),
+                  kReadable | kNext, 2);
+  const std::uint64_t answer = driver.Describe(2, 64, kWrite);
+  driver.Fill(0, first);
+  driver.Fill(1, second);
+  driver.MakeAvailable(0);
+
+  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+
+  ASSERT_TRUE(chain.has_value());
+  std::vector<std::uint8_t> both = first;
+  both.insert(both.end(), second.begin(), second.end());
+  EXPECT_EQ(driver.queue.Read(*chain), both);
+  ASSERT_EQ(chain->writable.size(), 1U);
+  EXPECT_EQ(chain->writable.front().address, answer);
+  EXPECT_EQ(chain->writable.front().length, 64U);
+}
+
 }  // namespace
 
 }  // namespace socpuppet
