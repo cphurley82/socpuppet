@@ -108,7 +108,7 @@ board.platform.load_elf("build/firmware/ssd_socpuppet_ssd.elf",
                         via=board.ssd.cpu.socket)
 ```
 
-`examples/ssd_firmware_hello.py` is that show, and [boot-your-firmware.md](../boot-your-firmware.md#bring-up-your-ssd-firmware) says how to build the image, or one of your own.
+`examples/ssd_firmware_hello.py` is that show, and [boot-your-firmware.md](../boards.md#bring-up-your-ssd-firmware) says how to build the image, or one of your own.
 
 A host cannot tell the two apart by what they answer. This is what differs behind the curtain:
 

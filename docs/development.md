@@ -2,15 +2,7 @@
 
 ## What you need
 
-💡 Setting up a machine for the first time? [Setting up a machine for development](setup.md) goes from a bare install to every test passing, QBox included, step by step.
-
-- A C++20 compiler: GCC 13 or newer, or a recent Clang (Apple clang works).
-- [uv](https://docs.astral.sh/uv/). It supplies Python, CMake and Ninja, so none of those need installing.
-- git, and zlib's headers (`zlib1g-dev` on Ubuntu; already there on macOS).
-- `dtc`, the devicetree compiler (`device-tree-compiler` on Ubuntu, `brew install dtc` on macOS). Two Python tests that check generated devicetrees skip without it.
-- For `firmware/build.py`, which builds EDK2: libuuid's headers (`uuid-dev` on Ubuntu; already there on macOS) and `iasl`, ACPICA's compiler (`acpica-tools` on Ubuntu, `brew install acpica` on macOS).
-
-Ubuntu 24.04 and macOS are both supported and both run in CI. Ubuntu 26.04 (GCC 15) is not in CI, and every job's steps have been run on it and pass: [Running CI's jobs here](#running-cis-jobs-here) is how to check that again. If you would rather not set anything up, open the repo in the devcontainer (`.devcontainer/`), which is the CI environment.
+A C++20 compiler, [uv](https://docs.astral.sh/uv/), git, and a few system packages. [Setting up a machine for development](setup.md) lists them for Ubuntu and macOS and goes from a bare install to every test passing, QBox included; or open the repo in the devcontainer (`.devcontainer/`), which is the CI environment. Ubuntu 24.04 and macOS are both supported and both run in CI.
 
 ## The loop
 
@@ -146,7 +138,7 @@ uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=q
 - 💡 CI does all of this on every push, on Linux and natively on an Apple silicon Mac, with twister on the host board on both and clang-tidy over the adapter on Linux: the `qbox-build`, `qbox` and `qbox-tidy` jobs, which `uv run python tools/ci.py qbox-build qbox qbox-tidy` runs here. QBox itself is built only when its pin or its patches change, and cached.
 - ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree.
 - ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.py` applies a patch once. Delete `build/qbox` and run it again.
-- **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU ([setup.md](setup.md#5-qbox-optional), [upstream.md](upstream.md)). They also work with `tools/devcontainer.py` in front of each, which builds for Linux with GCC, as CI does. ⚠️ There `build/qbox` and `build/qbox-dev` are Docker volumes, `socpuppet-qbox` and `socpuppet-qbox-dev`, mounted where the preset looks for them, because a compiler reading through Docker's file sharing is ten times slower than one reading a volume ([twister-spike.md](history/twister-spike.md)). They stand in front of the Mac's own two directories, so a native build and the container's never meet. To start the container's over, `docker volume rm socpuppet-qbox socpuppet-qbox-dev` stands in for deleting them.
+- **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU, or in the devcontainer's image with `tools/devcontainer.py` in front of each, which builds for Linux with GCC as CI does. [setup.md](setup.md#5-qbox-optional) has both, and why the container keeps QBox's trees on Docker volumes.
 
 ## Spikes
 
