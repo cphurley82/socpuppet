@@ -32,6 +32,12 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
+from socpuppet.boards.virtio import (
+    VIRTIO_FIRST_SOURCE,
+    VIRTIO_SLOT_OFFSET,
+    Virtio,
+    virtio_overlay,
+)
 from socpuppet.components import (
     Aplic,
     Imsic,
@@ -750,3 +756,60 @@ class TestTheHostAskedForADriveOfNoSize:
 class TestTheHostWithNoDrive:
     def test_has_none(self):
         assert host().drive is None
+
+
+class TestTheHostsVirtioSlots:
+    def test_are_not_on_the_host_unless_asked_for(self):
+        # So the board's devicetree, and every image built for it, stay as
+        # they were.
+        assert host().virtio is None
+
+    def test_the_entropy_device_is_in_the_first_slot_in_the_io_window(self):
+        board = host(virtio=Virtio())
+        [slot] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.virtio.rng.path
+        ]
+
+        assert slot.address == IO_BASE + VIRTIO_SLOT_OFFSET
+
+    def test_the_entropy_device_interrupts_through_the_aplic_on_its_own_die(
+        self,
+    ):
+        board = host(virtio=Virtio())
+
+        assert (
+            InterruptEntry("io.aplic", VIRTIO_FIRST_SOURCE, "io.rng.irq")
+            in board.platform.interrupt_map()
+        )
+
+    def test_the_entropy_devices_dma_reaches_the_ram(self):
+        board = host(virtio=Virtio())
+        reached = board.platform.address_map(via=board.virtio.rng.dma)
+
+        assert [
+            each.address for each in reached if each.component == "compute.ram"
+        ] == [RAM_BASE]
+
+    def test_the_zephyr_shield_for_the_slots_has_what_the_host_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_virtio/socpuppet_host_virtio.overlay"
+        )
+
+        # When this fails, the docstring of `virtio_overlay` has the command
+        # that writes the file again.
+        assert checked_in.read_text() == virtio_overlay()
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_the_host_with_the_slots(
+        self, tmp_path
+    ):
+        board = host(virtio=Virtio(), sbi=True)
+
+        assert dtc_errors(board.platform.devicetree(), tmp_path) == ""
+        assert (
+            dtc_errors(board.platform.devicetree(dialect="linux"), tmp_path)
+            == ""
+        )

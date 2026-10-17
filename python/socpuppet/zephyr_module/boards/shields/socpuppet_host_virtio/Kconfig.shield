@@ -1,0 +1,2 @@
+config SHIELD_SOCPUPPET_HOST_VIRTIO
+	def_bool $(shields_list_contains,socpuppet_host_virtio)

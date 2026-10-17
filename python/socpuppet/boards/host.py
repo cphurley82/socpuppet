@@ -101,6 +101,7 @@ from socpuppet.boards.drive import (
     add_behavioral_drive,
 )
 from socpuppet.boards.manager import Manager
+from socpuppet.boards.virtio import Virtio, VirtioSlots, add_virtio
 from socpuppet.components import (
     Aplic,
     D2dLink,
@@ -268,6 +269,9 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: Its program is loaded through the CPU:
     #: `platform.load_elf("rom_rv64.elf", via=board.cpu.socket)`.
     rom: Placed | None = None
+    #: 🎭 The virtio devices, one to a slot on the IO die, if the host was
+    #: described with them (`virtio=Virtio()`).
+    virtio: VirtioSlots | None = None
 
 
 # The two declarations are for a type checker. They say that the host
@@ -284,6 +288,7 @@ def host(
     trace: bool = False,
     ram: int = RAM_SIZE,
     sbi: bool = False,
+    virtio: Virtio | None = None,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -297,6 +302,7 @@ def host[Drive: PcieDrive](
     trace: bool = False,
     ram: int = RAM_SIZE,
     sbi: bool = False,
+    virtio: Virtio | None = None,
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -309,6 +315,7 @@ def host(
     trace: bool = False,
     ram: int = RAM_SIZE,
     sbi: bool = False,
+    virtio: Virtio | None = None,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -408,6 +415,11 @@ def host(
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
     io = _io_die(platform, io_group, messages_to=messages_to)
+    slots = (
+        None
+        if virtio is None
+        else add_virtio(platform, io_group, io.bus, io.up, io.aplic, virtio)
+    )
     placed_manager = None
     if manager is not None:
         # The link's end holds the host's CPU until the manager lets it
@@ -460,6 +472,7 @@ def host(
         ),
         manager=placed_manager,
         rom=compute.rom,
+        virtio=slots,
     )
 
 
@@ -552,6 +565,8 @@ class _IoDie(NamedTuple):
 
     bus: PlacedRouter
     uart: PlacedUart
+    #: The die's interrupt controller, for a device there with a line.
+    aplic: Placed
     #: The way up to the compute die, for what the IO die sends of its own
     #: accord: the APLIC's messages, and with a drive what the drive sends.
     up: PlacedRouter
@@ -586,7 +601,7 @@ def _io_die(platform: Platform, place: Group, *, messages_to: int) -> _IoDie:
     # way and comes onto the compute die's bus, where the IMSIC's page is.
     platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
     platform.connect(aplic.msi, up.target)
-    return _IoDie(bus, uart, up, boot_flash, boot_flash_bus)
+    return _IoDie(bus, uart, aplic, up, boot_flash, boot_flash_bus)
 
 
 def _drive[Drive: PcieDrive](

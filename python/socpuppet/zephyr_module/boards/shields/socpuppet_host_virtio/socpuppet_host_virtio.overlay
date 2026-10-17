@@ -1,0 +1,17 @@
+/ {
+	chosen {
+		zephyr,entropy = &io_rng_entropy;
+	};
+
+	soc {
+		io_rng: virtio_mmio@10001000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10001000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <18 1 4>;
+			io_rng_entropy: virtio-entropy {
+				compatible = "virtio,device4";
+			};
+		};
+	};
+};
