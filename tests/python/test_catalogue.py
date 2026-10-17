@@ -76,6 +76,7 @@ EXAMPLES = [
     sp.SystemController(die=1, boot_address=0x1020_0000),
     sp.VirtioBlk(blocks=8),
     sp.VirtioConsole(),
+    sp.VirtioNet(),
     sp.VirtioRng(),
     sp.Watchdog(),
 ]

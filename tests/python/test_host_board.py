@@ -837,6 +837,35 @@ class TestTheHostsVirtioSlots:
             in board.platform.interrupt_map()
         )
 
+    def test_the_network_device_is_in_the_fourth_slot(self):
+        board = host(virtio=Virtio())
+        [slot] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.virtio.net.path
+        ]
+
+        assert slot.address == (
+            IO_BASE + VIRTIO_SLOT_OFFSET + 3 * VIRTIO_SLOT_STRIDE
+        )
+
+    def test_the_network_device_interrupts_through_the_source_after_the_disks(
+        self,
+    ):
+        board = host(virtio=Virtio())
+
+        assert (
+            InterruptEntry("io.aplic", VIRTIO_FIRST_SOURCE + 3, "io.net.irq")
+            in board.platform.interrupt_map()
+        )
+
+    def test_the_network_device_has_the_mac_address_the_host_was_told(self):
+        board = host(virtio=Virtio(mac=0x0200_5E00_53AA))
+
+        assert "local-mac-address = [02 00 5e 00 53 aa];" in (
+            board.platform.devicetree()
+        )
+
     def test_the_entropy_devices_dma_reaches_the_ram(self):
         board = host(virtio=Virtio())
         reached = board.platform.address_map(via=board.virtio.rng.dma)

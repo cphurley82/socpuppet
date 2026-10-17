@@ -21,6 +21,7 @@
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/virtio_blk.h"
+#include "socpuppet/models/virtio_net.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
@@ -209,6 +210,34 @@ PYBIND11_MODULE(_core, m) {
              return py::bytes(reinterpret_cast<const char*>(bytes.data()),
                               bytes.size());
            })
+      // Hands the virtio network device at `path` a frame, as if it had
+      // come in on its wire.
+      .def("net_send",
+           [](NativePlatform& self, const std::string& path,
+              const py::bytes& frame) {
+             const std::string_view bytes{frame};
+             self.platform.ModuleAt<socpuppet::VirtioNet>(path).Send(
+                 {bytes.begin(), bytes.end()});
+           })
+      // Every frame the driver of the network device at `path` has sent.
+      .def("net_received",
+           [](NativePlatform& self, const std::string& path) {
+             py::list frames;
+             for (const auto& frame :
+                  self.platform.ModuleAt<socpuppet::VirtioNet>(path)
+                      .Received()) {
+               frames.append(py::bytes(
+                   reinterpret_cast<const char*>(frame.data()), frame.size()));
+             }
+             return frames;
+           })
+      // How many frames the network device at `path` dropped for want of
+      // room.
+      .def(
+          "net_dropped",
+          [](NativePlatform& self, const std::string& path) {
+            return self.platform.ModuleAt<socpuppet::VirtioNet>(path).Dropped();
+          })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",
            [](NativePlatform& self, const std::string& path) {

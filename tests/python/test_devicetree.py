@@ -1193,3 +1193,37 @@ class TestWhenAPlatformHasAVirtioDisk:
             )
             in tree
         )
+
+
+class TestWhenAPlatformHasAVirtioNetworkDevice:
+    def test_in_zephyrs_dialect_its_child_has_the_mac_address(self):
+        # Zephyr's driver takes the address from the devicetree, never
+        # from the device.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "net", sp.VirtioNet(mac=0x0200_5E00_53AA)
+        )
+
+        assert a_node_of(
+            "\t\t\tnet_device: virtio-net {",
+            '\t\t\t\tcompatible = "virtio,net";',
+            "\t\t\t\tlocal-mac-address = [02 00 5e 00 53 aa];",
+            "\t\t\t};",
+        ) in platform.devicetree(via=cpu.socket)
+
+    def test_in_linuxs_dialect_it_has_no_child(self):
+        # Linux reads the address from the device's configuration.
+        platform, cpu = a_cpu_with_a_virtio_device("net", sp.VirtioNet())
+
+        tree = platform.devicetree(via=cpu.socket, dialect="linux")
+
+        assert (
+            a_node_of(
+                "\t\tnet: virtio_mmio@10001000 {",
+                '\t\t\tcompatible = "virtio,mmio";',
+                "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+                "\t\t\tinterrupt-parent = <&aplic>;",
+                "\t\t\tinterrupts = <1 4>;",
+                "\t\t};",
+            )
+            in tree
+        )

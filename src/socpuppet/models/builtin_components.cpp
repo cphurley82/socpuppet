@@ -39,6 +39,7 @@
 #include "socpuppet/models/system_controller.h"
 #include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_console.h"
+#include "socpuppet/models/virtio_net.h"
 #include "socpuppet/models/virtio_rng.h"
 #include "socpuppet/models/watchdog.h"
 #include "socpuppet/platform/port.h"
@@ -52,6 +53,7 @@ static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
 static_assert(VirtioDeviceSlot<VirtioBlk>);
 static_assert(VirtioDeviceSlot<VirtioConsole>);
+static_assert(VirtioDeviceSlot<VirtioNet>);
 static_assert(VirtioDeviceSlot<VirtioRng>);
 static_assert(WatchdogSlot<Watchdog>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
@@ -96,6 +98,15 @@ constexpr Within kInterruptIdentities{.least = 63, .most = 2047};
 // carrying no bytes in a nanosecond would never carry anything. A time of
 // zero means something, so no latency or training time has a range.
 constexpr Within kAtLeastOne{.least = 1};
+
+// A MAC address, as a 48-bit number with its first byte highest.
+constexpr Within kMacAddresses{.most = (std::uint64_t{1} << 48) - 1};
+
+// The address a virtio network device has unless it is given one,
+// 02:00:5e:00:53:01: locally administered (the second-lowest bit of the
+// first byte is set), so it is no manufacturer's. Python's VirtioNet has
+// the same default.
+constexpr std::uint64_t kVirtioNetMac = 0x0200'5E00'5301;
 
 // How many 512-byte sectors a virtio disk may have: at least one, and no
 // more than the bytes of them can be counted in 64 bits.
@@ -398,6 +409,15 @@ Registry BuiltinComponents() {
   });
   registry.Add("virtio_console", [](const char* name, Parameters&) {
     auto module = std::make_unique<VirtioConsole>(name);
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_net", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<VirtioNet>(
+        name, parameters.Optional("mac", kVirtioNetMac, kMacAddresses));
     std::vector<Port> ports{TargetPort("cpu", module->cpu),
                             InitiatorPort("dma", module->dma),
                             WireSourcePort("irq", module->irq,

@@ -26,6 +26,7 @@ from socpuppet.components import (
     SystemController,
     VirtioBlk,
     VirtioConsole,
+    VirtioNet,
     VirtioRng,
     Watchdog,
 )
@@ -64,6 +65,7 @@ from socpuppet.virtio_host import (
     VirtioBlkHost,
     VirtioConsoleHost,
     VirtioHost,
+    VirtioNetHost,
     VirtioRngHost,
 )
 
@@ -112,6 +114,8 @@ __all__ = [
     "VirtioConsoleHost",
     "VirtioError",
     "VirtioHost",
+    "VirtioNet",
+    "VirtioNetHost",
     "VirtioRng",
     "VirtioRngHost",
     "Watchdog",

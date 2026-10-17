@@ -158,3 +158,38 @@ class PlacedBlock(Placed):
         refused with a `ValueError`.
         """
         self._platform.native().disk_load(self.path, image)
+
+
+class PlacedNet(Placed):
+    """🎭 A virtio network device at its place in a platform.
+
+    🧵 Python is the far end of its wire: whatever is on the other side of
+    the network, a switch, a server, or a test that answers.
+    """
+
+    @property
+    def received(self) -> list[bytes]:
+        """Every frame the firmware has sent, in the order it sent them.
+
+        Each is without the virtio header in front of it, so it starts with
+        its Ethernet header.
+        """
+        return self._platform.native().net_received(self.path)
+
+    def send(self, frame: bytes) -> None:
+        """Send `frame`, an Ethernet frame, to the firmware.
+
+        It waits in the device until the firmware holds out a buffer, and
+        nothing happens until the platform next runs. A frame longer than
+        that buffer is dropped, and counted in `dropped`.
+        """
+        self._platform.native().net_send(self.path, frame)
+
+    @property
+    def dropped(self) -> int:
+        """How many frames sent to the firmware were dropped.
+
+        A frame is dropped when it is longer than the buffer the firmware
+        held out for it.
+        """
+        return self._platform.native().net_dropped(self.path)

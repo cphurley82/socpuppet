@@ -473,3 +473,37 @@ def _refuse_unless_ok(status: bytes, doing: str) -> None:
             (f"status {status[0]}", "which the specification has no name for"),
         )
         raise VirtioError(f"The disk answered {name} on {doing}: {why}.")
+
+
+class VirtioNetHost(VirtioHost):
+    """🧵 Stand-in for the driver of a virtio network device.
+
+    Takes what `VirtioHost` takes. `start` finds the device and sets its
+    two queues up; `send_frame` sends an Ethernet frame, and
+    `receive_frame` waits for one to come in.
+    """
+
+    DEVICE_ID = 1  # Section 5.1.
+    QUEUES = 2
+    KIND = "a network device"
+    #: Its two queues: what comes in, and what goes out.
+    RECEIVE_QUEUE = 0
+    TRANSMIT_QUEUE = 1
+    #: The header in front of every frame, both ways (section 5.1.6).
+    HEADER = 12
+    #: The most a frame that comes in may be: an Ethernet frame of the
+    #: largest payload, 1500 bytes, with its 14-byte header.
+    FRAME_ROOM = 1514
+
+    def send_frame(self, frame: bytes) -> Steps[None]:
+        """Sends `frame`, and waits until the device has taken it."""
+        yield from self.submit(
+            self.TRANSMIT_QUEUE, [bytes(self.HEADER) + frame], []
+        )
+
+    def receive_frame(self) -> Steps[bytes]:
+        """Holds out a buffer and waits for a frame to come into it."""
+        written, (answer,) = yield from self.submit(
+            self.RECEIVE_QUEUE, [], [self.HEADER + self.FRAME_ROOM]
+        )
+        return answer[self.HEADER : written]

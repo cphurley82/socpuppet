@@ -1,7 +1,8 @@
 """🧵 Python as the first driver of a virtio device.
 
 The platform tests run the driver against the entropy device, the smallest
-virtio device there is, the console and the disk, on a scripted host; the rest play
+virtio device there is, the console, the disk and the network device, on
+a scripted host; the rest play
 it against a fake device with no simulator at all.
 
     host ─▶ bus ─┬─▶ ram
@@ -103,6 +104,65 @@ class TestWhenPythonTypesAtTheConsoleWhileTheHostWaitsForBytes:
         platform.run(sp.us(10))
 
         assert received == [b"eggs"]
+
+
+@pytest.mark.platform
+class TestWhenTheHostSendsAFrame:
+    def test_python_finds_it_on_the_wire_without_its_header(self):
+        def script():
+            net = sp.VirtioNetHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from net.start()
+            yield from net.send_frame(b"spam frame")
+
+        platform, net = host_with(script, sp.VirtioNet())
+
+        platform.run()
+
+        assert net.received == [b"spam frame"]
+
+
+@pytest.mark.platform
+class TestWhenPythonSendsAFrameWhileTheHostWaitsForOne:
+    def test_the_host_receives_it(self):
+        received = []
+
+        def script():
+            net = sp.VirtioNetHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from net.start()
+            received.append((yield from net.receive_frame()))
+
+        platform, net = host_with(script, sp.VirtioNet())
+        # As for the console: long enough for the start and the buffer.
+        platform.run(sp.us(10))
+
+        net.send(b"eggs frame")
+        platform.run(sp.us(10))
+
+        assert received == [b"eggs frame"]
+
+
+@pytest.mark.platform
+class TestWhenPythonSendsAFrameLongerThanTheHostsBuffer:
+    def test_it_is_dropped_and_counted(self):
+        def script():
+            net = sp.VirtioNetHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from net.start()
+            yield from net.receive_frame()
+
+        platform, net = host_with(script, sp.VirtioNet())
+        # As before: long enough for the start and the buffer.
+        platform.run(sp.us(10))
+
+        net.send(bytes(sp.VirtioNetHost.FRAME_ROOM + 1))
+        platform.run(sp.us(10))
+
+        assert net.dropped == 1
+
+
+class TestWhenANetworkDeviceIsGivenAnAddressWiderThan48Bits:
+    def test_it_is_refused_and_the_error_says_how_wide_one_is(self):
+        with pytest.raises(ValueError, match="48 bits"):
+            sp.VirtioNet(mac=1 << 48)
 
 
 SECTOR = 512

@@ -41,6 +41,7 @@ from socpuppet.placed import (
     Placed,
     PlacedBlock,
     PlacedConsole,
+    PlacedNet,
     PlacedRouter,
     PlacedUart,
 )
@@ -1153,7 +1154,7 @@ class VirtioRng(Component):
         return virtio_node(
             reached["cpu"].address,
             dialect,
-            child=("entropy", "virtio,device4"),
+            child=VirtioChild("entropy", "virtio,device4"),
             chosen=("zephyr,entropy",),
         )
 
@@ -1239,15 +1240,89 @@ class VirtioConsole(Component):
         return virtio_node(
             reached["cpu"].address,
             dialect,
-            child=("console", "virtio,console"),
+            child=VirtioChild("console", "virtio,console"),
         )
+
+
+class VirtioNet(Component):
+    """🎭 A virtio network device: an Ethernet port with Python on the wire.
+
+    The driver hands it frames to send, and empty buffers for the frames
+    that come in, each with a 12-byte header in front for offloads this
+    device offers none of. It is QEMU's `virtio-net-device`, with one pair
+    of queues and its MAC address in its configuration, and none of the
+    checksum or segmentation offloads, merged buffers, control queue or
+    link status a driver can do without.
+
+    `mac` is its address, as a 48-bit number with the first byte highest:
+    the default, `0x0200_5E00_5301`, is `02:00:5e:00:53:01`, locally
+    administered so that it is no manufacturer's. Python reads the frames
+    the firmware sent with the placed device's `received`, and sends it
+    frames with `send`. `cpu` is the register block, `dma` is how the
+    device reaches the driver's memory, and `irq` is its interrupt line,
+    high while a used buffer waits to be acknowledged.
+    """
+
+    implementation = "virtio_net"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        # A driver may poll the used rings and leave the line alone, as
+        # EDK2's does.
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+
+    mac: int = 0x0200_5E00_5301
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.mac < 1 << 48:
+            raise ValueError(
+                f"A MAC address is 48 bits, six bytes, and {self.mac:#x} "
+                "does not fit in them."
+            )
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedNet:
+        return PlacedNet(platform, path, self)
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        # Zephyr's driver takes the address from its node, and Linux's and
+        # EDK2's from the device.
+        address = " ".join(f"{byte:02x}" for byte in self.mac.to_bytes(6))
+        return virtio_node(
+            reached["cpu"].address,
+            dialect,
+            child=VirtioChild(
+                "net",
+                "virtio,net",
+                (f"local-mac-address = [{address}];",),
+            ),
+        )
+
+
+class VirtioChild(NamedTuple):
+    """What Zephyr's driver for a kind of virtio device binds to.
+
+    It is a child of the transport's node, in Zephyr's dialect only:
+    `virtio-<kind>`, with `binding` as its `compatible` and any
+    `properties` the driver reads from it.
+    """
+
+    kind: str
+    binding: str
+    properties: tuple[str, ...] = ()
 
 
 def virtio_node(
     address: int,
     dialect: Dialect,
     *,
-    child: tuple[str, str] | None = None,
+    child: VirtioChild | None = None,
     chosen: tuple[str, ...] = (),
 ) -> DeviceNode:
     """The node of a virtio device behind the virtio-mmio transport.
@@ -1255,19 +1330,17 @@ def virtio_node(
     In Linux's dialect it is the transport's node alone, and the device
     says what it is in a register (`virtio,mmio`: `compatible`, `reg` and
     `interrupts`). Zephyr's drivers bind to a child of that node, and only
-    in that dialect: `child` is the kind and the `compatible` the driver
-    for that kind binds to (`("entropy", "virtio,device4")`,
-    `("console", "virtio,console")`), and the child is `virtio-<kind>`,
-    labelled as the transport's device. `chosen` is what the child can be
-    chosen for. With no `child`, for a kind Zephyr has no driver for, the
-    node is the transport's alone in both dialects.
+    in that dialect: `child`, labelled as the transport's device. `chosen`
+    is what the child can be chosen for. With no `child`, for a kind
+    Zephyr has no driver for, the node is the transport's alone in both
+    dialects.
     """
     children = (
         (
             DeviceNode(
-                f"virtio-{child[0]}",
+                f"virtio-{child.kind}",
                 (),
-                (f'compatible = "{child[1]}";',),
+                (f'compatible = "{child.binding}";', *child.properties),
                 chosen=chosen,
                 # The transport's interrupt is the node's, not the child's.
                 interrupts=(),

@@ -11,7 +11,8 @@ types at the shell.
     compute.cpu ─▶ ... ─▶ io.bus ─┬─▶ io.uart        (UEFI's console)
                                   ├─▶ io.rng.cpu    (slot 0)
                                   ├─▶ io.console.cpu (slot 1, no driver)
-                                  └─▶ io.blk.cpu    (slot 2)
+                                  ├─▶ io.blk.cpu    (slot 2)
+                                  └─▶ io.net.cpu    (slot 3)
 """
 
 import re
@@ -19,6 +20,7 @@ import re
 import pytest
 
 import fat_image
+import socpuppet as sp
 from cast import UEFI_FD
 from devicetree_compiler import needs_dtc
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
@@ -29,6 +31,12 @@ from uefi_shell import plain, run_to_the_prompt, type_and_wait_for_the_prompt
 #: boot of UEFI takes most of a minute, so the tests are handed out first.
 pytestmark = [needs_dtc, pytest.mark.long]
 
+#: With a network device, the boot manager tries to boot over it before it
+#: starts the shell (PXE over IPv4), and waits about 65 s of simulated time
+#: for an answer to its DHCP request that nobody sends. That is 141 s of
+#: simulated time to the prompt on the interpreter, against M28's 75, and
+#: this is a little under twice it, as M28's 150 is for 75.
+LONG_ENOUGH_WITH_PXE = sp.ms(250_000)
 #: The disk Python hands UEFI: 1 MiB, with one file on it.
 SECTORS = 2048
 SPAM = b"spam, spam, spam\r\n"
@@ -45,7 +53,7 @@ def uefi_at_its_shell(firmware, *, disk=None):
     if disk is not None:
         board.virtio.blk.load(disk)
     loaded_by_python(board, layout, firmware)
-    assert run_to_the_prompt(board), (
+    assert run_to_the_prompt(board, within=LONG_ENOUGH_WITH_PXE), (
         f"UEFI never prompted. It said:\n{plain(board.uart.output)[-2000:]}"
     )
     return board

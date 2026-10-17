@@ -24,13 +24,13 @@ LONG_ENOUGH = sp.ms(150_000)
 ANSWERS_WITHIN = sp.ms(60_000)
 
 
-def run_to_the_prompt(board):
-    """Run until UEFI's shell prompts, or for `LONG_ENOUGH`.
+def run_to_the_prompt(board, *, within=LONG_ENOUGH):
+    """Run until UEFI's shell prompts, or for `within` of simulated time.
 
     Gives whether it prompted.
     """
     return board.platform.run_until(
-        lambda: PROMPT in board.uart.output, timeout=LONG_ENOUGH
+        lambda: PROMPT in board.uart.output, timeout=within
     )
 
 

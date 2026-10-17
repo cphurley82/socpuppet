@@ -7,6 +7,7 @@
 #include "tests/cpp/contracts/virtio_device_contract.h"
 #include "tests/cpp/support/virtio_blk_rig.h"
 #include "tests/cpp/support/virtio_console_rig.h"
+#include "tests/cpp/support/virtio_net_rig.h"
 #include "tests/cpp/support/virtqueue_driver.h"
 
 namespace {
@@ -32,3 +33,5 @@ INSTANTIATE_TYPED_TEST_SUITE_P(VirtioConsole, VirtioDeviceContract,
                                ::testing::Types<VirtioConsoleRig>);
 INSTANTIATE_TYPED_TEST_SUITE_P(VirtioBlk, VirtioDeviceContract,
                                ::testing::Types<VirtioBlkRig>);
+INSTANTIATE_TYPED_TEST_SUITE_P(VirtioNet, VirtioDeviceContract,
+                               ::testing::Types<VirtioNetRig>);

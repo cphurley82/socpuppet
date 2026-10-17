@@ -22,8 +22,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from socpuppet.components import VirtioBlk, VirtioConsole, VirtioRng
-from socpuppet.placed import Placed, PlacedBlock, PlacedConsole, PlacedRouter
+from socpuppet.components import VirtioBlk, VirtioConsole, VirtioNet, VirtioRng
+from socpuppet.placed import (
+    Placed,
+    PlacedBlock,
+    PlacedConsole,
+    PlacedNet,
+    PlacedRouter,
+)
 from socpuppet.platform import Group, Platform
 
 #: How far apart the slots are: QEMU's `virt` has the same, a page each.
@@ -36,11 +42,13 @@ class Virtio:
 
     `seed` is what the entropy device's bytes come from, so that a run can
     be repeated. `blocks` is how many 512-byte sectors the disk has: 1 MiB
-    unless told otherwise.
+    unless told otherwise. `mac` is the network device's address, as a
+    48-bit number with its first byte highest (`VirtioNet`).
     """
 
     seed: int = 1
     blocks: int = 2048
+    mac: int = VirtioNet.mac
 
 
 class VirtioSlots(NamedTuple):
@@ -52,6 +60,8 @@ class VirtioSlots(NamedTuple):
     console: PlacedConsole
     #: 🎭 The disk, in slot 2.
     blk: PlacedBlock
+    #: 🎭 The network device, in slot 3.
+    net: PlacedNet
 
 
 def add_virtio(
@@ -75,13 +85,14 @@ def add_virtio(
     rng = place.add("rng", VirtioRng(seed=settings.seed))
     console = place.add("console", VirtioConsole())
     blk = place.add("blk", VirtioBlk(blocks=settings.blocks))
-    for slot, device in enumerate([rng, console, blk]):
+    net = place.add("net", VirtioNet(mac=settings.mac))
+    for slot, device in enumerate([rng, console, blk, net]):
         bus.map(device.cpu, base=base + slot * VIRTIO_SLOT_STRIDE)
         platform.connect(
             device.irq, getattr(aplic, f"source{first_source + slot}")
         )
         platform.connect(device.dma, up.add_input())
-    return VirtioSlots(rng, console, blk)
+    return VirtioSlots(rng, console, blk, net)
 
 
 __all__ = ["VIRTIO_SLOT_STRIDE", "Virtio", "VirtioSlots", "add_virtio"]

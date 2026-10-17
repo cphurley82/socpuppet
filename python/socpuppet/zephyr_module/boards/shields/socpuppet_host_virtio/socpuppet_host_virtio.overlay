@@ -30,5 +30,16 @@
 			interrupt-parent = <&io_aplic>;
 			interrupts = <20 1 4>;
 		};
+
+		io_net: virtio_mmio@10004000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10004000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <21 1 4>;
+			io_net_device: virtio-net {
+				compatible = "virtio,net";
+				local-mac-address = [02 00 5e 00 53 01];
+			};
+		};
 	};
 };

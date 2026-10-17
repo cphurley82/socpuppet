@@ -42,6 +42,7 @@ target_sources(socpuppet_core INTERFACE
     core/virtio_console_logic.h
     core/virtio_device.h
     core/virtio_mmio_logic.h
+    core/virtio_net_logic.h
     core/virtio_rng_logic.h
     core/virtqueue.h)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_regs)
@@ -319,6 +320,7 @@ target_sources(socpuppet_models INTERFACE
     models/virtio_blk.h
     models/virtio_console.h
     models/virtio_mmio.h
+    models/virtio_net.h
     models/virtio_rng.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu

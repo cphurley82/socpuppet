@@ -26,6 +26,7 @@ add_executable(unit_tests
   unit/virtio_console_logic_test.cpp
   unit/virtio_blk_logic_test.cpp
   unit/virtio_mmio_logic_test.cpp
+  unit/virtio_net_logic_test.cpp
   unit/virtio_rng_logic_test.cpp
   unit/virtqueue_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
@@ -72,6 +73,7 @@ add_executable(kernel_tests
   platform/system_controller_test.cpp
   platform/tracer_test.cpp
   platform/virtio_console_test.cpp
+  platform/virtio_net_test.cpp
   platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE
   socpuppet_builtin_components socpuppet_models scc::components GTest::gmock)
