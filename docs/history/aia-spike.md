@@ -1,6 +1,6 @@
 # The AIA spike: does Zephyr build for an IMSIC and no PLIC?
 
-This is the report of a spike for milestone M13 in [plan.md](plan.md), run on 2026-10-10. 🦜 The spike's code has since been deleted, when M13's steps 8 and 9 put what it found into socpuppet's Zephyr module, test-first. `8d4959a` is the commit that holds `spikes/aia/` as it was run.
+This is the report of a spike for milestone M13 in [roadmap.md](../roadmap.md), run on 2026-10-10. 🦜 The spike's code has since been deleted, when M13's steps 8 and 9 put what it found into socpuppet's Zephyr module, test-first. `8d4959a` is the commit that holds `spikes/aia/` as it was run.
 
 **The question.** Zephyr 4.4.2 has a driver for an IMSIC and one for an APLIC, and no board in its tree that uses either. Does it build for a `socpuppet_host` whose devicetree has `riscv,imsic` under `smcsrind` and no PLIC, and what does socpuppet's Zephyr module have to supply around the two drivers?
 

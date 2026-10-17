@@ -99,7 +99,7 @@ west twister -p socpuppet_host -T tests/kernel/sleep
 | `samples/synchronization` | ✅ 1/1 | ✅ 1/1 | ✅ 1/1 |
 | **Scenarios** | **32** | **28** | **37** |
 
-That is 97 scenarios of Zephyr's own, and none fails. With socpuppet's own suites, below, the whole run is 113 scenarios and 2153 test cases. It was not always so. The first time these suites ran, in the spike that began this ([twister-spike.md](twister-spike.md)), 46 scenarios of 126 did not pass, and they found two bugs in socpuppet that none of its own tests had: firmware could clear an interrupt's pending bit that a real CPU keeps read-only, and the timer charged a CPU for time it had already spent. Both are mended, and both were in borrowed models ([upstream.md](upstream.md)).
+That is 97 scenarios of Zephyr's own, and none fails. With socpuppet's own suites, below, the whole run is 113 scenarios and 2153 test cases. It was not always so. The first time these suites ran, in the spike that began this ([twister-spike.md](history/twister-spike.md)), 46 scenarios of 126 did not pass, and they found two bugs in socpuppet that none of its own tests had: firmware could clear an interrupt's pending bit that a real CPU keeps read-only, and the timer charged a CPU for time it had already spent. Both are mended, and both were in borrowed models ([upstream.md](upstream.md)).
 
 ## socpuppet's own suites
 
@@ -153,7 +153,7 @@ Two more lines of the list are directories of this repository, and every suite u
 - **`arch.riscv64.fatal.*`, on the two 32-bit boards: it is a test for a 64-bit CPU.** It makes the kernel panic and matches the dump of registers digit for digit, sixteen digits to a register. A 32-bit CPU prints eight. On `socpuppet_host` all four scenarios pass.
 - **`libraries.libc.common.stdio.*`, on every board: they want a module socpuppet does not fetch.** These test `stdio` on a file system and include `ff.h` from FatFs, one of Zephyr's external modules. `firmware/build.py` fetches Zephyr alone, because nothing socpuppet builds needs a module, so they do not build. The rest of the C library's suite runs.
 
-🚧 Not in the list at all yet, because the CPU cannot run them: Zephyr's tests of user mode and memory protection (`tests/kernel/mem_protect`, `tests/arch/riscv/userspace`). They want a core with user mode behind a PMP, which is a to-do in [plan.md](plan.md).
+🚧 Not in the list at all yet, because the CPU cannot run them: Zephyr's tests of user mode and memory protection (`tests/kernel/mem_protect`, `tests/arch/riscv/userspace`). They want a core with user mode behind a PMP, which is a loose end in [roadmap.md](roadmap.md#loose-ends).
 
 ## When a scenario fails
 
@@ -162,7 +162,7 @@ Each failure is one of three things, and the list above has grown out of sorting
 | What it is | What happens to it |
 |---|---|
 | A bug in a model, or in socpuppet | It is fixed, test-first, where the cause is. The scenario stays in the list, failing, until it is |
-| Something socpuppet does not model | A to-do in [plan.md](plan.md). The scenario is quarantined with that as its reason |
+| Something socpuppet does not model | A loose end in [roadmap.md](roadmap.md#loose-ends). The scenario is quarantined with that as its reason |
 | An assumption of the test's, or a bug of Zephyr's | Quarantined with its reason, and an entry in [upstream.md](upstream.md) if it is Zephyr's to mend |
 
 Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict and the simulation out of things to do means a CPU asleep with nothing on its way to wake it, and `socpuppet run` says so, in `handler_stderr.log` beside the console.

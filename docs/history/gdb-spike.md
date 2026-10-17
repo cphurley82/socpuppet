@@ -1,6 +1,6 @@
 # The GDB spike: a debugger on each CPU at once
 
-This is the report of a spike for milestone M8 in [plan.md](plan.md), run on 2026-10-10. It ends with the decision that followed. 🦜 The spike's code has since been deleted, when M8's step 4 had rebuilt what it found test-first (`tests/python/test_gdb.py`). The last commit that holds `spikes/gdb/` is `c664738`, and the paths in this report are from there.
+This is the report of a spike for milestone M8 in [roadmap.md](../roadmap.md), run on 2026-10-10. It ends with the decision that followed. 🦜 The spike's code has since been deleted, when M8's step 4 had rebuilt what it found test-first (`tests/python/test_gdb.py`). The last commit that holds `spikes/gdb/` is `c664738`, and the paths in this report are from there.
 
 **In one paragraph.** DBT-RISE can give every CPU a GDB server of its own, on a port of its own, with a patch of about forty lines to its core library and three to its RISC-V library. Three debuggers then attach to the three CPUs of the host with all its firmwares, each finds its own CPU stopped where its firmware starts, each sets a breakpoint on its firmware's `main` and hits it, and the boot runs on to the disk test's verdict. The Zephyr SDK's GDB does the same as the spike's own client. ⚠️ A CPU stopped in its debugger stops the whole simulation, and the other two debuggers wait with it. That is kept, and the docs will say it. The spike also met a bug nobody was looking for: the server answered one `continue` twice, and the second answer ended the process if the debugger had hung up by then. That is patched too.
 
@@ -8,7 +8,7 @@ This is the report of a spike for milestone M8 in [plan.md](plan.md), run on 202
 
 🎓 A GDB server is the part of a CPU model that a debugger talks to, over a TCP connection, in the remote serial protocol (RSP). socpuppet's CPU is DBT-RISE's, and so is its GDB server.
 
-M3 gave one CPU a debugger. M6 put a second CPU in the simulation and found that DBT-RISE's server was one for the whole process: the second CPU to ask for a `gdb_port` ended the program, so the platform refuses it first. M8 has three CPUs and wants a debugger on each. Reading the code for M6's plan found three things in the way, all written up in [upstream.md](upstream.md) since then, and none of them tried.
+M3 gave one CPU a debugger. M6 put a second CPU in the simulation and found that DBT-RISE's server was one for the whole process: the second CPU to ask for a `gdb_port` ended the program, so the platform refuses it first. M8 has three CPUs and wants a debugger on each. Reading the code for M6's plan found three things in the way, all written up in [upstream.md](../upstream.md) since then, and none of them tried.
 
 So: can each CPU have its own server? And when one CPU is stopped at a breakpoint, what happens to the other two, and to their debuggers?
 
@@ -50,7 +50,7 @@ What this means for somebody with three GDB windows:
 
 - **One `continue` was answered twice.** The server handed the debugger's "tell me when it stops" to the core, and then also waited a second itself and answered: `OK` if the core was still running, which is not a reply RSP has for `continue`, and a second `S05` if it had stopped. So a breakpoint hit within a second was reported twice, and the debugger's next question was answered with the second report. The spike's client read `S05` where it had asked for the program counter.
 - **A debugger that hung up within a second of `continue` ended the process.** The late answer was written to a closed socket. The failure was logged as an error, and SCC turns an error that is logged into a C++ exception, here on the server's thread, where nothing catches it. Every GDB test in the tree does exactly this, continue and hang up, and passes only because its run is over in less than a second. M8's tests run for longer. One patch, `dbt-rise-core-gdb-continue-answered-once.patch`, fixes both: a `continue` is answered by the stop, once.
-- ⚠️ **A debugger that hangs up rudely still ended the process**: one whose connection is reset, or that closes with an answer unread. The spike left it unpatched. It was patched later, when CI showed the tests' own debugger doing it by accident. It is in [upstream.md](upstream.md).
+- ⚠️ **A debugger that hangs up rudely still ended the process**: one whose connection is reset, or that closes with an answer unread. The spike left it unpatched. It was patched later, when CI showed the tests' own debugger doing it by accident. It is in [upstream.md](../upstream.md).
 - **The server sends at most 184 bytes of memory for one request**, however many were asked for. RSP allows a short answer, and GDB asks again for the rest. A test client has to do the same.
 - **The three-firmware boot itself just works.** `iomgr_socpuppet_iomgr.elf` was built for the IO manager board and had never run under the host. It trains the link and lets the host go, and the disk test passes against the SSD's firmware, with no image rebuilt. On the machine the spike ran on (an Intel Mac) that boot takes 0.46 s of wall clock with no debugger.
 
@@ -70,7 +70,7 @@ With the three patches in and the refusal still there, all 624 tests pass, with 
 - Linux. The spike ran on macOS, with GDB in the devcontainer's image, since the SDK has no GDB for an Intel Mac. CI will run M8's tests on both.
 - Single-stepping, watchpoints, and writing registers or memory from a debugger, on more than one CPU.
 - Interrupting a running CPU from its debugger (Ctrl-C) while another is stopped. By reading: the debugger is told its CPU has stopped at once, and its questions about memory are answered when the CPU really has.
-- A debugger that attaches after the boot has started. [boot-your-firmware.md](boot-your-firmware.md) has the run started first for one CPU, and three are no different, but it was not tried.
+- A debugger that attaches after the boot has started. [boot-your-firmware.md](../boot-your-firmware.md) has the run started first for one CPU, and three are no different, but it was not tried.
 
 ## Decisions
 

@@ -127,7 +127,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 ## With the virtio slots
 
-🎭 The host can have five virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
+🎭 The host can have five virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
 
 | Slot | What | Where | Zephyr driver binds to | Python's end |
 |---|---|---|---|---|
@@ -681,7 +681,7 @@ Shell>
 
 What is different from booting OpenSBI's payloads:
 
-- **It takes a minute of the CPU's time.** About 66 s on the interpreter and 87 on QBox, which is 44 s and 2 s on the wall of a quick machine. Half of it is SEC unpacking the rest of EDK2, 6 MB compressed with LZMA, and 10 s of it is two countdowns of 5 s, the boot manager's and the shell's, each waiting for a key, asleep between the timer's interrupts. 550 million instructions in all: [speed-spike.md](speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28) has them by phase.
+- **It takes a minute of the CPU's time.** About 66 s on the interpreter and 87 on QBox, which is 44 s and 2 s on the wall of a quick machine. Half of it is SEC unpacking the rest of EDK2, 6 MB compressed with LZMA, and 10 s of it is two countdowns of 5 s, the boot manager's and the shell's, each waiting for a key, asleep between the timer's interrupts. 550 million instructions in all: [speed-spike.md](history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28) has them by phase.
 - **Paging goes on in the hart's biggest mode.** EDK2 writes Sv57, Sv48 and Sv39 to `satp` in turn and keeps the first that reads back: mode 8, Sv39, on DBT-RISE's hart, and mode 10, Sv57, on QBox's.
 - 🧵 **Type at it as at Zephyr's shell**, with `board.uart.write`, and Enter is `"\r"`. The console is a terminal, so `uart.output` has escape sequences in it for colour and the cursor, which the example takes out. `memmap` lists every region of the 64 MiB the devicetree gave, OpenSBI's own at the start marked reserved, and takes 22 s of the interpreter's time to print.
 - **`reset` reboots**, through SBI's reset call to the system controller. From the flash the ROM copies the image again and the boot starts over; the quick way does not come back, as with OpenSBI.

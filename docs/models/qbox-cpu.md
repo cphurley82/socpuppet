@@ -6,7 +6,7 @@
 
 The same RISC-V processor core as the [DBT-RISE CPU](dbt-rise-cpu.md)'s RV64GC with supervisor and user mode, played by a different actor. 🎓 The model is [QEMU](https://www.qemu.org)'s RISC-V CPU, inside SystemC by way of Qualcomm's [QBox](https://github.com/qualcomm/qbox). Where DBT-RISE interprets each instruction as it comes, QEMU **translates**: the first time it meets a stretch of RISC-V code it writes the host's own instructions that do the same, and from then on runs those. So it is several times faster on code that loops.
 
-💡 It is here as a **second opinion**. Two harts written by different people rarely share a mistake. When firmware works on one and not the other, the difference says where to look, before anyone suspects the firmware or the devices. M27 put it in for the Linux work that follows ([plan.md](../plan.md)).
+💡 It is here as a **second opinion**. Two harts written by different people rarely share a mistake. When firmware works on one and not the other, the difference says where to look, before anyone suspects the firmware or the devices. M27 put it in for the Linux work that follows ([roadmap.md](../roadmap.md)).
 
 ## Getting it
 
@@ -36,12 +36,12 @@ board = host(cpu="qbox_cpu")        # or SOCPUPPET_CPU=qbox_cpu for every host
 - **Picked by name or by the environment.** `host(cpu="qbox_cpu")` gives the host this CPU, and with no `cpu` named the host has the one `SOCPUPPET_CPU` names: `qbox_cpu` or `dbt_rise_cpu`. So one variable runs a whole suite's boots on the other hart, and twister's runs too (`socpuppet run` has `--cpu` as well).
 - **Repeatable.** QEMU runs as a coroutine on SystemC's own thread and counts instructions for time (QEMU's `icount`), so two runs of one program do the same thing at the same simulated times.
 - **Counts 128 ns for each instruction**, where the DBT-RISE CPU counts 100. QEMU counts in powers of two of a nanosecond, and 2⁷ is the nearest. Its own default, 1 ns, made firmware that waits by spinning spin a hundred times as many instructions for the same wait, and Zephyr's timer and scheduler suites ran out of twister's time. ⚠️ A test that counts timer ticks per instruction expects DBT-RISE's figure.
-- **Boots UEFI with paging in Sv57**, where the DBT-RISE CPU has Sv39: EDK2 asks for the biggest mode first and keeps what `satp` reads back. To its shell is 550 million instructions on either hart, counted from each one's clock, which is the check that this one's clock counts instructions ([speed-spike.md](../speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28)).
+- **Boots UEFI with paging in Sv57**, where the DBT-RISE CPU has Sv39: EDK2 asks for the biggest mode first and keeps what `satp` reads back. To its shell is 550 million instructions on either hart, counted from each one's clock, which is the check that this one's clock counts instructions ([speed-spike.md](../history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28)).
 - **Holds to the bus-master contract** (`tests/cpp/contracts/bus_master_contract.h`), as every CPU and the scripted stand-in do, and to the hart's own suite (`tests/cpp/platform/cpu_test.cpp`), apart from what is below.
 
 ## What makes it fast
 
-🎓 The same two things as the DBT-RISE CPU (direct memory access and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran M26's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34.
+🎓 The same two things as the DBT-RISE CPU (direct memory access and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran M26's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../history/speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34.
 
 ## What it does differently
 

@@ -1,6 +1,6 @@
 # The speed spike ⏱️
 
-Milestone M26 asks how fast the host's core is, and on which machine, in which environment and with which CPU the work to boot Linux is best done. It times the core on three loops, on every CPU that can be built and every machine it can be built on, and times what a developer waits for on each: a build, a rebuild and the test suite. The report, with the recommendation, is [docs/speed-spike.md](../../docs/speed-spike.md).
+Milestone M26 asks how fast the host's core is, and on which machine, in which environment and with which CPU the work to boot Linux is best done. It times the core on three loops, on every CPU that can be built and every machine it can be built on, and times what a developer waits for on each: a build, a rebuild and the test suite. The report, with the recommendation, is [docs/history/speed-spike.md](../../docs/history/speed-spike.md).
 
 ⚠️ Nothing here is part of socpuppet. It is exploratory code, held to the rules of `spikes/`:
 
@@ -57,7 +57,7 @@ spikes/speed/docker.sh amd64 --llvm --env docker-amd64-on-ubuntu --backends llvm
 
 ⚠️ asmjit makes x86-64 code, so it builds only where the compiler does: natively on an Intel Mac or on Linux, and in an x86-64 container, Rosetta's included.
 
-QBox needs no Docker on Linux, only the packages [docs/setup.md](../../docs/setup.md) lists, which the devcontainer's image has. `qbox/run.sh` builds QBox with `tools/build_qbox.sh` if `build/qbox/install` has none, then the spike's tests in `build/speed-qbox` linked with it, and runs the same loops on the `qbox_cpu` (M27), with `SOCPUPPET_CPU=qbox_cpu`:
+QBox needs no Docker on Linux, only the packages [docs/setup.md](../../docs/setup.md) lists, which the devcontainer's image has. `qbox/run.sh` builds QBox with `tools/build_qbox.py` if `build/qbox/install` has none, then the spike's tests in `build/speed-qbox` linked with it, and runs the same loops on the `qbox_cpu` (M27), with `SOCPUPPET_CPU=qbox_cpu`:
 
 ```sh
 uv run spikes/speed/qbox/run.sh --env native-linux-x86_64

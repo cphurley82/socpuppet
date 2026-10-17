@@ -1,6 +1,6 @@
 # The speed spike: where to do the Linux work, and which CPU ships
 
-This is the report for milestone M26 in [plan.md](plan.md). It opens with a recommendation on where to do the development that gets Linux booting, then one on the two decisions about what ships. Nothing that depends on either has been built.
+This is the report for milestone M26 in [roadmap.md](../roadmap.md). It opens with a recommendation on where to do the development that gets Linux booting, then one on the two decisions about what ships. Nothing that depends on either has been built.
 
 **In one paragraph.** The host's core, DBT-RISE's interpreter, was timed on three loops on three machines and in seven environments, beside DBT-RISE's two translating backends where they build, QBox where it runs, and what a developer waits for in each place: a build from nothing, a rebuild after one file, and the `dev` suite. The MacBook Air, natively, is the fastest place to do everything: the fastest interpreter (41 million instructions a second), the quickest build (75 s), rebuild (4 s) and suite (61 s). The translating backends run the counted loop three to four times faster than the interpreter and the walking loop twice as fast, and each fails twenty to thirty of the hart's tests, on the very things a kernel leans on. So the recommendation is the Air, natively, on the interpreter, with LLVM on the same machine (Homebrew's, 169 million instructions a second) for the day a boot is too long to wait for; the interpreter stays the wheel's CPU; and nothing faster is offered beside it until the backends pass the hart's suite.
 
@@ -28,7 +28,7 @@ This is the report for milestone M26 in [plan.md](plan.md). It opens with a reco
 - **LLVM** makes code for whatever host it runs on, so it is the one backend every machine here can have, and it is the fastest. It wants an LLVM development package the wheel cannot assume (`llvm-19-dev` on Ubuntu, `llvm@22` from Homebrew), and the extension links LLVM's shared library (1.7 MB more on macOS, with the dylib beside it; 28 MB more in the arm64 container, where it is linked in). It fails 21 tests, fewer than asmjit, and the interrupt tests among asmjit's failures pass on it.
 - **QBox** is QEMU inside SystemC, GPL-2.0, and a build of its own from source. Its rows are below.
 
-The failures are one thing, not twenty-nine: M22's fifteen patches mended the interpreter, or the hart where the interpreter fetches, and a translating backend has its own copy of every instruction's behaviour and fetches another way. They are listed in [upstream.md](upstream.md) under "What the interpreter was mended for, the translating backends were not", with the fix, which is each patch again in DBT-RISE's generator so that every backend has it. Until then a backend is a thing to time a boot on and not to trust one to, and the to-do in [plan.md](plan.md) says so.
+The failures are one thing, not twenty-nine: M22's fifteen patches mended the interpreter, or the hart where the interpreter fetches, and a translating backend has its own copy of every instruction's behaviour and fetches another way. They are listed in [upstream.md](../upstream.md) under "What the interpreter was mended for, the translating backends were not", with the fix, which is each patch again in DBT-RISE's generator so that every backend has it. Until then a backend is a thing to time a boot on and not to trust one to, and the to-do in [roadmap.md](../roadmap.md) says so.
 
 ## The question
 
@@ -50,7 +50,7 @@ Every container is the devcontainer's image, Ubuntu 24.04 with GCC 13, which is 
 
 ## What was measured
 
-Three loops, each made of `tests/cpp/support/riscv_program.h` and nothing else, run on the host's core with its RAM behind a probe that counts transactions, so that each test can assert it ran by direct memory access ([spikes/speed/README.md](../spikes/speed/README.md)):
+Three loops, each made of `tests/cpp/support/riscv_program.h` and nothing else, run on the host's core with its RAM behind a probe that counts transactions, so that each test can assert it ran by direct memory access ([spikes/speed/README.md](../../spikes/speed/README.md)):
 
 | Loop | What it does | What it stands for |
 |---|---|---|
@@ -169,7 +169,7 @@ QBox is QEMU's RISC-V CPU inside SystemC, as M26 measured it behind the CPU slot
 
 What it measured, in its repeatable configuration (QEMU as a coroutine on the SystemC thread, counting instructions for time): **350 to 370 million instructions a second on the counted loop and 450 to 590 on the hits loop, nine to twenty times the interpreter and two to five times LLVM, and 10 to 27 million on the walking loop, slower than every DBT-RISE core on the same machine.** 🎓 QEMU keeps translated code keyed by physical address and throws it all away on `sfence.vma`, and the walking loop fences every round, so there it translates the loop again 2¹⁷ times. A kernel fences far less often than that, so its boot would land near the hits figure. The threaded configuration (QEMU on threads of its own, nothing keeping it in step with SystemC) crashed on every loop, on both machines, and has no row; M1 measured it at 3,800 million on its own, and it was never repeatable.
 
-🦜 What QBox could not be measured on, when this report was written, was `cpu_test.cpp`, the bus-master contract and the Python suite, since its SystemC could not be linked with socpuppet's. [M27](plan.md#m27--qbox-the-second-hart-optional-built-from-source) made it a CPU of socpuppet's, the `qbox_cpu`, held to all three ([models/qbox-cpu.md](models/qbox-cpu.md)). It is GPL-2.0, so it is built from source beside the wheel, never in it.
+🦜 What QBox could not be measured on, when this report was written, was `cpu_test.cpp`, the bus-master contract and the Python suite, since its SystemC could not be linked with socpuppet's. M27 made it a CPU of socpuppet's, the `qbox_cpu`, held to all three ([models/qbox-cpu.md](../models/qbox-cpu.md)). It is GPL-2.0, so it is built from source beside the wheel, never in it.
 
 ### Through the adapter (M27)
 
@@ -217,7 +217,7 @@ A boot to the shell is 1849 million instructions (median of 6).
 
 ### A boot that ran: OpenSBI and UEFI, to the shell (M28)
 
-The first workload of any size to run on socpuppet's harts is EDK2's boot on OpenSBI to `Shell>` ([M28](plan.md#m28--uefi-boots)), timed on the A51 on 2026-10-16, the quick way, built with both of its countdowns at zero so that the hart is never asleep waiting for a key. Neither CPU counts instructions, and each charges a fixed time for one, so a count is the CPU's time over that: 100 ns on the interpreter, 128 ns on QBox. The two counts agree to within one percent, which is the check that the method works.
+The first workload of any size to run on socpuppet's harts is EDK2's boot on OpenSBI to `Shell>` (M28), timed on the A51 on 2026-10-16, the quick way, built with both of its countdowns at zero so that the hart is never asleep waiting for a key. Neither CPU counts instructions, and each charges a fixed time for one, so a count is the CPU's time over that: 100 ns on the interpreter, 128 ns on QBox. The two counts agree to within one percent, which is the check that the method works.
 
 | Phase | Instructions | Interpreter: CPU's time, wall | QBox: CPU's time, wall |
 |---|---|---|---|
@@ -241,10 +241,10 @@ That is 16 million instructions a second on the interpreter, between its walking
 
 ## Decisions
 
-Left for the maintainer, with the recommendation beside each in the table of [decisions deliberately left open](plan.md#decisions-deliberately-left-open):
+Left for the maintainer, with the recommendation beside each in the table of [decisions deliberately left open](../roadmap.md#open-decisions):
 
 1. **Where to do the Linux work**: the Air, natively, on the interpreter; LLVM in its arm64 container for a long boot.
 2. **The wheel's CPU**: the interpreter, as it is.
 3. **A faster CPU beside it**: none yet. LLVM, built from source against a system LLVM, when the backends pass the hart's suite, which is the to-do; QBox only once it is a CPU of socpuppet's, which is the other.
 
-What stays from the spike: `spikes/speed/` and its results, so that every later change to the core can be timed against them ([spikes/speed/README.md](../spikes/speed/README.md)); the backends behind `SOCPUPPET_DBT_RISE_BACKENDS`, off; `DbtRiseCpu` taking a backend's name from C++ and refusing one its build has no core for; and the nine patches and the entries in [upstream.md](upstream.md).
+What stays from the spike: `spikes/speed/` and its results, so that every later change to the core can be timed against them ([spikes/speed/README.md](../../spikes/speed/README.md)); the backends behind `SOCPUPPET_DBT_RISE_BACKENDS`, off; `DbtRiseCpu` taking a backend's name from C++ and refusing one its build has no core for; and the nine patches and the entries in [upstream.md](../upstream.md).

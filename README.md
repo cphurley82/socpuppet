@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days, but the show has grown. A chiplet host boots Zephyr across a real die-to-die link that a third CPU trains, and finds an NVMe SSD that runs its own Zephyr: three firmwares in one simulation, with a debugger on each CPU if you want one. The host also boots the way silicon does, from a ROM and a flash, with a watchdog to reset it; its interrupts travel as messages, in the style RISC-V servers use; Zephyr's own test suites run on every board; and OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on it, with five 🎭 virtio stand-ins beside them. Next on stage is Linux. The roadmap is [docs/plan.md](docs/plan.md), and its Status section is the long form of where things stand.
+> 🚧 Early days, but the show has grown. A chiplet host boots Zephyr across a real die-to-die link that a third CPU trains, and finds an NVMe SSD that runs its own Zephyr: three firmwares in one simulation, with a debugger on each CPU if you want one. The host also boots the way silicon does, from a ROM and a flash, with a watchdog to reset it; its interrupts travel as messages, in the style RISC-V servers use; Zephyr's own test suites run on every board; and OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on it, with five 🎭 virtio stand-ins beside them. Next on stage is Linux. The roadmap is [docs/roadmap.md](docs/roadmap.md).
 
 ## What's the show?
 

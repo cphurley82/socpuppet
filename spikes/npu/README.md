@@ -1,6 +1,6 @@
 # The NPU spike 🚧
 
-Milestone M12 is an experiment: what should sit in socpuppet's accelerator slot, the place for an AI processor? Two candidates were tried behind one draft slot, and the report, with the recommendation, is [docs/npu-spike.md](../../docs/npu-spike.md).
+Milestone M12 is an experiment: what should sit in socpuppet's accelerator slot, the place for an AI processor? Two candidates were tried behind one draft slot, and the report, with the recommendation, is [docs/history/npu-spike.md](../../docs/history/npu-spike.md).
 
 🎓 An NPU (neural processing unit) is the block an SoC hands its matrix arithmetic to. Firmware describes the work in memory, rings a doorbell, and is interrupted when the block is done. The spike's one job is a matrix multiply of 8-bit integers, which is the kernel every neural network spends most of its time in.
 

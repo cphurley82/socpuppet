@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-Today the whole cast is on stage: a chiplet host whose two dies are joined by a UCIe-style link that a manager CPU trains, an NVMe SSD with a CPU and firmware of its own, three Zephyr images booting in one simulation with a debugger on each CPU, a boot ROM and a flash, the interrupt architecture RISC-V servers use, OpenSBI and UEFI on the host, and 🎭 virtio stand-ins beside them. Linux is next. The Status section of [plan.md](plan.md) is the long form, and [vision.md](vision.md) says why any of it is built. 🎭 Every stand-in is still there to be chosen, for when a part is not what you are working on.
+Today the whole cast is on stage: a chiplet host whose two dies are joined by a UCIe-style link that a manager CPU trains, an NVMe SSD with a CPU and firmware of its own, three Zephyr images booting in one simulation with a debugger on each CPU, a boot ROM and a flash, the interrupt architecture RISC-V servers use, OpenSBI and UEFI on the host, and 🎭 virtio stand-ins beside them. Linux is next: [roadmap.md](roadmap.md) says what comes after, and [vision.md](vision.md) why any of it is built. 🎭 Every stand-in is still there to be chosen, for when a part is not what you are working on.
 
 ## The picture
 
@@ -343,4 +343,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the rest of a real SoC's cast (an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [plan.md](plan.md).
+🚧 Not built yet: the rest of a real SoC's cast (an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [roadmap.md](roadmap.md).

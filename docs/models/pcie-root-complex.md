@@ -65,4 +65,4 @@ In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for
 
 `src/socpuppet/models/pcie_root_complex.h`, and `src/socpuppet/models/pcie_link.h` for what a transaction on the link carries.
 
-⚠️ This is modelled from public sources: the PCI specifications are not free to read. The layouts follow what open drivers expect (Zephyr's `drivers/pcie`), and the model makes no claim to conform to the specifications. socpuppet looked at borrowing VCML's PCI model first and decided to write its own. [pcie-spike.md](../pcie-spike.md) says why.
+⚠️ This is modelled from public sources: the PCI specifications are not free to read. The layouts follow what open drivers expect (Zephyr's `drivers/pcie`), and the model makes no claim to conform to the specifications. socpuppet looked at borrowing VCML's PCI model first and decided to write its own. [pcie-spike.md](../history/pcie-spike.md) says why.

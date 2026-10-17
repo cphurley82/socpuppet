@@ -1,6 +1,6 @@
 # The PCIe spike: borrow VCML's endpoint, or write our own?
 
-This is the report of a time-boxed spike for milestone M2 in [plan.md](plan.md). It ends with a recommendation, and the decision that followed is at the end. 🦜 The spike's code has since been deleted: the last commit that holds `spikes/pcie/` is `e10359f`, and the paths in this report are from there.
+This is the report of a time-boxed spike for milestone M2 in [roadmap.md](../roadmap.md). It ends with a recommendation, and the decision that followed is at the end. 🦜 The spike's code has since been deleted: the last commit that holds `spikes/pcie/` is `e10359f`, and the paths in this report are from there.
 
 **In one paragraph.** VCML's PCI model can be socpuppet's PCIe endpoint. It builds here with no patches, links statically into the Python extension for 1.1 MB, and behind an adapter it passes everything on the checklist, up to an NVMe Identify whose interrupt arrives as an MSI-X message, driven from Python. The recommendation is still to write our own. The half of VCML's model that socpuppet's design can use is small, the adapter that fits it in is at least two thirds the size of a hand-written endpoint, and VCML stops the whole process with `abort()` when a neighbour does something it does not expect.
 
