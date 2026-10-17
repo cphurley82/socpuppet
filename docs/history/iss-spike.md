@@ -373,7 +373,7 @@ What the first decision takes on, from the findings above: eighteen more Boost l
 
 What happened to `spikes/iss/`:
 
-- 🦜 QBox's recipe and wrapper stayed in `spikes/iss/` as the starting point for the optional CPU, until M27 made QEMU's CPU a model of socpuppet's, the `qbox_cpu` ([models/qbox-cpu.md](../models/qbox-cpu.md)), built by `tools/build_qbox.py`. The directory was deleted on 2026-10-17, and `118e983` is the last commit that holds it.
+- 🦜 QBox's recipe and wrapper stayed in `spikes/iss/` as the starting point for the optional CPU, until M27 made QEMU's CPU a model of socpuppet's, the `qbox_cpu` ([models/qbox-cpu.md](../models/qbox-cpu.md)), built by `tools/build_qbox.py`. The directory was deleted on 2026-10-17, and `5be2b90` is the last commit that holds it.
 - 🦜 DBT-RISE-RISCV's spike wrapper, riscv-vp and the in-house prototype went when M3a finished, with the `spike` preset and the `ISS spike` CI job. M3a rebuilt the DBT-RISE-RISCV wrapper test-first as `src/socpuppet/models/dbt_rise_cpu.h`, and its patches are in `cmake/patches/`. The last commit that holds the three candidates, the harness's own tests and the build rules is `7c7c8c0`. To run them again: check that commit out, then `cmake --preset spike`.
 - 🦜 The VCML probe went first. Its clone of mwr failed whenever CI restored the fetched dependencies from its cache, which kept the spike job red. The last commit that holds `spikes/iss/vcml_probe/` and its build rules is `23a0f1b`.
 

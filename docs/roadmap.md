@@ -203,4 +203,4 @@ Known bugs with no milestone:
 
 ## Keeping this page
 
-This page replaced `docs/plan.md` on 2026-10-17, which had grown to half a megabyte of steps, findings and status; commit `1a441b6` is the last that holds it. What was worth keeping is in [history/](history/README.md). This page stays short: a phase a line, a milestone a row and, for the ones not yet done, a section of a screen; the rest goes to the history pages and the commits.
+This page replaced `docs/plan.md` on 2026-10-17, which had grown to half a megabyte of steps, findings and status; commit `5be2b90` is the last that holds it. What was worth keeping is in [history/](history/README.md). This page stays short: a phase a line, a milestone a row and, for the ones not yet done, a section of a screen; the rest goes to the history pages and the commits.
