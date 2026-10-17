@@ -125,6 +125,41 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 💡 A PCIe device interrupts with a message, and the board's interrupt controller is one that is sent messages, so the drive's interrupts go to it as they are: identities 32 and 33, written to `0x2400_0000`. [The IMSIC's page](models/imsic.md) has the rest.
 
+## With the virtio slots
+
+🎭 The host can have five virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
+
+| Slot | What | Where | Zephyr driver binds to | Python's end |
+|---|---|---|---|---|
+| 0 | [Entropy source](models/virtio-rng.md) | `0x1000_1000` | `virtio,device4`, `chosen` as `zephyr,entropy` | its `seed` |
+| 1 | [Console](models/virtio-console.md) | `0x1000_2000` | `virtio,console` | `output`, `write()` |
+| 2 | [Disk](models/virtio-blk.md) | `0x1000_3000` | none: Zephyr has no virtio disk driver | `load()`, `contents` |
+| 3 | [Network card](models/virtio-net.md) | `0x1000_4000` | `virtio,net`, with `local-mac-address` | `send()`, `received`, `dropped` |
+| 4 | [Shared directory](models/virtio-fs.md) | `0x1000_5000` | the transport itself, by the alias `virtiofs0` | a directory of this machine |
+
+The slots are the shield `socpuppet_host_virtio`. A second shield, `socpuppet_host_virtio_console`, makes the virtio console Zephyr's console in place of the 16550, and turns off the boot banner, which Zephyr's virtio console driver will not be built with. Stack them:
+
+```sh
+west build -b socpuppet_host \
+    --shield "socpuppet_host_virtio;socpuppet_host_virtio_console" my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+Then describe the host with its slots, and say what the devices are to be:
+
+```python
+from socpuppet.boards.virtio import Virtio
+
+board = host(virtio=Virtio(blocks=2048, share="/tmp/share", tag="spam"))
+board.platform.build()
+board.virtio.blk.load(disk_image)          # before the run
+board.platform.load_elf("build/zephyr/zephyr.elf")
+board.platform.run(sp.ms(100))
+print(board.virtio.console.output)
+```
+
+`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, and `tests/python/test_virtio_uefi.py` boots UEFI with them. 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
+
 ## The SSD's controller
 
 The second board is `socpuppet_ssd`: the controller inside the SSD, which is where an SSD's firmware runs. It is a 32-bit RISC-V machine, with the SSD's hardware around it.

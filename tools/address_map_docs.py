@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO / "python"))
 
 from socpuppet.address_map import format_address, format_size  # noqa: E402
 from socpuppet.boards import host, io_manager, manager, ssd  # noqa: E402
+from socpuppet.boards.virtio import Virtio  # noqa: E402
 
 
 def main():
@@ -59,6 +60,8 @@ def tables():
     host_board = host.platform
     # How big the drive is changes nothing in a map.
     with_a_drive = host.host(drive_blocks=1).platform
+    # 🎭 The virtio slots, which the host has only when asked.
+    with_virtio = host.host(virtio=Virtio()).platform
     # The SSD comes in whole NAND blocks, and one is the least.
     with_the_ssd = host.host(
         drive_blocks=ssd.DRIVE_BLOCKS_PER_NAND_BLOCK, drive=ssd.add_ssd
@@ -82,6 +85,9 @@ def tables():
         "address-map:host-drive": address_table(
             only_in(with_a_drive.address_map(), host_board.address_map())
         ),
+        "address-map:host-virtio": address_table(
+            only_in(with_virtio.address_map(), host_board.address_map())
+        ),
         "address-map:host-manager": address_table(
             seen_from(with_a_manager, "io.manager.cpu.socket")
         ),
@@ -102,6 +108,9 @@ def tables():
         ),
         "interrupts:host": interrupt_table(host_board.interrupt_map()),
         "interrupts:host-ssd": interrupt_table(with_the_ssd.interrupt_map()),
+        "interrupts:host-virtio": interrupt_table(
+            only_in(with_virtio.interrupt_map(), host_board.interrupt_map())
+        ),
         "interrupts:ssd": interrupt_table(ssd_board.interrupt_map()),
         "interrupts:io-manager": interrupt_table(io_board.interrupt_map()),
     }

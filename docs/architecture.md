@@ -274,6 +274,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | watchdog | `WatchdogContract` | `Watchdog` |
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
+| virtio device | `VirtioDeviceContract` | 🎭 `VirtioRng`, `VirtioConsole`, `VirtioBlk`, `VirtioNet`, `VirtioFs`, each behind the [virtio-mmio](models/virtio-mmio.md) transport |
 
 The real die-to-die link passes `LinkContract` beside the stand-in, and the platform around it does not change. What does change is that the real one has to be trained first, so the contract's rigs say how: the stand-in's does nothing, and the real one's writes to the link's registers and waits.
 
@@ -315,6 +316,13 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - 🎭 [Pass-through link](models/pass-through-link.md)
 - 🎭 [Scripted bus master](models/scripted-bus-master.md)
 - 🎭 [SSD firmware](models/ssd-firmware.md)
+- 🎭 [Virtio block device](models/virtio-blk.md)
+- 🎭 [Virtio console](models/virtio-console.md)
+- 🎭 [Virtio entropy device](models/virtio-rng.md)
+- 🎭 [Virtio file system device](models/virtio-fs.md), served by Python's `socpuppet.fuse`
+- 🎭 [Virtio host driver](models/virtio-host.md)
+- 🎭 [Virtio network device](models/virtio-net.md)
+- [Virtio over MMIO](models/virtio-mmio.md), the transport the five virtio devices sit behind
 - [Tracer](models/tracer.md)
 
 ## What is in the box, and where it came from
@@ -326,6 +334,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 | CPU | [DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV) (Minres) |
 | UART, machine timer, interrupt controllers, watchdog, SPI flash and its controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
 | Reading ELF files | [ELFIO](https://github.com/serge1/ELFIO) |
+| FAT disk images and Ethernet frames, in the tests | [pyfatfs](https://github.com/nathanhi/pyfatfs), [dpkt](https://github.com/kbandla/dpkt) |
 | The layouts of NVMe's registers and commands | [SPDK](https://github.com/spdk/spdk) (one header) |
 | Python bindings | [pybind11](https://github.com/pybind/pybind11) |
 | Everything else | this repo |

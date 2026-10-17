@@ -114,6 +114,36 @@ The interrupt lines of the board with no drive:
 
 A drive adds no line. Its interrupts are messages: identities 32 and 33, one for each of its two vectors, written to `compute.imsic.machine` at `0x2400_0000`. ⚠️ So they are in no table here, which only has wires, and 32 and 33 are all that firmware knows them by. They are in the shield's devicetree, as `socpuppet,msi-identities`.
 
+🎭 With its virtio slots (`host(virtio=Virtio())`, [boards/virtio.py](../python/socpuppet/boards/virtio.py)), five stand-ins answer on the IO die, a page apart from `0x1000_1000` as QEMU's `virt` has its own, each a [virtio-mmio](models/virtio-mmio.md) register block of 512 bytes:
+
+<!-- address-map:host-virtio start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x1000_1000` | 512 bytes | `io.rng.cpu` | [Virtio entropy device](models/virtio-rng.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_2000` | 512 bytes | `io.console.cpu` | [Virtio console](models/virtio-console.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_3000` | 512 bytes | `io.blk.cpu` | [Virtio block device](models/virtio-blk.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_4000` | 512 bytes | `io.net.cpu` | [Virtio network device](models/virtio-net.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_5000` | 512 bytes | `io.fs.cpu` | [Virtio file system device](models/virtio-fs.md) | `compute.bus` from `0x1000_0000` |
+
+<!-- address-map:host-virtio end -->
+
+Each has a line to the IO die's APLIC, from source 18:
+
+<!-- interrupts:host-virtio start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `io.aplic` | 18 | `io.rng.irq` |
+| `io.aplic` | 19 | `io.console.irq` |
+| `io.aplic` | 20 | `io.blk.irq` |
+| `io.aplic` | 21 | `io.net.irq` |
+| `io.aplic` | 22 | `io.fs.irq` |
+
+<!-- interrupts:host-virtio end -->
+
+💡 The slots are on the IO die because QEMU's are next to the UART, and a wire stays on its die: the IO APLIC turns each line into a message to the compute die's IMSIC. Each device's DMA goes up the same way as the drive's, to the RAM. Zephyr's images that use them are built with the shield `socpuppet_host_virtio`.
+
 The constants are at the top of `python/socpuppet/boards/host.py`.
 
 - **What they are for.** `io.uart` is the console. `compute.ram` is where firmware is loaded, and the CPU starts executing at its first address. `compute.imsic.machine` is where interrupt messages are sent, the drive's among them, and `compute.imsic.supervisor` is the same for an operating system that runs below machine mode. `io.rc.ecam` is the PCIe configuration window, and `io.rc.mmio` the PCIe memory window, with the drive's registers somewhere in it.

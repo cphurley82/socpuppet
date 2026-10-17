@@ -48,6 +48,25 @@ Each is 32 bits wide and read or written whole, except the device's configuratio
 
 <!-- regs:virtio_mmio end -->
 
+## What it does
+
+Each device's page says what the device does; this is what they share. `socpuppet::VirtioMmio<Device>` is a shell of SystemC around plain C++: `VirtioMmioLogic` is the register block, `Virtqueue` walks a split virtqueue in the driver's memory, and a `VirtioDevice` is what one kind of device does with a chain.
+
+- **Agrees on features.** The device offers its own bits and `VERSION_1` (bit 32), which the transport insists on. `FEATURES_OK` stays set only if the driver accepted what was offered and no more, and `VERSION_1` among it.
+- **Lays out queues where the driver says.** Each queue's size and the three parts' 64-bit addresses, anywhere in the driver's memory, above 4 GiB as well. A queue of more entries than `QUEUE_NUM_MAX` (256) is refused with an error response, and one of none is never ready: Zephyr's virtio-fs driver sets its unused queue up that way on purpose.
+- **Works a delta cycle after the doorbell.** A write to `QUEUE_NOTIFY` only marks the queue; the device walks it in a process of its own, a delta cycle later, so that its reads and writes of the driver's memory never happen inside the CPU's access. That is the [command device](command-device.md) shell the DMA engine has, through `dma`, a bus master port.
+- **Hands each chain over whole.** The walker follows a chain's `next` links, splits it into the buffers the device reads and the ones it writes, and refuses a chain that loops. Reads and writes go across as many buffers as the chain has, so a driver may split a request where it likes.
+- **Interrupts while a used buffer waits.** `irq` is high while `INTERRUPT_STATUS` has a bit set, and `INTERRUPT_ACK` lowers it. A device that keeps a chain (the console's and the network card's receive buffers) gives it back later, and the transport raises the line for that too.
+- **Resets on a write of zero to `STATUS`.** Everything the driver told the device is forgotten, and the device drops the chains it holds.
+- **Keeps the configuration read-only.** Reads at any width from `0x100`; a write is handed to the device, which drops it unless it has a field a driver may write. None of the five has.
+
+## What it leaves out
+
+- **The legacy layout,** version 1 of this register block, which only old drivers speak.
+- **Packed virtqueues, indirect descriptors and event indices** (`F_RING_PACKED`, `F_INDIRECT_DESC`, `F_EVENT_IDX`): the split ring as the specification first had it, which every driver falls back to.
+- **Shared memory regions** (`SHM_SEL`, `SHM_LEN`, read as none) and notification data.
+- **A configuration change interrupt,** which no device here raises, since none changes its configuration.
+
 ## Under the hood
 
 - `regs/virtio_mmio.rdl` is the register map, in SystemRDL. `tools/regs.py` writes the table above from it, and the C header and the Python module that the rest go by.
