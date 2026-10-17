@@ -47,30 +47,6 @@ class Placed:
         )
 
 
-class PlacedConsole(Placed):
-    """🎭 A virtio console at its place in a platform: its far end."""
-
-    @property
-    def output(self) -> str:
-        """Everything the firmware has put out through the console so far.
-
-        A byte that is not text comes out as the replacement character, �.
-        """
-        native = self._platform.native()
-        return native.virtio_console_output(self.path).decode(errors="replace")
-
-    def write(self, typed: str | bytes) -> None:
-        """Type at the console: the firmware receives `typed`.
-
-        🧵 As at the UART, this is the keyboard of whoever sits at the far
-        end. Text is sent as UTF-8. The bytes wait in the console until the
-        firmware hands it a buffer for them, and go in as many at a time as
-        the buffer holds.
-        """
-        received = typed.encode() if isinstance(typed, str) else typed
-        self._platform.native().virtio_console_write(self.path, received)
-
-
 class PlacedRouter(Placed):
     """A router at its place in a platform."""
 
@@ -110,29 +86,49 @@ class PlacedRouter(Placed):
         return Port(self, self.component.add_input())
 
 
-class PlacedUart(Placed):
-    """A UART at its place in a platform."""
+class PlacedFarEnd(Placed):
+    """The far end of a serial transport at its place in a platform.
+
+    🧵 This is the other end of the line, the keyboard and screen of
+    whoever sits at the console. A UART and a virtio console are two
+    transports with this one far end.
+    """
 
     @property
     def output(self) -> str:
-        """Everything the firmware has printed through the UART so far.
+        """Everything the firmware has printed through it so far.
 
         A byte that is not text comes out as the replacement character, �.
         """
         native = self._platform.native()
-        return native.uart_output(self.path).decode(errors="replace")
+        return native.far_end_output(self.path).decode(errors="replace")
 
     def write(self, typed: str | bytes) -> None:
-        """Type at the UART: the firmware receives `typed`, a byte at a time.
+        """Type at it: the firmware receives `typed`.
 
-        🧵 This is the other end of the serial line, the keyboard of
-        whoever sits at the console. Text is sent as UTF-8. The bytes wait
-        in the UART until the firmware reads them, and nothing happens
-        until the platform next runs.
+        Text is sent as UTF-8. The bytes wait in the transport until the
+        firmware takes them, and nothing happens until the platform next
+        runs.
 
         ⚠️ They arrive all at once, with no baud rate to pace them. The
-        UART loses none, and firmware that reads them into a buffer of
-        its own may: Zephyr's shell keeps 64 bytes.
+        transport loses none, and firmware that reads them into a buffer
+        of its own may: Zephyr's shell keeps 64 bytes.
         """
         received = typed.encode() if isinstance(typed, str) else typed
-        self._platform.native().uart_write(self.path, received)
+        self._platform.native().far_end_write(self.path, received)
+
+
+class PlacedUart(PlacedFarEnd):
+    """A UART at its place in a platform.
+
+    The firmware reads what is typed from its receive register, a byte at
+    a time.
+    """
+
+
+class PlacedConsole(PlacedFarEnd):
+    """🎭 A virtio console at its place in a platform.
+
+    What is typed goes into the buffers the firmware hands it, as many
+    bytes at a time as one holds.
+    """

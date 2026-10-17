@@ -16,8 +16,8 @@ generator, and a script hands over to it with `yield from`:
         bytes_from_the_device = yield from rng.read(32)
 
 `VirtioHost` is the part every kind of device shares; a class for a kind of
-device, such as `VirtioRngHost`, is a thin layer over it that knows what
-goes in that device's chains.
+device, such as `VirtioRngHost`, is a thin layer over it that says what the
+device is and knows what goes in its chains.
 """
 
 from __future__ import annotations
@@ -128,6 +128,26 @@ class VirtioHost:
         self._free_memory = memory
         self._memory_end = None if memory_size is None else memory + memory_size
         self._queues: dict[int, _Queue] = {}
+
+    #: What a kind of device says it is (section 5), how many queues it
+    #: has, and what to call it in a refusal: a class for a kind sets them.
+    DEVICE_ID: int
+    QUEUES: int
+    KIND: str
+
+    def start(self) -> Steps[None]:
+        """Finds the device, agrees on no features, and sets its queues up."""
+        device_id = yield from self.probe()
+        if device_id != self.DEVICE_ID:
+            raise VirtioError(
+                f"The virtio device is a kind {device_id}, not {self.KIND} "
+                f"(kind {self.DEVICE_ID})."
+            )
+        yield from self.reset()
+        yield from self.negotiate(0)
+        for number in range(self.QUEUES):
+            yield from self.setup_queue(number)
+        yield from self.driver_ok()
 
     def probe(self) -> Steps[int]:
         """Finds the device: checks it is a virtio device, and says which kind.
@@ -358,21 +378,9 @@ class VirtioRngHost(VirtioHost):
     one queue up; `read` asks it for bytes.
     """
 
-    #: What the device says it is (section 5.4).
-    DEVICE_ID = 4
-
-    def start(self) -> Steps[None]:
-        """Finds the device, agrees on no features, and sets its queue up."""
-        device_id = yield from self.probe()
-        if device_id != self.DEVICE_ID:
-            raise VirtioError(
-                f"The virtio device is a kind {device_id}, not an entropy "
-                f"device (kind {self.DEVICE_ID})."
-            )
-        yield from self.reset()
-        yield from self.negotiate(0)
-        yield from self.setup_queue(0)
-        yield from self.driver_ok()
+    DEVICE_ID = 4  # Section 5.4.
+    QUEUES = 1
+    KIND = "an entropy device"
 
     def read(self, count: int) -> Steps[bytes]:
         """Asks the device for `count` random bytes."""
@@ -388,25 +396,12 @@ class VirtioConsoleHost(VirtioHost):
     come in.
     """
 
-    #: What the device says it is (section 5.3).
-    DEVICE_ID = 3
+    DEVICE_ID = 3  # Section 5.3.
+    QUEUES = 2
+    KIND = "a console"
     #: Its two queues: what comes in, and what goes out.
     RECEIVE_QUEUE = 0
     TRANSMIT_QUEUE = 1
-
-    def start(self) -> Steps[None]:
-        """Finds the device, agrees on no features, and sets its queues up."""
-        device_id = yield from self.probe()
-        if device_id != self.DEVICE_ID:
-            raise VirtioError(
-                f"The virtio device is a kind {device_id}, not a console "
-                f"(kind {self.DEVICE_ID})."
-            )
-        yield from self.reset()
-        yield from self.negotiate(0)
-        yield from self.setup_queue(self.RECEIVE_QUEUE)
-        yield from self.setup_queue(self.TRANSMIT_QUEUE)
-        yield from self.driver_ok()
 
     def send(self, data: bytes) -> Steps[None]:
         """Puts `data` out, and waits until the device has taken it."""

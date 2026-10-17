@@ -314,6 +314,7 @@ target_sources(socpuppet_models INTERFACE
     models/socket_memory.h
     models/system_controller.h
     models/tie_low.h
+    models/far_end.h
     models/virtio_console.h
     models/virtio_mmio.h
     models/virtio_rng.h)

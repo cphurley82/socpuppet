@@ -9,6 +9,8 @@
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/models/far_end.h"
+
 namespace socpuppet {
 
 // A 16550-style UART: the serial port a firmware's console prints through.
@@ -21,8 +23,8 @@ namespace socpuppet {
 //     apart. The adapter does the arithmetic.)
 //   - What the firmware transmits is kept, to be read with Output(), and
 //     what it is to receive is handed over with Write(). Whoever holds
-//     the UART is the other end of its serial line.
-class Ns16550 : public sc_core::sc_module {
+//     the UART is the other end of its serial line (FarEnd).
+class Ns16550 : public sc_core::sc_module, public FarEnd {
  public:
   tlm_utils::simple_target_socket<Ns16550> socket{"socket"};
   // The interrupt, for an interrupt controller's input: high while an
@@ -36,13 +38,13 @@ class Ns16550 : public sc_core::sc_module {
   ~Ns16550() override;
 
   // Everything transmitted so far.
-  const std::string& Output() const;
+  const std::string& Output() const override;
 
   // Bytes that come in on the serial line, as if typed at the other end.
   // Firmware reads them from the receive register, in order. They show in
   // the registers a delta cycle later, and all at once: there is no baud
   // rate to pace them, and no overrun, since they wait here until read.
-  void Write(std::string_view received);
+  void Write(std::string_view received) override;
 
  private:
   struct Model;

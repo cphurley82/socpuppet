@@ -18,9 +18,8 @@
 #include "socpuppet/bindings/python_script.h"
 #include "socpuppet/core/elf_image.h"
 #include "socpuppet/models/builtin_components.h"
-#include "socpuppet/models/ns16550.h"
+#include "socpuppet/models/far_end.h"
 #include "socpuppet/models/scripted_bus_master.h"
-#include "socpuppet/models/virtio_console.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
@@ -176,33 +175,19 @@ PYBIND11_MODULE(_core, m) {
              self.platform.ModuleAt<socpuppet::ScriptedBusMaster>(path)
                  .SetScript([&script] { return script.Play(); });
            })
-      // What the UART at `path` has transmitted so far. As bytes, because
-      // firmware may send anything.
-      .def("uart_output",
+      // What the serial transport at `path` (a UART, a virtio console) has
+      // transmitted so far. As bytes, because firmware may send anything.
+      .def("far_end_output",
            [](NativePlatform& self, const std::string& path) {
              return py::bytes(
-                 self.platform.ModuleAt<socpuppet::Ns16550>(path).Output());
+                 self.platform.ModuleAt<socpuppet::FarEnd>(path).Output());
            })
-      // Hands the UART at `path` bytes to receive, as if they had come in on
-      // its serial line.
-      .def("uart_write",
+      // Hands the serial transport at `path` bytes to receive, as if they
+      // had come in on its line.
+      .def("far_end_write",
            [](NativePlatform& self, const std::string& path,
               const py::bytes& received) {
-             self.platform.ModuleAt<socpuppet::Ns16550>(path).Write(
-                 std::string_view{received});
-           })
-      // The same two for the virtio console at `path`: what the driver has
-      // put out, and bytes for it to receive.
-      .def("virtio_console_output",
-           [](NativePlatform& self, const std::string& path) {
-             return py::bytes(
-                 self.platform.ModuleAt<socpuppet::VirtioConsole>(path)
-                     .Output());
-           })
-      .def("virtio_console_write",
-           [](NativePlatform& self, const std::string& path,
-              const py::bytes& received) {
-             self.platform.ModuleAt<socpuppet::VirtioConsole>(path).Write(
+             self.platform.ModuleAt<socpuppet::FarEnd>(path).Write(
                  std::string_view{received});
            })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
