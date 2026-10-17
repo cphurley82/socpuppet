@@ -97,10 +97,9 @@ struct Rig {
   }
   // Sets queue `number` up, as the driver does: its size, where its three
   // parts are, and that it is ready.
-  void SetUpQueue(std::uint32_t number, std::uint32_t size,
-                  Virtqueue::Layout layout) {
+  void SetUpQueue(std::uint32_t number, Virtqueue::Layout layout) {
     Write32(VIRTIO_MMIO_QUEUE_SEL, number);
-    Write32(VIRTIO_MMIO_QUEUE_NUM, size);
+    Write32(VIRTIO_MMIO_QUEUE_NUM, layout.size);
     Write32(VIRTIO_MMIO_QUEUE_DESC_LOW,
             static_cast<std::uint32_t>(layout.desc));
     Write32(VIRTIO_MMIO_QUEUE_DESC_HIGH,
@@ -135,6 +134,9 @@ TEST(WhenTheDriverReadsTheFirstFourRegistersOfAVirtioDevice,
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_VENDOR_ID), 0x5350U);
 }
 
+// The transport's own feature bit: the modern layout (virtio 1.2, section 6).
+constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
+
 TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
      TheyAreWhatTheDeviceOffersWithVersionOneAdded) {
   Rig rig;
@@ -145,10 +147,9 @@ TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
   const std::uint32_t high = rig.Read32(VIRTIO_MMIO_DEVICE_FEATURES);
 
   EXPECT_EQ((std::uint64_t{high} << 32) | low,
-            FakeDevice::kFeatures | (std::uint64_t{1} << 32));
+            FakeDevice::kFeatures | kVersion1);
 }
 
-constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
 constexpr std::uint32_t kSeenAndDriven =
     VIRTIO_MMIO_STATUS_ACKNOWLEDGE | VIRTIO_MMIO_STATUS_DRIVER;
 
@@ -200,16 +201,17 @@ TEST(WhenTheDriverAsksHowBigAQueueCanBe,
 }
 
 // A queue of eight entries, laid out in the memory the way the
-// specification lays it out.
+// specification lays it out, and its buffers after it.
 constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
                                    .avail = kMemory + 0x2000,
                                    .used = kMemory + 0x3000,
                                    .size = 8};
+constexpr std::uint64_t kBuffers = kMemory + 0x4000;
 
 TEST(WhenTheDriverHasSetOneQueueUp,
      ThatQueueReadsAsReadyAndTheDevicesOtherQueueDoesNot) {
   Rig rig;
-  rig.SetUpQueue(1, kQueue.size, kQueue);
+  rig.SetUpQueue(1, kQueue);
 
   rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 1);
   const std::uint32_t set_up = rig.Read32(VIRTIO_MMIO_QUEUE_READY);
@@ -231,8 +233,8 @@ TEST(WhenTheDriverGivesAQueueMoreEntriesThanItMayHave, TheWriteIsRefused) {
 TEST(WhenTheDriverRingsTheDoorbellOfAQueueWithTwoChainsAvailable,
      TheDeviceIsHandedBothInOrder) {
   Rig rig;
-  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
-  rig.SetUpQueue(0, kQueue.size, kQueue);
+  VirtqueueDriver driver{rig.memory, kQueue, kBuffers};
+  rig.SetUpQueue(0, kQueue);
   driver.Describe(0, 8, VirtqueueDriver::kReadable);
   driver.Describe(1, 8, VirtqueueDriver::kReadable);
   driver.MakeAvailable(0);
@@ -248,8 +250,8 @@ TEST(WhenTheDriverRingsTheDoorbellOfAQueueWithTwoChainsAvailable,
 
 TEST(WhenTheDeviceHasUsedAChain, TheTransportInterruptsAndSaysWhy) {
   Rig rig;
-  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
-  rig.SetUpQueue(0, kQueue.size, kQueue);
+  VirtqueueDriver driver{rig.memory, kQueue, kBuffers};
+  rig.SetUpQueue(0, kQueue);
   rig.device.uses_each_chain = true;
   driver.Describe(0, 8, VirtqueueDriver::kReadable);
   driver.MakeAvailable(0);
@@ -265,8 +267,8 @@ TEST(WhenTheDeviceHasUsedAChain, TheTransportInterruptsAndSaysWhy) {
 TEST(WhenTheDriverAcknowledgesTheUsedBufferInterrupt,
      TheTransportStopsInterruptingUntilTheNextChainIsUsed) {
   Rig rig;
-  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
-  rig.SetUpQueue(0, kQueue.size, kQueue);
+  VirtqueueDriver driver{rig.memory, kQueue, kBuffers};
+  rig.SetUpQueue(0, kQueue);
   rig.device.uses_each_chain = true;
   driver.Describe(0, 8, VirtqueueDriver::kReadable);
   driver.Describe(1, 8, VirtqueueDriver::kReadable);
@@ -287,11 +289,11 @@ TEST(WhenTheDriverAcknowledgesTheUsedBufferInterrupt,
 TEST(WhenTheDriverWritesZeroToStatus,
      TheDeviceIsResetAndItsQueuesFeaturesAndInterruptAreForgotten) {
   Rig rig;
-  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
+  VirtqueueDriver driver{rig.memory, kQueue, kBuffers};
   rig.AcceptFeatures(FakeDevice::kFeatures | kVersion1);
   rig.Write32(VIRTIO_MMIO_STATUS,
               kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
-  rig.SetUpQueue(0, kQueue.size, kQueue);
+  rig.SetUpQueue(0, kQueue);
   rig.device.uses_each_chain = true;
   driver.Describe(0, 8, VirtqueueDriver::kReadable);
   driver.MakeAvailable(0);
@@ -350,12 +352,33 @@ TEST(WhenAnAccessToATransportRegisterIsNotOneWholeAlignedWord, ItIsRefused) {
 
 TEST(WhenTheDriverAsksAboutSharedMemory, TheLengthSaysThereIsNone) {
   Rig rig;
-  rig.Write32(VIRTIO_MMIO_SHM_SEL, 0);
+  EXPECT_TRUE(rig.Write32(VIRTIO_MMIO_SHM_SEL, 0));
 
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_SHM_LEN_LOW),
             VIRTIO_MMIO_SHM_LEN_LOW_AT_RESET);
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_SHM_LEN_HIGH),
             VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET);
+}
+
+TEST(WhenTheDriverSelectsAHalfOfTheFeaturesThatThereIsNot,
+     ItReadsAsZeroAndWhatIsWrittenThereCountsForNothing) {
+  Rig rig;
+  rig.AcceptFeatures(FakeDevice::kFeatures | kVersion1);
+  rig.Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 2);
+  rig.Write32(VIRTIO_MMIO_DRIVER_FEATURES, 0xFFFF'FFFF);
+  rig.Write32(VIRTIO_MMIO_DEVICE_FEATURES_SEL, 2);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_DEVICE_FEATURES), 0U);
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS),
+            kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+}
+
+TEST(WhenTheDriverRingsTheDoorbellOfAQueueItHasNotSetUp, TheWriteIsRefused) {
+  Rig rig;
+
+  EXPECT_FALSE(rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0));
 }
 
 }  // namespace

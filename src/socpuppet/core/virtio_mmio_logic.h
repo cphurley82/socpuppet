@@ -78,10 +78,9 @@ class VirtioMmioLogic {
         StoreLittleEndian(VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET, out);
         return true;
       case VIRTIO_MMIO_QUEUE_READY:
-        StoreLittleEndian(Selected() && Selected()->ready
-                              ? VIRTIO_MMIO_QUEUE_READY_READY
-                              : 0U,
-                          out);
+        StoreLittleEndian(
+            Selected() && Selected()->ring ? VIRTIO_MMIO_QUEUE_READY_READY : 0U,
+            out);
         return true;
       default:
         return false;
@@ -125,15 +124,14 @@ class VirtioMmioLogic {
         return SetHalfOf(&Queue::Layout::used, 1, value);
       case VIRTIO_MMIO_QUEUE_READY:
         if (!Selected()) return false;
-        Selected()->ready = (value & VIRTIO_MMIO_QUEUE_READY_READY) != 0;
-        if (Selected()->ready) {
+        if ((value & VIRTIO_MMIO_QUEUE_READY_READY) != 0) {
           Selected()->ring.emplace(memory_, Selected()->layout);
         } else {
           Selected()->ring.reset();
         }
         return true;
       case VIRTIO_MMIO_QUEUE_NOTIFY:
-        if (value >= queues_.size()) return false;
+        if (value >= queues_.size() || !queues_[value].ring) return false;
         queues_[value].rung = true;
         return true;
       case VIRTIO_MMIO_INTERRUPT_ACK:
@@ -166,7 +164,7 @@ class VirtioMmioLogic {
     bool done = false;
     for (std::uint16_t number = 0; number < queues_.size(); ++number) {
       Queue& queue = queues_[number];
-      if (!queue.ready) continue;
+      if (!queue.ring) continue;
       if (queue.rung) {
         queue.rung = false;
         while (std::optional<Virtqueue::Chain> chain = queue.ring->Next()) {
@@ -195,8 +193,8 @@ class VirtioMmioLogic {
   struct Queue {
     using Layout = Virtqueue::Layout;
     Layout layout{.desc = 0, .avail = 0, .used = 0, .size = 0};
-    bool ready = false;
-    // The queue itself, from when the driver says it is ready.
+    // The queue itself, from when the driver says it is ready until it
+    // says it is not.
     std::optional<Virtqueue> ring;
     // Whether the driver has rung its doorbell since the device last looked.
     bool rung = false;
@@ -205,7 +203,6 @@ class VirtioMmioLogic {
 
     void Clear() {
       layout = Layout{.desc = 0, .avail = 0, .used = 0, .size = 0};
-      ready = false;
       ring.reset();
       rung = false;
       used_reported = 0;
