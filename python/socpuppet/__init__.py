@@ -27,7 +27,13 @@ from socpuppet.components import (
     VirtioRng,
     Watchdog,
 )
-from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
+from socpuppet.errors import (
+    BusError,
+    ExpectationFailed,
+    NvmeError,
+    PcieError,
+    VirtioError,
+)
 from socpuppet.io_manager import IoManager
 from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost, NvmeNamespace
@@ -52,6 +58,7 @@ from socpuppet.trace import render as render_trace
 from socpuppet.transcript import Transcript
 from socpuppet.transcript import render as render_transcript
 from socpuppet.ucie import render_sideband
+from socpuppet.virtio_host import VirtioHost, VirtioRngHost
 
 __all__ = [
     "Aplic",
@@ -92,7 +99,10 @@ __all__ = [
     "SystemController",
     "TraceRecord",
     "Transcript",
+    "VirtioError",
+    "VirtioHost",
     "VirtioRng",
+    "VirtioRngHost",
     "Watchdog",
     "expect32",
     "ms",

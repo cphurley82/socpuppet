@@ -19,3 +19,7 @@ class NvmeError(RuntimeError):
 
 class PcieError(RuntimeError):
     """A PCIe device does not have what the host's PCI code needs of it."""
+
+
+class VirtioError(RuntimeError):
+    """A virtio device did not do what its driver expected of it."""
