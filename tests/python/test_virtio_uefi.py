@@ -12,7 +12,8 @@ types at the shell.
                                   ├─▶ io.rng.cpu    (slot 0)
                                   ├─▶ io.console.cpu (slot 1, no driver)
                                   ├─▶ io.blk.cpu    (slot 2)
-                                  └─▶ io.net.cpu    (slot 3)
+                                  ├─▶ io.net.cpu    (slot 3)
+                                  └─▶ io.fs.cpu     (slot 4)
 """
 
 import re
@@ -44,18 +45,23 @@ ITS_ADDRESS = "192.0.2.1"
 NEIGHBOUR = ethernet.Neighbour(
     mac=ethernet.mac("02:00:00:00:00:02"), address=ethernet.ipv4("192.0.2.2")
 )
+#: What the share Python serves is called.
+TAG = "spam"
 #: The disk Python hands UEFI: 1 MiB, with one file on it.
 SECTORS = 2048
 SPAM = b"spam, spam, spam\r\n"
 
 
-def uefi_at_its_shell(firmware, *, disk=None):
+def uefi_at_its_shell(firmware, *, disk=None, share=None):
     """A host with the virtio slots, booted to UEFI's `Shell>`.
 
-    `disk` is an image for the virtio disk, put on it before the boot.
+    `disk` is an image for the virtio disk, put on it before the boot, and
+    `share` a directory the file system device serves, by the tag `TAG`.
     """
     board, layout = a_host_with_opensbi(
-        firmware, UEFI_FD, virtio=Virtio(blocks=SECTORS)
+        firmware,
+        UEFI_FD,
+        virtio=Virtio(blocks=SECTORS, tag=TAG, share=share),
     )
     if disk is not None:
         board.virtio.blk.load(disk)
@@ -149,3 +155,27 @@ def a_neighbour_answering(net):
         heard = len(frames)
 
     return answer
+
+
+@pytest.mark.platform
+class TestWhenUefiBootsWithADirectorySharedInTheVirtioSlot:
+    def test_it_mounts_it_by_its_tag_reads_it_and_writes_a_file_to_it(
+        self, firmware, tmp_path
+    ):
+        (tmp_path / "SPAM.TXT").write_bytes(SPAM)
+        (tmp_path / "eggs").mkdir()
+        board = uefi_at_its_shell(firmware, share=tmp_path)
+
+        # The disk, with no file system on it, is no FSn: the share is FS0.
+        mapped = type_and_wait_for_the_prompt(board, "map -r")
+        volume = type_and_wait_for_the_prompt(board, "vol fs0:")
+        listed = type_and_wait_for_the_prompt(board, "ls fs0:")
+        typed = type_and_wait_for_the_prompt(board, r"type fs0:\SPAM.TXT")
+        type_and_wait_for_the_prompt(board, r"echo eggs >a fs0:\EGGS.TXT")
+
+        assert as_uefi_names_it(board, board.virtio.fs) in mapped
+        assert f"Volume {TAG} (rw)" in volume
+        assert re.search(r"<DIR>\s+\d+\s+eggs", listed)
+        assert re.search(r"\b18\s+SPAM\.TXT", listed)
+        assert SPAM.decode() in typed
+        assert (tmp_path / "EGGS.TXT").read_bytes() == b"eggs\r\n"
