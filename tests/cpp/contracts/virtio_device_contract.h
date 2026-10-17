@@ -120,6 +120,12 @@ class VirtioDeviceContract : public ::testing::Test {
       Rig::AChainItAnswers(queue);
       Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
     }
+
+    // Acknowledges whatever the device has raised, the way every driver
+    // does: read the status, write it back.
+    void Acknowledge() {
+      Write32(VIRTIO_MMIO_INTERRUPT_ACK, Read32(VIRTIO_MMIO_INTERRUPT_STATUS));
+    }
   };
 
   // Builds the platform and runs it with `body` as what the driver does.
@@ -179,7 +185,7 @@ TYPED_TEST_P(VirtioDeviceContract, WhenTheDriverLooksItSaysItIsAVirtioDevice) {
 
 TYPED_TEST_P(
     VirtioDeviceContract,
-    WhenTheDriverRingsTheDoorbellWithAChainTheDeviceAnswers_ItIsGivenBackUsedAndTheLineRises) {
+    WhenTheDriverRingsWithAChainItAnswers_ItComesBackUsedAndTheLineRises) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
 
@@ -197,8 +203,7 @@ TYPED_TEST_P(VirtioDeviceContract,
     driver.Ask();
     ASSERT_TRUE(line.WaitForLevel(true, this->Patience()));
 
-    driver.Write32(VIRTIO_MMIO_INTERRUPT_ACK,
-                   driver.Read32(VIRTIO_MMIO_INTERRUPT_STATUS));
+    driver.Acknowledge();
 
     EXPECT_TRUE(line.WaitForLevel(false, this->Patience()));
   });
@@ -210,8 +215,7 @@ TYPED_TEST_P(VirtioDeviceContract,
     driver.SetUp();
     driver.Ask();
     ASSERT_TRUE(line.WaitForLevel(true, this->Patience()));
-    driver.Write32(VIRTIO_MMIO_INTERRUPT_ACK,
-                   driver.Read32(VIRTIO_MMIO_INTERRUPT_STATUS));
+    driver.Acknowledge();
     ASSERT_TRUE(line.WaitForLevel(false, this->Patience()));
 
     driver.Ask();
@@ -236,9 +240,8 @@ TYPED_TEST_P(VirtioDeviceContract,
   });
 }
 
-TYPED_TEST_P(
-    VirtioDeviceContract,
-    WhenTheDriversDoorbellWriteReturns_TheDeviceHasNotYetTouchedTheMemory) {
+TYPED_TEST_P(VirtioDeviceContract,
+             WhenTheDoorbellWriteReturns_TheDeviceHasNotTouchedTheMemoryYet) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
 
@@ -253,10 +256,10 @@ TYPED_TEST_P(
 
 REGISTER_TYPED_TEST_SUITE_P(
     VirtioDeviceContract, WhenTheDriverLooksItSaysItIsAVirtioDevice,
-    WhenTheDriverRingsTheDoorbellWithAChainTheDeviceAnswers_ItIsGivenBackUsedAndTheLineRises,
+    WhenTheDriverRingsWithAChainItAnswers_ItComesBackUsedAndTheLineRises,
     WhenTheDriverAcknowledgesTheInterrupt_TheLineFalls,
     WhenTheDriverRingsAgainAfterAcknowledging_TheLineRisesAgain,
     WhenTheDriverResetsTheDevice_TheLineFallsAndTheQueueIsGone,
-    WhenTheDriversDoorbellWriteReturns_TheDeviceHasNotYetTouchedTheMemory);
+    WhenTheDoorbellWriteReturns_TheDeviceHasNotTouchedTheMemoryYet);
 
 #endif  // TESTS_CPP_CONTRACTS_VIRTIO_DEVICE_CONTRACT_H_

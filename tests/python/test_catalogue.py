@@ -74,7 +74,7 @@ EXAMPLES = [
     sp.ScriptedBusMaster(),
     sp.SpiFlash(size=0x1000),
     sp.SystemController(die=1, boot_address=0x1020_0000),
-    sp.VirtioRng(seed=1),
+    sp.VirtioRng(),
     sp.Watchdog(),
 ]
 

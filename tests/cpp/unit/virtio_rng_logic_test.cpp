@@ -1,6 +1,5 @@
 #include "socpuppet/core/virtio_rng_logic.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -50,8 +49,11 @@ struct Rig {
   explicit Rig(std::uint64_t seed) : rng(seed) {}
 
   // Asks the device for `length` bytes: a writable chain, handed over.
-  std::vector<std::uint8_t> Ask(std::uint32_t length) {
+  // The buffer starts out full of `before`, so that a byte the device did
+  // not write shows.
+  std::vector<std::uint8_t> Ask(std::uint32_t length, std::uint8_t before = 0) {
     driver.Describe(0, length, VirtqueueDriver::kWrite);
+    driver.Fill(0, std::vector<std::uint8_t>(length, before));
     driver.MakeAvailable(0);
     const std::optional<Virtqueue::Chain> chain = queue.Next();
     EXPECT_TRUE(chain.has_value());
@@ -67,12 +69,15 @@ struct Rig {
 
 TEST(WhenTheDriverAsksAnEntropyDeviceForBytes,
      TheWholeBufferIsFilledAndGivenBackForItsWholeLength) {
-  Rig rig{1};
+  // Two devices with the same seed give the same bytes, so a byte that was
+  // not written is the one place the two buffers could differ.
+  Rig first{1};
+  Rig second{1};
 
-  const std::vector<std::uint8_t> bytes = rig.Ask(64);
+  const std::vector<std::uint8_t> bytes = first.Ask(64, 0x00);
 
-  EXPECT_EQ(rig.driver.UsedAt(0).length, 64U);
-  EXPECT_NE(std::ranges::count(bytes, 0), 64);
+  EXPECT_EQ(bytes, second.Ask(64, 0xFF));
+  EXPECT_EQ(first.driver.UsedAt(0).length, 64U);
 }
 
 TEST(WhenTwoEntropyDevicesAreBuiltWithTheSameSeed, TheyGiveTheSameBytes) {
