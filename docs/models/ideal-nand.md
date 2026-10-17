@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 A NAND flash chip, which is what an SSD keeps its data in.
 
 🎓 NAND flash is not written the way memory is. It has three operations, and they come in two sizes:

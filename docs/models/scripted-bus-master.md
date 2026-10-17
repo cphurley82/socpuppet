@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 A CPU running firmware. From the rest of the platform's point of view, a CPU is something that issues reads and writes on a bus, reacts to an interrupt and can be held in reset. This stand-in does exactly that much, driven by a script instead of by instructions.
 
 It exists so that buses, memories, links and devices can be built and tested before any CPU model or firmware does.

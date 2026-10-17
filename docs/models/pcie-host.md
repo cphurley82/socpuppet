@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 The part of a host's firmware that finds PCIe devices and sets them up, before any driver runs. On the finished platform that is Zephyr's PCIe code on the host CPU. 🚧 Until that boots, this stands in for it.
 
 ## What it does

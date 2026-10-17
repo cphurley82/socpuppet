@@ -1,10 +1,10 @@
-# Virtio network device
+# 🎭 Virtio network device
 
 `sp.VirtioNet(mac=0x0200_5E00_5301)` · C++ `socpuppet::VirtioNet` · registry name `virtio_net`
 
 ## What it stands for
 
-🎭 A stand-in for an Ethernet port, with Python on the other end of the wire: QEMU's `virtio-net-device`. 🎓 Device 1 in the specification (section 5.1): a receive queue the driver keeps stocked with empty buffers, a transmit queue it sends frames on, and a 12-byte header in front of every frame both ways, for offloads this device offers none of.
+🎭 A stand-in (a simplified model) for an Ethernet port, with Python on the other end of the wire: QEMU's `virtio-net-device`. 🎓 Device 1 in the specification (section 5.1): a receive queue the driver keeps stocked with empty buffers, a transmit queue it sends frames on, and a 12-byte header in front of every frame both ways, for offloads this device offers none of.
 
 ## What it does
 

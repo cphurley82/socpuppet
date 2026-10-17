@@ -1,10 +1,10 @@
-# Virtio console
+# 🎭 Virtio console
 
 `sp.VirtioConsole()` · C++ `socpuppet::VirtioConsole` · registry name `virtio_console`
 
 ## What it stands for
 
-🎭 A stand-in for a serial port with no baud rate: the console QEMU gives a guest as `virtio-serial-device` with one port. 🎓 Device 3 in the specification (section 5.3): a receive queue the driver keeps stocked with empty buffers, and a transmit queue it puts bytes out on.
+🎭 A stand-in (a simplified model) for a serial port with no baud rate: the console QEMU gives a guest as `virtio-serial-device` with one port. 🎓 Device 3 in the specification (section 5.3): a receive queue the driver keeps stocked with empty buffers, and a transmit queue it puts bytes out on.
 
 ## What it does
 

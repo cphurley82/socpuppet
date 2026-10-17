@@ -120,11 +120,11 @@ A drive adds no line. Its interrupts are messages: identities 32 and 33, one for
 
 | Address | Size | What answers | Its model | Through |
 | --- | --- | --- | --- | --- |
-| `0x1000_1000` | 512 bytes | `io.rng.cpu` | [Virtio entropy device](models/virtio-rng.md) | `compute.bus` from `0x1000_0000` |
-| `0x1000_2000` | 512 bytes | `io.console.cpu` | [Virtio console](models/virtio-console.md) | `compute.bus` from `0x1000_0000` |
-| `0x1000_3000` | 512 bytes | `io.blk.cpu` | [Virtio block device](models/virtio-blk.md) | `compute.bus` from `0x1000_0000` |
-| `0x1000_4000` | 512 bytes | `io.net.cpu` | [Virtio network device](models/virtio-net.md) | `compute.bus` from `0x1000_0000` |
-| `0x1000_5000` | 512 bytes | `io.fs.cpu` | [Virtio file system device](models/virtio-fs.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_1000` | 512 bytes | `io.rng.cpu` | [🎭 Virtio entropy device](models/virtio-rng.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_2000` | 512 bytes | `io.console.cpu` | [🎭 Virtio console](models/virtio-console.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_3000` | 512 bytes | `io.blk.cpu` | [🎭 Virtio block device](models/virtio-blk.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_4000` | 512 bytes | `io.net.cpu` | [🎭 Virtio network device](models/virtio-net.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_5000` | 512 bytes | `io.fs.cpu` | [🎭 Virtio file system device](models/virtio-fs.md) | `compute.bus` from `0x1000_0000` |
 
 <!-- address-map:host-virtio end -->
 

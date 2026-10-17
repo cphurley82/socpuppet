@@ -42,6 +42,11 @@ A device's own registers come after these, from `0x0C`, and what its `COMMAND` c
 - **The status is always about the last command.** Giving the next one forgets how the last one went.
 - **`BUSY` cannot be cleared.** The CPU clears `DONE` or `ERROR` by writing a one to it, and the device interrupts for as long as a bit the CPU has enabled is set.
 
+## What it leaves out
+
+- **A queue of commands.** One at a time, as the registers say; a real controller often takes a ring of them and works ahead.
+- **Cancelling, and a timeout.** Once given, a command runs until `DONE` or `ERROR`; nothing can take it back, and nothing times it out.
+
 ## Under the hood
 
 - `regs/command_device.rdl` is the register map, in SystemRDL. `tools/regs.py` writes the table above from it, and the C header and the Python module that the rest go by.

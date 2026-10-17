@@ -29,7 +29,7 @@ platform.load_binary("image.img", at=0x1020_0000)
 - **Reads through the window** are answered from the flash. An erased flash reads as zeros here.
 - **A write through the window is refused**, with a command-error response, and changes nothing. In a script that is a `sp.BusError`.
 - **A read past the end** is an address error.
-- **No direct memory access.** Every read through the window is a transaction, so a trace shows a boot ROM fetching its image, and across a die-to-die link each read crosses it.
+- **No DMI**, the direct memory interface that lets a CPU read a memory's bytes through a pointer. Every read through the window is a transaction, so a trace shows a boot ROM fetching its image, and across a die-to-die link each read crosses it.
 - **Loading.** 🧵 `platform.load_binary(file, at=...)` and `platform.poke(...)` fill the flash through the window, by debug transport, as they fill a RAM. Unlike a [ROM](rom.md) it can be filled at any time: a flash is the part that can be changed.
 
 ## What it leaves out
@@ -49,6 +49,6 @@ socpuppet wraps the three in an adapter (`src/socpuppet/models/spi_flash.cpp`) w
 
 - **It refuses a write.** The borrowed window takes one, as a memory does.
 - **It ends where the flash does.** The borrowed chip is 256 MiB whatever is asked for, and an access past that ends the process where it should be an error ([upstream.md](../upstream.md)).
-- **It does not say direct memory access is worth asking for.** The borrowed window says so, and then has no way to grant it.
+- **It does not say DMI is worth asking for.** The borrowed window says so, and then has no way to grant it.
 
 `tests/cpp/platform/spi_flash_test.cpp` holds it.

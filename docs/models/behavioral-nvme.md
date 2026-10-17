@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 An NVMe SSD, as the host's driver sees it. 🎓 NVMe (Non-Volatile Memory Express) is the protocol a computer speaks to a modern SSD. It is built around queues that live in the host's own memory:
 
 ```text

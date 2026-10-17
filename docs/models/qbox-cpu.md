@@ -41,7 +41,7 @@ board = host(cpu="qbox_cpu")        # or SOCPUPPET_CPU=qbox_cpu for every host
 
 ## What makes it fast
 
-🎓 The same two things as the DBT-RISE CPU (direct memory access and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran M26's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../history/speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34.
+🎓 The same two things as the DBT-RISE CPU (the direct memory interface and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran M26's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../history/speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34.
 
 ## What it does differently
 

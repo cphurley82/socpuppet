@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 The die-to-die (D2D) link of a chiplet design: the connection between two dies in one package, in the style of [UCIe](https://www.uciexpress.org). On real hardware it is a physical layer that has to be trained before use, a protocol on top, and a sideband channel for management.
 
 ## What it does

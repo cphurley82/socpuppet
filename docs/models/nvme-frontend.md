@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The part of an SSD's controller chip that speaks NVMe to the host. It is where an SSD stops being the [stand-in drive](behavioral-nvme.md), which answers every command itself, and becomes hardware with firmware behind it.
+The part of an SSD's controller chip that speaks NVMe to the host. It is where an SSD stops being the [stand-in drive](behavioral-nvme.md), the simplified model that answers every command itself, and becomes hardware with firmware behind it.
 
 🎓 A real controller splits the work between the two. Hardware does what has to be done the same way every time and fast: keeping track of the queues, fetching commands, writing completions, raising interrupts. Firmware does what takes judgement: what each command means, whether the host may have what it asks for, and where the data really is. The frontend is the hardware's half.
 
