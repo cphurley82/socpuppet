@@ -2,6 +2,7 @@
 #define TESTS_CPP_SUPPORT_VIRTIO_CONSOLE_RIG_H_
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "socpuppet/core/virtio_console_logic.h"
@@ -15,6 +16,9 @@ struct VirtioConsoleRig {
   using Device = socpuppet::VirtioConsole;
   static constexpr std::uint16_t kAnswersOn =
       socpuppet::VirtioConsoleLogic::kTransmitQueue;
+  static std::unique_ptr<Device> Make(const char* name) {
+    return std::make_unique<Device>(name);
+  }
   static void AChainItAnswers(VirtqueueDriver& driver) {
     driver.Describe(0, 4, VirtqueueDriver::kReadable);
     driver.Fill(0, std::vector<std::uint8_t>{'s', 'p', 'a', 'm'});

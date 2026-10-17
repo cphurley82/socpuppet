@@ -23,5 +23,12 @@
 				compatible = "virtio,console";
 			};
 		};
+
+		io_blk: virtio_mmio@10003000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10003000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <20 1 4>;
+		};
 	};
 };

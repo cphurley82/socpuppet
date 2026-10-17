@@ -20,6 +20,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
@@ -189,6 +190,24 @@ PYBIND11_MODULE(_core, m) {
               const py::bytes& received) {
              self.platform.ModuleAt<socpuppet::FarEnd>(path).Write(
                  std::string_view{received});
+           })
+      // Puts a disk image on the virtio disk at `path`, from its first
+      // sector on. Too large an image is refused (ValueError).
+      .def("disk_load",
+           [](NativePlatform& self, const std::string& path,
+              const py::bytes& image) {
+             const std::string_view bytes{image};
+             self.platform.ModuleAt<socpuppet::VirtioBlk>(path).Load(
+                 std::span(reinterpret_cast<const std::uint8_t*>(bytes.data()),
+                           bytes.size()));
+           })
+      // Everything on the virtio disk at `path`.
+      .def("disk_contents",
+           [](NativePlatform& self, const std::string& path) {
+             const std::vector<std::uint8_t> bytes =
+                 self.platform.ModuleAt<socpuppet::VirtioBlk>(path).Contents();
+             return py::bytes(reinterpret_cast<const char*>(bytes.data()),
+                              bytes.size());
            })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",

@@ -809,6 +809,34 @@ class TestTheHostsVirtioSlots:
             in board.platform.interrupt_map()
         )
 
+    def test_the_disk_has_as_many_blocks_as_the_host_was_told(self):
+        board = host(virtio=Virtio(blocks=64))
+        board.platform.build()
+
+        assert len(board.virtio.blk.contents) == 64 * 512
+
+    def test_the_disk_is_in_the_third_slot(self):
+        board = host(virtio=Virtio())
+        [slot] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.virtio.blk.path
+        ]
+
+        assert slot.address == (
+            IO_BASE + VIRTIO_SLOT_OFFSET + 2 * VIRTIO_SLOT_STRIDE
+        )
+
+    def test_the_disk_interrupts_through_the_source_after_the_consoles(
+        self,
+    ):
+        board = host(virtio=Virtio())
+
+        assert (
+            InterruptEntry("io.aplic", VIRTIO_FIRST_SOURCE + 2, "io.blk.irq")
+            in board.platform.interrupt_map()
+        )
+
     def test_the_entropy_devices_dma_reaches_the_ram(self):
         board = host(virtio=Virtio())
         reached = board.platform.address_map(via=board.virtio.rng.dma)

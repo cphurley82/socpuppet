@@ -24,6 +24,7 @@ add_executable(unit_tests
   unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp
   unit/virtio_console_logic_test.cpp
+  unit/virtio_blk_logic_test.cpp
   unit/virtio_mmio_logic_test.cpp
   unit/virtio_rng_logic_test.cpp
   unit/virtqueue_test.cpp)

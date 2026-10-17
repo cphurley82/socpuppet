@@ -1,5 +1,6 @@
 #include "socpuppet/core/virtio_mmio_logic.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -53,7 +54,12 @@ class FakeDevice : public VirtioDevice {
   // Which chains the transport has handed over: the queue and the head.
   std::vector<std::pair<std::uint16_t, std::uint16_t>> handled;
   void Reset() override { resets += 1; }
-  std::span<std::uint8_t> Config() override { return config; }
+  std::span<const std::uint8_t> Config() const override { return config; }
+  // A configuration the driver may write all of.
+  void WriteConfig(std::uint64_t offset,
+                   std::span<const std::uint8_t> bytes) override {
+    std::ranges::copy(bytes, std::span(config).subspan(offset).begin());
+  }
 
   // Its configuration: six bytes of nothing in particular.
   std::array<std::uint8_t, 6> config{0x10, 0x11, 0x12, 0x13, 0x14, 0x15};

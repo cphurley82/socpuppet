@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from socpuppet.components import VirtioConsole, VirtioRng
-from socpuppet.placed import Placed, PlacedConsole, PlacedRouter
+from socpuppet.components import VirtioBlk, VirtioConsole, VirtioRng
+from socpuppet.placed import Placed, PlacedBlock, PlacedConsole, PlacedRouter
 from socpuppet.platform import Group, Platform
 
 #: How far apart the slots are: QEMU's `virt` has the same, a page each.
@@ -35,10 +35,12 @@ class Virtio:
     """What the host's virtio devices are told when the host is described.
 
     `seed` is what the entropy device's bytes come from, so that a run can
-    be repeated.
+    be repeated. `blocks` is how many 512-byte sectors the disk has: 1 MiB
+    unless told otherwise.
     """
 
     seed: int = 1
+    blocks: int = 2048
 
 
 class VirtioSlots(NamedTuple):
@@ -48,6 +50,8 @@ class VirtioSlots(NamedTuple):
     rng: Placed
     #: 🎭 The console, in slot 1.
     console: PlacedConsole
+    #: 🎭 The disk, in slot 2.
+    blk: PlacedBlock
 
 
 def add_virtio(
@@ -70,13 +74,14 @@ def add_virtio(
     """
     rng = place.add("rng", VirtioRng(seed=settings.seed))
     console = place.add("console", VirtioConsole())
-    for slot, device in enumerate([rng, console]):
+    blk = place.add("blk", VirtioBlk(blocks=settings.blocks))
+    for slot, device in enumerate([rng, console, blk]):
         bus.map(device.cpu, base=base + slot * VIRTIO_SLOT_STRIDE)
         platform.connect(
             device.irq, getattr(aplic, f"source{first_source + slot}")
         )
         platform.connect(device.dma, up.add_input())
-    return VirtioSlots(rng, console)
+    return VirtioSlots(rng, console, blk)
 
 
 __all__ = ["VIRTIO_SLOT_STRIDE", "Virtio", "VirtioSlots", "add_virtio"]

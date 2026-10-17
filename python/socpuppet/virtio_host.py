@@ -413,3 +413,63 @@ class VirtioConsoleHost(VirtioHost):
             self.RECEIVE_QUEUE, [], [at_most]
         )
         return answer[:written]
+
+
+# The request types and statuses of a virtio disk, section 5.2.6.
+_BLK_IN = 0
+_BLK_OUT = 1
+#: Each failing status, and what it most likely means here.
+_BLK_STATUSES = {
+    1: (
+        "IOERR",
+        "the request runs past the end of the disk, or is not whole sectors",
+    ),
+    2: ("UNSUPP", "the disk does not do that kind of request"),
+}
+#: The header that starts every request: its type, a reserved word, and
+#: the sector it starts at.
+_BLK_HEADER = struct.Struct("<IIQ")
+
+
+class VirtioBlkHost(VirtioHost):
+    """🧵 Stand-in for the driver of a virtio disk.
+
+    Takes what `VirtioHost` takes. `start` finds the device and sets its
+    one queue up; `read_sectors` and `write_sectors` move whole 512-byte
+    sectors. A request the device fails raises `VirtioError` with the
+    status it gave.
+    """
+
+    DEVICE_ID = 2  # Section 5.2.
+    QUEUES = 1
+    KIND = "a block device"
+    #: What a sector holds.
+    SECTOR = 512
+
+    def read_sectors(self, *, first: int, count: int) -> Steps[bytes]:
+        """Reads `count` sectors from sector `first` on."""
+        _, (data, status) = yield from self.submit(
+            0, [_blk_header(_BLK_IN, first)], [count * self.SECTOR, 1]
+        )
+        _refuse_unless_ok(status, f"reading sector {first}")
+        return data
+
+    def write_sectors(self, *, first: int, data: bytes) -> Steps[None]:
+        """Writes `data`, whole sectors of it, from sector `first` on."""
+        _, (status,) = yield from self.submit(
+            0, [_blk_header(_BLK_OUT, first), data], [1]
+        )
+        _refuse_unless_ok(status, f"writing sector {first}")
+
+
+def _blk_header(kind: int, sector: int) -> bytes:
+    return _BLK_HEADER.pack(kind, 0, sector)
+
+
+def _refuse_unless_ok(status: bytes, doing: str) -> None:
+    if status[0] != 0:
+        name, why = _BLK_STATUSES.get(
+            status[0],
+            (f"status {status[0]}", "which the specification has no name for"),
+        )
+        raise VirtioError(f"The disk answered {name} on {doing}: {why}.")

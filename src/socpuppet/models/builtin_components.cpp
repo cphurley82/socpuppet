@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -36,6 +37,7 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
+#include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_console.h"
 #include "socpuppet/models/virtio_rng.h"
 #include "socpuppet/models/watchdog.h"
@@ -48,6 +50,7 @@ namespace socpuppet {
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
+static_assert(VirtioDeviceSlot<VirtioBlk>);
 static_assert(VirtioDeviceSlot<VirtioConsole>);
 static_assert(VirtioDeviceSlot<VirtioRng>);
 static_assert(WatchdogSlot<Watchdog>);
@@ -93,6 +96,11 @@ constexpr Within kInterruptIdentities{.least = 63, .most = 2047};
 // carrying no bytes in a nanosecond would never carry anything. A time of
 // zero means something, so no latency or training time has a range.
 constexpr Within kAtLeastOne{.least = 1};
+
+// How many 512-byte sectors a virtio disk may have: at least one, and no
+// more than the bytes of them can be counted in 64 bits.
+constexpr Within kDiskSectors{
+    .least = 1, .most = std::numeric_limits<std::uint64_t>::max() / 512};
 
 // What a NAND chip's geometry is made of: counts that a controller reads
 // from 32-bit registers, and none of which can be nothing.
@@ -377,6 +385,15 @@ Registry BuiltinComponents() {
         name, parameters.Required("size", kFlashSize));
     std::vector<Port> ports{TargetPort("socket", module->socket),
                             TargetPort("xip", module->xip)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_blk", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<VirtioBlk>(
+        name, parameters.Required("blocks", kDiskSectors));
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_console", [](const char* name, Parameters&) {

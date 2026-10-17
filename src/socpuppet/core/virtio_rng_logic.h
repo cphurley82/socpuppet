@@ -26,7 +26,7 @@ class VirtioRngLogic : public VirtioDevice {
   std::uint32_t DeviceId() const override { return kDeviceId; }
   std::uint64_t Features() const override { return 0; }
   std::uint16_t QueueCount() const override { return 1; }
-  std::span<std::uint8_t> Config() override { return {}; }
+  std::span<const std::uint8_t> Config() const override { return {}; }
   // Nothing is in flight to drop: a chain is answered as it is handed
   // over. The generator carries on, so a driver that resets does not get
   // the same bytes twice.

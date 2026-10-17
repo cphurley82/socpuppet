@@ -45,10 +45,16 @@ class VirtioDevice {
   // the chains it was holding with it.
   virtual void Reset() = 0;
 
-  // The device's own configuration, which the driver reads and writes at
-  // any width from `CONFIG` on (section 4.2.2). Empty for a device with
-  // none. The one accessor serves both directions, so it is not const.
-  virtual std::span<std::uint8_t> Config() = 0;
+  // The device's own configuration, which the driver reads at any width
+  // from `CONFIG` on (section 4.2.2). Empty for a device with none.
+  virtual std::span<const std::uint8_t> Config() const = 0;
+
+  // The driver writes `bytes` at `offset` in the configuration, inside
+  // it. Most fields are read-only, and a write to one is dropped, as
+  // QEMU's devices drop it; a device with a field the driver may write
+  // takes the write here.
+  virtual void WriteConfig(std::uint64_t /*offset*/,
+                           std::span<const std::uint8_t> /*bytes*/) {}
 };
 
 }  // namespace socpuppet

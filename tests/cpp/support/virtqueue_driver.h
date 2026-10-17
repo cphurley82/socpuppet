@@ -16,7 +16,7 @@
 // The driver's side of a split virtqueue, for tests of the device's side:
 // it writes descriptors and the available ring into a memory the way the
 // specification lays them out (virtio 1.2, section 2.7), and reads the
-// used ring back. Buffer `index` is at `buffers + 0x100 * index`.
+// used ring back. Buffer `index` is at `buffers + kBufferStride * index`.
 class VirtqueueDriver {
  public:
   // Descriptor flags, section 2.7.5: a descriptor with neither is one the
@@ -24,6 +24,8 @@ class VirtqueueDriver {
   static constexpr std::uint16_t kReadable = 0;
   static constexpr std::uint16_t kNext = 1;
   static constexpr std::uint16_t kWrite = 2;
+  // How far apart the buffers of two neighbouring descriptors are.
+  static constexpr std::uint64_t kBufferStride = 0x100;
 
   // One element of the used ring: which chain, and how many bytes the
   // device wrote to it.
@@ -90,7 +92,7 @@ class VirtqueueDriver {
 
  private:
   std::uint64_t BufferAt(std::uint16_t index) const {
-    return buffers_ + 0x100 * index;
+    return buffers_ + kBufferStride * index;
   }
   std::uint16_t Load16(std::uint64_t address) {
     std::array<std::uint8_t, 2> bytes{};

@@ -1,7 +1,7 @@
 """🧵 Python as the first driver of a virtio device.
 
 The platform tests run the driver against the entropy device, the smallest
-virtio device there is, and the console, on a scripted host; the rest play
+virtio device there is, the console and the disk, on a scripted host; the rest play
 it against a fake device with no simulator at all.
 
     host ─▶ bus ─┬─▶ ram
@@ -103,6 +103,99 @@ class TestWhenPythonTypesAtTheConsoleWhileTheHostWaitsForBytes:
         platform.run(sp.us(10))
 
         assert received == [b"eggs"]
+
+
+SECTOR = 512
+
+
+@pytest.mark.platform
+class TestWhenTheHostWritesTwoSectorsAndReadsThemBack:
+    def test_it_reads_what_it_wrote_and_python_finds_it_on_the_disk(self):
+        written = b"s" * SECTOR + b"e" * SECTOR
+        answers = []
+
+        def script():
+            disk = sp.VirtioBlkHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from disk.start()
+            yield from disk.write_sectors(first=2, data=written)
+            answers.append((yield from disk.read_sectors(first=2, count=2)))
+
+        platform, disk = host_with(script, sp.VirtioBlk(blocks=8))
+
+        platform.run()
+
+        assert answers == [written]
+        assert disk.contents[2 * SECTOR : 4 * SECTOR] == written
+
+
+@pytest.mark.platform
+class TestWhenPythonPutsAnImageOnTheDiskBeforeTheRun:
+    def test_its_last_sector_is_padded_and_the_rest_left_as_it_was(self):
+        answers = []
+
+        def script():
+            disk = sp.VirtioBlkHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from disk.start()
+            answers.append((yield from disk.read_sectors(first=0, count=2)))
+
+        platform, disk = host_with(script, sp.VirtioBlk(blocks=8))
+        disk.load(b"e" * 2 * SECTOR)
+        disk.load(b"spam")
+
+        platform.run()
+
+        assert answers == [b"spam" + bytes(SECTOR - 4) + b"e" * SECTOR]
+
+
+@pytest.mark.platform
+class TestWhenTheHostReadsPastTheEndOfTheDisk:
+    def test_the_error_comes_out_of_the_run_and_names_the_status(self):
+        def script():
+            disk = sp.VirtioBlkHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from disk.start()
+            # The disk has 8 sectors, numbered from 0.
+            yield from disk.read_sectors(first=8, count=1)
+
+        platform, _ = host_with(script, sp.VirtioBlk(blocks=8))
+
+        with pytest.raises(sp.VirtioError, match="IOERR"):
+            platform.run()
+
+
+@pytest.mark.platform
+class TestWhenTheHostWritesPastTheEndOfTheDisk:
+    def test_the_error_comes_out_of_the_run_and_says_what_to_check(self):
+        def script():
+            disk = sp.VirtioBlkHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from disk.start()
+            yield from disk.write_sectors(first=7, data=bytes(2 * SECTOR))
+
+        platform, _ = host_with(script, sp.VirtioBlk(blocks=8))
+
+        with pytest.raises(sp.VirtioError, match=r"IOERR.*past the end"):
+            platform.run()
+
+
+@pytest.mark.platform
+class TestWhenPythonPutsAnImageOnTheDiskThatIsLargerThanIt:
+    def test_it_is_refused_and_the_error_gives_both_sizes(self):
+        def script():
+            yield from ()
+
+        _, disk = host_with(script, sp.VirtioBlk(blocks=8))
+
+        with pytest.raises(ValueError, match=r"4097 bytes.*4096"):
+            disk.load(bytes(8 * SECTOR + 1))
+
+
+@pytest.mark.platform
+class TestWhenADiskIsDescribedWithNoBlocks:
+    def test_building_it_is_refused_and_the_error_gives_the_range(self):
+        def script():
+            yield from ()
+
+        with pytest.raises(ValueError, match=r'"blocks" from 1 to '):
+            host_with(script, sp.VirtioBlk(blocks=0))
 
 
 class FakeDevice:

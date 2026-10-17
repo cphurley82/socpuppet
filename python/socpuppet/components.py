@@ -37,7 +37,13 @@ from typing import (
     override,
 )
 
-from socpuppet.placed import Placed, PlacedConsole, PlacedRouter, PlacedUart
+from socpuppet.placed import (
+    Placed,
+    PlacedBlock,
+    PlacedConsole,
+    PlacedRouter,
+    PlacedUart,
+)
 from socpuppet.regs import (
     dma_engine,
     flash_controller,
@@ -1147,10 +1153,52 @@ class VirtioRng(Component):
         return virtio_node(
             reached["cpu"].address,
             dialect,
-            kind="entropy",
-            binding="virtio,device4",
+            child=("entropy", "virtio,device4"),
             chosen=("zephyr,entropy",),
         )
+
+
+class VirtioBlk(Component):
+    """🎭 A virtio block device: a disk of 512-byte sectors.
+
+    The driver reads and writes it by request: a header with the request's
+    kind and first sector, the data, and a status byte the device writes
+    last. It is the disk QEMU's `virt` machine gives a guest, and a stock
+    Linux kernel mounts its root on one with no module and no initramfs.
+    What it leaves out: more than one queue, discard, write-zeroes and the
+    optional sizes and geometry. The disk is RAM, so a flush has nothing to
+    do.
+
+    `blocks` is how many sectors the disk has. Python puts an image on it
+    with the placed disk's `load` and reads it back with `contents`. `cpu`
+    is the register block, `dma` is how the device reaches the driver's
+    memory, and `irq` is its interrupt line, high while a used buffer
+    waits to be acknowledged.
+    """
+
+    implementation = "virtio_blk"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        # A driver may poll the used ring and leave the line alone, as
+        # EDK2's does.
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+
+    blocks: int
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedBlock:
+        return PlacedBlock(platform, path, self)
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        # Zephyr has no driver for a virtio disk, so nothing to bind.
+        return virtio_node(reached["cpu"].address, dialect)
 
 
 class VirtioConsole(Component):
@@ -1191,8 +1239,7 @@ class VirtioConsole(Component):
         return virtio_node(
             reached["cpu"].address,
             dialect,
-            kind="console",
-            binding="virtio,console",
+            child=("console", "virtio,console"),
         )
 
 
@@ -1200,8 +1247,7 @@ def virtio_node(
     address: int,
     dialect: Dialect,
     *,
-    kind: str,
-    binding: str,
+    child: tuple[str, str] | None = None,
     chosen: tuple[str, ...] = (),
 ) -> DeviceNode:
     """The node of a virtio device behind the virtio-mmio transport.
@@ -1209,19 +1255,27 @@ def virtio_node(
     In Linux's dialect it is the transport's node alone, and the device
     says what it is in a register (`virtio,mmio`: `compatible`, `reg` and
     `interrupts`). Zephyr's drivers bind to a child of that node, and only
-    in that dialect: `virtio-<kind>`, with the `compatible` the driver for
-    that kind binds to, `binding` (`virtio,device4` for the entropy device,
-    `virtio,console` for the console), labelled as the transport's device.
-    `chosen` is what the child can be chosen for.
+    in that dialect: `child` is the kind and the `compatible` the driver
+    for that kind binds to (`("entropy", "virtio,device4")`,
+    `("console", "virtio,console")`), and the child is `virtio-<kind>`,
+    labelled as the transport's device. `chosen` is what the child can be
+    chosen for. With no `child`, for a kind Zephyr has no driver for, the
+    node is the transport's alone in both dialects.
     """
-    child = DeviceNode(
-        f"virtio-{kind}",
-        (),
-        (f'compatible = "{binding}";',),
-        chosen=chosen,
-        # The transport's interrupt is the node's, not the child's.
-        interrupts=(),
-        suffix="_device",
+    children = (
+        (
+            DeviceNode(
+                f"virtio-{child[0]}",
+                (),
+                (f'compatible = "{child[1]}";',),
+                chosen=chosen,
+                # The transport's interrupt is the node's, not the child's.
+                interrupts=(),
+                suffix="_device",
+            ),
+        )
+        if dialect == "zephyr" and child is not None
+        else ()
     )
     return DeviceNode(
         # QEMU's and Zephyr's spelling.
@@ -1230,7 +1284,7 @@ def virtio_node(
         ('compatible = "virtio,mmio";',),
         # Zephyr's transport driver is one that asks.
         short_interrupts=True,
-        children=(child,) if dialect == "zephyr" else (),
+        children=children,
     )
 
 

@@ -1165,3 +1165,31 @@ class TestWhenAPlatformHasAVirtioConsole:
         )
 
         assert "zephyr,console" not in platform.devicetree(via=cpu.socket)
+
+
+class TestWhenAPlatformHasAVirtioDisk:
+    @pytest.mark.parametrize(
+        ("dialect", "cells"), [("zephyr", "1 1 4"), ("linux", "1 4")]
+    )
+    def test_its_node_is_the_transports_alone_in_either_dialect(
+        self, dialect, cells
+    ):
+        # Zephyr has no driver for a virtio disk, so nothing binds to a
+        # child; Linux's and EDK2's find the transport and ask it.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "blk", sp.VirtioBlk(blocks=8)
+        )
+
+        tree = platform.devicetree(via=cpu.socket, dialect=dialect)
+
+        assert (
+            a_node_of(
+                "\t\tblk: virtio_mmio@10001000 {",
+                '\t\t\tcompatible = "virtio,mmio";',
+                "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+                "\t\t\tinterrupt-parent = <&aplic>;",
+                f"\t\t\tinterrupts = <{cells}>;",
+                "\t\t};",
+            )
+            in tree
+        )

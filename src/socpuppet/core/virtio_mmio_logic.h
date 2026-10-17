@@ -95,9 +95,8 @@ class VirtioMmioLogic {
 
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in) {
     if (offset >= VIRTIO_MMIO_CONFIG) {
-      const auto bytes = ConfigAt(offset - VIRTIO_MMIO_CONFIG, in.size());
-      if (!bytes) return false;
-      std::ranges::copy(in, bytes->begin());
+      if (!ConfigAt(offset - VIRTIO_MMIO_CONFIG, in.size())) return false;
+      device_.WriteConfig(offset - VIRTIO_MMIO_CONFIG, in);
       return true;
     }
     if (!Aligned(offset, in.size())) return false;
@@ -231,9 +230,9 @@ class VirtioMmioLogic {
   // at `offset` touches, or nothing if the access runs past the end of
   // what the device has. (The offset comes straight off the bus, so the
   // check is written not to overflow.)
-  std::optional<std::span<std::uint8_t>> ConfigAt(std::uint64_t offset,
-                                                  std::size_t size) const {
-    const std::span<std::uint8_t> config = device_.Config();
+  std::optional<std::span<const std::uint8_t>> ConfigAt(
+      std::uint64_t offset, std::size_t size) const {
+    const std::span<const std::uint8_t> config = device_.Config();
     if (offset > config.size() || size > config.size() - offset) {
       return std::nullopt;
     }

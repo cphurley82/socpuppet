@@ -36,6 +36,8 @@
 //     using Device = MyDevice;  // fits the virtio device slot (slots.h)
 //     // The queue this kind of device answers a chain on at once.
 //     static constexpr std::uint16_t kAnswersOn = 0;
+//     // Builds the device from a name and whatever else this kind needs.
+//     static std::unique_ptr<Device> Make(const char* name);
 //     // Describes, on that queue, a chain it answers at once, and makes
 //     // the chain available.
 //     static void AChainItAnswers(VirtqueueDriver& driver);
@@ -137,7 +139,7 @@ class VirtioDeviceContract : public ::testing::Test {
   void OnTheBus(const std::function<void(Driver&, LineWatcher&)>& body) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     registry.Add("device", [](const char* name, socpuppet::Parameters&) {
-      auto module = std::make_unique<typename Rig::Device>(name);
+      std::unique_ptr<typename Rig::Device> module = Rig::Make(name);
       std::vector<socpuppet::Port> ports{
           socpuppet::TargetPort("cpu", module->cpu),
           socpuppet::InitiatorPort("dma", module->dma),

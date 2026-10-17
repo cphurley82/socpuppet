@@ -132,3 +132,29 @@ class PlacedConsole(PlacedFarEnd):
     What is typed goes into the buffers the firmware hands it, as many
     bytes at a time as one holds.
     """
+
+
+class PlacedBlock(Placed):
+    """🎭 A virtio disk at its place in a platform.
+
+    🧵 Python is the hand that puts a disk image in the drive before a run,
+    and looks at what the firmware wrote to it after one.
+    """
+
+    @property
+    def contents(self) -> bytes:
+        """Everything on the disk, sector 0 first.
+
+        ⚠️ All of it, as one `bytes`: the disk keeps only the sectors that
+        have been written, and this is every sector, written or not.
+        """
+        return self._platform.native().disk_contents(self.path)
+
+    def load(self, image: bytes) -> None:
+        """Put `image` on the disk from its first sector on.
+
+        The last sector it reaches is padded with zeros, and the rest of
+        the disk is left as it was. An image larger than the disk is
+        refused with a `ValueError`.
+        """
+        self._platform.native().disk_load(self.path, image)

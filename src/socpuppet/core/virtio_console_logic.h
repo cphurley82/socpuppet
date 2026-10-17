@@ -27,7 +27,7 @@ class VirtioConsoleLogic : public VirtioDevice {
   std::uint32_t DeviceId() const override { return kDeviceId; }
   std::uint64_t Features() const override { return 0; }
   std::uint16_t QueueCount() const override { return 2; }
-  std::span<std::uint8_t> Config() override { return {}; }
+  std::span<const std::uint8_t> Config() const override { return {}; }
   // The buffers it holds go with the queues they were in; what came in
   // and was not delivered waits on, as bytes still on the line would.
   void Reset() override { held_.clear(); }
