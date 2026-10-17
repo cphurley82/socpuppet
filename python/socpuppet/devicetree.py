@@ -493,7 +493,7 @@ def _aliases(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, _Named]:
 def _with_children(
     nodes: list[tuple[Placed, DeviceNode]],
 ) -> Iterator[_Named]:
-    """Each node and then its children, all the way down, in the nodes' order."""
+    """Each node and then its children, all the way down, nodes first."""
     for placed, node in nodes:
         yield placed, node
         yield from _with_children([(placed, child) for child in node.children])
