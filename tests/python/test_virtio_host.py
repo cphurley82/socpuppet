@@ -1,13 +1,13 @@
 """🧵 Python as the first driver of a virtio device.
 
-One test runs the driver against the entropy device, the smallest virtio
-device there is, on a scripted host; the rest play it against a fake device
-with no simulator at all.
+The platform tests run the driver against the entropy device, the smallest
+virtio device there is, and the console, on a scripted host; the rest play
+it against a fake device with no simulator at all.
 
     host ─▶ bus ─┬─▶ ram
-     ▲      ▲    └─▶ rng.cpu
-     │      └──────── rng.dma
-     └─────────────── rng.irq
+     ▲      ▲    └─▶ device.cpu
+     │      └──────── device.dma
+     └─────────────── device.irq
 """
 
 import pytest
@@ -18,25 +18,28 @@ from socpuppet.regs import virtio_mmio as regs
 
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 0x10_0000
-RNG_BASE = 0x1000_1000
+DEVICE_BASE = 0x1000_1000
 
 VERSION_1 = 1 << 32
 
 
-def host_with_rng(script, seed=1):
-    """A scripted host with a RAM and an entropy device, built."""
+def host_with(script, device):
+    """A scripted host with a RAM and one virtio `device`, built.
+
+    Returns the platform and the device at its place.
+    """
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
     ram = platform.add("ram", sp.Memory(size=RAM_SIZE))
-    rng = platform.add("rng", sp.VirtioRng(seed=seed))
+    placed = platform.add("device", device)
     platform.connect(cpu.socket, bus.target)
     bus.map(ram.socket, base=RAM_BASE)
-    bus.map(rng.cpu, base=RNG_BASE)
-    platform.connect(rng.dma, bus.add_input())
-    platform.connect(rng.irq, cpu.irq)
+    bus.map(placed.cpu, base=DEVICE_BASE)
+    platform.connect(placed.dma, bus.add_input())
+    platform.connect(placed.irq, cpu.irq)
     platform.build()
-    return platform
+    return platform, placed
 
 
 @pytest.mark.platform
@@ -45,18 +48,61 @@ class TestWhenTheHostAsksTheEntropyDeviceForBytesTwice:
         answers = []
 
         def script():
-            rng = sp.VirtioRngHost(registers=RNG_BASE, memory=RAM_BASE)
+            rng = sp.VirtioRngHost(registers=DEVICE_BASE, memory=RAM_BASE)
             yield from rng.start()
             answers.append((yield from rng.read(32)))
             answers.append((yield from rng.read(32)))
 
-        platform = host_with_rng(script)
+        platform, _ = host_with(script, sp.VirtioRng())
 
         platform.run()
 
         assert [len(answer) for answer in answers] == [32, 32]
         assert answers[0] != answers[1]
         assert answers[0] != bytes(32)
+
+
+@pytest.mark.platform
+class TestWhenTheHostSendsThroughTheConsole:
+    def test_python_reads_it_as_the_consoles_output(self):
+        def script():
+            console = sp.VirtioConsoleHost(
+                registers=DEVICE_BASE, memory=RAM_BASE
+            )
+            yield from console.start()
+            yield from console.send(b"spam")
+            yield from console.send(b" and eggs")
+
+        platform, console = host_with(script, sp.VirtioConsole())
+
+        platform.run()
+
+        assert console.output == "spam and eggs"
+
+
+@pytest.mark.platform
+class TestWhenPythonTypesAtTheConsoleWhileTheHostWaitsForBytes:
+    def test_the_host_receives_what_was_typed(self):
+        received = []
+
+        def script():
+            console = sp.VirtioConsoleHost(
+                registers=DEVICE_BASE, memory=RAM_BASE
+            )
+            yield from console.start()
+            received.append((yield from console.receive(16)))
+
+        platform, console = host_with(script, sp.VirtioConsole())
+        # The script's start is a few dozen register accesses, and handing
+        # the buffer over a few writes more: ten microseconds is far more
+        # than they need, and leaves the host waiting. The second run has
+        # only the delivery to do.
+        platform.run(sp.us(10))
+
+        console.write("eggs")
+        platform.run(sp.us(10))
+
+        assert received == [b"eggs"]
 
 
 class FakeDevice:

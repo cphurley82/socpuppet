@@ -1058,8 +1058,8 @@ class TestWhenTheRealLinksRegistersAreInAFirmwaresView:
         assert dtc_errors(platform.devicetree(via=cpu.socket), tmp_path) == ""
 
 
-def a_cpu_with_a_virtio_entropy_device(*, chooses=False):
-    """A bus master with an APLIC and 🎭 a virtio entropy device in slot 0.
+def a_cpu_with_a_virtio_device(name, device, *, chooses=False):
+    """A bus master with an APLIC and 🎭 one virtio `device` in slot 0.
 
     The master is a scripted one, which chooses nothing, unless `chooses`,
     when it is a CPU.
@@ -1073,13 +1073,17 @@ def a_cpu_with_a_virtio_entropy_device(*, chooses=False):
     cpu = platform.add("cpu", master)
     bus = platform.add("bus", sp.Router())
     aplic = platform.add("aplic", sp.Aplic())
-    rng = platform.add("rng", sp.VirtioRng())
+    placed = platform.add(name, device)
     platform.connect(cpu.socket, bus.target)
     bus.map(aplic.socket, base=0x0C00_0000)
-    bus.map(rng.cpu, base=0x1000_1000)
-    platform.connect(rng.irq, aplic.source1)
-    platform.connect(rng.dma, bus.add_input())
+    bus.map(placed.cpu, base=0x1000_1000)
+    platform.connect(placed.irq, aplic.source1)
+    platform.connect(placed.dma, bus.add_input())
     return platform, cpu
+
+
+def a_cpu_with_a_virtio_entropy_device(*, chooses=False):
+    return a_cpu_with_a_virtio_device("rng", sp.VirtioRng(), chooses=chooses)
 
 
 def a_node_of(*lines):
@@ -1099,7 +1103,7 @@ class TestWhenAPlatformHasAVirtioEntropyDevice:
             "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
             "\t\t\tinterrupt-parent = <&aplic>;",
             "\t\t\tinterrupts = <1 1 4>;",
-            "\t\t\trng_entropy: virtio-entropy {",
+            "\t\t\trng_device: virtio-entropy {",
             '\t\t\t\tcompatible = "virtio,device4";',
             "\t\t\t};",
             "\t\t};",
@@ -1108,7 +1112,7 @@ class TestWhenAPlatformHasAVirtioEntropyDevice:
     def test_in_zephyrs_dialect_the_child_is_the_chosen_entropy_source(self):
         platform, cpu = a_cpu_with_a_virtio_entropy_device(chooses=True)
 
-        assert "zephyr,entropy = &rng_entropy;" in platform.devicetree(
+        assert "zephyr,entropy = &rng_device;" in platform.devicetree(
             via=cpu.socket
         )
 
@@ -1129,3 +1133,35 @@ class TestWhenAPlatformHasAVirtioEntropyDevice:
             in tree
         )
         assert "virtio,device4" not in tree
+
+
+class TestWhenAPlatformHasAVirtioConsole:
+    def test_in_zephyrs_dialect_its_child_is_what_zephyrs_console_binds_to(
+        self,
+    ):
+        # Zephyr's console driver binds to "virtio,console" by name, where
+        # its entropy driver binds to the device's number.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "console", sp.VirtioConsole()
+        )
+
+        assert a_node_of(
+            "\t\tconsole: virtio_mmio@10001000 {",
+            '\t\t\tcompatible = "virtio,mmio";',
+            "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+            "\t\t\tinterrupt-parent = <&aplic>;",
+            "\t\t\tinterrupts = <1 1 4>;",
+            "\t\t\tconsole_device: virtio-console {",
+            '\t\t\t\tcompatible = "virtio,console";',
+            "\t\t\t};",
+            "\t\t};",
+        ) in platform.devicetree(via=cpu.socket)
+
+    def test_it_is_not_the_chosen_console(self):
+        # That is a shield's to say: the 16550 stays the console unless
+        # firmware is built to speak through this one.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "console", sp.VirtioConsole(), chooses=True
+        )
+
+        assert "zephyr,console" not in platform.devicetree(via=cpu.socket)

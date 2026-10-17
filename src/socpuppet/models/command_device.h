@@ -62,6 +62,12 @@ class CommandDevice : public sc_core::sc_module {
     dont_initialize();
   }
 
+  // Has the logic carry out again, a delta cycle on, for something that
+  // came to the device from elsewhere than its CPU: a far end's bytes. The
+  // deriving device calls this from wherever those come in, which may be
+  // outside the simulation, between two runs of a script.
+  void Nudge() { work_.notify(sc_core::SC_ZERO_TIME); }
+
  private:
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
     const std::span data{transaction.get_data_ptr(),
@@ -103,8 +109,9 @@ class CommandDevice : public sc_core::sc_module {
   void DriveTheLine() { irq.write(logic_.Interrupting()); }
 
   Logic& logic_;
-  // Notified when the CPU has written to a register, which may have given
-  // the device something to do.
+  // Notified when the CPU has written to a register, or the far end has
+  // handed something in, either of which may have given the device
+  // something to do.
   sc_core::sc_event work_;
   // Notified when what the interrupt line should say may have changed.
   sc_core::sc_event line_may_have_changed_;

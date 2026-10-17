@@ -22,8 +22,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from socpuppet.components import VirtioRng
-from socpuppet.placed import Placed, PlacedRouter
+from socpuppet.components import VirtioConsole, VirtioRng
+from socpuppet.placed import Placed, PlacedConsole, PlacedRouter
 from socpuppet.platform import Group, Platform
 
 #: How far apart the slots are: QEMU's `virt` has the same, a page each.
@@ -46,6 +46,8 @@ class VirtioSlots(NamedTuple):
 
     #: 🎭 The entropy device, in slot 0.
     rng: Placed
+    #: 🎭 The console, in slot 1.
+    console: PlacedConsole
 
 
 def add_virtio(
@@ -67,13 +69,14 @@ def add_virtio(
     the first as source `first_source` and the rest after it.
     """
     rng = place.add("rng", VirtioRng(seed=settings.seed))
-    for slot, device in enumerate([rng]):
+    console = place.add("console", VirtioConsole())
+    for slot, device in enumerate([rng, console]):
         bus.map(device.cpu, base=base + slot * VIRTIO_SLOT_STRIDE)
         platform.connect(
             device.irq, getattr(aplic, f"source{first_source + slot}")
         )
         platform.connect(device.dma, up.add_input())
-    return VirtioSlots(rng)
+    return VirtioSlots(rng, console)
 
 
 __all__ = ["VIRTIO_SLOT_STRIDE", "Virtio", "VirtioSlots", "add_virtio"]

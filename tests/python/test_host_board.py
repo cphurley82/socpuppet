@@ -35,7 +35,7 @@ from socpuppet.boards.host import (
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
-from socpuppet.boards.virtio import Virtio
+from socpuppet.boards.virtio import VIRTIO_SLOT_STRIDE, Virtio
 from socpuppet.components import (
     Aplic,
     Imsic,
@@ -784,6 +784,28 @@ class TestTheHostsVirtioSlots:
 
         assert (
             InterruptEntry("io.aplic", VIRTIO_FIRST_SOURCE, "io.rng.irq")
+            in board.platform.interrupt_map()
+        )
+
+    def test_the_console_is_in_the_second_slot(self):
+        board = host(virtio=Virtio())
+        [slot] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.virtio.console.path
+        ]
+
+        assert slot.address == IO_BASE + VIRTIO_SLOT_OFFSET + VIRTIO_SLOT_STRIDE
+
+    def test_the_console_interrupts_through_the_source_after_the_entropy_devices(
+        self,
+    ):
+        board = host(virtio=Virtio())
+
+        assert (
+            InterruptEntry(
+                "io.aplic", VIRTIO_FIRST_SOURCE + 1, "io.console.irq"
+            )
             in board.platform.interrupt_map()
         )
 

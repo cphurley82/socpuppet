@@ -37,7 +37,7 @@ from typing import (
     override,
 )
 
-from socpuppet.placed import Placed, PlacedRouter, PlacedUart
+from socpuppet.placed import Placed, PlacedConsole, PlacedRouter, PlacedUart
 from socpuppet.regs import (
     dma_engine,
     flash_controller,
@@ -1148,8 +1148,51 @@ class VirtioRng(Component):
             reached["cpu"].address,
             dialect,
             kind="entropy",
-            device=4,
+            binding="virtio,device4",
             chosen=("zephyr,entropy",),
+        )
+
+
+class VirtioConsole(Component):
+    """🎭 A virtio console: a serial port with no baud rate.
+
+    The driver hands it bytes to put out, and buffers for what comes in.
+    What the firmware puts out is kept, and the placed console's `output`
+    reads it; what it is to receive is typed with the placed console's
+    `write`, as at the UART (`Ns16550`). One port, and none of the
+    device's features (no size, no multiport, no emergency write).
+
+    `cpu` is the register block, `dma` is how the device reaches the
+    driver's memory, and `irq` is its interrupt line, high while a used
+    buffer waits to be acknowledged.
+    """
+
+    implementation = "virtio_console"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        # A driver may poll the used ring and leave the line alone.
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedConsole:
+        return PlacedConsole(platform, path, self)
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        # Not chosen as the console: a shield that builds firmware to
+        # speak through it says so, and the 16550 stays the console
+        # otherwise.
+        return virtio_node(
+            reached["cpu"].address,
+            dialect,
+            kind="console",
+            binding="virtio,console",
         )
 
 
@@ -1158,25 +1201,27 @@ def virtio_node(
     dialect: Dialect,
     *,
     kind: str,
-    device: int,
+    binding: str,
     chosen: tuple[str, ...] = (),
 ) -> DeviceNode:
     """The node of a virtio device behind the virtio-mmio transport.
 
     In Linux's dialect it is the transport's node alone, and the device
     says what it is in a register (`virtio,mmio`: `compatible`, `reg` and
-    `interrupts`). Zephyr's drivers bind to a child of that node that
-    names the device's `kind` by its number, `device`, and only in that
-    dialect; `chosen` is what the child can be chosen for.
+    `interrupts`). Zephyr's drivers bind to a child of that node, and only
+    in that dialect: `virtio-<kind>`, with the `compatible` the driver for
+    that kind binds to, `binding` (`virtio,device4` for the entropy device,
+    `virtio,console` for the console), labelled as the transport's device.
+    `chosen` is what the child can be chosen for.
     """
     child = DeviceNode(
         f"virtio-{kind}",
         (),
-        (f'compatible = "virtio,device{device}";',),
+        (f'compatible = "{binding}";',),
         chosen=chosen,
         # The transport's interrupt is the node's, not the child's.
         interrupts=(),
-        suffix=f"_{kind}",
+        suffix="_device",
     )
     return DeviceNode(
         # QEMU's and Zephyr's spelling.

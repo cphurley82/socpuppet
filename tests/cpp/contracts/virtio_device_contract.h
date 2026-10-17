@@ -34,8 +34,10 @@
 // To hold an implementation to this contract:
 //   struct MyRig {
 //     using Device = MyDevice;  // fits the virtio device slot (slots.h)
-//     // Describes, on queue 0, a chain this kind of device answers at
-//     // once, and makes it available.
+//     // The queue this kind of device answers a chain on at once.
+//     static constexpr std::uint16_t kAnswersOn = 0;
+//     // Describes, on that queue, a chain it answers at once, and makes
+//     // the chain available.
 //     static void AChainItAnswers(VirtqueueDriver& driver);
 //   };
 //   INSTANTIATE_TYPED_TEST_SUITE_P(Mine, VirtioDeviceContract,
@@ -90,12 +92,13 @@ class VirtioDeviceContract : public ::testing::Test {
       EXPECT_EQ(bus.Write32(kRegisters + offset, value), tlm::TLM_OK_RESPONSE);
     }
 
-    // Sets queue 0 up and tells the device the driver is ready, the way
-    // every driver does.
-    void SetUp() {
+    // Sets queue `number` up, the one the rig answers on unless told
+    // another, and tells the device the driver is ready, the way every
+    // driver does.
+    void SetUp(std::uint16_t number = Rig::kAnswersOn) {
       Write32(VIRTIO_MMIO_STATUS,
               VIRTIO_MMIO_STATUS_ACKNOWLEDGE | VIRTIO_MMIO_STATUS_DRIVER);
-      Write32(VIRTIO_MMIO_QUEUE_SEL, 0);
+      Write32(VIRTIO_MMIO_QUEUE_SEL, number);
       Write32(VIRTIO_MMIO_QUEUE_NUM, kQueue.size);
       Write32(VIRTIO_MMIO_QUEUE_DESC_LOW,
               static_cast<std::uint32_t>(kQueue.desc));
@@ -115,10 +118,11 @@ class VirtioDeviceContract : public ::testing::Test {
                                       VIRTIO_MMIO_STATUS_DRIVER_OK);
     }
 
-    // Puts a chain the device answers on queue 0 and rings its doorbell.
+    // Puts a chain the device answers on the queue it answers on, and
+    // rings that queue's doorbell.
     void Ask() {
       Rig::AChainItAnswers(queue);
-      Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+      Write32(VIRTIO_MMIO_QUEUE_NOTIFY, Rig::kAnswersOn);
     }
 
     // Acknowledges whatever the device has raised, the way every driver

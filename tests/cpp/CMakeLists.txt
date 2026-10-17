@@ -23,6 +23,7 @@ add_executable(unit_tests
   unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp
+  unit/virtio_console_logic_test.cpp
   unit/virtio_mmio_logic_test.cpp
   unit/virtio_rng_logic_test.cpp
   unit/virtqueue_test.cpp)
@@ -69,6 +70,7 @@ add_executable(kernel_tests
   platform/spi_flash_test.cpp
   platform/system_controller_test.cpp
   platform/tracer_test.cpp
+  platform/virtio_console_test.cpp
   platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE
   socpuppet_builtin_components socpuppet_models scc::components GTest::gmock)

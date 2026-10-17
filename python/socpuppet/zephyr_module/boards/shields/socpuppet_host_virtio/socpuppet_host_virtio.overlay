@@ -1,6 +1,6 @@
 / {
 	chosen {
-		zephyr,entropy = &io_rng_entropy;
+		zephyr,entropy = &io_rng_device;
 	};
 
 	soc {
@@ -9,8 +9,18 @@
 			reg = <0x0 0x10001000 0x0 0x200>;
 			interrupt-parent = <&io_aplic>;
 			interrupts = <18 1 4>;
-			io_rng_entropy: virtio-entropy {
+			io_rng_device: virtio-entropy {
 				compatible = "virtio,device4";
+			};
+		};
+
+		io_console: virtio_mmio@10002000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10002000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <19 1 4>;
+			io_console_device: virtio-console {
+				compatible = "virtio,console";
 			};
 		};
 	};

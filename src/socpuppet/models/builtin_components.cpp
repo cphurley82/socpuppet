@@ -36,6 +36,7 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
+#include "socpuppet/models/virtio_console.h"
 #include "socpuppet/models/virtio_rng.h"
 #include "socpuppet/models/watchdog.h"
 #include "socpuppet/platform/port.h"
@@ -47,6 +48,7 @@ namespace socpuppet {
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
+static_assert(VirtioDeviceSlot<VirtioConsole>);
 static_assert(VirtioDeviceSlot<VirtioRng>);
 static_assert(WatchdogSlot<Watchdog>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
@@ -375,6 +377,14 @@ Registry BuiltinComponents() {
         name, parameters.Required("size", kFlashSize));
     std::vector<Port> ports{TargetPort("socket", module->socket),
                             TargetPort("xip", module->xip)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_console", [](const char* name, Parameters&) {
+    auto module = std::make_unique<VirtioConsole>(name);
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_rng", [](const char* name, Parameters& parameters) {

@@ -60,6 +60,13 @@ class FakeDevice : public VirtioDevice {
               Virtqueue& ring) override {
     handled.push_back({queue, chain.head});
     if (uses_each_chain) ring.Used(chain, 0);
+    if (holds_each_chain) held.push_back({std::move(chain), &ring});
+  }
+  // Gives back what it holds, once it has been told to.
+  void Deliver() override {
+    if (!gives_held_chains_back) return;
+    for (const auto& [chain, ring] : held) ring->Used(chain, 0);
+    held.clear();
   }
 
   // Which chains the transport has handed over: the queue and the head.
@@ -72,6 +79,11 @@ class FakeDevice : public VirtioDevice {
 
   // Whether it gives each chain straight back.
   bool uses_each_chain = false;
+  // Whether it keeps each chain instead, and the chains kept, with the
+  // queue each is on; and whether a delivery gives them back.
+  bool holds_each_chain = false;
+  std::vector<std::pair<Virtqueue::Chain, Virtqueue*>> held;
+  bool gives_held_chains_back = false;
   // How many times the transport has reset it.
   int resets = 0;
 };
@@ -388,6 +400,26 @@ TEST(WhenTheDriverSelectsAHalfOfTheFeaturesThatThereIsNot,
               kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS),
             kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+}
+
+TEST(WhenTheDeviceGivesAHeldChainBackOnADeliveryWithNoDoorbell,
+     TheTransportInterrupts) {
+  Rig rig;
+  VirtqueueDriver driver{rig.memory, kQueue, kBuffers};
+  rig.SetUpQueue(0, kQueue);
+  driver.Describe(0, 8, VirtqueueDriver::kWrite);
+  driver.MakeAvailable(0);
+  rig.device.holds_each_chain = true;
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+  ASSERT_EQ(rig.Read32(VIRTIO_MMIO_INTERRUPT_STATUS), 0U);
+
+  rig.device.gives_held_chains_back = true;
+  const bool done = rig.transport.CarryOut();
+
+  EXPECT_TRUE(done);
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_INTERRUPT_STATUS),
+            VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER);
 }
 
 TEST(WhenTheDriverRingsTheDoorbellOfAQueueItHasNotSetUp, TheWriteIsRefused) {

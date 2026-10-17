@@ -378,3 +378,43 @@ class VirtioRngHost(VirtioHost):
         """Asks the device for `count` random bytes."""
         written, (answer,) = yield from self.submit(0, [], [count])
         return answer[:written]
+
+
+class VirtioConsoleHost(VirtioHost):
+    """🧵 Stand-in for the driver of a virtio console.
+
+    Takes what `VirtioHost` takes. `start` finds the device and sets its
+    two queues up; `send` puts bytes out, and `receive` waits for bytes to
+    come in.
+    """
+
+    #: What the device says it is (section 5.3).
+    DEVICE_ID = 3
+    #: Its two queues: what comes in, and what goes out.
+    RECEIVE_QUEUE = 0
+    TRANSMIT_QUEUE = 1
+
+    def start(self) -> Steps[None]:
+        """Finds the device, agrees on no features, and sets its queues up."""
+        device_id = yield from self.probe()
+        if device_id != self.DEVICE_ID:
+            raise VirtioError(
+                f"The virtio device is a kind {device_id}, not a console "
+                f"(kind {self.DEVICE_ID})."
+            )
+        yield from self.reset()
+        yield from self.negotiate(0)
+        yield from self.setup_queue(self.RECEIVE_QUEUE)
+        yield from self.setup_queue(self.TRANSMIT_QUEUE)
+        yield from self.driver_ok()
+
+    def send(self, data: bytes) -> Steps[None]:
+        """Puts `data` out, and waits until the device has taken it."""
+        yield from self.submit(self.TRANSMIT_QUEUE, [data], [])
+
+    def receive(self, at_most: int) -> Steps[bytes]:
+        """Waits for bytes to come in: up to `at_most` of them."""
+        written, (answer,) = yield from self.submit(
+            self.RECEIVE_QUEUE, [], [at_most]
+        )
+        return answer[:written]

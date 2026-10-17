@@ -47,6 +47,30 @@ class Placed:
         )
 
 
+class PlacedConsole(Placed):
+    """🎭 A virtio console at its place in a platform: its far end."""
+
+    @property
+    def output(self) -> str:
+        """Everything the firmware has put out through the console so far.
+
+        A byte that is not text comes out as the replacement character, �.
+        """
+        native = self._platform.native()
+        return native.virtio_console_output(self.path).decode(errors="replace")
+
+    def write(self, typed: str | bytes) -> None:
+        """Type at the console: the firmware receives `typed`.
+
+        🧵 As at the UART, this is the keyboard of whoever sits at the far
+        end. Text is sent as UTF-8. The bytes wait in the console until the
+        firmware hands it a buffer for them, and go in as many at a time as
+        the buffer holds.
+        """
+        received = typed.encode() if isinstance(typed, str) else typed
+        self._platform.native().virtio_console_write(self.path, received)
+
+
 class PlacedRouter(Placed):
     """A router at its place in a platform."""
 

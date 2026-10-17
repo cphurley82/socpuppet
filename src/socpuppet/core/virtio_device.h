@@ -28,9 +28,18 @@ class VirtioDevice {
 
   // A chain the driver has made available on queue `queue`. The device
   // reads and writes it through `ring`, and gives it back with
-  // `ring.Used()`, now or later.
+  // `ring.Used()`, now or later. A device that keeps the chain for later
+  // may keep `ring` with it: the reference is good until `Reset()`, which
+  // is the only way the transport takes a ring away from a device that
+  // holds one.
   virtual void Handle(std::uint16_t queue, Virtqueue::Chain chain,
                       Virtqueue& ring) = 0;
+
+  // What has come to the device from outside the driver's memory since it
+  // last looked (a console's typed bytes, a network's frames), handed into
+  // the chains it holds. The transport asks each time it carries out, which
+  // the shell has it do when the far end says something has come.
+  virtual void Deliver() {}
 
   // The driver has reset the device: whatever it was doing is dropped, and
   // the chains it was holding with it.

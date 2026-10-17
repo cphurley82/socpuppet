@@ -38,6 +38,7 @@ target_sources(socpuppet_core INTERFACE
     core/system_controller_logic.h
     core/time.h
     core/trace.h
+    core/virtio_console_logic.h
     core/virtio_device.h
     core/virtio_mmio_logic.h
     core/virtio_rng_logic.h
@@ -313,6 +314,7 @@ target_sources(socpuppet_models INTERFACE
     models/socket_memory.h
     models/system_controller.h
     models/tie_low.h
+    models/virtio_console.h
     models/virtio_mmio.h
     models/virtio_rng.h)
 target_link_libraries(socpuppet_models INTERFACE

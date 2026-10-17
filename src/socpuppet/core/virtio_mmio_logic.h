@@ -165,7 +165,8 @@ class VirtioMmioLogic {
   }
 
   // Does what the driver's doorbells asked for: hands every available chain
-  // of every queue rung to the device. Returns whether anything was done.
+  // of every queue rung to the device, and has it deliver what has come to
+  // it from elsewhere. Returns whether anything was done.
   bool CarryOut() {
     bool done = false;
     for (std::uint16_t number = 0; number < queues_.size(); ++number) {
@@ -178,6 +179,10 @@ class VirtioMmioLogic {
           done = true;
         }
       }
+    }
+    device_.Deliver();
+    for (Queue& queue : queues_) {
+      if (!queue.ring) continue;
       // A chain may be given back while it is handled or later, from
       // wherever the device's answer comes from; either way the driver
       // hears of it here.

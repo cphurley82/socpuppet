@@ -20,6 +20,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/ns16550.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/virtio_console.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
 #include "socpuppet/platform/platform.h"
@@ -188,6 +189,20 @@ PYBIND11_MODULE(_core, m) {
            [](NativePlatform& self, const std::string& path,
               const py::bytes& received) {
              self.platform.ModuleAt<socpuppet::Ns16550>(path).Write(
+                 std::string_view{received});
+           })
+      // The same two for the virtio console at `path`: what the driver has
+      // put out, and bytes for it to receive.
+      .def("virtio_console_output",
+           [](NativePlatform& self, const std::string& path) {
+             return py::bytes(
+                 self.platform.ModuleAt<socpuppet::VirtioConsole>(path)
+                     .Output());
+           })
+      .def("virtio_console_write",
+           [](NativePlatform& self, const std::string& path,
+              const py::bytes& received) {
+             self.platform.ModuleAt<socpuppet::VirtioConsole>(path).Write(
                  std::string_view{received});
            })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
