@@ -2,22 +2,22 @@
 
 SoC Puppet (say "sock puppet") is an open-source virtual platform: a whole SoC simulated in SystemC, with Python pulling the strings.
 
-The aims, the people it is for and the rules that order the work are in [docs/vision.md](docs/vision.md). Read it before planning a milestone or settling a decision, and cite the rule a decision rests on.
+[docs/vision.md](docs/vision.md) has the aims, the readers and the rules that order the work. Read it before planning a milestone or settling a decision, and cite the rule a decision rests on.
 
 ## Personality
 
-This is a vibe. Nothing here is a rule or a review checklist. Keep it in the back of your mind while you write code, docs and output, and use your judgment.
+A vibe, not a checklist. Keep it in mind while writing code, docs and output.
 
-**The model is Raspberry Pi.** socpuppet is a learning tool that is also good enough to use at work. It should feel welcoming to someone who knows a little Python and has never seen a chip from the inside, and dependable to someone who builds virtual platforms for a living. Write for the first of those by default: the expert skims what the beginner needs, but the beginner cannot fill in what the expert skipped. The fun lives on the surface, in the voice, the color and the emoji. The engineering underneath is serious. If the two ever pull against each other, clarity and correctness win.
+**The model is Raspberry Pi.** A learning tool that is also good enough to use at work. Write by default for someone who knows a little Python and has never seen a chip: the expert skims what the beginner needs, but the beginner cannot fill in what the expert skipped. The fun lives on the surface, in the voice, the color and the emoji; the engineering underneath is serious. When the two pull against each other, clarity and correctness win.
 
-- 🎓 **Teach as you go.** Explain why as well as what. A page says what it is for in its first line. Define a term the first time it appears on that page, not only in the glossary, and then call the thing by that one name everywhere, in prose and in code: many readers have an AI assistant beside them, and it follows an exact name as well as they do. Say which real hardware a model stands for and what it leaves out. A newcomer should never feel silly for not knowing what DMI is.
-- 🧦 **Enjoy the puppet show.** The name is a pun, so play along: the SoC is the puppet, Python pulls the strings, and a boot is a performance. A stand-in is the film-set kind, holding a block's place on stage so the rest of the cast can rehearse, without giving the full performance. The metaphor is a signpost beside the plain word, never instead of it: the first time a page says stand-in, it also says simplified model, and a show is also a simulation. Keep the metaphor in prose (docs, messages, examples). Names in code stay the standard industry terms (TLM, ISS, DMI, `Platform`), because learners need to recognise them in other tools.
-- 🎪 **Bring a little Flying Circus.** Python the language is named after Monty Python, not the snake, so the troupe is part of the cast, and it fits the puppet show because both are theatre: a sketch is a short scene with a small cast that makes one point and ends, which is also what a good example is. The humor is deadpan: state the absurd thing with a straight face and carry on. Most readers on the bottom rung have never seen the show and never will, so a line is plain English first and a joke second: an allusion is welcome when the sentence makes complete sense to someone who has never heard of the troupe, and it is never explained. If the reader needs the reference to get the meaning, cut it. Python's own tutorial uses `spam` and `eggs` where other languages use `foo` and `bar`, and so do we, for names and sample data that stand for nothing: a learner who meets them here recognises them there. A name that means something keeps its meaning: the RAM is `ram`.
-- 🎯 **Analogies have to be true.** This is a teaching tool, so a metaphor that gives the wrong idea of how something works is worse than none. If the picture doesn't fit the mechanism, say it plainly instead.
-- 🎨 **Be colorful.** Prefer a diagram to a wall of text, and color to monochrome in terminal output meant for people.
-- ✨ **Give emoji a job.** They are welcome in docs, the README and human-facing terminal output, where they work as signposts and illustration. Use the same emoji for the same thing each time (palette below). Leave them out of code comments, commit messages and anything a machine parses.
-- 🔧 **Stay useful when things break.** An error message first says what went wrong and how to fix it. Charm is optional and comes second. JSON, traces and logs stay plain, and color respects `NO_COLOR` and non-terminal output.
-- 😄 **Playful in small doses.** One good joke per page is plenty, and the puppets and the Pythons share that budget. The joke never sits in the sentence that carries the mechanism, so a reader who skips it loses nothing. If a pun or a reference makes a sentence harder to understand, drop it.
+- 🎓 **Teach as you go.** Say what a page is for in its first line. Define a term where it first appears on that page, then call the thing by that one name everywhere, in prose and in code: readers often have an AI assistant beside them, and it follows exact names too. Say which real hardware a model stands for and what it leaves out.
+- 🧦 **Enjoy the puppet show.** The SoC is the puppet, Python pulls the strings, a boot is a performance, and a stand-in holds a block's place on stage so the rest of the cast can rehearse. The metaphor is a signpost beside the plain word, never instead of it: the first time a page says stand-in, it also says simplified model. Keep it in prose; names in code stay the industry's (TLM, ISS, DMI, `Platform`), so learners recognise them elsewhere.
+- 🎪 **Two troupes, one stage.** Monty Python's Flying Circus, because the language is named for it, and the Muppets, because this is a puppet show with a cast and sketches. A sketch is a short scene with a small cast that makes one point and ends, which is also what a good example is. The humor is deadpan: state the absurd thing with a straight face and carry on. A line is plain English first and a joke second: most readers have never seen either show, so a sentence must make complete sense without the reference, and the reference is never explained. `spam` and `eggs` are the placeholder names, as in Python's own tutorial; everything else in code is named for what it is (the RAM is `ram`).
+- 🎯 **Analogies have to be true.** A metaphor that gives the wrong idea of a mechanism is worse than none. If the picture does not fit, say it plainly.
+- 🎨 **Be colorful.** A diagram over a wall of text; color over monochrome in terminal output meant for people.
+- ✨ **Give emoji a job.** Signposts in docs, the README and human-facing output, the same emoji for the same thing (palette below). None in code comments, commit messages or anything a machine parses.
+- 🔧 **Stay useful when things break.** An error says what went wrong and how to fix it; charm comes second. JSON, traces and logs stay plain, and color respects `NO_COLOR` and non-terminals.
+- 😄 **Playful in small doses.** One good joke per page, shared by the puppets and both troupes, and never in the sentence that carries the mechanism.
 
 ### What it sounds like
 
@@ -25,23 +25,17 @@ This is a vibe. Nothing here is a rule or a review checklist. Keep it in the bac
 >
 > socpuppet: 🎭 The behavioral NVMe device is a stand-in for the SSD: a simplified model that answers the way the real one does (queues, Identify, reads and writes), so the host can rehearse against it, but there is no CPU or firmware behind the curtain.
 
-And with a touch of the Flying Circus:
+And with the Flying Circus:
 
 > Plain: The SystemC kernel cannot be restarted, so a process can build only one platform.
 >
 > socpuppet: ⚠️ The SystemC kernel cannot be restarted. After a run it is not resting, it is an ex-kernel. So a process can build exactly one `Platform`.
 
-That passes the test: a reader who has never seen the sketch still learns that the kernel is finished after a run and that a process gets one. The joke is a bonus for those who have.
-
-And for the 🌱 bottom rung, the plain word beside the metaphor:
-
-> Plain: `ScriptedBusMaster` is a TLM initiator driven by a Python generator.
->
-> socpuppet: 🎭 `ScriptedBusMaster` is a stand-in for the CPU: a simplified model where your Python script does the CPU's reads and writes, one `yield` at a time, so you can watch each one happen.
+The second passes the test: without the sketch, the reader still learns that the kernel is finished after a run and that a process gets one.
 
 ### Emoji palette
 
-A starting set. Add to it when something new keeps coming up.
+Add to it when something new keeps coming up.
 
 | Emoji | Means |
 |---|---|
@@ -61,32 +55,24 @@ A starting set. Add to it when something new keeps coming up.
 
 ## Workflow
 
-Changes are made test-first with the skills in `.claude/skills/`:
-
-- `/tdd [specification]` drives a change through Canon TDD: agree on the specifications, write one failing test, make it pass, commit.
-- `/test-design-review` reviews each new test before the code is written. `/tdd` runs it for you.
-- `/software-design-review` reviews the application code once the test is green. `/tdd` runs it for you.
-
-The two reviews can also be run on their own against the working tree.
-
-Code under `spikes/` is the exception: it is exploratory, so it is not written test-first, and nothing outside `spikes/` may depend on it.
+Changes are test-first, with the skills in `.claude/skills/`: `/tdd [specification]` drives a change through Canon TDD (agree the specifications, one failing test, make it pass, commit), running `/test-design-review` on each new test and `/software-design-review` on the code once it is green. Both reviews also run on their own against the working tree. `spikes/` is exploratory and not test-first, and nothing outside it may depend on it.
 
 ## Borrow before building
 
-Using existing open source matters as much as the teaching goal. Before writing a model, a parser or a tool, look for an open one that fits, starting with the projects already in the build and their siblings.
+Using existing open source matters as much as teaching. Before writing a model, a parser or a tool, look for an open one, starting with the projects already in the build and their siblings.
 
-- A borrowed model sits behind an adapter of ours and is held to a contract suite written first, so that the tests say what socpuppet relies on.
-- Where a borrowed piece falls short, the first answer is to fix it. Writing our own instead is a decision to bring to the maintainer, with the failing tests.
-- A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [docs/upstream.md](docs/upstream.md): what is wrong, how to see it, and what to propose. A limitation worked around without a patch gets an entry too.
-- Nothing is sent to another project unless the maintainer asks. The page is the list to work from when they do.
+- A borrowed model sits behind an adapter of ours and a contract suite written first, so the tests say what socpuppet relies on.
+- Where it falls short, fix it first. Writing our own is a decision for the maintainer, brought with the failing tests.
+- A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [docs/upstream.md](docs/upstream.md): what is wrong, how to see it, what to propose. A limitation worked around without a patch gets an entry too.
+- Nothing is sent upstream unless the maintainer asks; that page is the list.
 
 ## Style
 
-The rules for each language, and the reasons for them, are in [docs/style.md](docs/style.md). The ones that matter while writing:
+[docs/style.md](docs/style.md) has the rules and their reasons. While writing:
 
-- C++ is Google style: `CamelCase()` functions, `lower_case` variables, `kCamelCase` constants, `member_` for private members, 80 columns. Names imposed by TLM, SystemC and the coroutine protocol keep their own spelling.
-- Python is formatted by ruff and fully type-annotated in the package. Docstrings follow Google's convention.
-- Markdown is one paragraph per line. Do not wrap prose by hand.
-- A register of one of our own blocks is written once, in `regs/<block>.rdl` (SystemRDL). The C header, the Python module and the table in the docs are generated from it and checked in, and everything else uses the generated names. Never write an offset or a bit of such a block anywhere else.
-- `uv run python tools/lint.py --fix` repairs what can be repaired, which includes writing what is generated again (from the register maps, and the tables in `docs/address-map.md` from the boards), and `uv run ctest --preset dev` includes the lint check. Tools added to the repo are tested in `tests/tooling/`.
-- CI is `.github/workflows/ci.yml`, and each of its jobs is a thin wrapper around `tools/ci.py`, which holds the job's steps. A new check goes into a job there, not into the YAML. `uv run python tools/ci.py` runs every job that can run here, and `tests/tooling/test_ci_workflow.py` keeps the workflow and the runner to the same jobs. A run starts by asking `tools/doctor.py` what this machine is missing, so a job's `areas` names what it needs of the machine.
+- C++ is Google style: `CamelCase()` functions, `lower_case` variables, `kCamelCase` constants, `member_` for private members, 80 columns. Names imposed by TLM, SystemC and the coroutine protocol keep their spelling.
+- Python is ruff-formatted and fully type-annotated in the package, with Google docstrings.
+- Markdown is one paragraph per line; never wrap prose by hand.
+- A register of one of our own blocks is written once, in `regs/<block>.rdl`. The C header, the Python module and the docs table are generated and checked in; nothing else may state an offset or a bit.
+- `uv run python tools/lint.py --fix` repairs what it can, including regenerating from the register maps and the address-map tables from the boards; `uv run ctest --preset dev` includes the lint. Tools in the repo are tested in `tests/tooling/`.
+- CI is `.github/workflows/ci.yml`, each job a thin wrapper around `tools/ci.py`, which holds the steps; a new check goes there, not in the YAML. `uv run python tools/ci.py` runs every job that can run here, `tests/tooling/test_ci_workflow.py` keeps the two in step, and a run starts by asking `tools/doctor.py` what the machine is missing, so a job's `areas` names what it needs.
