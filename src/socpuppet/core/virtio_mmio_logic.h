@@ -68,7 +68,11 @@ class VirtioMmioLogic {
         SetHalf(driver_features_, driver_features_sel_, value);
         return true;
       case VIRTIO_MMIO_STATUS:
+        // The driver's features are taken only if the device offered every
+        // one of them and the modern layout is among them (section 3.1.1);
+        // otherwise FEATURES_OK is left clear for the driver to find.
         status_ = value;
+        if (!FeaturesAcceptable()) status_ &= ~VIRTIO_MMIO_STATUS_FEATURES_OK;
         return true;
       default:
         return false;
@@ -80,6 +84,12 @@ class VirtioMmioLogic {
   // one, and nothing for any other.
   static std::uint32_t Half(std::uint64_t bits, std::uint32_t which) {
     return which < 2 ? static_cast<std::uint32_t>(bits >> (32 * which)) : 0;
+  }
+
+  bool FeaturesAcceptable() const {
+    const std::uint64_t offered = device_.Features() | kVersion1;
+    return (driver_features_ & ~offered) == 0 &&
+           (driver_features_ & kVersion1) != 0;
   }
 
   static void SetHalf(std::uint64_t& bits, std::uint32_t which,

@@ -120,6 +120,28 @@ TEST(WhenTheDriverAcceptsWhatWasOfferedAndVersionOneAndSaysFeaturesOk,
             kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
 }
 
+TEST(WhenTheDriverAcceptsAFeatureThatWasNotOfferedAndSaysFeaturesOk,
+     TheTransportDoesNotKeepFeaturesOk) {
+  Rig rig;
+  rig.AcceptFeatures(FakeDevice::kFeatures | (1U << 7) | kVersion1);
+
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS), kSeenAndDriven);
+}
+
+TEST(WhenTheDriverLeavesVersionOneOutOfWhatItAcceptsAndSaysFeaturesOk,
+     TheTransportDoesNotKeepFeaturesOk) {
+  Rig rig;
+  rig.AcceptFeatures(FakeDevice::kFeatures);
+
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS), kSeenAndDriven);
+}
+
 }  // namespace
 
 }  // namespace socpuppet
