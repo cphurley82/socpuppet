@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_CORE_VIRTQUEUE_H_
 #define SOCPUPPET_CORE_VIRTQUEUE_H_
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -87,6 +88,19 @@ class Virtqueue {
   // Whether the driver has handed over a chain the device could not take,
   // after which the queue is left alone until it is set up again.
   bool Broken() const { return broken_; }
+
+  // Fills a chain's writable buffers with `bytes`, in order, as far as they
+  // go, and says how many bytes went.
+  std::size_t Write(const Chain& chain, std::span<const std::uint8_t> bytes) {
+    std::size_t went = 0;
+    for (const Buffer& buffer : chain.writable) {
+      const std::size_t part =
+          std::min<std::size_t>(buffer.length, bytes.size() - went);
+      memory_.Write(buffer.address, bytes.subspan(went, part));
+      went += part;
+    }
+    return went;
+  }
 
   // The bytes of a chain's readable buffers, in order.
   std::vector<std::uint8_t> Read(const Chain& chain) {

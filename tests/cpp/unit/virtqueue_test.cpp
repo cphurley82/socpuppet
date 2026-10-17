@@ -34,6 +34,13 @@ class MemoryAt : public MemoryPort {
     return address >= base_ && store_.Write(address - base_, in);
   }
 
+  // What the memory holds at `address`, `length` bytes of it.
+  std::vector<std::uint8_t> At(std::uint64_t address, std::size_t length) {
+    std::vector<std::uint8_t> data(length);
+    EXPECT_TRUE(Read(address, data));
+    return data;
+  }
+
  private:
   std::uint64_t base_;
   MemoryStore store_{kMemorySize};
@@ -203,6 +210,24 @@ TEST(WhenTheDriverMakesAChainThatLoopsBackOnItselfAvailable,
 
   EXPECT_FALSE(driver.queue.Next().has_value());
   EXPECT_TRUE(driver.queue.Broken());
+}
+
+TEST(WhenTheDeviceWritesMoreThanAChainsTwoWritableBuffersHold,
+     TheFirstIsFilledThenTheSecondAndItIsToldHowManyBytesWent) {
+  Driver driver;
+  const std::uint64_t first = driver.Describe(0, 16, kWrite | kNext, 1);
+  const std::uint64_t second = driver.Describe(1, 16, kWrite);
+  driver.MakeAvailable(0);
+  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+  const std::vector<std::uint8_t> bytes = SomeBytes(40);
+
+  const std::size_t went = driver.queue.Write(*chain, bytes);
+
+  EXPECT_EQ(went, 32U);
+  EXPECT_EQ(driver.memory.At(first, 16),
+            std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16));
+  EXPECT_EQ(driver.memory.At(second, 16),
+            std::vector<std::uint8_t>(bytes.begin() + 16, bytes.begin() + 32));
 }
 
 }  // namespace
