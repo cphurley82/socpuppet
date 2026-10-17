@@ -1025,6 +1025,22 @@ class TestADevicetreeOverlayForAComponentThatFillsNoRole:
         assert "chosen" not in platform.devicetree_overlay([device])
 
 
+class TestADevicetreeOverlayForAComponentWithAnAlias:
+    def test_gives_the_alias_and_none_of_the_rest(self):
+        # The board's own watchdog keeps its alias in the board's tree; the
+        # overlay names the one it adds.
+        platform, bus, _ = cpu_with_its_peripherals()
+        fs = platform.add("fs", sp.VirtioFs(tag="spam", directory="."))
+        bus.map(fs.cpu, base=0x0300_0000)
+        wdt = platform.add("wdt", sp.Watchdog())
+        bus.map(wdt.socket, base=0x0400_0000)
+
+        overlay = platform.devicetree_overlay([fs])
+
+        assert "\taliases {\n\t\tvirtiofs0 = &fs;\n\t};" in overlay
+        assert "watchdog0" not in overlay
+
+
 def a_manager_die_with_the_real_link():
     """A CPU on the IO die with the link's registers at 0x1001_0000."""
     platform = sp.Platform()
@@ -1227,3 +1243,35 @@ class TestWhenAPlatformHasAVirtioNetworkDevice:
             )
             in tree
         )
+
+
+class TestWhenAPlatformHasAVirtioFileSystemDevice:
+    @pytest.mark.parametrize(
+        ("dialect", "cells"), [("zephyr", "1 1 4"), ("linux", "1 4")]
+    )
+    def test_its_node_is_the_transports_alone_in_either_dialect(
+        self, dialect, cells
+    ):
+        # Zephyr's client mounts the transport's device itself, and Linux
+        # finds the share by the tag the device gives.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "fs", sp.VirtioFs(tag="spam", directory=".")
+        )
+
+        assert a_node_of(
+            "\t\tfs: virtio_mmio@10001000 {",
+            '\t\t\tcompatible = "virtio,mmio";',
+            "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+            "\t\t\tinterrupt-parent = <&aplic>;",
+            f"\t\t\tinterrupts = <{cells}>;",
+            "\t\t};",
+        ) in platform.devicetree(via=cpu.socket, dialect=dialect)
+
+    def test_it_is_the_alias_virtiofs0(self):
+        # Zephyr's sample asks for the device by a label of the board's;
+        # an alias is the name a board agrees on beforehand.
+        platform, cpu = a_cpu_with_a_virtio_device(
+            "fs", sp.VirtioFs(tag="spam", directory="."), chooses=True
+        )
+
+        assert "\t\tvirtiofs0 = &fs;" in platform.devicetree(via=cpu.socket)

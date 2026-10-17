@@ -129,7 +129,10 @@ class VirtioMmioLogic {
         return SetHalfOf(&Queue::Layout::used, 1, value);
       case VIRTIO_MMIO_QUEUE_READY:
         if (!Selected()) return false;
-        if ((value & VIRTIO_MMIO_QUEUE_READY_READY) != 0) {
+        // A queue of no entries is never ready: there is nothing in it to
+        // walk. The write is taken and the queue reads as not ready.
+        if ((value & VIRTIO_MMIO_QUEUE_READY_READY) != 0 &&
+            Selected()->layout.size != 0) {
           Selected()->ring.emplace(memory_, Selected()->layout);
         } else {
           Selected()->ring.reset();

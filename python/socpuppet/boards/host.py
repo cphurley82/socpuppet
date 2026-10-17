@@ -700,7 +700,8 @@ def virtio_overlay(board: Host[Any] | None = None) -> str:
 
     It is the overlay of the Zephyr shield `socpuppet_host_virtio`: a
     `virtio,mmio` node for each slot, with the child node Zephyr's driver
-    for that kind of device binds to, and what `chosen` says of them.
+    for that kind of device binds to, and what `chosen` and `aliases`
+    say of them.
 
     `board` is a host with its slots, and by default the host with them as
     they come. The shield's copy is checked in, and a test holds it to

@@ -22,9 +22,13 @@ device is and knows what goes in its chains.
 
 from __future__ import annotations
 
+import errno
+import os
 import struct
 from collections.abc import Callable
+from typing import Any
 
+from socpuppet import fuse
 from socpuppet.errors import VirtioError
 from socpuppet.ops import (
     Operation,
@@ -507,3 +511,83 @@ class VirtioNetHost(VirtioHost):
             self.RECEIVE_QUEUE, [], [self.HEADER + self.FRAME_ROOM]
         )
         return answer[self.HEADER : written]
+
+
+class VirtioFsHost(VirtioHost):
+    """🧵 Stand-in for the driver of a virtio file system device.
+
+    Takes what `VirtioHost` takes. `start` finds the device and sets its
+    two queues up; `init`, `lookup`, `open` and `read` are the FUSE
+    requests that read a file, which go on the request queue. An answer
+    with an error raises `VirtioError` with the error's name.
+    """
+
+    DEVICE_ID = 26  # Section 5.11.
+    QUEUES = 2
+    KIND = "a file system device"
+    #: Where FUSE requests go: everything but FORGET.
+    REQUEST_QUEUE = 1
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        # Each request carries a number of its own, which its answer gives
+        # back.
+        self._unique = 0
+
+    def init(self) -> Steps[None]:
+        """Says hello, in FUSE 7.31."""
+        yield from self._ask(
+            fuse.INIT, fuse.ROOT, struct.pack("<IIII", 7, 31, 0, 0), 64
+        )
+
+    def lookup(self, name: str) -> Steps[int]:
+        """The node of `name`, at the top of the share."""
+        entry = yield from self._ask(
+            fuse.LOOKUP, fuse.ROOT, name.encode() + b"\0", 128, about=name
+        )
+        node: int = struct.unpack_from("<Q", entry)[0]
+        return node
+
+    def open(self, node: int) -> Steps[int]:
+        """Opens the file `node` to read, and gives its handle."""
+        opened = yield from self._ask(
+            fuse.OPEN, node, struct.pack("<II", os.O_RDONLY, 0), 16
+        )
+        handle: int = struct.unpack_from("<Q", opened)[0]
+        return handle
+
+    def read(self, node: int, handle: int, *, size: int) -> Steps[bytes]:
+        """Up to `size` bytes of the open file, from its start."""
+        return (
+            yield from self._ask(
+                fuse.READ,
+                node,
+                struct.pack("<QQIIQII", handle, 0, size, 0, 0, 0, 0),
+                size,
+            )
+        )
+
+    def _ask(
+        self, opcode: int, node: int, body: bytes, room: int, *, about: str = ""
+    ) -> Steps[bytes]:
+        """Sends one request and gives the body of its answer."""
+        self._unique += 1
+        header = _FUSE_IN.pack(
+            _FUSE_IN.size + len(body), opcode, self._unique, node, 0, 0, 0, 0
+        )
+        written, (answer,) = yield from self.submit(
+            self.REQUEST_QUEUE, [header + body], [_FUSE_OUT.size + room]
+        )
+        length, error, _ = _FUSE_OUT.unpack_from(answer)
+        if error:
+            name = errno.errorcode.get(-error, f"error {-error}")
+            what = f" of {about!r}" if about else ""
+            raise VirtioError(
+                f"The share answered FUSE request {opcode}{what} with {name}."
+            )
+        return answer[_FUSE_OUT.size : min(length, written)]
+
+
+#: The header in front of every FUSE request, and of every answer.
+_FUSE_IN = struct.Struct("<IIQQIIII")
+_FUSE_OUT = struct.Struct("<IiQ")

@@ -1,0 +1,24 @@
+diff --git a/OvmfPkg/VirtioFsDxe/Helpers.c b/OvmfPkg/VirtioFsDxe/Helpers.c
+index 2dae2ae..14a8886 100644
+--- a/OvmfPkg/VirtioFsDxe/Helpers.c
++++ b/OvmfPkg/VirtioFsDxe/Helpers.c
+@@ -231,6 +231,19 @@ VirtioFsInit (
+     goto ReleaseQueue;
+   }
+ 
++  //
++  // Tell the device how many descriptors the queue has. Over virtio-mmio
++  // version 2 the transport writes the size only when it is told one, and
++  // a queue left without one is a queue of none.
++  //
++  Status = VirtioFs->Virtio->SetQueueNum (
++                               VirtioFs->Virtio,
++                               VirtioFs->QueueSize
++                               );
++  if (EFI_ERROR (Status)) {
++    goto UnmapQueue;
++  }
++
+   Status = VirtioFs->Virtio->SetQueueAddress (
+                                VirtioFs->Virtio,
+                                &VirtioFs->Ring,

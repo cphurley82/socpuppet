@@ -236,6 +236,21 @@ TEST(WhenTheDriverHasSetOneQueueUp,
   EXPECT_EQ(other, 0U);
 }
 
+TEST(WhenTheDriverMakesAQueueOfNoEntriesReady,
+     ItStaysNotReadyAndADoorbellForItIsRefused) {
+  // Zephyr's virtio-fs driver sets its unused queue up with no entries on
+  // purpose, and EDK2's, over this transport, its one queue by mistake.
+  Rig rig;
+  Virtqueue::Layout empty = kQueue;
+  empty.size = 0;
+  rig.SetUpQueue(1, empty);
+
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 1);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_QUEUE_READY), 0U);
+  EXPECT_FALSE(rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 1));
+}
+
 TEST(WhenTheDriverGivesAQueueMoreEntriesThanItMayHave, TheWriteIsRefused) {
   Rig rig;
   rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 0);

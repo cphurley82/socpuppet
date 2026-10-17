@@ -39,6 +39,7 @@
 #include "socpuppet/models/system_controller.h"
 #include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_console.h"
+#include "socpuppet/models/virtio_fs.h"
 #include "socpuppet/models/virtio_net.h"
 #include "socpuppet/models/virtio_rng.h"
 #include "socpuppet/models/watchdog.h"
@@ -53,6 +54,7 @@ static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
 static_assert(VirtioDeviceSlot<VirtioBlk>);
 static_assert(VirtioDeviceSlot<VirtioConsole>);
+static_assert(VirtioDeviceSlot<VirtioFs>);
 static_assert(VirtioDeviceSlot<VirtioNet>);
 static_assert(VirtioDeviceSlot<VirtioRng>);
 static_assert(WatchdogSlot<Watchdog>);
@@ -409,6 +411,14 @@ Registry BuiltinComponents() {
   });
   registry.Add("virtio_console", [](const char* name, Parameters&) {
     auto module = std::make_unique<VirtioConsole>(name);
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_fs", [](const char* name, Parameters&) {
+    auto module = std::make_unique<VirtioFs>(name);
     std::vector<Port> ports{TargetPort("cpu", module->cpu),
                             InitiatorPort("dma", module->dma),
                             WireSourcePort("irq", module->irq,

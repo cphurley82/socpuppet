@@ -125,8 +125,8 @@ def overlay(
 
     🎓 An overlay is a piece of devicetree that is laid over another one
     and adds to it. This one has the nodes of the components named, and
-    what `chosen` says of them, for a devicetree that already has the rest
-    of what `generate` describes.
+    what `chosen` and `aliases` say of them, for a devicetree that already
+    has the rest of what `generate` describes.
     """
     # An overlay is for a Zephyr board's shield.
     nodes = _nodes(connections, view, "zephyr")
@@ -144,6 +144,13 @@ def overlay(
         "zephyr",
         _labels(nodes),
     )
+    aliases = {
+        name: (placed, node)
+        for name, (placed, node) in _aliases(nodes).items()
+        if placed in only
+    }
+    if aliases:
+        blocks.insert(0, _references("aliases", aliases))
     if roles:
         blocks.insert(0, _references("chosen", roles))
     lines = ["/ {"]

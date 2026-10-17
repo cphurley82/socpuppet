@@ -1235,6 +1235,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: nothing to do.
 
+### The virtio file system driver never says how large its queue is, which over virtio-mmio makes it a queue of none
+
+- **Where**: `OvmfPkg/VirtioFsDxe/Helpers.c`, `VirtioFsInit`, and `OvmfPkg/Library/VirtioMmioDeviceLib/VirtioMmioDeviceFunctions.c`, `VirtioMmioSetQueueAddress`.
+- **What is wrong**: the driver reads the request queue's largest size, lays the rings out for it and sets the queue's address, and never calls `SetQueueNum`, which EDK2's other virtio drivers (block, network, entropy, SCSI, serial, input) all call. Over PCI that is harmless: a modern PCI queue's size starts at its largest. Over virtio-mmio version 2 the library keeps the size it was last told and writes it to `QUEUE_NUM` just before `QUEUE_READY`; told none, it writes 0. The device is handed a ready queue of no entries, and the driver goes on to put requests in it. Whether QEMU's virtio-mmio device copes was not looked at, since QEMU's virtio-fs is normally a PCI device.
+- **How to see it**: boot `uefi.fd` on a host whose virtio file system device is served (`tests/python/test_virtio_uefi.py`). Before socpuppet's transport refused to make an empty queue ready, the device divided by the queue's size on the first doorbell and the process died of `SIGFPE`. Now the queue reads as not ready, and the driver does not look.
+- **What we do**: `cmake/patches/edk2-virtiofs-sets-its-queue-size.patch` calls `SetQueueNum` with the size the rings were laid out for, before `SetQueueAddress`, as `VirtioRngDxe` does.
+- **Upstream fix**: the same call. `VirtioMmioSetQueueSel` could also start each queue's size at its largest for version 2, as it does for version 1's legacy layout, which would mend any driver that forgets.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### Every module is linked with sections 64 bytes apart, so none of them can be protected
 
 - **Where**: `BaseTools/Conf/tools_def.template`, the RISC-V link flags of both toolchains, `GCC` and `CLANGDWARF`: `-z common-page-size=0x40`.

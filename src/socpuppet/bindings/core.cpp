@@ -21,6 +21,7 @@
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/virtio_blk.h"
+#include "socpuppet/models/virtio_fs.h"
 #include "socpuppet/models/virtio_net.h"
 #include "socpuppet/platform/errors.h"
 #include "socpuppet/platform/logging.h"
@@ -88,9 +89,11 @@ struct NativePlatform {
   KernelClaim kernel_claim;  // first member: checked before any module is built
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
   socpuppet::PythonExecutor python_executor{"socpuppet_python_executor"};
-  // Declared last, so the Python scripts are dropped first, while the GIL is
-  // held by whoever is destroying this platform from Python.
+  // Declared last, so the Python scripts and answerers are dropped first,
+  // while the GIL is held by whoever is destroying this platform from
+  // Python.
   std::list<socpuppet::PythonScript> python_scripts;
+  std::list<py::object> python_answerers;
 };
 
 }  // namespace
@@ -238,6 +241,30 @@ PYBIND11_MODULE(_core, m) {
           [](NativePlatform& self, const std::string& path) {
             return self.platform.ModuleAt<socpuppet::VirtioNet>(path).Dropped();
           })
+      // Names the share of the virtio file system device at `path` `tag`,
+      // and has `answer`, a Python callable from a request's bytes to its
+      // answer's, serve it. The device calls it from its own thread
+      // process, so it runs through the executor, on Python's stack.
+      .def("virtio_fs_serve",
+           [](NativePlatform& self, const std::string& path,
+              const std::string& tag, py::object answer) {
+             auto& fs = self.platform.ModuleAt<socpuppet::VirtioFs>(path);
+             fs.SetTag(tag);
+             py::object& kept =
+                 self.python_answerers.emplace_back(std::move(answer));
+             fs.SetAnswerer(
+                 [&self, &kept](std::span<const std::uint8_t> request) {
+                   std::vector<std::uint8_t> answered;
+                   self.python_executor.Run([&] {
+                     const py::bytes got = kept(py::bytes(
+                         reinterpret_cast<const char*>(request.data()),
+                         request.size()));
+                     const std::string_view bytes{got};
+                     answered.assign(bytes.begin(), bytes.end());
+                   });
+                   return answered;
+                 });
+           })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",
            [](NativePlatform& self, const std::string& path) {

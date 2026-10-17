@@ -7,6 +7,7 @@
 #include "tests/cpp/contracts/virtio_device_contract.h"
 #include "tests/cpp/support/virtio_blk_rig.h"
 #include "tests/cpp/support/virtio_console_rig.h"
+#include "tests/cpp/support/virtio_fs_rig.h"
 #include "tests/cpp/support/virtio_net_rig.h"
 #include "tests/cpp/support/virtqueue_driver.h"
 
@@ -35,3 +36,5 @@ INSTANTIATE_TYPED_TEST_SUITE_P(VirtioBlk, VirtioDeviceContract,
                                ::testing::Types<VirtioBlkRig>);
 INSTANTIATE_TYPED_TEST_SUITE_P(VirtioNet, VirtioDeviceContract,
                                ::testing::Types<VirtioNetRig>);
+INSTANTIATE_TYPED_TEST_SUITE_P(VirtioFs, VirtioDeviceContract,
+                               ::testing::Types<VirtioFsRig>);

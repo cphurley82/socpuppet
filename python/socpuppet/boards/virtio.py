@@ -19,10 +19,17 @@ they were; the Zephyr images that use them get the shield
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import NamedTuple
 
-from socpuppet.components import VirtioBlk, VirtioConsole, VirtioNet, VirtioRng
+from socpuppet.components import (
+    VirtioBlk,
+    VirtioConsole,
+    VirtioFs,
+    VirtioNet,
+    VirtioRng,
+)
 from socpuppet.placed import (
     Placed,
     PlacedBlock,
@@ -43,12 +50,16 @@ class Virtio:
     `seed` is what the entropy device's bytes come from, so that a run can
     be repeated. `blocks` is how many 512-byte sectors the disk has: 1 MiB
     unless told otherwise. `mac` is the network device's address, as a
-    48-bit number with its first byte highest (`VirtioNet`).
+    48-bit number with its first byte highest (`VirtioNet`). `share` is a
+    directory of this machine the file system device serves, by `tag`
+    (`VirtioFs`): with none, nothing serves it.
     """
 
     seed: int = 1
     blocks: int = 2048
     mac: int = VirtioNet.mac
+    tag: str = VirtioFs.tag
+    share: str | os.PathLike[str] | None = None
 
 
 class VirtioSlots(NamedTuple):
@@ -62,6 +73,8 @@ class VirtioSlots(NamedTuple):
     blk: PlacedBlock
     #: 🎭 The network device, in slot 3.
     net: PlacedNet
+    #: 🎭 The file system device, in slot 4.
+    fs: Placed
 
 
 def add_virtio(
@@ -86,13 +99,14 @@ def add_virtio(
     console = place.add("console", VirtioConsole())
     blk = place.add("blk", VirtioBlk(blocks=settings.blocks))
     net = place.add("net", VirtioNet(mac=settings.mac))
-    for slot, device in enumerate([rng, console, blk, net]):
+    fs = place.add("fs", VirtioFs(tag=settings.tag, directory=settings.share))
+    for slot, device in enumerate([rng, console, blk, net, fs]):
         bus.map(device.cpu, base=base + slot * VIRTIO_SLOT_STRIDE)
         platform.connect(
             device.irq, getattr(aplic, f"source{first_source + slot}")
         )
         platform.connect(device.dma, up.add_input())
-    return VirtioSlots(rng, console, blk, net)
+    return VirtioSlots(rng, console, blk, net, fs)
 
 
 __all__ = ["VIRTIO_SLOT_STRIDE", "Virtio", "VirtioSlots", "add_virtio"]

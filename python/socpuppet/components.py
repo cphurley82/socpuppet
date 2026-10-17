@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import os
 from abc import ABC, abstractmethod
 from collections.abc import (
     Callable,
@@ -37,6 +38,7 @@ from typing import (
     override,
 )
 
+from socpuppet import fuse
 from socpuppet.placed import (
     Placed,
     PlacedBlock,
@@ -1244,6 +1246,63 @@ class VirtioConsole(Component):
         )
 
 
+class VirtioFs(Component):
+    """🎭 A virtio file system device: a directory of this machine, shared.
+
+    The driver mounts the share by its `tag` and talks to it in FUSE,
+    Linux's protocol for a file system served by a program; Python serves
+    it out of `directory` (`socpuppet.fuse.Directory`), as QEMU's
+    `virtiofsd` serves a `vhost-user-fs-device`. One request queue, no
+    notification queue and no DAX window. With no `directory` nothing
+    serves the share, and every request comes back empty.
+
+    ⚠️ Firmware may change anything under `directory`. `cpu` is the
+    register block, `dma` is how the device reaches the driver's memory,
+    and `irq` is its interrupt line, high while a used buffer waits to be
+    acknowledged.
+    """
+
+    implementation = "virtio_fs"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        # A driver may poll the used rings and leave the line alone, as
+        # EDK2's does.
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+    #: How long a tag may be, in bytes: the configuration's field.
+    TAG_BYTES = 36
+
+    tag: str = not_a_parameter("socpuppet")
+    directory: str | os.PathLike[str] | None = not_a_parameter(None)
+
+    def __post_init__(self) -> None:
+        if len(self.tag.encode()) > self.TAG_BYTES:
+            raise ValueError(
+                f"A virtio file system's tag is at most {self.TAG_BYTES} "
+                f"bytes, and {self.tag!r} is {len(self.tag.encode())}."
+            )
+
+    @override
+    def configure(self, native: _core.Platform, path: str) -> None:
+        if self.directory is not None:
+            native.virtio_fs_serve(
+                path, self.tag, fuse.Directory(self.directory)
+            )
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        # Zephyr's client mounts the transport's device itself, which a
+        # program finds by the alias; Linux's finds the share by its tag.
+        return virtio_node(
+            reached["cpu"].address, dialect, aliases=("virtiofs0",)
+        )
+
+
 class VirtioNet(Component):
     """🎭 A virtio network device: an Ethernet port with Python on the wire.
 
@@ -1324,6 +1383,7 @@ def virtio_node(
     *,
     child: VirtioChild | None = None,
     chosen: tuple[str, ...] = (),
+    aliases: tuple[str, ...] = (),
 ) -> DeviceNode:
     """The node of a virtio device behind the virtio-mmio transport.
 
@@ -1333,7 +1393,7 @@ def virtio_node(
     in that dialect: `child`, labelled as the transport's device. `chosen`
     is what the child can be chosen for. With no `child`, for a kind
     Zephyr has no driver for, the node is the transport's alone in both
-    dialects.
+    dialects. `aliases` are the transport node's own.
     """
     children = (
         (
@@ -1357,6 +1417,7 @@ def virtio_node(
         ('compatible = "virtio,mmio";',),
         # Zephyr's transport driver is one that asks.
         short_interrupts=True,
+        aliases=aliases,
         children=children,
     )
 

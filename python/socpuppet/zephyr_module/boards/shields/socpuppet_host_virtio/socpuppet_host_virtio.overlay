@@ -3,6 +3,10 @@
 		zephyr,entropy = &io_rng_device;
 	};
 
+	aliases {
+		virtiofs0 = &io_fs;
+	};
+
 	soc {
 		io_rng: virtio_mmio@10001000 {
 			compatible = "virtio,mmio";
@@ -40,6 +44,13 @@
 				compatible = "virtio,net";
 				local-mac-address = [02 00 5e 00 53 01];
 			};
+		};
+
+		io_fs: virtio_mmio@10005000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10005000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <22 1 4>;
 		};
 	};
 };
