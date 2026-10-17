@@ -83,7 +83,7 @@ def add_virtio(
 
 
 def virtio_overlay(board: Host[Any] | None = None) -> str:
-    """The devicetree that the host with its virtio slots has more than the board.
+    """The devicetree the host with its virtio slots has beyond the board.
 
     It is the overlay of the Zephyr shield `socpuppet_host_virtio`: a
     `virtio,mmio` node for each slot, with the child node Zephyr's driver
