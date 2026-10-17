@@ -176,4 +176,13 @@ The rest of the kinds the header names (vsock, IOMMU, memory, pmem, sound, I²C,
 
 ## Decisions
 
-🚧 Waiting for the maintainer.
+Decided on 2026-10-17, by the rules in [vision.md](vision.md) (real over toy; borrow before building; Linux asks, we build): **the virtio road first.**
+
+- 🎭 The five stand-ins stay on the host, behind `host(virtio=Virtio())`, as recommended.
+- M20's first boot is a stock `defconfig` kernel on `host(sbi=True, virtio=Virtio())`, loaded by Python for `fw_jump`, with its root on the virtio disk from an ext4 image Python makes and its console on the 16550. Then the same kernel through UEFI, from the disk's EFI System Partition.
+- The planned road, an initramfs and then the NVMe drive, is the second road and the comparison: the same kernel with the real blocks in place of the stand-ins, and the root on the drive at M24.
+- No second board.
+- For a shared directory under Linux, 9p before virtio-fs.
+- The RAM is checked first.
+
+M20's steps are planned when it starts, as every milestone's are; [plan.md](plan.md) records the decision under M20 and in its settled decisions.

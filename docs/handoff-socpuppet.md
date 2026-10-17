@@ -2,6 +2,8 @@
 
 **Date:** 2026-10-03 / **Source:** claude.ai conversation
 
+This is the founding brief, kept as it was written. What the project aims at now is in [vision.md](vision.md), and where this brief and the plan disagree, [plan.md](plan.md) says what changed and when.
+
 ## Goal
 
 Build `socpuppet`, an open-source educational virtual platform in which a chiplet-based host (a compute die and an IO die joined by a UCIe-style die-to-die link) and an NVMe SSD controller each run their own Zephyr firmware, all inside one SystemC simulation. It must be controllable as a Python object (the name: you pull the SoC's strings from Python), unit-tested with GoogleTest, and clear enough to teach how commercial VP flows (e.g. Synopsys Virtualizer) work using only open tools. Every block must be swappable for a simplified stand-in, so the platform is built and tested incrementally rather than all at once.

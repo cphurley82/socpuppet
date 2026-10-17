@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days. Two acts are up: a RISC-V host that boots Zephyr, and a scripted host that finds a stand-in NVMe drive over PCIe and reads and writes it. They have met, too: Zephyr on the host finds the same drive and uses it with its own NVMe driver. A third has opened: an SSD built the way a real one is, with its own CPU and its own Zephyr firmware, which a scripted host reads and writes. A fourth has opened as well: the die-to-die link between the host's two dies is real now, in the style of UCIe, and a third Zephyr on the IO die trains it and lets the compute die out of reset. The Zephyrs have met: the host's firmware reads and writes an SSD that is running its own. And the real host is across the real link, held in reset until the link has been trained. Now the whole cast is on at once: three firmwares in one boot, the manager's bringing the link up, the host's finding its drive across it, and the SSD's being that drive, with a debugger on each CPU if you want one. What is still to come is a NAND that wears and has to be tidied, and the scenarios that make it interesting. The roadmap is in [docs/plan.md](docs/plan.md).
+> 🚧 Early days, but the show has grown. A chiplet host boots Zephyr across a real die-to-die link that a third CPU trains, and finds an NVMe SSD that runs its own Zephyr: three firmwares in one simulation, with a debugger on each CPU if you want one. The host also boots the way silicon does, from a ROM and a flash, with a watchdog to reset it; its interrupts travel as messages, in the style RISC-V servers use; Zephyr's own test suites run on every board; and OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on it, with five 🎭 virtio stand-ins beside them. Next on stage is Linux. The roadmap is [docs/plan.md](docs/plan.md), and its Status section is the long form of where things stand.
 
 ## What's the show?
 
@@ -134,6 +134,7 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
+- 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
 - 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board, or on the SSD's controller.
 - ✅ [Run Zephyr's tests on the puppet](docs/twister.md): Zephyr's own test suites, and yours, on every board, with socpuppet as the emulator.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
@@ -145,4 +146,11 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 
 ## Who's it for?
 
-Anyone curious about how a chip boots before the chip exists. In the spirit of Raspberry Pi, socpuppet aims to be friendly enough to learn on and solid enough to do real work with.
+Anyone curious about how a chip boots before the chip exists. In the spirit of Raspberry Pi, socpuppet aims to be friendly enough to learn on and solid enough to do real work with. It is written for a ladder of readers, bottom rung first:
+
+- 🌱 Someone who knows a little Python and has never seen a chip from the inside. 🚧 Not served yet: a first page that needs nothing but Python is on the list for the first release.
+- 🎓 The learner building a first virtual platform.
+- 🧵 The firmware developer who installs a board with pip and boots their image on it.
+- The engineer who builds virtual platforms for a living and wants methodology to take home.
+
+[Why socpuppet exists](docs/vision.md) has the aims, and the rules that decide what gets built next.

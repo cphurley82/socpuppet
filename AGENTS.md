@@ -2,6 +2,8 @@
 
 SoC Puppet (say "sock puppet") is an open-source virtual platform: a whole SoC simulated in SystemC, with Python pulling the strings.
 
+The aims, the people it is for and the rules that order the work are in [docs/vision.md](docs/vision.md). Read it before planning a milestone or settling a decision, and cite the rule a decision rests on.
+
 ## Personality
 
 This is a vibe. Nothing here is a rule or a review checklist. Keep it in the back of your mind while you write code, docs and output, and use your judgment.
@@ -45,6 +47,9 @@ A starting set. Add to it when something new keeps coming up.
 | 🦜 | deprecated or removed (an ex-feature) |
 | 📮 | something to send upstream |
 | 🩺 | the doctor's check of a machine (`tools/doctor.py`) |
+| 🧭 | the vision: why, for whom, and how choices get made |
+| 🌱 | the first rung: a reader who knows a little Python and nothing of chips |
+| 🐧 | Linux |
 
 ## Workflow
 
