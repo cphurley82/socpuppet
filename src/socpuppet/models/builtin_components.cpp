@@ -36,6 +36,7 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
+#include "socpuppet/models/virtio_rng.h"
 #include "socpuppet/models/watchdog.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
@@ -46,6 +47,7 @@ namespace socpuppet {
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
+static_assert(VirtioDeviceSlot<VirtioRng>);
 static_assert(WatchdogSlot<Watchdog>);
 static_assert(LinkEndpointSlot<PassThroughLinkEndpoint>);
 static_assert(LinkEndpointSlot<D2dLinkEndpoint>);
@@ -373,6 +375,17 @@ Registry BuiltinComponents() {
         name, parameters.Required("size", kFlashSize));
     std::vector<Port> ports{TargetPort("socket", module->socket),
                             TargetPort("xip", module->xip)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_rng", [](const char* name, Parameters& parameters) {
+    auto module =
+        std::make_unique<VirtioRng>(name, parameters.Optional("seed", 1));
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            // A driver may poll the used ring and leave
+                            // the line alone.
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("watchdog", [](const char* name, Parameters&) {

@@ -24,6 +24,7 @@ from socpuppet.components import (
     ScriptedBusMaster,
     SpiFlash,
     SystemController,
+    VirtioRng,
     Watchdog,
 )
 from socpuppet.errors import BusError, ExpectationFailed, NvmeError, PcieError
@@ -91,6 +92,7 @@ __all__ = [
     "SystemController",
     "TraceRecord",
     "Transcript",
+    "VirtioRng",
     "Watchdog",
     "expect32",
     "ms",

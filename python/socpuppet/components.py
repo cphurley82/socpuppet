@@ -44,6 +44,7 @@ from socpuppet.regs import (
     nvme_frontend,
     system_controller,
     ucie_link,
+    virtio_mmio,
 )
 
 #: Whose bindings a devicetree is written in. 🎓 A devicetree says what
@@ -1104,6 +1105,36 @@ class SpiFlash(Component):
     @override
     def size_at(self, port: str) -> int | None:
         return self.size if port == "xip" else self.mapped_size
+
+
+class VirtioRng(Component):
+    """🎭 A virtio entropy device: random bytes for a kernel's pool.
+
+    🎓 **Virtio** is the family of devices a virtual machine offers its
+    guest when it does not pretend to be real hardware, each a small
+    register block (`virtio-mmio`) and rings of descriptors in the guest's
+    memory, with drivers in every Linux. No real SoC has one; this is a
+    stand-in, holding a place so that firmware can rehearse. The entropy
+    device is the smallest of the family: the driver hands it empty
+    buffers and it fills them with random bytes.
+
+    `seed` is what the bytes come from, so that a run can be repeated: the
+    same seed gives the same bytes. `cpu` is the register block, `dma` is
+    how the device reaches the driver's memory, and `irq` is its interrupt
+    line, high while a used buffer waits to be acknowledged.
+    """
+
+    implementation = "virtio_rng"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        # A driver may poll the used ring and leave the line alone.
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+
+    seed: int = 1
 
 
 class Watchdog(Component):
