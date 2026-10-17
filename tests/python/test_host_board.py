@@ -26,18 +26,16 @@ from socpuppet.boards.host import (
     IO_SIZE,
     RAM_BASE,
     UART_SOURCE,
+    VIRTIO_FIRST_SOURCE,
+    VIRTIO_SLOT_OFFSET,
     WATCHDOG_SOURCE,
     drive_overlay,
     host,
+    virtio_overlay,
 )
 from socpuppet.boards.manager import add_manager, stand_in_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
-from socpuppet.boards.virtio import (
-    VIRTIO_FIRST_SOURCE,
-    VIRTIO_SLOT_OFFSET,
-    Virtio,
-    virtio_overlay,
-)
+from socpuppet.boards.virtio import Virtio
 from socpuppet.components import (
     Aplic,
     Imsic,
@@ -763,6 +761,11 @@ class TestTheHostsVirtioSlots:
         # So the board's devicetree, and every image built for it, stay as
         # they were.
         assert host().virtio is None
+
+    def test_the_entropy_device_takes_the_seed_the_host_was_told(self):
+        board = host(virtio=Virtio(seed=7))
+
+        assert board.virtio.rng.component.seed == 7
 
     def test_the_entropy_device_is_in_the_first_slot_in_the_io_window(self):
         board = host(virtio=Virtio())

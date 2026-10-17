@@ -1147,29 +1147,37 @@ class VirtioRng(Component):
         return virtio_node(
             reached["cpu"].address,
             dialect,
-            # Zephyr's entropy driver binds to a child that names the
-            # device's kind by its number.
-            child=DeviceNode(
-                "virtio-entropy",
-                (),
-                ('compatible = "virtio,device4";',),
-                chosen=("zephyr,entropy",),
-                interrupts=(),
-                suffix="_entropy",
-            ),
+            kind="entropy",
+            device=4,
+            chosen=("zephyr,entropy",),
         )
 
 
 def virtio_node(
-    address: int, dialect: Dialect, *, child: DeviceNode | None
+    address: int,
+    dialect: Dialect,
+    *,
+    kind: str,
+    device: int,
+    chosen: tuple[str, ...] = (),
 ) -> DeviceNode:
     """The node of a virtio device behind the virtio-mmio transport.
 
     In Linux's dialect it is the transport's node alone, and the device
     says what it is in a register (`virtio,mmio`: `compatible`, `reg` and
     `interrupts`). Zephyr's drivers bind to a child of that node that
-    names the device's kind, which is `child`, and only in that dialect.
+    names the device's `kind` by its number, `device`, and only in that
+    dialect; `chosen` is what the child can be chosen for.
     """
+    child = DeviceNode(
+        f"virtio-{kind}",
+        (),
+        (f'compatible = "virtio,device{device}";',),
+        chosen=chosen,
+        # The transport's interrupt is the node's, not the child's.
+        interrupts=(),
+        suffix=f"_{kind}",
+    )
     return DeviceNode(
         # QEMU's and Zephyr's spelling.
         "virtio_mmio",
@@ -1177,7 +1185,7 @@ def virtio_node(
         ('compatible = "virtio,mmio";',),
         # Zephyr's transport driver is one that asks.
         short_interrupts=True,
-        children=() if child is None or dialect != "zephyr" else (child,),
+        children=(child,) if dialect == "zephyr" else (),
     )
 
 

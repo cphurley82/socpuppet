@@ -158,6 +158,13 @@ WATCHDOG_SOURCE = 17
 #: numbers are kept clear, as they are the CPU's own lines to Zephyr, which
 #: knows an interrupt by one number.
 UART_SOURCE = 16
+#: 🎭 With virtio devices: where their slots start, counted from the start
+#: of the IO die's window, which is where QEMU's `virt` has its first
+#: slot; and which source of the IO die's APLIC the first slot's line is,
+#: the number after the watchdog's at the compute die's, since no number
+#: is a source at both. The slots are a page apart (`VIRTIO_SLOT_STRIDE`).
+VIRTIO_SLOT_OFFSET = 0x1000
+VIRTIO_FIRST_SOURCE = 18
 #: How much address space lies behind the link for what the IO die sends
 #: up: all a 64-bit address can say but its top bit, which is more than
 #: the compute die has anything at.
@@ -418,7 +425,16 @@ def host(
     slots = (
         None
         if virtio is None
-        else add_virtio(platform, io_group, io.bus, io.up, io.aplic, virtio)
+        else add_virtio(
+            platform,
+            io_group,
+            bus=io.bus,
+            up=io.up,
+            aplic=io.aplic,
+            base=VIRTIO_SLOT_OFFSET,
+            first_source=VIRTIO_FIRST_SOURCE,
+            settings=virtio,
+        )
     )
     placed_manager = None
     if manager is not None:
@@ -677,6 +693,25 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
         }};
         """
     )
+
+
+def virtio_overlay(board: Host[Any] | None = None) -> str:
+    """The devicetree the host with its virtio slots has beyond the board.
+
+    It is the overlay of the Zephyr shield `socpuppet_host_virtio`: a
+    `virtio,mmio` node for each slot, with the child node Zephyr's driver
+    for that kind of device binds to, and what `chosen` says of them.
+
+    `board` is a host with its slots, and by default the host with them as
+    they come. The shield's copy is checked in, and a test holds it to
+    this. To write the file again, print what this returns into it, with
+    no newline added, as for `drive_overlay`.
+    """
+    if board is None:
+        board = host(virtio=Virtio())
+    slots = board.virtio
+    assert slots is not None
+    return board.platform.devicetree_overlay(list(slots), via=board.cpu.socket)
 
 
 #: What `socpuppet devicetree` looks for in a description file. The
