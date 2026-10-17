@@ -38,7 +38,7 @@ class VirtioDevice {
 
   // The device's own configuration, which the driver reads and writes at
   // any width from `CONFIG` on (section 4.2.2). Empty for a device with
-  // none.
+  // none. The one accessor serves both directions, so it is not const.
   virtual std::span<std::uint8_t> Config() = 0;
 };
 

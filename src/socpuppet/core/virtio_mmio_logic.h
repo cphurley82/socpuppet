@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_CORE_VIRTIO_MMIO_LOGIC_H_
 #define SOCPUPPET_CORE_VIRTIO_MMIO_LOGIC_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -38,9 +39,10 @@ class VirtioMmioLogic {
   // false, and changes nothing, if the access is refused.
   bool ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out) const {
     if (offset >= VIRTIO_MMIO_CONFIG) {
-      return CopyConfig(
-          offset - VIRTIO_MMIO_CONFIG, out,
-          [](std::uint8_t& config, std::uint8_t& byte) { byte = config; });
+      const auto bytes = ConfigAt(offset - VIRTIO_MMIO_CONFIG, out.size());
+      if (!bytes) return false;
+      std::ranges::copy(*bytes, out.begin());
+      return true;
     }
     if (!Aligned(offset, out.size())) return false;
     switch (offset) {
@@ -57,8 +59,7 @@ class VirtioMmioLogic {
         StoreLittleEndian(kVendorId, out);
         return true;
       case VIRTIO_MMIO_DEVICE_FEATURES:
-        StoreLittleEndian(
-            Half(device_.Features() | kVersion1, device_features_sel_), out);
+        StoreLittleEndian(Half(Offered(), device_features_sel_), out);
         return true;
       case VIRTIO_MMIO_STATUS:
         StoreLittleEndian(status_, out);
@@ -89,10 +90,10 @@ class VirtioMmioLogic {
 
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in) {
     if (offset >= VIRTIO_MMIO_CONFIG) {
-      return CopyConfig(offset - VIRTIO_MMIO_CONFIG, in,
-                        [](std::uint8_t& config, const std::uint8_t& byte) {
-                          config = byte;
-                        });
+      const auto bytes = ConfigAt(offset - VIRTIO_MMIO_CONFIG, in.size());
+      if (!bytes) return false;
+      std::ranges::copy(in, bytes->begin());
+      return true;
     }
     if (!Aligned(offset, in.size())) return false;
     const auto value = LoadLittleEndian<std::uint32_t>(in);
@@ -216,17 +217,17 @@ class VirtioMmioLogic {
   }
   static constexpr std::size_t kRegisterBytes = 4;
 
-  // Moves `bytes` between the device's configuration at `offset` and the
-  // access, one byte at a time by `copy`, refusing an access that runs
-  // past the end of what the device has.
-  template <typename Bytes, typename Copy>
-  bool CopyConfig(std::uint64_t offset, Bytes bytes, Copy copy) const {
+  // The bytes of the device's configuration that an access of `size` bytes
+  // at `offset` touches, or nothing if the access runs past the end of
+  // what the device has. (The offset comes straight off the bus, so the
+  // check is written not to overflow.)
+  std::optional<std::span<std::uint8_t>> ConfigAt(std::uint64_t offset,
+                                                  std::size_t size) const {
     const std::span<std::uint8_t> config = device_.Config();
-    if (offset + bytes.size() > config.size()) return false;
-    for (std::size_t index = 0; index < bytes.size(); ++index) {
-      copy(config[offset + index], bytes[index]);
+    if (offset > config.size() || size > config.size() - offset) {
+      return std::nullopt;
     }
-    return true;
+    return config.subspan(offset, size);
   }
 
   // Writing zero to STATUS: everything the driver told the device is
@@ -264,9 +265,11 @@ class VirtioMmioLogic {
     return which < 2 ? static_cast<std::uint32_t>(bits >> (32 * which)) : 0;
   }
 
+  // What the device offers, with the transport's own bit.
+  std::uint64_t Offered() const { return device_.Features() | kVersion1; }
+
   bool FeaturesAcceptable() const {
-    const std::uint64_t offered = device_.Features() | kVersion1;
-    return (driver_features_ & ~offered) == 0 &&
+    return (driver_features_ & ~Offered()) == 0 &&
            (driver_features_ & kVersion1) != 0;
   }
 
