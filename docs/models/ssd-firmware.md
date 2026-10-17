@@ -31,13 +31,13 @@ cpu = ssd.add("cpu", sp.ScriptedBusMaster(firmware.script))
 
 ```python
 from socpuppet.boards.scripted_host import bring_up_the_drive
-from socpuppet.boards.ssd import ssd, stand_in_firmware
+from socpuppet.boards.ssd import ssd, scripted_firmware
 
 def host():
     nvme = yield from bring_up_the_drive()
     yield from nvme.write_blocks(first=0, data=bytes(512))
 
-board = ssd(host=host, firmware=stand_in_firmware().script)
+board = ssd(host=host, firmware=scripted_firmware().script)
 board.platform.build()
 board.platform.run()
 ```
@@ -136,5 +136,5 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 - `firmware/ssd/src` is the Zephyr application, a file for each section of the script, and `python/socpuppet/zephyr_module/drivers/ssd` its three drivers.
 - `tests/python/test_ssd_firmware.py` runs each of them on the SSD's hardware, every test once with the script and once with Zephyr, with the [driver stand-in](nvme-host.md) for what a driver does and a bare host of the tests' own (`tests/python/raw_nvme.py`) for what a drive refuses.
 - `tests/python/test_m4_exit.py` gives the SSD with Zephyr on it and 🎭 the [stand-in drive](behavioral-nvme.md) the same writes, and reads both back whole.
-- `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has, a console, and `test_ssd_stand_in_firmware.py` what only the script has: a table that Python can read.
+- `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has, a console, and `test_ssd_scripted_firmware.py` what only the script has: a table that Python can read.
 - `tests/cpp/support/ssd_firmware.h` is the same firmware again in C++, for the NVMe contract. It is a test's own, and the two share nothing but the specification.

@@ -30,7 +30,7 @@ To use an SSD from a Python host, with nothing else to build:
         nvme = yield from bring_up_the_drive()
         yield from nvme.write_blocks(first=0, data=bytes(512))
 
-    board = ssd(host=my_host, firmware=stand_in_firmware().script)
+    board = ssd(host=my_host, firmware=scripted_firmware().script)
     board.platform.build()
     board.platform.run()
 """
@@ -126,11 +126,11 @@ class Ssd(NamedTuple):
     endpoint: Placed | None = None
 
 
-def stand_in_firmware() -> SsdFirmware:
+def scripted_firmware() -> SsdFirmware:
     """🎭 The firmware stand-in, told where this board's devices are.
 
     Its `script` goes in the SSD's CPU slot:
-    `add_ssd(..., firmware=stand_in_firmware().script)`.
+    `add_ssd(..., firmware=scripted_firmware().script)`.
     """
     return SsdFirmware(
         frontend=FRONTEND_BASE,
@@ -167,7 +167,7 @@ def add_ssd_function(
     `gdb_port`, that CPU listens for a debugger on the TCP port and waits
     for one to attach before it executes anything. 🎭 Or `firmware` is a
     script that stands in for the firmware, in the CPU's place (see
-    `stand_in_firmware`).
+    `scripted_firmware`).
 
     `boot` is what that CPU starts in: its SRAM with none, or with
     `socpuppet.boards.boot.from_rom` a boot ROM that loads the firmware

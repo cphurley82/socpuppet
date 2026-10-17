@@ -20,7 +20,7 @@ from cast import DISK_TEST, SSD, boot
 from disk_access import assert_it_read_and_wrote, run_to_a_verdict
 from socpuppet import ztest
 from socpuppet.boards.host import host
-from socpuppet.boards.ssd import add_ssd, stand_in_firmware
+from socpuppet.boards.ssd import add_ssd, scripted_firmware
 from ssd_zephyr_firmware import BANNER
 
 #: What is in the SSD's CPU's place.
@@ -46,7 +46,7 @@ def host_with_the_ssd(request, firmware):
             drive=add_ssd
             if zephyr
             else functools.partial(
-                add_ssd, firmware=stand_in_firmware().script
+                add_ssd, firmware=scripted_firmware().script
             ),
         )
         boot(board, firmware, host=DISK_TEST, ssd=SSD if zephyr else None)

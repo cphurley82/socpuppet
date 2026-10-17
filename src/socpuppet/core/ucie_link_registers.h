@@ -73,9 +73,9 @@ class UcieLinkRegisters {
   void MailboxAnswered(SidebandStatus status, std::uint32_t data);
 
   // Whether the reset line this end drives on its own die is held. That
-  // is the die's CPU on the compute side of M5's board, and nothing at
-  // all on the manager side; the manager lets the compute die go by
-  // writing this register of the other end over the sideband.
+  // is the die's CPU on the compute side of the IO manager's board, and
+  // nothing at all on the manager side; the manager lets the compute die
+  // go by writing this register of the other end over the sideband.
   bool ResetAsserted() const { return reset_; }
   // Whether the link is asking for its firmware's attention.
   bool Interrupting() const;

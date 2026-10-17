@@ -9,8 +9,8 @@ sectors at the start, the middle and the end of the drive, checking that
 what it wrote is what it reads back.
 
 Every command it sends is answered by an interrupt, and each interrupt is
-a message that the drive sends up the PCIe link and that the MSI-to-PLIC
-bridge puts on a line of the interrupt controller. So a pass means the
+a message that the drive sends up the PCIe link and that lands in the
+CPU's IMSIC, its message-driven interrupt controller. So a pass means the
 whole way there and back works, from the CPU to the drive's queues.
 
 The firmware has a third test, of erasing, which skips itself: Zephyr's
@@ -52,7 +52,7 @@ def no_verdict(output):
             "The firmware printed nothing in 2 s. Zephyr starts the drive "
             "before it prints its banner, and waits for ever for an "
             "interrupt that does not come, so look at the way an interrupt "
-            "takes first: the drive's MSI-X table, the MSI bridge, and the "
-            "PLIC sources the devicetree names."
+            "takes first: the drive's MSI-X table, and the IMSIC identities "
+            "the devicetree names."
         )
     return f"The firmware gave no verdict in 2 s. It printed:\n{output}"

@@ -4,7 +4,7 @@ There are two firmwares, and a host is not to tell them apart. So every
 test here runs twice: once with 🎭 the Python stand-in, `sp.SsdFirmware`,
 and once with the real thing, the Zephyr application in firmware/ssd on
 the SSD's own CPU. What only one of them does is in
-test_ssd_stand_in_firmware.py and test_ssd_zephyr_firmware.py.
+test_ssd_scripted_firmware.py and test_ssd_zephyr_firmware.py.
 
 There is no PCIe here (see ssd_on_a_bus.py).
 """
@@ -17,7 +17,7 @@ import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
 from socpuppet.boards.drive import VECTORS
-from socpuppet.boards.ssd import stand_in_firmware
+from socpuppet.boards.ssd import scripted_firmware
 from ssd_on_a_bus import (
     BLOCKS,
     NVME_BASE,
@@ -70,7 +70,7 @@ def run_on_an_ssd(request, firmware):
 
         platform, ssd = host_with_an_ssd(
             to_its_end,
-            firmware=None if image else stand_in_firmware(),
+            firmware=None if image else scripted_firmware(),
             blocks=blocks,
         )
         if image:

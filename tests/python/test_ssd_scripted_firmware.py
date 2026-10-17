@@ -9,7 +9,7 @@ table, and when it cannot go on it raises an error that says why.
 import pytest
 
 import socpuppet as sp
-from socpuppet.boards.ssd import stand_in_firmware
+from socpuppet.boards.ssd import scripted_firmware
 from socpuppet.regs import flash_controller
 from ssd_on_a_bus import NVME_BASE, RAM_BASE, host_with_an_ssd
 
@@ -20,7 +20,7 @@ class TestWhenADriverHasWrittenToPagesOfTheSsd:
     # 63 of the drive and block 0 in page 0. The firmware gives each the
     # next NAND page nobody has, in the order they were first written.
     def test_the_stand_in_can_say_which_nand_page_holds_each(self):
-        firmware = stand_in_firmware()
+        firmware = scripted_firmware()
 
         def script():
             nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)

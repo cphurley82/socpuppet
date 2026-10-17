@@ -11,7 +11,7 @@ from socpuppet.boards import io_manager as boards_io_manager
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import IO_DIE, SRAM_BASE
 from socpuppet.boards.io_manager import RAM_BASE, SCRATCH_BASE, io_manager
-from socpuppet.boards.manager import LINK_SOURCE, stand_in_manager
+from socpuppet.boards.manager import LINK_SOURCE, scripted_manager
 from wiring import what_drives
 from zephyr_module import ZEPHYR_MODULE, clock_rate
 
@@ -26,7 +26,7 @@ def nothing():
 
 def a_board_with_a_scripted_manager():
     """The board with 🎭 a script in the manager's place and an idle die."""
-    return io_manager(compute=nothing, manager=stand_in_manager().script)
+    return io_manager(compute=nothing, manager=scripted_manager().script)
 
 
 class TestWhenTheBoardIsDescribed:
@@ -157,7 +157,7 @@ class TestWhenTheManagerIsAScript:
         with pytest.raises(ValueError, match=r"gdb_port=1234") as refused:
             io_manager(
                 compute=nothing,
-                manager=stand_in_manager().script,
+                manager=scripted_manager().script,
                 gdb_port=1234,
             )
 
@@ -167,7 +167,7 @@ class TestWhenTheManagerIsAScript:
         with pytest.raises(ValueError, match=r"`boot`.*no CPU"):
             io_manager(
                 compute=nothing,
-                manager=stand_in_manager().script,
+                manager=scripted_manager().script,
                 boot=from_rom,
             )
 

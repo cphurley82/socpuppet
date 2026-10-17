@@ -27,10 +27,10 @@ from socpuppet.boards.io_manager import (
     io_manager,
     one_round_trip,
 )
-from socpuppet.boards.manager import stand_in_manager
+from socpuppet.boards.manager import scripted_manager
 
 board = io_manager(
-    compute=one_round_trip, manager=stand_in_manager().script, trace=True
+    compute=one_round_trip, manager=scripted_manager().script, trace=True
 )
 board.platform.build()
 

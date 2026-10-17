@@ -357,7 +357,7 @@ The interrupt lines:
 
 ## The host across the link
 
-`host(manager=...)` is the host above with the real [die-to-die link](models/d2d-link.md) between its dies, where 🎭 the pass-through was, and the IO die's manager to bring that link up. It is the host and the IO manager board put together: the host's compute die where the IO manager board has a stand-in. With `functools.partial(add_manager, script=stand_in_manager().script)` the manager is 🎭 the [script](models/io-manager.md).
+`host(manager=...)` is the host above with the real [die-to-die link](models/d2d-link.md) between its dies, where 🎭 the pass-through was, and the IO die's manager to bring that link up. It is the host and the IO manager board put together: the host's compute die where the IO manager board has a stand-in. With `functools.partial(add_manager, script=scripted_manager().script)` the manager is 🎭 the [script](models/io-manager.md).
 
 - **The host's CPU (`compute.cpu.socket`) sees exactly what it sees with the pass-through**: the tables under [The host](#the-host). So the firmware for it is the firmware built for `socpuppet_host`, the same image. What changes is when it runs: the link's end on the compute die holds the CPU in reset until the manager has trained the link and let it go.
 - **The manager has a bus of its own on the IO die**, and this is all that is on it for 🎭 the script (`io.manager.cpu.socket`):

@@ -1,7 +1,7 @@
 """tools/test_wheel.py, which installs a wheel and runs the Python tests on it.
 
-The tool is run for real, with a stand-in for uv on its path. The stand-in
-logs what it was asked, and makes a venv whose python is a stand-in too,
+The tool is run for real, with a fake for uv on its path. The fake
+logs what it was asked, and makes a venv whose python is a fake too,
 which logs what it was asked and where, so the tests can say how the wheel
 was installed and where its tests ran without installing anything.
 """
@@ -22,7 +22,7 @@ PYTHON = (REPO / ".python-version").read_text().strip()
 # uv and a venv's python. `uv venv DIR` makes DIR/bin/python, which is this
 # same script. Each logs its name, arguments and directory, and whether
 # the directory has the Python tests in it.
-STAND_IN = r"""
+FAKE = r"""
 import json, os, shutil, sys
 args = sys.argv[1:]
 with open(os.environ["LOG"], "a") as log:
@@ -45,7 +45,7 @@ def test_wheel(tmp_path):
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     uv = bin_directory / "uv"
-    uv.write_text(f"#!{sys.executable}\n{STAND_IN}")
+    uv.write_text(f"#!{sys.executable}\n{FAKE}")
     uv.chmod(0o755)
     wheel = tmp_path / "socpuppet-0.0.1-cp313-cp313-spam.whl"
     wheel.touch()

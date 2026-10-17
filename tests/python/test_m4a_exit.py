@@ -21,7 +21,7 @@ from socpuppet.boards.scripted_host import (
     RAM_BASE,
     bring_up_the_drive,
 )
-from socpuppet.boards.ssd import ssd, stand_in_firmware
+from socpuppet.boards.ssd import scripted_firmware, ssd
 
 BLOCKS = 1024
 
@@ -31,7 +31,7 @@ def host_and_ssd(script):
     board = ssd(
         host=script,
         blocks=BLOCKS,
-        firmware=stand_in_firmware().script,
+        firmware=scripted_firmware().script,
         trace=True,
     )
     board.platform.build()

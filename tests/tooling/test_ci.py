@@ -1,8 +1,8 @@
 """tools/ci.py, which runs CI's jobs: every one on this machine, or one in CI.
 
 The runner is run for real in a throwaway copy of the repository, with
-stand-ins for uv, the scripts the jobs call and tools/doctor.py. Each
-stand-in writes the command it was given to a log, so the tests can say what
+fakes for uv, the scripts the jobs call and tools/doctor.py. Each
+fake writes the command it was given to a log, so the tests can say what
 the runner ran, and in what order, without building anything.
 """
 
@@ -49,7 +49,7 @@ FetchContent_Declare(Ham_Core
 # written to the log's .json, with the variables whose names begin as
 # RECORDED says and when it started and ended, and its process id to the log's .pids when it
 # starts.
-STAND_IN = """\
+FAKE = """\
 import json, os, sys, time
 command = " ".join([os.path.basename(sys.argv[0]), *sys.argv[1:]])
 started = time.time()
@@ -106,7 +106,7 @@ TAG = "cp313"
 
 SDIST = "build/wheelhouse/sdist/socpuppet-0.0.1.tar.gz"
 OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
-# What the sdist and cibuildwheel stand-ins leave, to build one wheel here.
+# What the sdist and cibuildwheel fakes leave, to build one wheel here.
 ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
 
 # What a terminal is sent to color what follows.
@@ -115,7 +115,7 @@ GREEN, RED = "\x1b[32m", "\x1b[31m"
 # What the runner is told by the environment it runs in, which the tests
 # decide for themselves.
 DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR")
-# The variables a stand-in records: socpuppet's, and cibuildwheel's and
+# The variables a fake records: socpuppet's, and cibuildwheel's and
 # ccache's. The tests' own environment has none of them.
 RECORDED = ("SOCPUPPET_", "CIBW_", "CCACHE_")
 
@@ -148,9 +148,9 @@ DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
 def ci(tmp_path):
     """Run the runner in a copy of the repo; returns run(*args, **env).
 
-    `makes` is what the stand-ins make (see STAND_IN's MAKES).
+    `makes` is what the fakes make (see FAKE's MAKES).
 
-    run returns the finished process and the commands the stand-ins were
+    run returns the finished process and the commands the fakes were
     given, in order. run.root is the copy, run.start(*args, **env) starts
     the runner and returns the process, run.on_a_terminal(*args, **env)
     runs it with its output going to a terminal and returns what that was
@@ -165,8 +165,8 @@ def ci(tmp_path):
     (root / "tools").mkdir(parents=True)
     shutil.copy(RUNNER, root / "tools" / "ci.py")
     for script in SCRIPTS:
-        write_stand_in(root / script)
-    write_stand_in(root / "tools" / "doctor.py", DOCTOR)
+        write_fake(root / script)
+    write_fake(root / "tools" / "doctor.py", DOCTOR)
     (root / "cmake" / "patches").mkdir(parents=True)
     (root / "cmake" / "Dependencies.cmake").write_text(DEPENDENCIES)
     (root / "cmake" / "patches" / "eggs-fix.patch").write_text("one\n")
@@ -174,7 +174,7 @@ def ci(tmp_path):
     git(root, "init", "-q", "-b", "main")
     commit_everything(root)
     bin_directory = tmp_path / "bin"
-    write_stand_in(bin_directory / "uv")
+    write_fake(bin_directory / "uv")
     log = tmp_path / "log"
 
     def start(*args, stdout=subprocess.PIPE, makes=None, **env):
@@ -1091,7 +1091,7 @@ def test_devcontainer_builds_and_tests_the_linux_tree_in_docker(ci):
     ]
 
 
-def write_stand_in(path, program=STAND_IN):
+def write_fake(path, program=FAKE):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"#!{sys.executable}\n{program}")
     path.chmod(0o755)
@@ -1214,7 +1214,7 @@ def independent(a, b):
 
 
 def commands_of(name):
-    """A job's commands, as the stand-ins log them."""
+    """A job's commands, as the fakes log them."""
     return [
         " ".join([Path(step.argv[0]).name, *map(str, step.argv[1:])])
         for step in JOBS_BY_NAME[name].steps_for(RUNNER_MODULE.Mode.HERE)

@@ -1,7 +1,7 @@
 """firmware/build.py, which fetches the firmware's toolchains and builds it.
 
 The script is run for real in a throwaway copy of what it reads, with a
-stand-in for each program it runs: curl, git, make, uv, iasl and the SDK's
+fake for each program it runs: curl, git, make, uv, iasl and the SDK's
 own tools, and later the venv's cmake and west and EDK2's build. They are
 one script, which logs what it was asked and makes what the real program
 would have made, so the tests can say what was built, and how, in seconds.
@@ -25,9 +25,9 @@ SCRIPT = REPO / "firmware" / "build.py"
 VERSIONS = REPO / "firmware" / "versions.toml"
 TWISTER_REQUIREMENTS = REPO / "firmware" / "twister-requirements.txt"
 
-# The stand-in for every program. Each logs its name and arguments, as
+# The fake for every program. Each logs its name and arguments, as
 # JSON, with when it started and ended. What it then does depends on which
-# program it is standing in for. FAIL_ON names a word, and a command that
+# program it is faking. FAIL_ON names a word, and a command that
 # holds it fails, after saying fifty numbered lines. SLOW_ON names a word,
 # and a command that holds it takes half a second, far longer than a
 # process takes to start, so that two run side by side are seen to overlap.
@@ -53,7 +53,7 @@ def elf(path):
         file.write(b"\x7fELF\x02\x01\x01" + bytes(17) + entry)
 
 
-def stand_in(path):
+def write_fake(path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     shutil.copy(fake, path)
     os.chmod(path, 0o755)
@@ -96,11 +96,11 @@ elif name == "make" and any(a.startswith("O=") for a in args):
         for kind in ("elf", "bin"):
             elf(f"{built}/platform/generic/firmware/{each}.{kind}")
 elif name == "uv" and args[0] == "venv":
-    stand_in(os.path.join(args[-1], "bin", "python"))
+    write_fake(os.path.join(args[-1], "bin", "python"))
 elif name == "uv" and args[:2] == ["pip", "install"]:
     venv = os.path.dirname(os.path.dirname(after("--python")))
     for program in ("cmake", "west"):
-        stand_in(os.path.join(venv, "bin", program))
+        write_fake(os.path.join(venv, "bin", program))
 elif name == "west":
     os.makedirs(".west", exist_ok=True)
 elif name == "cmake" and args[0] == "--build":
@@ -154,7 +154,7 @@ Disassembly of section .text:
     8000000e:\taddi\ta2,zero,3
 """
 
-# A file in a tarball that is to be the stand-in, runnable.
+# A file in a tarball that is to be the fake, runnable.
 RUNNABLE = object()
 
 
@@ -655,7 +655,7 @@ class Firmware:
 
 
 def tarball(path, contents, fake):
-    """A .tar.xz at `path` of {name: text, or RUNNABLE for the stand-in}."""
+    """A .tar.xz at `path` of {name: text, or RUNNABLE for the fake}."""
     with tarfile.open(path, "w:xz") as archive:
         for name, text in contents.items():
             data = fake.read_bytes() if text is RUNNABLE else text.encode()

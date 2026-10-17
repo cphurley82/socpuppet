@@ -33,7 +33,7 @@ from socpuppet.boards.host import (
     host,
     virtio_overlay,
 )
-from socpuppet.boards.manager import add_manager, stand_in_manager
+from socpuppet.boards.manager import add_manager, scripted_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from socpuppet.boards.virtio import VIRTIO_SLOT_STRIDE, Virtio
 from socpuppet.components import (
@@ -647,7 +647,7 @@ def host_with_a_manager(drive_blocks=None):
     return host(
         drive_blocks=drive_blocks,
         manager=functools.partial(
-            add_manager, script=stand_in_manager().script
+            add_manager, script=scripted_manager().script
         ),
     )
 

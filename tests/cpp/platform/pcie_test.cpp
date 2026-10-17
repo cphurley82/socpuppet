@@ -17,7 +17,7 @@
 #include "socpuppet/platform/platform.h"
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_driver.h"
-#include "tests/cpp/support/pci_host.h"
+#include "tests/cpp/support/pcie_host.h"
 #include "tests/cpp/support/recording_target.h"
 #include "tests/cpp/support/test_components.h"
 
@@ -69,7 +69,7 @@ struct HostWithAnEndpoint {
 
   // What a test has the three actors do. Each is left idle if not given.
   struct Actors {
-    std::function<void(PciHost&)> host = [](PciHost&) {};
+    std::function<void(PcieHost&)> host = [](PcieHost&) {};
     // What the function does with its DMA port.
     std::function<void(BusDriver&)> function = [](BusDriver&) {};
     // And with the interrupt line of its vector 1.
@@ -120,7 +120,7 @@ struct HostWithAnEndpoint {
                              std::vector<RecordedAccess>& messages) {
     Registry registry = BuiltinComponents();
     AddBusDriver(registry, "host_driver", [host = actors.host](BusDriver& bus) {
-      PciHost pci{bus, kEcamBase};
+      PcieHost pci{bus, kEcamBase};
       host(pci);
     });
     AddBusDriver(registry, "function_driver", actors.function);
@@ -192,7 +192,7 @@ sc_core::sc_time LineRisesAt() { return {10, sc_core::SC_NS}; }
 // What a test varies in setting vector 1 up: which bits of the command
 // register the host switches on, and where the vector's messages go.
 struct VectorOne {
-  std::uint32_t command = PciHost::kMemoryDecoding | PciHost::kBusMastering;
+  std::uint32_t command = PcieHost::kMemoryDecoding | PcieHost::kBusMastering;
   std::uint64_t address = kMessageAddress;
 };
 
@@ -201,10 +201,11 @@ struct VectorOne {
 // starting accesses of its own, unless a test leaves one out), and say
 // where vector 1's messages go. The vector is left masked and MSI-X off,
 // for the test to switch on.
-PciHost::Msix SetUpVectorOne(PciHost& host, VectorOne options = {}) {
+PcieHost::Msix SetUpVectorOne(PcieHost& host, VectorOne options = {}) {
   host.PlaceBar0(kEndpoint, kPlace);
   host.Command(kEndpoint, options.command);
-  const PciHost::Msix msix = host.FindMsix(kEndpoint).value_or(PciHost::Msix{});
+  const PcieHost::Msix msix =
+      host.FindMsix(kEndpoint).value_or(PcieHost::Msix{});
   host.SetUpVector(msix, kVector, options.address, kMessageData);
   return msix;
 }
@@ -239,7 +240,7 @@ std::vector<std::pair<std::uint64_t, std::vector<std::uint8_t>>> Received(
 TEST(WhenTheHostReadsTheIdsOfAFunctionThatIsNotThere, ItGetsAllOnesAndNoError) {
   PciAccess ids;
   HostWithAnEndpoint fixture{
-      {.host = [&](PciHost& host) { ids = host.ReadConfig(kNobody, kIds); }}};
+      {.host = [&](PcieHost& host) { ids = host.ReadConfig(kNobody, kIds); }}};
 
   fixture.platform.Run();
 
@@ -248,9 +249,9 @@ TEST(WhenTheHostReadsTheIdsOfAFunctionThatIsNotThere, ItGetsAllOnesAndNoError) {
 }
 
 TEST(WhenTheHostReadsTheIdsOfTheEndpoint, ItGetsTheVendorAndTheDevice) {
-  PciHost::Identity ids;
+  PcieHost::Identity ids;
   HostWithAnEndpoint fixture{
-      {.host = [&](PciHost& host) { ids = host.IdsOf(kEndpoint); }}};
+      {.host = [&](PcieHost& host) { ids = host.IdsOf(kEndpoint); }}};
 
   fixture.platform.Run();
 
@@ -260,7 +261,7 @@ TEST(WhenTheHostReadsTheIdsOfTheEndpoint, ItGetsTheVendorAndTheDevice) {
 
 TEST(WhenTheHostReadsTheClassOfTheEndpoint, ItGetsTheClassCodeItWasGiven) {
   std::uint32_t class_code = 0;
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     class_code = host.ClassCodeOf(kEndpoint);
   }}};
 
@@ -272,7 +273,7 @@ TEST(WhenTheHostReadsTheClassOfTheEndpoint, ItGetsTheClassCodeItWasGiven) {
 TEST(WhenTheHostLooksAtBar0, ItIsA64BitMemoryBar) {
   std::uint32_t kind = 0;
   HostWithAnEndpoint fixture{
-      {.host = [&](PciHost& host) { kind = host.KindOfBar0(kEndpoint); }}};
+      {.host = [&](PcieHost& host) { kind = host.KindOfBar0(kEndpoint); }}};
 
   fixture.platform.Run();
 
@@ -282,7 +283,7 @@ TEST(WhenTheHostLooksAtBar0, ItIsA64BitMemoryBar) {
 TEST(WhenTheHostSizesBar0, ItIsAPowerOfTwoWithRoomForTheFunctionsRegisters) {
   std::uint64_t size = 0;
   HostWithAnEndpoint fixture{
-      {.host = [&](PciHost& host) { size = host.SizeOfBar0(kEndpoint); }}};
+      {.host = [&](PcieHost& host) { size = host.SizeOfBar0(kEndpoint); }}};
 
   fixture.platform.Run();
 
@@ -292,7 +293,7 @@ TEST(WhenTheHostSizesBar0, ItIsAPowerOfTwoWithRoomForTheFunctionsRegisters) {
 
 TEST(WhenTheHostPlacesBar0, ItReadsBackTheAddressItChose) {
   std::uint64_t read_back = 0;
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
     read_back = host.PlaceOfBar0(kEndpoint);
   }}};
@@ -304,9 +305,9 @@ TEST(WhenTheHostPlacesBar0, ItReadsBackTheAddressItChose) {
 
 TEST(WhenBar0IsPlacedAndMemoryDecodingIsOn,
      AnAccessInsideItReachesTheFunctionAtItsOffset) {
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PciHost::kMemoryDecoding);
+    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
     host.Write(kPlace + 0x20, 0xC0FFEE);
   }}};
 
@@ -318,7 +319,7 @@ TEST(WhenBar0IsPlacedAndMemoryDecodingIsOn,
 TEST(WhenMemoryDecodingIsOff,
      AnAccessToWhereBar0PointsGetsAnAddressErrorAndDoesNotReachTheFunction) {
   PciAccess write;
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
     write = host.Write(kPlace + 0x20, 0xC0FFEE);
   }}};
@@ -331,9 +332,9 @@ TEST(WhenMemoryDecodingIsOff,
 
 TEST(WhenAnAccessInTheWindowIsOutsideBar0, ItGetsAnAddressError) {
   PciAccess read;
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PciHost::kMemoryDecoding);
+    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
     read = host.Read(HostWithAnEndpoint::kWindowBase);
   }}};
 
@@ -347,8 +348,8 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsABusMaster, TheWriteLandsThere) {
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             host.Command(kEndpoint, PciHost::kBusMastering);
+           [](PcieHost& host) {
+             host.Command(kEndpoint, PcieHost::kBusMastering);
            },
        .function =
            [&](BusDriver& function) {
@@ -380,9 +381,9 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsNotABusMaster,
 
 TEST(WhenTheHostLooksAtTheFunctionsRegistersByDebugAccess,
      ItSeesThemWhereBar0WasPlaced) {
-  HostWithAnEndpoint fixture{{.host = [](PciHost& host) {
+  HostWithAnEndpoint fixture{{.host = [](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PciHost::kMemoryDecoding);
+    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
     host.Write(kPlace + 0x10, 0xC0FFEE);
   }}};
   fixture.platform.Run();
@@ -410,15 +411,15 @@ TEST(WhenTheFunctionLooksAtHostMemoryByDebugAccess, ItSeesIt) {
 
 TEST(WhenTheHostWalksTheCapabilityList,
      ItFindsMsixWithOneVectorForEachInterruptLine) {
-  std::optional<PciHost::Msix> msix;
-  HostWithAnEndpoint fixture{{.host = [&](PciHost& host) {
+  std::optional<PcieHost::Msix> msix;
+  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
     host.PlaceBar0(kEndpoint, kPlace);
     msix = host.FindMsix(kEndpoint);
   }}};
 
   fixture.platform.Run();
 
-  EXPECT_EQ(msix.value_or(PciHost::Msix{}).vectors,
+  EXPECT_EQ(msix.value_or(PcieHost::Msix{}).vectors,
             HostWithAnEndpoint::kVectors);
 }
 
@@ -426,10 +427,10 @@ TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
      ItsDataIsWrittenToItsAddressOnce) {
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
+           [](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
              host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
            },
        .line = RaiseTheLineOnce}};
 
@@ -445,11 +446,11 @@ TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
   std::uint16_t status = 0;
   HostWithAnEndpoint fixture{
       {.host =
-           [&](PciHost& host) {
-             const PciHost::Msix msix =
+           [&](PcieHost& host) {
+             const PcieHost::Msix msix =
                  SetUpVectorOne(host, {.address = kNowhere});
              host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
              status = host.StatusOf(kEndpoint);
@@ -458,16 +459,16 @@ TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
 
   fixture.platform.Run();
 
-  EXPECT_TRUE(status & PciHost::kReceivedMasterAbort);
+  EXPECT_TRUE(status & PcieHost::kReceivedMasterAbort);
 }
 
 TEST(WhenAnInterruptLineRisesASecondTime, ASecondMessageIsSent) {
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
+           [](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
              host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
            },
        .line =
            [](LineDriver& line) {
@@ -485,8 +486,8 @@ TEST(WhenAnInterruptLineRisesASecondTime, ASecondMessageIsSent) {
 
 TEST(WhenMsixIsNotEnabled, ARisingInterruptLineSendsNothing) {
   HostWithAnEndpoint fixture{{.host =
-                                  [](PciHost& host) {
-                                    const PciHost::Msix msix =
+                                  [](PcieHost& host) {
+                                    const PcieHost::Msix msix =
                                         SetUpVectorOne(host);
                                     host.MaskVector(msix, kVector, false);
                                   },
@@ -500,11 +501,11 @@ TEST(WhenMsixIsNotEnabled, ARisingInterruptLineSendsNothing) {
 TEST(WhenTheDeviceIsNotABusMaster, ARisingInterruptLineSendsNothing) {
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix =
-                 SetUpVectorOne(host, {.command = PciHost::kMemoryDecoding});
+           [](PcieHost& host) {
+             const PcieHost::Msix msix =
+                 SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
              host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
            },
        .line = RaiseTheLineOnce}};
 
@@ -517,9 +518,9 @@ TEST(WhenAVectorIsMasked, ItsRisingInterruptLineSendsNothingAndIsPending) {
   bool pending = false;
   HostWithAnEndpoint fixture{
       {.host =
-           [&](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+           [&](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
              pending = host.IsPending(msix, kVector);
@@ -536,9 +537,9 @@ TEST(WhenAPendingVectorIsUnmasked, ItsMessageIsSentAndItIsNoLongerPending) {
   bool pending = true;
   HostWithAnEndpoint fixture{
       {.host =
-           [&](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+           [&](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
              host.MaskVector(msix, kVector, false);
@@ -557,12 +558,12 @@ TEST(WhenAPendingVectorIsUnmasked, ItsMessageIsSentAndItIsNoLongerPending) {
 TEST(WhenEveryVectorIsMaskedAtOnce, ARisingInterruptLineSendsNothing) {
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
+           [](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
              host.MaskVector(msix, kVector, false);
              host.MsixControl(
                  kEndpoint, msix,
-                 PciHost::kMsixEnable | PciHost::kMsixMaskEveryVector);
+                 PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
            },
        .line = RaiseTheLineOnce}};
 
@@ -575,9 +576,9 @@ TEST(WhenTheHostWritesToThePendingBits, APendingVectorStaysPending) {
   bool pending = false;
   HostWithAnEndpoint fixture{
       {.host =
-           [&](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+           [&](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
              host.Write(msix.pending, 0);
@@ -596,15 +597,15 @@ TEST(WhenEveryVectorIsUnmaskedAgain, AVectorThatRoseMeanwhileIsSent) {
   // interrupt that came in between must not be lost.
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix = SetUpVectorOne(host);
+           [](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
              host.MaskVector(msix, kVector, false);
              host.MsixControl(
                  kEndpoint, msix,
-                 PciHost::kMsixEnable | PciHost::kMsixMaskEveryVector);
+                 PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
            },
        .line = RaiseTheLineOnce}};
 
@@ -616,14 +617,14 @@ TEST(WhenEveryVectorIsUnmaskedAgain, AVectorThatRoseMeanwhileIsSent) {
 TEST(WhenTheDeviceBecomesABusMaster, AVectorThatRoseBeforeIsSent) {
   HostWithAnEndpoint fixture{
       {.host =
-           [](PciHost& host) {
-             const PciHost::Msix msix =
-                 SetUpVectorOne(host, {.command = PciHost::kMemoryDecoding});
+           [](PcieHost& host) {
+             const PcieHost::Msix msix =
+                 SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
              host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PciHost::kMsixEnable);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
              // Until after the line has risen.
              host.WaitFor(2 * LineRisesAt());
-             host.Command(kEndpoint, PciHost::kBusMastering);
+             host.Command(kEndpoint, PcieHost::kBusMastering);
            },
        .line = RaiseTheLineOnce}};
 

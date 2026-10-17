@@ -207,7 +207,7 @@ print(board.ssd.cpu_kit.uart.output)
 
 ## The host with the SSD
 
-Both boards above, in one simulation: the host's CPU runs the host's firmware, and its SSD's CPU runs the SSD's. Nothing is built differently for it. The host cannot tell the SSD from 🎭 the stand-in drive, and the SSD cannot tell a CPU from 🎭 a scripted host, so each image is the one you already have:
+The host and the SSD's controller in one simulation: the host's CPU runs the host's firmware, and its SSD's CPU runs the SSD's. Nothing is built differently for it. The host cannot tell the SSD from 🎭 the stand-in drive, and the SSD cannot tell a CPU from 🎭 a scripted host, so each image is the one you already have:
 
 ```sh
 west build -d build/host -b socpuppet_host --shield socpuppet_host_drive my_app -- \
@@ -249,7 +249,7 @@ ms     who   said
 - **Both CPUs start together, and the host waits for its drive.** The SSD's firmware is ready 4 ms in with a 2 MiB drive, and 0.27 s in with a 2 GiB one, because it starts by making a table of every page. A host must not assume the drive is ready when it gets there. Zephyr's NVMe driver does it properly: the drive says in its `CAP.TO` register how long a host should give it, one second for this SSD, and the driver gives it that and half a second more. A driver of your own should read it too.
 - 💡 **One clock, and the same story every time.** Both CPUs are in one simulation, so a run is deterministic: run it twice and every line comes at the same simulated time. A bug that needs the two firmwares to be in step by luck will be there again tomorrow.
 - 🎓 **Each CPU runs ahead a little, then lets the other catch up.** That stretch is the *quantum*, 100 µs by default, and it is what makes two CPUs fast: thirty times faster than taking turns after every instruction. The cost is that a CPU sees an interrupt up to a quantum late, and this run comes out 3% longer in simulated time. `board.platform.quantum = sp.us(10)` before `build()` trades speed for timing, and `0` is exact and slow.
-- 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=stand_in_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
+- 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=scripted_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
 - `tests/python/test_m6_exit.py` is a complete example.
 
 ## The host across the link
@@ -261,9 +261,9 @@ import functools
 
 import socpuppet as sp
 from socpuppet.boards.host import host
-from socpuppet.boards.manager import add_manager, stand_in_manager
+from socpuppet.boards.manager import add_manager, scripted_manager
 
-a_scripted_manager = functools.partial(add_manager, script=stand_in_manager().script)
+a_scripted_manager = functools.partial(add_manager, script=scripted_manager().script)
 
 board = host(manager=a_scripted_manager)
 board.platform.build()
@@ -273,7 +273,7 @@ board.platform.run(sp.ms(100))
 print(board.uart.output)
 ```
 
-Nothing is built differently for it. The image is the one from step 2, and with `drive_blocks=` and `drive=` as well it is the one built with the shield. The host's firmware cannot tell which link it has: the devicetree its CPU sees is the same with either, and a test holds it so.
+Nothing is built differently for it. The image is the one from [the host's first step](boot-your-firmware.md#1-build-the-firmware), and with `drive_blocks=` and `drive=` as well it is the one built with the shield. The host's firmware cannot tell which link it has: the devicetree its CPU sees is the same with either, and a test holds it so.
 
 `examples/chiplet_host_hello.py` is that with Zephyr's `hello_world`. It prints the link's bring-up out of the trace, and then the host's console:
 
@@ -289,7 +289,7 @@ ms     from         packet
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-- 🎭 **The manager is a script here.** `stand_in_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. That firmware, on a CPU of its own under this host, is [the whole cast](#the-whole-cast-three-firmwares) below.
+- 🎭 **The manager is a script here.** `scripted_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. That firmware, on a CPU of its own under this host, is [the whole cast](#the-whole-cast-three-firmwares) below.
 - ⚠️ **The host's first instruction is 5 ms late.** UCIe holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
 - ⚠️ **Say whose.** The manager's script is a bus master too, so `load_elf`, `peek32` and `devicetree` want `via=board.cpu.socket`, and say so if it is left out.
 - **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
@@ -418,7 +418,7 @@ ms     who      said
 - ⚠️ **Two consoles heard at the same moment have no order.** Each CPU runs a quantum ahead before the others catch up, 100 µs by default, so lines that two firmwares print within one quantum are heard together. They get the same time and come out in the order the consoles were given. Compare times, not places in the list.
 - ⚠️ **Say whose, every time, and load all three.** `via=board.manager.cpu.socket`, `via=board.cpu.socket`, `via=board.drive.ssd.cpu.socket`. A manager with no image never lets the host go, and the host prints nothing at all. An SSD with no image never says it is ready, and the host waits for it. Each also fills the log with `target address=0x0 not found`, the mark of a CPU running an empty memory.
 - **The manager's firmware sees its own board, less the scratch memory.** Under the host the manager has a bus of its own with its kit and the link's registers on it, at the addresses `socpuppet_iomgr` has them ([the address map](address-map.md#the-host-across-the-link)). The scratch memory of that board was for 🎭 a compute die to reach, and the firmware never used it.
-- 🎭 **Take out what you are not working on.** Each of the two functions has its stand-in, and the host's image is the same with any of them: `manager=functools.partial(add_manager, script=stand_in_manager().script)` is a script for the manager, `drive=functools.partial(add_ssd, firmware=stand_in_firmware().script)` a script for the SSD's firmware, and leaving `drive` out is the stand-in drive.
+- 🎭 **Take out what you are not working on.** Each of the two functions has its stand-in, and the host's image is the same with any of them: `manager=functools.partial(add_manager, script=scripted_manager().script)` is a script for the manager, `drive=functools.partial(add_ssd, firmware=scripted_firmware().script)` a script for the SSD's firmware, and leaving `drive` out is the stand-in drive.
 - **It costs nothing you will notice.** The manager's firmware lets the host go half a millisecond later than 🎭 the script does, the disk test's verdict comes that half millisecond later, at 603.7 ms of simulated time, and the wall time is the same as with the script: under half a second.
 - `tests/python/test_m8_exit.py` is a complete example.
 

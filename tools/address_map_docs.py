@@ -70,7 +70,7 @@ def tables():
     # manager's with nothing of a CPU's in it.
     with_a_manager = host.host(
         manager=functools.partial(
-            manager.add_manager, script=manager.stand_in_manager().script
+            manager.add_manager, script=manager.scripted_manager().script
         )
     ).platform
     with_a_managers_cpu = host.host(manager=manager.add_manager).platform

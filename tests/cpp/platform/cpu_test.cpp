@@ -1654,7 +1654,7 @@ TEST(WhenAProgramChangesWhereAPageItHasUsedLeadsAndExecutesSfenceVma,
 }
 
 // A load from a page the hart has no translation for yet is several loads,
-// from the page tables and then from the page. M13 found a core that
+// from the page tables and then from the page. The core as borrowed
 // dropped a load an interrupt arrived at, and a kernel's interrupts arrive
 // at loads like this one all the time.
 TEST(WhenAnInterruptArrivesAtALoadFromAPageTheHartHasNotUsedYet,

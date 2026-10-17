@@ -33,13 +33,13 @@ from socpuppet.boards.host import (
     RAM_BASE,
     host,
 )
-from socpuppet.boards.manager import add_manager, stand_in_manager
-from socpuppet.boards.ssd import add_ssd, stand_in_firmware
+from socpuppet.boards.manager import add_manager, scripted_manager
+from socpuppet.boards.ssd import add_ssd, scripted_firmware
 
 
 def a_scripted_manager():
     """🎭 The script for a manager, as `host(manager=)` takes it."""
-    return functools.partial(add_manager, script=stand_in_manager().script)
+    return functools.partial(add_manager, script=scripted_manager().script)
 
 
 @pytest.mark.platform
@@ -111,7 +111,7 @@ def host_across_the_link(request, firmware):
         THE_STAND_IN_DRIVE: {},
         THE_SSD_WITH_A_SCRIPT: {
             "drive": functools.partial(
-                add_ssd, firmware=stand_in_firmware().script
+                add_ssd, firmware=scripted_firmware().script
             )
         },
         THE_SSD_WITH_ZEPHYR: {"drive": add_ssd},
