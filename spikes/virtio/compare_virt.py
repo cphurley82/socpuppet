@@ -48,6 +48,7 @@ def qemu_irqs():
 
 
 def main():
+    """Print the two tables."""
     board = host(sbi=True, virtio=Virtio())
     ours = board.platform.address_map(via=board.cpu.socket)
     lines = board.platform.interrupt_map()
