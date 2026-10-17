@@ -12,6 +12,7 @@
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/memory_store.h"
 #include "socpuppet/core/virtio_device.h"
+#include "socpuppet/core/virtqueue.h"
 #include "socpuppet/regs/virtio_mmio.h"
 
 namespace socpuppet {
@@ -73,6 +74,26 @@ struct Rig {
     Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
     Write32(VIRTIO_MMIO_DRIVER_FEATURES,
             static_cast<std::uint32_t>(features >> 32));
+  }
+  // Sets queue `number` up, as the driver does: its size, where its three
+  // parts are, and that it is ready.
+  void SetUpQueue(std::uint32_t number, std::uint32_t size,
+                  Virtqueue::Layout layout) {
+    Write32(VIRTIO_MMIO_QUEUE_SEL, number);
+    Write32(VIRTIO_MMIO_QUEUE_NUM, size);
+    Write32(VIRTIO_MMIO_QUEUE_DESC_LOW,
+            static_cast<std::uint32_t>(layout.desc));
+    Write32(VIRTIO_MMIO_QUEUE_DESC_HIGH,
+            static_cast<std::uint32_t>(layout.desc >> 32));
+    Write32(VIRTIO_MMIO_QUEUE_DRIVER_LOW,
+            static_cast<std::uint32_t>(layout.avail));
+    Write32(VIRTIO_MMIO_QUEUE_DRIVER_HIGH,
+            static_cast<std::uint32_t>(layout.avail >> 32));
+    Write32(VIRTIO_MMIO_QUEUE_DEVICE_LOW,
+            static_cast<std::uint32_t>(layout.used));
+    Write32(VIRTIO_MMIO_QUEUE_DEVICE_HIGH,
+            static_cast<std::uint32_t>(layout.used >> 32));
+    Write32(VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_READY_READY);
   }
   // The bytes do not start out as zeros, so that a register the transport
   // leaves untouched is not taken for one that reads as zero.
@@ -156,6 +177,35 @@ TEST(WhenTheDriverAsksHowBigAQueueCanBe,
 
   EXPECT_EQ(last, VirtioMmioLogic::kQueueSizeMax);
   EXPECT_EQ(beyond, 0U);
+}
+
+// A queue of eight entries, laid out in the memory the way the
+// specification lays it out.
+constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
+                                   .avail = kMemory + 0x2000,
+                                   .used = kMemory + 0x3000,
+                                   .size = 8};
+
+TEST(WhenTheDriverHasSetOneQueueUp,
+     ThatQueueReadsAsReadyAndTheDevicesOtherQueueDoesNot) {
+  Rig rig;
+  rig.SetUpQueue(1, kQueue.size, kQueue);
+
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 1);
+  const std::uint32_t set_up = rig.Read32(VIRTIO_MMIO_QUEUE_READY);
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 0);
+  const std::uint32_t other = rig.Read32(VIRTIO_MMIO_QUEUE_READY);
+
+  EXPECT_EQ(set_up, VIRTIO_MMIO_QUEUE_READY_READY);
+  EXPECT_EQ(other, 0U);
+}
+
+TEST(WhenTheDriverGivesAQueueMoreEntriesThanItMayHave, TheWriteIsRefused) {
+  Rig rig;
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 0);
+
+  EXPECT_FALSE(
+      rig.Write32(VIRTIO_MMIO_QUEUE_NUM, VirtioMmioLogic::kQueueSizeMax * 2));
 }
 
 }  // namespace

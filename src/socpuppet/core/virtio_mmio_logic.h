@@ -4,10 +4,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/virtio_device.h"
+#include "socpuppet/core/virtqueue.h"
 #include "socpuppet/regs/virtio_mmio.h"
 
 namespace socpuppet {
@@ -28,7 +30,7 @@ class VirtioMmioLogic {
   static constexpr std::uint32_t kQueueSizeMax = 256;
 
   VirtioMmioLogic(VirtioDevice& device, MemoryPort& memory)
-      : device_(device), memory_(memory) {}
+      : device_(device), memory_(memory), queues_(device.QueueCount()) {}
 
   // Reads and writes of the register block, by the driver. Each returns
   // false, and changes nothing, if the access is refused.
@@ -54,8 +56,13 @@ class VirtioMmioLogic {
         StoreLittleEndian(status_, out);
         return true;
       case VIRTIO_MMIO_QUEUE_NUM_MAX:
-        StoreLittleEndian(
-            queue_sel_ < device_.QueueCount() ? kQueueSizeMax : 0U, out);
+        StoreLittleEndian(Selected() ? kQueueSizeMax : 0U, out);
+        return true;
+      case VIRTIO_MMIO_QUEUE_READY:
+        StoreLittleEndian(Selected() && Selected()->ready
+                              ? VIRTIO_MMIO_QUEUE_READY_READY
+                              : 0U,
+                          out);
         return true;
       default:
         return false;
@@ -74,6 +81,26 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_QUEUE_SEL:
         queue_sel_ = value;
         return true;
+      case VIRTIO_MMIO_QUEUE_NUM:
+        if (!Selected() || value > kQueueSizeMax) return false;
+        Selected()->layout.size = static_cast<std::uint16_t>(value);
+        return true;
+      case VIRTIO_MMIO_QUEUE_DESC_LOW:
+        return SetHalfOf(&Queue::Layout::desc, 0, value);
+      case VIRTIO_MMIO_QUEUE_DESC_HIGH:
+        return SetHalfOf(&Queue::Layout::desc, 1, value);
+      case VIRTIO_MMIO_QUEUE_DRIVER_LOW:
+        return SetHalfOf(&Queue::Layout::avail, 0, value);
+      case VIRTIO_MMIO_QUEUE_DRIVER_HIGH:
+        return SetHalfOf(&Queue::Layout::avail, 1, value);
+      case VIRTIO_MMIO_QUEUE_DEVICE_LOW:
+        return SetHalfOf(&Queue::Layout::used, 0, value);
+      case VIRTIO_MMIO_QUEUE_DEVICE_HIGH:
+        return SetHalfOf(&Queue::Layout::used, 1, value);
+      case VIRTIO_MMIO_QUEUE_READY:
+        if (!Selected()) return false;
+        Selected()->ready = (value & VIRTIO_MMIO_QUEUE_READY_READY) != 0;
+        return true;
       case VIRTIO_MMIO_DRIVER_FEATURES:
         SetHalf(driver_features_, driver_features_sel_, value);
         return true;
@@ -90,6 +117,30 @@ class VirtioMmioLogic {
   }
 
  private:
+  // One of the device's virtqueues, as the driver describes it through the
+  // registers.
+  struct Queue {
+    using Layout = Virtqueue::Layout;
+    Layout layout{.desc = 0, .avail = 0, .used = 0, .size = 0};
+    bool ready = false;
+  };
+
+  // The queue QUEUE_SEL names, if the device has one.
+  Queue* Selected() {
+    return queue_sel_ < queues_.size() ? &queues_[queue_sel_] : nullptr;
+  }
+  const Queue* Selected() const {
+    return queue_sel_ < queues_.size() ? &queues_[queue_sel_] : nullptr;
+  }
+
+  // Sets half `which` of one of the selected queue's addresses.
+  bool SetHalfOf(std::uint64_t Queue::Layout::* address, std::uint32_t which,
+                 std::uint32_t half) {
+    if (!Selected()) return false;
+    SetHalf(Selected()->layout.*address, which, half);
+    return true;
+  }
+
   // Half `which` of 64 feature bits: the low 32 for zero, the high 32 for
   // one, and nothing for any other.
   static std::uint32_t Half(std::uint64_t bits, std::uint32_t which) {
@@ -116,6 +167,7 @@ class VirtioMmioLogic {
   std::uint64_t driver_features_ = 0;
   std::uint32_t status_ = 0;
   std::uint32_t queue_sel_ = 0;
+  std::vector<Queue> queues_;
 };
 
 }  // namespace socpuppet
