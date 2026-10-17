@@ -18,6 +18,10 @@ class VirtioDevice {
 
   // What the device is, by the specification's numbering (section 5).
   virtual std::uint32_t DeviceId() const = 0;
+
+  // The feature bits the device offers, its own and none of the
+  // transport's: `VERSION_1` is the transport's to add.
+  virtual std::uint64_t Features() const = 0;
 };
 
 }  // namespace socpuppet

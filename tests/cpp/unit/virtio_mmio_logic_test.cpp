@@ -45,8 +45,11 @@ class MemoryAt : public MemoryPort {
 class FakeDevice : public VirtioDevice {
  public:
   static constexpr std::uint32_t kId = 0x5A;
+  // Two features of its own, by their bits.
+  static constexpr std::uint64_t kFeatures = (1U << 1) | (1U << 5);
 
   std::uint32_t DeviceId() const override { return kId; }
+  std::uint64_t Features() const override { return kFeatures; }
 };
 
 // The transport with the fake behind it, and the driver's way of reaching
@@ -56,6 +59,9 @@ struct Rig {
   MemoryAt memory{kMemory};
   VirtioMmioLogic transport{device, memory};
 
+  bool Write32(std::uint64_t offset, std::uint32_t value) {
+    return transport.WriteRegister(offset, LittleEndianBytes(value));
+  }
   // The bytes do not start out as zeros, so that a register the transport
   // leaves untouched is not taken for one that reads as zero.
   std::uint32_t Read32(std::uint64_t offset) const {
@@ -74,6 +80,19 @@ TEST(WhenTheDriverReadsTheFirstFourRegistersOfAVirtioDevice,
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_VERSION), VIRTIO_MMIO_VERSION_AT_RESET);
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_DEVICE_ID), FakeDevice::kId);
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_VENDOR_ID), 0x5350U);
+}
+
+TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
+     TheyAreWhatTheDeviceOffersWithVersionOneAdded) {
+  Rig rig;
+
+  rig.Write32(VIRTIO_MMIO_DEVICE_FEATURES_SEL, 0);
+  const std::uint32_t low = rig.Read32(VIRTIO_MMIO_DEVICE_FEATURES);
+  rig.Write32(VIRTIO_MMIO_DEVICE_FEATURES_SEL, 1);
+  const std::uint32_t high = rig.Read32(VIRTIO_MMIO_DEVICE_FEATURES);
+
+  EXPECT_EQ((std::uint64_t{high} << 32) | low,
+            FakeDevice::kFeatures | (std::uint64_t{1} << 32));
 }
 
 }  // namespace
