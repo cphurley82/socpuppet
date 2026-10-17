@@ -181,6 +181,19 @@ TEST(
   EXPECT_EQ(driver.UsedAt(0).length, 20U);
 }
 
+TEST(WhenTheDeviceHasUsedMoreChainsThanTheQueueHasEntries,
+     TheNextElementGoesAtTheStartOfTheUsedRingAndTheIndexKeepsCounting) {
+  Driver driver;
+  for (std::uint16_t round = 0; round < Driver::kSize + 1; ++round) {
+    driver.Describe(round % Driver::kSize, 8, kWrite);
+    driver.MakeAvailable(round % Driver::kSize);
+    driver.queue.Used(*driver.queue.Next(), round);
+  }
+
+  EXPECT_EQ(driver.UsedIndex(), Driver::kSize + 1);
+  EXPECT_EQ(driver.UsedAt(0).length, Driver::kSize);
+}
+
 }  // namespace
 
 }  // namespace socpuppet
