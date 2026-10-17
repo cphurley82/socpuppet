@@ -13,7 +13,7 @@ The parts, each of which fetches or builds what it needs first:
   rom          the boot ROM, for each kind of CPU, and sbi_payload, a
                program of ours for OpenSBI to jump to
   opensbi      OpenSBI for the host, as fw_jump, with its test_payload
-  zephyr       Zephyr's images: three samples and two of its tests, and
+  zephyr       Zephyr's images: four samples and two of its tests, and
                four applications of ours, for the boards they run on
   edk2         EDK2, which is UEFI, as uefi.fd
 
@@ -74,6 +74,9 @@ class Image:
     #: What the image is called, if not the last part of the application's
     #: path: Zephyr's tests are each called `api` or the like.
     name: str = ""
+    #: Kconfig options the image is built with beyond the application's
+    #: and the shield's, each `CONFIG_<NAME>=<value>`.
+    options: tuple[str, ...] = ()
 
 
 IMAGES = [
@@ -113,6 +116,15 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_virtio;socpuppet_host_virtio_console",
         name="hello_virtio_console",
+    ),
+    # Zephyr's echo server, through its virtio network driver against 🎭
+    # the host's virtio network device, with Python at the far end of the
+    # wire. The sample leaves Ethernet to the board.
+    Image(
+        "samples/net/sockets/echo_server",
+        "socpuppet_host",
+        "socpuppet_host_virtio",
+        options=("CONFIG_NET_L2_ETHERNET=y",),
     ),
     # The IO die's manager firmware, and the SSD's own.
     Image("firmware/iomgr", "socpuppet_iomgr"),
@@ -596,6 +608,7 @@ class Build:
             *(cmake, "-S", str(source), "-B", str(build), "-G", "Ninja"),
             f"-DBOARD={image.board}",
             *([f"-DSHIELD={image.shield}"] if image.shield else []),
+            *(f"-D{option}" for option in image.options),
             "-DCONFIG_BUILD_OUTPUT_BIN=y",
             f"-DZEPHYR_EXTRA_MODULES={MODULE}",
             f"-DUSER_CACHE_DIR={self.out / 'cache'}",

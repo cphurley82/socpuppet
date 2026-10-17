@@ -12,11 +12,14 @@ own tests or samples, built for `socpuppet_host` with the shield
                                        ◀── io.console.irq (source 19)
 
 A second shield, `socpuppet_host_virtio_console`, makes the virtio console
-Zephyr's console in place of the UART.
+Zephyr's console in place of the UART. The network device is in slot 3,
+and 🧵 Python is the far end of its wire: it asks who has the echo
+server's address, and sends it a datagram (`ethernet`).
 """
 
 import pytest
 
+import ethernet
 import socpuppet as sp
 from cast import GREETING, boot
 from socpuppet import ztest
@@ -30,6 +33,14 @@ ENTROPY_API = "entropy_api_socpuppet_host.elf"
 #: Zephyr's `samples/hello_world`, with the shield and a second one that
 #: makes the virtio console Zephyr's console.
 HELLO_VIRTIO_CONSOLE = "hello_virtio_console_socpuppet_host.elf"
+#: Zephyr's `samples/net/sockets/echo_server`, with the shield.
+ECHO_SERVER = "echo_server_socpuppet_host.elf"
+#: The echo server's address, from the sample's `prj.conf`, and the port it
+#: echoes on; and Python's end of the wire, the peer the sample names.
+ITS_ADDRESS = ethernet.ipv4("192.0.2.1")
+ECHO_PORT = 4242
+ME = ethernet.mac("02:00:00:00:00:02")
+MY_ADDRESS = ethernet.ipv4("192.0.2.2")
 #: The verdict comes well inside a second of simulated time; 2 s still
 #: ends a run that never gives one.
 LIMIT = sp.ms(2000)
@@ -84,3 +95,47 @@ class TestWhenZephyrsConsoleIsTheVirtioConsole:
             f"{console.output!r}, and the UART {board.uart.output!r}."
         )
         assert board.uart.output == ""
+
+
+@pytest.mark.platform
+class TestWhenZephyrsEchoServerRunsOnTheVirtioNetworkDevice:
+    def test_it_says_where_it_is_and_echoes_a_datagram_python_sends(
+        self, firmware
+    ):
+        board = host(virtio=Virtio())
+        boot(board, firmware, host=ECHO_SERVER)
+        net = board.virtio.net
+        listening = board.platform.run_until(
+            lambda: (
+                "Waiting for UDP packets on port 4242 (IPv4)"
+                in board.uart.output
+            ),
+            timeout=LIMIT,
+        )
+        assert listening, f"The echo server said:\n{board.uart.output}"
+
+        net.send(
+            ethernet.arp_request(
+                sender=ME, sender_address=MY_ADDRESS, target=ITS_ADDRESS
+            )
+        )
+        board.platform.run_until(
+            lambda: ethernet.who_has(net.received, ITS_ADDRESS), timeout=LIMIT
+        )
+        its_mac = ethernet.who_has(net.received, ITS_ADDRESS)
+        net.send(
+            ethernet.udp(
+                source=(ME, MY_ADDRESS, 5000),
+                destination=(its_mac, ITS_ADDRESS, ECHO_PORT),
+                payload=b"spam, spam, spam",
+            )
+        )
+        board.platform.run_until(
+            lambda: ethernet.udp_payloads(net.received, port=5000),
+            timeout=LIMIT,
+        )
+
+        assert its_mac == ethernet.mac("02:00:5e:00:53:01")
+        assert ethernet.udp_payloads(net.received, port=5000) == [
+            b"spam, spam, spam"
+        ]
