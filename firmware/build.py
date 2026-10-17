@@ -74,10 +74,12 @@ class Image:
     #: What the image is called, if not the last part of the application's
     #: path: Zephyr's tests are each called `api` or the like.
     name: str = ""
-    #: What the image's build is told beyond the board and the shield, each
-    #: `NAME=value` and handed to CMake as `-DNAME=value`: a Kconfig option
-    #: (`CONFIG_...`), or a devicetree overlay (`EXTRA_DTC_OVERLAY_FILE`).
+    #: Kconfig options the image is built with beyond the application's
+    #: and the shield's, each `CONFIG_<NAME>=<value>`.
     options: tuple[str, ...] = ()
+    #: A devicetree overlay of this repository's laid over the board's and
+    #: the shield's, by its path from the top of the repository.
+    overlay: str = ""
 
 
 IMAGES = [
@@ -136,11 +138,8 @@ IMAGES = [
         "samples/subsys/fs/virtiofs",
         "socpuppet_host",
         "socpuppet_host_virtio",
-        options=(
-            "CONFIG_PCIE=n",
-            "EXTRA_DTC_OVERLAY_FILE="
-            f"{REPOSITORY / 'firmware' / 'virtiofs_sample.overlay'}",
-        ),
+        options=("CONFIG_PCIE=n",),
+        overlay="firmware/virtiofs_sample.overlay",
     ),
     # The IO die's manager firmware, and the SSD's own.
     Image("firmware/iomgr", "socpuppet_iomgr"),
@@ -625,6 +624,11 @@ class Build:
             f"-DBOARD={image.board}",
             *([f"-DSHIELD={image.shield}"] if image.shield else []),
             *(f"-D{option}" for option in image.options),
+            *(
+                [f"-DEXTRA_DTC_OVERLAY_FILE={REPOSITORY / image.overlay}"]
+                if image.overlay
+                else []
+            ),
             "-DCONFIG_BUILD_OUTPUT_BIN=y",
             f"-DZEPHYR_EXTRA_MODULES={MODULE}",
             f"-DUSER_CACHE_DIR={self.out / 'cache'}",

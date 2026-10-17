@@ -392,6 +392,9 @@ def test_each_image_is_configured_for_its_board_and_shield_with_our_module(
             assert f"-DSHIELD={image.shield}" in args
         for option in image.options:
             assert f"-D{option}" in args
+        if image.overlay:
+            overlay = firmware.root / image.overlay
+            assert f"-DEXTRA_DTC_OVERLAY_FILE={overlay}" in args
         for kind in ("elf", "bin", "opcodes.txt"):
             assert (firmware.out / f"{name_of(image)}.{kind}").exists()
 
