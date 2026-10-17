@@ -1,6 +1,5 @@
 #include "socpuppet/core/virtqueue.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -9,9 +8,9 @@
 
 #include <gtest/gtest.h>
 
-#include "socpuppet/core/little_endian.h"
 #include "socpuppet/core/memory_port.h"
 #include "socpuppet/core/memory_store.h"
+#include "tests/cpp/support/virtqueue_driver.h"
 
 namespace socpuppet {
 
@@ -21,6 +20,10 @@ namespace {
 // that an address in it needs all of its 64 bits.
 constexpr std::uint64_t kMemory = 0x1'0000'0000;
 constexpr std::size_t kMemorySize = 0x1'0000;
+
+constexpr std::uint16_t kReadable = VirtqueueDriver::kReadable;
+constexpr std::uint16_t kNext = VirtqueueDriver::kNext;
+constexpr std::uint16_t kWrite = VirtqueueDriver::kWrite;
 
 // A memory at some address.
 class MemoryAt : public MemoryPort {
@@ -34,23 +37,10 @@ class MemoryAt : public MemoryPort {
     return address >= base_ && store_.Write(address - base_, in);
   }
 
-  // What the memory holds at `address`, `length` bytes of it.
-  std::vector<std::uint8_t> At(std::uint64_t address, std::size_t length) {
-    std::vector<std::uint8_t> data(length);
-    EXPECT_TRUE(Read(address, data));
-    return data;
-  }
-
  private:
   std::uint64_t base_;
   MemoryStore store_{kMemorySize};
 };
-
-// Descriptor flags, virtio 1.2 section 2.7.5: a descriptor with neither is
-// one the device reads.
-constexpr std::uint16_t kReadable = 0;
-constexpr std::uint16_t kNext = 1;
-constexpr std::uint16_t kWrite = 2;
 
 // `length` bytes in which no two neighbours are the same, and which do not
 // repeat every 256 bytes, so that bytes read from the wrong buffer (they
@@ -63,187 +53,143 @@ std::vector<std::uint8_t> SomeBytes(std::size_t length) {
   return data;
 }
 
-// The driver's side of a split virtqueue of `kSize` entries, laid out in
-// the memory as the specification lays it out (virtio 1.2, section 2.7):
-// the descriptor table, then the available ring, then the used ring.
-struct Driver {
+// A split virtqueue of `kSize` entries in the memory, with the driver's
+// side and the device's side of it.
+struct Rig {
   static constexpr std::uint16_t kSize = 8;
-  static constexpr std::uint64_t kDesc = kMemory + 0x1000;
-  static constexpr std::uint64_t kAvail = kMemory + 0x2000;
-  static constexpr std::uint64_t kUsed = kMemory + 0x3000;
-  // Where a buffer the driver hands over begins; each is 0x100 apart.
-  static constexpr std::uint64_t kBuffers = kMemory + 0x4000;
+  static constexpr Virtqueue::Layout kLayout{.desc = kMemory + 0x1000,
+                                             .avail = kMemory + 0x2000,
+                                             .used = kMemory + 0x3000,
+                                             .size = kSize};
 
   MemoryAt memory{kMemory};
-  Virtqueue queue{
-      memory, {.desc = kDesc, .avail = kAvail, .used = kUsed, .size = kSize}};
-  std::uint16_t available = 0;
-
-  // Describes buffer `index`: `length` bytes at its address, with `flags`,
-  // chained to descriptor `next` if the flags say so.
-  std::uint64_t Describe(std::uint16_t index, std::uint32_t length,
-                         std::uint16_t flags, std::uint16_t next = 0) {
-    const std::uint64_t address = kBuffers + 0x100 * index;
-    std::vector<std::uint8_t> descriptor(16);
-    std::span<std::uint8_t> bytes = descriptor;
-    StoreLittleEndian(address, bytes.subspan(0, 8));
-    StoreLittleEndian(length, bytes.subspan(8, 4));
-    StoreLittleEndian(flags, bytes.subspan(12, 2));
-    StoreLittleEndian(next, bytes.subspan(14, 2));
-    EXPECT_TRUE(memory.Write(kDesc + 16 * index, descriptor));
-    return address;
-  }
-  // Fills the buffer of descriptor `index` with `bytes`.
-  void Fill(std::uint16_t index, std::span<const std::uint8_t> bytes) {
-    EXPECT_TRUE(memory.Write(kBuffers + 0x100 * index, bytes));
-  }
-  // What the used ring says: its index, and the element at `slot`.
-  std::uint16_t UsedIndex() { return Load16(kUsed + 2); }
-  struct Used {
-    std::uint32_t id;
-    std::uint32_t length;
-  };
-  Used UsedAt(std::uint16_t slot) {
-    std::array<std::uint8_t, 8> bytes{};
-    EXPECT_TRUE(memory.Read(kUsed + 4 + 8 * slot, bytes));
-    const std::span<const std::uint8_t> fields = bytes;
-    return {.id = LoadLittleEndian<std::uint32_t>(fields.subspan(0, 4)),
-            .length = LoadLittleEndian<std::uint32_t>(fields.subspan(4, 4))};
-  }
-  std::uint16_t Load16(std::uint64_t address) {
-    std::array<std::uint8_t, 2> bytes{};
-    EXPECT_TRUE(memory.Read(address, bytes));
-    return LoadLittleEndian<std::uint16_t>(bytes);
-  }
-  // Puts the chain that starts at descriptor `head` in the available ring
-  // and moves the ring's index on.
-  void MakeAvailable(std::uint16_t head) {
-    EXPECT_TRUE(memory.Write(kAvail + 4 + 2 * (available % kSize),
-                             LittleEndianBytes(head)));
-    ++available;
-    EXPECT_TRUE(memory.Write(kAvail + 2, LittleEndianBytes(available)));
-  }
+  VirtqueueDriver driver{memory, kLayout, kMemory + 0x4000};
+  Virtqueue queue{memory, kLayout};
 };
 
 TEST(WhenTheDriverMakesAChainOfOneReadableDescriptorAvailable,
      TheDeviceGetsTheChainWithItsBytes) {
-  Driver driver;
+  Rig rig;
   const std::vector<std::uint8_t> bytes = SomeBytes(48);
-  driver.Describe(0, static_cast<std::uint32_t>(bytes.size()), kReadable);
-  driver.Fill(0, bytes);
-  driver.MakeAvailable(0);
+  rig.driver.Describe(0, static_cast<std::uint32_t>(bytes.size()), kReadable);
+  rig.driver.Fill(0, bytes);
+  rig.driver.MakeAvailable(0);
 
-  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
 
   ASSERT_TRUE(chain.has_value());
-  EXPECT_EQ(driver.queue.Read(*chain), bytes);
+  EXPECT_EQ(rig.queue.Read(*chain), bytes);
 }
 
 TEST(WhenTheDriverMakesAChainOfThreeDescriptorsAvailable,
      TheDeviceFollowsNextAndSplitsWhatItReadsFromWhatItWrites) {
-  Driver driver;
+  Rig rig;
   const std::vector<std::uint8_t> first = SomeBytes(16);
   const std::vector<std::uint8_t> second = SomeBytes(300);
-  driver.Describe(0, static_cast<std::uint32_t>(first.size()),
-                  kReadable | kNext, 1);
-  driver.Describe(1, static_cast<std::uint32_t>(second.size()),
-                  kReadable | kNext, 2);
-  const std::uint64_t answer = driver.Describe(2, 64, kWrite);
-  driver.Fill(0, first);
-  driver.Fill(1, second);
-  driver.MakeAvailable(0);
+  rig.driver.Describe(0, static_cast<std::uint32_t>(first.size()),
+                      kReadable | kNext, 1);
+  rig.driver.Describe(1, static_cast<std::uint32_t>(second.size()),
+                      kReadable | kNext, 2);
+  const std::uint64_t answer = rig.driver.Describe(2, 64, kWrite);
+  rig.driver.Fill(0, first);
+  rig.driver.Fill(1, second);
+  rig.driver.MakeAvailable(0);
 
-  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
 
   ASSERT_TRUE(chain.has_value());
   std::vector<std::uint8_t> both = first;
   both.insert(both.end(), second.begin(), second.end());
-  EXPECT_EQ(driver.queue.Read(*chain), both);
+  EXPECT_EQ(rig.queue.Read(*chain), both);
   ASSERT_EQ(chain->writable.size(), 1U);
   EXPECT_EQ(chain->writable.front().address, answer);
   EXPECT_EQ(chain->writable.front().length, 64U);
 }
 
 TEST(WhenTheDriverHasMadeNothingMoreAvailable, TheDeviceGetsNoChain) {
-  Driver driver;
-  driver.Describe(0, 8, kReadable);
-  driver.MakeAvailable(0);
-  driver.queue.Next();
+  Rig rig;
+  rig.driver.Describe(0, 8, kReadable);
+  rig.driver.MakeAvailable(0);
+  rig.queue.Next();
 
-  EXPECT_FALSE(driver.queue.Next().has_value());
+  EXPECT_FALSE(rig.queue.Next().has_value());
 }
 
 TEST(
     WhenTheDeviceHasUsedAChain,
     TheUsedRingHoldsTheChainsHeadAndHowManyBytesWereWrittenAndItsIndexMovesOn) {
-  Driver driver;
-  driver.Describe(3, 64, kWrite);
-  driver.MakeAvailable(3);
-  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+  Rig rig;
+  rig.driver.Describe(3, 64, kWrite);
+  rig.driver.MakeAvailable(3);
+  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
+  ASSERT_TRUE(chain.has_value());
 
-  driver.queue.Used(*chain, 20);
+  rig.queue.Used(*chain, 20);
 
-  EXPECT_EQ(driver.UsedIndex(), 1);
-  EXPECT_EQ(driver.UsedAt(0).id, 3U);
-  EXPECT_EQ(driver.UsedAt(0).length, 20U);
+  EXPECT_EQ(rig.driver.UsedIndex(), 1);
+  EXPECT_EQ(rig.driver.UsedAt(0).id, 3U);
+  EXPECT_EQ(rig.driver.UsedAt(0).length, 20U);
 }
 
 TEST(WhenTheDeviceHasUsedMoreChainsThanTheQueueHasEntries,
      TheNextElementGoesAtTheStartOfTheUsedRingAndTheIndexKeepsCounting) {
-  Driver driver;
+  Rig rig;
   // Each round writes its own number, so the used ring says which round
   // filled a slot.
-  for (std::uint16_t round = 0; round < Driver::kSize + 1; ++round) {
-    const std::uint16_t head = round % Driver::kSize;
-    driver.Describe(head, 8, kWrite);
-    driver.MakeAvailable(head);
-    driver.queue.Used(*driver.queue.Next(), /*written=*/round);
+  for (std::uint16_t round = 0; round < Rig::kSize + 1; ++round) {
+    const std::uint16_t head = round % Rig::kSize;
+    rig.driver.Describe(head, 8, kWrite);
+    rig.driver.MakeAvailable(head);
+    const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
+    ASSERT_TRUE(chain.has_value());
+    rig.queue.Used(*chain, /*written=*/round);
   }
-  const std::uint16_t ninth_round = Driver::kSize;
+  const std::uint16_t ninth_round = Rig::kSize;
 
-  EXPECT_EQ(driver.UsedIndex(), Driver::kSize + 1);
-  EXPECT_EQ(driver.UsedAt(0).length, ninth_round);
+  EXPECT_EQ(rig.driver.UsedIndex(), Rig::kSize + 1);
+  EXPECT_EQ(rig.driver.UsedAt(0).length, ninth_round);
 }
 
 TEST(WhenTheDriverMakesAChainThatLoopsBackOnItselfAvailable,
      TheDeviceRefusesItAndSaysTheQueueIsBroken) {
-  Driver driver;
-  driver.Describe(0, 8, kReadable | kNext, 1);
-  driver.Describe(1, 8, kReadable | kNext, 0);
-  driver.MakeAvailable(0);
+  Rig rig;
+  rig.driver.Describe(0, 8, kReadable | kNext, 1);
+  rig.driver.Describe(1, 8, kReadable | kNext, 0);
+  rig.driver.MakeAvailable(0);
 
-  EXPECT_FALSE(driver.queue.Next().has_value());
-  EXPECT_TRUE(driver.queue.Broken());
-}
-
-TEST(WhenTheDeviceWritesMoreThanAChainsTwoWritableBuffersHold,
-     TheFirstIsFilledThenTheSecondAndItIsToldHowManyBytesWent) {
-  Driver driver;
-  const std::uint64_t first = driver.Describe(0, 16, kWrite | kNext, 1);
-  const std::uint64_t second = driver.Describe(1, 16, kWrite);
-  driver.MakeAvailable(0);
-  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
-  const std::vector<std::uint8_t> bytes = SomeBytes(40);
-
-  const std::size_t went = driver.queue.Write(*chain, bytes);
-
-  EXPECT_EQ(went, 32U);
-  EXPECT_EQ(driver.memory.At(first, 16),
-            std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16));
-  EXPECT_EQ(driver.memory.At(second, 16),
-            std::vector<std::uint8_t>(bytes.begin() + 16, bytes.begin() + 32));
+  EXPECT_FALSE(rig.queue.Next().has_value());
+  EXPECT_TRUE(rig.queue.Broken());
 }
 
 TEST(WhenTheDriverMakesMoreAvailableAfterAChainThatLooped,
      TheDeviceStillGetsNothingFromTheBrokenQueue) {
-  Driver driver;
-  driver.Describe(0, 8, kReadable | kNext, 0);
-  driver.MakeAvailable(0);
-  driver.queue.Next();
-  driver.Describe(1, 8, kReadable);
-  driver.MakeAvailable(1);
+  Rig rig;
+  rig.driver.Describe(0, 8, kReadable | kNext, 0);
+  rig.driver.MakeAvailable(0);
+  rig.queue.Next();
+  rig.driver.Describe(1, 8, kReadable);
+  rig.driver.MakeAvailable(1);
 
-  EXPECT_FALSE(driver.queue.Next().has_value());
+  EXPECT_FALSE(rig.queue.Next().has_value());
+}
+
+TEST(WhenTheDeviceWritesMoreThanAChainsTwoWritableBuffersHold,
+     TheFirstIsFilledThenTheSecondAndItIsToldHowManyBytesWent) {
+  Rig rig;
+  rig.driver.Describe(0, 16, kWrite | kNext, 1);
+  rig.driver.Describe(1, 16, kWrite);
+  rig.driver.MakeAvailable(0);
+  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
+  ASSERT_TRUE(chain.has_value());
+  const std::vector<std::uint8_t> bytes = SomeBytes(40);
+
+  const std::uint32_t went = rig.queue.Write(*chain, bytes);
+
+  EXPECT_EQ(went, 32U);
+  EXPECT_EQ(rig.driver.Contents(0, 16),
+            std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16));
+  EXPECT_EQ(rig.driver.Contents(1, 16),
+            std::vector<std::uint8_t>(bytes.begin() + 16, bytes.begin() + 32));
 }
 
 }  // namespace
