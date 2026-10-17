@@ -145,6 +145,69 @@ Two more lines of the list are directories of this repository, and every suite u
 
 💡 These suites test code that was already there, so none of their cases was ever seen to fail the usual way first. Each was held to a mutation instead: a line of the driver is broken on purpose, the case meant for it has to fail, and the line is put back. One case that could not tell a broken driver from a working one was found that way, and mended.
 
+## Your own suite
+
+🎓 Zephyr's test framework is called **ztest**, and its test runner **twister**. A ztest suite is a Zephyr application whose `main` is the framework's: you write cases, and it runs them and prints how each went. Twister builds such an application for a board, runs the image, and reads the console for the verdict. To twister a socpuppet board is a board like any other, with socpuppet as its emulator, so your firmware's tests run here the way they would on QEMU.
+
+A suite is four files:
+
+```text
+my_test/
+├── CMakeLists.txt    as for any Zephyr application
+├── prj.conf          CONFIG_ZTEST=y, and what your code needs
+├── testcase.yaml     which boards, and how to judge the run
+└── src/main.c        the cases
+```
+
+```c
+#include <zephyr/ztest.h>
+
+ZTEST(spam, test_the_answer_is_as_advertised)
+{
+	zassert_equal(6 * 7, 42);
+}
+
+ZTEST_SUITE(spam, NULL, NULL, NULL, NULL, NULL);
+```
+
+```yaml
+tests:
+  my.spam:
+    harness: ztest
+    platform_allow:
+      - socpuppet_host
+```
+
+Run it with twister, from a Zephyr workspace:
+
+```sh
+export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)   # where the boards are
+export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/build.py in a checkout
+west twister -p socpuppet_host -T my_test
+```
+
+In a checkout of socpuppet, `uv run firmware/twister.py -p socpuppet_host -T /path/to/my_test` sets those up for you. Either way twister ends with how many cases passed, and each scenario's console is in `handler.log` under its output directory.
+
+💡 **While you are working on one test, skip twister.** Build the image once, as in [step 1](boot-your-firmware.md#1-build-the-firmware), and run it directly. It takes a second or two, the console is printed as it comes, and the command's exit status is the verdict:
+
+```sh
+socpuppet run build/zephyr/zephyr.elf --board socpuppet_host
+```
+
+And from Python, `socpuppet.ztest` reads a console into a report, for a test that wants more than a verdict:
+
+```python
+from socpuppet import ztest
+
+report = ztest.parse(board.uart.output)
+assert report.passed
+assert report.case("spam.test_the_answer_is_as_advertised").result == "PASS"
+```
+
+⚠️ **A test that needs something on the other side of the board's hardware** says so with a shield, as an image does. `socpuppet_host_drive` puts 🎭 a drive on the host's PCIe link. `socpuppet_ssd_host` puts 🎭 a host in front of the SSD that says a host's first words to a drive: it enables it, asks for its queues and how big it is, and writes one block. In a `testcase.yaml` that is `extra_args: SHIELD=socpuppet_ssd_host`, and twister passes it on to `socpuppet run`. socpuppet's own drivers are tested this way, in the module's `tests/drivers`, and they are examples to start from.
+
+A program with no test framework in it can be a suite too: `harness: console` in its `testcase.yaml`, and the lines it should print. [Run Zephyr's tests on the puppet](twister.md) has that, how twister comes to run socpuppet at all, and what Zephyr's own suites say of these boards.
+
 ## What is left out, and why
 
 `firmware/twister-quarantine.yaml` is twister's own kind of list for this: scenarios it is to skip, each with a comment that it copies into its reports. A suite is never left out by taking it off the list of suites, because then nothing would say that it had been. There are three entries.

@@ -2,7 +2,7 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
-> 🚧 Early days, but the show has grown. A chiplet host boots Zephyr across a real die-to-die link that a third CPU trains, and finds an NVMe SSD that runs its own Zephyr: three firmwares in one simulation, with a debugger on each CPU if you want one. The host also boots the way silicon does, from a ROM and a flash, with a watchdog to reset it; its interrupts travel as messages, in the style RISC-V servers use; Zephyr's own test suites run on every board; and OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on it, with five 🎭 virtio stand-ins beside them. Next on stage is Linux. The roadmap is [docs/roadmap.md](docs/roadmap.md).
+> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too. Next on stage is Linux ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
 
@@ -36,7 +36,7 @@ print(board.uart.output)
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your own firmware](docs/boot-your-firmware.md) has the steps.
+`uv run firmware/build.py zephyr` builds that `zephyr.elf` (and every other image the tests boot) into `build/firmware`, and `examples/host_hello.py` is this show with the path filled in. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
 
 ## A smaller show
 
@@ -107,17 +107,17 @@ def script():
 
 The platform around it, split over two dies, is in `examples/nvme_hello.py`.
 
-And `examples/ssd_hello.py` is the same host in front of an SSD that is built like one: hardware that keeps the queues and moves the data, a NAND chip to keep it in, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write. `examples/ssd_firmware_hello.py` swaps the script for the SSD's own CPU and the real firmware, a Zephyr application in `firmware/ssd`. The host's script does not change by a line.
+The rest of the cast arrives one example at a time. Each swaps one 🎭 stand-in for the real thing, and the scripts around it do not change by a line.
 
-And `examples/host_and_ssd_hello.py` takes the last script away: the host is a 64-bit CPU running Zephyr, its SSD is a 32-bit CPU running Zephyr, and the two firmware images share one simulation and one clock. It prints both consoles as one story.
-
-And `examples/chiplet_host_hello.py` is the host starting up the way a chiplet does. The link between its two dies is the real one, which has to be trained before it carries anything, so the show opens with the IO die's manager bringing it up, packet by packet, and letting the host's CPU out of reset. Then Zephyr boots, from the same image, with every character it prints crossing the link.
-
-And `examples/full_bootchain.py` has no script left in it: every CPU is a CPU, running firmware. Three of them run three Zephyr images: the manager's firmware trains the link and lets the host go, the host's disk test finds its drive across the link, and the SSD's firmware is the drive. It prints the link coming up and then the three consoles as one story, each line with who said it and when.
-
-And in `examples/shell_from_python.py` the puppet answers back. The host runs Zephyr's shell, Python types commands at its console and reads what it says. The console's interrupt starts as a wire on one die and arrives as a message on the other, and the show counts how many crossed.
-
-And `examples/boot_from_flash.py` boots the way silicon does. Nothing is put in RAM. The CPU starts in a boot ROM, which finds the firmware in a flash on the other die, copies it across, checks it and jumps to it. The firmware then gets itself reset twice, once by asking and once by not feeding its watchdog, and the ROM loads it again each time. Each time it starts it says why.
+| Example | What it shows |
+|---|---|
+| `examples/ssd_hello.py` | The drive is built like an SSD: hardware for the queues and the data, a NAND chip, and 🎭 a short Python script for its firmware, which is the place to read what an SSD does with a write |
+| `examples/ssd_firmware_hello.py` | The script gives way to the SSD's own CPU and its real firmware, a Zephyr application in `firmware/ssd` |
+| `examples/host_and_ssd_hello.py` | The host is a 64-bit CPU running Zephyr and its SSD a 32-bit CPU running Zephyr, sharing one simulation and one clock; both consoles printed as one story |
+| `examples/chiplet_host_hello.py` | The host starts up the way a chiplet does: the IO die's manager trains the link between the dies, packet by packet, and lets the host's CPU out of reset |
+| `examples/full_bootchain.py` | No script left: three CPUs run three Zephyr images, and the three consoles tell the boot as one story, each line with who said it and when |
+| `examples/shell_from_python.py` | The puppet answers back: Python types at Zephyr's shell and reads what it says, with the console's interrupt crossing the dies as a message |
+| `examples/boot_from_flash.py` | Booting the way silicon does: the CPU starts in a boot ROM, finds the firmware in a flash on the other die, checks it and jumps, and the watchdog resets it twice |
 
 ## Try it
 
@@ -135,14 +135,10 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
 - 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
-- 🚀 [Boot your own firmware](docs/boot-your-firmware.md) on the host board, or on the SSD's controller.
-- ✅ [Run Zephyr's tests on the puppet](docs/twister.md): Zephyr's own test suites, and yours, on every board, with socpuppet as the emulator.
-- 💡 [How it is put together](docs/architecture.md), with the vocabulary explained.
-- 🗺️ [The address map](docs/address-map.md): what answers at which address, on each board.
+- 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
+- 💡 [How it is put together](docs/architecture.md), with the vocabulary explained and a page for every model.
 - 🛠️ [Setting up a machine for development](docs/setup.md), from a bare install to every test passing.
-- 🔧 [Building and testing](docs/development.md).
-- 🎨 [Style, and the tools that hold us to it](docs/style.md).
-- 📮 [What we owe upstream](docs/upstream.md): the fixes we carry for the projects we borrow from.
+- 📚 [All the docs](docs/README.md), by the reader they are written for.
 
 ## Who's it for?
 

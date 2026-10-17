@@ -115,7 +115,7 @@ A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, an
 
 ### The Zephyr driver
 
-`socpuppet,ucie-link` in socpuppet's Zephyr module (`drivers/d2d/ucie_link.c`). It is a driver of Zephyr's **reset** class: the die at the other end is its one line, `UCIE_LINK_THE_OTHER_DIE`, and `reset_line_deassert()` is the mailbox write that lets it go. Training is functions of its own, in `<socpuppet/drivers/ucie_link.h>`: `ucie_link_train()`, `ucie_link_retrain()`, `ucie_link_is_up()` and `ucie_link_wait_until_down()`. [boot-your-firmware.md](../boot-your-firmware.md#the-io-dies-manager) has the board and the firmware that uses it.
+`socpuppet,ucie-link` in socpuppet's Zephyr module (`drivers/d2d/ucie_link.c`). It is a driver of Zephyr's **reset** class: the die at the other end is its one line, `UCIE_LINK_THE_OTHER_DIE`, and `reset_line_deassert()` is the mailbox write that lets it go. Training is functions of its own, in `<socpuppet/drivers/ucie_link.h>`: `ucie_link_train()`, `ucie_link_retrain()`, `ucie_link_is_up()` and `ucie_link_wait_until_down()`. [boot-your-firmware.md](../boards.md#the-io-dies-manager) has the board and the firmware that uses it.
 
 ## What it leaves out
 
