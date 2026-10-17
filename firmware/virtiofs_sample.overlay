@@ -1,0 +1,9 @@
+/*
+ * Zephyr's samples/subsys/fs/virtiofs finds its device by the label
+ * virtio_pci, which QEMU's x86 boards give their virtio-fs device. On the
+ * host, with the shield socpuppet_host_virtio, the device is the virtio
+ * file system in slot 4: this gives its node that label as well, so that
+ * the sample builds as it is.
+ */
+virtio_pci: &io_fs {
+};

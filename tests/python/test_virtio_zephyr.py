@@ -14,7 +14,9 @@ own tests or samples, built for `socpuppet_host` with the shield
 A second shield, `socpuppet_host_virtio_console`, makes the virtio console
 Zephyr's console in place of the UART. The network device is in slot 3,
 and 🧵 Python is the far end of its wire: it asks who has the echo
-server's address, and sends it a datagram (`ethernet`).
+server's address, and sends it a datagram (`ethernet`). The file system
+device is in slot 4, and Python serves it a directory of this machine
+(`socpuppet.fuse`).
 """
 
 import pytest
@@ -33,6 +35,8 @@ ENTROPY_API = "entropy_api_socpuppet_host.elf"
 #: Zephyr's `samples/hello_world`, with the shield and a second one that
 #: makes the virtio console Zephyr's console.
 HELLO_VIRTIO_CONSOLE = "hello_virtio_console_socpuppet_host.elf"
+#: Zephyr's `samples/subsys/fs/virtiofs`, with the shield and a label.
+VIRTIOFS = "virtiofs_socpuppet_host.elf"
 #: Zephyr's `samples/net/sockets/echo_server`, with the shield.
 ECHO_SERVER = "echo_server_socpuppet_host.elf"
 #: The echo server's address, from the sample's `prj.conf`, and the port it
@@ -139,3 +143,36 @@ class TestWhenZephyrsEchoServerRunsOnTheVirtioNetworkDevice:
         assert ethernet.udp_payloads(net.received, port=5000) == [
             b"spam, spam, spam"
         ]
+
+
+@pytest.mark.platform
+class TestWhenZephyrsVirtiofsSampleMountsAShareServedByPython:
+    def test_it_lists_and_reads_what_python_put_there_and_makes_its_own(
+        self, firmware, tmp_path
+    ):
+        (tmp_path / "file").write_bytes(b"spam, spam, spam\n")
+        (tmp_path / "eggs").mkdir()
+        (tmp_path / "eggs" / "bacon.txt").write_bytes(b"bacon")
+        board = host(virtio=Virtio(share=tmp_path))
+        boot(board, firmware, host=VIRTIOFS)
+
+        # The sample makes a directory last of all.
+        board.platform.run_until(
+            lambda: (tmp_path / "dir_created_by_zephyr").is_dir(),
+            timeout=LIMIT,
+        )
+
+        # Zephyr's console ends each line with a carriage return as well.
+        console = board.uart.output.replace("\r\n", "\n")
+        assert (
+            "/virtiofs directory tree:\n"
+            "- eggs (type=dir)\n"
+            "  - bacon.txt (type=file, size=5)\n"
+            "- file (type=file, size=17)\n"
+        ) in console
+        assert "/virtiofs/file content:\nspam, spam, spam\n" in console
+        # The sample writes each string with the zero that ends it.
+        assert (tmp_path / "file_created_by_zephyr").read_bytes() == (
+            b"hello world\n\0"
+        )
+        assert (tmp_path / "dir_created_by_zephyr").is_dir()

@@ -74,8 +74,9 @@ class Image:
     #: What the image is called, if not the last part of the application's
     #: path: Zephyr's tests are each called `api` or the like.
     name: str = ""
-    #: Kconfig options the image is built with beyond the application's
-    #: and the shield's, each `CONFIG_<NAME>=<value>`.
+    #: What the image's build is told beyond the board and the shield, each
+    #: `NAME=value` and handed to CMake as `-DNAME=value`: a Kconfig option
+    #: (`CONFIG_...`), or a devicetree overlay (`EXTRA_DTC_OVERLAY_FILE`).
     options: tuple[str, ...] = ()
 
 
@@ -125,6 +126,21 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_virtio",
         options=("CONFIG_NET_L2_ETHERNET=y",),
+    ),
+    # Zephyr's virtiofs sample, through its virtio-fs client against 🎭 the
+    # host's virtio file system device, with Python serving the share. The
+    # sample names its device by a label of QEMU's x86 boards, which an
+    # overlay of ours gives the host's device too, and asks for PCIe, which
+    # QEMU's device is on and the host's is not.
+    Image(
+        "samples/subsys/fs/virtiofs",
+        "socpuppet_host",
+        "socpuppet_host_virtio",
+        options=(
+            "CONFIG_PCIE=n",
+            "EXTRA_DTC_OVERLAY_FILE="
+            f"{REPOSITORY / 'firmware' / 'virtiofs_sample.overlay'}",
+        ),
     ),
     # The IO die's manager firmware, and the SSD's own.
     Image("firmware/iomgr", "socpuppet_iomgr"),
