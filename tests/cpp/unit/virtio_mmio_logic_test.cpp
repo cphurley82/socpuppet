@@ -254,6 +254,28 @@ TEST(WhenTheDeviceHasUsedAChain, TheTransportInterruptsAndSaysWhy) {
             VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER);
 }
 
+TEST(WhenTheDriverAcknowledgesTheUsedBufferInterrupt,
+     TheTransportStopsInterruptingUntilTheNextChainIsUsed) {
+  Rig rig;
+  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
+  rig.SetUpQueue(0, kQueue.size, kQueue);
+  rig.device.uses_each_chain = true;
+  driver.Describe(0, 8, VirtqueueDriver::kReadable);
+  driver.Describe(1, 8, VirtqueueDriver::kReadable);
+  driver.MakeAvailable(0);
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+
+  rig.Write32(VIRTIO_MMIO_INTERRUPT_ACK, VIRTIO_MMIO_INTERRUPT_ACK_USED_BUFFER);
+  const bool after_the_ack = rig.transport.Interrupting();
+  driver.MakeAvailable(1);
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+
+  EXPECT_FALSE(after_the_ack);
+  EXPECT_TRUE(rig.transport.Interrupting());
+}
+
 }  // namespace
 
 }  // namespace socpuppet

@@ -115,6 +115,9 @@ class VirtioMmioLogic {
         if (value >= queues_.size()) return false;
         queues_[value].rung = true;
         return true;
+      case VIRTIO_MMIO_INTERRUPT_ACK:
+        interrupt_status_ &= ~value;
+        return true;
       case VIRTIO_MMIO_DRIVER_FEATURES:
         SetHalf(driver_features_, driver_features_sel_, value);
         return true;
