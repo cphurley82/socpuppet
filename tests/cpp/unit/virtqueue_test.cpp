@@ -8,8 +8,7 @@
 
 #include <gtest/gtest.h>
 
-#include "socpuppet/core/memory_port.h"
-#include "socpuppet/core/memory_store.h"
+#include "tests/cpp/support/memory_at.h"
 #include "tests/cpp/support/virtqueue_driver.h"
 
 namespace socpuppet {
@@ -19,28 +18,10 @@ namespace {
 // Where the driver's memory is in these tests, 64 KiB of it, above 4 GiB so
 // that an address in it needs all of its 64 bits.
 constexpr std::uint64_t kMemory = 0x1'0000'0000;
-constexpr std::size_t kMemorySize = 0x1'0000;
 
 constexpr std::uint16_t kReadable = VirtqueueDriver::kReadable;
 constexpr std::uint16_t kNext = VirtqueueDriver::kNext;
 constexpr std::uint16_t kWrite = VirtqueueDriver::kWrite;
-
-// A memory at some address.
-class MemoryAt : public MemoryPort {
- public:
-  explicit MemoryAt(std::uint64_t base) : base_(base) {}
-
-  bool Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    return address >= base_ && store_.Read(address - base_, out);
-  }
-  bool Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    return address >= base_ && store_.Write(address - base_, in);
-  }
-
- private:
-  std::uint64_t base_;
-  MemoryStore store_{kMemorySize};
-};
 
 // `length` bytes in which no two neighbours are the same, and which do not
 // repeat every 256 bytes, so that bytes read from the wrong buffer (they

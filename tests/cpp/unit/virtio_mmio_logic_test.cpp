@@ -10,11 +10,10 @@
 #include <gtest/gtest.h>
 
 #include "socpuppet/core/little_endian.h"
-#include "socpuppet/core/memory_port.h"
-#include "socpuppet/core/memory_store.h"
 #include "socpuppet/core/virtio_device.h"
 #include "socpuppet/core/virtqueue.h"
 #include "socpuppet/regs/virtio_mmio.h"
+#include "tests/cpp/support/memory_at.h"
 #include "tests/cpp/support/virtqueue_driver.h"
 
 namespace socpuppet {
@@ -24,24 +23,6 @@ namespace {
 // Where the driver's memory is in these tests, 64 KiB of it, above 4 GiB so
 // that an address in it needs both halves of a queue's address registers.
 constexpr std::uint64_t kMemory = 0x1'0000'0000;
-constexpr std::size_t kMemorySize = 0x1'0000;
-
-// A memory at some address.
-class MemoryAt : public MemoryPort {
- public:
-  explicit MemoryAt(std::uint64_t base) : base_(base) {}
-
-  bool Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    return address >= base_ && store_.Read(address - base_, out);
-  }
-  bool Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    return address >= base_ && store_.Write(address - base_, in);
-  }
-
- private:
-  std::uint64_t base_;
-  MemoryStore store_{kMemorySize};
-};
 
 // A device of no particular kind: enough of one for the transport to have
 // something behind it.

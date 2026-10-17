@@ -8,9 +8,8 @@
 
 #include <gtest/gtest.h>
 
-#include "socpuppet/core/memory_port.h"
-#include "socpuppet/core/memory_store.h"
 #include "socpuppet/core/virtqueue.h"
+#include "tests/cpp/support/memory_at.h"
 #include "tests/cpp/support/virtqueue_driver.h"
 
 namespace socpuppet {
@@ -19,24 +18,6 @@ namespace {
 
 // Where the driver's memory is in these tests, 64 KiB of it.
 constexpr std::uint64_t kMemory = 0x8000'0000;
-constexpr std::size_t kMemorySize = 0x1'0000;
-
-// A memory at some address.
-class MemoryAt : public MemoryPort {
- public:
-  explicit MemoryAt(std::uint64_t base) : base_(base) {}
-
-  bool Read(std::uint64_t address, std::span<std::uint8_t> out) override {
-    return address >= base_ && store_.Read(address - base_, out);
-  }
-  bool Write(std::uint64_t address, std::span<const std::uint8_t> in) override {
-    return address >= base_ && store_.Write(address - base_, in);
-  }
-
- private:
-  std::uint64_t base_;
-  MemoryStore store_{kMemorySize};
-};
 
 // The entropy device's one queue, with the driver's side and the device's
 // side of it, and the device itself.
