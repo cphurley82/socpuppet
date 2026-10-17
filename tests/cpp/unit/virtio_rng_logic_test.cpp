@@ -75,6 +75,20 @@ TEST(WhenTheDriverAsksAnEntropyDeviceForBytes,
   EXPECT_NE(std::ranges::count(bytes, 0), 64);
 }
 
+TEST(WhenTwoEntropyDevicesAreBuiltWithTheSameSeed, TheyGiveTheSameBytes) {
+  Rig first{7};
+  Rig second{7};
+
+  EXPECT_EQ(first.Ask(32), second.Ask(32));
+}
+
+TEST(WhenTwoEntropyDevicesAreBuiltWithDifferentSeeds, TheirBytesDiffer) {
+  Rig first{7};
+  Rig second{8};
+
+  EXPECT_NE(first.Ask(32), second.Ask(32));
+}
+
 }  // namespace
 
 }  // namespace socpuppet
