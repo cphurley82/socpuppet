@@ -67,6 +67,19 @@ class Virtqueue {
     }
   }
 
+  // Gives a chain back to the driver, saying how many bytes of its writable
+  // buffers the device wrote.
+  void Used(const Chain& chain, std::uint32_t written) {
+    std::array<std::uint8_t, kUsedElementBytes> element{};
+    const std::span<std::uint8_t> fields = element;
+    StoreLittleEndian(std::uint32_t{chain.head}, fields.subspan(0, 4));
+    StoreLittleEndian(written, fields.subspan(4, 4));
+    memory_.Write(layout_.used + 4 + kUsedElementBytes * (used_ % layout_.size),
+                  element);
+    ++used_;
+    memory_.Write(layout_.used + 2, LittleEndianBytes(used_));
+  }
+
   // The bytes of a chain's readable buffers, in order.
   std::vector<std::uint8_t> Read(const Chain& chain) {
     std::vector<std::uint8_t> bytes;
@@ -90,6 +103,9 @@ class Virtqueue {
   // Its flags: the chain goes on at `next`; the device writes this buffer.
   static constexpr std::uint16_t kNext = 1;
   static constexpr std::uint16_t kWrite = 2;
+  // One element of the used ring, section 2.7.8: the chain's head and how
+  // many bytes were written to it.
+  static constexpr std::uint64_t kUsedElementBytes = 8;
 
   Descriptor LoadDescriptor(std::uint16_t index) {
     std::array<std::uint8_t, kDescriptorBytes> bytes{};
@@ -109,8 +125,10 @@ class Virtqueue {
 
   MemoryPort& memory_;
   VirtqueueLayout layout_;
-  // How far along the available ring the device has looked.
+  // How far along the available ring the device has looked, and how many
+  // chains it has given back on the used ring.
   std::uint16_t seen_ = 0;
+  std::uint16_t used_ = 0;
 };
 
 }  // namespace socpuppet

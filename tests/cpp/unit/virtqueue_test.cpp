@@ -1,5 +1,6 @@
 #include "socpuppet/core/virtqueue.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -89,6 +90,24 @@ struct Driver {
   void Fill(std::uint16_t index, std::span<const std::uint8_t> bytes) {
     EXPECT_TRUE(memory.Write(kBuffers + 0x100 * index, bytes));
   }
+  // What the used ring says: its index, and the element at `slot`.
+  std::uint16_t UsedIndex() { return Load16(kUsed + 2); }
+  struct Used {
+    std::uint32_t id;
+    std::uint32_t length;
+  };
+  Used UsedAt(std::uint16_t slot) {
+    std::array<std::uint8_t, 8> bytes{};
+    EXPECT_TRUE(memory.Read(kUsed + 4 + 8 * slot, bytes));
+    const std::span<const std::uint8_t> fields = bytes;
+    return {.id = LoadLittleEndian<std::uint32_t>(fields.subspan(0, 4)),
+            .length = LoadLittleEndian<std::uint32_t>(fields.subspan(4, 4))};
+  }
+  std::uint16_t Load16(std::uint64_t address) {
+    std::array<std::uint8_t, 2> bytes{};
+    EXPECT_TRUE(memory.Read(address, bytes));
+    return LoadLittleEndian<std::uint16_t>(bytes);
+  }
   // Puts the chain that starts at descriptor `head` in the available ring
   // and moves the ring's index on.
   void MakeAvailable(std::uint16_t head) {
@@ -145,6 +164,21 @@ TEST(WhenTheDriverHasMadeNothingMoreAvailable, TheDeviceGetsNoChain) {
   driver.queue.Next();
 
   EXPECT_FALSE(driver.queue.Next().has_value());
+}
+
+TEST(
+    WhenTheDeviceHasUsedAChain,
+    TheUsedRingHoldsTheChainsHeadAndHowManyBytesWereWrittenAndItsIndexMovesOn) {
+  Driver driver;
+  driver.Describe(3, 64, kWrite);
+  driver.MakeAvailable(3);
+  const std::optional<Virtqueue::Chain> chain = driver.queue.Next();
+
+  driver.queue.Used(*chain, 20);
+
+  EXPECT_EQ(driver.UsedIndex(), 1);
+  EXPECT_EQ(driver.UsedAt(0).id, 3U);
+  EXPECT_EQ(driver.UsedAt(0).length, 20U);
 }
 
 }  // namespace
