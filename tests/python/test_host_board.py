@@ -806,10 +806,29 @@ class TestTheHostsVirtioSlots:
     def test_the_devicetree_compiler_accepts_the_host_with_the_slots(
         self, tmp_path
     ):
-        board = host(virtio=Virtio(), sbi=True)
+        board = host(virtio=Virtio())
 
         assert dtc_errors(board.platform.devicetree(), tmp_path) == ""
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_the_host_with_the_slots_for_linux(
+        self, tmp_path
+    ):
+        board = host(virtio=Virtio(), sbi=True)
+
         assert (
             dtc_errors(board.platform.devicetree(dialect="linux"), tmp_path)
             == ""
         )
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_the_board_with_the_shield(
+        self, tmp_path
+    ):
+        # Which is what Zephyr builds: the board's tree with the shield's
+        # overlay laid over it.
+        board = (
+            ZEPHYR_MODULE / "boards/socpuppet/socpuppet_host/socpuppet_host.dts"
+        ).read_text()
+
+        assert dtc_errors(board + virtio_overlay(), tmp_path) == ""
