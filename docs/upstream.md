@@ -1173,6 +1173,30 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: `measured=False` and `unmeasured()` go.
 
+## pyfatfs
+
+[nathanhi/pyfatfs](https://github.com/nathanhi/pyfatfs), version `1.1.0` in `uv.lock`, with [PyFilesystem2](https://github.com/PyFilesystem/pyfilesystem2) (`fs`, `2.4.16`) under it. Not part of socpuppet: the tests make the FAT disk images they boot UEFI with by it (`tests/python/fat_image.py`, M25), and read back what firmware wrote.
+
+### The root directory's copy of the volume label is not the boot sector's
+
+- **Where**: `pyfatfs/PyFat.py`, `PyFat.mkfs`.
+- **What is wrong**: `mkfs` writes the label twice, as FAT has it: in the boot sector as given, padded to 11 bytes, and in the root directory as an entry with the volume attribute. The second goes through `EightDotThree.make_8dot3_name`, which makes a file's short name of it: spaces are dropped and the name is cut at eight characters. So the default label, `NO NAME`, is `NONAME` in the root directory, and a label of nine to eleven characters loses its end there. A volume label is not a file name; it has 11 characters with spaces allowed.
+- **How to see it**: `PyFat().mkfs(path, fat_type=12, size=1 << 20)`, then `fsck.fat -n path`, which says "There is no label in boot sector, but there is volume label 'NONAME' stored in root directory" and exits 1. With `label="SOCPUPPET"` it says the two are `SOCPUPPE` and `SOCPUPPET`.
+- **What we do**: `fat_image.make` passes a label of eight letters with no space, `PUPPET`, which both copies keep whole; `test_fsck_finds_nothing_to_mend` holds the image to `fsck.fat` where it is installed.
+- **Upstream fix**: write the label's entry with the label itself, upper-cased and padded to 11 bytes, and not through the 8.3 name maker.
+- **Kind**: bug.
+- **When it lands**: `fat_image.make` can drop its label, or take any.
+
+### PyFilesystem2 still imports `pkg_resources`, which setuptools 81 removed
+
+- **Where**: `fs/__init__.py` and `fs/opener/__init__.py`, `__import__("pkg_resources").declare_namespace(__name__)`.
+- **What is wrong**: PyFilesystem2 declares its namespace packages the old way, through setuptools' `pkg_resources`, which setuptools deprecated and removed in version 81. In an environment with a newer setuptools, or none, `import fs` fails with `ModuleNotFoundError: No module named 'pkg_resources'`, and with it every import of pyfatfs. With an older one it imports, and warns three times.
+- **How to see it**: `uv run --no-project --with pyfatfs python -c "import pyfatfs.PyFatFS"`.
+- **What we do**: `pyproject.toml`'s dev group holds `setuptools<81`, and `fat_image` imports pyfatfs with the warnings silenced.
+- **Upstream fix**: implicit namespace packages (PEP 420): drop the two lines and the `__init__.py` files that hold only them. Whether it is reported there already has not been looked at.
+- **Kind**: build.
+- **When it lands**: the pin and the silenced warnings go.
+
 ## OpenSBI
 
 [riscv-software-src/opensbi](https://github.com/riscv-software-src/opensbi), pinned at `v1.9` in `firmware/versions.toml` and built by `firmware/build.py`, which applies `cmake/patches/opensbi-*.patch` to it. It is the machine-mode firmware the host boots Linux's way with (M23).
