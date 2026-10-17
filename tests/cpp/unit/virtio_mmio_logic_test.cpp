@@ -64,8 +64,16 @@ class FakeDevice : public VirtioDevice {
 
   // Which chains the transport has handed over: the queue and the head.
   std::vector<std::pair<std::uint16_t, std::uint16_t>> handled;
+  void Reset() override { resets += 1; }
+  std::span<std::uint8_t> Config() override { return config; }
+
+  // Its configuration: six bytes of nothing in particular.
+  std::array<std::uint8_t, 6> config{0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+
   // Whether it gives each chain straight back.
   bool uses_each_chain = false;
+  // How many times the transport has reset it.
+  int resets = 0;
 };
 
 // The transport with the fake behind it, and the driver's way of reaching
@@ -274,6 +282,80 @@ TEST(WhenTheDriverAcknowledgesTheUsedBufferInterrupt,
 
   EXPECT_FALSE(after_the_ack);
   EXPECT_TRUE(rig.transport.Interrupting());
+}
+
+TEST(WhenTheDriverWritesZeroToStatus,
+     TheDeviceIsResetAndItsQueuesFeaturesAndInterruptAreForgotten) {
+  Rig rig;
+  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
+  rig.AcceptFeatures(FakeDevice::kFeatures | kVersion1);
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+  rig.SetUpQueue(0, kQueue.size, kQueue);
+  rig.device.uses_each_chain = true;
+  driver.Describe(0, 8, VirtqueueDriver::kReadable);
+  driver.MakeAvailable(0);
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+
+  rig.Write32(VIRTIO_MMIO_STATUS, 0);
+
+  EXPECT_EQ(rig.device.resets, 1);
+  EXPECT_FALSE(rig.transport.Interrupting());
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS), 0U);
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, 0);
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_QUEUE_READY), 0U);
+  // The driver's features are gone too: FEATURES_OK alone, with nothing
+  // accepted, is not kept.
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS), kSeenAndDriven);
+}
+
+TEST(WhenTheDriverReadsTheDevicesConfigurationTwoBytesAtATime,
+     ItGetsTheDevicesBytes) {
+  Rig rig;
+  std::array<std::uint8_t, 2> two{};
+
+  ASSERT_TRUE(rig.transport.ReadRegister(VIRTIO_MMIO_CONFIG + 4, two));
+
+  EXPECT_EQ(two, (std::array<std::uint8_t, 2>{0x14, 0x15}));
+}
+
+TEST(WhenTheDriverWritesOneByteOfTheDevicesConfiguration, TheDeviceHasIt) {
+  Rig rig;
+  const std::array<std::uint8_t, 1> one{0x99};
+
+  ASSERT_TRUE(rig.transport.WriteRegister(VIRTIO_MMIO_CONFIG + 1, one));
+
+  EXPECT_EQ(rig.device.config[1], 0x99);
+}
+
+TEST(WhenTheDriverReadsPastTheEndOfTheDevicesConfiguration, TheReadIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 4> four{};
+
+  EXPECT_FALSE(rig.transport.ReadRegister(VIRTIO_MMIO_CONFIG + 4, four));
+}
+
+TEST(WhenAnAccessToATransportRegisterIsNotOneWholeAlignedWord, ItIsRefused) {
+  Rig rig;
+  std::array<std::uint8_t, 2> two{};
+  std::array<std::uint8_t, 4> four{};
+
+  EXPECT_FALSE(rig.transport.ReadRegister(VIRTIO_MMIO_MAGIC_VALUE, two));
+  EXPECT_FALSE(rig.transport.ReadRegister(VIRTIO_MMIO_MAGIC_VALUE + 2, four));
+  EXPECT_FALSE(rig.transport.WriteRegister(VIRTIO_MMIO_QUEUE_SEL, two));
+}
+
+TEST(WhenTheDriverAsksAboutSharedMemory, TheLengthSaysThereIsNone) {
+  Rig rig;
+  rig.Write32(VIRTIO_MMIO_SHM_SEL, 0);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_SHM_LEN_LOW),
+            VIRTIO_MMIO_SHM_LEN_LOW_AT_RESET);
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_SHM_LEN_HIGH),
+            VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET);
 }
 
 }  // namespace

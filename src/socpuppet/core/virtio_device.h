@@ -35,6 +35,11 @@ class VirtioDevice {
   // The driver has reset the device: whatever it was doing is dropped, and
   // the chains it was holding with it.
   virtual void Reset() = 0;
+
+  // The device's own configuration, which the driver reads and writes at
+  // any width from `CONFIG` on (section 4.2.2). Empty for a device with
+  // none.
+  virtual std::span<std::uint8_t> Config() = 0;
 };
 
 }  // namespace socpuppet

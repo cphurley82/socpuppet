@@ -37,6 +37,12 @@ class VirtioMmioLogic {
   // Reads and writes of the register block, by the driver. Each returns
   // false, and changes nothing, if the access is refused.
   bool ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out) const {
+    if (offset >= VIRTIO_MMIO_CONFIG) {
+      return CopyConfig(
+          offset - VIRTIO_MMIO_CONFIG, out,
+          [](std::uint8_t& config, std::uint8_t& byte) { byte = config; });
+    }
+    if (!Aligned(offset, out.size())) return false;
     switch (offset) {
       case VIRTIO_MMIO_MAGIC_VALUE:
         StoreLittleEndian(VIRTIO_MMIO_MAGIC_VALUE_AT_RESET, out);
@@ -63,6 +69,14 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_INTERRUPT_STATUS:
         StoreLittleEndian(interrupt_status_, out);
         return true;
+      // No device here has shared memory, and all ones is how a region
+      // that does not exist answers (section 4.2.2).
+      case VIRTIO_MMIO_SHM_LEN_LOW:
+        StoreLittleEndian(VIRTIO_MMIO_SHM_LEN_LOW_AT_RESET, out);
+        return true;
+      case VIRTIO_MMIO_SHM_LEN_HIGH:
+        StoreLittleEndian(VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET, out);
+        return true;
       case VIRTIO_MMIO_QUEUE_READY:
         StoreLittleEndian(Selected() && Selected()->ready
                               ? VIRTIO_MMIO_QUEUE_READY_READY
@@ -75,6 +89,13 @@ class VirtioMmioLogic {
   }
 
   bool WriteRegister(std::uint64_t offset, std::span<const std::uint8_t> in) {
+    if (offset >= VIRTIO_MMIO_CONFIG) {
+      return CopyConfig(offset - VIRTIO_MMIO_CONFIG, in,
+                        [](std::uint8_t& config, const std::uint8_t& byte) {
+                          config = byte;
+                        });
+    }
+    if (!Aligned(offset, in.size())) return false;
     const auto value = LoadLittleEndian<std::uint32_t>(in);
     switch (offset) {
       case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
@@ -117,6 +138,8 @@ class VirtioMmioLogic {
         return true;
       case VIRTIO_MMIO_INTERRUPT_ACK:
         interrupt_status_ &= ~value;
+        return true;
+      case VIRTIO_MMIO_SHM_SEL:
         return true;
       case VIRTIO_MMIO_DRIVER_FEATURES:
         SetHalf(driver_features_, driver_features_sel_, value);
@@ -188,6 +211,26 @@ class VirtioMmioLogic {
       used_reported = 0;
     }
   };
+
+  // The registers below the configuration are read and written as whole,
+  // aligned 32-bit words and no other way (section 4.2.2.2).
+  static bool Aligned(std::uint64_t offset, std::size_t size) {
+    return size == kRegisterBytes && offset % kRegisterBytes == 0;
+  }
+  static constexpr std::size_t kRegisterBytes = 4;
+
+  // Moves `bytes` between the device's configuration at `offset` and the
+  // access, one byte at a time by `copy`, refusing an access that runs
+  // past the end of what the device has.
+  template <typename Bytes, typename Copy>
+  bool CopyConfig(std::uint64_t offset, Bytes bytes, Copy copy) const {
+    const std::span<std::uint8_t> config = device_.Config();
+    if (offset + bytes.size() > config.size()) return false;
+    for (std::size_t index = 0; index < bytes.size(); ++index) {
+      copy(config[offset + index], bytes[index]);
+    }
+    return true;
+  }
 
   // Writing zero to STATUS: everything the driver told the device is
   // forgotten, and the device drops what it was doing (section 2.4).
