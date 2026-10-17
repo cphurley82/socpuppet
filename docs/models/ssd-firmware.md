@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 The firmware of an SSD's controller: the program on the SSD's own CPU that decides what the drive does with each thing the host asks of it. On the finished platform that is Zephyr, running on the SSD's RISC-V core: the application in `firmware/ssd`. This stands in for it where there is no CPU, and it is kept on purpose, as the firmware for anyone who is bringing up a host, or who wants to read what an SSD does without reading C.
 
 🧦 The two are written alike, section for section, and held to the same tests. So what this page says the firmware does is true of both, and [the real one](#the-real-one) says where they part.

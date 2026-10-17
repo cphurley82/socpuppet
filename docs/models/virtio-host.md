@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 The driver of a virtio device, as a script: the code that finds the device, agrees on features, lays its virtqueues out in memory and hands it buffers. 🧵 It was each device's first driver here, before Zephyr's or EDK2's ran against it, and it is the shortest way to see what any of them does.
 
 🎓 Every exchange is `submit(queue, readable, writable)`:

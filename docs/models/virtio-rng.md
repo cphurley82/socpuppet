@@ -1,10 +1,10 @@
-# Virtio entropy device
+# 🎭 Virtio entropy device
 
 `sp.VirtioRng(seed=1)` · C++ `socpuppet::VirtioRng` · registry name `virtio_rng`
 
 ## What it stands for
 
-🎭 A stand-in for a hardware random number generator, the block a kernel stirs into its entropy pool. 🎓 It is the smallest virtio device there is (device 4 in the specification, section 5.4): one virtqueue, no features and no configuration. The driver hands it empty buffers and it fills them with random bytes. QEMU calls it `virtio-rng-device`.
+🎭 A stand-in (a simplified model) for a hardware random number generator, the block a kernel stirs into its entropy pool. 🎓 It is the smallest virtio device there is (device 4 in the specification, section 5.4): one virtqueue, no features and no configuration. The driver hands it empty buffers and it fills them with random bytes. QEMU calls it `virtio-rng-device`.
 
 ## What it does
 

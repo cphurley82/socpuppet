@@ -1,10 +1,10 @@
-# Virtio block device
+# 🎭 Virtio block device
 
 `sp.VirtioBlk(blocks=...)` · C++ `socpuppet::VirtioBlk` · registry name `virtio_blk`
 
 ## What it stands for
 
-🎭 A stand-in for a disk: QEMU's `virtio-blk-device`, the disk a `virt` machine's kernel most often mounts its root on. 🎓 Device 2 in the specification (section 5.2): one queue, and each chain one request, a 16-byte header the device reads (the request's kind and its first sector), the data, and a status byte the device writes last.
+🎭 A stand-in (a simplified model) for a disk: QEMU's `virtio-blk-device`, the disk a `virt` machine's kernel most often mounts its root on. 🎓 Device 2 in the specification (section 5.2): one queue, and each chain one request, a 16-byte header the device reads (the request's kind and its first sector), the data, and a status byte the device writes last.
 
 ## What it does
 

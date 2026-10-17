@@ -1,10 +1,10 @@
-# Virtio file system device
+# 🎭 Virtio file system device
 
 `sp.VirtioFs(tag="socpuppet", directory=...)` · C++ `socpuppet::VirtioFs` · registry name `virtio_fs`
 
 ## What it stands for
 
-🎭 A stand-in for a shared directory: QEMU's `vhost-user-fs-device`, with Python in the place of the `virtiofsd` daemon behind it. 🎓 Device 26 in the specification (section 5.11). The driver mounts the share by its tag and talks to it in FUSE, Linux's protocol for a file system served by a program: each chain is one request, its readable buffers the request and its writable ones the room for the answer.
+🎭 A stand-in (a simplified model) for a shared directory: QEMU's `vhost-user-fs-device`, with Python in the place of the `virtiofsd` daemon behind it. 🎓 Device 26 in the specification (section 5.11). The driver mounts the share by its tag and talks to it in FUSE, Linux's protocol for a file system served by a program: each chain is one request, its readable buffers the request and its writable ones the room for the answer.
 
 ## What it does
 

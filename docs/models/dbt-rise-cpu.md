@@ -41,7 +41,7 @@ platform.run(sp.ms(100))
 
 🎓 Two things, and both are worth knowing because every virtual platform has them.
 
-**Direct memory access (DMI).** The first time the core reads from a RAM, it asks the RAM for a pointer to its bytes. From then on it reads and writes them directly, with no bus transaction. Only devices, which have to notice each access, are reached over the bus. ⚠️ A traced connection refuses DMI, so do not trace the path from a CPU to its main memory and expect speed.
+**Direct memory interface (DMI).** The first time the core reads from a RAM, it asks the RAM for a pointer to its bytes. From then on it reads and writes them directly, with no bus transaction. Only devices, which have to notice each access, are reached over the bus. ⚠️ A traced connection refuses DMI, so do not trace the path from a CPU to its main memory and expect speed.
 
 **Temporal decoupling.** The core runs many instructions in one go and only then lets the rest of the platform catch up. How far ahead it may get is the platform's `quantum`, 100 µs by default. The price is that the core sees an interrupt up to a quantum late. On a loop of two million instructions the core ran at 9 million instructions a second with no quantum and 44 million with the default.
 
@@ -75,12 +75,4 @@ Why this one, and what else was tried, is in the [ISS spike report](../history/i
 
 ### What we changed
 
-socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`) and to tests of its own (`tests/cpp/platform/cpu_test.cpp`), and Zephyr's own suites run on it under twister. Every change is a patch in `cmake/patches/`, written up in [upstream.md](../upstream.md) with how to see what it mends. They come in four kinds:
-
-- **For compilers and build systems**: four, none of which changes what the core does.
-- **For the debugger**: a GDB server for each core where there was one for the process, each core's own `sysc` command on its own server, a `continue` that is answered once, and a debugger that hangs up rudely no longer ending the process.
-- **What Zephyr and the contract found**: a reset raised a second time stopped the simulation, as did one shorter than a busy core's lead; a withdrawn DMI grant was ignored; an interrupt handler was entered over and over; a core with supervisor mode could never take a supervisor's interrupt, and dropped the instruction an interrupt arrived at; and firmware could clear a pending interrupt's bit that a real hart keeps read-only.
-- **What running the hart the way Linux will run it found** (M22), where nothing had run it that way before: an instruction was fetched from its virtual address as if that were a physical one, so no kernel linked at a high address could have started; an interrupt that was pending at a system call was taken inside the call's handler; the status register hid the floating-point state from the kernel, and nothing marked it dirty; a store-conditional to another address left a reservation standing, which is the instruction Linux clears one with; user mode could execute `sret`; the counter-enable registers did nothing; and a dozen smaller things beside.
-- **For the translating backends** (M26), eight that change nothing the interpreter does: the JIT helper's `wait` renamed out of POSIX's way, the LLVM core registered under the name the wrapper looks up and its JIT initialised, pointers typed as pointers for LLVM 19 and later, `__int128` traits guarded for libc++, and `wfi` calling the helper by its new name in both. ⚠️ What M22 mended in the interpreter the backends still get wrong, and [speed-spike.md](../history/speed-spike.md) has the count.
-
-💡 None of that is a complaint. A model is trusted as far as it has been run, and this one had been run in machine mode. The page for sending the fixes back is [upstream.md](../upstream.md).
+socpuppet holds the CPU to the same contract as the scripted stand-in (`tests/cpp/contracts/bus_master_contract.h`), to tests of its own (`tests/cpp/platform/cpu_test.cpp`), and to Zephyr's own suites under twister. What those found is mended by patches in `cmake/patches/`, named `dbt-rise-*`, and every one is written up in [upstream.md](../upstream.md) under DBT-RISE-Core and DBT-RISE-RISCV: what was wrong, how to see it, and what to propose. 💡 None of it is a complaint. A model is trusted as far as it has been run, and this one had been run in machine mode; [history/lessons.md](../history/lessons.md#the-hart) has what running it the way Linux will found.

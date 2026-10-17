@@ -125,7 +125,7 @@ A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, an
 - **Dropped and corrupted traffic.** A fault takes the whole link down; nothing can be injected finer than that. 🚧 M10 is where error injection gets interesting.
 - **Power states.** No L1, no L2.
 - **Negotiation.** The MBINIT.PARAM messages carry nothing: both ends are the same link, built from the same parameters.
-- **Direct memory access.** Refused outright, so every access crosses the link and is seen taking its time.
+- **DMI, the direct memory interface.** Refused outright, so every access crosses the link and is seen taking its time.
 
 ## The contract
 

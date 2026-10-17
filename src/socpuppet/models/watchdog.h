@@ -20,6 +20,12 @@ namespace socpuppet {
 // watchdog itself added by a patch. This class is the adapter that fits it
 // into a socpuppet platform, and brings out the watchdog's two lines. The
 // block's other registers are on the same page, and do nothing.
+//
+// Two things the model leaves out, which docs/models/watchdog.md explains:
+// the encoreawake bit counts as enalways does, since the model is not told
+// when its CPU sleeps; and the count goes by the simulation's clock, not
+// the CPU's, so a CPU running a quantum ahead sees a count up to that far
+// behind.
 class Watchdog : public sc_core::sc_module {
  public:
   tlm_utils::simple_target_socket<Watchdog> socket{"socket"};

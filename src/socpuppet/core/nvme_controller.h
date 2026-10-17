@@ -32,6 +32,14 @@ namespace socpuppet {
 //
 // It follows the NVMe base specification, which is public. The layouts of
 // the registers, commands and completions come from SPDK's nvme_spec.h.
+//
+// 🎭 It is a stand-in, and leaves out what a real controller would check or
+// honour: the interrupt mask registers (INTMS, INTMC) and a queue's
+// interrupt-enable bit are ignored, so a queue always interrupts; the page
+// and entry sizes in CC are taken as read; Flush does not look at its
+// namespace; and a doorbell write it cannot make sense of is a bus error,
+// where a real controller takes the write and reports an asynchronous
+// event later. docs/models/behavioral-nvme.md has the whole list.
 class NvmeController {
  public:
   // `blocks` is how many blocks its one namespace holds, and `vectors`

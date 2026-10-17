@@ -123,4 +123,4 @@ The lines are driven by one process of the model's own, because a message arrive
 
 It is held to `MessageControllerContract` (`tests/cpp/contracts/message_controller_contract.h`), whose devices send from threads of their own, as devices on a platform do.
 
-🎭 Its stand-in sibling is the [MSI receiver](msi-receiver.md), which a scripted host with no CPU uses.
+🎭 Its stand-in sibling, a simplified model, is the [MSI receiver](msi-receiver.md), which a scripted host with no CPU uses.

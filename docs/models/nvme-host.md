@@ -4,6 +4,8 @@
 
 ## What it stands in for
 
+🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
+
 The NVMe driver in the host's firmware: the code that finds the drive's registers, sets up queues in the host's memory, and turns "read block 7" into a command the drive understands. On the finished platform that is Zephyr's driver, running on the host CPU. 🚧 Until that boots, this stands in for it, and it stays on afterwards as the host for anyone bringing up SSD firmware.
 
 🎓 It is also the shortest way to see what a driver does. The whole exchange is one function of five numbered steps, `_complete()`:

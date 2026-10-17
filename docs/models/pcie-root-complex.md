@@ -59,7 +59,7 @@ In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for
 - **Who sent it.** 🚧 A real packet names its sender, which is what lets a host confine a device to its own memory. Nothing here carries or checks that yet.
 - **Translation.** An address means the same on the link as on the host's bus.
 - **Legacy.** No I/O ports and no interrupt pins.
-- **DMI.** Direct memory access does not cross the link. A debugger's look does: `platform.peek` and GDB see the device's registers through the memory window, and its configuration space through the other.
+- **DMI.** The direct memory interface does not cross the link. A debugger's look does: `platform.peek` and GDB see the device's registers through the memory window, and its configuration space through the other.
 
 ## Under the hood
 

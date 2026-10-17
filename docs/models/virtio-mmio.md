@@ -6,7 +6,7 @@ Not a component you can place: the transport that every virtio device of socpupp
 
 🎓 **Virtio** is the family of devices a virtual machine offers its guest when it does not pretend to be real hardware: a block device, a network card, a console and a few more, each a small register block and rings of descriptors in the guest's memory. **`virtio-mmio`** is the transport where that register block sits on the bus at an address the devicetree gives, with one interrupt line, which is the one that fits a SoC with no PCIe between the CPU and the device. Every Linux drives it, and so does QEMU's `virt` machine.
 
-No real SoC has one. socpuppet's are 🎭 stand-ins: they hold a real block's place so that the rest of the cast can rehearse, and tell a kernel that will not boot from a device that does not work. The devices are the entropy source, the console, the block device, the network card and the file system, each with a page of its own.
+No real SoC has one. socpuppet's are 🎭 stand-ins, simplified models: they hold a real block's place so that the rest of the cast can rehearse, and tell a kernel that will not boot from a device that does not work. The devices are the entropy source, the console, the block device, the network card and the file system, each with a page of its own.
 
 ## The registers
 
