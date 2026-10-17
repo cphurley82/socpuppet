@@ -578,4 +578,23 @@ class TestWhenTheClientChangesAFilesModeAndTimes:
 
 class TestWhenAnErrorHasNoLinuxNumberInTheTable:
     def test_it_is_answered_as_eio(self):
-        assert fuse.linux_errno(OSError(errno.ECHRNG, "")) == EIO
+        # Too many links: an error every host has, and none the server
+        # meets.
+        assert fuse.linux_errno(OSError(errno.EMLINK, "")) == EIO
+
+
+class TestWhenTheHostsPreferredBlockSizeIsNotItsBlockSize:
+    def test_statfs_gives_the_block_size_the_counts_are_in_for_both(
+        self, served, monkeypatch
+    ):
+        # macOS's statvfs says 1 MiB is the best size to read in, and counts
+        # blocks of 4 KiB; EDK2 refuses an answer whose two sizes differ.
+        found = os.statvfs_result(
+            (1 << 20, 4096, 1000, 500, 400, 100, 50, 50, 0, 255)
+        )
+        monkeypatch.setattr(fuse.os, "statvfs", lambda _path: found)
+
+        _, body = ask(served, fuse.STATFS)
+
+        bsize, _, frsize = struct.unpack_from("<III", body, 40)
+        assert (bsize, frsize) == (4096, 4096)

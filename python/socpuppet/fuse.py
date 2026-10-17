@@ -492,10 +492,13 @@ class Directory:
         return struct.pack("<Q", place)
 
     def _statfs(self, _node: int, _body: bytes) -> bytes:
+        # The counts are in blocks of `f_frsize`, and that is the block size
+        # given twice: `f_bsize` is the best size to read in, which macOS
+        # makes 1 MiB, and EDK2 refuses an answer whose two sizes differ.
         found = os.statvfs(self.root)
         return _STATFS.pack(
             found.f_blocks, found.f_bfree, found.f_bavail, found.f_files,
-            found.f_ffree, found.f_bsize, 255, found.f_frsize, 0,
+            found.f_ffree, found.f_frsize, 255, found.f_frsize, 0,
         )  # fmt: skip
 
 

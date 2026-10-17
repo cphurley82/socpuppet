@@ -175,7 +175,8 @@ class TestWhenUefiBootsWithADirectorySharedInTheVirtioSlot:
 
         assert as_uefi_names_it(board, board.virtio.fs) in mapped
         assert f"Volume {TAG} (rw)" in volume
-        assert re.search(r"<DIR>\s+\d+\s+eggs", listed)
+        # A directory's size has a comma in it from 1,000 on (4,096 on ext4).
+        assert re.search(r"<DIR>\s+[\d,]+\s+eggs", listed)
         assert re.search(r"\b18\s+SPAM\.TXT", listed)
         assert SPAM.decode() in typed
         assert (tmp_path / "EGGS.TXT").read_bytes() == b"eggs\r\n"

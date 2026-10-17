@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,22 @@ def test_the_python_tests_run_on_every_core_long_ones_first(
         *("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder"),
         "tests",
     ]
+
+
+@pytest.mark.parametrize("installer", ["uv", "pip"])
+def test_the_tests_get_every_package_cibuildwheel_is_told_they_require(
+    test_wheel, installer
+):
+    # One list, in pyproject.toml, for both ways a wheel is tested.
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        required = tomllib.load(pyproject)["tool"]["cibuildwheel"][
+            "test-requires"
+        ]
+
+    _, calls = test_wheel(installer)
+
+    (install,) = [c["args"] for c in calls if "install" in c["args"]]
+    assert set(required) <= set(install)
 
 
 def test_an_unknown_installer_is_refused_with_the_usage(test_wheel):

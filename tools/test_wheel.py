@@ -12,13 +12,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
-# What the tests need besides the wheel, and how they are run: on every
-# core, as ctest runs them (tests/python/CMakeLists.txt says why).
-TEST_PACKAGES = ("pytest", "pytest-xdist")
+# What the tests need besides the wheel, which pyproject.toml lists once
+# for cibuildwheel and for this; and how they are run: on every core, as
+# ctest runs them (tests/python/CMakeLists.txt says why).
+with (REPOSITORY / "pyproject.toml").open("rb") as _pyproject:
+    TEST_PACKAGES = tuple(
+        tomllib.load(_pyproject)["tool"]["cibuildwheel"]["test-requires"]
+    )
 ON_EVERY_CORE = ("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder")
 
 
