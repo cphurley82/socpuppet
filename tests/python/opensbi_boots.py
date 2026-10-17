@@ -17,12 +17,14 @@ from socpuppet.boards.host import RAM_BASE, host
 MODEL = "socpuppet host"
 
 
-def a_host_with_opensbi(firmware, payload):
+def a_host_with_opensbi(firmware, payload, *, virtio=None):
     """A host described for OpenSBI and built, and OpenSBI's layout for it.
 
-    `payload` is the file of the stage OpenSBI is to start.
+    `payload` is the file of the stage OpenSBI is to start. `virtio` is
+    what the host's virtio devices are told, if it is to have them
+    (`socpuppet.boards.virtio.Virtio`).
     """
-    board = host(boot=from_rom, sbi=True)
+    board = host(boot=from_rom, sbi=True, virtio=virtio)
     layout = opensbi.lay_out(
         firmware(FW_JUMP_BIN).read_bytes(),
         firmware(payload).read_bytes(),

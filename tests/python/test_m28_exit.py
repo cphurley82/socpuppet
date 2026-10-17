@@ -24,33 +24,27 @@ from cast import UEFI_FD
 from devicetree_compiler import needs_dtc
 from opensbi_boots import a_host_with_opensbi, in_the_flash, loaded_by_python
 from socpuppet.boards.host import RAM_BASE, RAM_SIZE
+from uefi_shell import (
+    BOOT_MANAGERS_COUNTDOWN,
+    LONG_ENOUGH,
+    PROMPT,
+    SHELLS_COUNTDOWN,
+    plain,
+    type_and_wait_for_the_prompt,
+)
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
 #: boot of UEFI takes seconds, so the tests are handed out first.
 pytestmark = [needs_dtc, pytest.mark.long]
 
-PROMPT = "Shell>"
 #: What EDK2's paging library says once `satp` has kept what it wrote.
 PAGING_ON = re.compile(r"SATP mode \d+ successfully configured")
-#: The boot manager's countdown, and then the shell's, each with how many
-#: seconds it waits for a key.
-BOOT_MANAGERS_COUNTDOWN = re.compile(r"Press ESCAPE within (\d+) seconds")
-SHELLS_COUNTDOWN = re.compile(r"Press ESC in (\d+) seconds")
-#: QBox's hart reaches the prompt in about 90 s of its time and the
-#: interpreter in about 65: SEC unpacks the rest of EDK2, 6 MB compressed
-#: with LZMA, for 25 to 40 s of it, and the two countdowns wait 10 s. From
-#: the flash the boot ROM's check of the image comes first, which is about
-#: 4 s for each 2 MiB.
-LONG_ENOUGH = sp.ms(150_000)
 #: What the boot ROM says when it starts an image from the flash.
 ROMS_LINE = re.compile(r"rom: \S+: \d+ bytes to ")
 #: After a reset the ROM copies the image again, a little over 4 MiB, and
 #: checks it a byte at a time before it says its line: about 9 s, at the
 #: 4 s for each 2 MiB that M23 measured.
 REBOOTS_WITHIN = sp.ms(20_000)
-#: The slowest command typed here is `memmap`, which takes 28 s of QBox's
-#: time to give its hundred and fifty rows, and 22 s of the interpreter's.
-ANSWERS_WITHIN = sp.ms(60_000)
 
 
 class AtItsShell(NamedTuple):
@@ -132,21 +126,6 @@ class TestWhenUefiBootsFromTheFlash:
         assert in_order(plain(board.uart.output), ROMS_LINE, PROMPT, ROMS_LINE)
 
 
-def type_and_wait_for_the_prompt(board, command):
-    """Type `command` and Enter at the shell, and run until it prompts again.
-
-    Gives what the shell said in between, as plain text.
-    """
-    said_before = len(board.uart.output)
-    board.uart.write(command + "\r")
-    prompted = board.platform.run_until(
-        lambda: PROMPT in plain(board.uart.output[said_before:]),
-        timeout=ANSWERS_WITHIN,
-    )
-    assert prompted, f"The shell did not prompt again after {command!r}"
-    return plain(board.uart.output[said_before:])
-
-
 def span(memory_map):
     """Where the first region in `memory_map` starts and the last one ends.
 
@@ -160,12 +139,6 @@ def span(memory_map):
         )
     ]
     return min(first for first, _ in regions), max(end for _, end in regions)
-
-
-def plain(console):
-    """`console` without the escape sequences a UEFI terminal moves and
-    colours with."""
-    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", console)
 
 
 def in_order(text, *expected):
