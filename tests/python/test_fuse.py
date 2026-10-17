@@ -25,6 +25,17 @@ EEXIST = 17
 ENOTEMPTY = 39
 ENOSYS = 38
 EACCES = 13
+EINVAL = 22
+EIO = 5
+# The open flags a guest sends, in Linux's numbers, and SEEK_END.
+O_RDONLY = 0
+O_RDWR = 2
+O_CREAT = 0o100
+O_EXCL = 0o200
+O_TRUNC = 0o1000
+SEEK_END = 2
+# RENAME2's flag that says not to replace a name that is there.
+RENAME_NOREPLACE = 1
 
 IN_HEADER = struct.Struct("<IIQQIIIHH")
 OUT_HEADER = struct.Struct("<IiQ")
@@ -77,11 +88,9 @@ def look_up(served, text, *, under=ROOT):
     return entry(body)[0]
 
 
-def open_it(served, node, *, directory=False):
+def open_it(served, node, *, directory=False, flags=O_RDWR):
     opcode = fuse.OPENDIR if directory else fuse.OPEN
-    error, body = ask(
-        served, opcode, struct.pack("<II", os.O_RDWR, 0), node=node
-    )
+    error, body = ask(served, opcode, struct.pack("<II", flags, 0), node=node)
     assert error == 0
     return OPEN_OUT.unpack(body)[0]
 
@@ -221,7 +230,7 @@ class TestWhenTheClientCreatesAFile:
         error, body = ask(
             served,
             fuse.CREATE,
-            struct.pack("<IIII", os.O_RDWR | os.O_CREAT, 0o644, 0o022, 0)
+            struct.pack("<IIII", O_RDWR | O_CREAT, 0o644, 0o022, 0)
             + name("ham.txt"),
         )
 
@@ -229,7 +238,7 @@ class TestWhenTheClientCreatesAFile:
         assert (tmp_path / "ham.txt").exists()
 
     def test_a_name_that_is_taken_with_o_excl_is_eexist(self, served):
-        flags = os.O_RDWR | os.O_CREAT | os.O_EXCL
+        flags = O_RDWR | O_CREAT | O_EXCL
         assert (
             ask(
                 served,
@@ -320,16 +329,61 @@ class TestWhenTheClientRenames:
         assert (tmp_path / "eggs" / "ham.txt").read_bytes().startswith(b"spam")
 
     def test_rename2_as_edk2_sends_it_does_the_same(self, served, tmp_path):
+        # EDK2 always asks for the name not to be replaced.
         error, _ = ask(
             served,
             fuse.RENAME2,
-            struct.pack("<QII", ROOT, 0, 0)
+            struct.pack("<QII", ROOT, RENAME_NOREPLACE, 0)
             + name("spam.txt")
             + name("ham.txt"),
         )
 
         assert error == 0
         assert (tmp_path / "ham.txt").exists()
+
+    def test_rename2_onto_a_name_that_is_there_without_replacing_is_eexist(
+        self, served, tmp_path
+    ):
+        (tmp_path / "ham.txt").write_bytes(b"ham")
+
+        error, _ = ask(
+            served,
+            fuse.RENAME2,
+            struct.pack("<QII", ROOT, RENAME_NOREPLACE, 0)
+            + name("spam.txt")
+            + name("ham.txt"),
+        )
+
+        assert error == EEXIST
+        assert (tmp_path / "ham.txt").read_bytes() == b"ham"
+
+    def test_rename2_with_a_flag_it_does_not_know_is_einval(self, served):
+        exchange = 2
+        assert (
+            ask(
+                served,
+                fuse.RENAME2,
+                struct.pack("<QII", ROOT, exchange, 0)
+                + name("spam.txt")
+                + name("ham.txt"),
+            )[0]
+            == EINVAL
+        )
+
+    def test_a_name_renamed_onto_itself_stays_and_keeps_its_node(
+        self, served, tmp_path
+    ):
+        node = look_up(served, "spam.txt")
+
+        error, _ = ask(
+            served,
+            fuse.RENAME,
+            struct.pack("<Q", ROOT) + name("spam.txt") + name("spam.txt"),
+        )
+
+        assert error == 0
+        assert (tmp_path / "spam.txt").exists()
+        assert look_up(served, "spam.txt") == node
 
 
 class TestWhenTheClientSeeks:
@@ -338,7 +392,7 @@ class TestWhenTheClientSeeks:
         fh = open_it(served, node)
 
         error, body = ask(
-            served, fuse.LSEEK, struct.pack("<QQII", fh, 0, os.SEEK_END, 0),
+            served, fuse.LSEEK, struct.pack("<QqII", fh, 0, SEEK_END, 0),
             node=node,
         )  # fmt: skip
 
@@ -392,3 +446,136 @@ class TestWhenTheClientAsksForSomethingTheDirectoryDoesNotDo:
 class TestWhenTheHostsErrorNumbersAreNotLinuxs:
     def test_an_answer_carries_linuxs_number_for_the_error(self):
         assert fuse.linux_errno(OSError(errno.ENOTEMPTY, "")) == ENOTEMPTY
+
+
+class TestWhenTheDirectoryHasALinkThatLeadsOut:
+    def test_listing_the_directory_leaves_it_out(self, served, tmp_path):
+        (tmp_path / "out").symlink_to("/")
+        fh = open_it(served, ROOT, directory=True)
+
+        _, plain = ask(served, fuse.READDIR, read_in(fh, 0, 4096))
+        _, plus = ask(served, fuse.READDIRPLUS, read_in(fh, 0, 4096))
+
+        assert "out" not in dirents(plain)
+        assert "out" not in dirents(plus, plus=True)
+
+    def test_a_node_it_was_given_before_it_led_out_is_refused(
+        self, served, tmp_path
+    ):
+        (tmp_path / "eggs" / "link").symlink_to("../spam.txt")
+        node = look_up(served, "link", under=look_up(served, "eggs"))
+        # Moved up a level, the same link leads out of the directory.
+        (tmp_path / "eggs" / "link").rename(tmp_path / "link")
+        (tmp_path / "eggs" / "link").symlink_to("../../..")
+
+        assert ask(served, fuse.GETATTR, bytes(16), node=node)[0] == EACCES
+
+
+class TestWhenTheDirectoryHasALinkThatStaysInside:
+    def test_it_is_looked_up_as_what_it_leads_to(self, served, tmp_path):
+        (tmp_path / "ham.txt").symlink_to("spam.txt")
+
+        error, body = ask(served, fuse.LOOKUP, name("ham.txt"))
+
+        attr = entry(body)[1]
+        assert (error, mode_of(attr) & 0o170000, size_of(attr)) == (
+            0,
+            0o100000,
+            17,
+        )
+
+
+class TestWhenTheClientNamesDotOrDotDotToChangeSomething:
+    @pytest.mark.parametrize("text", [".", ".."])
+    def test_rmdir_is_einval_and_the_directory_stays(
+        self, served, tmp_path, text
+    ):
+        assert ask(served, fuse.RMDIR, name(text))[0] == EINVAL
+        assert tmp_path.is_dir()
+
+    def test_mkdir_of_dot_dot_is_einval(self, served):
+        mkdir_in = struct.pack("<II", 0o755, 0)
+        assert ask(served, fuse.MKDIR, mkdir_in + name(".."))[0] == EINVAL
+
+
+class TestWhenTheClientSendsARequestThatDoesNotParse:
+    def test_a_body_too_short_for_its_operation_is_einval(self, served):
+        assert ask(served, fuse.READ, b"\0\0\0\0")[0] == EINVAL
+
+    def test_a_name_that_is_not_utf_8_is_looked_up_and_not_found(self, served):
+        assert ask(served, fuse.LOOKUP, b"\xffspam\0")[0] == ENOENT
+
+
+class TestWhenTheClientOpensAFileToTruncateIt:
+    def test_it_is_emptied(self, served, tmp_path):
+        node = look_up(served, "spam.txt")
+
+        open_it(served, node, flags=O_RDWR | O_TRUNC)
+
+        assert (tmp_path / "spam.txt").read_bytes() == b""
+
+    def test_one_opened_to_read_is_left_alone(self, served, tmp_path):
+        node = look_up(served, "spam.txt")
+
+        open_it(served, node, flags=O_RDONLY)
+
+        assert (tmp_path / "spam.txt").stat().st_size == 17
+
+
+class TestWhenTheClientSeeksBackFromTheEnd:
+    def test_four_back_is_four_before_the_size(self, served):
+        node = look_up(served, "spam.txt")
+        fh = open_it(served, node)
+
+        error, body = ask(
+            served, fuse.LSEEK, struct.pack("<QqII", fh, -4, SEEK_END, 0),
+            node=node,
+        )  # fmt: skip
+
+        assert (error, struct.unpack("<Q", body)[0]) == (0, 13)
+
+    def test_past_the_start_is_einval(self, served):
+        node = look_up(served, "spam.txt")
+        fh = open_it(served, node)
+
+        error, _ = ask(
+            served, fuse.LSEEK, struct.pack("<QqII", fh, -18, SEEK_END, 0),
+            node=node,
+        )  # fmt: skip
+
+        assert error == EINVAL
+
+
+class TestWhenTheClientListsWithEntriesForDotAndDotDot:
+    def test_each_says_it_is_a_directory_and_has_node_zero(self, served):
+        fh = open_it(served, ROOT, directory=True)
+
+        _, body = ask(served, fuse.READDIRPLUS, read_in(fh, 0, 4096))
+
+        node, attr = entry(body)
+        assert (node, mode_of(attr) & 0o170000) == (0, 0o040000)
+
+
+class TestWhenTheClientChangesAFilesModeAndTimes:
+    def test_the_file_has_them(self, served, tmp_path):
+        node = look_up(served, "spam.txt")
+        valid = fuse.FATTR_MODE | fuse.FATTR_ATIME | fuse.FATTR_MTIME
+        setattr_in = struct.pack(
+            "<IIQQQQQQIIIIIIII", valid, 0, 0, 0, 0, 1_000_000, 2_000_000, 0,
+            0, 0, 0, 0o100400, 0, 0, 0, 0,
+        )  # fmt: skip
+
+        error, _ = ask(served, fuse.SETATTR, setattr_in, node=node)
+
+        found = (tmp_path / "spam.txt").stat()
+        assert error == 0
+        assert (found.st_mode & 0o777, found.st_atime, found.st_mtime) == (
+            0o400,
+            1_000_000,
+            2_000_000,
+        )
+
+
+class TestWhenAnErrorHasNoLinuxNumberInTheTable:
+    def test_it_is_answered_as_eio(self):
+        assert fuse.linux_errno(OSError(errno.ECHRNG, "")) == EIO

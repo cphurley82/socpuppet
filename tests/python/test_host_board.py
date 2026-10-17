@@ -44,6 +44,7 @@ from socpuppet.components import (
     Watchdog,
 )
 from socpuppet.interrupt_map import InterruptEntry
+from socpuppet.regs import virtio_mmio
 from wiring import what_drives
 from zephyr_module import (
     ZEPHYR_MODULE,
@@ -888,18 +889,23 @@ class TestTheHostsVirtioSlots:
             in board.platform.interrupt_map()
         )
 
-    def test_the_file_system_device_shares_the_directory_and_tag_it_was_told(
+    @pytest.mark.platform
+    def test_the_file_system_device_gives_the_tag_the_host_was_told(
         self, tmp_path
     ):
         board = host(virtio=Virtio(tag="eggs", share=tmp_path))
+        board.platform.build()
+        [slot] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.virtio.fs.path
+        ]
 
-        assert (
-            board.virtio.fs.component.tag,
-            board.virtio.fs.component.directory,
-        ) == (
-            "eggs",
-            tmp_path,
+        tag = board.platform.peek32(
+            slot.address + virtio_mmio.CONFIG, via=board.cpu.socket
         )
+
+        assert tag.to_bytes(4, "little") == b"eggs"
 
     def test_the_entropy_devices_dma_reaches_the_ram(self):
         board = host(virtio=Virtio())

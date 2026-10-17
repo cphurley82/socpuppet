@@ -22,8 +22,6 @@ device is and knows what goes in its chains.
 
 from __future__ import annotations
 
-import errno
-import os
 import struct
 from collections.abc import Callable
 from typing import Any
@@ -537,7 +535,10 @@ class VirtioFsHost(VirtioHost):
     def init(self) -> Steps[None]:
         """Says hello, in FUSE 7.31."""
         yield from self._ask(
-            fuse.INIT, fuse.ROOT, struct.pack("<IIII", 7, 31, 0, 0), 64
+            fuse.INIT,
+            fuse.ROOT,
+            struct.pack("<IIII", fuse.MAJOR, fuse.MINOR, 0, 0),
+            64,
         )
 
     def lookup(self, name: str) -> Steps[int]:
@@ -551,7 +552,7 @@ class VirtioFsHost(VirtioHost):
     def open(self, node: int) -> Steps[int]:
         """Opens the file `node` to read, and gives its handle."""
         opened = yield from self._ask(
-            fuse.OPEN, node, struct.pack("<II", os.O_RDONLY, 0), 16
+            fuse.OPEN, node, struct.pack("<II", fuse.O_RDONLY, 0), 16
         )
         handle: int = struct.unpack_from("<Q", opened)[0]
         return handle
@@ -572,22 +573,21 @@ class VirtioFsHost(VirtioHost):
     ) -> Steps[bytes]:
         """Sends one request and gives the body of its answer."""
         self._unique += 1
-        header = _FUSE_IN.pack(
-            _FUSE_IN.size + len(body), opcode, self._unique, node, 0, 0, 0, 0
-        )
+        header = fuse.IN_HEADER.pack(
+            fuse.IN_HEADER.size + len(body),
+            opcode,
+            self._unique,
+            node,
+            0, 0, 0, 0, 0,
+        )  # fmt: skip
         written, (answer,) = yield from self.submit(
-            self.REQUEST_QUEUE, [header + body], [_FUSE_OUT.size + room]
+            self.REQUEST_QUEUE, [header + body], [fuse.OUT_HEADER.size + room]
         )
-        length, error, _ = _FUSE_OUT.unpack_from(answer)
+        length, error, _ = fuse.OUT_HEADER.unpack_from(answer)
         if error:
-            name = errno.errorcode.get(-error, f"error {-error}")
+            name = fuse.linux_error_name(-error)
             what = f" of {about!r}" if about else ""
             raise VirtioError(
                 f"The share answered FUSE request {opcode}{what} with {name}."
             )
-        return answer[_FUSE_OUT.size : min(length, written)]
-
-
-#: The header in front of every FUSE request, and of every answer.
-_FUSE_IN = struct.Struct("<IIQQIIII")
-_FUSE_OUT = struct.Struct("<IiQ")
+        return answer[fuse.OUT_HEADER.size : min(length, written)]

@@ -21,6 +21,7 @@ import errno
 import os
 import stat
 import struct
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -57,16 +58,38 @@ MINOR = 31
 #: INIT's flag that says directories are read with READDIRPLUS, which
 #: EDK2's client asks for and will not do without.
 DO_READDIRPLUS = 1 << 13
-#: SETATTR's flag that says the size it carries is to be set.
+#: SETATTR's flags: which of the attributes it carries are to be set, and
+#: which times are to be now.
+FATTR_MODE = 1 << 0
 FATTR_SIZE = 1 << 3
+FATTR_ATIME = 1 << 4
+FATTR_MTIME = 1 << 5
+FATTR_ATIME_NOW = 1 << 7
+FATTR_MTIME_NOW = 1 << 8
+#: RENAME2's flag that says not to replace a name that is there, which
+#: EDK2's client always sets.
+RENAME_NOREPLACE = 1 << 0
+#: The open flags a request carries, in Linux's numbers whatever the host
+#: Python runs on has (macOS's O_EXCL is 0x800).
+O_ACCMODE = 0o3
+O_RDONLY = 0o0
+O_EXCL = 0o200
+O_TRUNC = 0o1000
+#: Where LSEEK counts from, in Linux's numbers.
+SEEK_SET = 0
+SEEK_END = 2
 
 #: The top of the served directory is always node 1.
 ROOT = 1
 #: The most a client may write in one request, which INIT tells it.
 MAX_WRITE = 1 << 16
 
-_IN_HEADER = struct.Struct("<IIQQIIIHH")
-_OUT_HEADER = struct.Struct("<IiQ")
+#: The header in front of every request: its length, its opcode, a number
+#: its answer gives back, its node, who asks, and padding.
+IN_HEADER = struct.Struct("<IIQQIIIHH")
+#: The header in front of every answer: its length, the error as a
+#: negative Linux number or 0, and the request's number.
+OUT_HEADER = struct.Struct("<IiQ")
 _INIT_OUT = struct.Struct("<IIIIHHIIHHII24x")
 _ATTR = struct.Struct("<QQQQQQIIIIIIIIII")
 # An entry: the node, its generation, and how long the name and the
@@ -78,7 +101,8 @@ _READ_IN = struct.Struct("<QQI")
 _WRITE_IN = struct.Struct("<QQIIQII")
 _SETATTR_IN = struct.Struct("<IIQQQQQQIIIIIIII")
 _CREATE_IN = struct.Struct("<IIII")
-_LSEEK_IN = struct.Struct("<QQI")
+# The handle, a signed offset, and where it counts from.
+_LSEEK_IN = struct.Struct("<QqI")
 _DIRENT = struct.Struct("<QQII")
 _STATFS = struct.Struct("<QQQQQIIII24x")
 
@@ -96,12 +120,17 @@ _LINUX_ERRNO = {
     "ENOTDIR": 20,
     "EISDIR": 21,
     "EINVAL": 22,
+    "ETXTBSY": 26,
     "EFBIG": 27,
     "ENOSPC": 28,
+    "EROFS": 30,
     "ENAMETOOLONG": 36,
     "ENOSYS": 38,
     "ENOTEMPTY": 39,
     "ELOOP": 40,
+    "EOVERFLOW": 75,
+    "EOPNOTSUPP": 95,
+    "EDQUOT": 122,
 }
 
 
@@ -119,6 +148,14 @@ def linux_errno(failure: OSError) -> int:
     return _LINUX_ERRNO.get(name, _LINUX_ERRNO["EIO"])
 
 
+def linux_error_name(number: int) -> str:
+    """What Linux calls the error `number`, as an answer carries it."""
+    for name, linux in _LINUX_ERRNO.items():
+        if linux == number:
+            return name
+    return f"error {number}"
+
+
 class Directory:
     """🎭 Serves the directory `root` over FUSE, one request at a time.
 
@@ -127,10 +164,12 @@ class Directory:
     out a node for each name it is asked about and keeps it until the name
     goes, and a file handle is the node it was opened at: each read and
     write opens the file afresh, so nothing is held open between requests.
+    A link inside `root` is followed and looks like what it leads to.
 
     ⚠️ The client may change anything under `root`: create, write, rename
     and remove. Nothing outside it is reachable, by `..` or by a link that
-    leads out, which is refused.
+    leads out: such a link is left out of listings, and a node that has
+    come to lead out is refused.
     """
 
     def __init__(self, root: str | os.PathLike[str]) -> None:
@@ -149,7 +188,7 @@ class Directory:
             RENAME: self._rename,
             RENAME2: self._rename2,
             OPEN: self._open,
-            OPENDIR: self._open,
+            OPENDIR: self._opendir,
             READ: self._read,
             WRITE: self._write,
             CREATE: self._create,
@@ -167,8 +206,8 @@ class Directory:
 
     def __call__(self, request: bytes) -> bytes:
         """The answer to `request`, a FUSE request's bytes."""
-        _, opcode, unique, node, *_ = _IN_HEADER.unpack_from(request)
-        body = request[_IN_HEADER.size :]
+        _, opcode, unique, node, *_ = IN_HEADER.unpack_from(request)
+        body = request[IN_HEADER.size :]
         if opcode == FORGET:
             return b""
         answer = self._answers.get(opcode)
@@ -180,26 +219,41 @@ class Directory:
             return _answer(unique, _LINUX_ERRNO[refused.name], b"")
         except OSError as failed:
             return _answer(unique, linux_errno(failed), b"")
+        except (struct.error, ValueError):
+            # A body too short for its operation, or a field out of range.
+            return _answer(unique, _LINUX_ERRNO["EINVAL"], b"")
 
     # Names and nodes.
+
+    def _inside(self, path: Path) -> bool:
+        """Whether `path`, followed through its links, is under the root."""
+        return path.resolve().is_relative_to(self.root)
 
     def _path(self, node: int) -> Path:
         if node not in self._paths:
             raise _Refused("ENOENT")
-        return self._paths[node]
+        path = self._paths[node]
+        if not self._inside(path):
+            raise _Refused("EACCES")
+        return path
 
-    def _child(self, node: int, name: bytes) -> Path:
-        """Where `name` in the directory `node` is, if it is inside."""
-        text = name.split(b"\0", 1)[0].decode()
+    def _child(self, node: int, name: bytes, *, changing: bool = True) -> Path:
+        """Where `name` in the directory `node` is, if it is inside.
+
+        `.` and `..` name a directory to look up, never one to change.
+        """
+        text = os.fsdecode(name.split(b"\0", 1)[0])
         if not text or "/" in text:
             raise _Refused("EINVAL")
         parent = self._path(node)
-        if text == ".":
-            return parent
-        if text == "..":
-            return parent if parent == self.root else parent.parent
+        if text in (".", ".."):
+            if changing:
+                raise _Refused("EINVAL")
+            if text == "." or parent == self.root:
+                return parent
+            return parent.parent
         child = parent / text
-        if child.is_symlink() and not child.resolve().is_relative_to(self.root):
+        if not self._inside(child):
             raise _Refused("EACCES")
         return child
 
@@ -215,10 +269,10 @@ class Directory:
         if node is not None:
             del self._paths[node]
 
-    def _attr(self, path: Path) -> bytes:
-        found = path.lstat()
+    def _attr(self, path: Path, *, node: int | None = None) -> bytes:
+        found = path.stat()
         return _ATTR.pack(
-            self._node(path),
+            self._node(path) if node is None else node,
             found.st_size,
             found.st_blocks,
             int(found.st_atime),
@@ -250,7 +304,7 @@ class Directory:
         )  # fmt: skip
 
     def _lookup(self, node: int, body: bytes) -> bytes:
-        child = self._child(node, body)
+        child = self._child(node, body, changing=False)
         if not child.exists():
             raise _Refused("ENOENT")
         return self._entry(child)
@@ -259,12 +313,25 @@ class Directory:
         return _ATTR_OUT.pack(1, 0, 0) + self._attr(self._path(node))
 
     def _setattr(self, node: int, body: bytes) -> bytes:
-        # Only the size is set: modes, owners and times are kept as the
-        # host has them, and the answer says what they are.
         path = self._path(node)
-        valid, _, _, size = _SETATTR_IN.unpack_from(body)[:4]
+        (valid, _, _, size, _, atime, mtime, _, atimensec, mtimensec, _,
+         mode) = _SETATTR_IN.unpack_from(body)[:12]  # fmt: skip
+        if valid & FATTR_MODE:
+            path.chmod(stat.S_IMODE(mode))
         if valid & FATTR_SIZE:
             os.truncate(path, size)
+        times = (FATTR_ATIME, FATTR_MTIME, FATTR_ATIME_NOW, FATTR_MTIME_NOW)
+        if any(valid & each for each in times):
+            found = path.stat()
+            os.utime(
+                path,
+                ns=(
+                    _time(valid & FATTR_ATIME_NOW, valid & FATTR_ATIME,
+                          atime, atimensec, found.st_atime_ns),
+                    _time(valid & FATTR_MTIME_NOW, valid & FATTR_MTIME,
+                          mtime, mtimensec, found.st_mtime_ns),
+                ),
+            )  # fmt: skip
         return _ATTR_OUT.pack(1, 0, 0) + self._attr(path)
 
     def _mkdir(self, node: int, body: bytes) -> bytes:
@@ -287,18 +354,29 @@ class Directory:
 
     def _rename(self, node: int, body: bytes) -> bytes:
         (new_directory,) = struct.unpack_from("<Q", body)
-        return self._move(node, new_directory, body[8:])
+        return self._move(node, new_directory, body[8:], replace=True)
 
     def _rename2(self, node: int, body: bytes) -> bytes:
         new_directory, flags = struct.unpack_from("<QI", body)
-        if flags:
+        if flags & ~RENAME_NOREPLACE:
             raise _Refused("EINVAL")
-        return self._move(node, new_directory, body[16:])
+        return self._move(
+            node,
+            new_directory,
+            body[16:],
+            replace=not flags & RENAME_NOREPLACE,
+        )
 
-    def _move(self, node: int, new_directory: int, names: bytes) -> bytes:
+    def _move(
+        self, node: int, new_directory: int, names: bytes, *, replace: bool
+    ) -> bytes:
         old_name, new_name = names.split(b"\0")[:2]
         source = self._child(node, old_name)
         target = self._child(new_directory, new_name)
+        if source == target:
+            return b""  # nothing to do, as POSIX has it
+        if not replace and target.exists():
+            raise _Refused("EEXIST")
         source.rename(target)
         # Every node under the old name is under the new one now.
         for path in [p for p in self._nodes if p.is_relative_to(source)]:
@@ -309,7 +387,14 @@ class Directory:
             self._paths[number] = moved
         return b""
 
-    def _open(self, node: int, _body: bytes) -> bytes:
+    def _open(self, node: int, body: bytes) -> bytes:
+        (flags,) = struct.unpack_from("<I", body)
+        path = self._path(node)
+        if flags & O_TRUNC and flags & O_ACCMODE != O_RDONLY:
+            os.truncate(path, 0)
+        return _OPEN_OUT.pack(node, 0, 0)
+
+    def _opendir(self, node: int, _body: bytes) -> bytes:
         self._path(node)
         return _OPEN_OUT.pack(node, 0, 0)
 
@@ -334,22 +419,28 @@ class Directory:
             child,
             os.O_CREAT
             | os.O_WRONLY
-            | (flags & os.O_EXCL)
-            | (flags & os.O_TRUNC),
+            | (os.O_EXCL if flags & O_EXCL else 0)
+            | (os.O_TRUNC if flags & O_TRUNC else 0),
             mode & ~umask & 0o7777,
         )
         os.close(descriptor)
         entry = self._entry(child)
         return entry + _OPEN_OUT.pack(self._node(child), 0, 0)
 
-    def _listing(self, node: int) -> list[tuple[str, Path | None]]:
+    def _listing(self, node: int) -> list[tuple[str, Path, bool]]:
         """A directory's names, `.` and `..` first and the rest in order.
 
-        Each comes with its path, or none for those two.
+        Each comes with its path, and whether it is one of those two. A
+        link that leads out of the root is left out.
         """
         path = self._path(node)
+        above = path if path == self.root else path.parent
         names = sorted(child.name for child in path.iterdir())
-        return [(".", None), ("..", None)] + [(n, path / n) for n in names]
+        return [(".", path, True), ("..", above, True)] + [
+            (name, path / name, False)
+            for name in names
+            if self._inside(path / name)
+        ]
 
     def _readdir(self, node: int, body: bytes) -> bytes:
         return self._dirents(node, body, plus=False)
@@ -361,21 +452,24 @@ class Directory:
         fh, offset, size = _READ_IN.unpack_from(body)
         answer = b""
         listing = self._listing(fh or node)
-        for index, (name, path) in enumerate(listing[offset:], start=offset):
-            encoded = name.encode()
-            kind = stat.S_IFDIR if path is None else path.lstat().st_mode
+        for index, (name, path, dot) in enumerate(
+            listing[offset:], start=offset
+        ):
+            encoded = os.fsencode(name)
             dirent = _DIRENT.pack(
-                0 if path is None else self._node(path),
+                0 if dot else self._node(path),
                 index + 1,
                 len(encoded),
-                stat.S_IFMT(kind) >> 12,
+                stat.S_IFMT(path.stat().st_mode) >> 12,
             ) + encoded.ljust((len(encoded) + 7) // 8 * 8, b"\0")
             if plus:
-                # "." and ".." have no node of their own here: a client
-                # forgets every other node it is given (EDK2 does).
+                # "." and ".." have node 0 here, with the attributes of what
+                # they name: a client forgets every other node it is given
+                # (EDK2 does), and takes nothing without a kind (EDK2 does
+                # not).
                 entry = (
-                    bytes(_ENTRY.size + _ATTR.size)
-                    if path is None
+                    _ENTRY.pack(0, 0, 1, 1, 0, 0) + self._attr(path, node=0)
+                    if dot
                     else self._entry(path)
                 )
                 dirent = entry + dirent
@@ -387,11 +481,13 @@ class Directory:
     def _lseek(self, node: int, body: bytes) -> bytes:
         fh, offset, whence = _LSEEK_IN.unpack_from(body)
         size = self._path(fh or node).stat().st_size
-        if whence == os.SEEK_SET:
+        if whence == SEEK_SET:
             place = offset
-        elif whence == os.SEEK_END:
+        elif whence == SEEK_END:
             place = size + offset
         else:
+            raise _Refused("EINVAL")
+        if place < 0:
             raise _Refused("EINVAL")
         return struct.pack("<Q", place)
 
@@ -413,7 +509,29 @@ def _nothing(_node: int, _body: bytes) -> bytes:
 
 
 def _answer(unique: int, error: int, body: bytes) -> bytes:
-    return _OUT_HEADER.pack(_OUT_HEADER.size + len(body), -error, unique) + body
+    return OUT_HEADER.pack(OUT_HEADER.size + len(body), -error, unique) + body
 
 
-__all__ = ["DO_READDIRPLUS", "Directory", "linux_errno"]
+def _time(
+    now: int, given: int, seconds: int, nanoseconds: int, kept: int
+) -> int:
+    """A time SETATTR sets, in nanoseconds.
+
+    It is now, the one the request carries, or the one the file has, as
+    the request's flags say.
+    """
+    if now:
+        return time.time_ns()
+    if given:
+        return seconds * 1_000_000_000 + nanoseconds
+    return kept
+
+
+__all__ = [
+    "DO_READDIRPLUS",
+    "IN_HEADER",
+    "OUT_HEADER",
+    "Directory",
+    "linux_errno",
+    "linux_error_name",
+]
