@@ -1,0 +1,173 @@
+// The virtio-mmio transport of socpuppet's virtio devices:
+// docs/models/virtio-mmio.md.
+//
+// The layout is version 2 of the virtio specification's MMIO transport
+// (Virtual I/O Device (VIRTIO) Version 1.2, section 4.2.2), register for
+// register, so that Linux's, Zephyr's and EDK2's drivers find what they
+// expect. The names are the specification's, spelled as C spells them.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+
+addrmap virtio_mmio {
+    name = "Virtio over MMIO";
+    desc = "The register block every virtio device of socpuppet's sits behind: how a driver finds out what the device is, agrees on features with it, tells it where the virtqueues are, rings its doorbell and acknowledges its interrupt. The device's own configuration starts at `0x100`.";
+    // The registers take 0x100 bytes and the device's configuration the
+    // rest. QEMU's virt machine strides its slots by 0x200.
+    block_size = 0x200;
+    default regwidth = 32;
+
+    reg {
+        desc = "Says this is a virtio device: the bytes of `virt`, read as a little-endian word.";
+        field { sw = r; } VALUE[31:0] = 0x74726976;
+    } MAGIC_VALUE @ 0x000;
+
+    reg {
+        desc = "Which layout of this register block the device speaks. Two is the modern one; one was the legacy layout, which no device here speaks.";
+        field { sw = r; } VALUE[31:0] = 2;
+    } VERSION @ 0x004;
+
+    reg {
+        desc = "What the device is, by the specification's numbering: 1 a network card, 2 a block device, 3 a console, 4 an entropy source, 26 a file system. Zero means there is no device in this slot.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } DEVICE_ID @ 0x008;
+
+    reg {
+        desc = "Who made the device. socpuppet's is `0x5350`, the letters SP.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } VENDOR_ID @ 0x00C;
+
+    reg {
+        desc = "Thirty-two of the feature bits the device offers: which thirty-two is what `DEVICE_FEATURES_SEL` says.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } DEVICE_FEATURES @ 0x010;
+
+    reg {
+        desc = "Which word of the device's feature bits `DEVICE_FEATURES` shows: zero for bits 0 to 31, one for bits 32 to 63.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } DEVICE_FEATURES_SEL @ 0x014;
+
+    reg {
+        desc = "Thirty-two of the feature bits the driver accepts, into the word `DRIVER_FEATURES_SEL` names. The driver may accept only what was offered, and must accept bit 32, `VERSION_1`.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } DRIVER_FEATURES @ 0x020;
+
+    reg {
+        desc = "Which word of the driver's feature bits `DRIVER_FEATURES` writes.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } DRIVER_FEATURES_SEL @ 0x024;
+
+    reg {
+        desc = "Which virtqueue the registers from `QUEUE_NUM_MAX` to `QUEUE_DEVICE_HIGH` are about.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_SEL @ 0x030;
+
+    reg {
+        desc = "The most entries the selected virtqueue can have. Zero means the queue does not exist.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } QUEUE_NUM_MAX @ 0x034;
+
+    reg {
+        desc = "How many entries the driver gave the selected virtqueue: at most `QUEUE_NUM_MAX`, and a power of two.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_NUM @ 0x038;
+
+    reg {
+        desc = "Whether the selected virtqueue is in use. The driver writes a one once the queue's size and addresses are set, and a zero to take the queue away.";
+        field { sw = rw; } READY[0:0] = 0;
+    } QUEUE_READY @ 0x044;
+
+    reg {
+        desc = "The doorbell: the driver writes the number of a virtqueue it has put buffers in, and the device goes and looks.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_NOTIFY @ 0x050;
+
+    reg {
+        desc = "Why the interrupt line is high. The line stays high until every set bit is acknowledged.";
+        field { sw = r; desc = "The device used a buffer in some virtqueue."; } USED_BUFFER[0:0] = 0;
+        field { sw = r; desc = "The device's configuration changed."; } CONFIG_CHANGE[1:1] = 0;
+    } INTERRUPT_STATUS @ 0x060;
+
+    reg {
+        desc = "Acknowledges interrupts: writing a one to a bit clears that bit of `INTERRUPT_STATUS`.";
+        field { sw = w; desc = "Clears `USED_BUFFER`."; } USED_BUFFER[0:0] = 0;
+        field { sw = w; desc = "Clears `CONFIG_CHANGE`."; } CONFIG_CHANGE[1:1] = 0;
+    } INTERRUPT_ACK @ 0x064;
+
+    reg {
+        desc = "How far the driver has got with the device. It sets the bits one after another as it goes; writing zero resets the device.";
+        field { sw = rw; desc = "The driver has seen the device."; } ACKNOWLEDGE[0:0] = 0;
+        field { sw = rw; desc = "The driver knows how to drive it."; } DRIVER[1:1] = 0;
+        field { sw = rw; desc = "The driver is set up and the device may use its queues."; } DRIVER_OK[2:2] = 0;
+        field { sw = rw; desc = "The driver has written its features. The device keeps the bit only if it can live with them; the driver reads it back to find out."; } FEATURES_OK[3:3] = 0;
+        field { sw = rw; desc = "The device has hit an error it cannot recover from and wants a reset."; } DEVICE_NEEDS_RESET[6:6] = 0;
+        field { sw = rw; desc = "The driver has given up on the device."; } FAILED[7:7] = 0;
+    } STATUS @ 0x070;
+
+    reg {
+        desc = "The low 32 bits of the address of the selected virtqueue's descriptor table.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DESC_LOW @ 0x080;
+
+    reg {
+        desc = "The high 32 bits of the address of the selected virtqueue's descriptor table.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DESC_HIGH @ 0x084;
+
+    reg {
+        desc = "The low 32 bits of the address of the selected virtqueue's driver area, the available ring.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DRIVER_LOW @ 0x090;
+
+    reg {
+        desc = "The high 32 bits of the address of the selected virtqueue's driver area, the available ring.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DRIVER_HIGH @ 0x094;
+
+    reg {
+        desc = "The low 32 bits of the address of the selected virtqueue's device area, the used ring.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DEVICE_LOW @ 0x0A0;
+
+    reg {
+        desc = "The high 32 bits of the address of the selected virtqueue's device area, the used ring.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } QUEUE_DEVICE_HIGH @ 0x0A4;
+
+    reg {
+        desc = "Which shared memory region the three registers after this one are about. No device here has one.";
+        field { sw = w; } VALUE[31:0] = 0;
+    } SHM_SEL @ 0x0AC;
+
+    reg {
+        desc = "The low 32 bits of the selected shared memory region's length. All ones, with `SHM_LEN_HIGH`, says there is no such region.";
+        field { sw = r; } VALUE[31:0] = 0xFFFFFFFF;
+    } SHM_LEN_LOW @ 0x0B0;
+
+    reg {
+        desc = "The high 32 bits of the selected shared memory region's length.";
+        field { sw = r; } VALUE[31:0] = 0xFFFFFFFF;
+    } SHM_LEN_HIGH @ 0x0B4;
+
+    reg {
+        desc = "The low 32 bits of the selected shared memory region's address.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } SHM_BASE_LOW @ 0x0B8;
+
+    reg {
+        desc = "The high 32 bits of the selected shared memory region's address.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } SHM_BASE_HIGH @ 0x0BC;
+
+    reg {
+        desc = "Counts up each time the device's configuration changes, so that a driver reading several words of it can tell whether they belong together.";
+        field { sw = r; } VALUE[31:0] = 0;
+    } CONFIG_GENERATION @ 0x0FC;
+
+    reg {
+        desc = "Where the device's own configuration starts: a block device's capacity, a network card's MAC address, a file system's tag. Its layout is the device's, and it is read and written at any width.";
+        field { sw = rw; } VALUE[31:0] = 0;
+    } CONFIG @ 0x100;
+};
