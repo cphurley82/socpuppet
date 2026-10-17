@@ -312,7 +312,9 @@ target_sources(socpuppet_models INTERFACE
     models/scripted_bus_master.h
     models/socket_memory.h
     models/system_controller.h
-    models/tie_low.h)
+    models/tie_low.h
+    models/virtio_mmio.h
+    models/virtio_rng.h)
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
