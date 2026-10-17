@@ -1,6 +1,7 @@
 """Python at the keyboard of UEFI's shell, on 🎭 the host.
 
-M28's exit test brought UEFI to `Shell>`; these are its ways of getting
+The UEFI boot's exit test, `test_m28_exit.py`, brought UEFI to `Shell>`;
+these are its ways of getting
 there and of typing at it, for every test that boots UEFI.
 """
 

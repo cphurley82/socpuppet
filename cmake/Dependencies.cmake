@@ -214,9 +214,9 @@ FetchContent_Declare(elfio
   EXCLUDE_FROM_ALL SYSTEM)
 # Which of DBT-RISE's translating backends are built besides its
 # interpreter, and the backend a "dbt_rise_cpu" runs with when nothing says.
-# None, and the interpreter, by default: that is what the wheel ships. M26
-# measured the others (docs/history/speed-spike.md). TinyCC is not offered: it has no core
-# socpuppet could use, and it is LGPL.
+# None, and the interpreter, by default: that is what the wheel ships. The
+# speed spike measured the others (docs/history/speed-spike.md). TinyCC is
+# not offered: it has no core socpuppet could use, and it is LGPL.
 set(SOCPUPPET_DBT_RISE_BACKENDS "" CACHE STRING
   "DBT-RISE's translating backends to build besides its interpreter: asmjit, llvm")
 set(SOCPUPPET_DBT_RISE_DEFAULT_BACKEND interp CACHE STRING
@@ -443,7 +443,7 @@ if(WITH_LLVM)
 endif()
 # The helpers the translating backends call. With none of them built the
 # file is left out, as it always was, so that the interpreter's build is
-# what it was before M26.
+# what it was before the backends were offered.
 if(NOT SOCPUPPET_DBT_RISE_BACKENDS)
   get_target_property(_dbt_rise_core_sources dbt-rise-core SOURCES)
   list(REMOVE_ITEM _dbt_rise_core_sources src/iss/vm_jit_funcs.cpp)

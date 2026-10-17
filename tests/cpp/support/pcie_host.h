@@ -1,5 +1,5 @@
-#ifndef TESTS_CPP_SUPPORT_PCI_HOST_H_
-#define TESTS_CPP_SUPPORT_PCI_HOST_H_
+#ifndef TESTS_CPP_SUPPORT_PCIE_HOST_H_
+#define TESTS_CPP_SUPPORT_PCIE_HOST_H_
 
 #include <array>
 #include <cstddef>
@@ -33,10 +33,10 @@ struct PciAccess {
 // The layout of configuration space is written from public sources (the
 // register definitions in Zephyr's include/zephyr/drivers/pcie/pcie.h and
 // msi.h), and none of it is shared with the code under test.
-class PciHost {
+class PcieHost {
  public:
   // `ecam` is where the configuration window is on the host's bus.
-  PciHost(BusDriver& bus, std::uint64_t ecam) : bus_(bus), ecam_(ecam) {}
+  PcieHost(BusDriver& bus, std::uint64_t ecam) : bus_(bus), ecam_(ecam) {}
 
   // Reads 32 bits of a function's configuration space. The window gives
   // every function 4 KiB, laid out by bus, then device, then function
@@ -235,4 +235,4 @@ class PciHost {
   std::uint64_t ecam_;
 };
 
-#endif  // TESTS_CPP_SUPPORT_PCI_HOST_H_
+#endif  // TESTS_CPP_SUPPORT_PCIE_HOST_H_

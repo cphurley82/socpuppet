@@ -16,7 +16,7 @@ from socpuppet.boards.io_manager import (
     io_manager,
     one_round_trip,
 )
-from socpuppet.boards.manager import stand_in_manager
+from socpuppet.boards.manager import scripted_manager
 from socpuppet.regs import ucie_link
 
 #: Longer than bring-up takes, by enough that a failure is a failure.
@@ -27,7 +27,7 @@ def a_board(trace=False):
     """The board with 🎭 a compute die that does one round trip."""
     board = io_manager(
         compute=one_round_trip,
-        manager=stand_in_manager().script,
+        manager=scripted_manager().script,
         trace=trace,
     )
     board.platform.build()

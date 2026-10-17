@@ -51,12 +51,12 @@ class Manager(NamedTuple):
     cpu_kit: CpuKit | None = None
 
 
-def stand_in_manager() -> IoManager:
+def scripted_manager() -> IoManager:
     """🎭 The manager stand-in, told where `add_manager` puts the registers.
 
     Its `script` goes in the manager's CPU's place:
-    `add_manager(..., script=stand_in_manager().script)`, or on the IO
-    manager board `io_manager(..., manager=stand_in_manager().script)`.
+    `add_manager(..., script=scripted_manager().script)`, or on the IO
+    manager board `io_manager(..., manager=scripted_manager().script)`.
     """
     return IoManager(link=LINK_BASE)
 
@@ -83,7 +83,7 @@ def add_manager(
     none, or with `socpuppet.boards.boot.from_rom` a boot ROM that loads
     the firmware from the die's flash. 🎭 With a `script`, that is in the
     CPU's place and there is no kit:
-    `add_manager(..., script=stand_in_manager().script)`.
+    `add_manager(..., script=scripted_manager().script)`.
     """
     if script is not None and boot is not None:
         raise ValueError(

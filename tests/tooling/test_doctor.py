@@ -1,7 +1,7 @@
 """tools/doctor.py, which checks this machine for socpuppet's development.
 
-The doctor is run for real, with a path of stand-ins for every program it
-looks for. Each stand-in writes the command it was given to a log, and the
+The doctor is run for real, with a path of fakes for every program it
+looks for. Each fake writes the command it was given to a log, and the
 tests take a program away, or make one fail, to give the machine a problem.
 """
 
@@ -22,7 +22,7 @@ DOCTOR = REPO / "tools" / "doctor.py"
 # A program that logs its command line and exits 0, unless FAIL_ON names a
 # word of the command, when it says so on its error output and exits 1. It
 # takes as many seconds as SLOW says.
-STAND_IN = """\
+FAKE = """\
 import os, sys, time
 command = " ".join([os.path.basename(sys.argv[0]), *sys.argv[1:]])
 with open(os.environ["LOG"], "a") as log:
@@ -57,16 +57,16 @@ PROGRAMS = (
 
 @pytest.fixture
 def doctor(tmp_path):
-    """Run the doctor with the stand-ins; returns run(*args, **env).
+    """Run the doctor with the fakes; returns run(*args, **env).
 
     run returns the finished process. run.without(program) takes a program
-    off the path, and run.lines() are the commands the stand-ins were given.
+    off the path, and run.lines() are the commands the fakes were given.
     """
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     for program in PROGRAMS:
         path = bin_directory / program
-        path.write_text(f"#!{sys.executable}\n{STAND_IN}")
+        path.write_text(f"#!{sys.executable}\n{FAKE}")
         path.chmod(0o755)
     log = tmp_path / "log"
 

@@ -359,7 +359,7 @@ def host(
     the link and let it go. 🎭 With none the link is the pass-through
     stand-in and the CPU starts at once. `add_manager`, from
     `socpuppet.boards.manager`, is that function, and with
-    `functools.partial(add_manager, script=stand_in_manager().script)`
+    `functools.partial(add_manager, script=scripted_manager().script)`
     the manager is 🎭 a script. ⚠️ A host with a manager has two bus
     masters, so say whose: `platform.load_elf(file, via=board.cpu.socket)`.
 

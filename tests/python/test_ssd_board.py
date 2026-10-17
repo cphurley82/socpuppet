@@ -17,8 +17,8 @@ from socpuppet.boards.ssd import (
     DMA_SOURCE,
     FLASH_SOURCE,
     FRONTEND_SOURCE,
+    scripted_firmware,
     ssd,
-    stand_in_firmware,
 )
 from socpuppet.pcie_host import PcieFunction
 from wiring import what_drives
@@ -49,7 +49,7 @@ class TestAnSsdDescribedToBootFromARom:
         with pytest.raises(ValueError, match=r"`boot`.*no CPU"):
             ssd(
                 host=idle_host,
-                firmware=stand_in_firmware().script,
+                firmware=scripted_firmware().script,
                 boot=from_rom,
             )
 
@@ -81,7 +81,7 @@ class TestAnSsdOfSoManyBlocks:
     # block: 512 of the drive's blocks.
     def test_has_a_nand_of_that_many_blocks_in_whole_nand_blocks(self):
         board = ssd(
-            host=idle_host, blocks=2048, firmware=stand_in_firmware().script
+            host=idle_host, blocks=2048, firmware=scripted_firmware().script
         )
 
         assert board.ssd.nand.component.parameters == {
@@ -98,14 +98,14 @@ class TestAnSsdOfSoManyBlocks:
             ssd(
                 host=idle_host,
                 blocks=blocks,
-                firmware=stand_in_firmware().script,
+                firmware=scripted_firmware().script,
             )
 
         assert "512, or a multiple of it" in str(refused.value)
 
     def test_is_refused_if_that_is_no_blocks_at_all(self):
         with pytest.raises(ValueError, match="at least one"):
-            ssd(host=idle_host, blocks=0, firmware=stand_in_firmware().script)
+            ssd(host=idle_host, blocks=0, firmware=scripted_firmware().script)
 
 
 class TestAnSsdWithNoScriptForItsFirmware:
@@ -222,7 +222,7 @@ class TestAnSsdWithAScriptForItsFirmware:
     # does: the frontend's line goes straight to it.
 
     def test_has_the_script_where_its_cpu_would_be_and_no_cpu_kit(self):
-        board = ssd(host=idle_host, firmware=stand_in_firmware().script)
+        board = ssd(host=idle_host, firmware=scripted_firmware().script)
 
         assert isinstance(board.ssd.cpu.component, sp.ScriptedBusMaster)
         assert board.ssd.cpu_kit is None
@@ -231,7 +231,7 @@ class TestAnSsdWithAScriptForItsFirmware:
         with pytest.raises(ValueError, match=r"gdb_port=1234") as refused:
             ssd(
                 host=idle_host,
-                firmware=stand_in_firmware().script,
+                firmware=scripted_firmware().script,
                 gdb_port=1234,
             )
 
@@ -247,7 +247,7 @@ class TestWhenAHostScansThePcieBusTheSsdIsOn:
         def host():
             found.extend((yield from sp.PcieHost(ecam=ECAM_BASE).scan()))
 
-        board = ssd(host=host, firmware=stand_in_firmware().script)
+        board = ssd(host=host, firmware=scripted_firmware().script)
         board.platform.build()
 
         board.platform.run()

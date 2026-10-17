@@ -58,7 +58,7 @@ dev = [
     "jsonschema>=4.26.0",
     "mypy>=1.18",
     "ninja>=1.11",
-    # Makes the FAT disk images the virtio disk is booted with (M25), and
+    # Makes the FAT disk images the virtio disk is booted with, and
     # reads back what firmware wrote to them.
     "pyfatfs>=1.1",
     "pytest>=9",

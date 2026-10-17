@@ -120,7 +120,8 @@ TEST(AnAccessThroughAFlashsWindowFarPastItsSize, IsRefusedAndTheRunGoesOn) {
   EXPECT_EQ(after, tlm::TLM_OK_RESPONSE);
 }
 
-// A boot ROM's reads are what M14 is there to show, a transaction each. A
+// A boot ROM's reads are what booting from flash is there to show, a
+// transaction each. A
 // CPU that was granted direct memory access would make none.
 TEST(AFlashsWindow, GrantsNoDirectMemoryAccess) {
   std::array<std::uint8_t, 4> data{};

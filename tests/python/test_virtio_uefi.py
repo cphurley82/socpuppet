@@ -5,7 +5,7 @@ handed (`VirtioFdtDxe`), asks each what it is, and binds the driver for
 that kind: the disk's, the network card's, the entropy device's and the
 file system's are in the image. It never takes their interrupts: EDK2
 polls the used rings. Each test boots OpenSBI and UEFI to `Shell>` the
-quick way, as M28's do, on a host with the virtio slots, and then 🧵 Python
+quick way, as the UEFI boot's tests do, on a host with the virtio slots, and then 🧵 Python
 types at the shell.
 
     compute.cpu ─▶ ... ─▶ io.bus ─┬─▶ io.uart        (UEFI's console)
@@ -36,9 +36,9 @@ pytestmark = [needs_dtc, pytest.mark.long]
 #: With a network device, the boot manager tries to boot over it before it
 #: starts the shell (PXE over IPv4), and waits for an answer to its DHCP
 #: request that nobody sends. That is 141 s of simulated time to the
-#: prompt on the interpreter, against M28's 75, and 234 s on QBox's hart,
-#: against its 90; this is a little under twice the longer, as M28's 150
-#: is for 90.
+#: prompt on the interpreter, against the plain UEFI boot's 75, and 234 s
+#: on QBox's hart, against its 90; this is a little under twice the longer,
+#: as the plain boot's 150 is for 90.
 LONG_ENOUGH_WITH_PXE = sp.ms(400_000)
 #: UEFI's address on the wire, and 🎭 Python's, as its neighbour there.
 ITS_ADDRESS = "192.0.2.1"

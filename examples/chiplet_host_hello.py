@@ -42,7 +42,7 @@ import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import host
-from socpuppet.boards.manager import add_manager, stand_in_manager
+from socpuppet.boards.manager import add_manager, scripted_manager
 
 IMAGE = (
     pathlib.Path(os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware"))
@@ -54,7 +54,7 @@ IMAGE = (
 # is a manager with a CPU of its own, and with a script filled in it is
 # 🎭 the stand-in. `trace=True` records everything that crosses the link.
 board = host(
-    manager=functools.partial(add_manager, script=stand_in_manager().script),
+    manager=functools.partial(add_manager, script=scripted_manager().script),
     trace=True,
 )
 #: What `socpuppet devicetree` and `socpuppet address-map` look for.

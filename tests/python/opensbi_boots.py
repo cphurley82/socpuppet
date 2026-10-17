@@ -5,7 +5,8 @@ in RAM where `fw_jump` expects them, and QEMU's reset vector in the ROM
 hands `fw_jump` the hart's number and the devicetree's address. And the
 way silicon boots: the three are one image in the flash, which the boot
 ROM copies to RAM, checks, and starts with the devicetree's address from
-the image's header. M23 boots OpenSBI's payloads both ways, and M28 EDK2.
+the image's header. The OpenSBI tests boot its payloads both ways, and the
+UEFI tests boot EDK2.
 """
 
 from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU

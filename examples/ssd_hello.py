@@ -23,7 +23,7 @@ Run it:                    python examples/ssd_hello.py
 """
 
 from socpuppet.boards.scripted_host import MSI_BASE, bring_up_the_drive
-from socpuppet.boards.ssd import ssd, stand_in_firmware
+from socpuppet.boards.ssd import scripted_firmware, ssd
 
 MESSAGE = b"Hello from the host, by way of PCIe and a page of NAND."
 
@@ -49,7 +49,7 @@ def host():
 
 # Describe the platform: the SSD, with a scripted host on its PCIe link.
 # Nothing is simulated yet. trace=True: watch what the drive sends up.
-firmware = stand_in_firmware()
+firmware = scripted_firmware()
 board = ssd(host=host, blocks=4096, firmware=firmware.script, trace=True)
 platform = board.platform
 

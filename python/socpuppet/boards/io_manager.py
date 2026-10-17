@@ -7,7 +7,7 @@
                                   irq ─┴─▶ 🎭 the manager ───┘
 
 This is the platform behind the Zephyr board `socpuppet_iomgr`. With 🎭 a
-script in the manager's place (`stand_in_manager()`) there is no CPU on
+script in the manager's place (`scripted_manager()`) there is no CPU on
 the IO die at all; with none, there is a 32-bit RISC-V core with the
 usual kit around it (`boards/cpu_kit.py`), and the firmware is loaded
 into it.
@@ -34,7 +34,7 @@ from typing import NamedTuple
 
 from socpuppet.boards.boot import Boot
 from socpuppet.boards.cpu_kit import add_boot_flash
-from socpuppet.boards.manager import Manager, add_manager, stand_in_manager
+from socpuppet.boards.manager import Manager, add_manager, scripted_manager
 from socpuppet.components import (
     D2dLink,
     Memory,
@@ -152,9 +152,9 @@ def one_round_trip() -> Steps[None]:
     """🎭 What the compute die does once it is let go: one round trip.
 
     It writes a word into the IO die's scratch memory across the link and
-    reads it back, which is the whole of what M5's compute die is for. The
-    read is an expectation, so a word that does not come back whole stops
-    the run and says so.
+    reads it back, which is the whole of what this board's compute die is
+    for. The read is an expectation, so a word that does not come back
+    whole stops the run and says so.
     """
     yield write32(SCRATCH_BASE, HELLO)
     yield expect32(SCRATCH_BASE, HELLO)
@@ -165,7 +165,7 @@ platform = io_manager(compute=one_round_trip).platform
 
 if __name__ == "__main__":
     board = io_manager(
-        compute=one_round_trip, manager=stand_in_manager().script
+        compute=one_round_trip, manager=scripted_manager().script
     )
     board.platform.build()
     reached = board.platform.run_until(

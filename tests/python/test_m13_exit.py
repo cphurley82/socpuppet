@@ -25,7 +25,7 @@ import socpuppet as sp
 from cast import SHELL, boot
 from link_trace import sent_to_the_compute_die
 from socpuppet.boards.host import IMSIC_BASE, UART_SOURCE, host
-from socpuppet.boards.manager import add_manager, stand_in_manager
+from socpuppet.boards.manager import add_manager, scripted_manager
 
 PROMPT = "uart:~$ "
 #: How the shell's answer to `kernel version` starts.
@@ -172,7 +172,7 @@ class TestWhenTheHostsShellIsAcrossTheRealLink:
         board = a_host_running_the_shell(
             firmware,
             manager=functools.partial(
-                add_manager, script=stand_in_manager().script
+                add_manager, script=scripted_manager().script
             ),
             trace=True,
         )
