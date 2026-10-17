@@ -1,7 +1,7 @@
 """🧵 Python as the first driver of a virtio device.
 
-Most tests run the driver against the entropy device, the smallest virtio
-device there is, on a scripted host; a few play it against a fake device
+One test runs the driver against the entropy device, the smallest virtio
+device there is, on a scripted host; the rest play it against a fake device
 with no simulator at all.
 
     host ─▶ bus ─┬─▶ ram
@@ -79,7 +79,6 @@ class FakeDevice:
         self.registers = {
             regs.MAGIC_VALUE: magic,
             regs.VERSION: regs.VERSION_AT_RESET,
-            regs.DEVICE_ID: 4,
         }
 
     def __call__(self, operation):
