@@ -110,6 +110,10 @@ class DeviceNode(NamedTuple):
     #: What the node's label has after the component's, for a component
     #: with more than one node: `_s` makes `imsic` `imsic_s`.
     suffix: str = ""
+    #: Nodes inside this one, for a device whose driver binds to a child
+    #: of its node, as Zephyr's virtio drivers do. A child has no
+    #: registers and no interrupts of its own: those are the node's.
+    children: tuple[DeviceNode, ...] = ()
 
 
 def cells(value: int) -> str:
@@ -1135,6 +1139,46 @@ class VirtioRng(Component):
     mapped_size = virtio_mmio.SIZE
 
     seed: int = 1
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        return virtio_node(
+            reached["cpu"].address,
+            dialect,
+            # Zephyr's entropy driver binds to a child that names the
+            # device's kind by its number.
+            child=DeviceNode(
+                "virtio-entropy",
+                (),
+                ('compatible = "virtio,device4";',),
+                chosen=("zephyr,entropy",),
+                interrupts=(),
+                suffix="_entropy",
+            ),
+        )
+
+
+def virtio_node(
+    address: int, dialect: Dialect, *, child: DeviceNode | None
+) -> DeviceNode:
+    """The node of a virtio device behind the virtio-mmio transport.
+
+    In Linux's dialect it is the transport's node alone, and the device
+    says what it is in a register (`virtio,mmio`: `compatible`, `reg` and
+    `interrupts`). Zephyr's drivers bind to a child of that node that
+    names the device's kind, which is `child`, and only in that dialect.
+    """
+    return DeviceNode(
+        # QEMU's and Zephyr's spelling.
+        "virtio_mmio",
+        ((address, virtio_mmio.SIZE),),
+        ('compatible = "virtio,mmio";',),
+        # Zephyr's transport driver is one that asks.
+        short_interrupts=True,
+        children=() if child is None or dialect != "zephyr" else (child,),
+    )
 
 
 class Watchdog(Component):

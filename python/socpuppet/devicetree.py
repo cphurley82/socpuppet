@@ -8,7 +8,7 @@ the two from drifting apart. No simulation is needed to do it.
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING
 
 from socpuppet.address_map import Reached, reachable_ports
@@ -133,7 +133,7 @@ def overlay(
     addresses = _addresses(connections, view)
     _refuse_one_number_for_two_lines(nodes, connections)
     roles = {
-        role: placed for role, placed in _roles(nodes).items() if placed in only
+        role: named for role, named in _roles(nodes).items() if named[0] in only
     }
     blocks = _devices(
         [(placed, node) for placed, node in nodes if placed in only],
@@ -306,6 +306,10 @@ def _node(
         )
         if page is not None:
             lines += [f"{indent}\tmsi-parent = <&{labels[page]}>;"]
+    for child in node.children:
+        lines += _node(
+            placed, child, connections, addresses, dialect, labels, depth + 1
+        )
     return [*lines, f"{indent}}};"]
 
 
@@ -425,11 +429,9 @@ def _chosen(
         chosen = _naming(_roles(nodes))
     else:
         console = _roles(nodes).get(_CONSOLE)
-        chosen = [
-            f'stdout-path = "{_path(node)}";'
-            for placed, node in nodes
-            if placed is console
-        ]
+        chosen = (
+            [] if console is None else [f'stdout-path = "{_path(console[1])}";']
+        )
     if bootargs is not None:
         chosen.insert(0, f'bootargs = "{bootargs}";')
     return ["\tchosen {", *(f"\t\t{each}" for each in chosen), "\t};"]
@@ -467,34 +469,53 @@ def _path(node: DeviceNode) -> str:
     return f"/{_BUS}/{_name(node)}" if node.on_bus else f"/{_name(node)}"
 
 
-def _roles(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
-    """Which device the firmware should use for each `chosen` role."""
-    return _first_to_claim((placed, node.chosen) for placed, node in nodes)
+#: A node that can be named: its component, and the node itself, which
+#: may be a child of the component's node.
+type Named = tuple[Placed, DeviceNode]
 
 
-def _aliases(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Placed]:
-    """Which device has each name in `aliases`."""
-    return _first_to_claim((placed, node.aliases) for placed, node in nodes)
+def _roles(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Named]:
+    """Which node the firmware should use for each `chosen` role."""
+    return _first_to_claim(
+        (named, named[1].chosen) for named in _with_children(nodes)
+    )
+
+
+def _aliases(nodes: list[tuple[Placed, DeviceNode]]) -> dict[str, Named]:
+    """Which node has each name in `aliases`."""
+    return _first_to_claim(
+        (named, named[1].aliases) for named in _with_children(nodes)
+    )
+
+
+def _with_children(
+    nodes: list[tuple[Placed, DeviceNode]],
+) -> Iterator[Named]:
+    """Each node and then its children, in the order of the nodes."""
+    for placed, node in nodes:
+        yield placed, node
+        for child in node.children:
+            yield placed, child
 
 
 def _first_to_claim(
-    claims: Iterable[tuple[Placed, tuple[str, ...]]],
-) -> dict[str, Placed]:
-    """Which device has each name: the first to claim it.
+    claims: Iterable[tuple[Named, tuple[str, ...]]],
+) -> dict[str, Named]:
+    """Which node has each name: the first to claim it.
 
-    A name is for one device. The nodes come in the order of their
+    A name is for one node. The nodes come in the order of their
     addresses, so of two that claim a name the one at the lower address
     has it.
     """
-    first: dict[str, Placed] = {}
-    for placed, names in claims:
+    first: dict[str, Named] = {}
+    for named, names in claims:
         for name in names:
-            first.setdefault(name, placed)
+            first.setdefault(name, named)
     return first
 
 
-def _references(name: str, devices: dict[str, Placed]) -> list[str]:
-    """A node at the top of the tree whose properties each name a device."""
+def _references(name: str, devices: dict[str, Named]) -> list[str]:
+    """A node at the top of the tree whose properties each name a node."""
     return [
         f"\t{name} {{",
         *(f"\t\t{each}" for each in _naming(devices)),
@@ -502,11 +523,11 @@ def _references(name: str, devices: dict[str, Placed]) -> list[str]:
     ]
 
 
-def _naming(devices: dict[str, Placed]) -> list[str]:
-    """Properties that each name a device by its label, in order of name."""
+def _naming(devices: dict[str, Named]) -> list[str]:
+    """Properties that each name a node by its label, in order of name."""
     return [
-        f"{property_} = &{label(placed.path)};"
-        for property_, placed in sorted(devices.items())
+        f"{property_} = &{_label(placed, node)};"
+        for property_, (placed, node) in sorted(devices.items())
     ]
 
 

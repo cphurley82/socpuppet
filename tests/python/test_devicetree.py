@@ -1056,3 +1056,73 @@ class TestWhenTheRealLinksRegistersAreInAFirmwaresView:
         platform, cpu = a_manager_die_with_the_real_link()
 
         assert dtc_errors(platform.devicetree(via=cpu.socket), tmp_path) == ""
+
+
+def a_cpu_with_a_virtio_entropy_device(cpu=None):
+    """A bus master with an APLIC and 🎭 a virtio entropy device in slot 0.
+
+    The master is a scripted one, which chooses nothing, unless `cpu` is a
+    CPU.
+    """
+    platform = sp.Platform()
+    cpu = platform.add("cpu", cpu or sp.ScriptedBusMaster())
+    bus = platform.add("bus", sp.Router())
+    aplic = platform.add("aplic", sp.Aplic())
+    rng = platform.add("rng", sp.VirtioRng())
+    platform.connect(cpu.socket, bus.target)
+    bus.map(aplic.socket, base=0x0C00_0000)
+    bus.map(rng.cpu, base=0x1000_1000)
+    platform.connect(rng.irq, aplic.source1)
+    platform.connect(rng.dma, bus.add_input())
+    return platform, cpu
+
+
+def node(*lines):
+    """A node's source, one line each, as it sits in a tree."""
+    return "\n".join(lines)
+
+
+class TestWhenAPlatformHasAVirtioEntropyDevice:
+    def test_in_zephyrs_dialect_its_node_has_a_child_that_says_what_it_is(self):
+        # Zephyr's drivers bind to a child of the transport's node, by
+        # the device's kind; Linux's bind to the transport's node alone.
+        platform, cpu = a_cpu_with_a_virtio_entropy_device()
+
+        assert node(
+            "\t\trng: virtio_mmio@10001000 {",
+            '\t\t\tcompatible = "virtio,mmio";',
+            "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+            "\t\t\tinterrupt-parent = <&aplic>;",
+            "\t\t\tinterrupts = <1 1 4>;",
+            "\t\t\trng_entropy: virtio-entropy {",
+            '\t\t\t\tcompatible = "virtio,device4";',
+            "\t\t\t};",
+            "\t\t};",
+        ) in platform.devicetree(via=cpu.socket)
+
+    def test_in_zephyrs_dialect_the_child_is_the_chosen_entropy_source(self):
+        platform, cpu = a_cpu_with_a_virtio_entropy_device(
+            sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000)
+        )
+
+        assert "zephyr,entropy = &rng_entropy;" in platform.devicetree(
+            via=cpu.socket
+        )
+
+    def test_in_linuxs_dialect_its_node_is_the_transports_alone(self):
+        platform, cpu = a_cpu_with_a_virtio_entropy_device()
+
+        tree = platform.devicetree(via=cpu.socket, dialect="linux")
+
+        assert (
+            node(
+                "\t\trng: virtio_mmio@10001000 {",
+                '\t\t\tcompatible = "virtio,mmio";',
+                "\t\t\treg = <0x0 0x10001000 0x0 0x200>;",
+                "\t\t\tinterrupt-parent = <&aplic>;",
+                "\t\t\tinterrupts = <1 4>;",
+                "\t\t};",
+            )
+            in tree
+        )
+        assert "virtio,device4" not in tree
