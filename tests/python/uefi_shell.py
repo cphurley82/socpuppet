@@ -34,17 +34,23 @@ def run_to_the_prompt(board, *, within=LONG_ENOUGH):
     )
 
 
-def type_and_wait_for_the_prompt(board, command):
+def type_and_wait_for_the_prompt(board, command, *, meanwhile=None):
     """Type `command` and Enter at the shell, and run until it prompts again.
 
-    Gives what the shell said in between, as plain text.
+    `meanwhile`, if given, is called each time the run stops to look for
+    the prompt, which is each time simulated time is about to move on: a
+    script's chance to answer what the firmware has done. Gives what the
+    shell said in between, as plain text.
     """
     said_before = len(board.uart.output)
     board.uart.write(command + "\r")
-    prompted = board.platform.run_until(
-        lambda: PROMPT in plain(board.uart.output[said_before:]),
-        timeout=ANSWERS_WITHIN,
-    )
+
+    def prompted_again():
+        if meanwhile is not None:
+            meanwhile()
+        return PROMPT in plain(board.uart.output[said_before:])
+
+    prompted = board.platform.run_until(prompted_again, timeout=ANSWERS_WITHIN)
     assert prompted, f"The shell did not prompt again after {command!r}"
     return plain(board.uart.output[said_before:])
 

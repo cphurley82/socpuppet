@@ -100,3 +100,75 @@ def udp_payloads(frames: Iterable[bytes], *, port: int) -> list[bytes]:
         if isinstance(datagram, dpkt.udp.UDP) and datagram.dport == port:
             payloads.append(bytes(datagram.data))
     return payloads
+
+
+class Neighbour:
+    """🎭 A host on the wire that answers ARP and ping, and nothing else.
+
+    It stands for the machine next to the firmware on a LAN: asked who has
+    its `address`, it says its `mac`, and an echo request to it comes back
+    as an echo reply with the same identifier, sequence and data.
+    """
+
+    def __init__(self, *, mac: bytes, address: bytes) -> None:
+        self.mac = mac
+        self.address = address
+
+    def answers(self, frames: Iterable[bytes]) -> list[bytes]:
+        """What it sends back to `frames`, one answer each at most."""
+        answers = []
+        for frame in frames:
+            heard = dpkt.ethernet.Ethernet(frame)
+            answer = self._answer_arp(heard) or self._answer_ping(heard)
+            if answer is not None:
+                answers.append(answer)
+        return answers
+
+    def _answer_arp(self, heard: dpkt.ethernet.Ethernet) -> bytes | None:
+        arp = heard.data
+        if not (
+            isinstance(arp, dpkt.arp.ARP)
+            and arp.op == dpkt.arp.ARP_OP_REQUEST
+            and arp.tpa == self.address
+        ):
+            return None
+        return bytes(
+            dpkt.ethernet.Ethernet(
+                dst=arp.sha,
+                src=self.mac,
+                type=dpkt.ethernet.ETH_TYPE_ARP,
+                data=dpkt.arp.ARP(
+                    op=dpkt.arp.ARP_OP_REPLY,
+                    sha=self.mac,
+                    spa=self.address,
+                    tha=arp.sha,
+                    tpa=arp.spa,
+                ),
+            )
+        )
+
+    def _answer_ping(self, heard: dpkt.ethernet.Ethernet) -> bytes | None:
+        packet = heard.data
+        if not (
+            isinstance(packet, dpkt.ip.IP)
+            and packet.dst == self.address
+            and isinstance(packet.data, dpkt.icmp.ICMP)
+            and packet.data.type == dpkt.icmp.ICMP_ECHO
+        ):
+            return None
+        return bytes(
+            dpkt.ethernet.Ethernet(
+                dst=heard.src,
+                src=self.mac,
+                type=dpkt.ethernet.ETH_TYPE_IP,
+                data=dpkt.ip.IP(
+                    src=self.address,
+                    dst=packet.src,
+                    p=dpkt.ip.IP_PROTO_ICMP,
+                    data=dpkt.icmp.ICMP(
+                        type=dpkt.icmp.ICMP_ECHOREPLY,
+                        data=packet.data.data,
+                    ),
+                ),
+            )
+        )

@@ -2,7 +2,7 @@
 
 🎓 A frame on an Ethernet is the two ends' hardware addresses (MACs), a
 type, and a packet: here an ARP request, which asks who has an IPv4
-address, or an IPv4 packet with a UDP datagram in it. `ethernet` makes and
+address, or an IPv4 packet with a UDP datagram or a ping in it. `ethernet` makes and
 reads them with dpkt; these tests read what it makes with dpkt as well,
 and check the sums by adding them up again by hand.
 """
@@ -85,6 +85,73 @@ class TestWhenFramesHoldDatagramsToSeveralPorts:
         ]
 
         assert ethernet.udp_payloads(frames, port=5000) == [b"spam", b"ham"]
+
+
+class TestWhenANeighbourHearsAnArpRequestForItsAddress:
+    def test_it_answers_with_its_mac_to_whoever_asked(self):
+        neighbour = ethernet.Neighbour(mac=ME, address=MY_ADDRESS)
+
+        [answer] = neighbour.answers(
+            [an_arp(dpkt.arp.ARP_OP_REQUEST, IT, ITS_ADDRESS, MY_ADDRESS)]
+        )
+
+        assert ethernet.who_has([answer], MY_ADDRESS) == ME
+        assert dpkt.ethernet.Ethernet(answer).dst == IT
+
+    def test_it_keeps_quiet_about_another_address(self):
+        neighbour = ethernet.Neighbour(mac=ME, address=MY_ADDRESS)
+
+        assert (
+            neighbour.answers(
+                [an_arp(dpkt.arp.ARP_OP_REQUEST, IT, ITS_ADDRESS, ITS_ADDRESS)]
+            )
+            == []
+        )
+
+
+class TestWhenANeighbourIsPinged:
+    def test_it_echoes_the_request_back_with_its_sums_right(self):
+        neighbour = ethernet.Neighbour(mac=ME, address=MY_ADDRESS)
+
+        [answer] = neighbour.answers([a_ping(to=MY_ADDRESS)])
+
+        frame = dpkt.ethernet.Ethernet(answer)
+        ip = frame.ip
+        echo = ip.icmp
+        assert (frame.dst, ip.src, ip.dst) == (IT, MY_ADDRESS, ITS_ADDRESS)
+        assert (echo.type, echo.data.id, echo.data.seq, echo.data.data) == (
+            dpkt.icmp.ICMP_ECHOREPLY,
+            7,
+            1,
+            b"spam",
+        )
+        assert added_up(bytes(ip)[: ip.hl * 4]) == 0xFFFF
+        assert added_up(bytes(echo)) == 0xFFFF
+
+    def test_it_keeps_quiet_about_a_ping_to_another_address(self):
+        neighbour = ethernet.Neighbour(mac=ME, address=MY_ADDRESS)
+
+        assert neighbour.answers([a_ping(to=ITS_ADDRESS)]) == []
+
+
+def a_ping(*, to):
+    """An echo request from `IT` to the address `to`: id 7, sequence 1."""
+    return bytes(
+        dpkt.ethernet.Ethernet(
+            dst=ME,
+            src=IT,
+            type=dpkt.ethernet.ETH_TYPE_IP,
+            data=dpkt.ip.IP(
+                src=ITS_ADDRESS,
+                dst=to,
+                p=dpkt.ip.IP_PROTO_ICMP,
+                data=dpkt.icmp.ICMP(
+                    type=dpkt.icmp.ICMP_ECHO,
+                    data=dpkt.icmp.ICMP.Echo(id=7, seq=1, data=b"spam"),
+                ),
+            ),
+        )
+    )
 
 
 def an_arp(op, sender, sender_address, target_address):

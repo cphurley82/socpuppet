@@ -19,6 +19,7 @@ import re
 
 import pytest
 
+import ethernet
 import fat_image
 import socpuppet as sp
 from cast import UEFI_FD
@@ -32,11 +33,17 @@ from uefi_shell import plain, run_to_the_prompt, type_and_wait_for_the_prompt
 pytestmark = [needs_dtc, pytest.mark.long]
 
 #: With a network device, the boot manager tries to boot over it before it
-#: starts the shell (PXE over IPv4), and waits about 65 s of simulated time
-#: for an answer to its DHCP request that nobody sends. That is 141 s of
-#: simulated time to the prompt on the interpreter, against M28's 75, and
-#: this is a little under twice it, as M28's 150 is for 75.
-LONG_ENOUGH_WITH_PXE = sp.ms(250_000)
+#: starts the shell (PXE over IPv4), and waits for an answer to its DHCP
+#: request that nobody sends. That is 141 s of simulated time to the
+#: prompt on the interpreter, against M28's 75, and 234 s on QBox's hart,
+#: against its 90; this is a little under twice the longer, as M28's 150
+#: is for 90.
+LONG_ENOUGH_WITH_PXE = sp.ms(400_000)
+#: UEFI's address on the wire, and 🎭 Python's, as its neighbour there.
+ITS_ADDRESS = "192.0.2.1"
+NEIGHBOUR = ethernet.Neighbour(
+    mac=ethernet.mac("02:00:00:00:00:02"), address=ethernet.ipv4("192.0.2.2")
+)
 #: The disk Python hands UEFI: 1 MiB, with one file on it.
 SECTORS = 2048
 SPAM = b"spam, spam, spam\r\n"
@@ -105,3 +112,40 @@ class TestWhenUefiBootsWithTheEntropyDeviceInItsSlot:
 
         assert re.search(r"\bRng\b", handles)
         assert as_uefi_names_it(board, board.virtio.rng) in handles
+
+
+@pytest.mark.platform
+class TestWhenUefiBootsWithTheNetworkDeviceInItsSlot:
+    def test_it_shows_the_devices_mac_and_python_answers_its_ping(
+        self, firmware
+    ):
+        board = uefi_at_its_shell(firmware)
+
+        listed = type_and_wait_for_the_prompt(board, "ifconfig -l eth0")
+        type_and_wait_for_the_prompt(
+            board,
+            f"ifconfig -s eth0 static {ITS_ADDRESS} 255.255.255.0 192.0.2.2",
+        )
+        pinged = type_and_wait_for_the_prompt(
+            board,
+            "ping -n 1 192.0.2.2",
+            meanwhile=a_neighbour_answering(board.virtio.net),
+        )
+
+        assert "mac addr     : 02:00:5E:00:53:01" in listed
+        assert re.search(r"1 packets transmitted, 1 received", pinged), pinged
+
+
+def a_neighbour_answering(net):
+    """A script that has `NEIGHBOUR` answer each frame UEFI sent since it
+    last looked."""
+    heard = len(net.received)
+
+    def answer():
+        nonlocal heard
+        frames = net.received
+        for answer in NEIGHBOUR.answers(frames[heard:]):
+            net.send(answer)
+        heard = len(frames)
+
+    return answer
