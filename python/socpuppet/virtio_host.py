@@ -49,7 +49,15 @@ _WRITE = 2
 # available ring on 2, the used ring on 4. Each ring here starts on a page,
 # which satisfies all three and keeps the arithmetic plain.
 _PAGE = 4096
+# One descriptor: the buffer's address, its length, its flags, and which
+# descriptor comes next.
 _DESCRIPTOR = struct.Struct("<QIHH")
+# Both rings begin with 16-bit flags, then the 16-bit index, then the
+# entries: a 16-bit head each in the available ring, and in the used ring
+# an element of the chain's head and how many bytes the device wrote.
+_RING_INDEX = 2
+_RING_ENTRIES = 4
+_AVAILABLE_ENTRY = struct.Struct("<H")
 _USED_ELEMENT = struct.Struct("<II")
 
 
@@ -146,8 +154,6 @@ class VirtioHost:
     def reset(self) -> Steps[None]:
         """Resets the device: writing zero to its status (section 3.1.1)."""
         yield self._write(regs.STATUS, 0)
-        for queue in self._queues.values():
-            queue.in_flight.clear()
         self._queues.clear()
 
     def negotiate(self, wanted: int) -> Steps[int]:
@@ -202,7 +208,7 @@ class VirtioHost:
                 f"{number}."
             )
         entries = min(self._queue_entries, most)
-        queue = _Queue(number, entries, self._take(3 * _PAGE, _PAGE))
+        queue = _Queue(number, entries, self._allocate(3 * _PAGE, _PAGE))
         yield self._write(regs.QUEUE_NUM, entries)
         yield self._write(regs.QUEUE_DESC_LOW, queue.descriptors & 0xFFFF_FFFF)
         yield self._write(regs.QUEUE_DESC_HIGH, queue.descriptors >> 32)
@@ -230,7 +236,7 @@ class VirtioHost:
         """
         head = yield from self.post(number, readable, writable)
         written = yield from self.take(number, head)
-        queue = self._queues[number]
+        queue = self._queue(number)
         answers = []
         for address, size in queue.in_flight.pop(head):
             answers.append((yield read(address, size)))
@@ -246,10 +252,10 @@ class VirtioHost:
         queue = self._queue(number)
         buffers: list[tuple[int, int, int, bytes | None]] = []
         for contents in readable:
-            address = self._take(len(contents), 1)
+            address = self._allocate(len(contents), 1)
             buffers.append((address, len(contents), 0, contents))
         for size in writable:
-            buffers.append((self._take(size, 1), size, _WRITE, None))
+            buffers.append((self._allocate(size, 1), size, _WRITE, None))
         if not buffers:
             raise ValueError("A chain has at least one buffer.")
         head = queue.next_descriptor
@@ -257,7 +263,7 @@ class VirtioHost:
             descriptor = (queue.next_descriptor + 1) % queue.entries
             last = index == len(buffers) - 1
             yield write(
-                queue.descriptors + 16 * queue.next_descriptor,
+                queue.descriptors + _DESCRIPTOR.size * queue.next_descriptor,
                 _DESCRIPTOR.pack(
                     address, size, flags | (0 if last else _NEXT), descriptor
                 ),
@@ -266,16 +272,19 @@ class VirtioHost:
                 yield write(address, data)
             queue.next_descriptor = descriptor
         queue.in_flight[head] = [
-            (address, size) for address, size, flags, _ in buffers if flags
+            (address, size)
+            for address, size, flags, _ in buffers
+            if flags & _WRITE
         ]
         slot = queue.made_available % queue.entries
-        yield write(queue.available + 4 + 2 * slot, struct.pack("<H", head))
-        queue.made_available += 1
         yield write(
-            queue.available + 2,
-            struct.pack("<H", queue.made_available & 0xFFFF),
+            queue.available + _RING_ENTRIES + _AVAILABLE_ENTRY.size * slot,
+            _AVAILABLE_ENTRY.pack(head),
         )
-        yield self._write(regs.QUEUE_NOTIFY, number)
+        queue.made_available += 1
+        index = queue.made_available & 0xFFFF
+        yield write(queue.available + _RING_INDEX, _AVAILABLE_ENTRY.pack(index))
+        yield self._write(regs.QUEUE_NOTIFY, queue.number)
         return head
 
     def take(self, number: int, head: int) -> Steps[int]:
@@ -289,10 +298,15 @@ class VirtioHost:
             if used_index != queue.taken & 0xFFFF:
                 break
             yield from self._interrupt()
+            # Whatever the device raised is acknowledged, a configuration
+            # change with the used buffer: no device here changes its
+            # configuration, so there is nothing to do about one.
             status = yield from self._read(regs.INTERRUPT_STATUS)
             yield self._write(regs.INTERRUPT_ACK, status)
+        slot = queue.taken % queue.entries
         element = yield read(
-            queue.used + 4 + 8 * (queue.taken % queue.entries), 8
+            queue.used + _RING_ENTRIES + _USED_ELEMENT.size * slot,
+            _USED_ELEMENT.size,
         )
         queue.taken += 1
         used_head, written = (
@@ -315,10 +329,10 @@ class VirtioHost:
         return self._queues[number]
 
     def _used_index(self, queue: _Queue) -> Steps[int]:
-        index = yield read(queue.used + 2, 2)
-        return int(struct.unpack("<H", index)[0])
+        index = yield read(queue.used + _RING_INDEX, _AVAILABLE_ENTRY.size)
+        return int(_AVAILABLE_ENTRY.unpack(index)[0])
 
-    def _take(self, size: int, alignment: int) -> int:
+    def _allocate(self, size: int, alignment: int) -> int:
         """Takes `size` bytes of the driver's memory, aligned."""
         start = (self._free_memory + alignment - 1) // alignment * alignment
         if self._memory_end is not None and start + size > self._memory_end:
@@ -337,7 +351,7 @@ class VirtioHost:
         return write32(self._registers + offset, value)
 
 
-class VirtioRngHost:
+class VirtioRngHost(VirtioHost):
     """🧵 Stand-in for the driver of a virtio entropy device.
 
     Takes what `VirtioHost` takes. `start` finds the device and sets its
@@ -347,23 +361,20 @@ class VirtioRngHost:
     #: What the device says it is (section 5.4).
     DEVICE_ID = 4
 
-    def __init__(self, **host: object) -> None:
-        self._host = VirtioHost(**host)  # type: ignore[arg-type]
-
     def start(self) -> Steps[None]:
         """Finds the device, agrees on no features, and sets its queue up."""
-        device_id = yield from self._host.probe()
+        device_id = yield from self.probe()
         if device_id != self.DEVICE_ID:
             raise VirtioError(
                 f"The virtio device is a kind {device_id}, not an entropy "
                 f"device (kind {self.DEVICE_ID})."
             )
-        yield from self._host.reset()
-        yield from self._host.negotiate(0)
-        yield from self._host.setup_queue(0)
-        yield from self._host.driver_ok()
+        yield from self.reset()
+        yield from self.negotiate(0)
+        yield from self.setup_queue(0)
+        yield from self.driver_ok()
 
     def read(self, count: int) -> Steps[bytes]:
         """Asks the device for `count` random bytes."""
-        written, (answer,) = yield from self._host.submit(0, [], [count])
+        written, (answer,) = yield from self.submit(0, [], [count])
         return answer[:written]
