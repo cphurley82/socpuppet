@@ -1,6 +1,6 @@
 # Why socpuppet exists 🧭
 
-socpuppet is a whole system-on-chip simulated on a laptop, with Python pulling the strings, built from open tools only. This page says what it is for, who it is for, and the rules that decide what gets built next. [plan.md](plan.md) has the milestones; this is the compass they are read by.
+socpuppet is a whole system-on-chip simulated on a laptop, with Python pulling the strings, built from open tools only. This page says what it is for, who it is for, and the rules that decide what gets built next. [roadmap.md](roadmap.md) has the milestones; this is the compass they are read by.
 
 ## The idea
 

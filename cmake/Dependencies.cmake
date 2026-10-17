@@ -215,7 +215,7 @@ FetchContent_Declare(elfio
 # Which of DBT-RISE's translating backends are built besides its
 # interpreter, and the backend a "dbt_rise_cpu" runs with when nothing says.
 # None, and the interpreter, by default: that is what the wheel ships. M26
-# measured the others (docs/plan.md). TinyCC is not offered: it has no core
+# measured the others (docs/history/speed-spike.md). TinyCC is not offered: it has no core
 # socpuppet could use, and it is LGPL.
 set(SOCPUPPET_DBT_RISE_BACKENDS "" CACHE STRING
   "DBT-RISE's translating backends to build besides its interpreter: asmjit, llvm")

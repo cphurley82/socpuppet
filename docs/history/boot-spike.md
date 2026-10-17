@@ -1,6 +1,6 @@
 # The boot spike: four questions before a CPU boots from flash
 
-This is the report of a spike for milestone M14 in [plan.md](plan.md), run on 2026-10-11. Its code was in `spikes/boot/`, with a README that said how to run each part, and it went when M14's steps had rebuilt what it found test-first. Commit `36ba65a` holds it.
+This is the report of a spike for milestone M14 in [roadmap.md](../roadmap.md), run on 2026-10-11. Its code was in `spikes/boot/`, with a README that said how to run each part, and it went when M14's steps had rebuilt what it found test-first. Commit `36ba65a` holds it.
 
 **The questions.** M14 puts a boot ROM, a flash, a system controller and a watchdog on every CPU, and its plan rested on four things nobody had tried:
 

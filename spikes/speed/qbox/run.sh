@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# QBox's rows of the speed spike: builds QBox with tools/build_qbox.sh if it
+# QBox's rows of the speed spike: builds QBox with tools/build_qbox.py if it
 # is not installed, builds the spike's tests in a tree of their own linked
 # with it (build/speed-qbox), runs each of the spike's loops three times on
 # the qbox_cpu, and appends the lines to
@@ -38,7 +38,7 @@ tree="$repository/build/speed-qbox"
 
 if [[ ! -f "$qbox/install/lib/cmake/qbox-2.0/qboxConfig.cmake" ]]; then
   start=$(date +%s)
-  "$repository/tools/build_qbox.sh" > "$qbox.build.log" 2>&1 || {
+  "$repository/tools/build_qbox.py" > "$qbox.build.log" 2>&1 || {
     echo "qbox/run.sh: QBox did not build, see $qbox.build.log" >&2
     printf '{"host": "%s", "env": "%s", "commit": "%s", "cpu": "qbox", "mode": "deterministic", "status": "build-failed"}\n' \
       "$host" "$env_label" "$commit" >> "$results"

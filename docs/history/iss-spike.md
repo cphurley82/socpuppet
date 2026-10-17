@@ -1,6 +1,6 @@
 # The ISS spike: which CPU model goes in the CPU slot?
 
-This is the report for milestone M1 in [plan.md](plan.md). It ends with a recommendation and the decisions that followed it. Nothing that depends on the answer has been built.
+This is the report for milestone M1 in [roadmap.md](../roadmap.md). It ends with a recommendation and the decisions that followed it. Nothing that depends on the answer has been built.
 
 **Decided on 2026-10-04: DBT-RISE-RISCV is the default CPU.** QBox becomes an optional CPU that users build from source. The recommendation further down was for a core of our own, and is kept as it was written, next to the [decisions](#decisions).
 
@@ -16,7 +16,7 @@ Several open ISSs exist, and writing our own is possible too. This spike tries t
 
 ## What a candidate is judged on
 
-The criteria come from the [handoff](handoff-socpuppet.md), with three added that reading the candidates showed to matter.
+The criteria come from the [handoff](founding-brief.md), with three added that reading the candidates showed to matter.
 
 | Criterion | Why it matters here |
 |---|---|
@@ -349,7 +349,7 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 - **What a real boot will need that `hello_world` did not**: a timer that fires and an interrupt controller that delivers. Zephyr's `synchronization` sample, M3a's second exit test, depends on both.
 - **Devicetree.** The generator knows only `Memory`. CPU nodes need an `riscv,isa-extensions` property for Zephyr 4.4.
 - **Sleep and `Platform.run()`.** With the three interpreters, a platform whose CPU is asleep in `wfi` has nothing left to do, and `run()` returns. The suite checks that, and it belongs in the contract. QBox is the exception.
-- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list and the four patches, which M3a has since moved to `cmake/Dependencies.cmake` and `cmake/patches/`, to carry until they are sent upstream (each is written up in [upstream.md](upstream.md)); a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
+- **From DBT-RISE-RISCV, the chosen CPU**: the Boost list and the four patches, which M3a has since moved to `cmake/Dependencies.cmake` and `cmake/patches/`, to carry until they are sent upstream (each is written up in [upstream.md](../upstream.md)); a static build of its core for the wheel, where it declares itself shared; linking the whole of its SystemC library, or its cores never register; a limit on parallel compiles, since some of its sources need over a gigabyte each; and its GDB server, which already works and is M3a's GDB hook.
 
 ## Not exercised
 
@@ -365,15 +365,15 @@ The CPU slot makes this less of a one-way door than it sounds. All four sat behi
 ## Decisions
 
 1. **The default CPU: DBT-RISE-RISCV.** Decided on 2026-10-04. It is the CPU that ships in the wheel and that M3a builds its kit on.
-2. **QBox: an optional CPU, built from source.** Decided on 2026-10-04. socpuppet stays MIT, and no GPL code goes in the default wheel. Enabling it is on the to-do list in [plan.md](plan.md).
-3. **Modeling library**: open until M2. The report recommended a thin layer of our own, borrowing VCML models one at a time behind an adapter. On 2026-10-04, planning M3a, the default became "borrow first": use an existing open model where one fits, fix it where it falls short, and write our own where none does. M3a takes its UART, machine timer and PLIC from VPV-Peripherals, which is built on SCC and so adds no second framework. See [plan.md](plan.md).
+2. **QBox: an optional CPU, built from source.** Decided on 2026-10-04. socpuppet stays MIT, and no GPL code goes in the default wheel. Enabling it is on the to-do list in [roadmap.md](../roadmap.md).
+3. **Modeling library**: open until M2. The report recommended a thin layer of our own, borrowing VCML models one at a time behind an adapter. On 2026-10-04, planning M3a, the default became "borrow first": use an existing open model where one fits, fix it where it falls short, and write our own where none does. M3a takes its UART, machine timer and PLIC from VPV-Peripherals, which is built on SCC and so adds no second framework. See [decisions.md](decisions.md).
 4. **Zephyr**: pinned at 4.4.2 with SDK 1.0.1, as recommended. Decided on 2026-10-04, planning M3a.
 
 What the first decision takes on, from the findings above: eighteen more Boost libraries in the build, four patches to carry or send upstream, a static build of the core for the wheel, and a core that is generated code. The last one matters most for a teaching tool: where a learner cannot read the source, socpuppet's own docs have to explain what the CPU is doing. What it gets in return is a GDB server that works today, the complete instruction set with the privilege modes, and faster backends to turn on, which is the other new item on the to-do list.
 
 What happened to `spikes/iss/`:
 
-- QBox's recipe and wrapper stay, as the starting point for the optional CPU, with the parts of the harness they need. They are all that is left of the directory, and what is there and how to run it is in [its README](../spikes/iss/README.md). No preset or CI job builds it any more.
+- 🦜 QBox's recipe and wrapper stayed in `spikes/iss/` as the starting point for the optional CPU, until M27 made QEMU's CPU a model of socpuppet's, the `qbox_cpu` ([models/qbox-cpu.md](../models/qbox-cpu.md)), built by `tools/build_qbox.py`. The directory was deleted on 2026-10-17, and `118e983` is the last commit that holds it.
 - 🦜 DBT-RISE-RISCV's spike wrapper, riscv-vp and the in-house prototype went when M3a finished, with the `spike` preset and the `ISS spike` CI job. M3a rebuilt the DBT-RISE-RISCV wrapper test-first as `src/socpuppet/models/dbt_rise_cpu.h`, and its patches are in `cmake/patches/`. The last commit that holds the three candidates, the harness's own tests and the build rules is `7c7c8c0`. To run them again: check that commit out, then `cmake --preset spike`.
 - 🦜 The VCML probe went first. Its clone of mwr failed whenever CI restored the fetched dependencies from its cache, which kept the spike job red. The last commit that holds `spikes/iss/vcml_probe/` and its build rules is `23a0f1b`.
 

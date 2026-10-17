@@ -12,9 +12,9 @@ The plan asked which virtio stand-ins earn a place for M20. The maintainer widen
 
 Everything is in the tree, test-first, except one comparison script, which was in `spikes/virtio/` and is in the history at `7076cb7`.
 
-- **The transport and the walker.** `regs/virtio_mmio.rdl`, version 2 register for register; `Virtqueue`, a split-ring walker over the driver's memory; `VirtioMmioLogic`, the register block; and `VirtioMmio<Device>`, a SystemC shell that works a delta cycle after the doorbell, with DMA through a bus master port and one interrupt line. Held to one contract suite, which every device passes ([virtio-mmio.md](models/virtio-mmio.md)).
-- **Five devices**, each a plain C++ `VirtioDevice` with unit tests, a shell, a registry name, a catalogue class and a Python far end: [entropy](models/virtio-rng.md) (seeded), [console](models/virtio-console.md) (`output` and `write`, as at the UART), [disk](models/virtio-blk.md) (`load` and `contents`), [network](models/virtio-net.md) (`send`, `received` and `dropped`) and [file system](models/virtio-fs.md), whose requests a Python callable answers: `socpuppet.fuse.Directory`, a FUSE server over a real directory.
-- 🧵 **Python as the first driver of each**, `socpuppet.virtio_host` ([virtio-host.md](models/virtio-host.md)), before anyone else's.
+- **The transport and the walker.** `regs/virtio_mmio.rdl`, version 2 register for register; `Virtqueue`, a split-ring walker over the driver's memory; `VirtioMmioLogic`, the register block; and `VirtioMmio<Device>`, a SystemC shell that works a delta cycle after the doorbell, with DMA through a bus master port and one interrupt line. Held to one contract suite, which every device passes ([virtio-mmio.md](../models/virtio-mmio.md)).
+- **Five devices**, each a plain C++ `VirtioDevice` with unit tests, a shell, a registry name, a catalogue class and a Python far end: [entropy](../models/virtio-rng.md) (seeded), [console](../models/virtio-console.md) (`output` and `write`, as at the UART), [disk](../models/virtio-blk.md) (`load` and `contents`), [network](../models/virtio-net.md) (`send`, `received` and `dropped`) and [file system](../models/virtio-fs.md), whose requests a Python callable answers: `socpuppet.fuse.Directory`, a FUSE server over a real directory.
+- 🧵 **Python as the first driver of each**, `socpuppet.virtio_host` ([virtio-host.md](../models/virtio-host.md)), before anyone else's.
 - **The host's slots.** `host(virtio=Virtio())` puts the five in slots 0 to 4 at `0x1000_1000` and up, with lines to the IO APLIC from source 18. Off by default, so the host's checked-in devicetree and every other image are untouched. The shield `socpuppet_host_virtio` is their devicetree for Zephyr, and `socpuppet_host_virtio_console` makes the console Zephyr's.
 - **Borrowed drivers.** Four of Zephyr's (4.4.2) and four of EDK2's (`edk2-stable202608`), in pytest runs beside the steps: `tests/python/test_virtio_zephyr.py` and `test_virtio_uefi.py`.
 
@@ -39,7 +39,7 @@ Every run passed on both harts. What they took, in wall-clock time on this machi
 
 ## What was found on the way
 
-Each in the step's entry in [plan.md](plan.md), and the borrowed ones in [upstream.md](upstream.md).
+The borrowed ones are in [upstream.md](../upstream.md), and the rest in [lessons.md](lessons.md#virtio).
 
 - 📮 **Zephyr's transport reads a register the specification has it only write** (`DRIVER_FEATURES`, to set one bit). QEMU's device answers the read, so ours does too.
 - 📮 **Zephyr's table of virtqueue callbacks is misaligned**, 6 bytes past a multiple of 8. QEMU's hart does misaligned stores in hardware and Zephyr's tests never see it; the interpreter traps, as the specification allows. The first patch to Zephyr's tree, which `firmware/build.py` now applies as it does OpenSBI's and EDK2's.
@@ -166,7 +166,7 @@ The rest of the kinds the header names (vsock, IOMMU, memory, pmem, sound, I²C,
 - Linux, on any device. The `defconfig` and the bindings were read, not run.
 - QEMU itself, with the same images: QEMU is not installed on this machine, and the comparison read its source.
 - Interrupts from EDK2's drivers, which poll; and the console's receive path under Zephyr, which only transmits in `hello_world`.
-- `socpuppet run` and twister: neither knows the virtio shields, so these images run from pytest only (a to-do in [plan.md](plan.md)).
+- `socpuppet run` and twister: neither knows the virtio shields, so these images run from pytest only (a loose end in [roadmap.md](../roadmap.md#loose-ends)).
 - A device reset while a held buffer is in flight, from any borrowed driver; a frame dropped for want of room, from any borrowed driver; the disk's `GET_ID` and `FLUSH`, which only Python sent.
 - More than one request queue for the file system, the network card's offloads, and every other feature the pages list as left out.
 
@@ -176,7 +176,7 @@ The rest of the kinds the header names (vsock, IOMMU, memory, pmem, sound, I²C,
 
 ## Decisions
 
-Decided on 2026-10-17, by the rules in [vision.md](vision.md) (real over toy; borrow before building; Linux asks, we build): **the virtio road first.**
+Decided on 2026-10-17, by the rules in [vision.md](../vision.md) (real over toy; borrow before building; Linux asks, we build): **the virtio road first.**
 
 - 🎭 The five stand-ins stay on the host, behind `host(virtio=Virtio())`, as recommended.
 - M20's first boot is a stock `defconfig` kernel on `host(sbi=True, virtio=Virtio())`, loaded by Python for `fw_jump`, with its root on the virtio disk from an ext4 image Python makes and its console on the 16550. Then the same kernel through UEFI, from the disk's EFI System Partition.
@@ -185,4 +185,4 @@ Decided on 2026-10-17, by the rules in [vision.md](vision.md) (real over toy; bo
 - For a shared directory under Linux, 9p before virtio-fs.
 - The RAM is checked first.
 
-M20's steps are planned when it starts, as every milestone's are; [plan.md](plan.md) records the decision under M20 and in its settled decisions.
+M20's steps are planned when it starts, as every milestone's are; [roadmap.md](../roadmap.md) records the decision under M20, and [decisions.md](decisions.md) its reasons.

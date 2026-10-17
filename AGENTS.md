@@ -2,7 +2,7 @@
 
 SoC Puppet (say "sock puppet") is an open-source virtual platform: a whole SoC simulated in SystemC, with Python pulling the strings.
 
-[docs/vision.md](docs/vision.md) has the aims, the readers and the rules that order the work. Read it before planning a milestone or settling a decision, and cite the rule a decision rests on.
+[docs/vision.md](docs/vision.md) has the aims, the readers and the rules that order the work. Read it before planning a milestone or settling a decision, and cite the rule a decision rests on. [docs/roadmap.md](docs/roadmap.md) has the phases, the milestones and what is next, and stays short: a settled decision goes to [docs/history/decisions.md](docs/history/decisions.md), a lesson to [docs/history/lessons.md](docs/history/lessons.md), and the step-by-step of a milestone lives in its commits.
 
 ## Personality
 
@@ -15,7 +15,7 @@ A vibe, not a checklist. Keep it in mind while writing code, docs and output.
 - 🎪 **Two troupes, one stage.** Monty Python's Flying Circus, because the language is named for it, and the Muppets, because this is a puppet show with a cast and sketches. A sketch is a short scene with a small cast that makes one point and ends, which is also what a good example is. The humor is deadpan: state the absurd thing with a straight face and carry on. A line is plain English first and a joke second: most readers have never seen either show, so a sentence must make complete sense without the reference, and the reference is never explained. `spam` and `eggs` are the placeholder names, as in Python's own tutorial; everything else in code is named for what it is (the RAM is `ram`).
 - 🎯 **Analogies have to be true.** A metaphor that gives the wrong idea of a mechanism is worse than none. If the picture does not fit, say it plainly.
 - 🎨 **Be colorful.** A diagram over a wall of text; color over monochrome in terminal output meant for people.
-- ✨ **Give emoji a job.** Signposts in docs, the README and human-facing output, the same emoji for the same thing (palette below). None in code comments, commit messages or anything a machine parses.
+- ✨ **Give emoji a job.** Signposts in docs, the README, code comments and human-facing output, the same emoji for the same thing (palette below).
 - 🔧 **Stay useful when things break.** An error says what went wrong and how to fix it; charm comes second. JSON, traces and logs stay plain, and color respects `NO_COLOR` and non-terminals.
 - 😄 **Playful in small doses.** One good joke per page, shared by the puppets and both troupes, and never in the sentence that carries the mechanism.
 
@@ -42,6 +42,7 @@ Add to it when something new keeps coming up.
 | 🧦 | socpuppet itself |
 | 🧵 | the Python API (the strings) |
 | 🎭 | stand-ins |
+| 🎓 | a teaching aside: the real hardware, or why it is this way |
 | 💡 | tip, or why something works the way it does |
 | ⚠️ | gotcha |
 | ✅ / ❌ | pass / fail |

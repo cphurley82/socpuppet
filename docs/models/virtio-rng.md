@@ -30,4 +30,4 @@ platform.connect(rng.irq, aplic.source18)        # optional: a driver may poll
 
 ## Who has driven it
 
-🧵 `sp.VirtioRngHost` ([virtio-host.md](virtio-host.md)); Zephyr's `drivers/entropy/entropy_virtio.c`, through `tests/drivers/entropy/api`; and EDK2's `VirtioRngDxe`, whose `EFI_RNG_PROTOCOL` the shell's `dh -p Rng` finds on it. Linux's `virtio-rng` (`HW_RANDOM_VIRTIO`, built into RISC-V's `defconfig`) has not run against it ([virtio-spike.md](../virtio-spike.md)).
+🧵 `sp.VirtioRngHost` ([virtio-host.md](virtio-host.md)); Zephyr's `drivers/entropy/entropy_virtio.c`, through `tests/drivers/entropy/api`; and EDK2's `VirtioRngDxe`, whose `EFI_RNG_PROTOCOL` the shell's `dh -p Rng` finds on it. Linux's `virtio-rng` (`HW_RANDOM_VIRTIO`, built into RISC-V's `defconfig`) has not run against it ([virtio-spike.md](../history/virtio-spike.md)).
