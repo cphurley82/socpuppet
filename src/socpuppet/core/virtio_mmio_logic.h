@@ -122,6 +122,10 @@ class VirtioMmioLogic {
         SetHalf(driver_features_, driver_features_sel_, value);
         return true;
       case VIRTIO_MMIO_STATUS:
+        if (value == 0) {
+          Reset();
+          return true;
+        }
         // The driver's features are taken only if the device offered every
         // one of them and the modern layout is among them (section 3.1.1);
         // otherwise FEATURES_OK is left clear for the driver to find.
@@ -175,7 +179,28 @@ class VirtioMmioLogic {
     bool rung = false;
     // How many used chains the driver has been interrupted for.
     std::uint16_t used_reported = 0;
+
+    void Clear() {
+      layout = Layout{.desc = 0, .avail = 0, .used = 0, .size = 0};
+      ready = false;
+      ring.reset();
+      rung = false;
+      used_reported = 0;
+    }
   };
+
+  // Writing zero to STATUS: everything the driver told the device is
+  // forgotten, and the device drops what it was doing (section 2.4).
+  void Reset() {
+    for (Queue& queue : queues_) queue.Clear();
+    driver_features_ = 0;
+    device_features_sel_ = 0;
+    driver_features_sel_ = 0;
+    queue_sel_ = 0;
+    interrupt_status_ = 0;
+    status_ = 0;
+    device_.Reset();
+  }
 
   // The queue QUEUE_SEL names, if the device has one.
   Queue* Selected() {

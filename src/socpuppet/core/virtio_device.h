@@ -31,6 +31,10 @@ class VirtioDevice {
   // `ring.Used()`, now or later.
   virtual void Handle(std::uint16_t queue, Virtqueue::Chain chain,
                       Virtqueue& ring) = 0;
+
+  // The driver has reset the device: whatever it was doing is dropped, and
+  // the chains it was holding with it.
+  virtual void Reset() = 0;
 };
 
 }  // namespace socpuppet
