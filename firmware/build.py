@@ -71,6 +71,9 @@ class Image:
     application: str
     board: str
     shield: str = ""
+    #: What the image is called, if not the last part of the application's
+    #: path: Zephyr's tests are each called `api` or the like.
+    name: str = ""
 
 
 IMAGES = [
@@ -92,6 +95,15 @@ IMAGES = [
         "tests/drivers/disk/disk_access",
         "socpuppet_host",
         "socpuppet_host_drive",
+    ),
+    # Zephyr's test of its entropy API, which here drives its virtio
+    # entropy driver against 🎭 the host's virtio entropy device.
+    # `socpuppet_host_virtio` is the host's virtio slots.
+    Image(
+        "tests/drivers/entropy/api",
+        "socpuppet_host",
+        "socpuppet_host_virtio",
+        name="entropy_api",
     ),
     # The IO die's manager firmware, and the SSD's own.
     Image("firmware/iomgr", "socpuppet_iomgr"),
@@ -552,11 +564,10 @@ class Build:
 
     def zephyr_image(self, image: Image) -> None:
         """Build one of Zephyr's images, and count its instructions."""
-        name = f"{Path(image.application).name}_{image.board}"
+        called = image.name or Path(image.application).name
+        name = f"{called}_{image.board}"
         shield = f" with {image.shield}" if image.shield else ""
-        say(
-            f"Building {Path(image.application).name} for {image.board}{shield}"
-        )
+        say(f"Building {called} for {image.board}{shield}")
         if image.application.startswith("firmware/"):
             source = REPOSITORY / image.application
         else:

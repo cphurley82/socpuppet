@@ -649,7 +649,7 @@ def tarball(path, contents, fake):
 
 def name_of(image):
     """What an image's files are called: <application>_<board>."""
-    return f"{Path(image.application).name}_{image.board}"
+    return f"{image.name or Path(image.application).name}_{image.board}"
 
 
 def most_at_once(calls):

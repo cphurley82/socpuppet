@@ -869,7 +869,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.py` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The last two were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.py` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The two after those were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation. The last is about virtio, whose drivers are newer still, found the first time one was built for a RISC-V board.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -1020,6 +1020,16 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: the same line in the documentation's example, or the dependency added by Zephyr itself where it makes `run` depend on `run_custom`, which is after the variable is set and would mend every board that followed the example.
 - **Kind**: bug, in documentation.
 - **When it lands**: if Zephyr adds the dependency itself, the deferred call goes.
+
+### The virtio transport allocates its rings from a heap it does not select
+
+- **Where**: `drivers/virtio/virtqueue.c`, `virtq_create`, and `drivers/virtio/virtio_mmio.c`, `virtio_mmio_set_virtqueues`.
+- **What is wrong**: the transport puts each virtqueue's three rings on the kernel's heap with `k_aligned_alloc` and `k_malloc`, and nothing in `drivers/virtio/Kconfig` selects or depends on a heap (`HEAP_MEM_POOL_SIZE`). An image that enables `VIRTIO` on a board whose defaults give it no heap builds every object and fails at the link. Zephyr's own test of the drivers, `tests/drivers/build_all/virtio`, sets a heap in its `prj.conf`, which is why the tree does not see it.
+- **How to see it**: build `tests/drivers/entropy/api` with `CONFIG_VIRTIO=y` and a `virtio,mmio` node for a board with no heap, such as `socpuppet_host`. The link fails with undefined references to `k_aligned_alloc` and `k_malloc`.
+- **What we do**: the shield that puts the virtio devices on the host, `boards/shields/socpuppet_host_virtio`, sets `CONFIG_HEAP_MEM_POOL_SIZE` large enough for every device's queues.
+- **Upstream fix**: `config VIRTIO` could `depends on` or `select` a heap, or say in its help what the transport needs; a `K_HEAP_DEFINE` of the transport's own, sized from the devicetree, would need no configuration at all.
+- **Kind**: build.
+- **When it lands**: the line leaves the shield's `.conf`.
 
 ## SPDK
 
