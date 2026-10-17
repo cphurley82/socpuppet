@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -36,9 +35,8 @@ struct Rig {
     driver.Describe(0, length, VirtqueueDriver::kWrite);
     driver.Fill(0, std::vector<std::uint8_t>(length, before));
     driver.MakeAvailable(0);
-    const std::optional<Virtqueue::Chain> chain = queue.Next();
-    EXPECT_TRUE(chain.has_value());
-    rng.Handle(0, *chain, queue);
+    const Virtqueue::Chain chain = NextChain(queue);
+    rng.Handle(0, chain, queue);
     return driver.Contents(0, length);
   }
 

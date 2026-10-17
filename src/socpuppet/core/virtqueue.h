@@ -44,7 +44,7 @@ class Virtqueue {
   // One request from the driver: the chain of descriptors that starts at
   // `head`, split into the buffers the device reads and the ones it writes.
   struct Chain {
-    std::uint16_t head;
+    std::uint16_t head = 0;
     std::vector<Buffer> readable;
     std::vector<Buffer> writable;
 
@@ -66,7 +66,8 @@ class Virtqueue {
       return std::nullopt;
     }
     const std::uint16_t head =
-        Load16(layout_.avail + kRingEntries + 2 * (seen_ % layout_.size));
+        Load16(layout_.avail + kRingEntries +
+               (std::uint64_t{2} * (seen_ % layout_.size)));
     ++seen_;
     Chain chain{.head = head, .readable = {}, .writable = {}};
     std::uint16_t index = head;
@@ -74,10 +75,10 @@ class Virtqueue {
     // gone round in a circle.
     for (std::uint16_t followed = 0; followed < layout_.size; ++followed) {
       const Descriptor descriptor = LoadDescriptor(index);
-      (descriptor.flags & kWrite ? chain.writable : chain.readable)
+      ((descriptor.flags & kWrite) != 0 ? chain.writable : chain.readable)
           .push_back(
               {.address = descriptor.address, .length = descriptor.length});
-      if (!(descriptor.flags & kNext)) {
+      if ((descriptor.flags & kNext) == 0) {
         return chain;
       }
       index = descriptor.next;
@@ -122,7 +123,7 @@ class Virtqueue {
     StoreLittleEndian(std::uint32_t{chain.head}, fields.subspan(0, 4));
     StoreLittleEndian(written, fields.subspan(4, 4));
     memory_.Write(layout_.used + kRingEntries +
-                      kUsedElementBytes * (used_ % layout_.size),
+                      (kUsedElementBytes * (used_ % layout_.size)),
                   element);
     ++used_;
     memory_.Write(layout_.used + kRingIndex, LittleEndianBytes(used_));
@@ -158,7 +159,7 @@ class Virtqueue {
 
   Descriptor LoadDescriptor(std::uint16_t index) {
     std::array<std::uint8_t, kDescriptorBytes> bytes{};
-    memory_.Read(layout_.desc + kDescriptorBytes * index, bytes);
+    memory_.Read(layout_.desc + (kDescriptorBytes * index), bytes);
     const std::span<const std::uint8_t> fields = bytes;
     return {.address = LoadLittleEndian<std::uint64_t>(fields.subspan(0, 8)),
             .length = LoadLittleEndian<std::uint32_t>(fields.subspan(8, 4)),

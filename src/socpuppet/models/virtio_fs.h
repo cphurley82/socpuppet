@@ -17,9 +17,9 @@ class VirtioFs : public VirtioMmio<VirtioFsLogic> {
  public:
   using VirtioMmio::VirtioMmio;
 
-  void SetTag(std::string_view tag) { device().SetTag(tag); }
+  void SetTag(std::string_view tag) { DeviceLogic().SetTag(tag); }
   void SetAnswerer(VirtioFsLogic::Answerer answerer) {
-    device().SetAnswerer(std::move(answerer));
+    DeviceLogic().SetAnswerer(std::move(answerer));
   }
 };
 

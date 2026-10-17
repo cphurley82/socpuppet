@@ -39,8 +39,7 @@ class VirtioNetFarEnd : public VirtioDeviceContract<VirtioNetRig> {
   }
 };
 
-TEST_F(VirtioNetFarEnd,
-       WhenAFrameComesInWhileTheDriverHoldsOutABuffer_ItComesBackWithIt) {
+TEST_F(VirtioNetFarEnd, AFrameThatComesInFillsTheBufferTheDriverHoldsOut) {
   OnTheBus([this](auto& driver, LineWatcher& line) {
     HoldOutABuffer(driver, 64);
 
@@ -55,8 +54,7 @@ TEST_F(VirtioNetFarEnd,
   });
 }
 
-TEST_F(VirtioNetFarEnd,
-       WhenTheFarEndsSendReturns_TheDeviceHasNotTouchedTheMemoryYet) {
+TEST_F(VirtioNetFarEnd, TheFarEndsSendReturnsBeforeTheDeviceTouchesMemory) {
   // Whoever sends may be a script between two runs, outside the
   // simulation, so the frame goes in from a process of the device's own.
   OnTheBus([this](auto& driver, LineWatcher& line) {

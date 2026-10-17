@@ -36,8 +36,8 @@ class VirtioMmio : public CommandDevice<VirtioMmioLogic> {
 
  protected:
   // The device behind the transport, for a shell that is its far end.
-  Device& device() { return device_; }
-  const Device& device() const { return device_; }
+  Device& DeviceLogic() { return device_; }
+  const Device& DeviceLogic() const { return device_; }
 
  private:
   using Initiator = tlm_utils::simple_initiator_socket<VirtioMmio>;

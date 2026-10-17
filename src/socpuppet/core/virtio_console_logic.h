@@ -38,7 +38,7 @@ class VirtioConsoleLogic : public VirtioDevice {
       output_.append(bytes.begin(), bytes.end());
       ring.Used(chain, 0);
     } else {
-      held_.push_back({std::move(chain), &ring});
+      held_.push_back({.chain = std::move(chain), .ring = &ring});
     }
   }
 
@@ -52,7 +52,7 @@ class VirtioConsoleLogic : public VirtioDevice {
 
   // Puts what has come in into the buffers the driver has handed over, in
   // the order it handed them over, each filled before the next.
-  void Deliver() {
+  void Deliver() override {
     while (!received_.empty() && !held_.empty()) {
       const Held& held = held_.front();
       const std::span<const std::uint8_t> bytes{

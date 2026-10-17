@@ -3,7 +3,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -64,23 +63,24 @@ struct Rig {
     // buffers of the next few descriptors, so the status is after it.
     const std::uint32_t data_length =
         out.empty() ? in_length : static_cast<std::uint32_t>(out.size());
-    const auto status = static_cast<std::uint16_t>(
-        2 + data_length / VirtqueueDriver::kBufferStride);
+    const auto status_at = static_cast<std::uint16_t>(
+        2 + (data_length / VirtqueueDriver::kBufferStride));
     const bool has_data = data_length > 0;
-    driver.Describe(0, 16, VirtqueueDriver::kNext, has_data ? 1 : status);
+    driver.Describe(0, 16, VirtqueueDriver::kNext, has_data ? 1 : status_at);
     driver.Fill(0, header);
     if (!out.empty()) {
-      driver.Describe(1, data_length, VirtqueueDriver::kNext, status);
+      driver.Describe(1, data_length, VirtqueueDriver::kNext, status_at);
       driver.Fill(1, out);
     } else if (has_data) {
       driver.Describe(1, data_length,
-                      VirtqueueDriver::kWrite | VirtqueueDriver::kNext, status);
+                      VirtqueueDriver::kWrite | VirtqueueDriver::kNext,
+                      status_at);
     }
-    driver.Describe(status, 1, VirtqueueDriver::kWrite);
-    driver.Fill(status, std::vector<std::uint8_t>{0xEE});
+    driver.Describe(status_at, 1, VirtqueueDriver::kWrite);
+    driver.Fill(status_at, std::vector<std::uint8_t>{0xEE});
     HandOver();
     return {.used_length = driver.UsedAt(0).length,
-            .status = driver.Contents(status, 1)[0],
+            .status = driver.Contents(status_at, 1)[0],
             .data = in_length > 0 ? driver.Contents(1, in_length)
                                   : std::vector<std::uint8_t>{}};
   }
@@ -89,7 +89,7 @@ struct Rig {
   // the device, as the transport does when the driver rings.
   void HandOver() {
     driver.MakeAvailable(0);
-    device.Handle(0, queue.Next().value(), queue);
+    device.Handle(0, NextChain(queue), queue);
   }
 
   MemoryAt memory{kMemory};
@@ -108,7 +108,7 @@ TEST(WhenTheDriverReadsTwoSectors, ItGetsWhatIsThereWithStatusOk) {
   std::vector<std::uint8_t> expected(kSector, 'd');
   expected.insert(expected.end(), kSector, 'e');
   EXPECT_EQ(answer.data, expected);
-  EXPECT_EQ(answer.used_length, 2 * kSector + 1);
+  EXPECT_EQ(answer.used_length, (2 * kSector) + 1);
 }
 
 TEST(WhenTheDriverWritesASector, TheDriveHoldsItThere) {

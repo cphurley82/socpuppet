@@ -45,7 +45,7 @@ struct Rig {
   // Hands the device the chain that starts at descriptor 0 on `queue`.
   void HandOver(std::uint16_t queue) {
     driver.MakeAvailable(0);
-    fs.Handle(queue, ring.Next().value(), ring);
+    fs.Handle(queue, NextChain(ring), ring);
   }
 
   MemoryAt memory{kMemory};

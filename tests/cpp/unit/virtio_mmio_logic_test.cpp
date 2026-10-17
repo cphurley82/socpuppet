@@ -40,9 +40,9 @@ class FakeDevice : public VirtioDevice {
   std::uint16_t QueueCount() const override { return kQueues; }
   void Handle(std::uint16_t queue, Virtqueue::Chain chain,
               Virtqueue& ring) override {
-    handled.push_back({queue, chain.head});
+    handled.emplace_back(queue, chain.head);
     if (uses_each_chain) ring.Used(chain, 0);
-    if (holds_each_chain) held.push_back({std::move(chain), &ring});
+    if (holds_each_chain) held.emplace_back(std::move(chain), &ring);
   }
   // Gives back what it holds, once it has been told to.
   void Deliver() override {

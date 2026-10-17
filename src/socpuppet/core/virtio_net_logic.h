@@ -69,7 +69,7 @@ class VirtioNetLogic : public VirtioDevice {
       }
       ring.Used(chain, 0);
     } else {
-      held_.push_back({std::move(chain), &ring});
+      held_.push_back({.chain = std::move(chain), .ring = &ring});
     }
   }
 

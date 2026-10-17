@@ -37,8 +37,7 @@ class VirtioConsoleFarEnd : public VirtioDeviceContract<VirtioConsoleRig> {
   }
 };
 
-TEST_F(VirtioConsoleFarEnd,
-       WhenTheFarEndTypesWhileTheDriverHoldsOutABuffer_ItComesBackWithThat) {
+TEST_F(VirtioConsoleFarEnd, WhatTheFarEndTypesFillsTheBufferTheDriverHoldsOut) {
   OnTheBus([this](auto& driver, LineWatcher& line) {
     HoldOutABuffer(driver, 16);
 
@@ -53,7 +52,7 @@ TEST_F(VirtioConsoleFarEnd,
 }
 
 TEST_F(VirtioConsoleFarEnd,
-       WhenTheFarEndsWriteReturns_TheDeviceHasNotTouchedTheMemoryYet) {
+       TheFarEndsWriteReturnsBeforeTheDeviceTouchesMemory) {
   // Whoever types may be a script between two runs, outside the
   // simulation, so the bytes go in from a process of the device's own.
   OnTheBus([this](auto& driver, LineWatcher& line) {

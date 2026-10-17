@@ -56,10 +56,8 @@ TEST(WhenTheDriverMakesAChainOfOneReadableDescriptorAvailable,
   rig.driver.Fill(0, bytes);
   rig.driver.MakeAvailable(0);
 
-  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
-
-  ASSERT_TRUE(chain.has_value());
-  EXPECT_EQ(rig.queue.Read(*chain), bytes);
+  const Virtqueue::Chain chain = NextChain(rig.queue);
+  EXPECT_EQ(rig.queue.Read(chain), bytes);
 }
 
 TEST(WhenTheDriverMakesAChainOfThreeDescriptorsAvailable,
@@ -76,15 +74,13 @@ TEST(WhenTheDriverMakesAChainOfThreeDescriptorsAvailable,
   rig.driver.Fill(1, second);
   rig.driver.MakeAvailable(0);
 
-  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
-
-  ASSERT_TRUE(chain.has_value());
+  const Virtqueue::Chain chain = NextChain(rig.queue);
   std::vector<std::uint8_t> both = first;
   both.insert(both.end(), second.begin(), second.end());
-  EXPECT_EQ(rig.queue.Read(*chain), both);
-  ASSERT_EQ(chain->writable.size(), 1U);
-  EXPECT_EQ(chain->writable.front().address, answer);
-  EXPECT_EQ(chain->writable.front().length, 64U);
+  EXPECT_EQ(rig.queue.Read(chain), both);
+  ASSERT_EQ(chain.writable.size(), 1U);
+  EXPECT_EQ(chain.writable.front().address, answer);
+  EXPECT_EQ(chain.writable.front().length, 64U);
 }
 
 TEST(WhenTheDriverHasMadeNothingMoreAvailable, TheDeviceGetsNoChain) {
@@ -102,10 +98,9 @@ TEST(
   Rig rig;
   rig.driver.Describe(3, 64, kWrite);
   rig.driver.MakeAvailable(3);
-  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
-  ASSERT_TRUE(chain.has_value());
+  const Virtqueue::Chain chain = NextChain(rig.queue);
 
-  rig.queue.Used(*chain, 20);
+  rig.queue.Used(chain, 20);
 
   EXPECT_EQ(rig.driver.UsedIndex(), 1);
   EXPECT_EQ(rig.driver.UsedAt(0).id, 3U);
@@ -121,9 +116,8 @@ TEST(WhenTheDeviceHasUsedMoreChainsThanTheQueueHasEntries,
     const std::uint16_t head = round % Rig::kSize;
     rig.driver.Describe(head, 8, kWrite);
     rig.driver.MakeAvailable(head);
-    const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
-    ASSERT_TRUE(chain.has_value());
-    rig.queue.Used(*chain, /*written=*/round);
+    const Virtqueue::Chain chain = NextChain(rig.queue);
+    rig.queue.Used(chain, /*written=*/round);
   }
   const std::uint16_t ninth_round = Rig::kSize;
 
@@ -160,11 +154,10 @@ TEST(WhenTheDeviceWritesMoreThanAChainsTwoWritableBuffersHold,
   rig.driver.Describe(0, 16, kWrite | kNext, 1);
   rig.driver.Describe(1, 16, kWrite);
   rig.driver.MakeAvailable(0);
-  const std::optional<Virtqueue::Chain> chain = rig.queue.Next();
-  ASSERT_TRUE(chain.has_value());
+  const Virtqueue::Chain chain = NextChain(rig.queue);
   const std::vector<std::uint8_t> bytes = SomeBytes(40);
 
-  const std::uint32_t went = rig.queue.Write(*chain, bytes);
+  const std::uint32_t went = rig.queue.Write(chain, bytes);
 
   EXPECT_EQ(went, 32U);
   EXPECT_EQ(rig.driver.Contents(0, 16),

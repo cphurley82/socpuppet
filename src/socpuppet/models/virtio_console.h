@@ -17,13 +17,13 @@ class VirtioConsole : public VirtioMmio<VirtioConsoleLogic>, public FarEnd {
   using VirtioMmio::VirtioMmio;
 
   // Everything the driver has put out so far.
-  const std::string& Output() const override { return device().Output(); }
+  const std::string& Output() const override { return DeviceLogic().Output(); }
 
   // Bytes that come in, as if typed at the far end. They go into the
   // buffers the driver has handed over a delta cycle later, in a process
   // of the device's own.
   void Write(std::string_view received) override {
-    device().Receive(received);
+    DeviceLogic().Receive(received);
     Nudge();
   }
 };

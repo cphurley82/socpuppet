@@ -189,9 +189,8 @@ TYPED_TEST_P(VirtioDeviceContract, WhenTheDriverLooksItSaysItIsAVirtioDevice) {
   });
 }
 
-TYPED_TEST_P(
-    VirtioDeviceContract,
-    WhenTheDriverRingsWithAChainItAnswers_ItComesBackUsedAndTheLineRises) {
+TYPED_TEST_P(VirtioDeviceContract,
+             AChainItAnswersComesBackUsedWithTheLineRaised) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
 
@@ -202,8 +201,7 @@ TYPED_TEST_P(
   });
 }
 
-TYPED_TEST_P(VirtioDeviceContract,
-             WhenTheDriverAcknowledgesTheInterrupt_TheLineFalls) {
+TYPED_TEST_P(VirtioDeviceContract, AnAcknowledgedInterruptLowersTheLine) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
     driver.Ask();
@@ -216,7 +214,7 @@ TYPED_TEST_P(VirtioDeviceContract,
 }
 
 TYPED_TEST_P(VirtioDeviceContract,
-             WhenTheDriverRingsAgainAfterAcknowledging_TheLineRisesAgain) {
+             ARingAfterAnAcknowledgementRaisesTheLineAgain) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
     driver.Ask();
@@ -231,8 +229,7 @@ TYPED_TEST_P(VirtioDeviceContract,
   });
 }
 
-TYPED_TEST_P(VirtioDeviceContract,
-             WhenTheDriverResetsTheDevice_TheLineFallsAndTheQueueIsGone) {
+TYPED_TEST_P(VirtioDeviceContract, AResetLowersTheLineAndTakesTheQueueAway) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
     driver.Ask();
@@ -247,7 +244,7 @@ TYPED_TEST_P(VirtioDeviceContract,
 }
 
 TYPED_TEST_P(VirtioDeviceContract,
-             WhenTheDoorbellWriteReturns_TheDeviceHasNotTouchedTheMemoryYet) {
+             TheDoorbellsWriteReturnsBeforeTheDeviceTouchesMemory) {
   this->OnTheBus([this](auto& driver, LineWatcher& line) {
     driver.SetUp();
 
@@ -262,10 +259,10 @@ TYPED_TEST_P(VirtioDeviceContract,
 
 REGISTER_TYPED_TEST_SUITE_P(
     VirtioDeviceContract, WhenTheDriverLooksItSaysItIsAVirtioDevice,
-    WhenTheDriverRingsWithAChainItAnswers_ItComesBackUsedAndTheLineRises,
-    WhenTheDriverAcknowledgesTheInterrupt_TheLineFalls,
-    WhenTheDriverRingsAgainAfterAcknowledging_TheLineRisesAgain,
-    WhenTheDriverResetsTheDevice_TheLineFallsAndTheQueueIsGone,
-    WhenTheDoorbellWriteReturns_TheDeviceHasNotTouchedTheMemoryYet);
+    AChainItAnswersComesBackUsedWithTheLineRaised,
+    AnAcknowledgedInterruptLowersTheLine,
+    ARingAfterAnAcknowledgementRaisesTheLineAgain,
+    AResetLowersTheLineAndTakesTheQueueAway,
+    TheDoorbellsWriteReturnsBeforeTheDeviceTouchesMemory);
 
 #endif  // TESTS_CPP_CONTRACTS_VIRTIO_DEVICE_CONTRACT_H_

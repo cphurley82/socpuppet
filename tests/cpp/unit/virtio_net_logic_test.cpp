@@ -74,7 +74,7 @@ struct Rig {
   void HandOver(VirtqueueDriver& driver, Virtqueue& ring, std::uint16_t head,
                 std::uint16_t queue) {
     driver.MakeAvailable(head);
-    net.Handle(queue, ring.Next().value(), ring);
+    net.Handle(queue, NextChain(ring), ring);
   }
 
   MemoryAt memory{kMemory};

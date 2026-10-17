@@ -4,7 +4,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -38,20 +40,20 @@ class VirtqueueDriver {
                   socpuppet::Virtqueue::Layout layout, std::uint64_t buffers)
       : memory_(memory), layout_(layout), buffers_(buffers) {}
 
-  const socpuppet::Virtqueue::Layout& layout() const { return layout_; }
-
   // Describes buffer `index`: `length` bytes at its address, with `flags`,
-  // chained to descriptor `next` if the flags say so. Gives the address.
+  // chained to descriptor `chained_to` if the flags say so. Gives the
+  // address.
   std::uint64_t Describe(std::uint16_t index, std::uint32_t length,
-                         std::uint16_t flags, std::uint16_t next = 0) {
+                         std::uint16_t flags, std::uint16_t chained_to = 0) {
     const std::uint64_t address = BufferAt(index);
     std::array<std::uint8_t, 16> descriptor{};
     const std::span<std::uint8_t> bytes = descriptor;
     socpuppet::StoreLittleEndian(address, bytes.subspan(0, 8));
     socpuppet::StoreLittleEndian(length, bytes.subspan(8, 4));
     socpuppet::StoreLittleEndian(flags, bytes.subspan(12, 2));
-    socpuppet::StoreLittleEndian(next, bytes.subspan(14, 2));
-    EXPECT_TRUE(memory_.Write(layout_.desc + 16 * index, descriptor));
+    socpuppet::StoreLittleEndian(chained_to, bytes.subspan(14, 2));
+    EXPECT_TRUE(
+        memory_.Write(layout_.desc + (std::uint64_t{16} * index), descriptor));
     return address;
   }
 
@@ -70,9 +72,9 @@ class VirtqueueDriver {
   // Puts the chain that starts at descriptor `head` in the available ring
   // and moves the ring's index on.
   void MakeAvailable(std::uint16_t head) {
-    EXPECT_TRUE(
-        memory_.Write(layout_.avail + 4 + 2 * (available_ % layout_.size),
-                      socpuppet::LittleEndianBytes(head)));
+    EXPECT_TRUE(memory_.Write(
+        layout_.avail + 4 + (std::uint64_t{2} * (available_ % layout_.size)),
+        socpuppet::LittleEndianBytes(head)));
     ++available_;
     EXPECT_TRUE(memory_.Write(layout_.avail + 2,
                               socpuppet::LittleEndianBytes(available_)));
@@ -82,7 +84,8 @@ class VirtqueueDriver {
   std::uint16_t UsedIndex() { return Load16(layout_.used + 2); }
   Used UsedAt(std::uint16_t slot) {
     std::array<std::uint8_t, 8> bytes{};
-    EXPECT_TRUE(memory_.Read(layout_.used + 4 + 8 * slot, bytes));
+    EXPECT_TRUE(
+        memory_.Read(layout_.used + 4 + (std::uint64_t{8} * slot), bytes));
     const std::span<const std::uint8_t> fields = bytes;
     return {
         .id = socpuppet::LoadLittleEndian<std::uint32_t>(fields.subspan(0, 4)),
@@ -92,7 +95,7 @@ class VirtqueueDriver {
 
  private:
   std::uint64_t BufferAt(std::uint16_t index) const {
-    return buffers_ + kBufferStride * index;
+    return buffers_ + (kBufferStride * index);
   }
   std::uint16_t Load16(std::uint64_t address) {
     std::array<std::uint8_t, 2> bytes{};
@@ -105,5 +108,17 @@ class VirtqueueDriver {
   std::uint64_t buffers_;
   std::uint16_t available_ = 0;
 };
+
+// The next chain the driver has made available on `ring`, which the test
+// expects there to be. If there is none the test fails, and an empty chain
+// stands in so that it can go on to say what else went wrong.
+inline socpuppet::Virtqueue::Chain NextChain(socpuppet::Virtqueue& ring) {
+  std::optional<socpuppet::Virtqueue::Chain> chain = ring.Next();
+  if (!chain.has_value()) {
+    ADD_FAILURE() << "The driver had made no chain available.";
+    return {};
+  }
+  return *std::move(chain);
+}
 
 #endif  // TESTS_CPP_SUPPORT_VIRTQUEUE_DRIVER_H_

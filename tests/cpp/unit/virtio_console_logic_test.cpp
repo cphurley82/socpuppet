@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -44,9 +43,8 @@ struct Rig {
                       VirtqueueDriver::kReadable);
     transmit.Fill(index, Bytes(text));
     transmit.MakeAvailable(index);
-    const std::optional<Virtqueue::Chain> chain = transmit_ring.Next();
-    ASSERT_TRUE(chain.has_value());
-    console.Handle(VirtioConsoleLogic::kTransmitQueue, *chain, transmit_ring);
+    const Virtqueue::Chain chain = NextChain(transmit_ring);
+    console.Handle(VirtioConsoleLogic::kTransmitQueue, chain, transmit_ring);
   }
 
   // Hands the device an empty buffer of `length` bytes for what comes in:
@@ -55,9 +53,8 @@ struct Rig {
   void Offer(std::uint16_t index, std::uint32_t length) {
     receive.Describe(index, length, VirtqueueDriver::kWrite);
     receive.MakeAvailable(index);
-    const std::optional<Virtqueue::Chain> chain = receive_ring.Next();
-    ASSERT_TRUE(chain.has_value());
-    console.Handle(VirtioConsoleLogic::kReceiveQueue, *chain, receive_ring);
+    const Virtqueue::Chain chain = NextChain(receive_ring);
+    console.Handle(VirtioConsoleLogic::kReceiveQueue, chain, receive_ring);
     console.Deliver();
   }
 

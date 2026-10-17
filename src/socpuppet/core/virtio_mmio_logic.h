@@ -70,24 +70,27 @@ class VirtioMmioLogic {
         StoreLittleEndian(status_, out);
         return true;
       case VIRTIO_MMIO_QUEUE_NUM_MAX:
-        StoreLittleEndian(Selected() ? kQueueSizeMax : 0U, out);
+        StoreLittleEndian(Selected() != nullptr ? kQueueSizeMax : 0U, out);
         return true;
       case VIRTIO_MMIO_INTERRUPT_STATUS:
         StoreLittleEndian(interrupt_status_, out);
         return true;
       // No device here has shared memory, and all ones is how a region
-      // that does not exist answers (section 4.2.2).
+      // that does not exist answers (section 4.2.2), in each half.
       case VIRTIO_MMIO_SHM_LEN_LOW:
+      case VIRTIO_MMIO_SHM_LEN_HIGH:
+        static_assert(VIRTIO_MMIO_SHM_LEN_LOW_AT_RESET ==
+                      VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET);
         StoreLittleEndian(VIRTIO_MMIO_SHM_LEN_LOW_AT_RESET, out);
         return true;
-      case VIRTIO_MMIO_SHM_LEN_HIGH:
-        StoreLittleEndian(VIRTIO_MMIO_SHM_LEN_HIGH_AT_RESET, out);
+      case VIRTIO_MMIO_QUEUE_READY: {
+        const Queue* queue = Selected();
+        StoreLittleEndian(queue != nullptr && queue->ring.has_value()
+                              ? VIRTIO_MMIO_QUEUE_READY_READY
+                              : 0U,
+                          out);
         return true;
-      case VIRTIO_MMIO_QUEUE_READY:
-        StoreLittleEndian(
-            Selected() && Selected()->ring ? VIRTIO_MMIO_QUEUE_READY_READY : 0U,
-            out);
-        return true;
+      }
       default:
         return false;
     }
@@ -111,10 +114,12 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_QUEUE_SEL:
         queue_sel_ = value;
         return true;
-      case VIRTIO_MMIO_QUEUE_NUM:
-        if (!Selected() || value > kQueueSizeMax) return false;
-        Selected()->layout.size = static_cast<std::uint16_t>(value);
+      case VIRTIO_MMIO_QUEUE_NUM: {
+        Queue* queue = Selected();
+        if (queue == nullptr || value > kQueueSizeMax) return false;
+        queue->layout.size = static_cast<std::uint16_t>(value);
         return true;
+      }
       case VIRTIO_MMIO_QUEUE_DESC_LOW:
         return SetHalfOf(&Queue::Layout::desc, 0, value);
       case VIRTIO_MMIO_QUEUE_DESC_HIGH:
@@ -127,17 +132,19 @@ class VirtioMmioLogic {
         return SetHalfOf(&Queue::Layout::used, 0, value);
       case VIRTIO_MMIO_QUEUE_DEVICE_HIGH:
         return SetHalfOf(&Queue::Layout::used, 1, value);
-      case VIRTIO_MMIO_QUEUE_READY:
-        if (!Selected()) return false;
+      case VIRTIO_MMIO_QUEUE_READY: {
+        Queue* queue = Selected();
+        if (queue == nullptr) return false;
         // A queue of no entries is never ready: there is nothing in it to
         // walk. The write is taken and the queue reads as not ready.
         if ((value & VIRTIO_MMIO_QUEUE_READY_READY) != 0 &&
-            Selected()->layout.size != 0) {
-          Selected()->ring.emplace(memory_, Selected()->layout);
+            queue->layout.size != 0) {
+          queue->ring.emplace(memory_, queue->layout);
         } else {
-          Selected()->ring.reset();
+          queue->ring.reset();
         }
         return true;
+      }
       case VIRTIO_MMIO_QUEUE_NOTIFY:
         if (value >= queues_.size() || !queues_[value].ring) return false;
         queues_[value].rung = true;
@@ -171,13 +178,14 @@ class VirtioMmioLogic {
   // it from elsewhere. Returns whether anything was done.
   bool CarryOut() {
     bool done = false;
-    for (std::uint16_t number = 0; number < queues_.size(); ++number) {
+    for (std::size_t number = 0; number < queues_.size(); ++number) {
       Queue& queue = queues_[number];
       if (!queue.ring) continue;
       if (queue.rung) {
         queue.rung = false;
         while (std::optional<Virtqueue::Chain> chain = queue.ring->Next()) {
-          device_.Handle(number, std::move(*chain), *queue.ring);
+          device_.Handle(static_cast<std::uint16_t>(number), std::move(*chain),
+                         *queue.ring);
           done = true;
         }
       }
@@ -266,8 +274,9 @@ class VirtioMmioLogic {
   // Sets half `which` of one of the selected queue's addresses.
   bool SetHalfOf(std::uint64_t Queue::Layout::* address, std::uint32_t which,
                  std::uint32_t half) {
-    if (!Selected()) return false;
-    SetHalf(Selected()->layout.*address, which, half);
+    Queue* queue = Selected();
+    if (queue == nullptr) return false;
+    SetHalf(queue->layout.*address, which, half);
     return true;
   }
 

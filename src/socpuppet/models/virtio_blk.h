@@ -32,12 +32,14 @@ class VirtioBlk : public VirtioMmio<VirtioBlkLogic> {
           std::to_string(Size()) +
           ". Give the disk more blocks, or make the image smaller.");
     }
-    device().Load(image);
+    DeviceLogic().Load(image);
   }
   // Everything on the disk.
-  std::vector<std::uint8_t> Contents() const { return device().Contents(); }
+  std::vector<std::uint8_t> Contents() const {
+    return DeviceLogic().Contents();
+  }
   // How many bytes the disk holds.
-  std::size_t Size() const { return device().Size(); }
+  std::size_t Size() const { return DeviceLogic().Size(); }
 };
 
 }  // namespace socpuppet

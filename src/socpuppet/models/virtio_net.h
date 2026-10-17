@@ -19,19 +19,19 @@ class VirtioNet : public VirtioMmio<VirtioNetLogic> {
 
   // Every frame the driver has sent, in order.
   const std::vector<VirtioNetLogic::Frame>& Received() const {
-    return device().Transmitted();
+    return DeviceLogic().Transmitted();
   }
 
   // A frame comes in on the wire. It goes into a buffer the driver holds
   // out a delta cycle later, in a process of the device's own, since
   // whoever sends it may be a script between two runs.
   void Send(VirtioNetLogic::Frame frame) {
-    device().Receive(std::move(frame));
+    DeviceLogic().Receive(std::move(frame));
     Nudge();
   }
 
   // How many frames that came in were dropped for want of room.
-  std::size_t Dropped() const { return device().Dropped(); }
+  std::size_t Dropped() const { return DeviceLogic().Dropped(); }
 };
 
 }  // namespace socpuppet
