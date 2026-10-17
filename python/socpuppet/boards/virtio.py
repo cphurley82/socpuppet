@@ -91,11 +91,10 @@ def virtio_overlay(board: Host[Any] | None = None) -> str:
 
     `board` is a host with its slots, and by default the host with them as
     they come. The shield's copy is checked in, and a test holds it to
-    this. To write the file again:
-
-        uv run python -c "from socpuppet.boards.virtio import *; \\
-            print(virtio_overlay(), end='')" > \\
-            python/socpuppet/zephyr_module/boards/shields/socpuppet_host_virtio/socpuppet_host_virtio.overlay
+    this. To write the file again, print what this returns into
+    `boards/shields/socpuppet_host_virtio/socpuppet_host_virtio.overlay`
+    in the Zephyr module, with no newline added, as `drive_overlay`'s
+    docstring has it.
     """
     if board is None:
         from socpuppet.boards.host import host
