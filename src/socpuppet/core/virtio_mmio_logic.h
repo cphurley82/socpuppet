@@ -60,6 +60,9 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_QUEUE_NUM_MAX:
         StoreLittleEndian(Selected() ? kQueueSizeMax : 0U, out);
         return true;
+      case VIRTIO_MMIO_INTERRUPT_STATUS:
+        StoreLittleEndian(interrupt_status_, out);
+        return true;
       case VIRTIO_MMIO_QUEUE_READY:
         StoreLittleEndian(Selected() && Selected()->ready
                               ? VIRTIO_MMIO_QUEUE_READY_READY
@@ -133,15 +136,28 @@ class VirtioMmioLogic {
     bool done = false;
     for (std::uint16_t number = 0; number < queues_.size(); ++number) {
       Queue& queue = queues_[number];
-      if (!queue.rung || !queue.ready) continue;
-      queue.rung = false;
-      while (std::optional<Virtqueue::Chain> chain = queue.ring->Next()) {
-        device_.Handle(number, std::move(*chain), *queue.ring);
+      if (!queue.ready) continue;
+      if (queue.rung) {
+        queue.rung = false;
+        while (std::optional<Virtqueue::Chain> chain = queue.ring->Next()) {
+          device_.Handle(number, std::move(*chain), *queue.ring);
+          done = true;
+        }
+      }
+      // A chain may be given back while it is handled or later, from
+      // wherever the device's answer comes from; either way the driver
+      // hears of it here.
+      if (queue.ring->UsedCount() != queue.used_reported) {
+        queue.used_reported = queue.ring->UsedCount();
+        interrupt_status_ |= VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER;
         done = true;
       }
     }
     return done;
   }
+
+  // Whether the interrupt line is to be high.
+  bool Interrupting() const { return interrupt_status_ != 0; }
 
  private:
   // One of the device's virtqueues, as the driver describes it through the
@@ -154,6 +170,8 @@ class VirtioMmioLogic {
     std::optional<Virtqueue> ring;
     // Whether the driver has rung its doorbell since the device last looked.
     bool rung = false;
+    // How many used chains the driver has been interrupted for.
+    std::uint16_t used_reported = 0;
   };
 
   // The queue QUEUE_SEL names, if the device has one.
@@ -199,6 +217,7 @@ class VirtioMmioLogic {
   std::uint32_t status_ = 0;
   std::uint32_t queue_sel_ = 0;
   std::vector<Queue> queues_;
+  std::uint32_t interrupt_status_ = 0;
 };
 
 }  // namespace socpuppet

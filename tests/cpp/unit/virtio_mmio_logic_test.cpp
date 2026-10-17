@@ -57,12 +57,15 @@ class FakeDevice : public VirtioDevice {
   std::uint64_t Features() const override { return kFeatures; }
   std::uint16_t QueueCount() const override { return kQueues; }
   void Handle(std::uint16_t queue, Virtqueue::Chain chain,
-              Virtqueue& /*ring*/) override {
+              Virtqueue& ring) override {
     handled.push_back({queue, chain.head});
+    if (uses_each_chain) ring.Used(chain, 0);
   }
 
   // Which chains the transport has handed over: the queue and the head.
   std::vector<std::pair<std::uint16_t, std::uint16_t>> handled;
+  // Whether it gives each chain straight back.
+  bool uses_each_chain = false;
 };
 
 // The transport with the fake behind it, and the driver's way of reaching
@@ -233,6 +236,22 @@ TEST(WhenTheDriverRingsTheDoorbellOfAQueueWithTwoChainsAvailable,
   const std::vector<std::pair<std::uint16_t, std::uint16_t>> both = {{0, 0},
                                                                      {0, 1}};
   EXPECT_EQ(rig.device.handled, both);
+}
+
+TEST(WhenTheDeviceHasUsedAChain, TheTransportInterruptsAndSaysWhy) {
+  Rig rig;
+  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
+  rig.SetUpQueue(0, kQueue.size, kQueue);
+  rig.device.uses_each_chain = true;
+  driver.Describe(0, 8, VirtqueueDriver::kReadable);
+  driver.MakeAvailable(0);
+
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+
+  EXPECT_TRUE(rig.transport.Interrupting());
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_INTERRUPT_STATUS),
+            VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER);
 }
 
 }  // namespace

@@ -120,6 +120,10 @@ class Virtqueue {
     memory_.Write(layout_.used + kRingIndex, LittleEndianBytes(used_));
   }
 
+  // How many chains the device has given back on the used ring, which is
+  // how the transport tells that one was, whenever it was.
+  std::uint16_t UsedCount() const { return used_; }
+
   // Whether the driver has handed over a chain the device could not take,
   // after which the queue gives nothing more until a new one is made.
   bool Broken() const { return broken_; }
