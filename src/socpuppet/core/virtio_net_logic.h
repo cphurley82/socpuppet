@@ -88,7 +88,7 @@ class VirtioNetLogic : public VirtioDevice {
     while (!incoming_.empty() && !held_.empty()) {
       const Frame& frame = incoming_.front();
       Held& held = held_.front();
-      if (kHeaderBytes + frame.size() > Room(held.chain)) {
+      if (kHeaderBytes + frame.size() > held.chain.WritableBytes()) {
         dropped_ += 1;
         incoming_.pop_front();
         continue;
@@ -112,14 +112,6 @@ class VirtioNetLogic : public VirtioDevice {
     Virtqueue::Chain chain;
     Virtqueue* ring;
   };
-
-  static std::size_t Room(const Virtqueue::Chain& chain) {
-    std::size_t room = 0;
-    for (const Virtqueue::Buffer& buffer : chain.writable) {
-      room += buffer.length;
-    }
-    return room;
-  }
 
   std::array<std::uint8_t, 6> mac_{};
   std::vector<Frame> transmitted_;

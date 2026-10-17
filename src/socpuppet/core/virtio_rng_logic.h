@@ -33,11 +33,7 @@ class VirtioRngLogic : public VirtioDevice {
   void Reset() override {}
   void Handle(std::uint16_t /*queue*/, Virtqueue::Chain chain,
               Virtqueue& ring) override {
-    std::size_t asked = 0;
-    for (const Virtqueue::Buffer& buffer : chain.writable) {
-      asked += buffer.length;
-    }
-    std::vector<std::uint8_t> bytes(asked);
+    std::vector<std::uint8_t> bytes(chain.WritableBytes());
     for (std::uint8_t& byte : bytes) {
       byte = static_cast<std::uint8_t>(generator_());
     }

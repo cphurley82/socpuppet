@@ -47,6 +47,14 @@ class Virtqueue {
     std::uint16_t head;
     std::vector<Buffer> readable;
     std::vector<Buffer> writable;
+
+    // How many bytes the device may write, all its writable buffers
+    // together.
+    std::size_t WritableBytes() const {
+      std::size_t bytes = 0;
+      for (const Buffer& buffer : writable) bytes += buffer.length;
+      return bytes;
+    }
   };
 
   Virtqueue(MemoryPort& memory, Layout layout)

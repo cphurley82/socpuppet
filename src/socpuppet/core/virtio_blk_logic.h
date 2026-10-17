@@ -64,10 +64,7 @@ class VirtioBlkLogic : public VirtioDevice {
   void Handle(std::uint16_t /*queue*/, Virtqueue::Chain chain,
               Virtqueue& ring) override {
     const std::vector<std::uint8_t> request = ring.Read(chain);
-    std::size_t writable = 0;
-    for (const Virtqueue::Buffer& buffer : chain.writable) {
-      writable += buffer.length;
-    }
+    const std::size_t writable = chain.WritableBytes();
     if (request.size() < kHeaderBytes || writable == 0) {
       ring.Used(chain, 0);  // no header, or nowhere to say how it went
       return;
