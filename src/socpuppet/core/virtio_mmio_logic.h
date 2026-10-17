@@ -23,6 +23,9 @@ class VirtioMmioLogic {
   // The transport's own feature bit (section 6): the device speaks the
   // modern layout and nothing of the legacy one.
   static constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
+  // The most entries a virtqueue may have, which is what QEMU's devices
+  // allow too (section 2.7: at most 32768).
+  static constexpr std::uint32_t kQueueSizeMax = 256;
 
   VirtioMmioLogic(VirtioDevice& device, MemoryPort& memory)
       : device_(device), memory_(memory) {}
@@ -50,6 +53,10 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_STATUS:
         StoreLittleEndian(status_, out);
         return true;
+      case VIRTIO_MMIO_QUEUE_NUM_MAX:
+        StoreLittleEndian(
+            queue_sel_ < device_.QueueCount() ? kQueueSizeMax : 0U, out);
+        return true;
       default:
         return false;
     }
@@ -63,6 +70,9 @@ class VirtioMmioLogic {
         return true;
       case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
         driver_features_sel_ = value;
+        return true;
+      case VIRTIO_MMIO_QUEUE_SEL:
+        queue_sel_ = value;
         return true;
       case VIRTIO_MMIO_DRIVER_FEATURES:
         SetHalf(driver_features_, driver_features_sel_, value);
@@ -105,6 +115,7 @@ class VirtioMmioLogic {
   std::uint32_t driver_features_sel_ = 0;
   std::uint64_t driver_features_ = 0;
   std::uint32_t status_ = 0;
+  std::uint32_t queue_sel_ = 0;
 };
 
 }  // namespace socpuppet

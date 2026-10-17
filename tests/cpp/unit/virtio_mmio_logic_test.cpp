@@ -48,8 +48,11 @@ class FakeDevice : public VirtioDevice {
   // Two features of its own, by their bits.
   static constexpr std::uint64_t kFeatures = (1U << 1) | (1U << 5);
 
+  static constexpr std::uint16_t kQueues = 2;
+
   std::uint32_t DeviceId() const override { return kId; }
   std::uint64_t Features() const override { return kFeatures; }
+  std::uint16_t QueueCount() const override { return kQueues; }
 };
 
 // The transport with the fake behind it, and the driver's way of reaching
@@ -140,6 +143,19 @@ TEST(WhenTheDriverLeavesVersionOneOutOfWhatItAcceptsAndSaysFeaturesOk,
               kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
 
   EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS), kSeenAndDriven);
+}
+
+TEST(WhenTheDriverAsksHowBigAQueueCanBe,
+     TheAnswerIsTheMostForAQueueTheDeviceHasAndZeroForOneItHasNot) {
+  Rig rig;
+
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, FakeDevice::kQueues - 1);
+  const std::uint32_t last = rig.Read32(VIRTIO_MMIO_QUEUE_NUM_MAX);
+  rig.Write32(VIRTIO_MMIO_QUEUE_SEL, FakeDevice::kQueues);
+  const std::uint32_t beyond = rig.Read32(VIRTIO_MMIO_QUEUE_NUM_MAX);
+
+  EXPECT_EQ(last, VirtioMmioLogic::kQueueSizeMax);
+  EXPECT_EQ(beyond, 0U);
 }
 
 }  // namespace

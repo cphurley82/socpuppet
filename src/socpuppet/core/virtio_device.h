@@ -22,6 +22,9 @@ class VirtioDevice {
   // The feature bits the device offers, its own and none of the
   // transport's: `VERSION_1` is the transport's to add.
   virtual std::uint64_t Features() const = 0;
+
+  // How many virtqueues the device has, numbered from zero.
+  virtual std::uint16_t QueueCount() const = 0;
 };
 
 }  // namespace socpuppet
