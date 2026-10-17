@@ -191,14 +191,18 @@ TEST(
 TEST(WhenTheDeviceHasUsedMoreChainsThanTheQueueHasEntries,
      TheNextElementGoesAtTheStartOfTheUsedRingAndTheIndexKeepsCounting) {
   Driver driver;
+  // Each round writes its own number, so the used ring says which round
+  // filled a slot.
   for (std::uint16_t round = 0; round < Driver::kSize + 1; ++round) {
-    driver.Describe(round % Driver::kSize, 8, kWrite);
-    driver.MakeAvailable(round % Driver::kSize);
-    driver.queue.Used(*driver.queue.Next(), round);
+    const std::uint16_t head = round % Driver::kSize;
+    driver.Describe(head, 8, kWrite);
+    driver.MakeAvailable(head);
+    driver.queue.Used(*driver.queue.Next(), /*written=*/round);
   }
+  const std::uint16_t ninth_round = Driver::kSize;
 
   EXPECT_EQ(driver.UsedIndex(), Driver::kSize + 1);
-  EXPECT_EQ(driver.UsedAt(0).length, Driver::kSize);
+  EXPECT_EQ(driver.UsedAt(0).length, ninth_round);
 }
 
 TEST(WhenTheDriverMakesAChainThatLoopsBackOnItselfAvailable,
@@ -228,6 +232,18 @@ TEST(WhenTheDeviceWritesMoreThanAChainsTwoWritableBuffersHold,
             std::vector<std::uint8_t>(bytes.begin(), bytes.begin() + 16));
   EXPECT_EQ(driver.memory.At(second, 16),
             std::vector<std::uint8_t>(bytes.begin() + 16, bytes.begin() + 32));
+}
+
+TEST(WhenTheDriverMakesMoreAvailableAfterAChainThatLooped,
+     TheDeviceStillGetsNothingFromTheBrokenQueue) {
+  Driver driver;
+  driver.Describe(0, 8, kReadable | kNext, 0);
+  driver.MakeAvailable(0);
+  driver.queue.Next();
+  driver.Describe(1, 8, kReadable);
+  driver.MakeAvailable(1);
+
+  EXPECT_FALSE(driver.queue.Next().has_value());
 }
 
 }  // namespace
