@@ -22,7 +22,8 @@ add_executable(unit_tests
   unit/system_controller_logic_test.cpp
   unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp
-  unit/ucie_sideband_test.cpp)
+  unit/ucie_sideband_test.cpp
+  unit/virtqueue_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
 target_link_libraries(unit_tests PRIVATE
   socpuppet_core elfio::elfio GTest::gmock_main)

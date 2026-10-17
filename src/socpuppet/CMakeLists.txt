@@ -37,7 +37,8 @@ target_sources(socpuppet_core INTERFACE
     core/script.h
     core/system_controller_logic.h
     core/time.h
-    core/trace.h)
+    core/trace.h
+    core/virtqueue.h)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_regs)
 
 # Reading ELF files is ELFIO's work. Like the adapters below, the one source

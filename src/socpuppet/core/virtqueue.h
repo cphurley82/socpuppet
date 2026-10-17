@@ -1,0 +1,105 @@
+#ifndef SOCPUPPET_CORE_VIRTQUEUE_H_
+#define SOCPUPPET_CORE_VIRTQUEUE_H_
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <span>
+#include <vector>
+
+#include "socpuppet/core/little_endian.h"
+#include "socpuppet/core/memory_port.h"
+
+namespace socpuppet {
+
+// Where a split virtqueue's three parts are in the driver's memory, and how
+// many entries it has. The driver tells the transport, and the transport
+// tells the queue.
+struct VirtqueueLayout {
+  std::uint64_t desc;
+  std::uint64_t avail;
+  std::uint64_t used;
+  std::uint16_t size;
+};
+
+// The device's side of a split virtqueue (virtio 1.2, section 2.7): the
+// descriptor table, the available ring the driver fills and the used ring
+// the device fills, all in the driver's memory.
+class Virtqueue {
+ public:
+  // A run of bytes in the driver's memory that one descriptor describes.
+  struct Buffer {
+    std::uint64_t address;
+    std::uint32_t length;
+  };
+
+  // One request from the driver: the chain of descriptors that starts at
+  // `head`, split into the buffers the device reads and the ones it writes.
+  struct Chain {
+    std::uint16_t head;
+    std::vector<Buffer> readable;
+    std::vector<Buffer> writable;
+  };
+
+  Virtqueue(MemoryPort& memory, VirtqueueLayout layout)
+      : memory_(memory), layout_(layout) {}
+
+  // The next chain the driver has made available, if any.
+  std::optional<Chain> Next() {
+    const std::uint16_t head =
+        Load16(layout_.avail + 4 + 2 * (seen_ % layout_.size));
+    ++seen_;
+    Chain chain{.head = head, .readable = {}, .writable = {}};
+    const Descriptor descriptor = LoadDescriptor(head);
+    chain.readable.push_back(
+        {.address = descriptor.address, .length = descriptor.length});
+    return chain;
+  }
+
+  // The bytes of a chain's readable buffers, in order.
+  std::vector<std::uint8_t> Read(const Chain& chain) {
+    std::vector<std::uint8_t> bytes;
+    for (const Buffer& buffer : chain.readable) {
+      const std::size_t start = bytes.size();
+      bytes.resize(start + buffer.length);
+      memory_.Read(buffer.address, std::span(bytes).subspan(start));
+    }
+    return bytes;
+  }
+
+ private:
+  // One entry of the descriptor table, section 2.7.5.
+  struct Descriptor {
+    std::uint64_t address;
+    std::uint32_t length;
+    std::uint16_t flags;
+    std::uint16_t next;
+  };
+  static constexpr std::uint64_t kDescriptorBytes = 16;
+
+  Descriptor LoadDescriptor(std::uint16_t index) {
+    std::array<std::uint8_t, kDescriptorBytes> bytes{};
+    memory_.Read(layout_.desc + kDescriptorBytes * index, bytes);
+    const std::span<const std::uint8_t> fields = bytes;
+    return {.address = LoadLittleEndian<std::uint64_t>(fields.subspan(0, 8)),
+            .length = LoadLittleEndian<std::uint32_t>(fields.subspan(8, 4)),
+            .flags = LoadLittleEndian<std::uint16_t>(fields.subspan(12, 2)),
+            .next = LoadLittleEndian<std::uint16_t>(fields.subspan(14, 2))};
+  }
+
+  std::uint16_t Load16(std::uint64_t address) {
+    std::array<std::uint8_t, 2> bytes{};
+    memory_.Read(address, bytes);
+    return LoadLittleEndian<std::uint16_t>(bytes);
+  }
+
+  MemoryPort& memory_;
+  VirtqueueLayout layout_;
+  // How far along the available ring the device has looked.
+  std::uint16_t seen_ = 0;
+};
+
+}  // namespace socpuppet
+
+#endif  // SOCPUPPET_CORE_VIRTQUEUE_H_
