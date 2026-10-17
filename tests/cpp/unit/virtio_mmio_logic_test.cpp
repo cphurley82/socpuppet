@@ -150,6 +150,21 @@ TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
             FakeDevice::kFeatures | kVersion1);
 }
 
+// The spec has the driver only write its features, but Zephyr's transport
+// reads a half back to set one bit of it, as QEMU's device allows.
+TEST(WhenTheDriverReadsBackTheFeaturesItAccepted, ItGetsTheHalfItSelected) {
+  Rig rig;
+  rig.AcceptFeatures((std::uint64_t{0x5555'0000} << 32) | 0x0000'AAAA);
+
+  rig.Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 0);
+  const std::uint32_t low = rig.Read32(VIRTIO_MMIO_DRIVER_FEATURES);
+  rig.Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
+  const std::uint32_t high = rig.Read32(VIRTIO_MMIO_DRIVER_FEATURES);
+
+  EXPECT_EQ(low, 0x0000'AAAAU);
+  EXPECT_EQ(high, 0x5555'0000U);
+}
+
 constexpr std::uint32_t kSeenAndDriven =
     VIRTIO_MMIO_STATUS_ACKNOWLEDGE | VIRTIO_MMIO_STATUS_DRIVER;
 

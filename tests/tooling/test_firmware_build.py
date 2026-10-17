@@ -311,6 +311,17 @@ def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
 # Zephyr's tree.
 
 
+def test_a_zephyr_patch_that_changes_is_the_one_built_and_alone(firmware):
+    patch = firmware.root / "cmake" / "patches" / "zephyr-spam.patch"
+    firmware.run("zephyr-tree")
+
+    patch.write_text("eggs\n")
+    result = firmware.run("zephyr-tree")
+
+    assert result.returncode == 0, result.stdout
+    assert (firmware.out / "zephyr" / "PATCHED").read_text() == "eggs\n"
+
+
 def test_zephyrs_tree_is_cloned_at_its_tag_with_a_venv_and_a_workspace(
     firmware,
 ):
@@ -526,6 +537,7 @@ class Firmware:
             "python/socpuppet/zephyr_module/zephyr/module.yml",
             "cmake/patches/opensbi-spam.patch",
             "cmake/patches/edk2-spam.patch",
+            "cmake/patches/zephyr-spam.patch",
         ):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text("spam\n")

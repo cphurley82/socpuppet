@@ -869,7 +869,7 @@ Two more things read in the same file and not acted on:
 
 ## Zephyr
 
-[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. Nothing in Zephyr's tree is patched: `firmware/build.py` builds a clean clone. Each of these is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The two after those were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation. The last is about virtio, whose drivers are newer still, found the first time one was built for a RISC-V board.
+[zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. `firmware/build.py` builds a clean clone, and applies to it the one patch below (`cmake/patches/zephyr-*.patch`, as it applies OpenSBI's and EDK2's). Everything else here is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`, or in the model the driver meets. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The two after those were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation. The last three are about virtio, whose drivers are newer still, found the first time one was built for a RISC-V board and run on a hart that is not QEMU's.
 
 ### A PCIe controller can deliver MSI only through an Arm GICv3 ITS
 
@@ -1030,6 +1030,26 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: `config VIRTIO` could `depends on` or `select` a heap, or say in its help what the transport needs; a `K_HEAP_DEFINE` of the transport's own, sized from the devicetree, would need no configuration at all.
 - **Kind**: build.
 - **When it lands**: the line leaves the shield's `.conf`.
+
+### The virtio transport reads a register the specification has it only write
+
+- **Where**: `drivers/virtio/virtio_mmio.c`, `virtio_mmio_write_driver_feature_bit`.
+- **What is wrong**: to set one bit of the features it accepts, the transport selects the word with `DRIVER_FEATURES_SEL`, reads `DRIVER_FEATURES` back, and writes it with the bit set. The specification (virtio 1.2, section 4.2.2) has `DRIVER_FEATURES` as a register the driver writes and never reads, with no word on what a read gives. QEMU's device gives the word back, which is what the transport was written against. A device that follows the specification and refuses the read, or answers with anything else, loses every feature bit set before the last.
+- **How to see it**: run any virtio driver on a device whose `DRIVER_FEATURES` is write-only: a bus error, which on socpuppet's host was a load access fault at the register's address (`0x1000_1020`).
+- **What we do**: the model's register reads, and gives the half of what the driver wrote that `DRIVER_FEATURES_SEL` names, as QEMU's does (`regs/virtio_mmio.rdl`, `VirtioMmioLogic::ReadRegister`).
+- **Upstream fix**: keep the driver's own copy of the 64 bits it accepts, in `struct virtio_mmio_data`, and write each word from that. The PCI transport beside it has the same read.
+- **Kind**: bug.
+- **When it lands**: nothing to delete; the read can stay, since QEMU's device answers it too.
+
+### A virtqueue's table of callbacks is misaligned, and a strict hart traps on it
+
+- **Where**: `drivers/virtio/virtqueue.c`, `virtq_create`.
+- **What is wrong**: one allocation holds the descriptor table, the available ring, the used ring and then the driver's own table of callbacks, one `struct virtq_receive_callback_entry` (two pointers) per descriptor. The used ring is `8 * N + 6` bytes and nothing pads after it, so the callback table starts 6 bytes past a multiple of 8, and every store of a callback into it is a misaligned pointer store. QEMU's hart does misaligned loads and stores in hardware, so Zephyr's own tests never see it. The RISC-V specification lets a hart trap instead (cause 6, a misaligned store), and DBT-RISE's interpreter does.
+- **How to see it**: `tests/drivers/entropy/api` with the shield `socpuppet_host_virtio` on the host's DBT-RISE CPU: `mcause: 6, Store/AMO address misaligned`, `mepc` at `virtqueue.c:160`, `v->recv_cbs[head].cb = cb`. The same image passes on QBox's QEMU hart.
+- **What we do**: `cmake/patches/zephyr-virtqueue-callbacks-aligned.patch` pads the allocation up to the entry's alignment before the table, and `firmware/build.py` applies it to the clone.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch, and the `patch` call in `zephyr_tree` if it is the last.
 
 ## SPDK
 

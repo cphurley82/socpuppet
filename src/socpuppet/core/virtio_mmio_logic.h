@@ -61,6 +61,11 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_DEVICE_FEATURES:
         StoreLittleEndian(Half(Offered(), device_features_sel_), out);
         return true;
+      // Write-only in the spec, but Zephyr's transport reads a half back
+      // to set one bit of it, and QEMU's device lets it.
+      case VIRTIO_MMIO_DRIVER_FEATURES:
+        StoreLittleEndian(Half(driver_features_, driver_features_sel_), out);
+        return true;
       case VIRTIO_MMIO_STATUS:
         StoreLittleEndian(status_, out);
         return true;

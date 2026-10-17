@@ -55,7 +55,9 @@
 /*
  * Thirty-two of the feature bits the driver accepts, into the word
  * `DRIVER_FEATURES_SEL` names. The driver may accept only what was offered,
- * and must accept bit 32, `VERSION_1`.
+ * and must accept bit 32, `VERSION_1`. The spec has the driver only write it;
+ * a read gives the word back, as QEMU's device does, because Zephyr's
+ * transport reads it to set one bit.
  */
 #define VIRTIO_MMIO_DRIVER_FEATURES 0x020U
 

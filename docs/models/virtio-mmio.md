@@ -22,7 +22,7 @@ Each is 32 bits wide and read or written whole, except the device's configuratio
 | `0x00C` | `VENDOR_ID` | read | Who made the device. socpuppet's is `0x5350`, the letters SP. |
 | `0x010` | `DEVICE_FEATURES` | read | Thirty-two of the feature bits the device offers: which thirty-two is what `DEVICE_FEATURES_SEL` says. |
 | `0x014` | `DEVICE_FEATURES_SEL` | write | Which word of the device's feature bits `DEVICE_FEATURES` shows: zero for bits 0 to 31, one for bits 32 to 63. |
-| `0x020` | `DRIVER_FEATURES` | write | Thirty-two of the feature bits the driver accepts, into the word `DRIVER_FEATURES_SEL` names. The driver may accept only what was offered, and must accept bit 32, `VERSION_1`. |
+| `0x020` | `DRIVER_FEATURES` | read, write | Thirty-two of the feature bits the driver accepts, into the word `DRIVER_FEATURES_SEL` names. The driver may accept only what was offered, and must accept bit 32, `VERSION_1`. The spec has the driver only write it; a read gives the word back, as QEMU's device does, because Zephyr's transport reads it to set one bit. |
 | `0x024` | `DRIVER_FEATURES_SEL` | write | Which word of the driver's feature bits `DRIVER_FEATURES` writes. |
 | `0x030` | `QUEUE_SEL` | write | Which virtqueue the registers from `QUEUE_NUM_MAX` to `QUEUE_DEVICE_HIGH` are about. |
 | `0x034` | `QUEUE_NUM_MAX` | read | The most entries the selected virtqueue can have. Zero means the queue does not exist. |

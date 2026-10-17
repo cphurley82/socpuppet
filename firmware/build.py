@@ -369,6 +369,7 @@ class Build:
                 self.versions["zephyr"],
                 self.zephyr_dir,
             )
+        patch(self.zephyr_dir, "zephyr-*.patch")
         # The Python packages Zephyr's build scripts import, with CMake and
         # Ninja, and what twister imports, in an environment of their own.
         # The Python itself is uv's, kept in the output directory with the
