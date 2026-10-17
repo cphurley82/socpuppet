@@ -38,6 +38,8 @@ target_sources(socpuppet_core INTERFACE
     core/system_controller_logic.h
     core/time.h
     core/trace.h
+    core/virtio_device.h
+    core/virtio_mmio_logic.h
     core/virtqueue.h)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_regs)
 
