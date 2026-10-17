@@ -3,7 +3,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "socpuppet/core/little_endian.h"
@@ -100,6 +102,15 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_QUEUE_READY:
         if (!Selected()) return false;
         Selected()->ready = (value & VIRTIO_MMIO_QUEUE_READY_READY) != 0;
+        if (Selected()->ready) {
+          Selected()->ring.emplace(memory_, Selected()->layout);
+        } else {
+          Selected()->ring.reset();
+        }
+        return true;
+      case VIRTIO_MMIO_QUEUE_NOTIFY:
+        if (value >= queues_.size()) return false;
+        queues_[value].rung = true;
         return true;
       case VIRTIO_MMIO_DRIVER_FEATURES:
         SetHalf(driver_features_, driver_features_sel_, value);
@@ -116,6 +127,22 @@ class VirtioMmioLogic {
     }
   }
 
+  // Does what the driver's doorbells asked for: hands every available chain
+  // of every queue rung to the device. Returns whether anything was done.
+  bool CarryOut() {
+    bool done = false;
+    for (std::uint16_t number = 0; number < queues_.size(); ++number) {
+      Queue& queue = queues_[number];
+      if (!queue.rung || !queue.ready) continue;
+      queue.rung = false;
+      while (std::optional<Virtqueue::Chain> chain = queue.ring->Next()) {
+        device_.Handle(number, std::move(*chain), *queue.ring);
+        done = true;
+      }
+    }
+    return done;
+  }
+
  private:
   // One of the device's virtqueues, as the driver describes it through the
   // registers.
@@ -123,6 +150,10 @@ class VirtioMmioLogic {
     using Layout = Virtqueue::Layout;
     Layout layout{.desc = 0, .avail = 0, .used = 0, .size = 0};
     bool ready = false;
+    // The queue itself, from when the driver says it is ready.
+    std::optional<Virtqueue> ring;
+    // Whether the driver has rung its doorbell since the device last looked.
+    bool rung = false;
   };
 
   // The queue QUEUE_SEL names, if the device has one.

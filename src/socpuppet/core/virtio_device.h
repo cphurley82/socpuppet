@@ -25,6 +25,12 @@ class VirtioDevice {
 
   // How many virtqueues the device has, numbered from zero.
   virtual std::uint16_t QueueCount() const = 0;
+
+  // A chain the driver has made available on queue `queue`. The device
+  // reads and writes it through `ring`, and gives it back with
+  // `ring.Used()`, now or later.
+  virtual void Handle(std::uint16_t queue, Virtqueue::Chain chain,
+                      Virtqueue& ring) = 0;
 };
 
 }  // namespace socpuppet

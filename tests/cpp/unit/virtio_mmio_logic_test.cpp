@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -14,6 +15,7 @@
 #include "socpuppet/core/virtio_device.h"
 #include "socpuppet/core/virtqueue.h"
 #include "socpuppet/regs/virtio_mmio.h"
+#include "tests/cpp/support/virtqueue_driver.h"
 
 namespace socpuppet {
 
@@ -54,6 +56,13 @@ class FakeDevice : public VirtioDevice {
   std::uint32_t DeviceId() const override { return kId; }
   std::uint64_t Features() const override { return kFeatures; }
   std::uint16_t QueueCount() const override { return kQueues; }
+  void Handle(std::uint16_t queue, Virtqueue::Chain chain,
+              Virtqueue& /*ring*/) override {
+    handled.push_back({queue, chain.head});
+  }
+
+  // Which chains the transport has handed over: the queue and the head.
+  std::vector<std::pair<std::uint16_t, std::uint16_t>> handled;
 };
 
 // The transport with the fake behind it, and the driver's way of reaching
@@ -206,6 +215,24 @@ TEST(WhenTheDriverGivesAQueueMoreEntriesThanItMayHave, TheWriteIsRefused) {
 
   EXPECT_FALSE(
       rig.Write32(VIRTIO_MMIO_QUEUE_NUM, VirtioMmioLogic::kQueueSizeMax * 2));
+}
+
+TEST(WhenTheDriverRingsTheDoorbellOfAQueueWithTwoChainsAvailable,
+     TheDeviceIsHandedBothInOrder) {
+  Rig rig;
+  VirtqueueDriver driver{rig.memory, kQueue, kMemory + 0x4000};
+  rig.SetUpQueue(0, kQueue.size, kQueue);
+  driver.Describe(0, 8, VirtqueueDriver::kReadable);
+  driver.Describe(1, 8, VirtqueueDriver::kReadable);
+  driver.MakeAvailable(0);
+  driver.MakeAvailable(1);
+
+  rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
+  rig.transport.CarryOut();
+
+  const std::vector<std::pair<std::uint16_t, std::uint16_t>> both = {{0, 0},
+                                                                     {0, 1}};
+  EXPECT_EQ(rig.device.handled, both);
 }
 
 }  // namespace
