@@ -26,7 +26,15 @@ import struct
 from collections.abc import Callable
 
 from socpuppet.errors import VirtioError
-from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
+from socpuppet.ops import (
+    Operation,
+    Steps,
+    read,
+    read32,
+    wait_irq,
+    write,
+    write32,
+)
 from socpuppet.regs import virtio_mmio as regs
 
 #: The transport's own feature bit: the device speaks the modern layout.
@@ -237,8 +245,9 @@ class VirtioHost:
         """
         queue = self._queue(number)
         buffers: list[tuple[int, int, int, bytes | None]] = []
-        for data in readable:
-            buffers.append((self._take(len(data), 1), len(data), 0, data))
+        for contents in readable:
+            address = self._take(len(contents), 1)
+            buffers.append((address, len(contents), 0, contents))
         for size in writable:
             buffers.append((self._take(size, 1), size, _WRITE, None))
         if not buffers:
@@ -286,7 +295,9 @@ class VirtioHost:
             queue.used + 4 + 8 * (queue.taken % queue.entries), 8
         )
         queue.taken += 1
-        used_head, written = _USED_ELEMENT.unpack(element)
+        used_head, written = (
+            int(field) for field in _USED_ELEMENT.unpack(element)
+        )
         if used_head != head:
             raise VirtioError(
                 f"The virtio device at {self._registers:#x} gave back chain "
@@ -305,7 +316,7 @@ class VirtioHost:
 
     def _used_index(self, queue: _Queue) -> Steps[int]:
         index = yield read(queue.used + 2, 2)
-        return struct.unpack("<H", index)[0]
+        return int(struct.unpack("<H", index)[0])
 
     def _take(self, size: int, alignment: int) -> int:
         """Takes `size` bytes of the driver's memory, aligned."""
@@ -319,9 +330,10 @@ class VirtioHost:
         return start
 
     def _read(self, offset: int) -> Steps[int]:
-        return (yield read32(self._registers + offset))
+        value = yield read32(self._registers + offset)
+        return int(value)
 
-    def _write(self, offset: int, value: int):
+    def _write(self, offset: int, value: int) -> Operation:
         return write32(self._registers + offset, value)
 
 
