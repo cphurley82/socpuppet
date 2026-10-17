@@ -190,10 +190,12 @@ concept NandSlot =
       { nand.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
     };
 
-// A virtio device behind the virtio-mmio transport: built from a name,
-// with its register block reached through one TLM target socket, the
-// driver's memory reached through one initiator socket, and one interrupt
-// output. How it must behave is the virtio device contract
+// A virtio device behind the virtio-mmio transport: built from a name
+// alone, since the logic of every kind of device has a usable default for
+// whatever else it takes (a seed, a size), as QEMU's devices do; with its
+// register block reached through one TLM target socket, the driver's
+// memory reached through one initiator socket, and one interrupt output. How it
+// must behave is the virtio device contract
 // (tests/cpp/contracts/virtio_device_contract.h).
 template <typename T>
 concept VirtioDeviceSlot =

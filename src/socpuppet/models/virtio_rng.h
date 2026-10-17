@@ -6,8 +6,8 @@
 
 namespace socpuppet {
 
-// 🎭 The entropy device on the bus: docs/models/virtio-rng.md. Built from
-// a name and a seed.
+// The entropy device on the bus (virtio 1.2, section 5.4): built from a
+// name and a seed.
 using VirtioRng = VirtioMmio<VirtioRngLogic>;
 
 }  // namespace socpuppet

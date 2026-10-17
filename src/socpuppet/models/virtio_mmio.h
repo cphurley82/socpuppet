@@ -34,9 +34,6 @@ class VirtioMmio : public CommandDevice<VirtioMmioLogic> {
   explicit VirtioMmio(const sc_core::sc_module_name& name, Args&&... args)
       : CommandDevice(name, transport_), device_(std::forward<Args>(args)...) {}
 
-  // The device behind the transport, for whoever is at its far end.
-  Device& device() { return device_; }
-
  private:
   using Initiator = tlm_utils::simple_initiator_socket<VirtioMmio>;
 
