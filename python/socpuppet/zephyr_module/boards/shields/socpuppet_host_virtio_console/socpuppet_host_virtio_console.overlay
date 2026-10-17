@@ -1,0 +1,10 @@
+/*
+ * Zephyr's console on the virtio console instead of the 16550. Stacked on
+ * the shield socpuppet_host_virtio, which puts the console in its slot:
+ * --shield "socpuppet_host_virtio;socpuppet_host_virtio_console".
+ */
+/ {
+	chosen {
+		zephyr,console = &io_console_device;
+	};
+};

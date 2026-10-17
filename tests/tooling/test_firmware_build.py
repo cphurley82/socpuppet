@@ -383,9 +383,10 @@ def test_each_image_is_configured_for_its_board_and_shield_with_our_module(
         (args,) = [
             a
             for a in configures
-            if f"-DBOARD={image.board}" in a
-            and a[a.index("-S") + 1].endswith(image.application)
+            if Path(a[a.index("-B") + 1]).name == f"build_{name_of(image)}"
         ]
+        assert f"-DBOARD={image.board}" in args
+        assert args[args.index("-S") + 1].endswith(image.application)
         assert f"-DZEPHYR_EXTRA_MODULES={module}" in args
         if image.shield:
             assert f"-DSHIELD={image.shield}" in args

@@ -105,6 +105,15 @@ IMAGES = [
         "socpuppet_host_virtio",
         name="entropy_api",
     ),
+    # Zephyr's greeting, through its virtio console driver: the second
+    # shield makes 🎭 the host's virtio console Zephyr's console, so the
+    # 16550 says nothing.
+    Image(
+        "samples/hello_world",
+        "socpuppet_host",
+        "socpuppet_host_virtio;socpuppet_host_virtio_console",
+        name="hello_virtio_console",
+    ),
     # The IO die's manager firmware, and the SSD's own.
     Image("firmware/iomgr", "socpuppet_iomgr"),
     Image("firmware/ssd", "socpuppet_ssd"),
