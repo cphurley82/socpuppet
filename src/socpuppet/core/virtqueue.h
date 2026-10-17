@@ -47,6 +47,9 @@ class Virtqueue {
 
   // The next chain the driver has made available, if any.
   std::optional<Chain> Next() {
+    if (Load16(layout_.avail + 2) == seen_) {
+      return std::nullopt;
+    }
     const std::uint16_t head =
         Load16(layout_.avail + 4 + 2 * (seen_ % layout_.size));
     ++seen_;

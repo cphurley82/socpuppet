@@ -138,6 +138,15 @@ TEST(WhenTheDriverMakesAChainOfThreeDescriptorsAvailable,
   EXPECT_EQ(chain->writable.front().length, 64U);
 }
 
+TEST(WhenTheDriverHasMadeNothingMoreAvailable, TheDeviceGetsNoChain) {
+  Driver driver;
+  driver.Describe(0, 8, kReadable);
+  driver.MakeAvailable(0);
+  driver.queue.Next();
+
+  EXPECT_FALSE(driver.queue.Next().has_value());
+}
+
 }  // namespace
 
 }  // namespace socpuppet
