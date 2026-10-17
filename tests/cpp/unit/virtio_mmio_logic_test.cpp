@@ -62,6 +62,15 @@ struct Rig {
   bool Write32(std::uint64_t offset, std::uint32_t value) {
     return transport.WriteRegister(offset, LittleEndianBytes(value));
   }
+  // Accepts `features`, as the driver does: both halves, through the
+  // select register.
+  void AcceptFeatures(std::uint64_t features) {
+    Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 0);
+    Write32(VIRTIO_MMIO_DRIVER_FEATURES, static_cast<std::uint32_t>(features));
+    Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
+    Write32(VIRTIO_MMIO_DRIVER_FEATURES,
+            static_cast<std::uint32_t>(features >> 32));
+  }
   // The bytes do not start out as zeros, so that a register the transport
   // leaves untouched is not taken for one that reads as zero.
   std::uint32_t Read32(std::uint64_t offset) const {
@@ -93,6 +102,22 @@ TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
 
   EXPECT_EQ((std::uint64_t{high} << 32) | low,
             FakeDevice::kFeatures | (std::uint64_t{1} << 32));
+}
+
+constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
+constexpr std::uint32_t kSeenAndDriven =
+    VIRTIO_MMIO_STATUS_ACKNOWLEDGE | VIRTIO_MMIO_STATUS_DRIVER;
+
+TEST(WhenTheDriverAcceptsWhatWasOfferedAndVersionOneAndSaysFeaturesOk,
+     TheTransportKeepsFeaturesOk) {
+  Rig rig;
+  rig.AcceptFeatures(FakeDevice::kFeatures | kVersion1);
+
+  rig.Write32(VIRTIO_MMIO_STATUS,
+              kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_STATUS),
+            kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);
 }
 
 }  // namespace

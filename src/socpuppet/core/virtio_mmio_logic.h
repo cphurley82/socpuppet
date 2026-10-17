@@ -47,6 +47,9 @@ class VirtioMmioLogic {
         StoreLittleEndian(
             Half(device_.Features() | kVersion1, device_features_sel_), out);
         return true;
+      case VIRTIO_MMIO_STATUS:
+        StoreLittleEndian(status_, out);
+        return true;
       default:
         return false;
     }
@@ -57,6 +60,15 @@ class VirtioMmioLogic {
     switch (offset) {
       case VIRTIO_MMIO_DEVICE_FEATURES_SEL:
         device_features_sel_ = value;
+        return true;
+      case VIRTIO_MMIO_DRIVER_FEATURES_SEL:
+        driver_features_sel_ = value;
+        return true;
+      case VIRTIO_MMIO_DRIVER_FEATURES:
+        SetHalf(driver_features_, driver_features_sel_, value);
+        return true;
+      case VIRTIO_MMIO_STATUS:
+        status_ = value;
         return true;
       default:
         return false;
@@ -70,9 +82,19 @@ class VirtioMmioLogic {
     return which < 2 ? static_cast<std::uint32_t>(bits >> (32 * which)) : 0;
   }
 
+  static void SetHalf(std::uint64_t& bits, std::uint32_t which,
+                      std::uint32_t half) {
+    if (which >= 2) return;
+    const std::uint64_t mask = std::uint64_t{0xFFFF'FFFF} << (32 * which);
+    bits = (bits & ~mask) | (std::uint64_t{half} << (32 * which));
+  }
+
   VirtioDevice& device_;
   MemoryPort& memory_;
   std::uint32_t device_features_sel_ = 0;
+  std::uint32_t driver_features_sel_ = 0;
+  std::uint64_t driver_features_ = 0;
+  std::uint32_t status_ = 0;
 };
 
 }  // namespace socpuppet
