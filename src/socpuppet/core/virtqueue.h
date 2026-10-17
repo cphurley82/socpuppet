@@ -47,7 +47,7 @@ class Virtqueue {
 
   // The next chain the driver has made available, if any.
   std::optional<Chain> Next() {
-    if (Load16(layout_.avail + 2) == seen_) {
+    if (broken_ || Load16(layout_.avail + 2) == seen_) {
       return std::nullopt;
     }
     const std::uint16_t head =
@@ -55,7 +55,9 @@ class Virtqueue {
     ++seen_;
     Chain chain{.head = head, .readable = {}, .writable = {}};
     std::uint16_t index = head;
-    while (true) {
+    // A chain cannot be longer than the table it is in, so one that is has
+    // gone round in a circle.
+    for (std::uint16_t followed = 0; followed < layout_.size; ++followed) {
       const Descriptor descriptor = LoadDescriptor(index);
       (descriptor.flags & kWrite ? chain.writable : chain.readable)
           .push_back(
@@ -65,6 +67,8 @@ class Virtqueue {
       }
       index = descriptor.next;
     }
+    broken_ = true;
+    return std::nullopt;
   }
 
   // Gives a chain back to the driver, saying how many bytes of its writable
@@ -79,6 +83,10 @@ class Virtqueue {
     ++used_;
     memory_.Write(layout_.used + 2, LittleEndianBytes(used_));
   }
+
+  // Whether the driver has handed over a chain the device could not take,
+  // after which the queue is left alone until it is set up again.
+  bool Broken() const { return broken_; }
 
   // The bytes of a chain's readable buffers, in order.
   std::vector<std::uint8_t> Read(const Chain& chain) {
@@ -129,6 +137,7 @@ class Virtqueue {
   // chains it has given back on the used ring.
   std::uint16_t seen_ = 0;
   std::uint16_t used_ = 0;
+  bool broken_ = false;
 };
 
 }  // namespace socpuppet

@@ -194,6 +194,17 @@ TEST(WhenTheDeviceHasUsedMoreChainsThanTheQueueHasEntries,
   EXPECT_EQ(driver.UsedAt(0).length, Driver::kSize);
 }
 
+TEST(WhenTheDriverMakesAChainThatLoopsBackOnItselfAvailable,
+     TheDeviceRefusesItAndSaysTheQueueIsBroken) {
+  Driver driver;
+  driver.Describe(0, 8, kReadable | kNext, 1);
+  driver.Describe(1, 8, kReadable | kNext, 0);
+  driver.MakeAvailable(0);
+
+  EXPECT_FALSE(driver.queue.Next().has_value());
+  EXPECT_TRUE(driver.queue.Broken());
+}
+
 }  // namespace
 
 }  // namespace socpuppet
