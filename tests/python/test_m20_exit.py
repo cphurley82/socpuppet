@@ -8,7 +8,10 @@ six virtio devices. Its console is the virtio console and its root
 filesystem is the virtio disk, with Alpine's mini root on it and an
 inittab of ours that puts a shell on the console (`firmware/rootfs`).
 
-It boots the quick way, with Python as the stage before OpenSBI.
+It boots the quick way, with Python as the stage before OpenSBI. On
+demand (`SOCPUPPET_ON_DEMAND=1`) it also boots the server's way: UEFI
+finds the kernel on a disk cut up as a server's, the quick way and from
+the flash.
 
 🧵 Python is the keyboard at the console, as at UEFI's shell in M28.
 """
@@ -24,14 +27,16 @@ import socpuppet as sp
 from console import plain
 from devicetree_compiler import needs_dtc
 from linux_shell import (
+    LONG_ENOUGH_THROUGH_UEFI,
     PROMPT,
     SWITCHES_OFF_WITHIN,
     a_host_with_linux,
+    a_host_with_uefi_and_linux,
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
 from mt19937_64 import stream
-from opensbi_boots import switched_off
+from opensbi_boots import in_the_flash, loaded_by_python, switched_off
 from socpuppet.boards.virtio import Virtio
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot
@@ -205,3 +210,33 @@ class TestWhenLinuxMountsTheSharedDirectory:
         assert mounted == ""
         assert read.strip() == "spam, spam, spam"
         assert (shared / "eggs.txt").read_text() == "eggs\n"
+
+
+#: What the kernel says once it has found UEFI's tables, which its EFI stub
+#: hands it: "efi: EFI v2.7 by EDK II".
+FOUND_UEFI = re.compile(r"efi: EFI v[\d.]+ by EDK II")
+
+
+@pytest.mark.on_demand("Linux booted the server's way, through UEFI")
+@pytest.mark.platform
+@pytest.mark.parametrize("boot", [loaded_by_python, in_the_flash])
+class TestWhenUefiBootsTheKernelFromTheDisk:
+    def test_the_boot_manager_starts_its_efi_stub_and_linux_prompts(
+        self, firmware, boot
+    ):
+        # 🎓 The server's way: UEFI's boot manager finds the kernel on the
+        # disk's EFI system partition, before it tries the network, and
+        # the kernel finds UEFI's tables, and its root in the second
+        # partition.
+        board = a_host_with_uefi_and_linux(firmware, boot)
+
+        prompted = run_to_the_prompt(board, within=LONG_ENOUGH_THROUGH_UEFI)
+        assert prompted, (
+            f"Linux never prompted. UEFI's console:\n"
+            f"{plain(board.uart.output)[-3000:]}\nThe virtio console:\n"
+            f"{plain(board.virtio.console.output)[-3000:]}"
+        )
+        answer = type_and_wait_for_the_prompt(board, "ls /sys/firmware/efi")
+
+        assert FOUND_UEFI.search(plain(board.uart.output))
+        assert "systab" in answer.split()
