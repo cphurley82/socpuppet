@@ -144,7 +144,11 @@ class _Refused(Exception):
 
 def linux_errno(failure: OSError) -> int:
     """The number Linux has for the error of `failure`, or EIO's."""
-    name = errno.errorcode.get(failure.errno or 0, "EIO")
+    return linux_errno_named(errno.errorcode.get(failure.errno or 0, "EIO"))
+
+
+def linux_errno_named(name: str) -> int:
+    """The number Linux has for the error called `name`, or EIO's."""
     return _LINUX_ERRNO.get(name, _LINUX_ERRNO["EIO"])
 
 
@@ -536,5 +540,6 @@ __all__ = [
     "OUT_HEADER",
     "Directory",
     "linux_errno",
+    "linux_errno_named",
     "linux_error_name",
 ]
