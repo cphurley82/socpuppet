@@ -249,6 +249,16 @@ Each entry says:
 - **Kind**: bug, or at least a surprise.
 - **When it lands**: the warning can come out of the docs.
 
+### A continue from a breakpoint stops at it again, and the report to a debugger that has gone ends the simulation
+
+- **Where**: `src/iss/debugger/`, the breakpoint check on resuming, and the server's write of a stop report.
+- **What is wrong**: a `c` from a breakpoint stops at the same instruction again without executing it, where GDB expects the server to move past it (GDB itself removes the breakpoint, steps, and puts it back, so a GDB user never sees this); and the second stop report is written to the debugger's socket whatever its state, so a debugger that said continue and hung up gets the simulation ended with `write: Broken pipe` as an uncaught exception from the CPU's process, like the double answer to a continue that `dbt-rise-core-gdb-continue-answered-once.patch` fixed.
+- **How to see it**: `tests/python/test_gdb.py`'s kernel tests on the `dbt_rise_cpu` without the `remove_breakpoint` their sessions make: the run dies at the moment the debugger hangs up, 1.33 s in, where `start_kernel` is.
+- **What we do**: the test client removes a breakpoint before it continues from it, as GDB does. No patch.
+- **Upstream fix**: step over a breakpoint on resume, and report nothing to a socket that has closed.
+- **Kind**: bug.
+- **When it lands**: nothing to undo.
+
 ## DBT-RISE-RISCV
 
 [Minres/DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV), pinned at `2ad3223`. It is the default CPU, wrapped by `src/socpuppet/models/dbt_rise_cpu.cpp`.

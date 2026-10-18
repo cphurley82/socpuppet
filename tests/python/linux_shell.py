@@ -1,14 +1,21 @@
 """Python at the keyboard of Linux's shell, on 🎭 the host.
 
 The Linux boot's exit test, `test_m20_exit.py`, brings a kernel to its
-prompt on the virtio console; these are its ways of waiting for the prompt
-and of typing at it, for every test that boots Linux.
+prompt on the virtio console; these are its ways of getting there, of
+waiting for the prompt and of typing at it, for every test that boots
+Linux.
 """
 
 import re
 
 import socpuppet as sp
+from cast import LINUX_BIN, ROOTFS_EXT4
 from console import plain
+from opensbi_boots import a_host_with_opensbi, loaded_by_python
+from socpuppet.boards.virtio import Virtio
+
+#: A virtio disk's sector.
+SECTOR = 512
 
 #: How a busybox shell that is logged in as root prompts on the host, by
 #: Alpine's /etc/profile: the host's name, the directory, and a hash.
@@ -57,3 +64,23 @@ def type_and_wait_for_the_prompt(board, command):
     )
     assert prompted, f"The shell did not prompt again after {command!r}"
     return plain(console.output[said_before:]).partition("\n")[2]
+
+
+def a_host_with_linux(firmware, *, gdb_port=0):
+    """A host built with the kernel and its root filesystem in place.
+
+    🎭 The quick way: OpenSBI's `fw_jump`, the kernel and the devicetree
+    in RAM, and the root filesystem image on the virtio disk, a disk as
+    big as the image. With a `gdb_port`, the CPU waits for a debugger.
+    """
+    rootfs = firmware(ROOTFS_EXT4).read_bytes()
+    board, layout = a_host_with_opensbi(
+        firmware,
+        LINUX_BIN,
+        virtio=Virtio(blocks=len(rootfs) // SECTOR),
+        bootargs=BOOTARGS,
+        gdb_port=gdb_port,
+    )
+    board.virtio.blk.load(rootfs)
+    loaded_by_python(board, layout, firmware)
+    return board

@@ -19,18 +19,16 @@ from pathlib import Path
 
 import pytest
 
-from cast import LINUX_BIN, ROOTFS_EXT4
 from console import plain
 from devicetree_compiler import needs_dtc
 from linux_shell import (
-    BOOTARGS,
     PROMPT,
     SWITCHES_OFF_WITHIN,
+    a_host_with_linux,
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
-from opensbi_boots import a_host_with_opensbi, loaded_by_python, switched_off
-from socpuppet.boards.virtio import Virtio
+from opensbi_boots import switched_off
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot
 #: of Linux takes seconds on QBox's hart and minutes on the interpreter, so
@@ -41,25 +39,12 @@ pytestmark = [needs_dtc, pytest.mark.long]
 BANNER = re.compile(r"Linux version (\d+\.\d+\.\d+)")
 #: The kernel firmware/build.py builds, as versions.toml pins it.
 VERSIONS = Path(__file__).resolve().parents[2] / "firmware" / "versions.toml"
-#: A virtio disk's sector.
-SECTOR = 512
 
 
 @pytest.fixture
 def linux_at_its_prompt(firmware):
-    """A host that has booted OpenSBI and Linux the quick way, to the prompt.
-
-    Or for `LONG_ENOUGH`, if the prompt never comes.
-    """
-    rootfs = firmware(ROOTFS_EXT4).read_bytes()
-    board, layout = a_host_with_opensbi(
-        firmware,
-        LINUX_BIN,
-        virtio=Virtio(blocks=len(rootfs) // SECTOR),
-        bootargs=BOOTARGS,
-    )
-    board.virtio.blk.load(rootfs)
-    loaded_by_python(board, layout, firmware)
+    """A host that has booted OpenSBI and Linux the quick way, to the prompt."""
+    board = a_host_with_linux(firmware)
     prompted = run_to_the_prompt(board)
     assert prompted, (
         "Linux never prompted. OpenSBI's console:\n"
