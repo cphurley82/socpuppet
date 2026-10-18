@@ -91,6 +91,47 @@ def udp(*, source: Station, destination: Station, payload: bytes) -> bytes:
     )
 
 
+def echo_request(
+    *, source: Station, destination: Station, payload: bytes
+) -> bytes:
+    """A ping: an ICMP echo request with `payload`, in a packet, in a frame.
+
+    The stations' ports are not used: ICMP has none.
+    """
+    (source_mac, source_address, _) = source
+    (destination_mac, destination_address, _) = destination
+    packet = dpkt.ip.IP(
+        src=source_address,
+        dst=destination_address,
+        p=dpkt.ip.IP_PROTO_ICMP,
+        data=dpkt.icmp.ICMP(
+            type=dpkt.icmp.ICMP_ECHO, data=dpkt.icmp.ICMP.Echo(data=payload)
+        ),
+    )
+    return bytes(
+        dpkt.ethernet.Ethernet(
+            dst=destination_mac,
+            src=source_mac,
+            type=dpkt.ethernet.ETH_TYPE_IP,
+            data=packet,
+        )
+    )
+
+
+def echo_replies(frames: Iterable[bytes]) -> list[bytes]:
+    """The payloads of the ICMP echo replies among `frames`."""
+    payloads = []
+    for frame in frames:
+        packet = dpkt.ethernet.Ethernet(frame).data
+        message = packet.data if isinstance(packet, dpkt.ip.IP) else None
+        if (
+            isinstance(message, dpkt.icmp.ICMP)
+            and message.type == dpkt.icmp.ICMP_ECHOREPLY
+        ):
+            payloads.append(bytes(message.data.data))
+    return payloads
+
+
 def udp_payloads(frames: Iterable[bytes], *, port: int) -> list[bytes]:
     """The payloads of the UDP datagrams among `frames` sent to `port`."""
     payloads = []

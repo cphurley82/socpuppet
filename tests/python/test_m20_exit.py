@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+import ethernet
+import socpuppet as sp
 from console import plain
 from devicetree_compiler import needs_dtc
 from linux_shell import (
@@ -125,3 +127,50 @@ class TestWhenLinuxReadsTheVirtioEntropy:
 
         assert source.strip() == "virtio_rng.0"
         assert bytes.fromhex(read.strip()) in stream(Virtio().seed, 1 << 20)
+
+
+#: Linux's address on 🎭 the virtio network device, and Python's at the far
+#: end of its wire: the documentation's own range, as Zephyr's test uses it.
+ITS_ADDRESS = ethernet.ipv4("192.0.2.1")
+ME = ethernet.mac("02:00:00:00:00:02")
+MY_ADDRESS = ethernet.ipv4("192.0.2.2")
+#: An answer to a frame comes within a moment of the CPU's time; a second
+#: still ends a wait for one that never comes.
+ANSWERS_A_FRAME_WITHIN = sp.ms(1000)
+
+
+@pytest.mark.platform
+class TestWhenPythonPingsLinux:
+    def test_linux_answers_the_arp_request_and_then_the_echo(
+        self, linux_at_its_prompt
+    ):
+        board = linux_at_its_prompt
+        net = board.virtio.net
+        type_and_wait_for_the_prompt(
+            board, "ip addr add 192.0.2.1/24 dev eth0 && ip link set eth0 up"
+        )
+
+        net.send(
+            ethernet.arp_request(
+                sender=ME, sender_address=MY_ADDRESS, target=ITS_ADDRESS
+            )
+        )
+        board.platform.run_until(
+            lambda: ethernet.who_has(net.received, ITS_ADDRESS),
+            timeout=ANSWERS_A_FRAME_WITHIN,
+        )
+        its_mac = ethernet.who_has(net.received, ITS_ADDRESS)
+        assert its_mac == Virtio().mac.to_bytes(6, "big")
+        net.send(
+            ethernet.echo_request(
+                source=(ME, MY_ADDRESS, 0),
+                destination=(its_mac, ITS_ADDRESS, 0),
+                payload=b"spam and eggs",
+            )
+        )
+        board.platform.run_until(
+            lambda: ethernet.echo_replies(net.received),
+            timeout=ANSWERS_A_FRAME_WITHIN,
+        )
+
+        assert ethernet.echo_replies(net.received) == [b"spam and eggs"]
