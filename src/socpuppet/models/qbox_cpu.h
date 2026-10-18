@@ -51,9 +51,11 @@ class QboxCpu : public sc_core::sc_module {
 
   // `xlen` is the width of its registers in bits, which must be 64: any
   // other is std::invalid_argument. `reset_vector` is the address of the
-  // first instruction it executes.
+  // first instruction it executes. `gdb_port`, if not zero, is a TCP port
+  // on which QEMU's own GDB server listens, and the CPU then waits for a
+  // debugger before it executes anything.
   QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-          std::uint64_t reset_vector);
+          std::uint64_t reset_vector, std::uint16_t gdb_port);
   ~QboxCpu() override;
 
   // SystemC's last chance to bind a port. By now we know whether anyone
@@ -80,8 +82,29 @@ class QboxCpu : public sc_core::sc_module {
   void OnTimerIrq();
   void OnSupervisorIrq();
 
+  // With a debugger's port, the CPU waits for the debugger before its first
+  // instruction, and a stopped CPU stops the world, as the DBT-RISE CPU
+  // does: a method run once as the simulation starts holds the CPU; a
+  // thread that lets the board settle sees whether it is held with its
+  // reset low, and then time stands still and the port opens; the first
+  // access tells of the debugger's continue, and time moves on.
+  void HoldForTheDebugger();
+  void HoldOnceTheBoardHasSettled();
+  void HeldAtItsFirstInstruction();
+  void AccessedWhileHeld();
+  // The thread that holds the clock and lets it go, as asked.
+  void HoldTheClock();
+
   // What an input left unconnected is bound to.
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
+  // The debugger's port, or zero for none; whether the CPU is held for it,
+  // and whether its port is open.
+  std::uint16_t gdb_port_;
+  bool held_ = false;
+  bool listening_ = false;
+  // Whether time is to stand still, and the event that says it changed.
+  bool hold_the_clock_ = false;
+  sc_core::sc_event clock_{"clock"};
   std::unique_ptr<Core> core_;
 };
 

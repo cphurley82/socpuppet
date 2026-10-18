@@ -188,10 +188,23 @@ bool Platform::Step() {
   return true;
 }
 
+namespace {
+const sc_core::sc_time kTheShortestRun(1, sc_core::SC_PS);
+}  // namespace
+
 std::optional<sc_core::sc_time> Platform::TimeToNextActivity() {
   RefuseUnlessElaborated("look for its next activity");
   FinishThisMoment();
-  if (!sc_core::sc_pending_activity()) return std::nullopt;
+  while (!sc_core::sc_pending_activity()) {
+    if (CpusHoldingTheClock() == 0) return std::nullopt;
+    // A CPU is stopped in its debugger, and time with it: the kernel has
+    // nothing scheduled and waits for the debugger, which is outside it.
+    // A run of any length waits with it, and ends once the CPU is let go,
+    // at the next moment after this one: the shortest run there is. (A
+    // run of no time at all takes the kernel's other path, one delta
+    // cycle and back, and never waits.)
+    Run(kTheShortestRun);
+  }
   return sc_core::sc_time_to_pending_activity();
 }
 

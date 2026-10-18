@@ -41,6 +41,18 @@ inline void RethrowParkedFailure() {
   }
 }
 
+// How many CPUs are stopped in a debugger with simulated time held with
+// them. 🎓 While one is, the kernel has nothing scheduled and waits for
+// something from outside it, the debugger's next word: that is not the run
+// being over, and whoever asks the kernel what comes next waits with it. A
+// CPU that holds the clock counts itself here while it does, and Platform
+// reads it, on the one thread that runs the kernel. One count per process,
+// as there is one kernel.
+inline int& CpusHoldingTheClock() {
+  static int count = 0;
+  return count;
+}
+
 }  // namespace socpuppet
 
 #endif  // SOCPUPPET_PLATFORM_FAILURE_H_

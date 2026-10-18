@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from socpuppet import address_map, devicetree, elf, interrupt_map
 from socpuppet.address_map import MapEntry, reachable_ports
-from socpuppet.components import Component, DbtRiseCpu, Dialect, LinkModel
+from socpuppet.components import Component, Dialect, LinkModel, RiscvCpu
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.placed import Placed, Port
 from socpuppet.terminal import stdout_wants_color
@@ -675,7 +675,7 @@ def _refuse_a_shared_gdb_port(placed: Mapping[str, Placed]) -> None:
     listeners: dict[int, str] = {}
     for path, each in placed.items():
         cpu = each.component
-        if not isinstance(cpu, DbtRiseCpu) or not cpu.gdb_port:
+        if not isinstance(cpu, RiscvCpu) or not cpu.gdb_port:
             continue  # no debugger is wanted on this one
         if cpu.gdb_port in listeners:
             raise ValueError(

@@ -182,7 +182,9 @@ Registry BuiltinComponents() {
 #if SOCPUPPET_HAS_QBOX
   registry.Add("qbox_cpu", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<QboxCpu>(
-        name, parameters.Required("xlen"), parameters.Required("reset_vector"));
+        name, parameters.Required("xlen"), parameters.Required("reset_vector"),
+        static_cast<std::uint16_t>(
+            parameters.Optional("gdb_port", 0, kFitsIn16Bits)));
     std::vector<Port> ports = HartPorts(*module);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });

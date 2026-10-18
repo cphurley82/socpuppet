@@ -185,7 +185,6 @@ Small things that are nobody's milestone. Each links to where its detail lives.
 - Send the fixes we carry upstream, smallest and clearest first; [upstream.md](upstream.md) is the list.
 - Run the C++ NVMe contract against the SSD with its Zephyr firmware. `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes; the firmware's share of the contract is held by `tests/python/test_ssd_firmware.py` until then.
 - Mend, or send, what QBox and QEMU get wrong: an atomic to memory without direct access never completes, a misaligned atomic raises a load's cause, and a reset that comes and goes while a busy CPU is ahead of the clock is not taken ([models/qbox-cpu.md](models/qbox-cpu.md), [upstream.md](upstream.md)).
-- Try QEMU's GDB server on the `qbox_cpu`; `host(cpu="qbox_cpu", gdb_port=)` is refused until something has.
 - Make a translating backend pass the hart's suite, LLVM first: M22's fixes are in the interpreter, and each backend has its own copy of every instruction ([history/speed-spike.md](history/speed-spike.md), [upstream.md](upstream.md)).
 - Let whichever CPU is stopped in its debugger answer every debugger; today a debugger reads memory only while its own CPU is the one stopped ([history/gdb-spike.md](history/gdb-spike.md); the test to write first is in `tests/python/test_gdb.py`).
 - Give the CPU user mode behind a PMP, so Zephyr's `CONFIG_USERSPACE` suites can run: a core name and a PMP layer in `dbt_rise_cpu.cpp` ([twister.md](twister.md), [history/twister-spike.md](history/twister-spike.md)).

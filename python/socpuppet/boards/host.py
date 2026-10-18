@@ -335,7 +335,8 @@ def host(
     describes on the other CPU.
 
     With a `gdb_port`, the CPU listens for a debugger on that TCP port and
-    waits for one to attach before it executes anything.
+    waits for one to attach before it executes anything, whichever CPU it
+    is: each has a GDB server of its own.
 
     `boot` is what the CPU starts in. 🎭 With none it starts in its RAM,
     where `platform.load_elf` has put its firmware, which is the quick way
@@ -398,11 +399,6 @@ def host(
             f'{named_by} is "{chosen}", and the CPUs the host can have are '
             + " and ".join(f'"{name}"' for name in HOST_CPUS)
             + "."
-        )
-    if chosen == QboxCpu.implementation and gdb_port:
-        raise ValueError(
-            "The host was given a gdb_port with QBox's CPU, and the GDB "
-            'server is the other one\'s. Debug on the "dbt_rise_cpu".'
         )
     platform = Platform()
     compute_group = platform.group("compute")
@@ -528,7 +524,7 @@ def _compute_die(
     reset_vector = RAM_BASE if rom is None else ROM_BASE
     placed_cpu = place.add(
         "cpu",
-        QboxCpu(xlen=64, reset_vector=reset_vector)
+        QboxCpu(xlen=64, reset_vector=reset_vector, gdb_port=gdb_port)
         if cpu == QboxCpu.implementation
         else DbtRiseCpu(
             xlen=64,

@@ -147,7 +147,7 @@ docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
 
 ⚠️ Leave with `continue`, not `detach` or `quit`. A debugger that detaches leaves its CPU stopped, and quitting GDB at a breakpoint detaches. A stopped CPU stops the whole simulation, with no limit in simulated time able to end the run. So say `continue` and let the run finish, which hangs up on GDB, or stop the simulation yourself. If it is too late for that, attach to the same port again and say `continue`.
 
-⚠️ Start the run first and attach second, as here. The port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)).
+⚠️ Start the run first and attach second, as here. With the DBT-RISE CPU the port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)); with QBox's CPU (`--cpu qbox_cpu`) the port opens when the run starts, and a debugger that attaches before is refused.
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 

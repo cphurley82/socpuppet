@@ -1429,6 +1429,36 @@ Two more things read in the same file and not acted on:
 - **Kind**: portability.
 - **When it lands**: nothing to undo; the tests stay off.
 
+### A debugger's access is judged by a response status that a debug transport need not set
+
+- **Where**: `qemu-components/common/include/ports/initiator.h`, `QemuInitiatorSocket::qemu_io_access`, after `do_debug_access`.
+- **What is wrong**: QEMU's GDB server reads memory with a debug access, which QBox passes to the platform as a TLM `transport_dbg`. 🎓 A debug transport answers with how many bytes it moved, and TLM does not ask it to set the payload's response status, so most targets leave the `TLM_INCOMPLETE_RESPONSE` the socket set. QBox then reads the status, finds it not OK, and tells QEMU the access failed: GDB is answered `E14` for memory the platform has.
+- **How to see it**: `tests/python/test_gdb.py`'s `test_it_can_read_the_program_out_of_memory` under `ctest --preset qbox`, without the adapter's fix: the debugger is refused the program at the reset vector. Once the CPU has run, the same memory is reached directly and reads fine, which hides it.
+- **What we do**: `src/socpuppet/models/qbox_cpu.cpp`'s `transport_dbg` sets `TLM_OK_RESPONSE` when every byte asked for was moved and the status is still the incomplete one.
+- **Upstream fix**: judge a debug access by the count `transport_dbg` returns, as TLM says, and the status only when a target set one.
+- **Kind**: bug.
+- **When it lands**: delete the status check in the adapter's `transport_dbg`.
+
+### A machine that never starts holds SystemC's thread in QEMU's CPU loop
+
+- **Where**: QEMU's `accel/tcg/tcg-accel-ops-rr.c` as libqemu carries it, `rr_cpu_thread_fn`'s wait for the machine's first start (`while (cpu_is_stopped(first_cpu)) qemu_cond_wait_bql(...)`), run as a coroutine on SystemC's thread by `qemu-components/common/include/cpu.h` in `COROUTINE` mode.
+- **What is wrong**: QEMU's own way to hold a CPU for a debugger is `-S`, which QBox's `qemu_args` can pass, and which leaves the machine unstarted until the debugger says continue. The CPU loop waits for that start on a thread's condition variable, and as a coroutine that thread is SystemC's: the kernel is stuck in the wait, so nothing that needs it runs, and a debugger's read of memory, which QBox serves on SystemC's thread, never returns. The loop's later waits, once the machine has started, yield to SystemC instead, which is why the same read works on a CPU that has run.
+- **How to see it**: a `qbox_cpu` with `qemu.qemu_args` set to `-S` and a `gdb_port`: a debugger reads a register, and its first read of memory never returns; a stack trace shows the main thread in `qemu_cond_wait_bql` under `rr_cpu_thread_fn`.
+- **What we do**: no `-S`. `src/socpuppet/models/qbox_cpu.cpp` holds the CPU over QBox's halt line from a method in the first delta cycle, which the started loop answers by yielding, and keeps a channel attached as suspending while it is held, so the kernel waits for the debugger rather than move time on.
+- **Upstream fix**: in coroutine mode, have the first wait yield as the later ones do.
+- **Kind**: bug.
+- **When it lands**: nothing to undo; the halt line is the better hold either way, since it also keeps time still.
+
+### A CPU that traps on every fetch never yields the simulation
+
+- **Where**: QEMU's `accel/tcg/cpu-exec.c` under `icount`, as QBox runs it in `COROUTINE` mode (`qemu-components/common/include/cpu.h`): the deadline timer that ends a quantum fires on QEMU's instruction count.
+- **What is wrong**: an instruction fetch from an address nothing answers raises an access fault, the trap goes to `mtvec`, and when that is an address nothing answers either, the next fetch faults too. No instruction is ever executed, so the count never moves, the quantum never ends, and the coroutine never comes back to SystemC: the simulation sits in QEMU's loop for good, with the platform's log full of `target address not found`. The DBT-RISE CPU charges a trap as it does an instruction, and time moves on.
+- **How to see it**: `host(cpu="qbox_cpu")` with nothing loaded into RAM, run for any time: it does not return. `tests/python/test_gdb.py`'s host tests load a program that sleeps for exactly this reason.
+- **What we do**: nothing in the adapter; the tests load a program. 🚧 A limit on faults in a row, or a charge for a trap, would be the fix.
+- **Upstream fix**: charge an exception that takes a trap as an instruction under `icount`, or have QBox's deadline fire on wall time as well.
+- **Kind**: bug.
+- **When it lands**: nothing to undo.
+
 ## QEMU
 
 [qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite and not entries here (docs/models/qbox-cpu.md).
