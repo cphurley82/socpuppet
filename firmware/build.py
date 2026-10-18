@@ -165,10 +165,19 @@ IMAGES = [
 # a build may be reading.
 TWISTER_REQUIREMENTS = REPOSITORY / "firmware" / "twister-requirements.txt"
 
-# What EDK2's build needs that is not fetched here: ACPICA's compiler, which
-# compiles the ACPI tables of a driver of EDK2's. Each is the program, its
-# Ubuntu package and its Homebrew formula.
-EDK2_PROGRAMS = (("iasl", "acpica-tools", "acpica"),)
+# What a part's build needs that is not fetched here, by the part: each is
+# the program, its Ubuntu package and its Homebrew formula. EDK2 needs
+# ACPICA's compiler, which compiles the ACPI tables of a driver of EDK2's.
+# The kernel's build generates its parsers with flex and bison, and does
+# its arithmetic with bc.
+PROGRAMS = {
+    "edk2": (("iasl", "acpica-tools", "acpica"),),
+    "linux": (
+        ("flex", "flex", "flex"),
+        ("bison", "bison", "bison"),
+        ("bc", "bc", "bc"),
+    ),
+}
 # The machines the Zephyr SDK has a toolchain for, by the names it gives
 # them. An Intel Mac is not one, and builds in Docker.
 SDK_HOSTS = ("linux-x86_64", "linux-aarch64", "macos-aarch64")
@@ -236,15 +245,14 @@ def check_the_machine(parts: list[str]) -> None:
             f"({platform.system()} {platform.machine()}). Build the firmware "
             "on Linux (x86-64 or arm64) or on a Mac."
         )
-    if "edk2" not in parts:
-        return
-    for program, apt, brew in EDK2_PROGRAMS:
-        if not shutil.which(program):
-            raise Failed(
-                f"EDK2's build needs {program}, and there is none. Install "
-                f"it: `sudo apt-get install {apt}` on Ubuntu, "
-                f"`brew install {brew}` on a Mac."
-            )
+    for part in parts:
+        for program, apt, brew in PROGRAMS.get(part, ()):
+            if not shutil.which(program):
+                raise Failed(
+                    f"The {part} part's build needs {program}, and there is "
+                    f"none. Install it: `sudo apt-get install {apt}` on "
+                    f"Ubuntu, `brew install {brew}` on a Mac."
+                )
 
 
 def in_docker(parts: list[str], out: Path, jobs: int) -> int:

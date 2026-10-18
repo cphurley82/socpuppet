@@ -51,6 +51,7 @@ QBOX = DOCTOR_MODULE.BUILD_QBOX
 # a test takes it away.
 PROGRAMS = (
     *("git", "c++", "dtc", "curl", "make", "iasl", "docker"),
+    *("flex", "bison", "bc"),
     *(name for name, _, _ in QBOX.PROGRAMS),
 )
 
@@ -117,6 +118,8 @@ REQUIRED = [
     ("curl", "the firmware's build", f"{APT} curl", "brew install curl"),
     ("make", "the firmware's build", f"{APT} build-essential", XCODE),
     ("iasl", "EDK2's build", f"{APT} acpica-tools", "brew install acpica"),
+    ("flex", "the Linux kernel's build", f"{APT} flex", "brew install flex"),
+    ("bc", "the Linux kernel's build", f"{APT} bc", "brew install bc"),
 ]
 
 
@@ -154,7 +157,7 @@ def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(
     doctor,
 ):
     doctor.without("meson")
-    doctor.without("bison")
+    doctor.without("ninja")
 
     result = doctor(FAIL_ON="sdl2")
 
@@ -162,7 +165,7 @@ def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(
     assert marks(result.stdout)["QBox's packages"] == "⚠️"
     for problem in (
         "meson is not installed",
-        "bison is not installed",
+        "ninja is not installed",
         "pkg-config cannot find sdl2",
     ):
         assert problem in result.stdout
@@ -171,7 +174,7 @@ def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(
     wanted = {
         apt if on_linux else brew
         for name, apt, brew in (*QBOX.PROGRAMS, *QBOX.LIBRARIES)
-        if name in ("meson", "bison", "sdl2")
+        if name in ("meson", "ninja", "sdl2")
     }
     install = next(
         line.strip()

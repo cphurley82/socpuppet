@@ -210,7 +210,15 @@ AREAS = (
         "EDK2's build",
         tuple(
             program(name, apt, Fix(brew, BREW))
-            for name, apt, brew in FIRMWARE_BUILD.EDK2_PROGRAMS
+            for name, apt, brew in FIRMWARE_BUILD.PROGRAMS["edk2"]
+        ),
+    ),
+    Area(
+        "linux",
+        "the Linux kernel's build",
+        tuple(
+            program(name, apt, Fix(brew, BREW))
+            for name, apt, brew in FIRMWARE_BUILD.PROGRAMS["linux"]
         ),
     ),
     Area(
