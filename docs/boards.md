@@ -69,7 +69,7 @@ board.platform.run(sp.ms(100))
 print(board.virtio.console.output)
 ```
 
-`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, and `tests/python/test_virtio_uefi.py` boots UEFI with them. 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
+`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, `tests/python/test_virtio_uefi.py` boots UEFI with them, and `tests/python/test_m20_exit.py` boots 🐧 Linux with every one under its own driver ([linux.md](linux.md)). 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
 
 ## The SSD's controller
 
@@ -601,6 +601,10 @@ What is different from booting OpenSBI's payloads:
 - ⚠️ **A line of exclamation marks for most drivers it loads**, `Image Section Alignment(0x40) does not match Required Alignment (0x1000)`, is EDK2's own build for RISC-V, which links its modules with sections too close together to protect. The boot is unaffected ([upstream.md](upstream.md)).
 - **Nothing of the AIA.** EDK2 has no driver for the APLIC or the IMSIC, so its console is polled and its only interrupt is the timer's.
 - `tests/python/test_m28_exit.py` boots both ways, types `ver` and `memmap`, and resets from the flash.
+
+## Booting Linux
+
+🐧 A stock Linux kernel boots on OpenSBI the way UEFI does, 2 MiB into RAM with the devicetree in `a1`, with its root filesystem on 🎭 the virtio disk and its console on the virtio console; and through UEFI too, from a disk cut up as a server's. [linux.md](linux.md) has the boot, typing at its shell, the virtio cast under Linux's drivers, a shared directory, and what to do when it does not boot.
 
 ## When the watchdog bites
 

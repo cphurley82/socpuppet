@@ -31,4 +31,4 @@ More than one request queue, the notification queue (`F_NOTIFICATION`), and the 
 
 ## Who has driven it
 
-🧵 `sp.VirtioFsHost`; Zephyr's `subsys/fs/virtiofs`, through `samples/subsys/fs/virtiofs` unchanged (an overlay of ours gives the share's node the label the sample asks for), which lists, reads and creates; and EDK2's `VirtioFsDxe`, with one patch (`cmake/patches/edk2-virtiofs-sets-its-queue-size.patch`), whose shell mounts the share by its tag, lists it, reads it and writes to it. Linux's `virtiofs` is not in RISC-V's `defconfig` and has not run against it.
+🧵 `sp.VirtioFsHost`; Zephyr's `subsys/fs/virtiofs`, through `samples/subsys/fs/virtiofs` unchanged (an overlay of ours gives the share's node the label the sample asks for), which lists, reads and creates; and EDK2's `VirtioFsDxe`, with one patch (`cmake/patches/edk2-virtiofs-sets-its-queue-size.patch`), whose shell mounts the share by its tag, lists it, reads it and writes to it. Linux's `virtiofs` is not in RISC-V's `defconfig` and has not run against it: 🐧 Linux mounts the same directory through the [9P transport](virtio-9p.md) beside it.

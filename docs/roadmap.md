@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and five 🎭 virtio stand-ins beside them. **M20, Linux itself, is next.**
+Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell Python types at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next.**
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -29,8 +29,8 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M23 | OpenSBI boots | M14, M22 | OpenSBI's banner and its test payload on the console, from the ROM and the quick way, on a devicetree in Linux's dialect from `host()` (`test_m23_exit.py`) | ✅ |
 | M28 | UEFI boots | M23 | the UEFI shell's prompt, with paging on and the timer ticking in supervisor mode, on both harts; Python types `ver` and `memmap` and resets it (`test_m28_exit.py`) | ✅ |
 | M25 | Virtio spike | M23, M28 | five stand-ins behind `virtio-mmio`, driven first by Python and then by Zephyr's and UEFI's own drivers; a report ([history/virtio-spike.md](history/virtio-spike.md)) | ✅ |
-| M20 | Linux boots | M23, M25 | a shell prompt on the console; Python types `uname -a` and reads the answer | 🚧 next |
-| M24 | A root filesystem on the drive | M8, M20 | Linux's own NVMe driver mounts its root on the Zephyr SSD across the link; a file written from Linux is read back by Python | |
+| M20 | Linux boots | M23, M25 | a shell prompt on the virtio console, on both harts; Python types `uname -a` and reads the answer; every virtio device under Linux's driver; through UEFI from a server's disk, on demand (`test_m20_exit.py`, [linux.md](linux.md)) | ✅ |
+| M24 | A root filesystem on the drive | M8, M20 | Linux's own NVMe driver mounts its root on the Zephyr SSD across the link; a file written from Linux is read back by Python | 🚧 next |
 | M17 | Ethernet | M13, M20 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed; DMA to an unmapped page is a fault record and an interrupt; then the drive under Linux's IOMMU driver | |
 | M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | |
@@ -72,30 +72,15 @@ The chain through Phase 5 is stricter than the table's "Needs" column, on purpos
 - Its exit test is automated and runs in GitHub Actions. A spike's exit is a report and a recommendation, and the maintainer decides.
 - Every slot has one contract suite; a 🎭 stand-in and the full model both pass it before either is used in a boot. Stand-in configurations from earlier milestones stay in CI.
 - Model logic is plain C++, unit-tested without the SystemC kernel; a borrowed model is tested through its contract, behind its adapter.
-- Zephyr's own test suites run on every board under twister in CI (from M21), and Linux boots to its prompt in CI in the quick tier (from M20). The ROM tier, which checks an image a byte at a time, runs on demand.
+- Zephyr's own test suites run on every board under twister in CI (from M21), and Linux boots to its prompt in CI in the quick tier (from M20). Linux through UEFI from a server's disk, the quick way and from the flash, runs on demand (`SOCPUPPET_ON_DEMAND=1`).
 
 A milestone's steps are planned when it starts, one `/tdd` session each, and live in its commits. When it is done its row above gets a ✅, what it decided goes to [history/decisions.md](history/decisions.md), what it taught to [history/lessons.md](history/lessons.md), and anything it left for later joins the loose ends below.
 
 ## What is next
 
-### M20: Linux boots 🐧
-
-The host's firmware becomes what a RISC-V server runs: OpenSBI, which M23 booted, and then Linux in supervisor mode. Everything Linux needs was built in Phases 4 and 5 with Zephyr, OpenSBI and UEFI as its first users.
-
-The first boot takes the virtio road, decided on 2026-10-17 by the vision's rules (real over toy; borrow before building; Linux asks, we build): a stock `defconfig` kernel on `host(sbi=True, virtio=Virtio())`, with its root filesystem on the 🎭 virtio disk and its console on the virtio console, and every virtio device under Linux's own driver before any hardware model takes a stand-in's place (amended 2026-10-18), then the same kernel through UEFI. The initramfs road, a kernel with its root filesystem built in and nothing but the console between it and the prompt, is the second, the comparison. [history/virtio-spike.md](history/virtio-spike.md) has the reasoning.
-
-- **A kernel of 6.10 or later**, where the IMSIC and APLIC drivers landed, pinned in `firmware/versions.toml` and built by `firmware/build.py`: one hart, the 8250 console, the AIA drivers.
-- **The quick tier in CI.** Python puts `fw_jump`, the kernel and the devicetree where they go, as M23's quick tier does. The ROM tier runs on demand and its time is written down.
-- **The tools for what goes wrong**: GDB on the host with the kernel's symbols, and the instruction trace. A kernel that speaks on `virtio-console` and not on the 16550, or boots on one hart and not the other, has said which side the fault is on.
-- **The server's path, as a tier.** UEFI loads the same kernel through its EFI stub from a FAT image on the virtio disk and hands it the devicetree, the way a server's firmware does. On demand.
-
-What the kernel will ask of each block, the checklist this milestone starts from: the supervisor's interrupt file and `stopei` (M22); `ssaia` in the ISA string and one supervisor-level APLIC domain told where to send its messages (M13, M23); Linux's own bindings for the IMSIC, the APLIC, the UART (`serial@`), `syscon` with `syscon-reboot`, and bare `virtio,mmio` nodes (M23, M25); `fw_jump` with the kernel 2 MiB in and the devicetree in `a1` (M23); 64 MiB of RAM, the least UEFI boots with, measured against a kernel here for the first time (M28).
-
-Exit: a shell prompt on the console; Python types `uname -a` and reads the answer, with the kernel's version in it; in CI, in the quick tier.
-
 ### M24: a root filesystem on the drive
 
-The drive has been a Zephyr host's since M3 and a Linux kernel's never. This milestone mounts Linux's root filesystem on it, under Linux's own NVMe driver, across the link, with the SSD's own Zephyr firmware being the drive: M8's bootchain with Linux on the host.
+The drive has been a Zephyr host's since M3 and a Linux kernel's never. This milestone mounts Linux's root filesystem on it, in the place of 🎭 the virtio disk M20 booted from, under Linux's own NVMe driver, across the link, with the SSD's own Zephyr firmware being the drive: M8's bootchain with Linux on the host.
 
 - **The root complex is a generic ECAM host to Linux** (`pci-host-ecam-generic`), with no driver of ours; M23 decided it and this milestone runs it.
 - **MSI-X as messages to the IMSIC**, which is how the drive's interrupts already travel: the root complex's node says `msi-parent`.
@@ -106,7 +91,7 @@ Exit: Linux boots to a prompt with its root filesystem on the drive; a file writ
 
 ### M17: Ethernet
 
-VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
+The first network card of real hardware's kind, in the place of 🎭 the virtio network card M20's Linux answered `ping` on. VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
 
 - **The borrowed MAC behind an adapter, held to a contract written first**, as the UART, the timer and the PLIC were.
 - 🧵 **Python is the far end of the cable**: `sp.EthernetCable` hands Python each frame sent and takes frames to deliver, and can write a capture Wireshark opens. 🚧 A bridge to the machine's own network is a tier for later.
@@ -174,7 +159,6 @@ Each has a date it must be settled by and what happens until then.
 | A protocol between sockets, CXL or one like it, where M16 has memory-mapped TLM | after M16 | none |
 | A die of its own for the AI processor; the host's DRAM on the IO die | after M16 | one compute die a socket, with the DRAM and the NPU on it |
 | Which CPU ships in the wheel, and whether a faster one is offered beside it | when a translating backend passes the hart's suite ([history/speed-spike.md](history/speed-spike.md)) | DBT-RISE's interpreter; QBox beside it, built from source, as a second opinion |
-| Which kernel to pin | M20 | 6.10 or later, where the AIA drivers landed |
 | Should a board's hardware be written as data that Python loads? Asked by the maintainer on 2026-10-10: addresses, devices, buses, links and interrupt lines in a TOML, JSON or YAML file that `Platform.load(file)` turns into the same `add`, `map`, `connect` and `link` calls, so that `build()`, the devicetree generator, the address map and `to_json()` are untouched; variants as a file laid over another, as Zephyr lays a shield over a board. A flow where Python generates the description as JSON and the simulation or the devicetree tools read it back could be good, and might even replace SystemRDL. What gets awkward: a script in a CPU's place changes the hardware, so the SSD and the IO manager each split into several files, and the host converts cleanly while the other two would likely read worse than their one Python file. Doing everything in Python alone, with no conversion, must stay possible | when somebody wants it | boards are Python functions; if tried, the host alone first, with its checked-in `.dts` unchanged as the proof that nothing moved |
 
 ## Loose ends
@@ -194,6 +178,12 @@ Small things that are nobody's milestone. Each links to where its detail lives.
 - A second APLIC domain with delegation, the faithful step after the one domain Linux's driver takes ([models/aplic.md](models/aplic.md)).
 - Paging beyond Sv39, 2 MiB pages, ASIDs, `wfi` in user mode and the vector state: what no test has run on the hart yet ([models/dbt-rise-cpu.md](models/dbt-rise-cpu.md)).
 - The sideband packet's layout lives twice, in C++ and in `socpuppet.ucie`, kept in step only by a decode test; and the reserved gaps in register maps are named by hand in each block's tests.
+- Linux's console on the 16550, the first hardware block to take a virtio stand-in's place under Linux, before M24 and M17 take the disk's and the network card's ([linux.md](linux.md)).
+- A boot flash big enough for a kernel: it is 16 MiB with the manager's image at its end, and a `defconfig` kernel is 26 MiB, so from the flash Linux comes through UEFI from the disk; a bigger flash is the maintainer's decision.
+- A Debian root beside Alpine's mini root, for a reader who wants `apt`.
+- An instruction trace on the DBT-RISE CPU, whose `enable_disass` goes to its own logger; QBox's is QEMU's, through the debugger ([models/qbox-cpu.md](models/qbox-cpu.md)).
+- A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today, for our own kernel.
+- The 9P messages `socpuppet.ninep` answers `EOPNOTSUPP`: `Tremove`, `Trename`, `Tlink`, locks and extended attributes ([models/virtio-9p.md](models/virtio-9p.md)).
 
 Known bugs with no milestone:
 
