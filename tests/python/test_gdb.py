@@ -1,16 +1,18 @@
 """Debugging firmware: a GDB client attached to the CPU.
 
-The GDB server is DBT-RISE's, so a host here has that CPU whatever
-SOCPUPPET_CPU says (docs/models/qbox-cpu.md).
+Each CPU has a GDB server of its own: DBT-RISE's, and QEMU's on QBox's
+CPU. The one-CPU tests and the host's run on whichever CPU SOCPUPPET_CPU
+names, as the boot tests do; the two 32-bit CPUs of the host's manager
+and SSD are DBT-RISE's whatever it says.
 """
 
 import contextlib
 import functools
+import os
 import re
 import socket
 import threading
 import time
-import xml.etree.ElementTree
 
 import pytest
 
@@ -63,13 +65,17 @@ def free_ports(count):
         return ports
 
 
+def a_cpu(**described):
+    """The 64-bit CPU SOCPUPPET_CPU names, described with `described`."""
+    kinds = {cpu.implementation: cpu for cpu in (sp.DbtRiseCpu, sp.QboxCpu)}
+    chosen = os.environ.get("SOCPUPPET_CPU", sp.DbtRiseCpu.implementation)
+    return kinds[chosen](xlen=64, **described)
+
+
 def cpu_waiting_for_a_debugger(port):
     """A CPU with a program loaded and a GDB server on `port`, built."""
     platform = sp.Platform()
-    cpu = platform.add(
-        "cpu",
-        sp.DbtRiseCpu(xlen=64, reset_vector=RESET_VECTOR, gdb_port=port),
-    )
+    cpu = platform.add("cpu", a_cpu(reset_vector=RESET_VECTOR, gdb_port=port))
     ram = platform.add("ram", sp.Memory(size=0x1000))
     platform.connect(cpu.socket, ram.socket)
     platform.build()
@@ -106,7 +112,11 @@ def run_with_debuggers(platform, sessions, run=None, hang_up=GdbClient.close):
     errors = []
 
     def debug(port, session):
-        debugger = GdbClient(port)
+        try:
+            debugger = GdbClient(port)
+        except OSError as error:
+            errors.append(error)
+            return
         try:
             debugger.wait_for_the_cpu_to_stop()
             found[port] = session(debugger)
@@ -284,6 +294,21 @@ class TestWhenTwoCpusAreGivenTheSameGdbPort:
         assert "eggs_cpu" in str(error.value)
 
 
+def host_waiting_for_a_debugger(**described):
+    """A host described with `described`, built, with the short program.
+
+    The program goes where the host's CPU starts: these tests load no
+    firmware, and once a debugger says continue the CPU runs what is
+    there. ⚠️ With nothing there, QBox's CPU traps on every fetch, at an
+    address nothing answers, and never yields the simulation
+    (docs/models/qbox-cpu.md).
+    """
+    board = host(**described)
+    board.platform.build()
+    board.platform.poke(RAM_BASE, STORE_0X5A_THEN_SLEEP, via=board.cpu.socket)
+    return board
+
+
 def two_cpus_waiting_for_debuggers(spams_port, eggs_port):
     """Two CPUs, `spam` and `eggs`, each with a program and a GDB port, built.
 
@@ -314,8 +339,7 @@ def two_cpus_waiting_for_debuggers(spams_port, eggs_port):
 class TestWhenTheHostBoardIsGivenAGdbPort:
     def test_a_debugger_finds_its_cpu_stopped_where_the_firmware_starts(self):
         port = free_port()
-        board = host(cpu="dbt_rise_cpu", gdb_port=port)
-        board.platform.build()
+        board = host_waiting_for_a_debugger(gdb_port=port)
 
         pc = run_with_a_debugger(
             board.platform, port, GdbClient.program_counter
@@ -334,13 +358,11 @@ class TestWhenOneOfTheTwoCpusOfTheHostWithTheSsdIsGivenAGdbPort:
 
     def test_given_to_the_host_a_debugger_finds_the_hosts_cpu(self):
         port = free_port()
-        board = host(
-            cpu="dbt_rise_cpu",
+        board = host_waiting_for_a_debugger(
             gdb_port=port,
             drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
             drive=add_ssd,
         )
-        board.platform.build()
 
         pc = run_with_a_debugger(
             board.platform, port, GdbClient.program_counter
@@ -350,12 +372,10 @@ class TestWhenOneOfTheTwoCpusOfTheHostWithTheSsdIsGivenAGdbPort:
 
     def test_given_to_the_ssd_a_debugger_finds_the_ssds_cpu(self):
         port = free_port()
-        board = host(
-            cpu="dbt_rise_cpu",
+        board = host_waiting_for_a_debugger(
             drive_blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
             drive=functools.partial(add_ssd, gdb_port=port),
         )
-        board.platform.build()
 
         pc = run_with_a_debugger(
             board.platform, port, GdbClient.program_counter
@@ -427,6 +447,10 @@ class TestWhenEachOfTheHostsThreeCpusHasAGdbPort:
             "ssd": "riscv:rv32",
         }
 
+    @pytest.mark.not_on_qbox(
+        "`monitor sysc print_time` is a command DBT-RISE's GDB server adds; "
+        "QEMU's has none for the simulation's time"
+    )
     def test_each_cpu_tells_its_own_debugger_the_time_it_stopped_at(
         self, firmware
     ):
@@ -456,9 +480,13 @@ class TestWhenEachOfTheHostsThreeCpusHasAGdbPort:
 
 
 def architecture(target_description):
-    """What a target description has between its `architecture` tags."""
-    described = xml.etree.ElementTree.fromstring(target_description)
-    return described.findtext("architecture")
+    """What a target description has between its `architecture` tags.
+
+    Read as text and not as XML: QEMU's description includes the rest of
+    itself with `xi:include` tags whose namespace it leaves undeclared.
+    """
+    found = re.search(r"<architecture>(.*?)</architecture>", target_description)
+    return found.group(1) if found else None
 
 
 class ThreeDebuggedCpus:
@@ -472,7 +500,6 @@ class ThreeDebuggedCpus:
             zip(("host", "manager", "ssd"), free_ports(3), strict=True)
         )
         self.board = host(
-            cpu="dbt_rise_cpu",
             gdb_port=self.ports["host"],
             # 2 MiB of drive, as in the exit tests that run this disk test.
             drive_blocks=4096,

@@ -66,9 +66,10 @@ class TestTheHostAskedForACpuItHasNot:
 
 
 class TestTheHostWithQboxsCpuAndADebugger:
-    def test_is_refused_and_the_error_says_which_cpu_has_one(self):
-        with pytest.raises(ValueError, match=r"gdb_port.*dbt_rise"):
-            host(cpu="qbox_cpu", gdb_port=1234)
+    def test_has_a_qbox_cpu_with_that_gdb_port(self):
+        board = host(cpu="qbox_cpu", gdb_port=1234)
+
+        assert board.cpu.component.gdb_port == 1234
 
 
 class TestTheHostWithSocpuppetCpuSet:

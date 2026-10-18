@@ -456,6 +456,11 @@ class RiscvCpu(Component):
     and `reset_vector` is the address of the first instruction. `isa` and
     `modes` are which instruction sets and privilege modes its core has,
     by RISC-V's letters for them.
+
+    With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
+    waits for one to attach before it executes anything. Each CPU of a
+    simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
+    debugger stops the whole simulation, the other CPUs with it.
     """
 
     port_specs = _HART_PORTS
@@ -463,6 +468,7 @@ class RiscvCpu(Component):
 
     xlen: int
     reset_vector: int
+    gdb_port: int = 0
     # Each kind of CPU says which it has.
     isa: str = dataclasses.field(metadata={"parameter": False})
     modes: str = dataclasses.field(metadata={"parameter": False})
@@ -583,10 +589,8 @@ class DbtRiseCpu(RiscvCpu):
     64 (XLEN is the RISC-V specification's name for it), and `reset_vector`
     is the address of the first instruction.
 
-    With a `gdb_port`, the CPU listens for a debugger on that TCP port, and
-    waits for one to attach before it executes anything. Each CPU of a
-    simulation can have one, on a port of its own. ⚠️ A CPU stopped in its
-    debugger stops the whole simulation, the other CPUs with it.
+    Its GDB server is DBT-RISE's own, and listens from the moment the
+    platform is built.
 
     As it comes it is an RV32IMAC or RV64IMAC core in machine mode only: no
     floating point, and no supervisor or user mode. Build firmware for it
@@ -605,7 +609,6 @@ class DbtRiseCpu(RiscvCpu):
 
     implementation = "dbt_rise_cpu"
 
-    gdb_port: int = 0
     isa: Literal["imac", "gc"] = not_a_parameter(default="imac")
     modes: Literal["m", "msu"] = not_a_parameter(default="m")
 
@@ -647,6 +650,10 @@ class QboxCpu(RiscvCpu):
     as `isa="gc", modes="msu"`, and has the same ports. It counts
     128 ns for each instruction, where `DbtRiseCpu` counts 100.
     docs/models/qbox-cpu.md says what else it does differently.
+
+    Its GDB server is QEMU's own, and ⚠️ its port opens when the run starts
+    and the CPU is held, not as the platform is built: start the run, then
+    attach.
     """
 
     implementation = "qbox_cpu"

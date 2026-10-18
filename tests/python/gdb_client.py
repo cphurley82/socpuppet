@@ -6,13 +6,35 @@ Using it directly keeps the tests free of a GDB binary.
 """
 
 import socket
+import time
+
+#: How long to wait between tries of a port that is not open yet: short
+#: beside the run's start, which is when QBox's CPU opens its port.
+TRY_AGAIN_AFTER = 0.05
 
 
 class GdbClient:
     """One connection to a GDB server on this machine."""
 
     def __init__(self, port, timeout=10):
-        self._socket = socket.create_connection(("127.0.0.1", port), timeout)
+        """Connect to the server on `port`, waiting up to `timeout` seconds.
+
+        The DBT-RISE CPU's server listens from the moment the platform is
+        built; QBox's CPU opens its port when the run starts and the CPU
+        is held, so a debugger that is early waits for it. The same
+        `timeout` then bounds each reply.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                self._socket = socket.create_connection(
+                    ("127.0.0.1", port), timeout
+                )
+                return
+            except ConnectionRefusedError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(TRY_AGAIN_AFTER)
 
     def close(self):
         self._socket.close()

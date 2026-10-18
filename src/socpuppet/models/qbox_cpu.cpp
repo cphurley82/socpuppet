@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 
+#include <async_event.h>
 #include <cci_configuration>
 #include <libqemu-cxx/target/riscv.h>
 #include <qemu-instance.h>
@@ -17,6 +18,7 @@
 #include "socpuppet/models/hart_adapter.h"
 #include "socpuppet/models/hart_registers.h"
 #include "socpuppet/models/tie_low.h"
+#include "socpuppet/platform/failure.h"
 
 namespace socpuppet {
 
@@ -95,7 +97,24 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   // (docs/upstream.md). Supervisor mode's timer is then the machine
   // timer's, which OpenSBI sets through `mtimecmp`.
   set("core.sstc", cci::cci_value(false));
+  // `core.gdb_port` is left unset on purpose: QBox would start QEMU's GDB
+  // server as the platform is built, before the CPU is held, and a
+  // debugger that attached and said continue before the run began would
+  // be lost. The server is started once the CPU is held
+  // (QboxCpu::HeldAtItsFirstInstruction). And not QEMU's -S, its own way
+  // of holding a CPU for a debugger: a machine never started leaves QEMU's
+  // CPU loop waiting on a thread's condition variable, which as a
+  // coroutine is SystemC's thread, and a debugger's read of memory, served
+  // from that thread, then waits for ever (docs/upstream.md).
 }
+
+// How many delta cycles a board takes to raise the CPU's reset at power-on,
+// if it does: the host's link writes its hold in the first, the system
+// controller sees it and drives `reset` in the second, and the CPU's input
+// reads high in the third. ⚠️ A board with one more stage between the
+// reset's source and the CPU would read low here, and be held and listened
+// for a delta cycle too soon.
+constexpr int kDeltaCyclesForABoardToRaiseReset = 2;
 
 }  // namespace
 
@@ -147,6 +166,25 @@ struct QboxCpu::Core {
   }
 
   void SetReset(bool high) { core_.reset->write(high); }
+
+  // Tells QEMU's CPU to stop, which its loop does before it runs anything
+  // more, yielding to SystemC, so a debugger can read registers and
+  // memory meanwhile. ⚠️ Telling it kicks the CPU, which notifies an event
+  // at once: not before the simulation runs.
+  void Halt() { core_.halt->write(true); }
+
+  // 🎓 A kernel with nothing scheduled ends the run. With a channel
+  // attached as suspending it waits instead for something from outside,
+  // which while the CPU is held for a debugger is the debugger's read of
+  // memory, served on SystemC's thread, or its continue, which kicks the
+  // CPU. Attaching again is attaching.
+  void KeepTheKernelWaiting() { held_.async_attach_suspending(); }
+  void LetTheKernelGo() { held_.async_detach_suspending(); }
+
+  // Starts QEMU's own GDB server on the port.
+  void StartTheGdbServer(std::uint16_t port) {
+    instance_.get().start_gdb_server("tcp::" + std::to_string(port));
+  }
   void SetInterrupt(unsigned number, bool high) {
     core_.irq_in[number]->write(high);
   }
@@ -169,6 +207,7 @@ struct QboxCpu::Core {
   // there.
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {
+    if (cpu_.held_) cpu_.AccessedWhileHeld();
     CatchUpIfPastTheQuantum(delay);
     cpu_.socket->b_transport(transaction, delay);
     CatchUpIfPastTheQuantum(delay);
@@ -183,8 +222,17 @@ struct QboxCpu::Core {
                           tlm::tlm_dmi& dmi) {
     return cpu_.socket->get_direct_mem_ptr(transaction, dmi);
   }
+  // A debugger's access, before the CPU has run far enough to reach the
+  // memory directly. ⚠️ QBox judges it by the payload's response status,
+  // which a debug transport need not set: TLM's answer is the count of
+  // bytes moved. A target that moved every byte answered.
   unsigned transport_dbg(tlm::tlm_generic_payload& transaction) {
-    return cpu_.socket->transport_dbg(transaction);
+    const unsigned moved = cpu_.socket->transport_dbg(transaction);
+    if (moved == transaction.get_data_length() &&
+        transaction.get_response_status() == tlm::TLM_INCOMPLETE_RESPONSE) {
+      transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+    }
+    return moved;
   }
 
   // The timer's count at the time the CPU has got to, with its lead as
@@ -218,16 +266,27 @@ struct QboxCpu::Core {
 
   QboxCpu& cpu_;
   tlm_utils::simple_target_socket<Core> from_core_{"from_core"};
+  // What keeps the kernel waiting while the CPU is held for a debugger.
+  gs::async_event held_{/*start_attached=*/false};
   QemuInstanceManager manager_{"qemu_manager"};
   QemuInstance instance_{"qemu", &manager_, QemuInstance::Target::RISCV64};
   cpu_riscv64 core_{"core", instance_, /*hartid=*/0};
 };
 
 QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
-                 std::uint64_t reset_vector)
-    : sc_module(name), core_(MakeCore(*this, xlen, reset_vector)) {
+                 std::uint64_t reset_vector, std::uint16_t gdb_port)
+    : sc_module(name),
+      gdb_port_(gdb_port),
+      core_(MakeCore(*this, xlen, reset_vector)) {
   socket.register_invalidate_direct_mem_ptr(
       this, &QboxCpu::invalidate_direct_mem_ptr);
+  // Once, in the first delta cycle, before QBox's thread runs the CPU; and
+  // the rest once the board has settled.
+  if (gdb_port != 0) {
+    SC_METHOD(HoldForTheDebugger);
+    SC_THREAD(HoldOnceTheBoardHasSettled);
+    SC_THREAD(HoldTheClock);
+  }
   // A thread, because QBox's CPU waits while it finishes a reset.
   SC_THREAD(OnReset);
   SC_METHOD(OnIrq);
@@ -263,6 +322,70 @@ void QboxCpu::end_of_elaboration() {
   core_->AnswerTheImsicsRegistersThroughCsr();
 }
 
+// The CPU is held before its first instruction, as DbtRiseCpu waits for a
+// debugger, from a method process in the first delta cycle: the kernel
+// runs the method processes of a delta cycle before its thread processes,
+// so this lands before QBox's thread runs the CPU. A debugger that
+// attaches pauses QEMU's machine, and its continue starts the machine
+// again, which lets the CPU go.
+void QboxCpu::HoldForTheDebugger() {
+  core_->Halt();
+  core_->KeepTheKernelWaiting();
+  held_ = true;
+}
+
+// After the board's own first steps, which may have raised the CPU's reset:
+// with the reset low, the CPU is held at its first instruction. With it
+// high, OnReset() sees to it at the release.
+void QboxCpu::HoldOnceTheBoardHasSettled() {
+  for (int cycle = 0; cycle < kDeltaCyclesForABoardToRaiseReset; ++cycle) {
+    wait(sc_core::SC_ZERO_TIME);
+  }
+  if (!reset.read()) HeldAtItsFirstInstruction();
+}
+
+// The CPU is held where its firmware starts, with its reset released: time
+// stands still until the debugger continues, and the port opens.
+// ⚠️ The port opens only now, and not as the platform is built, as the
+// DBT-RISE CPU's does: a debugger that attached earlier would find a CPU
+// not yet held, or still in reset, and a continue said then would run the
+// CPU through the board's reset of it. So a debugger attaches second.
+void QboxCpu::HeldAtItsFirstInstruction() {
+  hold_the_clock_ = true;
+  clock_.notify();
+  if (listening_) return;
+  listening_ = true;
+  core_->StartTheGdbServer(gdb_port_);
+}
+
+// The debugger has continued, and the CPU runs: time moves on.
+void QboxCpu::AccessedWhileHeld() {
+  held_ = false;
+  core_->LetTheKernelGo();
+  hold_the_clock_ = false;
+  clock_.notify();
+}
+
+// 🎓 sc_suspend_all() keeps the kernel from moving time on, while it still
+// takes what comes from outside, and sc_unsuspend_all() undoes it; the two
+// count, and are paired by the process that calls them, so one thread
+// makes every call.
+void QboxCpu::HoldTheClock() {
+  bool held = false;
+  for (;;) {
+    wait(clock_);
+    if (hold_the_clock_ && !held) {
+      sc_core::sc_suspend_all();
+      ++CpusHoldingTheClock();
+      held = true;
+    } else if (!hold_the_clock_ && held) {
+      --CpusHoldingTheClock();
+      sc_core::sc_unsuspend_all();
+      held = false;
+    }
+  }
+}
+
 void QboxCpu::invalidate_direct_mem_ptr(sc_dt::uint64 start,
                                         sc_dt::uint64 end) {
   core_->InvalidateDirectMemory(start, end);
@@ -279,6 +402,13 @@ void QboxCpu::OnReset() {
       passed_on = reset.read();
       core_->SetReset(passed_on);
     } while (reset.read() != passed_on);
+    // QBox answers a release by resuming QEMU's CPU, which would undo the
+    // hold: the CPU waits for the debugger at its first instruction after
+    // the reset, as DbtRiseCpu does, so it is held again, with the clock.
+    if (!passed_on && held_) {
+      core_->Halt();
+      HeldAtItsFirstInstruction();
+    }
   }
 }
 
