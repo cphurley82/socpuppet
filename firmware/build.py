@@ -16,6 +16,7 @@ The parts, each of which fetches or builds what it needs first:
   zephyr       Zephyr's images: four samples and two of its tests, and
                four applications of ours, for the boards they run on
   edk2         EDK2, which is UEFI, as uefi.fd
+  linux        Linux, a stock defconfig kernel for the host, as linux.bin
 
 With no part named, every one is built, in that order. Everything goes in
 the output directory (build/firmware), and a second run reuses what is
@@ -23,7 +24,9 @@ there. For each Zephyr image it leaves <name>_<board>.elf, the image with
 symbols; <name>_<board>.bin, the same as flat bytes, loaded at the start
 of RAM; and <name>_<board>.opcodes.txt, how often each instruction appears
 in it. The boot ROM, fw_jump, test_payload and sbi_payload are each an .elf
-and a .bin, and EDK2 is uefi.fd, its flash device image.
+and a .bin, and EDK2 is uefi.fd, its flash device image. Linux is
+linux.bin, the flat Image that fw_jump jumps to, linux.elf, its vmlinux
+with the symbols, and linux.map, its System.map.
 
 The Zephyr SDK has no toolchain for an Intel Mac. There the build runs in
 the devcontainer's image, which is Linux, by way of tools/devcontainer.py,
@@ -55,7 +58,10 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 MODULE = REPOSITORY / "python" / "socpuppet" / "zephyr_module"
 PATCHES = REPOSITORY / "cmake" / "patches"
 
-PARTS = ("sdk", "llvm", "zephyr-tree", "rom", "opensbi", "zephyr", "edk2")
+PARTS = (
+    *("sdk", "llvm", "zephyr-tree"),
+    *("rom", "opensbi", "zephyr", "edk2", "linux"),
+)
 
 
 @dataclass(frozen=True)
@@ -266,10 +272,14 @@ def in_docker(parts: list[str], out: Path, jobs: int) -> int:
     ).returncode
 
 
+def read_pins(path: Path) -> dict[str, dict[str, str]]:
+    """What versions.toml pins, by name: each a version, some a sha256."""
+    return tomllib.loads(path.read_text())
+
+
 def read_versions(path: Path) -> dict[str, str]:
     """The version of each thing the firmware is built with, by its name."""
-    table = tomllib.loads(path.read_text())
-    return {name: entry["version"] for name, entry in table.items()}
+    return {name: pin["version"] for name, pin in read_pins(path).items()}
 
 
 def sdk_host() -> str:
@@ -285,7 +295,10 @@ class Build:
     def __init__(self, out: Path, jobs: int) -> None:
         self.out = out
         self.jobs = jobs
-        self.versions = read_versions(REPOSITORY / "firmware" / "versions.toml")
+        self.pins = read_pins(REPOSITORY / "firmware" / "versions.toml")
+        self.versions = {
+            name: pin["version"] for name, pin in self.pins.items()
+        }
         sdk_version = self.versions["sdk"]
         self.sdk_dir = out / f"zephyr-sdk-{sdk_version}"
         self.toolchain = self.sdk_dir / "gnu" / "riscv64-zephyr-elf"
@@ -304,6 +317,7 @@ class Build:
             "opensbi": self.opensbi,
             "zephyr": self.zephyr,
             "edk2": self.edk2,
+            "linux": self.linux,
         }
 
     # The toolchains.
@@ -357,7 +371,10 @@ class Build:
         return tempfile.TemporaryDirectory(prefix=".staging-", dir=self.out)
 
     def fetch_sdk_file(self, name: str, into: Path) -> None:
-        """Download one file of the SDK's release, check it, and unpack it."""
+        """Download one file of the SDK's release, check it, and unpack it.
+
+        The checksum it is checked against is the one the release lists.
+        """
         release = (
             "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/"
             f"v{self.versions['sdk']}"
@@ -365,29 +382,33 @@ class Build:
         with tempfile.TemporaryDirectory(
             prefix=".download-", dir=self.out
         ) as directory:
-            downloads = Path(directory)
-            for each in ("sha256.sum", name):
-                run(
-                    "curl",
-                    "--fail",
-                    "--silent",
-                    "--show-error",
-                    "--location",
-                    "--output",
-                    str(downloads / each),
-                    f"{release}/{each}",
-                )
-            expected = checksum_of(downloads / "sha256.sum", name)
-            with (downloads / name).open("rb") as download:
-                actual = hashlib.file_digest(download, "sha256").hexdigest()
-            if actual != expected:
+            sums = Path(directory) / "sha256.sum"
+            download(f"{release}/sha256.sum", sums)
+            self.fetch(
+                f"{release}/{name}", into, sha256=checksum_of(sums, name)
+            )
+
+    def fetch(self, url: str, into: Path, *, sha256: str) -> None:
+        """Download one tarball, check it against `sha256`, and unpack it."""
+        name = url.rsplit("/", 1)[-1]
+        with tempfile.TemporaryDirectory(
+            prefix=".download-", dir=self.out
+        ) as directory:
+            downloaded = Path(directory) / name
+            download(url, downloaded)
+            with downloaded.open("rb") as file:
+                actual = hashlib.file_digest(file, "sha256").hexdigest()
+            if actual != sha256:
                 raise Failed(
-                    f"{name} is not what the SDK's release says it is: its "
-                    "checksum is wrong. Run this again to fetch it again."
+                    f"{name}'s SHA-256 is {actual}, not the {sha256} it was "
+                    "checked against. A download that stopped short gives "
+                    "this; so does a version bumped in firmware/versions.toml "
+                    "without its sha256. Run this again; if it fails the "
+                    "same way, fix the pin."
                 )
             into.mkdir(parents=True, exist_ok=True)
             try:
-                with tarfile.open(downloads / name) as archive:
+                with tarfile.open(downloaded) as archive:
                     archive.extractall(into, filter="tar")
             except (tarfile.TarError, EOFError, OSError) as error:
                 raise Failed(f"{name} could not be unpacked: {error}") from None
@@ -746,6 +767,72 @@ class Build:
         shutil.copy(fd, self.out / "uefi.fd")
         say(f"  {(self.out / 'uefi.fd').stat().st_size} bytes in uefi.fd")
 
+    # Linux.
+
+    def linux(self) -> None:
+        """Linux, at its pinned release, as a stock defconfig kernel.
+
+        🐧 The kernel is built with nothing of ours in it:
+        `arch/riscv/configs/defconfig` as it ships, which has the drivers
+        for everything on the host that Linux meets (the AIA interrupt
+        controllers, the 16550, and 🎭 the virtio devices). What the kernel
+        is handed at boot, the devicetree and the root filesystem, is
+        Python's and build.py's business, not the kernel's.
+
+        💡 It is the one part fetched as a release tarball and not cloned
+        at a tag, as OpenSBI and EDK2 are: the tarball is 150 MB where a
+        clone of the kernel's tree, one commit deep, is many times that,
+        and kernel.org publishes each tarball's SHA-256, which the fetch
+        is checked against (the pin in versions.toml). A tarball is no git
+        tree, so there is no `patch()` for it, and none is wanted: a
+        stock kernel is the decision (docs/history/decisions.md).
+
+        It is built with the SDK's LLVM, as OpenSBI and EDK2 are: the
+        kernel builds with clang and LLVM's linker, told so by `LLVM=`. The
+        tools that run on this machine during the build are compiled by
+        its own compiler, since the SDK's is for RISC-V.
+
+        ⚠️ The SDK's clang knows which C libraries it has, and refuses
+        flags it has none for. The kernel links no C library at all, so
+        the refusal is turned off, as it is for OpenSBI.
+        """
+        self.llvm()
+        source = self.out / "linux"
+        version = self.versions["linux"]
+        if not source.is_dir():
+            say(f"Fetching Linux {version}")
+            with self.staging() as name:
+                staging = Path(name)
+                self.fetch(
+                    "https://cdn.kernel.org/pub/linux/kernel/"
+                    f"v{version.split('.')[0]}.x/linux-{version}.tar.xz",
+                    staging,
+                    sha256=self.pins["linux"]["sha256"],
+                )
+                (staging / f"linux-{version}").rename(source)
+        say("Building Linux for the host")
+        built = self.out / "build_linux"
+        built.mkdir(exist_ok=True)
+        llvm = f"{self.llvm_dir}/bin/"
+        make = (
+            *("make", "-C", str(source), f"O={built}", "ARCH=riscv"),
+            f"LLVM={llvm}",
+            f"CC={llvm}clang -Wno-missing-multilib",
+            *("HOSTCC=cc", "HOSTCXX=c++"),
+        )
+        log = built.with_suffix(".log")
+        logged(log, *make, "defconfig")
+        logged(log, *make, f"-j{os.cpu_count() or 1}", "Image", after=True)
+        for made, kept in (
+            ("arch/riscv/boot/Image", "linux.bin"),
+            ("vmlinux", "linux.elf"),
+            ("System.map", "linux.map"),
+        ):
+            shutil.copy(built / made, self.out / kept)
+        # Not report(): vmlinux's entry is a virtual address, not where
+        # linux.bin is loaded, and would mislead.
+        say(f"  {(self.out / 'linux.bin').stat().st_size} bytes in linux.bin")
+
     # Helpers.
 
     def tool(self, name: str) -> str:
@@ -812,6 +899,14 @@ def opcodes(disassembly: str) -> str:
     )
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return "".join(f"{count} {name}\n" for name, count in ordered)
+
+
+def download(url: str, to: Path) -> None:
+    """Fetch one file, stopping the build if the server says no."""
+    run(
+        *("curl", "--fail", "--silent", "--show-error", "--location"),
+        *("--output", str(to), url),
+    )
 
 
 def checksum_of(sums: Path, name: str) -> str:

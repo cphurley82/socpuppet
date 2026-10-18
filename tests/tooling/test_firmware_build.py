@@ -90,6 +90,17 @@ elif name == "git" and "checkout" in args:
     patched = os.path.join(after("-C"), "PATCHED")
     if os.path.exists(patched):
         os.remove(patched)
+elif name == "make" and "ARCH=riscv" in args:
+    built = next(a[2:] for a in args if a.startswith("O="))
+    if not os.path.exists(os.path.join(after("-C"), "Makefile")):
+        print(f"make: *** No Makefile in {after('-C')}")
+        status = 2
+    elif "defconfig" in args:
+        write(f"{built}/.config", "CONFIG_SPAM=y\n")
+    elif "Image" in args:
+        write(f"{built}/arch/riscv/boot/Image", "Image")
+        elf(f"{built}/vmlinux")
+        write(f"{built}/System.map", "ffffffff80000000 T _start\n")
 elif name == "make" and any(a.startswith("O=") for a in args):
     built = next(a[2:] for a in args if a.startswith("O="))
     for each in ("fw_jump", "payloads/test"):
@@ -429,6 +440,52 @@ def test_an_image_that_fails_stops_the_images_not_yet_started(firmware):
     assert len(configures) == 1
 
 
+# Linux.
+
+
+def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release(version="6.18.57")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    (fetch,) = [
+        c
+        for c in firmware.calls("curl")
+        if Path(c["args"][-1]).name.startswith("linux-")
+    ]
+    assert fetch["args"][-1].endswith("/v6.x/linux-6.18.57.tar.xz")
+    configure, build = [
+        c["args"] for c in firmware.calls("make") if "ARCH=riscv" in c["args"]
+    ]
+    llvm = firmware.out / f"llvm-{firmware.versions['sdk']}"
+    for args in (configure, build):
+        assert f"LLVM={llvm}/bin/" in args
+    assert "defconfig" in configure
+    assert "Image" in build
+    assert (firmware.out / "linux.bin").read_text() == "Image"
+    assert (firmware.out / "linux.elf").exists()
+    assert (firmware.out / "linux.map").read_text().endswith("T _start\n")
+
+
+def test_a_kernel_whose_checksum_is_wrong_stops_the_fetch_unpacking_none(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release(corrupt=True)
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 1
+    assert "linux-" in result.stdout
+    assert "versions.toml" in result.stdout
+    assert not (firmware.out / "linux").exists()
+    assert firmware.calls("make") == []
+
+
 # EDK2, and a part that fails.
 
 
@@ -498,11 +555,15 @@ def test_in_docker_an_output_directory_outside_the_repository_is_refused(
 
 def test_when_no_part_is_named_every_part_is_built(firmware):
     firmware.sdk_release()
+    firmware.linux_release()
 
     result = firmware.run()
 
     assert result.returncode == 0, result.stdout
-    for image in ("rom_rv64.bin", "fw_jump.elf", "sbi_payload.bin", "uefi.fd"):
+    for image in (
+        *("rom_rv64.bin", "fw_jump.elf", "sbi_payload.bin", "uefi.fd"),
+        "linux.bin",
+    ):
         assert (firmware.out / image).exists(), image
     for image in BUILD.IMAGES:
         assert (firmware.out / f"{name_of(image)}.elf").exists()
@@ -548,7 +609,10 @@ class Firmware:
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text("spam\n")
         self.install(self.root / "tools" / "devcontainer.py")
-        for program in ("curl", "git", "make", "uv", "iasl", "build"):
+        for program in (
+            *("curl", "git", "make", "uv", "iasl", "build"),
+            *("flex", "bison", "bc"),
+        ):
             self.install(self.bin / program)
 
     def install(self, path):
@@ -591,6 +655,31 @@ class Firmware:
                 digest = "0" * 64
             sums.append(f"{digest}  {path.name}")
         (self.downloads / "sha256.sum").write_text("\n".join(sums) + "\n")
+
+    def linux_release(self, version=None, corrupt=False):
+        """Put a kernel's tarball where curl looks, and pin its checksum.
+
+        The version is the repository's pin unless one is given. With
+        `corrupt`, the checksum pinned is not the tarball's.
+        """
+        self.downloads.mkdir(exist_ok=True)
+        version = version or self.versions["linux"]
+        path = self.downloads / f"linux-{version}.tar.xz"
+        tarball(path, {f"linux-{version}/Makefile": "spam\n"}, self.fake)
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.pin("linux", version, "0" * 64 if corrupt else digest)
+
+    def pin(self, name, version, sha256):
+        """Write one entry of the copy of versions.toml the script reads."""
+        pins = {**BUILD.read_pins(VERSIONS), name: {"version": version}}
+        pins[name]["sha256"] = sha256
+        (self.root / "firmware" / "versions.toml").write_text(
+            "\n".join(
+                f"[{each}]\n"
+                + "".join(f'{key} = "{value}"\n' for key, value in pin.items())
+                for each, pin in pins.items()
+            )
+        )
 
     def upstream(self):
         """What a clone of Zephyr and of EDK2 holds, as far as it matters."""
