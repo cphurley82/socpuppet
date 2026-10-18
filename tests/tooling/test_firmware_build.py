@@ -502,6 +502,18 @@ def test_edk2_is_built_with_its_submodules_and_its_fd_kept(firmware):
     assert (firmware.out / "uefi.fd").read_text() == "uefi"
 
 
+def test_linux_without_bc_stops_before_anything_is_fetched(firmware):
+    firmware.sdk_release()
+    firmware.linux_release()
+    (firmware.bin / "bc").unlink()
+
+    result = firmware.run("rom", "linux", PATH=firmware.path_without("bc"))
+
+    assert result.returncode == 1
+    assert "bc" in result.stdout
+    assert firmware.calls("curl") == []
+
+
 def test_edk2_without_iasl_stops_before_anything_is_fetched(firmware):
     firmware.sdk_release()
     (firmware.bin / "iasl").unlink()
