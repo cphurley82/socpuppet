@@ -8,8 +8,10 @@ Linux.
 
 import re
 
+import fat_image
+import gpt_image
 import socpuppet as sp
-from cast import LINUX_BIN, ROOTFS_EXT4
+from cast import LINUX_BIN, ROOTFS_EXT4, UEFI_FD
 from console import plain
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet.boards.virtio import Virtio
@@ -24,11 +26,28 @@ PROMPT = re.compile(r"socpuppet:\S+# $")
 #: messages go through OpenSBI's console until that is up, and its root
 #: filesystem is 🎭 the virtio disk, writable.
 BOOTARGS = "console=hvc0 earlycon=sbi root=/dev/vda rw"
+#: The same through UEFI, whose disk has the root in its second partition.
+#: 🎓 The kernel's EFI stub is given no command line by the boot manager,
+#: and then leaves the devicetree's `bootargs` as they are.
+BOOTARGS_THROUGH_UEFI = "console=hvc0 earlycon=sbi root=/dev/vda2 rw"
+#: Where UEFI's boot manager looks on a disk with no boot entry of its own:
+#: the removable media path for a RISC-V 64 machine.
+BOOT_PROGRAM = "EFI/BOOT/BOOTRISCV64.EFI"
+#: The EFI system partition, as big as the kernel needs: 48 MiB.
+ESP_SECTORS = 48 * 2048
+#: RAM for UEFI and the kernel together. With 128 MiB the kernel's EFI
+#: stub finds no room to move the kernel to ("Failed to relocate kernel");
+#: 160 MiB is enough.
+RAM_THROUGH_UEFI = 192 * 1024 * 1024
 #: The prompt comes at 208 s of the CPU's time on QBox's hart, 6 s on the
 #: wall, and 75 s on the wall on the interpreter: a stock kernel's own
 #: initcalls are most of it, the tracing subsystem's tens of seconds among
 #: them.
 LONG_ENOUGH = sp.ms(400_000)
+#: Through UEFI the prompt comes at 318 s of QBox's time, UEFI's boot
+#: manager finding the kernel on the disk before it tries the network: 9 s
+#: on the wall, and two minutes on the interpreter.
+LONG_ENOUGH_THROUGH_UEFI = sp.ms(600_000)
 #: How long a command typed at the prompt may take to prompt again: `uname`
 #: answers in under a second of the CPU's time.
 ANSWERS_WITHIN = sp.ms(10_000)
@@ -86,4 +105,46 @@ def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     )
     board.virtio.blk.load(rootfs)
     loaded_by_python(board, layout, firmware)
+    return board
+
+
+def a_disk_as_a_servers(firmware):
+    """🎓 A disk cut up as a server's, for UEFI to boot Linux from.
+
+    A GUID partition table with an EFI system partition, FAT, holding the
+    kernel as `BOOT_PROGRAM`, which is a UEFI program too by its EFI stub;
+    and the root filesystem in the second partition.
+    """
+    esp = fat_image.make(
+        {BOOT_PROGRAM: firmware(LINUX_BIN).read_bytes()},
+        sectors=ESP_SECTORS,
+    )
+    return gpt_image.make(
+        [
+            gpt_image.Partition(gpt_image.EFI_SYSTEM, "EFI system", esp),
+            gpt_image.Partition(
+                gpt_image.LINUX_FILESYSTEM,
+                "root",
+                firmware(ROOTFS_EXT4).read_bytes(),
+            ),
+        ]
+    )
+
+
+def a_host_with_uefi_and_linux(firmware, boot):
+    """A host built with UEFI to start, and the kernel on a server's disk.
+
+    `boot` puts OpenSBI and UEFI where the host starts them, the quick way
+    or from the flash (`opensbi_boots.loaded_by_python`, `in_the_flash`).
+    """
+    disk = a_disk_as_a_servers(firmware)
+    board, layout = a_host_with_opensbi(
+        firmware,
+        UEFI_FD,
+        virtio=Virtio(blocks=len(disk) // SECTOR),
+        bootargs=BOOTARGS_THROUGH_UEFI,
+        ram=RAM_THROUGH_UEFI,
+    )
+    board.virtio.blk.load(disk)
+    boot(board, layout, firmware)
     return board
