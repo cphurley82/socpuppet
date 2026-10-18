@@ -33,7 +33,8 @@ def pcs(log: str) -> list[int]:
     """The address of each instruction QEMU's log says ran, in order.
 
     `log` is the log's text, written with `exec` and `nochain`, and with
-    one instruction to a block.
+    one instruction to a block, by a QEMU with one CPU, as QBox's hart
+    is: the CPU's number on each line is not looked at.
     """
     ran: list[int] = []
     for line in log.splitlines():
