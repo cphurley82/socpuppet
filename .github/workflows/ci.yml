@@ -296,9 +296,52 @@ jobs:
             build/firmware/uefi.fd
           if-no-files-found: error
 
+  firmware-linux:
+    # Linux, a stock defconfig kernel for the host, built with the SDK's
+    # LLVM from the release tarball its pin names.
+    name: Firmware (Linux)
+    needs: fetch-llvm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache the images
+        id: images
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/firmware/linux.bin
+            build/firmware/linux.elf
+            build/firmware/linux.map
+          key: firmware-linux-${{ hashFiles('firmware/build.py', 'firmware/versions.toml') }}
+      # The kernel's build generates its parsers with flex and bison and
+      # does its arithmetic with bc; its host tools are built with the
+      # runner's own gcc.
+      - name: Install system packages
+        if: steps.images.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y flex bison bc
+      - name: Restore the SDK's LLVM
+        if: steps.images.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: build/firmware/llvm-*
+          key: llvm-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          fail-on-cache-miss: true
+      - uses: astral-sh/setup-uv@v7
+        if: steps.images.outputs.cache-hit != 'true'
+      - if: steps.images.outputs.cache-hit != 'true'
+        run: uv run python tools/ci.py run firmware-linux
+      - uses: actions/upload-artifact@v7
+        with:
+          name: firmware-linux
+          path: |
+            build/firmware/linux.bin
+            build/firmware/linux.elf
+            build/firmware/linux.map
+          if-no-files-found: error
+
   test:
     name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2]
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -568,6 +611,7 @@ jobs:
       - firmware-opensbi
       - firmware-zephyr
       - firmware-edk2
+      - firmware-linux
       - qbox-build
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
@@ -656,7 +700,7 @@ jobs:
     # take them from last time. On Linux the build runs in a container,
     # which sees the runner's files under /host.
     name: Portable wheels (${{ matrix.os }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2]
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -30,6 +30,9 @@ __all__ = [
     "FW_JUMP_BIN",
     "GREETING",
     "HELLO_WORLD",
+    "LINUX",
+    "LINUX_BIN",
+    "LINUX_MAP",
     "LOADED_BY_PYTHON",
     "MANAGER",
     "ROM_FOR_A_32_BIT_CPU",
@@ -66,6 +69,11 @@ SBI_PAYLOAD_BIN = "sbi_payload.bin"
 #: EDK2's RISC-V port (firmware/build.py): UEFI, as a flash device image
 #: built to run where `fw_jump` jumps.
 UEFI_FD = "uefi.fd"
+#: 🐧 Linux (firmware/build.py): the kernel as the flat Image `fw_jump`
+#: jumps to, as vmlinux with its symbols, and as its System.map.
+LINUX_BIN = "linux.bin"
+LINUX = "linux.elf"
+LINUX_MAP = "linux.map"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

@@ -30,9 +30,10 @@ with the symbols, and linux.map, its System.map.
 
 The Zephyr SDK has no toolchain for an Intel Mac. There the build runs in
 the devcontainer's image, which is Linux, by way of tools/devcontainer.py,
-and needs Docker for that; --in-docker does the same anywhere. The images
-come out the same: they are RISC-V programs, and do not care what built
-them.
+and needs Docker for that; --in-docker does the same anywhere, and the
+linux part does so on any Mac, whose file system cannot hold the kernel's
+tree. The images come out the same: they are RISC-V programs, and do not
+care what built them.
 """
 
 import argparse
@@ -227,14 +228,28 @@ def main() -> int:
     try:
         if args.in_docker or sdk_host() == "macos-x86_64":
             return in_docker(parts, out, args.jobs)
-        check_the_machine(parts)
+        here = [p for p in parts if not builds_in_docker(p, sdk_host())]
+        check_the_machine(here)
         build = Build(out, args.jobs)
         for part in parts:
-            build.parts[part]()
+            if part in here:
+                build.parts[part]()
+            elif status := in_docker([part], out, args.jobs):
+                return status
     except Failed as failure:
         print(f"❌ {failure}", file=sys.stderr)
         return 1
     return 0
+
+
+def builds_in_docker(part: str, host: str) -> bool:
+    """Whether a part builds in the devcontainer's image on this machine.
+
+    The kernel does on any Mac: its tree has files whose names differ only
+    in their case, which a Mac's file system keeps as one, and its build
+    wants a GNU make newer than a Mac's.
+    """
+    return part == "linux" and host.startswith("macos")
 
 
 def check_the_machine(parts: list[str]) -> None:
