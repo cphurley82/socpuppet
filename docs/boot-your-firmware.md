@@ -165,4 +165,4 @@ The board is a Python description: `python/socpuppet/boards/host.py`. To try a d
 
 ## More shows
 
-The host is one of three boards. [boards.md](boards.md) has the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI, UEFI, the watchdog, and a debugger on each of three CPUs. [twister.md](twister.md) runs Zephyr's own tests, and yours, on every board.
+The host is one of three boards. [boards.md](boards.md) has the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI, UEFI, the watchdog, and a debugger on each of three CPUs. [linux.md](linux.md) boots 🐧 Linux and types at its shell. [twister.md](twister.md) runs Zephyr's own tests, and yours, on every board.

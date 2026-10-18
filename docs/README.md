@@ -16,8 +16,9 @@ Start with the [README](../README.md): it runs a whole chip's boot in a dozen li
 ## 🧵 Bringing your own firmware
 
 - [Boot your firmware here](boot-your-firmware.md): from a fresh checkout to Zephyr's hello world on the host, then your own application, typing on the console, and a debugger.
-- [The boards, and the bigger shows](boards.md): the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI, UEFI, and the watchdog.
+- [The boards, and the bigger shows](boards.md): the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI, UEFI, Linux, and the watchdog.
 - [Run Zephyr's tests on the puppet](twister.md): Zephyr's own suites, and yours, on every board.
+- [Booting Linux](linux.md): 🐧 a stock kernel on OpenSBI, typed at from Python, with the virtio cast, a shared directory, and what to do when it does not boot.
 
 ## 🔧 Working on socpuppet
 
