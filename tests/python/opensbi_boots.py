@@ -12,30 +12,46 @@ UEFI tests boot EDK2.
 from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
+from socpuppet.boards.cpu_kit import SYSCON_BASE
 from socpuppet.boards.host import RAM_BASE, host
+from socpuppet.regs import system_controller
 
 #: What the devicetree names the board, which OpenSBI's banner repeats.
 MODEL = "socpuppet host"
 
 
-def a_host_with_opensbi(firmware, payload, *, virtio=None):
+def a_host_with_opensbi(firmware, payload, *, virtio=None, bootargs=None):
     """A host described for OpenSBI and built, and OpenSBI's layout for it.
 
     `payload` is the file of the stage OpenSBI is to start. `virtio` is
     what the host's virtio devices are told, if it is to have them
-    (`socpuppet.boards.virtio.Virtio`).
+    (`socpuppet.boards.virtio.Virtio`). `bootargs` is the kernel's command
+    line, if the devicetree is to carry one.
     """
     board = host(boot=from_rom, sbi=True, virtio=virtio)
     layout = opensbi.lay_out(
         firmware(FW_JUMP_BIN).read_bytes(),
         firmware(payload).read_bytes(),
         devicetree.compile(
-            board.platform.devicetree(dialect="linux", model=MODEL)
+            board.platform.devicetree(
+                dialect="linux", model=MODEL, bootargs=bootargs
+            )
         ),
         ram=RAM_BASE,
     )
     board.platform.build()
     return board, layout
+
+
+def switched_off(board):
+    """Whether the host's CPU has been switched off, by its system controller.
+
+    OpenSBI's test payload asks to be, and so does a kernel's `poweroff`.
+    """
+    power_off = SYSCON_BASE + system_controller.POWER_OFF
+    return board.platform.peek32(power_off, via=board.cpu.socket) == (
+        system_controller.POWER_OFF_OFF
+    )
 
 
 def loaded_by_python(board, layout, firmware):
