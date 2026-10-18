@@ -3,10 +3,13 @@ FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         acpica-tools \
+        bc \
+        bison \
         build-essential \
         ca-certificates \
         curl \
         device-tree-compiler \
+        flex \
         gdb \
         git \
         uuid-dev \

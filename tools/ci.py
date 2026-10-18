@@ -237,6 +237,7 @@ FIRMWARE = (
     "firmware-opensbi",
     "firmware-zephyr",
     "firmware-edk2",
+    "firmware-linux",
 )
 
 
@@ -294,6 +295,13 @@ JOBS = [
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "edk2")),),
         areas=("firmware", "edk2"),
+    ),
+    Job(
+        "firmware-linux",
+        "build Linux, a stock kernel, for the host",
+        needs=("fetch-llvm",),
+        steps=(Step("build", ("uv", "run", "firmware/build.py", "linux")),),
+        areas=("firmware", "linux"),
     ),
     Job(
         "test",

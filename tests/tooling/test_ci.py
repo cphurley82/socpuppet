@@ -344,7 +344,8 @@ def test_run_opens_with_the_command_that_runs_the_job_and_its_needs_here(ci):
 
     assert command_to_run_here(result.stdout) == (
         "uv run python tools/ci.py fetch-sdk fetch-llvm fetch-zephyr "
-        "firmware-rom firmware-opensbi firmware-zephyr firmware-edk2 test"
+        "firmware-rom firmware-opensbi firmware-zephyr firmware-edk2 "
+        "firmware-linux test"
     )
 
 

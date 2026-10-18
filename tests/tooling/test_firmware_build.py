@@ -555,6 +555,12 @@ def test_in_docker_the_same_build_runs_in_the_devcontainers_image(firmware):
     assert firmware.calls("curl") == []
 
 
+def test_on_a_mac_the_kernel_builds_in_docker_and_the_other_parts_here():
+    assert BUILD.builds_in_docker("linux", "macos-aarch64")
+    assert not BUILD.builds_in_docker("rom", "macos-aarch64")
+    assert not BUILD.builds_in_docker("linux", "linux-x86_64")
+
+
 def test_in_docker_an_output_directory_outside_the_repository_is_refused(
     firmware, tmp_path
 ):

@@ -30,7 +30,7 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
 
 ```sh
 sudo apt-get update && sudo apt-get install -y \
-  build-essential git curl xz-utils zlib1g-dev device-tree-compiler uuid-dev acpica-tools gdb
+  build-essential git curl xz-utils zlib1g-dev device-tree-compiler uuid-dev acpica-tools flex bison bc gdb
 ```
 
 | Package | Why |
@@ -40,6 +40,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `zlib1g-dev` | SCC's FST trace writer, which waveform viewers such as GTKWave open, needs it |
 | `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates and compiles the one OpenSBI is handed. The tests that need it skip without it |
 | `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.py` |
+| `flex`, `bison`, `bc` | what the Linux kernel's build generates its parsers and does its arithmetic with, for `firmware/build.py` |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
 
 For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
