@@ -188,10 +188,6 @@ bool Platform::Step() {
   return true;
 }
 
-namespace {
-const sc_core::sc_time kTheShortestRun(1, sc_core::SC_PS);
-}  // namespace
-
 std::optional<sc_core::sc_time> Platform::TimeToNextActivity() {
   RefuseUnlessElaborated("look for its next activity");
   FinishThisMoment();
@@ -203,7 +199,7 @@ std::optional<sc_core::sc_time> Platform::TimeToNextActivity() {
     // at the next moment after this one: the shortest run there is. (A
     // run of no time at all takes the kernel's other path, one delta
     // cycle and back, and never waits.)
-    Run(kTheShortestRun);
+    Run(sc_core::sc_time(1, sc_core::SC_PS));
   }
   return sc_core::sc_time_to_pending_activity();
 }
