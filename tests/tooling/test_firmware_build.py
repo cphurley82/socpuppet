@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -123,6 +124,11 @@ elif name.endswith("-objcopy"):
     shutil.copy(args[-2], args[-1])
 elif name.endswith("-objdump"):
     print(open(os.environ["DISASSEMBLY"]).read(), end="")
+elif name == "mkfs.ext4":
+    # The image is a tar of the tree it was made from, so a test can look
+    # inside it as it would a real one.
+    shutil.make_archive(args[-2], "tar", after("-d"))
+    os.replace(args[-2] + ".tar", args[-2])
 elif name == "build":
     write(
         os.path.join(
@@ -167,6 +173,12 @@ Disassembly of section .text:
 
 # A file in a tarball that is to be the fake, runnable.
 RUNNABLE = object()
+
+
+class Link(NamedTuple):
+    """A symbolic link in a tarball, and what it points to."""
+
+    to: str
 
 
 def load_script():
@@ -448,6 +460,7 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
 ):
     firmware.sdk_release()
     firmware.linux_release(version="6.18.57")
+    firmware.alpine_release()
 
     result = firmware.run("linux")
 
@@ -469,6 +482,61 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
     assert (firmware.out / "linux.bin").read_text() == "Image"
     assert (firmware.out / "linux.elf").exists()
     assert (firmware.out / "linux.map").read_text().endswith("T _start\n")
+
+
+def test_the_root_filesystem_is_alpines_minirootfs_with_our_inittab_in_ext4(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    files = inside(firmware.out / "rootfs.ext4")
+    assert files["etc/inittab"].data == b"spam\n"
+    assert files["etc/profile"].data == b"PS1=spam\n"
+    assert files["sbin/init"].link == "/bin/busybox"
+
+
+class Entry(NamedTuple):
+    """A file of a fake image: its bytes, or what it is a link to."""
+
+    data: bytes | None = None
+    link: str | None = None
+
+
+def inside(image):
+    """The files of a fake image, by name.
+
+    The fake mkfs.ext4 tars the tree it is given, naming each file "./..."
+    as shutil.make_archive does; the names here have that stripped.
+    """
+    with tarfile.open(image) as archive:
+        return {
+            Path(member.name).as_posix(): Entry(
+                data=archive.extractfile(member).read()
+                if member.isfile()
+                else None,
+                link=member.linkname if member.issym() else None,
+            )
+            for member in archive
+        }
+
+
+def test_a_root_whose_checksum_is_wrong_stops_the_fetch_making_no_image(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release(corrupt=True)
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 1
+    assert "alpine-minirootfs" in result.stdout
+    assert not (firmware.out / "rootfs.ext4").exists()
 
 
 def test_a_kernel_whose_checksum_is_wrong_stops_the_fetch_unpacking_none(
@@ -574,13 +642,14 @@ def test_in_docker_an_output_directory_outside_the_repository_is_refused(
 def test_when_no_part_is_named_every_part_is_built(firmware):
     firmware.sdk_release()
     firmware.linux_release()
+    firmware.alpine_release()
 
     result = firmware.run()
 
     assert result.returncode == 0, result.stdout
     for image in (
         *("rom_rv64.bin", "fw_jump.elf", "sbi_payload.bin", "uefi.fd"),
-        "linux.bin",
+        *("linux.bin", "rootfs.ext4"),
     ):
         assert (firmware.out / image).exists(), image
     for image in BUILD.IMAGES:
@@ -619,6 +688,7 @@ class Firmware:
             "firmware/sbi_payload/start.S",
             "firmware/sbi_payload/spam.c",
             "firmware/sbi_payload/payload.ld",
+            "firmware/rootfs/etc/inittab",
             "python/socpuppet/zephyr_module/zephyr/module.yml",
             "cmake/patches/opensbi-spam.patch",
             "cmake/patches/edk2-spam.patch",
@@ -629,7 +699,7 @@ class Firmware:
         self.install(self.root / "tools" / "devcontainer.py")
         for program in (
             *("curl", "git", "make", "uv", "iasl", "build"),
-            *("flex", "bison", "bc"),
+            *("flex", "bison", "bc", "mkfs.ext4"),
         ):
             self.install(self.bin / program)
 
@@ -687,11 +757,36 @@ class Firmware:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.pin("linux", version, "0" * 64 if corrupt else digest)
 
+    def alpine_release(self, corrupt=False):
+        """Put Alpine's mini root filesystem where curl looks, and pin it.
+
+        As Alpine's own: busybox, the links to it, and an inittab and a
+        profile that ours replaces or keeps. With `corrupt`, the checksum
+        pinned is not the tarball's.
+        """
+        self.downloads.mkdir(exist_ok=True)
+        version = self.versions["alpine"]
+        path = self.downloads / f"alpine-minirootfs-{version}-riscv64.tar.gz"
+        tarball(
+            path,
+            {
+                "./bin/busybox": RUNNABLE,
+                "./sbin/init": Link("/bin/busybox"),
+                "./etc/inittab": "::sysinit:/sbin/openrc sysinit\n",
+                "./etc/profile": "PS1=spam\n",
+            },
+            self.fake,
+            compression="gz",
+        )
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        self.pin("alpine", version, "0" * 64 if corrupt else digest)
+
     def pin(self, name, version, sha256):
         """Write one entry of the copy of versions.toml the script reads."""
-        pins = {**BUILD.read_pins(VERSIONS), name: {"version": version}}
+        versions = self.root / "firmware" / "versions.toml"
+        pins = {**BUILD.read_pins(versions), name: {"version": version}}
         pins[name]["sha256"] = sha256
-        (self.root / "firmware" / "versions.toml").write_text(
+        versions.write_text(
             "\n".join(
                 f"[{each}]\n"
                 + "".join(f'{key} = "{value}"\n' for key, value in pin.items())
@@ -761,14 +856,19 @@ class Firmware:
         return len([c for c in self.calls("uv") if c["args"][0] == "venv"])
 
 
-def tarball(path, contents, fake):
-    """A .tar.xz at `path` of {name: text, or RUNNABLE for the fake}."""
-    with tarfile.open(path, "w:xz") as archive:
+def tarball(path, contents, fake, compression="xz"):
+    """A tarball at `path` of {name: text, RUNNABLE for the fake, or a Link}."""
+    with tarfile.open(path, f"w:{compression}") as archive:
         for name, text in contents.items():
-            data = fake.read_bytes() if text is RUNNABLE else text.encode()
             info = tarfile.TarInfo(name)
-            info.size = len(data)
             info.mode = 0o755
+            if isinstance(text, Link):
+                info.type = tarfile.SYMTYPE
+                info.linkname = text.to
+                archive.addfile(info)
+                continue
+            data = fake.read_bytes() if text is RUNNABLE else text.encode()
+            info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
 
 

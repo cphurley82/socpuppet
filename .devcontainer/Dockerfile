@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
         device-tree-compiler \
+        e2fsprogs \
         flex \
         gdb \
         git \

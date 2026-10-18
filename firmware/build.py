@@ -16,7 +16,8 @@ The parts, each of which fetches or builds what it needs first:
   zephyr       Zephyr's images: four samples and two of its tests, and
                four applications of ours, for the boards they run on
   edk2         EDK2, which is UEFI, as uefi.fd
-  linux        Linux, a stock defconfig kernel for the host, as linux.bin
+  linux        Linux, a stock defconfig kernel for the host, as linux.bin,
+               and a root filesystem for it, Alpine's, as rootfs.ext4
 
 With no part named, every one is built, in that order. Everything goes in
 the output directory (build/firmware), and a second run reuses what is
@@ -26,7 +27,9 @@ of RAM; and <name>_<board>.opcodes.txt, how often each instruction appears
 in it. The boot ROM, fw_jump, test_payload and sbi_payload are each an .elf
 and a .bin, and EDK2 is uefi.fd, its flash device image. Linux is
 linux.bin, the flat Image that fw_jump jumps to, linux.elf, its vmlinux
-with the symbols, and linux.map, its System.map.
+with the symbols, and linux.map, its System.map; and rootfs.ext4 is its
+root filesystem, Alpine's mini root with an inittab of ours in it
+(firmware/rootfs).
 
 The Zephyr SDK has no toolchain for an Intel Mac. There the build runs in
 the devcontainer's image, which is Linux, by way of tools/devcontainer.py,
@@ -170,15 +173,22 @@ TWISTER_REQUIREMENTS = REPOSITORY / "firmware" / "twister-requirements.txt"
 # the program, its Ubuntu package and its Homebrew formula. EDK2 needs
 # ACPICA's compiler, which compiles the ACPI tables of a driver of EDK2's.
 # The kernel's build generates its parsers with flex and bison, and does
-# its arithmetic with bc.
+# its arithmetic with bc; its root filesystem is made by mkfs.ext4.
 PROGRAMS = {
     "edk2": (("iasl", "acpica-tools", "acpica"),),
     "linux": (
         ("flex", "flex", "flex"),
         ("bison", "bison", "bison"),
         ("bc", "bc", "bc"),
+        ("mkfs.ext4", "e2fsprogs", "e2fsprogs"),
     ),
 }
+# What of ours goes into the root filesystem, laid over Alpine's files: a
+# tree shaped as the guest's, so firmware/rootfs/etc/inittab is /etc/inittab.
+ROOTFS_OVERLAY = REPOSITORY / "firmware" / "rootfs"
+# How big the root filesystem is. Alpine's mini root is 3 MB packed and 9
+# unpacked, and the rest is room to write in.
+ROOTFS_SIZE = "32M"
 # The machines the Zephyr SDK has a toolchain for, by the names it gives
 # them. An Intel Mac is not one, and builds in Docker.
 SDK_HOSTS = ("linux-x86_64", "linux-aarch64", "macos-aarch64")
@@ -855,6 +865,49 @@ class Build:
         # Not report(): vmlinux's entry is a virtual address, not where
         # linux.bin is loaded, and would mislead.
         say(f"  {(self.out / 'linux.bin').stat().st_size} bytes in linux.bin")
+        self.root_filesystem()
+
+    def root_filesystem(self) -> None:
+        """Alpine's mini root filesystem, with our inittab, as an ext4 image.
+
+        🐧 A kernel needs a root filesystem with an `init` in it to run
+        first. Alpine's mini root is a stock distribution's: busybox and
+        musl, made for containers, and so with no device nodes in it (the
+        kernel makes /dev itself) and an inittab that starts OpenRC, which
+        the mini root does not carry. Ours is laid over it: a shell on the
+        console, and no login.
+
+        The image is made by mkfs.ext4 from the unpacked tree, which
+        needs no root privilege: the files come out owned by whoever ran
+        the build, which the root shell in the guest does not mind.
+        """
+        version = self.versions["alpine"]
+        root = self.out / f"alpine-minirootfs-{version}"
+        if not root.is_dir():
+            say(f"Fetching Alpine {version}")
+            with self.staging() as name:
+                staging = Path(name) / root.name
+                self.fetch(
+                    "https://dl-cdn.alpinelinux.org/alpine/"
+                    f"v{'.'.join(version.split('.')[:2])}/releases/riscv64/"
+                    f"alpine-minirootfs-{version}-riscv64.tar.gz",
+                    staging,
+                    sha256=self.pins["alpine"]["sha256"],
+                )
+                staging.rename(root)
+        say("Making the root filesystem")
+        shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
+        image = self.out / "rootfs.ext4"
+        with self.staging() as name:
+            made = Path(name) / image.name
+            logged(
+                self.out / "build_rootfs.log",
+                *("mkfs.ext4", "-q", "-F", "-d", str(root)),
+                *(str(made), ROOTFS_SIZE),
+            )
+            made.replace(image)
+        used = image.stat().st_blocks * 512
+        say(f"  {used} bytes used of the {ROOTFS_SIZE} in rootfs.ext4")
 
     # Helpers.
 

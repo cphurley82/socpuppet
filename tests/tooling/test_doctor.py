@@ -51,7 +51,7 @@ QBOX = DOCTOR_MODULE.BUILD_QBOX
 # a test takes it away.
 PROGRAMS = (
     *("git", "c++", "dtc", "curl", "make", "iasl", "docker"),
-    *("flex", "bison", "bc"),
+    *("flex", "bison", "bc", "mkfs.ext4"),
     *(name for name, _, _ in QBOX.PROGRAMS),
 )
 
