@@ -1,8 +1,10 @@
 # The Zephyr that socpuppet's firmware is built with and tested against,
 # the SDK whose compiler builds it, the OpenSBI the host boots Linux's way
-# with, and the EDK2 that boots on it as UEFI. Read by firmware/build.py,
-# which fetches all four, and by firmware/twister.py, which runs the Zephyr
-# and the SDK it fetched. CI keys its caches of each on this file.
+# with, the EDK2 that boots on it as UEFI, and the Linux that boots on
+# both. Read by firmware/build.py, which fetches all five, and by
+# firmware/twister.py, which runs the Zephyr and the SDK it fetched. CI
+# keys its caches of each on this file. What is fetched as one file from a
+# release carries that file's SHA-256, which the fetch is checked against.
 
 [zephyr]
 version = "v4.4.2"
@@ -15,3 +17,10 @@ version = "v1.9"
 
 [edk2]
 version = "edk2-stable202608"
+
+# A longterm kernel: the AIA drivers landed in 6.10, and 6.16 taught the
+# kernel to handle a misaligned access itself. The checksum is the one
+# https://cdn.kernel.org/pub/linux/kernel/v6.x/sha256sums.asc lists.
+[linux]
+version = "6.18.57"
+sha256 = "5bd9acdc82ec5efc3790ae840e5aaa40dfde7efff261cf6dde902dc570acf98c"
