@@ -70,6 +70,12 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
+        "only_on_qbox(reason): a test of something QBox's CPU has and the "
+        "DBT-RISE CPU has not, and what. It is skipped with the reason unless "
+        "SOCPUPPET_CPU is qbox_cpu.",
+    )
+    config.addinivalue_line(
+        "markers",
         "long: a test that takes seconds, or most of a minute, on its own: "
         "the boots of OpenSBI and UEFI. The long tests are collected first, "
         "so that none of them starts last.",
@@ -90,3 +96,6 @@ def pytest_runtest_setup(item):
     fate = item.get_closest_marker("not_on_qbox")
     if fate is not None and os.environ.get("SOCPUPPET_CPU") == "qbox_cpu":
         pytest.skip(f"on QBox: {fate.args[0]}")
+    only = item.get_closest_marker("only_on_qbox")
+    if only is not None and os.environ.get("SOCPUPPET_CPU") != "qbox_cpu":
+        pytest.skip(f"not on QBox: {only.args[0]}")
