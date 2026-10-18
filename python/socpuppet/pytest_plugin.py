@@ -112,9 +112,12 @@ def pytest_runtest_protocol(
     """Run a `platform` test in a process of its own."""
     if (
         item.get_closest_marker("platform") is None
+        or item.get_closest_marker("skip") is not None
         or _REPORT_FILE_ENV in os.environ
     ):
-        return None  # run normally, in this process
+        # Run normally, in this process: a test that is skipped whatever
+        # happens, an `on_demand` one among them, needs no process to skip.
+        return None
 
     item.ihook.pytest_runtest_logstart(
         nodeid=item.nodeid, location=item.location
