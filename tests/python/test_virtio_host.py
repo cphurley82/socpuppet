@@ -248,7 +248,9 @@ class TestWhenTheHostOpensANameThatIsNotInThe9pShare:
             script, sp.Virtio9p(tag="spam", directory=tmp_path)
         )
 
-        with pytest.raises(sp.VirtioError, match=r"ham\.txt.*ENOENT"):
+        with pytest.raises(
+            sp.VirtioError, match=r"Twalk of 'ham\.txt'.*ENOENT"
+        ):
             platform.run()
 
 

@@ -581,10 +581,20 @@ class Virtio9pHost(VirtioHost):
             (number,) = struct.unpack_from("<I", body)
             what = f" of {about!r}" if about else ""
             raise VirtioError(
-                f"The share answered 9P message {kind}{what} with "
+                f"The share answered {_NINEP_NAMES[kind]}{what} with "
                 f"{fuse.linux_error_name(number)}."
             )
         return body
+
+
+#: The messages this driver sends, by name, for what it says went wrong.
+_NINEP_NAMES = {
+    ninep.TVERSION: "Tversion",
+    ninep.TATTACH: "Tattach",
+    ninep.TWALK: "Twalk",
+    ninep.TLOPEN: "Tlopen",
+    ninep.TREAD: "Tread",
+}
 
 
 def _string(text: bytes) -> bytes:
