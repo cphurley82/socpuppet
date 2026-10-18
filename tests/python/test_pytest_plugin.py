@@ -226,6 +226,41 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
 
 
+ON_DEMAND = """
+    import pytest
+
+    @pytest.mark.on_demand("it takes the long way round")
+    @pytest.mark.platform
+    def test_that_is_on_demand():
+        pass
+"""
+
+
+class TestWhenATestIsOnDemand:
+    def test_it_is_skipped_and_the_reason_names_the_variable(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        monkeypatch.delenv("SOCPUPPET_ON_DEMAND", raising=False)
+        session_with_socpuppet.makepyfile(ON_DEMAND)
+
+        result = session_with_socpuppet.runpytest_subprocess("-rs")
+
+        result.assert_outcomes(skipped=1)
+        result.stdout.fnmatch_lines(
+            ["*it takes the long way round*SOCPUPPET_ON_DEMAND=1*"]
+        )
+
+    def test_it_runs_when_the_variable_asks_for_it(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        monkeypatch.setenv("SOCPUPPET_ON_DEMAND", "1")
+        session_with_socpuppet.makepyfile(ON_DEMAND)
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=1)
+
+
 class TestWhenAPlatformTestsProcessDiesOfASignalPythonHasNoNameFor:
     def test_the_status_is_reported_as_the_bare_number(self):
         # Linux's real-time signals are the case: only the first and the

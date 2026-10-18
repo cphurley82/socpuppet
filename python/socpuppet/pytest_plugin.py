@@ -16,6 +16,12 @@ configuration, 300 unless set, and 0 means no limit::
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
 
+A test that is worth running but too long to run every time, such as a
+boot the slow way round, is marked ``@pytest.mark.on_demand("why")``,
+and is skipped unless the environment variable ``SOCPUPPET_ON_DEMAND``
+is ``1``. It is a variable and not an option of pytest's, so that it
+reaches the process a ``platform`` test runs in.
+
 pytest finds the plugin by itself where socpuppet is installed. Where the
 package is imported straight from a source tree, enable it from a
 ``conftest.py``::
@@ -46,6 +52,11 @@ _Phase = Literal["setup", "call", "teardown"]
 _BEFORE_TEARDOWN: tuple[_Phase, ...] = ("setup", "call")
 
 
+# The variable that runs the tests marked `on_demand`, and what it says.
+_ON_DEMAND_ENV = "SOCPUPPET_ON_DEMAND"
+_ON_DEMAND_ASKED = "1"
+
+
 # The setting for how long a marked test may run, and what it is when
 # nobody sets it: long enough for a firmware boot on a slow machine.
 _TIMEOUT_SETTING = "socpuppet_platform_timeout"
@@ -63,15 +74,36 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Register the `platform` marker, and in a child, report to the parent."""
+    """Register the markers, and in a child, report to the parent."""
     config.addinivalue_line(
         "markers",
         "platform: builds a Platform, so the test runs in its own process "
         "(one SystemC kernel per process)",
     )
+    config.addinivalue_line(
+        "markers",
+        f"on_demand(reason): skipped unless {_ON_DEMAND_ENV}="
+        f"{_ON_DEMAND_ASKED}, for a test too long to run every time",
+    )
     report_file = os.environ.get(_REPORT_FILE_ENV)
     if report_file:
         config.pluginmanager.register(_ChildReporter(config, report_file))
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Skip the `on_demand` tests, unless the environment asks for them."""
+    if os.environ.get(_ON_DEMAND_ENV) == _ON_DEMAND_ASKED:
+        return
+    for item in items:
+        marker = item.get_closest_marker("on_demand")
+        if marker is not None:
+            reason = marker.args[0] if marker.args else "on demand"
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"{reason}: run with "
+                    f"{_ON_DEMAND_ENV}={_ON_DEMAND_ASKED}"
+                )
+            )
 
 
 def pytest_runtest_protocol(
