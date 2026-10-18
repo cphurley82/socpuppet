@@ -65,10 +65,10 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16",
-    "rumdl==0.2.78",
+    "rumdl==0.2.79",
     # pyfatfs is built on PyFilesystem2, which still imports
     # pkg_resources, and setuptools 81 has none (docs/upstream.md).
-    "setuptools<81",
+    "setuptools<85",
     "shellcheck-py>=0.11.0.1",
     "systemrdl-compiler>=1.33.0",
 ]
@@ -114,7 +114,7 @@ test-requires = [
     "pytest-xdist",
     "dpkt>=1.9",
     "pyfatfs>=1.1",
-    "setuptools<81",
+    "setuptools<85",
 ]
 # On every core, as ctest runs them (tests/python/CMakeLists.txt says why).
 test-command = "pytest -n auto --dist loadscope --no-loadscope-reorder tests/python"
