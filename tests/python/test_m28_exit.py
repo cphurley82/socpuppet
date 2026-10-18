@@ -21,6 +21,7 @@ import pytest
 
 import socpuppet as sp
 from cast import UEFI_FD
+from console import plain
 from devicetree_compiler import needs_dtc
 from opensbi_boots import a_host_with_opensbi, in_the_flash, loaded_by_python
 from socpuppet.boards.host import RAM_BASE, RAM_SIZE
@@ -29,7 +30,6 @@ from uefi_shell import (
     LONG_ENOUGH,
     PROMPT,
     SHELLS_COUNTDOWN,
-    plain,
     type_and_wait_for_the_prompt,
 )
 

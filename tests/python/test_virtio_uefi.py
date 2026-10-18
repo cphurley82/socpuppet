@@ -24,10 +24,11 @@ import ethernet
 import fat_image
 import socpuppet as sp
 from cast import UEFI_FD
+from console import plain
 from devicetree_compiler import needs_dtc
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet.boards.virtio import Virtio
-from uefi_shell import plain, run_to_the_prompt, type_and_wait_for_the_prompt
+from uefi_shell import run_to_the_prompt, type_and_wait_for_the_prompt
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
 #: boot of UEFI takes most of a minute, so the tests are handed out first.

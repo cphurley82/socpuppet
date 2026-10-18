@@ -8,6 +8,7 @@ there and of typing at it, for every test that boots UEFI.
 import re
 
 import socpuppet as sp
+from console import plain
 
 PROMPT = "Shell>"
 #: The boot manager's countdown, and then the shell's, each with how many
@@ -54,9 +55,3 @@ def type_and_wait_for_the_prompt(board, command, *, meanwhile=None):
     prompted = board.platform.run_until(prompted_again, timeout=ANSWERS_WITHIN)
     assert prompted, f"The shell did not prompt again after {command!r}"
     return plain(board.uart.output[said_before:])
-
-
-def plain(console):
-    """`console` without the escape sequences a UEFI terminal moves and
-    colours with."""
-    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", console)

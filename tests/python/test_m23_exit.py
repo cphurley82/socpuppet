@@ -23,11 +23,10 @@ from opensbi_boots import (
     a_host_with_opensbi,
     in_the_flash,
     loaded_by_python,
+    switched_off,
 )
 from socpuppet import opensbi
-from socpuppet.boards.cpu_kit import SYSCON_BASE
 from socpuppet.boards.host import RAM_BASE
-from socpuppet.regs import system_controller
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
 #: boot of OpenSBI takes seconds, so the tests are handed out first.
@@ -257,14 +256,6 @@ class TestWhenOurPayloadAsksOpenSbiForAColdRebootFromTheFlash:
 
         assert "payload: asking to be switched off" in board.uart.output
         assert switched_off(board)
-
-
-def switched_off(board):
-    """Whether the host's CPU has been switched off, by its system controller."""
-    power_off = SYSCON_BASE + system_controller.POWER_OFF
-    return board.platform.peek32(power_off, via=board.cpu.socket) == (
-        system_controller.POWER_OFF_OFF
-    )
 
 
 def said(board, label):

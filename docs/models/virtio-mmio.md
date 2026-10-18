@@ -66,6 +66,7 @@ Each device's page says what the device does; this is what they share. `socpuppe
 - **Packed virtqueues, indirect descriptors and event indices** (`F_RING_PACKED`, `F_INDIRECT_DESC`, `F_EVENT_IDX`): the split ring as the specification first had it, which every driver falls back to.
 - **Shared memory regions** (`SHM_SEL`, `SHM_LEN`, read as none) and notification data.
 - **A configuration change interrupt,** which no device here raises, since none changes its configuration.
+- **A configuration generation that moves.** `CONFIG_GENERATION` reads zero and stays there, for the same reason. 🐧 Linux's transport reads it before and after the configuration, to know the words it read belong together; Zephyr's and EDK2's never ask, which is how a read nothing answered stayed hidden until a kernel booted.
 
 ## Under the hood
 

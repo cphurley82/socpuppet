@@ -136,6 +136,15 @@ TEST(WhenTheDriverReadsTheFirstFourRegistersOfAVirtioDevice,
 // The transport's own feature bit: the modern layout (virtio 1.2, section 6).
 constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
 
+// 🐧 Linux's transport reads the generation before and after the device's
+// configuration, to know the words it read belong together. No device here
+// changes its configuration, so the generation stays at zero.
+TEST(WhenTheDriverReadsTheConfigurationsGeneration, ItIsZero) {
+  const Rig rig;
+
+  EXPECT_EQ(rig.Read32(VIRTIO_MMIO_CONFIG_GENERATION), 0U);
+}
+
 TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
      TheyAreWhatTheDeviceOffersWithVersionOneAdded) {
   Rig rig;

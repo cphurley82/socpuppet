@@ -75,6 +75,12 @@ class VirtioMmioLogic {
       case VIRTIO_MMIO_INTERRUPT_STATUS:
         StoreLittleEndian(interrupt_status_, out);
         return true;
+      // 🐧 Linux reads it before and after the configuration, to know the
+      // words it read belong together. No device here changes its
+      // configuration, so it never moves.
+      case VIRTIO_MMIO_CONFIG_GENERATION:
+        StoreLittleEndian(0U, out);
+        return true;
       // No device here has shared memory, and all ones is how a region
       // that does not exist answers (section 4.2.2), in each half.
       case VIRTIO_MMIO_SHM_LEN_LOW:
