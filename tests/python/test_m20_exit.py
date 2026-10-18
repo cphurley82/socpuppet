@@ -17,8 +17,6 @@ the flash.
 """
 
 import re
-import tomllib
-from pathlib import Path
 
 import pytest
 
@@ -46,8 +44,6 @@ pytestmark = [needs_dtc, pytest.mark.long]
 
 #: What the kernel says first, with its version: "Linux version 6.18.57".
 BANNER = re.compile(r"Linux version (\d+\.\d+\.\d+)")
-#: The kernel firmware/build.py builds, as versions.toml pins it.
-VERSIONS = Path(__file__).resolve().parents[2] / "firmware" / "versions.toml"
 
 
 @pytest.fixture
@@ -90,13 +86,17 @@ class TestWhenLinuxBootsTheQuickWay:
 
 @pytest.mark.platform
 class TestWhenPythonTypesAtLinuxsShell:
-    def test_uname_names_linux_and_the_pinned_kernel(self, linux_at_its_prompt):
+    def test_uname_names_linux_and_the_version_it_booted_saying(
+        self, linux_at_its_prompt
+    ):
+        # 💡 The version is the one the kernel's banner gave, and not read
+        # from firmware/versions.toml, which the wheel's tests run without.
         board = linux_at_its_prompt
 
         answer = type_and_wait_for_the_prompt(board, "uname -a")
 
-        pinned = tomllib.loads(VERSIONS.read_text())["linux"]["version"]
-        assert answer.startswith(f"Linux socpuppet {pinned} ")
+        booted = BANNER.search(plain(board.uart.output))[1]
+        assert answer.startswith(f"Linux socpuppet {booted} ")
         assert " riscv64 Linux" in answer
 
 
