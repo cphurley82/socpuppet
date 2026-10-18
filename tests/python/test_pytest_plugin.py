@@ -82,6 +82,23 @@ class TestWhenAPlatformTestSkipsItself:
 
         result.assert_outcomes(skipped=1)
 
+    def test_the_summary_of_skips_gives_the_reason(
+        self, session_with_socpuppet
+    ):
+        session_with_socpuppet.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_skips():
+                pytest.skip("no strings attached")
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess("-rs")
+
+        result.stdout.fnmatch_lines(["SKIPPED*no strings attached"])
+
 
 class TestWhenPytestIsStartedFromASubdirectory:
     def test_a_platform_test_there_runs_in_that_directory(

@@ -157,12 +157,7 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
         output = stdout + stderr
-        reports = [
-            config.hook.pytest_report_from_serializable(
-                config=config, data=json.loads(line)
-            )
-            for line in report_file
-        ]
+        reports = [_report_from_json(config, line) for line in report_file]
     if unfinished is not None:
         reports.append(
             _unfinished_report(
@@ -172,6 +167,21 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
             )
         )
     return reports
+
+
+def _report_from_json(config: pytest.Config, line: str) -> pytest.TestReport:
+    """A report the child wrote, as pytest gave it there.
+
+    ⚠️ A skip's reason is a tuple of where and why, which JSON brings back
+    as a list, and pytest's summary of skips takes only a tuple.
+    """
+    data = json.loads(line)
+    if data.get("outcome") == "skipped" and isinstance(data["longrepr"], list):
+        data["longrepr"] = tuple(data["longrepr"])
+    report: pytest.TestReport = config.hook.pytest_report_from_serializable(
+        config=config, data=data
+    )
+    return report
 
 
 def _unfinished_report(
