@@ -16,8 +16,10 @@ it does, and a number that is its inode's.
 
 `Directory` serves a directory of this machine this way, one request at a
 time, as `socpuppet.fuse.Directory` serves one over FUSE. ⚠️ A client
-may change anything under the directory, and nothing outside it: a path
-that leads out of the share, by `..` or by a link, is refused.
+may change anything under the directory, and nothing outside it. The
+server never follows a link at the end of a path, as 9P's servers do not:
+the client reads the link and walks where it says. A path that leads out
+of the share through a directory, by `..` or by a link, is refused.
 """
 
 from __future__ import annotations
@@ -38,8 +40,10 @@ VERSION = b"9P2000.L"
 UNKNOWN_VERSION = b"unknown"
 #: The most a message may be, which a client may ask for less of.
 MAX_MESSAGE_SIZE = 512 * 1024
-#: The fid a client sends for "none".
+#: The fid a client sends for "none", and the tag of an answer to a message
+#: whose own tag could not be read.
 NO_FID = 0xFFFF_FFFF
+NO_TAG = 0xFFFF
 
 #: The message types of 9P2000.L: each T-message's number, its R-message
 #: being the next.
@@ -48,16 +52,12 @@ TSTATFS = 8
 TLOPEN = 12
 TLCREATE = 14
 TSYMLINK = 16
-TMKNOD = 18
 TREADLINK = 22
 TGETATTR = 24
 TSETATTR = 26
-TXATTRWALK = 30
-TXATTRCREATE = 32
 TREADDIR = 40
 TFSYNC = 50
 TLOCK = 52
-TGETLOCK = 54
 TMKDIR = 72
 TRENAMEAT = 74
 TUNLINKAT = 76
@@ -189,8 +189,15 @@ class Directory:
         }
 
     def __call__(self, request: bytes) -> bytes:
-        """The R-message that answers the T-message `request`, as bytes."""
-        size, kind, tag = HEADER.unpack_from(request)
+        """The R-message that answers the T-message `request`, as bytes.
+
+        One that cannot be read, or asks what this machine cannot do, is
+        answered `EINVAL`, as `socpuppet.fuse` answers one.
+        """
+        try:
+            size, kind, tag = HEADER.unpack_from(request)
+        except struct.error:
+            return self._lerror(NO_TAG, linux_errno_named("EINVAL"))
         body = _Reader(request[HEADER.size : size])
         try:
             handler = self._handlers.get(kind)
@@ -201,14 +208,22 @@ class Directory:
             kind, answer = RLERROR, _number(refused.number, 4)
         except OSError as failure:
             kind, answer = RLERROR, _number(linux_errno(failure), 4)
+        except (ValueError, OverflowError):
+            kind, answer = RLERROR, _number(linux_errno_named("EINVAL"), 4)
         return HEADER.pack(HEADER.size + len(answer), kind, tag) + answer
+
+    @staticmethod
+    def _lerror(tag: int, number: int) -> bytes:
+        answer = _number(number, 4)
+        return HEADER.pack(HEADER.size + len(answer), RLERROR, tag) + answer
 
     # Where fids point, kept inside the share.
 
     def _fid(self, number: int) -> Fid:
         """What fid `number` names, checked to be inside the share still.
 
-        It was when walked to, and a link made since can have led it out.
+        It was when walked to, and a link made since in place of one of
+        the directories it is in can have led it out.
         """
         try:
             fid = self._fids[number]
@@ -219,7 +234,10 @@ class Directory:
         return fid
 
     def _inside(self, path: Path) -> bool:
-        return path.resolve().is_relative_to(self.root)
+        """Whether `path` is in the share, its last name not followed."""
+        if path == self.root:
+            return True
+        return (path.parent.resolve() / path.name).is_relative_to(self.root)
 
     def _child(self, parent: Path, name: bytes) -> Path:
         text = name.decode(errors="surrogateescape")
@@ -286,6 +304,8 @@ class Directory:
     def _lopen(self, body: _Reader) -> bytes:
         fid = self._fid(body.number(4))
         flags = body.number(4)
+        if fid.path.is_symlink():
+            raise _Refused("ELOOP")
         if fid.path.is_dir():
             fid.entries = self._listing(fid.path)
         else:
@@ -351,7 +371,7 @@ class Directory:
             + _number(found.st_mtime_ns % 1_000_000_000, 8)
             + _number(int(found.st_ctime), 8)
             + _number(found.st_ctime_ns % 1_000_000_000, 8)
-            + _number(0, 8) * 5
+            + _number(0, 8) * 4
         )
 
     def _setattr(self, body: _Reader) -> bytes:
@@ -364,6 +384,10 @@ class Directory:
         atime = body.number(8) * 1_000_000_000 + body.number(8)
         mtime = body.number(8) * 1_000_000_000 + body.number(8)
         path = fid.path
+        # ⚠️ A link's own mode and size cannot be set, and setting them on
+        # its target would reach outside the share.
+        if valid & (SETATTR_MODE | SETATTR_SIZE) and path.is_symlink():
+            raise _Refused("ELOOP")
         if valid & SETATTR_MODE:
             path.chmod(stat.S_IMODE(mode))
         if valid & (SETATTR_UID | SETATTR_GID):
@@ -371,14 +395,16 @@ class Directory:
                 path,
                 uid if valid & SETATTR_UID else -1,
                 gid if valid & SETATTR_GID else -1,
+                follow_symlinks=False,
             )
         if valid & SETATTR_SIZE:
             os.truncate(path, size)
         if valid & (SETATTR_ATIME | SETATTR_MTIME):
-            found = path.stat()
+            found = path.lstat()
             now = time.time_ns()
             os.utime(
                 path,
+                follow_symlinks=False,
                 ns=(
                     _time(
                         valid,
@@ -449,6 +475,9 @@ class Directory:
         new_parent = self._fid(body.number(4)).path
         new = self._child(new_parent, body.string())
         old.rename(new)
+        for fid in self._fids.values():
+            if fid.path.is_relative_to(old):
+                fid.path = new / fid.path.relative_to(old)
         return b""
 
     def _symlink(self, body: _Reader) -> bytes:
@@ -463,8 +492,8 @@ class Directory:
         return _string(os.readlink(fid.path).encode(errors="surrogateescape"))
 
     def _statfs(self, body: _Reader) -> bytes:
-        fid = self._fid(body.number(4))
-        found = os.statvfs(fid.path)
+        self._fid(body.number(4))
+        found = os.statvfs(self.root)
         return (
             _number(V9FS_MAGIC, 4)
             + _number(found.f_frsize, 4)
@@ -485,11 +514,14 @@ class Directory:
 
 
 def _open(path: Path, flags: int, mode: int = 0o644) -> IO[bytes]:
-    """The file at `path`, opened as Linux's `flags` say."""
+    """The file at `path`, opened as Linux's `flags` say, and not a link."""
     access = flags & O_ACCMODE
-    host_flags = {0: os.O_RDONLY, 1: os.O_WRONLY, 2: os.O_RDWR}.get(
-        access, os.O_RDWR
-    )
+    # ⚠️ Never through a link: its target can be outside the share.
+    host_flags = os.O_NOFOLLOW | {
+        0: os.O_RDONLY,
+        1: os.O_WRONLY,
+        2: os.O_RDWR,
+    }.get(access, os.O_RDWR)
     for theirs, ours in (
         (O_CREAT, os.O_CREAT),
         (O_EXCL, os.O_EXCL),
@@ -532,6 +564,7 @@ __all__ = [
     "HEADER",
     "MAX_MESSAGE_SIZE",
     "NO_FID",
+    "NO_TAG",
     "O_ACCMODE",
     "O_APPEND",
     "O_CREAT",
@@ -554,12 +587,10 @@ __all__ = [
     "TFLUSH",
     "TFSYNC",
     "TGETATTR",
-    "TGETLOCK",
     "TLCREATE",
     "TLOCK",
     "TLOPEN",
     "TMKDIR",
-    "TMKNOD",
     "TREAD",
     "TREADDIR",
     "TREADLINK",
@@ -571,8 +602,6 @@ __all__ = [
     "TVERSION",
     "TWALK",
     "TWRITE",
-    "TXATTRCREATE",
-    "TXATTRWALK",
     "UNKNOWN_VERSION",
     "V9FS_MAGIC",
     "VERSION",
