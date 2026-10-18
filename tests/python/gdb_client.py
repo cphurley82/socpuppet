@@ -24,6 +24,9 @@ class GdbClient:
         is held, so a debugger that is early waits for it. The same
         `timeout` then bounds each reply.
         """
+        # What has come from the server and not been read yet: a reply can
+        # come in several packets, and two can come in one read.
+        self._received = b""
         deadline = time.monotonic() + timeout
         while True:
             try:
@@ -117,11 +120,18 @@ class GdbClient:
     def monitor(self, command):
         """What the server prints for GDB's `monitor <command>`.
 
-        These are commands of the server's own, outside the protocol.
+        These are commands of the server's own, outside the protocol. A
+        server answers with what it prints, in hexadecimal; QEMU's prints
+        it in console packets, `O` and the hexadecimal, and then says `OK`.
         """
-        return bytes.fromhex(
-            self.ask("qRcmd," + command.encode().hex())
-        ).decode()
+        printed = ""
+        reply = self.ask("qRcmd," + command.encode().hex())
+        while reply.startswith("O") and reply != "OK":
+            printed += bytes.fromhex(reply[1:]).decode()
+            reply = self._reply()
+        if reply != "OK":
+            printed += bytes.fromhex(reply).decode()
+        return printed
 
     def set_breakpoint(self, address, size=4):
         """Have the CPU stop when it is about to execute what is at `address`.
@@ -162,13 +172,21 @@ class GdbClient:
         return self._reply()
 
     def _reply(self):
-        received = b""
-        while b"#" not in received or len(received.split(b"#")[-1]) < 2:
+        """The body of the next packet from the server, acknowledged.
+
+        What comes before its `$`, the server's `+` for a packet of ours,
+        is passed over.
+        """
+        while True:
+            start = self._received.find(b"$")
+            end = self._received.find(b"#", start + 1)
+            if start >= 0 and end >= 0 and len(self._received) >= end + 3:
+                break
             chunk = self._socket.recv(4096)
             if not chunk:
                 raise ConnectionError("The GDB server closed the connection.")
-            received += chunk
+            self._received += chunk
+        body = self._received[start + 1 : end]
+        self._received = self._received[end + 3 :]
         self._socket.sendall(b"+")
-        return received[
-            received.index(b"$") + 1 : received.rindex(b"#")
-        ].decode()
+        return body.decode()

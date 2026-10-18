@@ -38,6 +38,16 @@ board = host(cpu="qbox_cpu")        # or SOCPUPPET_CPU=qbox_cpu for every host
 - **Counts 128 ns for each instruction**, where the DBT-RISE CPU counts 100. QEMU counts in powers of two of a nanosecond, and 2⁷ is the nearest. Its own default, 1 ns, made firmware that waits by spinning spin a hundred times as many instructions for the same wait, and Zephyr's timer and scheduler suites ran out of twister's time. ⚠️ A test that counts timer ticks per instruction expects DBT-RISE's figure.
 - **Boots UEFI with paging in Sv57**, where the DBT-RISE CPU has Sv39: EDK2 asks for the biggest mode first and keeps what `satp` reads back. To its shell is 550 million instructions on either hart, counted from each one's clock, which is the check that this one's clock counts instructions ([speed-spike.md](../history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28)).
 - **A debugger, QEMU's own.** `sp.QboxCpu(gdb_port=)`, or `host(cpu="qbox_cpu", gdb_port=)`, gives the CPU QEMU's GDB server on the port, and the CPU is held before its first instruction until the debugger says continue, as the DBT-RISE CPU waits for its own; a debugger that attaches later pauses the CPU where it is. ⚠️ The port opens when the run starts and the CPU is held, not as the platform is built: start the run, then attach, which is the order [boot-your-firmware.md](../boot-your-firmware.md) gives anyway. 🎓 QEMU's server reads memory the way the CPU would, through its address translation, so a kernel's symbols, which are virtual addresses, work as they are. A stopped CPU stops the whole simulation, as with the other CPU: time stands still until the debugger continues. QEMU's server has no `monitor sysc print_time`, which is DBT-RISE's. The debugger tests (`tests/python/test_gdb.py`) run on this CPU under `ctest --preset qbox`; what it took is in [upstream.md](../upstream.md#qbox).
+- **An instruction trace, QEMU's own, through the debugger.** QEMU's monitor commands work through GDB's `monitor`, and three of them log the address of every instruction the CPU runs, from wherever the debugger asks:
+
+  ```text
+  (gdb) monitor logfile /tmp/trace.log
+  (gdb) monitor one-insn-per-tb on
+  (gdb) monitor log exec,nochain
+  (gdb) continue
+  ```
+
+  🧵 `socpuppet.qemu_trace.pcs(text)` reads the addresses out of the log, one to an instruction, so two runs can be compared and the first instruction where they part found. 💡 A trace of a whole Linux boot is billions of lines: set a breakpoint near the trouble first, and switch the log on there (`monitor log none` switches it off). The DBT-RISE CPU has no such trace yet (its `enable_disass` exists, but goes to its own logger and is not a parameter of ours).
 - **Holds to the bus-master contract** (`tests/cpp/contracts/bus_master_contract.h`), as every CPU and the scripted stand-in do, and to the hart's own suite (`tests/cpp/platform/cpu_test.cpp`), apart from what is below.
 
 ## What makes it fast

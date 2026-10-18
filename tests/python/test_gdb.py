@@ -23,7 +23,7 @@ from disk_access import run_to_a_verdict
 from gdb_client import GdbClient
 from linux_shell import a_host_with_linux
 from manager_firmware import IMAGE as MANAGER_IMAGE
-from socpuppet import ztest
+from socpuppet import qemu_trace, ztest
 from socpuppet.boards.cpu_kit import SRAM_BASE
 from socpuppet.boards.host import RAM_BASE, host
 from socpuppet.boards.manager import add_manager
@@ -180,6 +180,33 @@ class TestWhenADebuggerAttachesToACpuWithAGdbPort:
         run_with_a_debugger(platform, port, lambda debugger: None)
 
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
+
+
+@pytest.mark.platform
+@pytest.mark.only_on_qbox(
+    "an instruction trace is QEMU's, asked for through its own monitor "
+    "commands, which DBT-RISE's server has not got"
+)
+class TestWhenADebuggerAsksQemuToLogWhatTheCpuRuns:
+    def test_the_log_has_each_instruction_of_the_program_in_order(
+        self, tmp_path
+    ):
+        log = tmp_path / "trace.log"
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port)
+
+        def session(debugger):
+            debugger.monitor(f"logfile {log}")
+            debugger.monitor("one-insn-per-tb on")
+            debugger.monitor("log exec,nochain")
+
+        run_with_a_debugger(platform, port, session)
+
+        # The program's last instruction jumps back to its fourth, which
+        # waits for an interrupt that never comes.
+        assert qemu_trace.pcs(log.read_text()) == [
+            RESET_VECTOR + 4 * step for step in range(4)
+        ]
 
 
 @pytest.mark.platform
