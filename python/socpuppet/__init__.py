@@ -24,6 +24,7 @@ from socpuppet.components import (
     ScriptedBusMaster,
     SpiFlash,
     SystemController,
+    Virtio9p,
     VirtioBlk,
     VirtioConsole,
     VirtioFs,
@@ -63,6 +64,7 @@ from socpuppet.transcript import Transcript
 from socpuppet.transcript import render as render_transcript
 from socpuppet.ucie import render_sideband
 from socpuppet.virtio_host import (
+    Virtio9pHost,
     VirtioBlkHost,
     VirtioConsoleHost,
     VirtioFsHost,
@@ -110,6 +112,8 @@ __all__ = [
     "SystemController",
     "TraceRecord",
     "Transcript",
+    "Virtio9p",
+    "Virtio9pHost",
     "VirtioBlk",
     "VirtioBlkHost",
     "VirtioConsole",

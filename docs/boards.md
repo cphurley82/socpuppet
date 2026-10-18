@@ -37,7 +37,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 ## With the virtio slots
 
-🎭 The host can have five virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
+🎭 The host can have six virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, served twice, to Zephyr and EDK2 by the file system device and to Linux by the 9P transport, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
 
 | Slot | What | Where | Zephyr driver binds to | Python's end |
 |---|---|---|---|---|
@@ -46,6 +46,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 | 2 | [Disk](models/virtio-blk.md) | `0x1000_3000` | none: Zephyr has no virtio disk driver | `load()`, `contents` |
 | 3 | [Network card](models/virtio-net.md) | `0x1000_4000` | `virtio,net`, with `local-mac-address` | `send()`, `received`, `dropped` |
 | 4 | [Shared directory](models/virtio-fs.md) | `0x1000_5000` | the transport itself, by the alias `virtiofs0` | a directory of this machine |
+| 5 | [Shared directory, for Linux](models/virtio-9p.md) | `0x1000_6000` | none: Zephyr has no 9P client | the same directory |
 
 The slots are the shield `socpuppet_host_virtio`. A second shield, `socpuppet_host_virtio_console`, makes the virtio console Zephyr's console in place of the 16550, and turns off the boot banner, which Zephyr's virtio console driver will not be built with. Stack them:
 

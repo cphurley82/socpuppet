@@ -38,7 +38,7 @@ from typing import (
     override,
 )
 
-from socpuppet import fuse
+from socpuppet import fuse, ninep
 from socpuppet.placed import (
     Placed,
     PlacedBlock,
@@ -1251,6 +1251,60 @@ class VirtioConsole(Component):
             dialect,
             child=VirtioChild("console", "virtio,console"),
         )
+
+
+class Virtio9p(Component):
+    """🎭 A virtio 9P transport: a directory of this machine, shared.
+
+    The driver mounts the share by its `tag` and talks to it in 9P2000.L,
+    the dialect of Plan 9's file protocol that Linux's 9p client speaks;
+    Python serves it out of `directory` (`socpuppet.ninep.Directory`), as
+    QEMU serves its `virtio-9p-device`. It is the shared directory Linux
+    mounts with `mount -t 9p -o trans=virtio`, where `VirtioFs` is the one
+    Zephyr mounts. With no `directory` nothing serves the share, and every
+    message comes back empty.
+
+    ⚠️ Firmware may change anything under `directory`. `cpu` is the
+    register block, `dma` is how the device reaches the driver's memory,
+    and `irq` is its interrupt line, high while a used buffer waits to be
+    acknowledged.
+    """
+
+    implementation = "virtio_9p"
+    port_specs = (
+        target("cpu"),
+        initiator("dma"),
+        wire_out("irq", required=False),
+    )
+    #: The transport's registers and the device's configuration after them.
+    mapped_size = virtio_mmio.SIZE
+    #: How long a tag may be, in bytes: what the configuration holds after
+    #: the tag's two-byte length.
+    TAG_BYTES = virtio_mmio.SIZE - virtio_mmio.CONFIG - 2
+
+    tag: str = not_a_parameter("socpuppet")
+    directory: str | os.PathLike[str] | None = not_a_parameter(None)
+
+    def __post_init__(self) -> None:
+        if len(self.tag.encode()) > self.TAG_BYTES:
+            raise ValueError(
+                f"A virtio 9P transport's tag is at most {self.TAG_BYTES} "
+                f"bytes, and {self.tag!r} is {len(self.tag.encode())}."
+            )
+
+    @override
+    def configure(self, native: _core.Platform, path: str) -> None:
+        if self.directory is not None:
+            native.virtio_9p_serve(
+                path, self.tag, ninep.Directory(self.directory)
+            )
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        # Zephyr has no 9P client, and Linux's finds the share by its tag.
+        return virtio_node(reached["cpu"].address, dialect)
 
 
 class VirtioFs(Component):

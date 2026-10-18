@@ -125,6 +125,7 @@ A drive adds no line. Its interrupts are messages: identities 32 and 33, one for
 | `0x1000_3000` | 512 bytes | `io.blk.cpu` | [🎭 Virtio block device](models/virtio-blk.md) | `compute.bus` from `0x1000_0000` |
 | `0x1000_4000` | 512 bytes | `io.net.cpu` | [🎭 Virtio network device](models/virtio-net.md) | `compute.bus` from `0x1000_0000` |
 | `0x1000_5000` | 512 bytes | `io.fs.cpu` | [🎭 Virtio file system device](models/virtio-fs.md) | `compute.bus` from `0x1000_0000` |
+| `0x1000_6000` | 512 bytes | `io.ninep.cpu` | [🎭 Virtio 9P transport](models/virtio-9p.md) | `compute.bus` from `0x1000_0000` |
 
 <!-- address-map:host-virtio end -->
 
@@ -139,6 +140,7 @@ Each has a line to the IO die's APLIC, from source 18:
 | `io.aplic` | 20 | `io.blk.irq` |
 | `io.aplic` | 21 | `io.net.irq` |
 | `io.aplic` | 22 | `io.fs.irq` |
+| `io.aplic` | 23 | `io.ninep.irq` |
 
 <!-- interrupts:host-virtio end -->
 

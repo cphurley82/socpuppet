@@ -1,11 +1,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <list>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -20,6 +22,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/virtio_9p.h"
 #include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_fs.h"
 #include "socpuppet/models/virtio_net.h"
@@ -84,6 +87,25 @@ struct NativePlatform {
   void WithoutGil(Simulate simulate) {
     py::gil_scoped_release release;
     simulate();
+  }
+
+  // `answer`, a Python callable from bytes to bytes, as what a device that
+  // hands its requests to an answerer calls. The device calls it from its
+  // own thread process, so it runs through the executor, on Python's
+  // stack.
+  std::function<std::vector<std::uint8_t>(std::span<const std::uint8_t>)>
+  Answerer(py::object answer) {
+    py::object& kept = python_answerers.emplace_back(std::move(answer));
+    return [this, &kept](std::span<const std::uint8_t> request) {
+      std::vector<std::uint8_t> answered;
+      python_executor.Run([&] {
+        const py::bytes got = kept(py::bytes(
+            reinterpret_cast<const char*>(request.data()), request.size()));
+        const std::string_view bytes{got};
+        answered.assign(bytes.begin(), bytes.end());
+      });
+      return answered;
+    };
   }
 
   KernelClaim kernel_claim;  // first member: checked before any module is built
@@ -242,28 +264,24 @@ PYBIND11_MODULE(_core, m) {
             return self.platform.ModuleAt<socpuppet::VirtioNet>(path).Dropped();
           })
       // Names the share of the virtio file system device at `path` `tag`,
-      // and has `answer`, a Python callable from a request's bytes to its
-      // answer's, serve it. The device calls it from its own thread
-      // process, so it runs through the executor, on Python's stack.
+      // and has `answer`, a Python callable from a FUSE request's bytes to
+      // its answer's, serve it.
       .def("virtio_fs_serve",
            [](NativePlatform& self, const std::string& path,
               const std::string& tag, py::object answer) {
              auto& fs = self.platform.ModuleAt<socpuppet::VirtioFs>(path);
              fs.SetTag(tag);
-             py::object& kept =
-                 self.python_answerers.emplace_back(std::move(answer));
-             fs.SetAnswerer(
-                 [&self, &kept](std::span<const std::uint8_t> request) {
-                   std::vector<std::uint8_t> answered;
-                   self.python_executor.Run([&] {
-                     const py::bytes got = kept(py::bytes(
-                         reinterpret_cast<const char*>(request.data()),
-                         request.size()));
-                     const std::string_view bytes{got};
-                     answered.assign(bytes.begin(), bytes.end());
-                   });
-                   return answered;
-                 });
+             fs.SetAnswerer(self.Answerer(std::move(answer)));
+           })
+      // Names the share of the virtio 9P transport at `path` `tag`, and has
+      // `answer`, a Python callable from a T-message's bytes to its
+      // R-message's, serve it.
+      .def("virtio_9p_serve",
+           [](NativePlatform& self, const std::string& path,
+              const std::string& tag, py::object answer) {
+             auto& ninep = self.platform.ModuleAt<socpuppet::Virtio9p>(path);
+             ninep.SetTag(tag);
+             ninep.SetAnswerer(self.Answerer(std::move(answer)));
            })
       // Each port is (name, "bus" or "wire", "source" or "sink", required).
       .def("ports",

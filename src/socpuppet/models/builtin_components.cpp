@@ -37,6 +37,7 @@
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
+#include "socpuppet/models/virtio_9p.h"
 #include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_console.h"
 #include "socpuppet/models/virtio_fs.h"
@@ -52,6 +53,7 @@ namespace socpuppet {
 static_assert(AplicSlot<Aplic>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
+static_assert(VirtioDeviceSlot<Virtio9p>);
 static_assert(VirtioDeviceSlot<VirtioBlk>);
 static_assert(VirtioDeviceSlot<VirtioConsole>);
 static_assert(VirtioDeviceSlot<VirtioFs>);
@@ -413,6 +415,14 @@ Registry BuiltinComponents() {
   });
   registry.Add("virtio_console", [](const char* name, Parameters&) {
     auto module = std::make_unique<VirtioConsole>(name);
+    std::vector<Port> ports{TargetPort("cpu", module->cpu),
+                            InitiatorPort("dma", module->dma),
+                            WireSourcePort("irq", module->irq,
+                                           /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("virtio_9p", [](const char* name, Parameters&) {
+    auto module = std::make_unique<Virtio9p>(name);
     std::vector<Port> ports{TargetPort("cpu", module->cpu),
                             InitiatorPort("dma", module->dma),
                             WireSourcePort("irq", module->irq,

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 from socpuppet.components import (
+    Virtio9p,
     VirtioBlk,
     VirtioConsole,
     VirtioFs,
@@ -51,8 +52,9 @@ class Virtio:
     be repeated. `blocks` is how many 512-byte sectors the disk has: 1 MiB
     unless told otherwise. `mac` is the network device's address, as a
     48-bit number with its first byte highest (`VirtioNet`). `share` is a
-    directory of this machine the file system device serves, by `tag`
-    (`VirtioFs`): with none, nothing serves it.
+    directory of this machine that the file system device and the 9P
+    transport both serve, by `tag` (`VirtioFs`, `Virtio9p`): Zephyr mounts
+    the one and Linux the other. With none, nothing serves it.
     """
 
     seed: int = 1
@@ -75,6 +77,8 @@ class VirtioSlots(NamedTuple):
     net: PlacedNet
     #: 🎭 The file system device, in slot 4.
     fs: Placed
+    #: 🎭 The 9P transport, in slot 5: the shared directory Linux mounts.
+    ninep: Placed
 
 
 def add_virtio(
@@ -100,13 +104,16 @@ def add_virtio(
     blk = place.add("blk", VirtioBlk(blocks=settings.blocks))
     net = place.add("net", VirtioNet(mac=settings.mac))
     fs = place.add("fs", VirtioFs(tag=settings.tag, directory=settings.share))
-    for slot, device in enumerate([rng, console, blk, net, fs]):
+    ninep = place.add(
+        "ninep", Virtio9p(tag=settings.tag, directory=settings.share)
+    )
+    for slot, device in enumerate([rng, console, blk, net, fs, ninep]):
         bus.map(device.cpu, base=base + slot * VIRTIO_SLOT_STRIDE)
         platform.connect(
             device.irq, getattr(aplic, f"source{first_source + slot}")
         )
         platform.connect(device.dma, up.add_input())
-    return VirtioSlots(rng, console, blk, net, fs)
+    return VirtioSlots(rng, console, blk, net, fs, ninep)
 
 
 __all__ = ["VIRTIO_SLOT_STRIDE", "Virtio", "VirtioSlots", "add_virtio"]
