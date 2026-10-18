@@ -28,7 +28,9 @@ from linux_shell import (
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
+from mt19937_64 import stream
 from opensbi_boots import switched_off
+from socpuppet.boards.virtio import Virtio
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot
 #: of Linux takes seconds on QBox's hart and minutes on the interpreter, so
@@ -103,3 +105,23 @@ class TestWhenPythonTypesPoweroff:
         assert gone, (
             f"Not switched off. The console:\n{plain(board.virtio.console.output)}"
         )
+
+
+@pytest.mark.platform
+class TestWhenLinuxReadsTheVirtioEntropy:
+    def test_dev_hwrng_is_the_virtio_device_and_gives_the_seeded_stream(
+        self, linux_at_its_prompt
+    ):
+        # 🎓 The kernel's own thread draws from the device first, to stir
+        # into its pool, so what a reader gets is not the stream's start.
+        board = linux_at_its_prompt
+
+        source = type_and_wait_for_the_prompt(
+            board, "cat /sys/class/misc/hw_random/rng_current"
+        )
+        read = type_and_wait_for_the_prompt(
+            board, "head -c 16 /dev/hwrng | hexdump -e '16/1 \"%02x\"'"
+        )
+
+        assert source.strip() == "virtio_rng.0"
+        assert bytes.fromhex(read.strip()) in stream(Virtio().seed, 1 << 20)
