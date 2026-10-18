@@ -53,7 +53,7 @@ def type_and_wait_for_the_prompt(board, command):
     """Type `command` and Enter at the shell, and run until it prompts again.
 
     Gives what the shell said in between, as plain text, without the
-    command's own echo.
+    command's own echo before it or the prompt after it.
     """
     console = board.virtio.console
     said_before = len(console.output)
@@ -63,7 +63,8 @@ def type_and_wait_for_the_prompt(board, command):
         timeout=ANSWERS_WITHIN,
     )
     assert prompted, f"The shell did not prompt again after {command!r}"
-    return plain(console.output[said_before:]).partition("\n")[2]
+    answer = plain(console.output[said_before:]).partition("\n")[2]
+    return answer[: PROMPT.search(answer).start()]
 
 
 def a_host_with_linux(firmware, *, gdb_port=0):
