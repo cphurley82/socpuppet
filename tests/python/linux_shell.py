@@ -67,18 +67,20 @@ def type_and_wait_for_the_prompt(board, command):
     return answer[: PROMPT.search(answer).start()]
 
 
-def a_host_with_linux(firmware, *, gdb_port=0):
+def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     """A host built with the kernel and its root filesystem in place.
 
     🎭 The quick way: OpenSBI's `fw_jump`, the kernel and the devicetree
     in RAM, and the root filesystem image on the virtio disk, a disk as
-    big as the image. With a `gdb_port`, the CPU waits for a debugger.
+    big as the image. `share` is a directory of this machine for Linux to
+    mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
+    debugger.
     """
     rootfs = firmware(ROOTFS_EXT4).read_bytes()
     board, layout = a_host_with_opensbi(
         firmware,
         LINUX_BIN,
-        virtio=Virtio(blocks=len(rootfs) // SECTOR),
+        virtio=Virtio(blocks=len(rootfs) // SECTOR, share=share),
         bootargs=BOOTARGS,
         gdb_port=gdb_port,
     )
