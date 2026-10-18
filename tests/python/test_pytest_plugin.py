@@ -1,4 +1,5 @@
 import importlib.metadata
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -249,6 +250,31 @@ class TestWhenATestIsOnDemand:
         result.stdout.fnmatch_lines(
             ["*it takes the long way round*SOCPUPPET_ON_DEMAND=1*"]
         )
+
+    def test_no_process_is_started_to_skip_it(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        # The module is imported again in a platform test's own process,
+        # where the plugin has set the variable it reports through.
+        monkeypatch.delenv("SOCPUPPET_ON_DEMAND", raising=False)
+        started = session_with_socpuppet.path / "started"
+        session_with_socpuppet.makepyfile(
+            textwrap.dedent(
+                f"""
+                import os
+                import pathlib
+
+                if "SOCPUPPET_PYTEST_REPORT_FILE" in os.environ:
+                    pathlib.Path({str(started)!r}).touch()
+                """
+            )
+            + textwrap.dedent(ON_DEMAND)
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(skipped=1)
+        assert not started.exists()
 
     def test_it_runs_when_the_variable_asks_for_it(
         self, session_with_socpuppet, monkeypatch
