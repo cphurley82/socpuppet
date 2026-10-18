@@ -39,3 +39,25 @@ class TestWhenAnImageIsMadeWithTwoFiles:
         )
 
         assert checked.returncode == 0, checked.stdout
+
+
+class TestWhenAnImageIsMadeWithAFileInADirectory:
+    def test_it_is_read_back_by_its_path(self):
+        # 🎓 Where UEFI looks for a disk's boot program: EFI/BOOT.
+        files = {"EFI/BOOT/SPAM.EFI": b"spam", "EGGS.TXT": b"eggs"}
+
+        image = fat_image.make(files, sectors=2048)
+
+        assert fat_image.files(image) == files
+
+
+class TestWhenAnImageIsMadeTooBigForFat12:
+    def test_it_is_fat16_and_holds_a_file_bigger_than_fat12_could(self):
+        # 🎓 FAT12 counts at most 4084 clusters, which at pyfatfs's sizes
+        # is a few mebibytes; a kernel is tens.
+        files = {"SPAM.BIN": bytes(range(256)) * 4096 * 20}
+
+        image = fat_image.make(files, sectors=48 * 2048)
+
+        assert image[54:62] == b"FAT16   "
+        assert fat_image.files(image) == files

@@ -1,0 +1,134 @@
+"""The partitioned disk images a server's firmware boots from.
+
+🎓 A GUID partition table (GPT) is how UEFI expects a disk to be cut up:
+a protective MBR in sector 0, so that an older tool sees the disk as in
+use, a header in sector 1 that says where the table of partitions is,
+the table, and a copy of header and table at the end of the disk. Each
+part is held to a CRC-32. `gpt_image` makes one with an EFI system
+partition and a Linux root, so that UEFI can find the kernel on the one
+and the kernel its root on the other.
+"""
+
+import re
+import shutil
+import struct
+import subprocess
+import uuid
+import zlib
+
+import pytest
+
+import gpt_image
+
+SECTOR = 512
+SGDISK = shutil.which("sgdisk") or shutil.which("sgdisk", path="/usr/sbin")
+#: What the two partitions hold: a sector and a half of spam, three of eggs.
+SPAM = b"spam" * 192
+EGGS = b"eggs" * 384
+
+
+@pytest.fixture
+def disk():
+    return gpt_image.make(
+        [
+            gpt_image.Partition(gpt_image.EFI_SYSTEM, "spam", SPAM),
+            gpt_image.Partition(gpt_image.LINUX_FILESYSTEM, "eggs", EGGS),
+        ]
+    )
+
+
+def header_at(disk, lba):
+    """The GPT header in sector `lba`, as its fields by name."""
+    fields = struct.unpack_from("<8sIIIIQQQQ16sQIII", disk, lba * SECTOR)
+    names = [
+        "signature",
+        "revision",
+        "size",
+        "crc",
+        "reserved",
+        "current",
+        "backup",
+        "first_usable",
+        "last_usable",
+        "disk_guid",
+        "entries_at",
+        "entries",
+        "entry_size",
+        "entries_crc",
+    ]
+    return dict(zip(names, fields, strict=True))
+
+
+def entries_at(disk, header):
+    start = header["entries_at"] * SECTOR
+    return disk[start : start + header["entries"] * header["entry_size"]]
+
+
+class TestWhenADiskIsMadeWithTwoPartitions:
+    def test_sector_0_is_a_protective_mbr_over_the_whole_disk(self, disk):
+        status, kind, first, count = struct.unpack_from("<B3xB3xII", disk, 446)
+
+        assert disk[510:512] == b"\x55\xaa"
+        assert (status, kind, first) == (0, 0xEE, 1)
+        assert count == len(disk) // SECTOR - 1
+
+    def test_the_header_and_its_table_hold_to_their_crcs(self, disk):
+        header = header_at(disk, 1)
+        raw = bytearray(disk[SECTOR : SECTOR + header["size"]])
+        raw[16:20] = bytes(4)
+
+        assert header["signature"] == b"EFI PART"
+        assert header["crc"] == zlib.crc32(raw)
+        assert header["entries_crc"] == zlib.crc32(entries_at(disk, header))
+
+    def test_the_partitions_hold_what_was_given_where_the_table_says(
+        self, disk
+    ):
+        table = entries_at(disk, header_at(disk, 1))
+        found = []
+        for index in range(2):
+            kind, _, first, last, _ = struct.unpack_from(
+                "<16s16sQQQ", table, index * 128
+            )
+            name = table[index * 128 + 56 : index * 128 + 128]
+            found.append(
+                (
+                    uuid.UUID(bytes_le=kind),
+                    name.decode("utf-16-le").rstrip("\0"),
+                    disk[first * SECTOR : (last + 1) * SECTOR],
+                )
+            )
+
+        assert found[0][:2] == (gpt_image.EFI_SYSTEM, "spam")
+        assert found[0][2].rstrip(b"\0") == SPAM
+        assert found[1][:2] == (gpt_image.LINUX_FILESYSTEM, "eggs")
+        assert found[1][2].rstrip(b"\0") == EGGS
+
+    def test_the_last_sector_is_a_backup_header_pointing_back_at_the_first(
+        self, disk
+    ):
+        last = len(disk) // SECTOR - 1
+        primary, backup = header_at(disk, 1), header_at(disk, last)
+
+        assert (backup["current"], backup["backup"]) == (last, 1)
+        assert (primary["current"], primary["backup"]) == (1, last)
+        assert entries_at(disk, backup) == entries_at(disk, primary)
+
+    @pytest.mark.skipif(SGDISK is None, reason="sgdisk is not installed")
+    def test_sgdisk_lists_both_partitions_and_finds_no_problems(
+        self, disk, tmp_path
+    ):
+        # ⚠️ sgdisk finds no problems on a disk of zeros either, since it
+        # makes a table in memory for one that has none: so it lists them.
+        image = tmp_path / "disk.img"
+        image.write_bytes(disk)
+
+        listed = subprocess.run(
+            [SGDISK, "--print", "--verify", str(image)],
+            capture_output=True,
+            text=True,
+        )
+
+        assert re.search(r"^\s+1\s.*EF00\s+spam$", listed.stdout, re.M)
+        assert re.search(r"^\s+2\s.*8300\s+eggs$", listed.stdout, re.M)
+        assert "No problems found" in listed.stdout, listed.stdout
