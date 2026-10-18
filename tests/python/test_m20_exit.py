@@ -4,7 +4,7 @@
 `defconfig`, with nothing of socpuppet's in it. OpenSBI's `fw_jump` starts
 it 2 MiB into RAM with the devicetree the host writes, and it reads its
 hardware from there: the AIA interrupt controllers, the 16550, and 🎭 the
-five virtio devices. Its console is the virtio console and its root
+six virtio devices. Its console is the virtio console and its root
 filesystem is the virtio disk, with Alpine's mini root on it and an
 inittab of ours that puts a shell on the console (`firmware/rootfs`).
 
@@ -46,9 +46,18 @@ VERSIONS = Path(__file__).resolve().parents[2] / "firmware" / "versions.toml"
 
 
 @pytest.fixture
-def linux_at_its_prompt(firmware):
-    """A host that has booted OpenSBI and Linux the quick way, to the prompt."""
-    board = a_host_with_linux(firmware)
+def shared(tmp_path):
+    """The directory of this machine the host shares with Linux."""
+    return tmp_path
+
+
+@pytest.fixture
+def linux_at_its_prompt(firmware, shared):
+    """A host that has booted OpenSBI and Linux the quick way, to the prompt.
+
+    It shares `shared`, which Linux has not mounted.
+    """
+    board = a_host_with_linux(firmware, share=shared)
     prompted = run_to_the_prompt(board)
     assert prompted, (
         "Linux never prompted. OpenSBI's console:\n"
@@ -174,3 +183,25 @@ class TestWhenPythonPingsLinux:
         )
 
         assert ethernet.echo_replies(net.received) == [b"spam and eggs"]
+
+
+#: How Linux mounts 🎭 the 9P transport's share, by the tag the host gives
+#: it (`Virtio().tag`), in the dialect `socpuppet.ninep` serves.
+MOUNT = "mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt"
+
+
+@pytest.mark.platform
+class TestWhenLinuxMountsTheSharedDirectory:
+    def test_it_reads_pythons_file_and_python_reads_the_one_it_writes(
+        self, linux_at_its_prompt, shared
+    ):
+        (shared / "spam.txt").write_text("spam, spam, spam\n")
+        board = linux_at_its_prompt
+
+        mounted = type_and_wait_for_the_prompt(board, MOUNT)
+        read = type_and_wait_for_the_prompt(board, "cat /mnt/spam.txt")
+        type_and_wait_for_the_prompt(board, "echo eggs > /mnt/eggs.txt")
+
+        assert mounted == ""
+        assert read.strip() == "spam, spam, spam"
+        assert (shared / "eggs.txt").read_text() == "eggs\n"
