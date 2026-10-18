@@ -17,9 +17,11 @@ import time
 import pytest
 
 import socpuppet as sp
+from cast import LINUX_MAP
 from disk_access import IMAGE as DISK_TEST
 from disk_access import run_to_a_verdict
 from gdb_client import GdbClient
+from linux_shell import a_host_with_linux
 from manager_firmware import IMAGE as MANAGER_IMAGE
 from socpuppet import ztest
 from socpuppet.boards.cpu_kit import SRAM_BASE
@@ -95,7 +97,9 @@ def run_with_a_debugger(platform, port, session, hang_up=GdbClient.close):
     return run_with_debuggers(platform, {port: session}, hang_up=hang_up)[port]
 
 
-def run_with_debuggers(platform, sessions, run=None, hang_up=GdbClient.close):
+def run_with_debuggers(
+    platform, sessions, run=None, hang_up=GdbClient.close, timeout=10
+):
     """Run `platform` with a debugger on each port, and return what each found.
 
     `sessions` is what the debugger on each port does, as for
@@ -106,14 +110,15 @@ def run_with_debuggers(platform, sessions, run=None, hang_up=GdbClient.close):
 
     `run` is how the platform is run meanwhile. With none it runs for ten
     microseconds, which is enough for the short program here once the
-    debuggers let it go.
+    debuggers let it go. `timeout` is how many seconds of wall clock a
+    debugger waits for the server, to open its port and for each answer.
     """
     found = {}
     errors = []
 
     def debug(port, session):
         try:
-            debugger = GdbClient(port)
+            debugger = GdbClient(port, timeout)
         except OSError as error:
             errors.append(error)
             return
@@ -477,6 +482,77 @@ class TestWhenEachOfTheHostsThreeCpusHasAGdbPort:
         )
 
         assert ztest.parse(debugged.board.uart.output).passed
+
+
+#: How many seconds of wall clock a debugger waits for a kernel to reach
+#: its breakpoint: OpenSBI's banner and the kernel's first steps are a
+#: second of the CPU's time, and the interpreter with a breakpoint set is
+#: slow.
+KERNEL_ANSWERS_WITHIN = 120
+
+
+@pytest.mark.platform
+class TestWhenADebuggerIsAttachedToABootingKernel:
+    """🐧 A debugger on the host with the kernel's symbols (`linux.map`).
+
+    The kernel's addresses are virtual once it has turned paging on, and
+    its symbols name those: a debugger that reads memory the way the CPU
+    does finds the kernel's banner by its symbol.
+    """
+
+    def test_it_stops_at_start_kernel_where_the_map_says(self, firmware):
+        port = free_port()
+        board = a_host_with_linux(firmware, gdb_port=port)
+        start_kernel = symbol(firmware(LINUX_MAP), "start_kernel")
+
+        def session(debugger):
+            debugger.set_breakpoint(start_kernel)
+            debugger.continue_()
+            debugger.wait_for_a_stop()
+            pc = debugger.program_counter()
+            debugger.remove_breakpoint(start_kernel)
+            return pc
+
+        pc = run_with_debuggers(
+            board.platform,
+            {port: session},
+            run=lambda: board.platform.run(sp.ms(5000)),
+            timeout=KERNEL_ANSWERS_WITHIN,
+        )[port]
+
+        assert pc == start_kernel
+
+    def test_it_reads_the_kernels_banner_through_its_symbol(self, firmware):
+        port = free_port()
+        board = a_host_with_linux(firmware, gdb_port=port)
+        start_kernel = symbol(firmware(LINUX_MAP), "start_kernel")
+        linux_banner = symbol(firmware(LINUX_MAP), "linux_banner")
+
+        def session(debugger):
+            debugger.set_breakpoint(start_kernel)
+            debugger.continue_()
+            debugger.wait_for_a_stop()
+            banner = debugger.read_memory(linux_banner, len(b"Linux version "))
+            debugger.remove_breakpoint(start_kernel)
+            return banner
+
+        banner = run_with_debuggers(
+            board.platform,
+            {port: session},
+            run=lambda: board.platform.run(sp.ms(5000)),
+            timeout=KERNEL_ANSWERS_WITHIN,
+        )[port]
+
+        assert banner == b"Linux version "
+
+
+def symbol(system_map, name):
+    """The address `name` has in a kernel's System.map."""
+    for line in system_map.read_text().splitlines():
+        address, _, symbol_name = line.split(" ", 2)
+        if symbol_name == name:
+            return int(address, 16)
+    raise AssertionError(f"{system_map} has no {name}")
 
 
 def architecture(target_description):

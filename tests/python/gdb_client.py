@@ -135,6 +135,17 @@ class GdbClient:
         if reply != "OK":
             raise RuntimeError(f"The server refused the breakpoint: {reply!r}.")
 
+    def remove_breakpoint(self, address, size=4):
+        """Take the breakpoint at `address` away again.
+
+        ⚠️ Before continuing from it: GDB does the same, since a server may
+        stop at the same instruction again without moving (docs/upstream.md,
+        DBT-RISE-Core).
+        """
+        reply = self.ask(f"z0,{address:x},{size:x}")
+        if reply != "OK":
+            raise RuntimeError(f"The server kept the breakpoint: {reply!r}.")
+
     def continue_(self):
         """Let the CPU run.
 
