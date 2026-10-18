@@ -23,6 +23,7 @@ add_executable(unit_tests
   unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp
   unit/ucie_sideband_test.cpp
+  unit/virtio_9p_logic_test.cpp
   unit/virtio_console_logic_test.cpp
   unit/virtio_fs_logic_test.cpp
   unit/virtio_blk_logic_test.cpp

@@ -5,6 +5,7 @@
 
 #include "socpuppet/models/virtio_rng.h"
 #include "tests/cpp/contracts/virtio_device_contract.h"
+#include "tests/cpp/support/virtio_9p_rig.h"
 #include "tests/cpp/support/virtio_blk_rig.h"
 #include "tests/cpp/support/virtio_console_rig.h"
 #include "tests/cpp/support/virtio_fs_rig.h"
@@ -38,3 +39,5 @@ INSTANTIATE_TYPED_TEST_SUITE_P(VirtioNet, VirtioDeviceContract,
                                ::testing::Types<VirtioNetRig>);
 INSTANTIATE_TYPED_TEST_SUITE_P(VirtioFs, VirtioDeviceContract,
                                ::testing::Types<VirtioFsRig>);
+INSTANTIATE_TYPED_TEST_SUITE_P(Virtio9p, VirtioDeviceContract,
+                               ::testing::Types<Virtio9pRig>);

@@ -26,7 +26,7 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
-from socpuppet import fuse
+from socpuppet import fuse, ninep
 from socpuppet.errors import VirtioError
 from socpuppet.ops import (
     Operation,
@@ -509,6 +509,87 @@ class VirtioNetHost(VirtioHost):
             self.RECEIVE_QUEUE, [], [self.HEADER + self.FRAME_ROOM]
         )
         return answer[self.HEADER : written]
+
+
+class Virtio9pHost(VirtioHost):
+    """🧵 Stand-in for the driver of a virtio 9P transport.
+
+    Takes what `VirtioHost` takes. `start` finds the device and sets its
+    one queue up; `attach`, `open` and `read` are the 9P2000.L messages
+    that read a file at the top of the share. An answer that is an
+    `Rlerror` raises `VirtioError` with the error's name.
+    """
+
+    DEVICE_ID = 9
+    QUEUES = 1
+    KIND = "a 9P transport"
+    #: The fid of the share's root, once attached.
+    ROOT = 0
+    #: How big a message may be, as this driver tells the server.
+    MESSAGE_SIZE = 8192
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._next_fid = self.ROOT + 1
+
+    def attach(self) -> Steps[None]:
+        """Agrees on 9P2000.L, and attaches to the share's root."""
+        yield from self._ask(
+            ninep.TVERSION,
+            struct.pack("<I", self.MESSAGE_SIZE) + _string(ninep.VERSION),
+        )
+        yield from self._ask(
+            ninep.TATTACH,
+            struct.pack("<II", self.ROOT, ninep.NO_FID)
+            + _string(b"nobody")
+            + _string(b"")
+            + struct.pack("<I", 0),
+        )
+
+    def open(self, name: str) -> Steps[int]:
+        """Walks to `name`, at the top of the share, and opens it to read.
+
+        Gives the fid it is open on.
+        """
+        fid = self._next_fid
+        self._next_fid += 1
+        yield from self._ask(
+            ninep.TWALK,
+            struct.pack("<IIH", self.ROOT, fid, 1) + _string(name.encode()),
+            about=name,
+        )
+        yield from self._ask(ninep.TLOPEN, struct.pack("<II", fid, 0))
+        return fid
+
+    def read(self, fid: int, *, size: int) -> Steps[bytes]:
+        """Up to `size` bytes of the file open on `fid`, from its start."""
+        answer = yield from self._ask(
+            ninep.TREAD, struct.pack("<IQI", fid, 0, size)
+        )
+        (count,) = struct.unpack_from("<I", answer)
+        return answer[4 : 4 + count]
+
+    def _ask(self, kind: int, body: bytes, *, about: str = "") -> Steps[bytes]:
+        """Sends one T-message and gives the body of its R-message."""
+        message = ninep.HEADER.pack(ninep.HEADER.size + len(body), kind, 0)
+        written, (answer,) = yield from self.submit(
+            0, [message + body], [self.MESSAGE_SIZE]
+        )
+        _, answered, _ = ninep.HEADER.unpack_from(answer)
+        body = answer[ninep.HEADER.size : written]
+        if answered == ninep.RLERROR:
+            (number,) = struct.unpack_from("<I", body)
+            what = f" of {about!r}" if about else ""
+            raise VirtioError(
+                f"The share answered 9P message {kind}{what} with "
+                f"{fuse.linux_error_name(number)}."
+            )
+        return body
+
+
+def _string(text: bytes) -> bytes:
+    """A 9P string: its length in two bytes, then its bytes."""
+    return struct.pack("<H", len(text)) + text
 
 
 class VirtioFsHost(VirtioHost):

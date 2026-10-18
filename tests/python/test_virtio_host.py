@@ -1,8 +1,8 @@
 """🧵 Python as the first driver of a virtio device.
 
 The platform tests run the driver against the entropy device, the smallest
-virtio device there is, the console, the disk, the network device and
-the file system device, on a scripted host; the rest play
+virtio device there is, the console, the disk, the network device,
+the file system device and the 9P transport, on a scripted host; the rest play
 it against a fake device with no simulator at all.
 
     host ─▶ bus ─┬─▶ ram
@@ -211,6 +211,55 @@ class TestWhenAShareIsGivenATagLongerThanTheDeviceHolds:
     ):
         with pytest.raises(ValueError, match="36 bytes"):
             sp.VirtioFs(tag="s" * 37, directory=tmp_path)
+
+
+@pytest.mark.platform
+class TestWhenTheHostReadsAFileFromA9pShareServedByPython:
+    def test_it_gets_what_python_put_in_the_directory(self, tmp_path):
+        (tmp_path / "spam.txt").write_bytes(b"spam, spam, spam")
+        read = []
+
+        def script():
+            ninep = sp.Virtio9pHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from ninep.start()
+            yield from ninep.attach()
+            fid = yield from ninep.open("spam.txt")
+            read.append((yield from ninep.read(fid, size=64)))
+
+        platform, _ = host_with(
+            script, sp.Virtio9p(tag="spam", directory=tmp_path)
+        )
+
+        platform.run()
+
+        assert read == [b"spam, spam, spam"]
+
+
+@pytest.mark.platform
+class TestWhenTheHostOpensANameThatIsNotInThe9pShare:
+    def test_the_error_comes_out_of_the_run_and_names_it(self, tmp_path):
+        def script():
+            ninep = sp.Virtio9pHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from ninep.start()
+            yield from ninep.attach()
+            yield from ninep.open("ham.txt")
+
+        platform, _ = host_with(
+            script, sp.Virtio9p(tag="spam", directory=tmp_path)
+        )
+
+        with pytest.raises(sp.VirtioError, match=r"ham\.txt.*ENOENT"):
+            platform.run()
+
+
+class TestWhenA9pShareIsGivenATagLongerThanTheConfigurationHolds:
+    def test_it_is_refused_and_the_error_says_how_long_one_may_be(
+        self, tmp_path
+    ):
+        # 🎓 The tag follows its two-byte length in the transport's 256
+        # bytes of configuration.
+        with pytest.raises(ValueError, match="254 bytes"):
+            sp.Virtio9p(tag="s" * 255, directory=tmp_path)
 
 
 SECTOR = 512

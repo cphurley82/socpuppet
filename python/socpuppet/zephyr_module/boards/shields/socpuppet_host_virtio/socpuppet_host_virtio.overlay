@@ -52,5 +52,12 @@
 			interrupt-parent = <&io_aplic>;
 			interrupts = <22 1 4>;
 		};
+
+		io_ninep: virtio_mmio@10006000 {
+			compatible = "virtio,mmio";
+			reg = <0x0 0x10006000 0x0 0x200>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <23 1 4>;
+		};
 	};
 };
