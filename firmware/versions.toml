@@ -24,3 +24,10 @@ version = "edk2-stable202608"
 [linux]
 version = "6.18.57"
 sha256 = "5bd9acdc82ec5efc3790ae840e5aaa40dfde7efff261cf6dde902dc570acf98c"
+
+# Alpine's mini root filesystem for riscv64: busybox and musl, a stock
+# distribution's root in 3 MB, for the kernel's /dev/vda. The checksum is
+# the one beside it in the release's directory on dl-cdn.alpinelinux.org.
+[alpine]
+version = "3.24.2"
+sha256 = "57132e6e4f3a4ba9ffdf24e485513ce507e45471e7fd565aeed91c055cd63f7b"

@@ -1,0 +1,13 @@
+# What busybox's init does on the host: this file is laid over Alpine's own
+# inittab, which starts OpenRC (not in the mini root filesystem) and puts no
+# shell on a serial console. Each line is <tty>::<when>:<what>.
+::sysinit:/bin/mount -t proc proc /proc
+::sysinit:/bin/mount -t sysfs sysfs /sys
+::sysinit:/bin/hostname socpuppet
+# A shell, and no login, on hvc0, the virtio console: Linux's console on the
+# host, by the decision of 2026-10-18 (docs/history/decisions.md), and where
+# the exit test of M20 waits for the prompt. The leading - makes it a login
+# shell, which reads /etc/profile.
+hvc0::respawn:-/bin/sh
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r

@@ -37,6 +37,7 @@ __all__ = [
     "MANAGER",
     "ROM_FOR_A_32_BIT_CPU",
     "ROM_FOR_A_64_BIT_CPU",
+    "ROOTFS_EXT4",
     "SBI_PAYLOAD_BIN",
     "SHELL",
     "SSD",
@@ -74,6 +75,9 @@ UEFI_FD = "uefi.fd"
 LINUX_BIN = "linux.bin"
 LINUX = "linux.elf"
 LINUX_MAP = "linux.map"
+#: The kernel's root filesystem (firmware/build.py): Alpine's mini root with
+#: an inittab of ours, as an ext4 image for 🎭 the virtio disk.
+ROOTFS_EXT4 = "rootfs.ext4"
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

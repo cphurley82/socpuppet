@@ -312,13 +312,14 @@ jobs:
             build/firmware/linux.bin
             build/firmware/linux.elf
             build/firmware/linux.map
-          key: firmware-linux-${{ hashFiles('firmware/build.py', 'firmware/versions.toml') }}
+            build/firmware/rootfs.ext4
+          key: firmware-linux-${{ hashFiles('firmware/rootfs/**', 'firmware/build.py', 'firmware/versions.toml') }}
       # The kernel's build generates its parsers with flex and bison and
       # does its arithmetic with bc; its host tools are built with the
-      # runner's own gcc.
+      # runner's own gcc; and its root filesystem is made by mkfs.ext4.
       - name: Install system packages
         if: steps.images.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y flex bison bc
+        run: sudo apt-get update && sudo apt-get install -y flex bison bc e2fsprogs
       - name: Restore the SDK's LLVM
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
@@ -337,6 +338,7 @@ jobs:
             build/firmware/linux.bin
             build/firmware/linux.elf
             build/firmware/linux.map
+            build/firmware/rootfs.ext4
           if-no-files-found: error
 
   test:
