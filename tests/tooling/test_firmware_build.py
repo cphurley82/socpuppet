@@ -271,9 +271,25 @@ def test_llvm_is_fetched_beside_the_sdk_and_not_in_it(firmware):
     result = firmware.run("llvm")
 
     assert result.returncode == 0, result.stdout
-    llvm = firmware.out / f"llvm-{firmware.versions['sdk']}"
-    assert os.access(llvm / "bin" / "clang", os.X_OK)
+    assert os.access(firmware.llvm / "bin" / "clang", os.X_OK)
     assert not firmware.sdk.exists()
+
+
+def test_an_llvm_fetched_for_another_kind_of_machine_is_left_and_this_ones_is_fetched(
+    firmware,
+):
+    firmware.host = "macos-aarch64"
+    firmware.sdk_release()
+    firmware.run("llvm")
+    macs = firmware.llvm
+    firmware.host = HOST
+    firmware.sdk_release()
+
+    result = firmware.run("llvm")
+
+    assert result.returncode == 0, result.stdout
+    assert os.access(firmware.llvm / "bin" / "clang", os.X_OK)
+    assert macs.exists()
 
 
 # The boot ROM, and the payload of ours for OpenSBI.
@@ -321,8 +337,7 @@ def test_opensbi_is_built_with_the_sdks_llvm(firmware):
 
     assert result.returncode == 0, result.stdout
     (make,) = firmware.calls("make")
-    llvm = firmware.out / f"llvm-{firmware.versions['sdk']}"
-    assert f"LLVM={llvm}/bin/" in make["args"]
+    assert f"LLVM={firmware.llvm}/bin/" in make["args"]
     for image in ("fw_jump", "test_payload"):
         for kind in ("elf", "bin"):
             assert (firmware.out / f"{image}.{kind}").exists()
@@ -494,9 +509,8 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
     configure, build = [
         c["args"] for c in firmware.calls("make") if "ARCH=riscv" in c["args"]
     ]
-    llvm = firmware.out / f"llvm-{firmware.versions['sdk']}"
     for args in (configure, build):
-        assert f"LLVM={llvm}/bin/" in args
+        assert f"LLVM={firmware.llvm}/bin/" in args
     assert "defconfig" in configure
     assert "Image" in build
     assert (firmware.out / "linux.bin").read_text() == "Image"
@@ -760,6 +774,11 @@ class Firmware:
             *("flex", "bison", "bc", "mkfs.ext4"),
         ):
             self.install(self.bin / program)
+
+    @property
+    def llvm(self):
+        """Where the SDK's LLVM for the machine the script is run as goes."""
+        return self.out / f"llvm-{self.versions['sdk']}-{self.host}"
 
     def install(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
