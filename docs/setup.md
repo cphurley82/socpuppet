@@ -60,13 +60,15 @@ xcode-select --install       # Apple clang, git, make
 brew install dtc acpica
 ```
 
+⚠️ To build a Mac's wheel with `tools/ci.py`, which is optional, install python.org's CPython of the version in `.python-version` (the `.pkg` from [python.org/downloads/macos](https://www.python.org/downloads/macos/)): `cibuildwheel` builds with it, and outside of CI it will not install it for you, since it is a system-wide install that asks for your password. The doctor's `wheel` area checks for it, and `tools/ci.py` skips the wheel job, and says why, where it is missing.
+
 For QBox (step 5), add its Homebrew packages, which are QBox's own list without the LLVM that only its tests use:
 
 ```sh
 brew install asio glib jpeg-turbo libelf libslirp libzip meson ninja pixman pkgconf sdl2
 ```
 
-⚠️ On an Intel Mac, `firmware/build.py` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one. [development.md](development.md#firmware) has the details. QBox builds natively on a Mac with the packages above, and it can be built in the devcontainer's image instead, with Docker Desktop (step 5).
+⚠️ On an Intel Mac, `firmware/build.py` needs [Docker Desktop](https://www.docker.com/products/docker-desktop/), because the Zephyr SDK has no toolchain for one, and it builds every part there, so `acpica`, `e2fsprogs` and the other programs of the table above are of no use to that Mac: the doctor asks for Docker in their place, and in place of `curl` and `make` too. On an Apple silicon Mac the kernel builds in Docker too, and EDK2 on the Mac, with `acpica`. [development.md](development.md#firmware) has the details. QBox builds natively on a Mac with the packages above, and it can be built in the devcontainer's image instead, with Docker Desktop (step 5).
 
 ## 2. uv
 

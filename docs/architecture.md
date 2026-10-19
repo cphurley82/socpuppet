@@ -182,7 +182,7 @@ The SystemC kernel is a process-wide singleton and cannot be restarted. After a 
 For tests, each one that builds a platform gets its own process:
 
 - **C++**: `gtest_discover_tests` registers every test with CTest separately, and CTest runs each in a fresh process.
-- **Python**: mark the test `@pytest.mark.platform`. The plugin `socpuppet.pytest_plugin` re-runs it in a fresh interpreter and relays the result. pytest finds the plugin by itself wherever socpuppet is installed. A marked test that runs for longer than `socpuppet_platform_timeout` seconds (300 unless you set it in pytest's configuration) is stopped and fails, so a script that loops for ever cannot hold up the whole run. A test marked `@pytest.mark.on_demand("why")` is skipped unless the environment variable `SOCPUPPET_ON_DEMAND` is `1`: a variable, so that it reaches the fresh interpreter too.
+- **Python**: mark the test `@pytest.mark.platform`. The plugin `socpuppet.pytest_plugin` re-runs it in a fresh interpreter and relays the result. pytest finds the plugin by itself wherever socpuppet is installed. A marked test that runs for longer than `socpuppet_platform_timeout` seconds (900 unless you set it in pytest's configuration) is stopped and fails, so a script that loops for ever cannot hold up the whole run. A test marked `@pytest.mark.on_demand("why")` is skipped unless the environment variable `SOCPUPPET_ON_DEMAND` is `1`: a variable, so that it reaches the fresh interpreter too.
 
 ## How Python gets called from inside the simulation
 

@@ -43,6 +43,9 @@ WHEELHOUSE = "build/wheelhouse"
 # Where a wheel built here on Linux keeps its container's compiler cache.
 CCACHE = "build/ccache"
 ON_LINUX = platform.system() == "Linux"
+# Where firmware/twister.py runs in the devcontainer's image, by its own test
+# of the machine, on a socpuppet built there for Linux, which has no QBox.
+INTEL_MAC = (platform.system(), platform.machine()) == ("Darwin", "x86_64")
 
 
 class Mode(enum.Enum):
@@ -150,6 +153,38 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
         Step("configure", ("uv", "run", "cmake", "--preset", preset)),
         Step("tidy", (*build, "--target", "tidy")),
         Step("check_headers", (*build, "--target", "check_headers")),
+    )
+
+
+def qbox_steps(mode: Mode) -> tuple[Step, ...]:
+    """Build and test the QBox tree, then run twister on the host board.
+
+    An Intel Mac runs twister in the devcontainer's image, on a socpuppet
+    built for Linux, which has no QBox: QBox here is built for the Mac. So
+    a run there stops after the tests. CI's Macs are Apple silicon, which
+    run twister natively.
+    """
+    steps = (
+        Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
+        Step("build", ("uv", "run", "cmake", "--build", "--preset", "qbox")),
+        Step(
+            "ctest",
+            ("uv", "run", "ctest", "--preset", "qbox"),
+            env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+        ),
+    )
+    if mode is Mode.HERE and INTEL_MAC:
+        return steps
+    return (
+        *steps,
+        Step(
+            "twister",
+            (
+                *("uv", "run", "firmware/twister.py", "--suites"),
+                *("-p", "socpuppet_host"),
+            ),
+            env={"SOCPUPPET_CPU": "qbox_cpu"},
+        ),
     )
 
 
@@ -407,25 +442,7 @@ JOBS = [
         "qbox",
         "build and test with QBox's CPU as the second hart, then twister on it",
         needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
-        steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
-            Step(
-                "build", ("uv", "run", "cmake", "--build", "--preset", "qbox")
-            ),
-            Step(
-                "ctest",
-                ("uv", "run", "ctest", "--preset", "qbox"),
-                env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
-            ),
-            Step(
-                "twister",
-                (
-                    *("uv", "run", "firmware/twister.py", "--suites"),
-                    *("-p", "socpuppet_host"),
-                ),
-                env={"SOCPUPPET_CPU": "qbox_cpu"},
-            ),
-        ),
+        steps=qbox_steps,
         uses=("build/qbox-dev", "extension", "build/twister"),
         areas=("build",),
     ),
@@ -439,7 +456,7 @@ JOBS = [
         # cibuildwheel builds Linux's wheels in a manylinux container, and
         # a Mac's here. Each fetches its build's packages from PyPI.
         docker=ON_LINUX,
-        areas=("network",) if ON_LINUX else ("build", "network"),
+        areas=("network",) if ON_LINUX else ("build", "network", "wheel"),
     ),
     Job(
         "devcontainer",

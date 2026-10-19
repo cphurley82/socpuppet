@@ -11,7 +11,7 @@ marked test.
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
 seconds is stopped and fails. The limit is a setting in pytest's
-configuration, 300 unless set, and 0 means no limit::
+configuration, 900 unless set, and 0 means no limit::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -58,9 +58,13 @@ _ON_DEMAND_ASKED = "1"
 
 
 # The setting for how long a marked test may run, and what it is when
-# nobody sets it: long enough for a firmware boot on a slow machine.
+# nobody sets it. A boot to a prompt takes about 90 s on a free Intel Mac and
+# more than 300 on a machine that is building besides, with a test worker on
+# every core. The limit is there for a script that loops for ever, so it is
+# set well past the slowest honest boot; and it is the default, not a setting
+# in socpuppet's own configuration, since the wheel's tests run without that.
 _TIMEOUT_SETTING = "socpuppet_platform_timeout"
-_DEFAULT_TIMEOUT_SECONDS = 300.0
+_DEFAULT_TIMEOUT_SECONDS = 900.0
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -232,7 +236,9 @@ def _unfinished_report(
     return pytest.TestReport(
         nodeid=item.nodeid,
         location=item.location,
-        keywords=dict(item.keywords),
+        # As pytest's own reports have them: a name to 1, since a Mark is
+        # more than xdist can send between processes.
+        keywords=dict.fromkeys(item.keywords, 1),
         outcome="failed",
         longrepr=why,
         when=when,

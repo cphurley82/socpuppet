@@ -236,9 +236,9 @@ def main() -> int:
     parts = args.parts or list(PARTS)
     out = args.out.resolve()
     try:
-        if args.in_docker or sdk_host() == "macos-x86_64":
-            return in_docker(parts, out, args.jobs)
         here = [p for p in parts if not builds_in_docker(p, sdk_host())]
+        if args.in_docker or not here:
+            return in_docker(parts, out, args.jobs)
         check_the_machine(here)
         build = Build(out, args.jobs)
         for part in parts:
@@ -255,11 +255,14 @@ def main() -> int:
 def builds_in_docker(part: str, host: str) -> bool:
     """Whether a part builds in the devcontainer's image on this machine.
 
-    The kernel does on any Mac: its tree has files whose names differ only
-    in their case, which a Mac's file system keeps as one, and its build
-    wants a GNU make newer than a Mac's.
+    Every part does on an Intel Mac, which the Zephyr SDK has no toolchain
+    for. The kernel does on any Mac: its tree has files whose names differ
+    only in their case, which a Mac's file system keeps as one, and its
+    build wants a GNU make newer than a Mac's.
     """
-    return part == "linux" and host.startswith("macos")
+    return host == "macos-x86_64" or (
+        part == "linux" and host.startswith("macos")
+    )
 
 
 def check_the_machine(parts: list[str]) -> None:

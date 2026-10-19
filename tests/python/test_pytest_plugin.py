@@ -145,6 +145,31 @@ class TestWhenAPlatformTestCrashesItsProcess:
         result.stdout.fnmatch_lines(["*process exited with status*SIGABRT*"])
 
 
+class TestWhenAPlatformTestCrashesItsProcessInWorkersOfXdist:
+    def test_the_session_reports_it_as_failed_where_it_used_to_stop(
+        self, session_with_socpuppet
+    ):
+        # ⚠️ xdist sends each report to the session that runs the workers,
+        # and a report that held a pytest Mark was more than it could send:
+        # the session stopped with an internal error, and the failure that
+        # caused the report was never said.
+        session_with_socpuppet.makepyfile(
+            """
+            import os
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_crashes():
+                os.abort()
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess("-n", "1")
+
+        result.assert_outcomes(failed=1)
+        result.stdout.fnmatch_lines(["*process exited with status*SIGABRT*"])
+
+
 class TestWhenAPlatformTestPassesButItsProcessCrashesOnExit:
     def test_the_session_reports_an_error(self, session_with_socpuppet):
         session_with_socpuppet.makepyfile(
@@ -225,6 +250,25 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
 
     def test_the_failure_shows_where_the_test_was(self, result):
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+class TestWhenNobodySetsTheTimeout:
+    def test_the_platform_limit_is_fifteen_minutes(
+        self, session_with_socpuppet
+    ):
+        # A boot to a prompt takes about 90 s on a free Intel Mac, and more
+        # than 300 on one building besides with a test worker on every core.
+        session_with_socpuppet.makepyfile(
+            """
+            def test_the_limit(pytestconfig):
+                limit = pytestconfig.getini("socpuppet_platform_timeout")
+                assert float(limit) == 15 * 60
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=1)
 
 
 ON_DEMAND = """

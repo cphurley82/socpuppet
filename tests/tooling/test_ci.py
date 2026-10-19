@@ -952,6 +952,23 @@ def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_q
     ]
 
 
+@pytest.mark.skipif(not RUNNER_MODULE.INTEL_MAC, reason="for an Intel Mac")
+def test_qbox_here_on_an_intel_mac_stops_before_twister_which_would_run_in_a_container_without_qbox(
+    ci,
+):
+    # Twister runs there in the devcontainer's image, on a socpuppet built
+    # for Linux without QBox, and every scenario fails with "no qbox_cpu".
+    result, _ = ci("qbox")
+
+    assert result.returncode == 0, result.stdout
+    commands = [c["command"] for c in ci.commands()]
+    assert commands == [
+        "uv run cmake --preset qbox",
+        "uv run cmake --build --preset qbox",
+        "uv run ctest --preset qbox",
+    ]
+
+
 def test_qbox_tidy_runs_clang_tidy_then_the_header_check_on_the_qbox_tree(ci):
     _, lines = ci("run", "qbox-tidy")
 
