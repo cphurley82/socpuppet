@@ -53,7 +53,21 @@ PROGRAMS = (
     *("git", "c++", "dtc", "curl", "make", "iasl", "docker"),
     *("flex", "bison", "bc", "mkfs.ext4"),
     *(name for name, _, _ in QBOX.PROGRAMS),
+    "pkgutil",
 )
+
+# The package of python.org's CPython that cibuildwheel looks for on a Mac,
+# of the Python the tools are pinned to: named for its minor version.
+PYTHON = (REPO / ".python-version").read_text().strip()
+MINOR = ".".join(PYTHON.split(".")[:2])
+PYTHON_ORG = f"org.python.Python.PythonFramework-{MINOR}"
+
+# pkgutil, which lists the packages of the machine: python.org's CPython
+# among them unless PACKAGES says what else there is.
+PKGUTIL = f"""\
+import os
+print(os.environ.get("PACKAGES", "{PYTHON_ORG}"))
+"""
 
 
 @pytest.fixture
@@ -67,7 +81,9 @@ def doctor(tmp_path):
     bin_directory.mkdir()
     for program in PROGRAMS:
         path = bin_directory / program
-        path.write_text(f"#!{sys.executable}\n{FAKE}")
+        path.write_text(
+            f"#!{sys.executable}\n{PKGUTIL if program == 'pkgutil' else FAKE}"
+        )
         path.chmod(0o755)
     log = tmp_path / "log"
 
@@ -102,35 +118,82 @@ def test_on_a_machine_with_everything_every_area_is_well(doctor):
     assert marks(result.stdout) == {area.title: "✅" for area in AREAS}
 
 
-# What each required area looks for, and the commands that install it on
-# Ubuntu and on a Mac, where Apple's command line tools have some of them.
+# What each required area looks for, the commands that install it on Ubuntu
+# and on a Mac, where Apple's command line tools have some of them, and the
+# parts of the firmware it is for: a machine that builds all of them in
+# Docker looks for Docker in its place.
 XCODE = "xcode-select --install"
 APT = "sudo apt-get install -y"
+BUILD = DOCTOR_MODULE.FIRMWARE_BUILD
+EVERY_PART = BUILD.PARTS
 REQUIRED = [
-    ("git", "socpuppet's build", f"{APT} git", XCODE),
-    ("c++", "socpuppet's build", f"{APT} build-essential", XCODE),
+    ("git", "socpuppet's build", f"{APT} git", XCODE, ()),
+    ("c++", "socpuppet's build", f"{APT} build-essential", XCODE, ()),
     (
         "dtc",
         "socpuppet's build",
         f"{APT} device-tree-compiler",
         "brew install dtc",
+        (),
     ),
-    ("curl", "the firmware's build", f"{APT} curl", "brew install curl"),
-    ("make", "the firmware's build", f"{APT} build-essential", XCODE),
-    ("iasl", "EDK2's build", f"{APT} acpica-tools", "brew install acpica"),
-    ("flex", "the Linux kernel's build", f"{APT} flex", "brew install flex"),
-    ("bc", "the Linux kernel's build", f"{APT} bc", "brew install bc"),
+    (
+        "curl",
+        "the firmware's build",
+        f"{APT} curl",
+        "brew install curl",
+        EVERY_PART,
+    ),
+    (
+        "make",
+        "the firmware's build",
+        f"{APT} build-essential",
+        XCODE,
+        EVERY_PART,
+    ),
+    (
+        "iasl",
+        "EDK2's build",
+        f"{APT} acpica-tools",
+        "brew install acpica",
+        ("edk2",),
+    ),
+    (
+        "flex",
+        "the Linux kernel's build",
+        f"{APT} flex",
+        "brew install flex",
+        ("linux",),
+    ),
+    (
+        "bc",
+        "the Linux kernel's build",
+        f"{APT} bc",
+        "brew install bc",
+        ("linux",),
+    ),
 ]
 
 
+def in_docker_here(part):
+    """Whether this machine builds a part of the firmware in Docker."""
+    return BUILD.builds_in_docker(part, BUILD.sdk_host())
+
+
+# Whether this machine builds a part in Docker, which a required area then
+# wants, so that the check fails without it.
+DOCKER_REQUIRED = any(in_docker_here(part) for part in EVERY_PART)
+
+
 @pytest.mark.parametrize(
-    ("program", "title", "on_linux", "on_a_mac"),
+    ("program", "title", "on_linux", "on_a_mac", "parts"),
     REQUIRED,
     ids=[need[0] for need in REQUIRED],
 )
 def test_a_missing_program_fails_its_area_and_says_how_to_install_it(
-    doctor, program, title, on_linux, on_a_mac
+    doctor, program, title, on_linux, on_a_mac, parts
 ):
+    if parts and all(in_docker_here(part) for part in parts):
+        pytest.skip("this machine builds that part in Docker")
     doctor.without(program)
 
     result = doctor()
@@ -140,6 +203,79 @@ def test_a_missing_program_fails_its_area_and_says_how_to_install_it(
     assert f"{program} is not installed" in result.stdout
     fix = on_linux if platform.system() == "Linux" else on_a_mac
     assert fix in result.stdout
+
+
+@pytest.mark.parametrize("part", ["edk2", "linux"])
+def test_a_part_that_builds_in_docker_here_wants_docker_and_not_its_programs(
+    part,
+):
+    wanted = [
+        need.name for need in DOCTOR_MODULE.needs_of(part, "macos-x86_64")
+    ]
+
+    assert wanted == ["docker", "docker info"]
+
+
+def test_a_part_that_builds_here_wants_its_programs():
+    wanted = [
+        need.name for need in DOCTOR_MODULE.needs_of("linux", "linux-x86_64")
+    ]
+
+    assert wanted == ["flex", "bison", "bc", "mkfs.ext4"]
+
+
+def test_on_an_intel_mac_the_firmwares_build_wants_docker_for_its_tools():
+    # Every part builds in the devcontainer's image there.
+    wanted = [
+        need.name for need in DOCTOR_MODULE.firmware_needs("macos-x86_64")
+    ]
+
+    assert wanted == ["git", "docker", "docker info"]
+
+
+@pytest.mark.parametrize("host", ["linux-x86_64", "macos-aarch64"])
+def test_where_any_part_of_the_firmware_builds_here_it_wants_git_curl_and_make(
+    host,
+):
+    wanted = [need.name for need in DOCTOR_MODULE.firmware_needs(host)]
+
+    assert wanted == ["git", "curl", "make"]
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin", reason="only a Mac builds its wheel so"
+)
+def test_a_mac_without_pythons_cpython_warns_without_failing_and_says_where(
+    doctor,
+):
+    result = doctor("wheel", PACKAGES="com.apple.pkg.spam")
+
+    assert result.returncode == 0, result.stdout
+    assert marks(result.stdout)["the wheel's build"] == "⚠️"
+    assert f"python.org's CPython {PYTHON} is not installed" in result.stdout
+    assert "https://www.python.org/downloads/macos/" in result.stdout
+
+
+def test_pythons_cpython_is_looked_for_by_its_minor_version_as_it_names_itself():
+    # Its package is one for every 3.13: a pin to 3.13.5 still finds it.
+    package = DOCTOR_MODULE.python_org_package("3.13.5")
+
+    assert package == "org.python.Python.PythonFramework-3.13"
+
+
+def test_where_pythons_cpython_is_installed_the_wheels_build_is_well(doctor):
+    result = doctor("wheel")
+
+    assert marks(result.stdout) == {"the wheel's build": "✅"}
+
+
+@pytest.mark.skipif(
+    platform.system() == "Darwin", reason="a Mac is where it is looked for"
+)
+def test_other_than_on_a_mac_pythons_cpython_is_not_looked_for(doctor):
+    result = doctor("wheel", PACKAGES="com.apple.pkg.spam")
+
+    assert marks(result.stdout) == {"the wheel's build": "✅"}
 
 
 def marks(output):
@@ -203,11 +339,12 @@ def test_without_curl_the_network_fails_saying_curl_is_missing(doctor):
 
 
 def test_without_docker_installed_docker_warns_without_failing(doctor):
+    # Unless a part of the build is built in Docker here, which wants it.
     doctor.without("docker")
 
     result = doctor()
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == int(DOCKER_REQUIRED), result.stdout
     assert marks(result.stdout)["Docker"] == "⚠️"
     assert "docker is not installed" in result.stdout
 
@@ -215,13 +352,15 @@ def test_without_docker_installed_docker_warns_without_failing(doctor):
 def test_with_docker_not_answering_docker_warns_saying_what_to_try(doctor):
     result = doctor(FAIL_ON="info")
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == int(DOCKER_REQUIRED), result.stdout
     assert marks(result.stdout)["Docker"] == "⚠️"
     assert "`docker info` fails" in result.stdout
 
 
 def test_the_checks_that_wait_on_a_program_wait_at_the_same_time(doctor):
-    slow = 1
+    # Long enough that starting the fakes, which a busy machine takes
+    # seconds over, is small beside it.
+    slow = 3
     started = time.monotonic()
 
     result = doctor(SLOW=str(slow))
@@ -235,9 +374,9 @@ def test_the_checks_that_wait_on_a_program_wait_at_the_same_time(doctor):
 
 
 def test_with_areas_named_only_those_are_checked(doctor):
-    result = doctor("edk2", "docker")
+    result = doctor("build", "docker")
 
-    assert marks(result.stdout) == {"EDK2's build": "✅", "Docker": "✅"}
+    assert marks(result.stdout) == {"socpuppet's build": "✅", "Docker": "✅"}
     # Neither a site nor a library was asked after.
     assert not any(
         "https://" in line or "pkg-config" in line for line in doctor.lines()
@@ -253,22 +392,24 @@ def test_an_unknown_area_is_refused_and_the_usage_names_every_area(doctor):
 
 
 def test_as_json_each_area_says_its_problems_and_how_to_fix_them(doctor):
-    doctor.without("iasl")
+    doctor.without("dtc")
     doctor.without("docker")
 
-    result = doctor("--json", "edk2", "docker", "network")
+    result = doctor("--json", "build", "docker", "network")
 
     assert result.returncode == 1
     on_linux = platform.system() == "Linux"
     assert json.loads(result.stdout) == {
         "areas": [
             {
-                "name": "edk2",
-                "title": "EDK2's build",
+                "name": "build",
+                "title": "socpuppet's build",
                 "optional": False,
-                "problems": ["iasl is not installed"],
+                "problems": ["dtc is not installed"],
                 "fix": [
-                    f"{APT} acpica-tools" if on_linux else "brew install acpica"
+                    f"{APT} device-tree-compiler"
+                    if on_linux
+                    else "brew install dtc"
                 ],
             },
             {

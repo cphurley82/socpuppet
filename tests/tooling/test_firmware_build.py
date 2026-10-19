@@ -26,6 +26,26 @@ SCRIPT = REPO / "firmware" / "build.py"
 VERSIONS = REPO / "firmware" / "versions.toml"
 TWISTER_REQUIREMENTS = REPO / "firmware" / "twister-requirements.txt"
 
+# The machine the builds are tested on, whatever the one running the tests is,
+# by the name the SDK gives it: by default the one every part builds on here,
+# with the SDK's own toolchain. On an Intel Mac the script hands every part to
+# Docker, and on any Mac the kernel, which the tests of Docker's routing say.
+# The script is run through a few lines that tell it what platform.system()
+# and platform.machine() say there.
+HOST = "linux-x86_64"
+MACHINES = {
+    "linux-x86_64": ("Linux", "x86_64"),
+    "macos-aarch64": ("Darwin", "arm64"),
+    "macos-x86_64": ("Darwin", "x86_64"),
+}
+AS_ON = """\
+import platform, runpy, sys
+_, system, machine, *sys.argv = sys.argv
+platform.system = lambda: system
+platform.machine = lambda: machine
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+
 # The fake for every program. Each logs its name and arguments, as
 # JSON, with when it started and ended. What it then does depends on which
 # program it is faking. FAIL_ON names a word, and a command that
@@ -629,6 +649,44 @@ def test_on_a_mac_the_kernel_builds_in_docker_and_the_other_parts_here():
     assert not BUILD.builds_in_docker("linux", "linux-x86_64")
 
 
+def test_on_an_intel_mac_every_part_builds_in_docker():
+    assert all(
+        BUILD.builds_in_docker(part, "macos-x86_64") for part in BUILD.PARTS
+    )
+
+
+def test_on_an_apple_silicon_mac_the_kernel_goes_to_docker_and_the_rom_builds_here(
+    firmware,
+):
+    firmware.host = "macos-aarch64"
+    firmware.sdk_release()
+
+    result = firmware.run("rom", "linux")
+
+    assert result.returncode == 0, result.stdout
+    assert set(firmware.compiled()) == {"rom_rv64", "rom_rv32", "sbi_payload"}
+    (call,) = firmware.calls("devcontainer.py")
+    assert call["args"][:4] == [
+        "python3",
+        "firmware/build.py",
+        "linux",
+        "--out",
+    ]
+
+
+def test_on_an_intel_mac_every_part_goes_to_docker_in_one_run(firmware):
+    firmware.host = "macos-x86_64"
+
+    result = firmware.run("rom", "linux")
+
+    assert result.returncode == 0, result.stdout
+    (call,) = firmware.calls("devcontainer.py")
+    assert call["args"][:5] == [
+        *("python3", "firmware/build.py", "rom", "linux", "--out"),
+    ]
+    assert firmware.compiled() == {}
+
+
 def test_in_docker_an_output_directory_outside_the_repository_is_refused(
     firmware, tmp_path
 ):
@@ -670,7 +728,7 @@ class Firmware:
         self.fake.write_text(f"#!{sys.executable}\n{FAKE}")
         self.fake.chmod(0o755)
         self.versions = BUILD.read_versions(VERSIONS)
-        self.host = BUILD.sdk_host()
+        self.host = HOST
         self.sdk = self.out / f"zephyr-sdk-{self.versions['sdk']}"
 
     def repository(self):
@@ -815,7 +873,10 @@ class Firmware:
         disassembly = self.log.parent / "disassembly.txt"
         disassembly.write_text(DISASSEMBLY)
         return subprocess.run(
-            [sys.executable, str(self.root / "firmware" / "build.py"), *args],
+            [
+                *(sys.executable, "-c", AS_ON, *MACHINES[self.host]),
+                *(str(self.root / "firmware" / "build.py"), *args),
+            ],
             cwd=self.root,
             env={
                 **os.environ,

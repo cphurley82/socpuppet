@@ -126,6 +126,34 @@ def site(url: str) -> Need:
     return Need(host, problem, {"Linux": fix, "Darwin": fix})
 
 
+def python_org_package(version: str) -> str:
+    """The package pkgutil knows python.org's CPython of a version by.
+
+    It is named for the minor version, which every patch release of it
+    installs over.
+    """
+    minor = ".".join(version.split(".")[:2])
+    return f"org.python.Python.PythonFramework-{minor}"
+
+
+def python_org_cpython() -> str | None:
+    """What is wrong with python.org's CPython on a Mac, if anything.
+
+    cibuildwheel builds a Mac's wheel with it, asks pkgutil whether it is
+    there, and outside of CI will not install it, for it is a system-wide
+    install that asks for a password. Other systems have no use for it.
+    """
+    if platform.system() != "Darwin" or not shutil.which("pkgutil"):
+        return None
+    version = (REPOSITORY / ".python-version").read_text().strip()
+    packages = subprocess.run(
+        ["pkgutil", "--pkgs"], stdout=subprocess.PIPE, text=True
+    ).stdout.split()
+    if python_org_package(version) in packages:
+        return None
+    return f"python.org's CPython {version} is not installed"
+
+
 def docker_answers() -> str | None:
     """What is wrong with Docker's daemon, if Docker is installed."""
     if not shutil.which("docker"):
@@ -185,6 +213,40 @@ def load(path: str) -> ModuleType:
 BUILD_QBOX = load("tools/build_qbox.py")
 FIRMWARE_BUILD = load("firmware/build.py")
 
+
+def needs_of(part: str, host: str) -> tuple[Need, ...]:
+    """What a part of the firmware's build needs of a machine of this kind.
+
+    Its programs, or Docker where the machine builds it in the devcontainer's
+    image, whose programs the machine has no use for.
+    """
+    if FIRMWARE_BUILD.builds_in_docker(part, host):
+        return DOCKER
+    return tuple(
+        program(name, apt, Fix(brew, BREW))
+        for name, apt, brew in FIRMWARE_BUILD.PROGRAMS[part]
+    )
+
+
+def firmware_needs(host: str) -> tuple[Need, ...]:
+    """What the firmware's build needs of a machine of this kind.
+
+    The tools to fetch and build its parts, or Docker where the machine
+    builds every part in the devcontainer's image.
+    """
+    git = program("git", "git", XCODE)
+    if all(
+        FIRMWARE_BUILD.builds_in_docker(part, host)
+        for part in FIRMWARE_BUILD.PARTS
+    ):
+        return (git, *DOCKER)
+    return (
+        git,
+        program("curl", "curl", Fix("curl", BREW)),
+        program("make", "build-essential", XCODE),
+    )
+
+
 AREAS = (
     Area(
         "build",
@@ -199,27 +261,17 @@ AREAS = (
     Area(
         "firmware",
         "the firmware's build",
-        (
-            program("git", "git", XCODE),
-            program("curl", "curl", Fix("curl", BREW)),
-            program("make", "build-essential", XCODE),
-        ),
+        firmware_needs(FIRMWARE_BUILD.sdk_host()),
     ),
     Area(
         "edk2",
         "EDK2's build",
-        tuple(
-            program(name, apt, Fix(brew, BREW))
-            for name, apt, brew in FIRMWARE_BUILD.PROGRAMS["edk2"]
-        ),
+        needs_of("edk2", FIRMWARE_BUILD.sdk_host()),
     ),
     Area(
         "linux",
         "the Linux kernel's build",
-        tuple(
-            program(name, apt, Fix(brew, BREW))
-            for name, apt, brew in FIRMWARE_BUILD.PROGRAMS["linux"]
-        ),
+        needs_of("linux", FIRMWARE_BUILD.sdk_host()),
     ),
     Area(
         "qbox",
@@ -240,6 +292,25 @@ AREAS = (
         # Python's packages, and QBox's configure, which fetches CPM.cmake
         # from GitHub every time.
         (site("https://pypi.org"), site("https://github.com")),
+    ),
+    Area(
+        "wheel",
+        "the wheel's build",
+        (
+            Need(
+                "python.org's CPython",
+                python_org_cpython,
+                {
+                    "Linux": Fix("nothing: a container builds it"),
+                    "Darwin": Fix(
+                        "install the .pkg of the Python in .python-version "
+                        "from https://www.python.org/downloads/macos/ "
+                        "(it asks for your password)"
+                    ),
+                },
+            ),
+        ),
+        optional=True,
     ),
     # The wheels of Linux are built in a container, and the devcontainer's
     # image is tested in one.
