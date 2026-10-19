@@ -340,7 +340,9 @@ class Build:
         self.toolchain = self.sdk_dir / "gnu" / "riscv64-zephyr-elf"
         # Kept beside the SDK and not in it: it is two gigabytes, and what
         # copies or caches the SDK for Zephyr would carry it for nothing.
-        self.llvm_dir = out / f"llvm-{sdk_version}"
+        # Named for the machine, as a Mac's out is shared with the kernel's
+        # build in Docker, which needs Linux's.
+        self.llvm_dir = out / f"llvm-{sdk_version}-{sdk_host()}"
         self.zephyr_dir = out / "zephyr"
         self.venv = out / "venv"
         out.mkdir(parents=True, exist_ok=True)
