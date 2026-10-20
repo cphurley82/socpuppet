@@ -276,6 +276,13 @@ class TestWhenTheClientWalks:
         assert answer.kind == ninep.TWALK + 1
         assert answer.number(2) == 1
 
+    def test_dot_dot_goes_up_a_directory(self, served, share):
+        answer = walk(served, [b"eggs", b".."], to_fid=2)
+
+        assert answer.number(2) == 2
+        answer.qid()  # The first step's, to eggs.
+        assert answer.qid()[1] == share.stat().st_ino
+
     def test_dot_dot_at_the_root_stays_at_the_root(self, served, share):
         answer = walk(served, [b"..", b".."], to_fid=2)
 
@@ -613,6 +620,51 @@ class TestWhenTheClientRenames:
         fields, _ = getattr_(served, 3)
 
         assert fields["size"] == 3
+
+
+class TestWhenTheClientNamesDotDotInWhatChangesTheTree:
+    """`..` names a directory to walk to, never one to change.
+
+    💡 Linux never sends it here: these are another client's mistakes.
+    """
+
+    @pytest.mark.parametrize(
+        "request_",
+        [
+            t(ninep.TUNLINKAT, (2, 4), b"..", (ninep.AT_REMOVEDIR, 4)),
+            t(ninep.TRENAMEAT, (2, 4), b"..", (ROOT_FID, 4), b"moved"),
+            t(ninep.TRENAMEAT, (ROOT_FID, 4), b"spam.txt", (2, 4), b".."),
+            t(ninep.TMKDIR, (2, 4), b"..", (0o755, 4), (0, 4)),
+            t(ninep.TSYMLINK, (2, 4), b"..", b"spam.txt", (0, 4)),
+            t(
+                ninep.TLCREATE,
+                (2, 4),
+                b"..",
+                (ninep.O_CREAT | 1, 4),
+                (0o644, 4),
+                (0, 4),
+            ),
+        ],
+        ids=[
+            "unlinkat",
+            "renameat-from",
+            "renameat-to",
+            "mkdir",
+            "symlink",
+            "lcreate",
+        ],
+    )
+    def test_it_is_einval_and_the_share_is_as_it_was(
+        self, served, share, request_
+    ):
+        (share / "eggs" / "beans").mkdir()
+        walk(served, [b"eggs", b"beans"], to_fid=2)
+        before = sorted(share.rglob("*"))
+
+        answer = Answer(served(request_))
+
+        assert answer.error == EINVAL
+        assert sorted(share.rglob("*")) == before
 
 
 class TestWhenALinkMadeSinceLeadsAFidOutOfTheShare:

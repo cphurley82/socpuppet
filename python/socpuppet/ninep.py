@@ -239,16 +239,29 @@ class Directory:
             return True
         return (path.parent.resolve() / path.name).is_relative_to(self.root)
 
-    def _child(self, parent: Path, name: bytes) -> Path:
+    def _child(
+        self, parent: Path, name: bytes, *, changing: bool = True
+    ) -> Path:
+        """Where `name` in the directory `parent` is, if it is inside.
+
+        `..` names a directory to walk to, never one to change. `.` is
+        refused everywhere: Linux's client never sends it.
+        """
         text = name.decode(errors="surrogateescape")
         if not text or "/" in text or text == ".":
             raise _Refused("EINVAL")
         if text == "..":
-            return parent if parent == self.root else parent.parent
+            if changing:
+                raise _Refused("EINVAL")
+            return self._above(parent)
         child = parent / text
         if not self._inside(child):
             raise _Refused("EACCES")
         return child
+
+    def _above(self, directory: Path) -> Path:
+        """The directory above `directory`, which at the root is the root."""
+        return directory if directory == self.root else directory.parent
 
     def _qid(self, path: Path) -> bytes:
         found = path.lstat()
@@ -290,7 +303,7 @@ class Directory:
         path = self._fid(fid).path
         qids: list[bytes] = []
         for name in names:
-            child = self._child(path, name)
+            child = self._child(path, name, changing=False)
             if not child.exists(follow_symlinks=False):
                 if not qids:
                     raise _Refused("ENOENT")
@@ -429,7 +442,7 @@ class Directory:
     def _listing(self, path: Path) -> list[tuple[bytes, int, bytes]]:
         entries = [
             (self._qid(path), DT_DIR, b"."),
-            (self._qid(self._child(path, b"..")), DT_DIR, b".."),
+            (self._qid(self._above(path)), DT_DIR, b".."),
         ]
         for child in sorted(path.iterdir()):
             kind = _dirent_type(child.lstat().st_mode)
