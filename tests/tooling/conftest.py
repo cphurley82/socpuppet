@@ -33,6 +33,17 @@ ZEPHYR_CONFIG_FILES = [
 
 LINT = REPO / "tools" / "lint.py"
 
+# A few lines that run a script as if on another machine: they tell it what
+# platform.system() and platform.machine() say there. Run as
+# `python -c AS_ON <system> <machine> <script> <argument>...`.
+AS_ON = """\
+import platform, runpy, sys
+_, system, machine, *sys.argv = sys.argv
+platform.system = lambda: system
+platform.machine = lambda: machine
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+
 
 @pytest.fixture
 def zephyr_tree():

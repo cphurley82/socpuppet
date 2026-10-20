@@ -21,7 +21,7 @@ This fetches Linux 6.18.57 from kernel.org and Alpine's mini root, checks both a
 | `linux.map` | `System.map`, every symbol's address |
 | `rootfs.ext4` | Alpine's mini root as an ext4 image, 32 MiB, with `firmware/rootfs/etc/inittab` over Alpine's |
 
-The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. On a Mac the `linux` part builds in the devcontainer's image by itself, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` is shaped as the guest's own tree: a file put there is in the root at the next build.
+The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. The kernel's own tree and build are in `build/firmware/<machine>`, with the toolchains. On a Mac the `linux` part builds in the devcontainer's image by itself, with that folder a Docker volume, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` is shaped as the guest's own tree: a file put there is in the root at the next build.
 
 ## A first boot
 

@@ -56,6 +56,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+# Where the firmware is built, unless --out says otherwise.
+OUT = REPOSITORY / "build" / "firmware"
 # socpuppet's boards, shields and drivers are in a Zephyr module that ships
 # inside the Python package (`socpuppet zephyr-module` prints where). Here
 # it is used straight from the repository.
@@ -216,7 +218,7 @@ def main() -> int:
     parser.add_argument(
         "--out",
         type=Path,
-        default=REPOSITORY / "build" / "firmware",
+        default=OUT,
         help="the output directory (default: build/firmware)",
     )
     parser.add_argument(
@@ -297,6 +299,14 @@ def in_docker(parts: list[str], out: Path, jobs: int) -> int:
             "devcontainer's image sees. Build into a directory inside it, "
             "and copy the images from there."
         )
+    if "linux" in parts and sdk_host().startswith("macos") and out != OUT:
+        raise Failed(
+            "On a Mac the kernel builds in Docker into build/firmware, "
+            "the default, where tools/devcontainer.py puts a Docker volume "
+            "for Linux's tools: a Mac's own file system takes two of the "
+            "kernel's names that differ only in their case for one. Build "
+            "it there, and copy the images from there."
+        )
     inside = Path("/workspace") / out.relative_to(REPOSITORY)
     return subprocess.run(
         [
@@ -335,17 +345,19 @@ class Build:
         self.versions = {
             name: pin["version"] for name, pin in self.pins.items()
         }
+        # What runs on this machine is kept in a directory named for it:
+        # a Mac's out is shared with Linux's in Docker, which builds the
+        # kernel there (tools/devcontainer.py makes Linux's a volume).
+        self.machine = out / sdk_host()
         sdk_version = self.versions["sdk"]
-        self.sdk_dir = out / f"zephyr-sdk-{sdk_version}"
+        self.sdk_dir = self.machine / f"zephyr-sdk-{sdk_version}"
         self.toolchain = self.sdk_dir / "gnu" / "riscv64-zephyr-elf"
         # Kept beside the SDK and not in it: it is two gigabytes, and what
         # copies or caches the SDK for Zephyr would carry it for nothing.
-        # Named for the machine, as a Mac's out is shared with the kernel's
-        # build in Docker, which needs Linux's.
-        self.llvm_dir = out / f"llvm-{sdk_version}-{sdk_host()}"
+        self.llvm_dir = self.machine / f"llvm-{sdk_version}"
         self.zephyr_dir = out / "zephyr"
-        self.venv = out / "venv"
-        out.mkdir(parents=True, exist_ok=True)
+        self.venv = self.machine / "venv"
+        self.machine.mkdir(parents=True, exist_ok=True)
         # What each part's name runs.
         self.parts = {
             "sdk": self.sdk,
@@ -370,7 +382,7 @@ class Build:
         host = sdk_host()
         version = self.versions["sdk"]
         say(f"Fetching the Zephyr SDK {version} RISC-V toolchain for {host}")
-        with self.staging() as name:
+        with self.staging(self.sdk_dir) as name:
             staging = Path(name)
             self.fetch_sdk_file(
                 f"zephyr-sdk-{version}_{host}_minimal.tar.xz", staging
@@ -394,19 +406,21 @@ class Build:
             return
         host = sdk_host()
         say(f"Fetching the Zephyr SDK {self.versions['sdk']} LLVM for {host}")
-        with self.staging() as name:
+        with self.staging(self.llvm_dir) as name:
             staging = Path(name)
             self.fetch_sdk_file(f"toolchain_llvm_{host}.tar.xz", staging)
             (unpacked,) = staging.iterdir()
             unpacked.rename(self.llvm_dir)
 
-    def staging(self) -> tempfile.TemporaryDirectory[str]:
-        """A directory to unpack into, next to where it all goes.
+    def staging(self, to: Path) -> tempfile.TemporaryDirectory[str]:
+        """A directory to unpack into, beside `to`, where it all goes.
 
         What is unpacked is moved into place only when it is whole, so a
-        fetch that stops part of the way leaves nothing half there.
+        fetch that stops part of the way leaves nothing half there. The
+        move is a rename, which stays on one file system: so the staging
+        is beside where it goes, which may be a volume of Docker's.
         """
-        return tempfile.TemporaryDirectory(prefix=".staging-", dir=self.out)
+        return tempfile.TemporaryDirectory(prefix=".staging-", dir=to.parent)
 
     def fetch_sdk_file(self, name: str, into: Path) -> None:
         """Download one file of the SDK's release, check it, and unpack it.
@@ -479,7 +493,7 @@ class Build:
             run(
                 *("uv", "venv", "--quiet", "--python-preference"),
                 *("only-managed", str(self.venv)),
-                env={"UV_PYTHON_INSTALL_DIR": str(self.out / "python")},
+                env={"UV_PYTHON_INSTALL_DIR": str(self.machine / "python")},
             )
             run(
                 *("uv", "pip", "install", "--quiet"),
@@ -835,11 +849,11 @@ class Build:
         the refusal is turned off, as it is for OpenSBI.
         """
         self.llvm()
-        source = self.out / "linux"
+        source = self.machine / "linux"
         version = self.versions["linux"]
         if not source.is_dir():
             say(f"Fetching Linux {version}")
-            with self.staging() as name:
+            with self.staging(source) as name:
                 staging = Path(name)
                 self.fetch(
                     "https://cdn.kernel.org/pub/linux/kernel/"
@@ -849,7 +863,7 @@ class Build:
                 )
                 (staging / f"linux-{version}").rename(source)
         say("Building Linux for the host")
-        built = self.out / "build_linux"
+        built = self.machine / "build_linux"
         built.mkdir(exist_ok=True)
         llvm = f"{self.llvm_dir}/bin/"
         make = (
@@ -858,7 +872,9 @@ class Build:
             f"CC={llvm}clang -Wno-missing-multilib",
             *("HOSTCC=cc", "HOSTCXX=c++"),
         )
-        log = built.with_suffix(".log")
+        # Beside the images, where a Mac can read it: the build is in
+        # Docker's volume there.
+        log = self.out / "build_linux.log"
         logged(log, *make, "defconfig")
         logged(log, *make, f"-j{os.cpu_count() or 1}", "Image", after=True)
         for made, kept in (
@@ -890,7 +906,7 @@ class Build:
         root = self.out / f"alpine-minirootfs-{version}"
         if not root.is_dir():
             say(f"Fetching Alpine {version}")
-            with self.staging() as name:
+            with self.staging(root) as name:
                 staging = Path(name) / root.name
                 self.fetch(
                     "https://dl-cdn.alpinelinux.org/alpine/"
@@ -903,7 +919,7 @@ class Build:
         say("Making the root filesystem")
         shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
         image = self.out / "rootfs.ext4"
-        with self.staging() as name:
+        with self.staging(image) as name:
             made = Path(name) / image.name
             logged(
                 self.out / "build_rootfs.log",

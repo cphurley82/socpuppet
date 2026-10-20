@@ -42,6 +42,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 FIRMWARE = REPOSITORY / "build" / "firmware"
@@ -57,6 +58,16 @@ TWISTER_IMPORTS = (
     "import psutil, tabulate, natsort, anytree, junitparser, colorama, ply,"
     " serial, pytest, packaging, dotenv"
 )
+
+
+def load(path: Path) -> ModuleType:
+    """One of the repository's scripts, as a module."""
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    assert spec
+    assert spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class Failed(Exception):
@@ -110,10 +121,15 @@ class Twister:
         # In the container, Zephyr, the SDK, the venv and twister's build
         # directories are on the volume, and its verdicts come back.
         self.home = os.environ.get("SOCPUPPET_TWISTER_HOME")
-        base = Path(self.home) if self.home else FIRMWARE
-        self.zephyr = base / "zephyr"
-        self.sdk = base / self.sdk_name
-        self.venv = base / "venv"
+        # Out of it, build/firmware has Zephyr, and the directory of this
+        # machine's tools the SDK and the venv.
+        self.machine = (
+            FIRMWARE / load(REPOSITORY / "firmware" / "build.py").sdk_host()
+        )
+        self.zephyr = Path(self.home or FIRMWARE) / "zephyr"
+        tools = Path(self.home) if self.home else self.machine
+        self.sdk = tools / self.sdk_name
+        self.venv = tools / "venv"
         self.out = Path(self.home) / "out" if self.home else OUT
         self.runs: list[str] = []
 
@@ -140,15 +156,15 @@ class Twister:
     def check_what_it_needs(self) -> None:
         """Stop if what firmware/build.py fetches and builds is not there."""
         for each in (
-            "zephyr",
-            "venv/bin/python",
-            self.sdk_name,
-            "rom_rv32.elf",
-            "rom_rv64.elf",
+            FIRMWARE / "zephyr",
+            self.machine / "venv" / "bin" / "python",
+            self.machine / self.sdk_name,
+            FIRMWARE / "rom_rv32.elf",
+            FIRMWARE / "rom_rv64.elf",
         ):
-            if not (FIRMWARE / each).exists():
+            if not each.exists():
                 raise Failed(
-                    f"There is no {FIRMWARE / each}. Run "
+                    f"There is no {each}. Run "
                     "`uv run firmware/build.py rom zephyr-tree` first, which "
                     "fetches Zephyr and its SDK and builds the boot ROMs."
                 )
@@ -188,13 +204,7 @@ class Twister:
             say("The Linux venv's Python is gone: making it, and build/linux")
             shutil.rmtree(self.project_venv, ignore_errors=True)
             shutil.rmtree(tree, ignore_errors=True)
-        spec = importlib.util.spec_from_file_location(
-            "ci", REPOSITORY / "tools" / "ci.py"
-        )
-        assert spec
-        assert spec.loader
-        ci = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(ci)
+        ci = load(REPOSITORY / "tools" / "ci.py")
         ci.LOGS.mkdir(parents=True, exist_ok=True)
         ci.drop_stale_dependencies(clean=False)
         command("uv", "sync", "--quiet")
@@ -241,11 +251,13 @@ class Twister:
                 ignore=shutil.ignore_patterns(".git"),
             )
             shutil.copytree(
-                FIRMWARE / self.sdk_name, home / self.sdk_name, symlinks=True
+                self.machine / self.sdk_name,
+                home / self.sdk_name,
+                symlinks=True,
             )
             initialized = subprocess.run(
                 [
-                    str(FIRMWARE / "venv" / "bin" / "west"),
+                    str(self.machine / "venv" / "bin" / "west"),
                     *("init", "--local", "zephyr"),
                 ],
                 cwd=home,
