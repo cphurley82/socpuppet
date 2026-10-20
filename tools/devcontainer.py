@@ -10,6 +10,7 @@ first time, and again whenever .devcontainer/Dockerfile changes.
 """
 
 import hashlib
+import importlib.util
 import os
 import platform
 import shutil
@@ -25,7 +26,7 @@ DOCKERFILE = REPOSITORY / ".devcontainer" / "Dockerfile"
 # with the same venv and Python.
 UV = {
     "UV_PROJECT_ENVIRONMENT": "/workspace/build/linux-venv",
-    "UV_PYTHON_INSTALL_DIR": "/workspace/build/firmware/python",
+    "UV_PYTHON_INSTALL_DIR": "/workspace/build/linux-python",
     "UV_CACHE_DIR": "/workspace/build/linux-uv-cache",
 }
 
@@ -133,12 +134,36 @@ def docker_options() -> list[str]:
             # And twister's Zephyr, SDK, venv and builds, for the same
             # reason (firmware/twister.py).
             *("--volume", "socpuppet-twister:/twister"),
+            # And Linux's own firmware tools, its SDK, LLVM and venv and
+            # the kernel's tree, where firmware/build.py keeps a machine's,
+            # beside the Mac's own: a Mac's file system also takes two of
+            # the kernel's names that differ only in their case for one.
+            *(
+                "--volume",
+                "socpuppet-firmware-linux:/workspace/build/firmware/"
+                f"{containers_machine()}",
+            ),
         ]
     # From a terminal, the command has one, so that a shell in the
     # container works.
     if sys.stdin.isatty() and sys.stdout.isatty():
         options += ["--interactive", "--tty"]
     return options
+
+
+def containers_machine() -> str:
+    """The SDK's name for the container's machine: Linux, on this processor.
+
+    firmware/build.py names a machine's directory so (its sdk_host()).
+    """
+    build = REPOSITORY / "firmware" / "build.py"
+    spec = importlib.util.spec_from_file_location("build", build)
+    assert spec
+    assert spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _, _, processor = module.sdk_host().partition("-")
+    return f"linux-{processor}"
 
 
 if __name__ == "__main__":

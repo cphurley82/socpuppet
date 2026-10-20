@@ -21,6 +21,8 @@ from typing import NamedTuple
 
 import pytest
 
+from conftest import AS_ON
+
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "firmware" / "build.py"
 VERSIONS = REPO / "firmware" / "versions.toml"
@@ -38,13 +40,6 @@ MACHINES = {
     "macos-aarch64": ("Darwin", "arm64"),
     "macos-x86_64": ("Darwin", "x86_64"),
 }
-AS_ON = """\
-import platform, runpy, sys
-_, system, machine, *sys.argv = sys.argv
-platform.system = lambda: system
-platform.machine = lambda: machine
-runpy.run_path(sys.argv[0], run_name="__main__")
-"""
 
 # The fake for every program. Each logs its name and arguments, as
 # JSON, with when it started and ended. What it then does depends on which
@@ -275,21 +270,26 @@ def test_llvm_is_fetched_beside_the_sdk_and_not_in_it(firmware):
     assert not firmware.sdk.exists()
 
 
-def test_an_llvm_fetched_for_another_kind_of_machine_is_left_and_this_ones_is_fetched(
+def test_another_machines_toolchains_are_left_and_this_ones_fetched_beside_them(
     firmware,
 ):
+    # 🎓 A Mac's build/firmware is shared with the Linux of Docker's
+    # container, which builds the kernel there.
     firmware.host = "macos-aarch64"
     firmware.sdk_release()
-    firmware.run("llvm")
-    macs = firmware.llvm
+    firmware.run("sdk", "llvm")
+    macs = [firmware.sdk, firmware.llvm]
+    assert all(each.exists() for each in macs)
     firmware.host = HOST
     firmware.sdk_release()
 
-    result = firmware.run("llvm")
+    result = firmware.run("sdk", "llvm")
 
     assert result.returncode == 0, result.stdout
+    gcc = firmware.sdk / "gnu/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gcc"
+    assert os.access(gcc, os.X_OK)
     assert os.access(firmware.llvm / "bin" / "clang", os.X_OK)
-    assert macs.exists()
+    assert all(each.exists() for each in macs)
 
 
 # The boot ROM, and the payload of ours for OpenSBI.
@@ -388,7 +388,7 @@ def test_zephyrs_tree_is_cloned_at_its_tag_with_a_venv_and_a_workspace(
     assert result.returncode == 0, result.stdout
     (clone,) = [c for c in firmware.calls("git") if "clone" in c["args"]]
     assert firmware.versions["zephyr"] in clone["args"]
-    assert os.access(firmware.out / "venv" / "bin" / "cmake", os.X_OK)
+    assert os.access(firmware.machine / "venv" / "bin" / "cmake", os.X_OK)
     assert (firmware.out / ".west").is_dir()
 
 
@@ -402,7 +402,7 @@ def test_a_venv_whose_cmake_runs_is_kept_and_one_whose_does_not_is_made_again(
     assert firmware.venvs_made() == 0
     assert firmware.calls("west") == []
 
-    (firmware.out / "venv" / "bin" / "cmake").unlink()
+    (firmware.machine / "venv" / "bin" / "cmake").unlink()
     firmware.run("zephyr-tree")
     assert firmware.venvs_made() == 1
 
@@ -584,7 +584,7 @@ def test_a_kernel_whose_checksum_is_wrong_stops_the_fetch_unpacking_none(
     assert result.returncode == 1
     assert "linux-" in result.stdout
     assert "versions.toml" in result.stdout
-    assert not (firmware.out / "linux").exists()
+    assert not (firmware.machine / "linux").exists()
     assert firmware.calls("make") == []
 
 
@@ -701,6 +701,20 @@ def test_on_an_intel_mac_every_part_goes_to_docker_in_one_run(firmware):
     assert firmware.compiled() == {}
 
 
+def test_on_a_mac_the_kernel_into_an_output_directory_of_its_own_is_refused(
+    firmware,
+):
+    # 🎓 Docker's volume for Linux's tools, where the kernel's tree keeps
+    # the case of its names, is over build/firmware's folder for Linux.
+    firmware.host = "macos-aarch64"
+
+    result = firmware.run("linux", "--out", "build/spam")
+
+    assert result.returncode == 1
+    assert "build/firmware" in result.stdout
+    assert firmware.calls("devcontainer.py") == []
+
+
 def test_in_docker_an_output_directory_outside_the_repository_is_refused(
     firmware, tmp_path
 ):
@@ -743,7 +757,6 @@ class Firmware:
         self.fake.chmod(0o755)
         self.versions = BUILD.read_versions(VERSIONS)
         self.host = HOST
-        self.sdk = self.out / f"zephyr-sdk-{self.versions['sdk']}"
 
     def repository(self):
         """The files of the repository the script reads."""
@@ -776,9 +789,19 @@ class Firmware:
             self.install(self.bin / program)
 
     @property
+    def machine(self):
+        """Where the tools of the machine the script is run as go."""
+        return self.out / self.host
+
+    @property
+    def sdk(self):
+        """Where the Zephyr SDK goes."""
+        return self.machine / f"zephyr-sdk-{self.versions['sdk']}"
+
+    @property
     def llvm(self):
-        """Where the SDK's LLVM for the machine the script is run as goes."""
-        return self.out / f"llvm-{self.versions['sdk']}-{self.host}"
+        """Where the SDK's LLVM goes."""
+        return self.machine / f"llvm-{self.versions['sdk']}"
 
     def install(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)

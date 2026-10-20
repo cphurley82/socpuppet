@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from conftest import AS_ON
+
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "devcontainer.py"
 DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
@@ -87,8 +89,12 @@ def devcontainer(tmp_path):
         env=None,
         terminal=False,
         docker=True,
+        as_on=None,
     ):
-        """Run it; with `terminal`, its input and output are a terminal."""
+        """Run it; with `terminal`, its input and output are a terminal.
+
+        `as_on` is (platform.system(), platform.machine()) to run it as.
+        """
         log.unlink(missing_ok=True)
         if docker:
             install("docker", DOCKER)
@@ -98,8 +104,9 @@ def devcontainer(tmp_path):
             # /usr/bin.
             path = str(bin_directory)
         ours, theirs = pty.openpty() if terminal else (None, None)
+        on = ("-c", AS_ON, *as_on) if as_on else ()
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), *args],
+            [sys.executable, *on, str(SCRIPT), *args],
             env={
                 **inherited,
                 "PATH": path,
@@ -184,6 +191,26 @@ def test_on_a_mac_qboxs_two_trees_are_docker_volumes_where_the_qbox_preset_looks
     volumes = values(run, "--volume")
     assert f"socpuppet-qbox:{QBOX}" in volumes
     assert f"socpuppet-qbox-dev:{QBOX_DEV}" in volumes
+
+
+@pytest.mark.parametrize(
+    ("processor", "linux"),
+    [("arm64", "linux-aarch64"), ("x86_64", "linux-x86_64")],
+)
+def test_on_a_mac_linuxs_firmware_tools_are_a_docker_volume_in_build_firmware_linux_and_the_processor(
+    devcontainer, processor, linux
+):
+    # 🎓 firmware/build.py keeps a machine's tools in build/firmware/<the
+    # SDK's name for the machine>, and the container's Linux is the Mac's
+    # kind of processor.
+    result, calls = devcontainer("true", as_on=("Darwin", processor))
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert (
+        f"socpuppet-firmware-linux:/workspace/build/firmware/{linux}"
+        in values(run, "--volume")
+    )
 
 
 @ON_LINUX

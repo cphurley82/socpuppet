@@ -7,6 +7,7 @@ for. Each logs what it was asked, so the tests can say how twister was run
 without building or booting anything.
 """
 
+import importlib.util
 import json
 import os
 import platform
@@ -21,15 +22,17 @@ import pytest
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "firmware" / "twister.py"
 VERSIONS = REPO / "firmware" / "versions.toml"
+BUILD = REPO / "firmware" / "build.py"
 
 # A Python, for either venv: it logs what it was asked to run, and where
 # it was asked to put its output, and answers -c with success.
 PYTHON = r"""
 import json, os, sys
 with open(os.environ["LOG"], "a") as log:
-    log.write(json.dumps({"args": sys.argv[1:], "env": {
+    log.write(json.dumps({"python": sys.argv[0], "args": sys.argv[1:], "env": {
         k: os.environ.get(k, "") for k in
-        ("ZEPHYR_BASE", "ZEPHYR_EXTRA_MODULES", "SOCPUPPET_FIRMWARE_DIR")
+        ("ZEPHYR_BASE", "ZEPHYR_EXTRA_MODULES", "SOCPUPPET_FIRMWARE_DIR",
+         "ZEPHYR_SDK_INSTALL_DIR")
     }}) + "\n")
 """
 
@@ -69,23 +72,27 @@ class Twister:
         firmware = self.root / "firmware"
         firmware.mkdir(parents=True)
         shutil.copy(TOOL, firmware / "twister.py")
+        shutil.copy(BUILD, firmware / "build.py")
         shutil.copy(VERSIONS, firmware / "versions.toml")
         (firmware / "twister-suites.txt").write_text(SUITES)
         (firmware / "twister-quarantine.yaml").write_text("[]\n")
         (firmware / "twister-requirements.txt").write_text("spam\n")
         sdk_version = tomllib.loads(VERSIONS.read_text())["sdk"]["version"]
         self.out = self.root / "build" / "firmware"
+        # Where firmware/build.py keeps this machine's tools.
+        self.machine = self.out / this_machine()
+        self.sdk = self.machine / f"zephyr-sdk-{sdk_version}"
         # What the tool looks for before it runs twister.
         self.prerequisites = {
             "zephyr": self.out / "zephyr",
-            "venv": self.out / "venv" / "bin" / "python",
-            "sdk": self.out / f"zephyr-sdk-{sdk_version}",
+            "venv": self.machine / "venv" / "bin" / "python",
+            "sdk": self.sdk,
             "rom_rv32": self.out / "rom_rv32.elf",
             "rom_rv64": self.out / "rom_rv64.elf",
         }
         self.python(self.out / "zephyr" / "scripts" / "twister")
-        self.python(self.out / "venv" / "bin" / "python")
-        (self.out / f"zephyr-sdk-{sdk_version}").mkdir()
+        self.python(self.machine / "venv" / "bin" / "python")
+        self.sdk.mkdir(parents=True)
         for rom in ("rom_rv32.elf", "rom_rv64.elf"):
             (self.out / rom).touch()
         self.python(self.project / "bin" / "python")
@@ -235,6 +242,22 @@ def test_twister_finds_zephyr_our_boards_and_the_boot_roms(twister):
         twister.root / "python" / "socpuppet" / "zephyr_module"
     )
     assert env["SOCPUPPET_FIRMWARE_DIR"] == str(twister.out)
+
+
+def test_twister_is_run_with_this_machines_sdk_and_venv(twister):
+    twister.run("-T", "tests/kernel/sleep")
+
+    (call,) = twister.twisters()
+    assert call["env"]["ZEPHYR_SDK_INSTALL_DIR"] == str(twister.sdk)
+    assert call["python"] == str(twister.machine / "venv" / "bin" / "python")
+
+
+def this_machine():
+    """The SDK's name for the machine the tests run on, as build.py has it."""
+    spec = importlib.util.spec_from_file_location("build", BUILD)
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    return build.sdk_host()
 
 
 def values(run, option):

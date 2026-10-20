@@ -31,8 +31,9 @@ The image is `build/firmware/hello_world_socpuppet_host.elf`. To build an applic
 
 ```sh
 cd build/firmware                                    # the west workspace firmware/build.py made
-export PATH="$PWD/venv/bin:$PATH"                    # west, cmake and ninja
-export ZEPHYR_SDK_INSTALL_DIR="$PWD/zephyr-sdk-1.0.1" ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+tools="$PWD/linux-x86_64"                            # this machine's tools: macos-aarch64 on an Apple silicon Mac
+export PATH="$tools/venv/bin:$PATH"                  # west, cmake and ninja
+export ZEPHYR_SDK_INSTALL_DIR="$tools/zephyr-sdk-1.0.1" ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 west build -b socpuppet_host zephyr/samples/hello_world -- \
     -DZEPHYR_EXTRA_MODULES="$(PYTHONPATH=../../python uv run --project ../.. python -m socpuppet zephyr-module)"
 ```
@@ -136,11 +137,11 @@ riscv64-zephyr-elf-gdb build/zephyr/zephyr.elf
 (gdb) continue
 ```
 
-💡 On an Intel Mac the Zephyr SDK has no GDB, and `firmware/build.py` has left Linux's in `build/firmware`. Run that one in the image the firmware was built in. From in there the Mac is called `host.docker.internal`:
+💡 On an Intel Mac the Zephyr SDK has no GDB, and `firmware/build.py` has left Linux's in the Docker volume it builds with. Run that one in the image the firmware was built in, which `tools/devcontainer.py` does with the volume in its place. From in there the Mac is called `host.docker.internal`:
 
 ```sh
-docker run --rm -it -v "$PWD":/workspace -w /workspace socpuppet-dev \
-  build/firmware/zephyr-sdk-1.0.1/gnu/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gdb \
+tools/devcontainer.py \
+  build/firmware/linux-x86_64/zephyr-sdk-1.0.1/gnu/riscv64-zephyr-elf/bin/riscv64-zephyr-elf-gdb \
   build/firmware/hello_world_socpuppet_host.elf
 (gdb) target remote host.docker.internal:1234
 ```

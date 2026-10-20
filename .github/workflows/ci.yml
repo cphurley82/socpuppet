@@ -48,7 +48,7 @@ jobs:
         id: cache
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
@@ -59,7 +59,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
   fetch-llvm:
@@ -73,7 +73,7 @@ jobs:
         id: cache
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/llvm-*
+          path: build/firmware/*/llvm-*
           key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
@@ -84,7 +84,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: build/firmware/llvm-*
+          path: build/firmware/*/llvm-*
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
   fetch-zephyr:
@@ -105,8 +105,8 @@ jobs:
         with:
           path: |
             build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
+            build/firmware/*/python
+            build/firmware/*/venv
             build/firmware/zephyr
           key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           lookup-only: true
@@ -120,8 +120,8 @@ jobs:
         with:
           path: |
             build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
+            build/firmware/*/python
+            build/firmware/*/venv
             build/firmware/zephyr
           key: ${{ steps.cache.outputs.cache-primary-key }}
 
@@ -149,7 +149,7 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
@@ -187,7 +187,7 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/llvm-*
+          path: build/firmware/*/llvm-*
           key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
@@ -229,7 +229,7 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
@@ -238,8 +238,8 @@ jobs:
         with:
           path: |
             build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
+            build/firmware/*/python
+            build/firmware/*/venv
             build/firmware/zephyr
           key: zephyr-ubuntu-24.04-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
@@ -282,7 +282,7 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/llvm-*
+          path: build/firmware/*/llvm-*
           key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
@@ -324,7 +324,7 @@ jobs:
         if: steps.images.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/llvm-*
+          path: build/firmware/*/llvm-*
           key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
@@ -430,7 +430,7 @@ jobs:
       - name: Restore the Zephyr SDK
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
@@ -438,8 +438,8 @@ jobs:
         with:
           path: |
             build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
+            build/firmware/*/python
+            build/firmware/*/venv
             build/firmware/zephyr
           key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
@@ -655,7 +655,7 @@ jobs:
       - name: Restore the Zephyr SDK
         uses: actions/cache/restore@v6
         with:
-          path: build/firmware/zephyr-sdk-*
+          path: build/firmware/*/zephyr-sdk-*
           key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
@@ -663,8 +663,8 @@ jobs:
         with:
           path: |
             build/firmware/.west
-            build/firmware/python
-            build/firmware/venv
+            build/firmware/*/python
+            build/firmware/*/venv
             build/firmware/zephyr
           key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
