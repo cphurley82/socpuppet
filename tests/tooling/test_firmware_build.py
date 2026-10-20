@@ -518,6 +518,39 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
     assert (firmware.out / "linux.map").read_text().endswith("T _start\n")
 
 
+def test_a_kernel_pinned_anew_is_fetched_and_built_from_its_own_source(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.alpine_release()
+    firmware.linux_release(version="6.18.57")
+    firmware.run("linux")
+    firmware.forget_calls()
+    firmware.linux_release(version="6.18.58")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    (fetch,) = [
+        c
+        for c in firmware.calls("curl")
+        if Path(c["args"][-1]).name.startswith("linux-")
+    ]
+    assert fetch["args"][-1].endswith("/linux-6.18.58.tar.xz")
+    sources = {
+        Path(args[args.index("-C") + 1])
+        for args in (
+            c["args"]
+            for c in firmware.calls("make")
+            if "ARCH=riscv" in c["args"]
+        )
+    }
+    assert [(source / "Makefile").read_text() for source in sources] == [
+        "VERSION = 6.18.58\n"
+    ]
+    assert (firmware.machine / "linux-6.18.57" / "Makefile").exists()
+
+
 def test_the_root_filesystem_is_alpines_minirootfs_with_our_inittab_in_ext4(
     firmware,
 ):
@@ -584,7 +617,7 @@ def test_a_kernel_whose_checksum_is_wrong_stops_the_fetch_unpacking_none(
     assert result.returncode == 1
     assert "linux-" in result.stdout
     assert "versions.toml" in result.stdout
-    assert not (firmware.machine / "linux").exists()
+    assert list(firmware.machine.glob("linux-*")) == []
     assert firmware.calls("make") == []
 
 
@@ -853,7 +886,11 @@ class Firmware:
         self.downloads.mkdir(exist_ok=True)
         version = version or self.versions["linux"]
         path = self.downloads / f"linux-{version}.tar.xz"
-        tarball(path, {f"linux-{version}/Makefile": "spam\n"}, self.fake)
+        tarball(
+            path,
+            {f"linux-{version}/Makefile": f"VERSION = {version}\n"},
+            self.fake,
+        )
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.pin("linux", version, "0" * 64 if corrupt else digest)
 
