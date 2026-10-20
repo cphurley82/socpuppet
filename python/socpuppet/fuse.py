@@ -91,7 +91,13 @@ IN_HEADER = struct.Struct("<IIQQIIIHH")
 #: negative Linux number or 0, and the request's number.
 OUT_HEADER = struct.Struct("<IiQ")
 _INIT_OUT = struct.Struct("<IIIIHHIIHHII24x")
-_ATTR = struct.Struct("<QQQQQQIIIIIIIIII")
+# Attributes: the node, the size and the blocks; the access, modification
+# and change times in seconds, then each one's nanoseconds left over; the
+# mode, the links, the owner, the group, the device and the block size; and
+# flags, always 0.
+# 🎓 FUSE's header calls the seconds unsigned, and Linux reads them back as
+# signed, so they are packed signed: a time before 1970 is negative.
+_ATTR = struct.Struct("<QQQqqqIIIIIIIIII")
 # An entry: the node, its generation, and how long the name and the
 # attributes may be cached, in seconds and nanoseconds.
 _ENTRY = struct.Struct("<QQQQII")
@@ -99,7 +105,11 @@ _ATTR_OUT = struct.Struct("<QII")
 _OPEN_OUT = struct.Struct("<QII")
 _READ_IN = struct.Struct("<QQI")
 _WRITE_IN = struct.Struct("<QQIIQII")
-_SETATTR_IN = struct.Struct("<IIQQQQQQIIIIIIII")
+# What to set, padding, the handle, the size, the lock's owner, the access,
+# modification and change times in seconds, signed as Linux sends them and
+# as in the attributes, then each one's nanoseconds, the mode, padding, the
+# owner, the group and padding.
+_SETATTR_IN = struct.Struct("<IIQQQqqqIIIIIIII")
 _CREATE_IN = struct.Struct("<IIII")
 # The handle, a signed offset, and where it counts from.
 _LSEEK_IN = struct.Struct("<QqI")
@@ -275,16 +285,19 @@ class Directory:
 
     def _attr(self, path: Path, *, node: int | None = None) -> bytes:
         found = path.stat()
+        atime, atimensec = divmod(found.st_atime_ns, 1_000_000_000)
+        mtime, mtimensec = divmod(found.st_mtime_ns, 1_000_000_000)
+        ctime, ctimensec = divmod(found.st_ctime_ns, 1_000_000_000)
         return _ATTR.pack(
             self._node(path) if node is None else node,
             found.st_size,
             found.st_blocks,
-            int(found.st_atime),
-            int(found.st_mtime),
-            int(found.st_ctime),
-            found.st_atime_ns % 1_000_000_000,
-            found.st_mtime_ns % 1_000_000_000,
-            found.st_ctime_ns % 1_000_000_000,
+            atime,
+            mtime,
+            ctime,
+            atimensec,
+            mtimensec,
+            ctimensec,
             found.st_mode,
             found.st_nlink,
             found.st_uid,
