@@ -621,11 +621,11 @@ class Build:
         )
         patch(source, "opensbi-*.patch")
         say("Building OpenSBI for the host")
-        built = self.out / "build_opensbi"
+        built = self.built_in("opensbi")
         built.mkdir(exist_ok=True)
         llvm = f"{self.llvm_dir}/bin/"
         logged(
-            built.with_suffix(".log"),
+            self.log_of("opensbi"),
             *("make", "-C", str(source), f"O={built}"),
             f"LLVM={llvm}",
             f"CC={llvm}clang -Wno-missing-multilib",
@@ -681,11 +681,8 @@ class Build:
             source = REPOSITORY / image.application
         else:
             source = self.zephyr_dir / image.application
-        # Compiled by this machine's SDK, so in its folder, with the log
-        # beside the images, where a Mac reads it when Docker built it in
-        # Linux's volume.
-        build = self.machine / f"build_{name}"
-        log = self.out / f"build_{name}.log"
+        build = self.built_in(name)
+        log = self.log_of(name)
         env = {
             "ZEPHYR_BASE": str(self.zephyr_dir),
             "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
@@ -786,11 +783,14 @@ class Build:
         )
         patch(source, "edk2-*.patch")
         say("Building EDK2 for the host")
+        # ⚠️ BaseTools is compiled in the tree, which is shared, and not in
+        # this machine's folder: one build/firmware builds EDK2 for one
+        # machine, until the Mac's build of it comes and moves them.
         logged(
-            self.out / "build_edk2_basetools.log",
+            self.log_of("edk2_basetools"),
             *("make", "-C", str(source / "BaseTools"), "--jobs"),
         )
-        workspace = self.out / "build_edk2"
+        workspace = self.built_in("edk2")
         conf = workspace / "Conf"
         conf.mkdir(parents=True, exist_ok=True)
         size = 2 * 1024 * 1024
@@ -798,7 +798,7 @@ class Build:
         # EDK2's set-up script sets what its build reads, so the two run in
         # one shell.
         logged(
-            self.out / "build_edk2.log",
+            self.log_of("edk2"),
             "bash",
             "-c",
             # 🎓 EDK2's setup copies its Conf templates only where there are
@@ -881,7 +881,7 @@ class Build:
                 )
                 (staging / source.name).rename(source)
         say("Building Linux for the host")
-        built = self.machine / "build_linux"
+        built = self.built_in("linux")
         built.mkdir(exist_ok=True)
         llvm = f"{self.llvm_dir}/bin/"
         make = (
@@ -890,9 +890,7 @@ class Build:
             f"CC={llvm}clang -Wno-missing-multilib",
             *("HOSTCC=cc", "HOSTCXX=c++"),
         )
-        # Beside the images, where a Mac can read it: the build is in
-        # Docker's volume there.
-        log = self.out / "build_linux.log"
+        log = self.log_of("linux")
         logged(log, *make, "defconfig")
         logged(log, *make, f"-j{os.cpu_count() or 1}", "Image", after=True)
         for made, kept in (
@@ -940,7 +938,7 @@ class Build:
         with self.staging(image) as name:
             made = Path(name) / image.name
             logged(
-                self.out / "build_rootfs.log",
+                self.log_of("rootfs"),
                 *("mkfs.ext4", "-q", "-F", "-d", str(root)),
                 *(str(made), ROOTFS_SIZE),
             )
@@ -949,6 +947,22 @@ class Build:
         say(f"  {used} bytes used of the {ROOTFS_SIZE} in rootfs.ext4")
 
     # Helpers.
+
+    def built_in(self, name: str) -> Path:
+        """Where a part's build is kept: this machine's folder.
+
+        This machine's tools compile it, and a build another machine's
+        made, sharing the out, would be built again from nothing.
+        """
+        return self.machine / f"build_{name}"
+
+    def log_of(self, name: str) -> Path:
+        """Where a part's build log goes: beside the images.
+
+        That is where a Mac reads it, when Docker built it in Linux's
+        volume.
+        """
+        return self.out / f"build_{name}.log"
 
     def tool(self, name: str) -> str:
         """One of the SDK's RISC-V tools, by its short name."""
