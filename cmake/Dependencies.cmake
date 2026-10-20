@@ -351,7 +351,10 @@ FetchContent_Declare(dbt_rise_riscv
   # does. llvm-wfi-call: LLVM's `wfi` called the helper as asmjit's did.
   # topi: the hart with supervisor mode had no `mtopi` or `stopi`, so
   # OpenSBI, which looks for `mtopi`, left its IMSIC alone, and Linux could
-  # not ask `stopi` which interrupt it took.
+  # not ask `stopi` which interrupt it took. debugger-waits-for-reset: a
+  # core with a GDB server stopped for the debugger before a reset that
+  # came through more stages than the host's, and the debugger's continue
+  # ran it through its reset.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-offsetof.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-reset-restart.patch
@@ -385,6 +388,7 @@ FetchContent_Declare(dbt_rise_riscv
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-init-jit.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-llvm-wfi-call.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-topi.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-riscv-debugger-waits-for-reset.patch
   UPDATE_DISCONNECTED TRUE
   EXCLUDE_FROM_ALL SYSTEM)
 # DBT-RISE-RISCV fetches its core library itself, under this name and at
