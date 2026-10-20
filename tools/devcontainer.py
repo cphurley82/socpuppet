@@ -16,18 +16,23 @@ import platform
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import ModuleType
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 DOCKERFILE = REPOSITORY / ".devcontainer" / "Dockerfile"
+#: Where the repository is in the container.
+WORKSPACE = PurePosixPath("/workspace")
+#: Where the container has twister's own folder (firmware/twister.py).
+TWISTER_HOME = PurePosixPath("/twister")
 
 # uv's venv, its cache and its Pythons, which are kept in build/ so that
 # they outlive the container. firmware/twister.py runs in the same image
 # with the same venv and Python.
 UV = {
-    "UV_PROJECT_ENVIRONMENT": "/workspace/build/linux-venv",
-    "UV_PYTHON_INSTALL_DIR": "/workspace/build/linux-python",
-    "UV_CACHE_DIR": "/workspace/build/linux-uv-cache",
+    "UV_PROJECT_ENVIRONMENT": f"{WORKSPACE}/build/linux-venv",
+    "UV_PYTHON_INSTALL_DIR": f"{WORKSPACE}/build/linux-python",
+    "UV_CACHE_DIR": f"{WORKSPACE}/build/linux-uv-cache",
 }
 
 
@@ -51,6 +56,8 @@ def main() -> int:
     built = image()
     if not built:
         return 1
+    apart = kept_apart()
+    make_room(apart)
     # Docker takes this process's place, so that the terminal, and Ctrl-C,
     # are the command's.
     os.execvp(
@@ -59,11 +66,11 @@ def main() -> int:
             *("docker", "run", "--rm"),
             *(
                 "--volume",
-                f"{REPOSITORY}:/workspace",
+                f"{REPOSITORY}:{WORKSPACE}",
                 "--workdir",
-                "/workspace",
+                str(WORKSPACE),
             ),
-            *docker_options(),
+            *docker_options(apart),
             built,
             *command,
         ],
@@ -101,8 +108,12 @@ def image() -> str | None:
     return name
 
 
-def docker_options() -> list[str]:
-    """What `docker run` is told, beyond the repository and the command."""
+def docker_options(apart: dict[str, PurePosixPath]) -> list[str]:
+    """What `docker run` is told, beyond the repository and the command.
+
+    `apart` is what the container keeps apart from the host, as
+    `kept_apart()` has it.
+    """
     options = [f"{name}={value}" for name, value in UV.items()]
     # socpuppet's own variables, such as SOCPUPPET_REQUIRE_FIRMWARE and
     # SOCPUPPET_CPU, go in with the command. A path in one is read in the
@@ -114,36 +125,14 @@ def docker_options() -> list[str]:
         if name.startswith("SOCPUPPET_")
     ]
     options = [word for each in options for word in ("--env", each)]
-    if platform.system() == "Linux":
-        # The repository's mount keeps the container's user, so the
-        # command runs as the caller's, to leave nothing in build/ that
-        # only root can remove.
+    if platform.system() != "Darwin":
+        # The repository's mount keeps the container's user, so on Linux
+        # the command runs as the caller's, to leave nothing in build/ that
+        # only root can remove. Docker Desktop on a Mac maps the user by
+        # itself.
         options += ["--user", f"{os.getuid()}:{os.getgid()}"]
-    elif platform.system() == "Darwin":
-        # Docker Desktop on a Mac maps the user by itself, and reads the
-        # repository through file sharing, which a compiler finds ten
-        # times slower than a Docker volume (docs/twister-spike.md). So
-        # QBox's tree and socpuppet's tree built with it are volumes, at
-        # the places in build/ that tools/build_qbox.py and the qbox preset
-        # use, in front of whatever the Mac has there, a native build
-        # included. `docker volume rm socpuppet-qbox socpuppet-qbox-dev`
-        # throws them away.
-        options += [
-            *("--volume", "socpuppet-qbox:/workspace/build/qbox"),
-            *("--volume", "socpuppet-qbox-dev:/workspace/build/qbox-dev"),
-            # And twister's Zephyr and builds, for the same reason
-            # (firmware/twister.py).
-            *("--volume", "socpuppet-twister:/twister"),
-            # And Linux's own firmware tools, its SDK, LLVM and venv and
-            # the kernel's tree, where firmware/build.py keeps a machine's,
-            # beside the Mac's own: a Mac's file system also takes two of
-            # the kernel's names that differ only in their case for one.
-            *(
-                "--volume",
-                "socpuppet-firmware-linux:/workspace/build/firmware/"
-                f"{containers_machine()}",
-            ),
-        ]
+    for name, there in apart.items():
+        options += ["--volume", f"{apart_from_the_host(name)}:{there}"]
     # From a terminal, the command has one, so that a shell in the
     # container works.
     if sys.stdin.isatty() and sys.stdout.isatty():
@@ -151,19 +140,83 @@ def docker_options() -> list[str]:
     return options
 
 
+def kept_apart() -> dict[str, PurePosixPath]:
+    """What the container keeps apart from the host's own, by name.
+
+    Each is where the container has it. 🎓 The container is a Linux
+    machine of its own, with its own compiler and the repository at
+    /workspace, so what it builds for itself is not the host's, though
+    the host is Linux too. uv's venv, cache and Pythons, and the linux
+    preset's tree, build/linux, are the container's alone already, and
+    nothing of the host's is where they are.
+    """
+    return {
+        # QBox, and socpuppet's tree built with it, where
+        # tools/build_qbox.py and the qbox preset put them.
+        "qbox": WORKSPACE / "build" / "qbox",
+        "qbox-dev": WORKSPACE / "build" / "qbox-dev",
+        # Linux's own firmware tools, its SDK, LLVM and venv and the
+        # kernel's and EDK2's trees, where firmware/build.py keeps a
+        # machine's.
+        "firmware-linux": WORKSPACE
+        / "build"
+        / "firmware"
+        / containers_machine(),
+        # Twister's Zephyr and builds, which firmware/twister.py uses when
+        # it runs in the container, as on an Intel Mac.
+        "twister": TWISTER_HOME,
+    }
+
+
+def apart_from_the_host(name: str) -> str:
+    """What is mounted to keep `name` apart from the host's own.
+
+    On a Mac it is a Docker volume, socpuppet-<name>: Docker Desktop reads
+    the Mac's files through file sharing, which a compiler finds ten times
+    slower than a volume (docs/twister-spike.md), and a Mac's file system
+    takes two of the kernel's names that differ only in their case for one.
+    `docker volume rm` throws one away. On Linux it is a folder of
+    build/container, which the container writes as the caller.
+    """
+    if platform.system() == "Darwin":
+        return f"socpuppet-{name}"
+    return str(REPOSITORY / "build" / "container" / name)
+
+
+def make_room(apart: dict[str, PurePosixPath]) -> None:
+    """On Linux, make each folder kept `apart`, as the caller's.
+
+    And where it is mounted, if that is in the repository. 💡 Docker makes
+    a folder it is to mount that is not there, and makes it root's.
+    """
+    if platform.system() == "Darwin":
+        return
+    for name, there in apart.items():
+        Path(apart_from_the_host(name)).mkdir(parents=True, exist_ok=True)
+        if there.is_relative_to(WORKSPACE):
+            point = REPOSITORY / there.relative_to(WORKSPACE)
+            point.mkdir(parents=True, exist_ok=True)
+
+
 def containers_machine() -> str:
     """The SDK's name for the container's machine: Linux, on this processor.
 
     firmware/build.py names a machine's directory so (its sdk_host()).
     """
-    build = REPOSITORY / "firmware" / "build.py"
-    spec = importlib.util.spec_from_file_location("build", build)
+    _, _, processor = load("firmware/build.py").sdk_host().partition("-")
+    return f"linux-{processor}"
+
+
+def load(path: str) -> ModuleType:
+    """A script of the repository's, from its top, as a module."""
+    spec = importlib.util.spec_from_file_location(
+        Path(path).stem, REPOSITORY / path
+    )
     assert spec
     assert spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    _, _, processor = module.sdk_host().partition("-")
-    return f"linux-{processor}"
+    return module
 
 
 if __name__ == "__main__":
