@@ -6,6 +6,7 @@ fake writes the command it was given to a log, so the tests can say what
 the runner ran, and in what order, without building anything.
 """
 
+import contextlib
 import importlib.util
 import itertools
 import json
@@ -820,6 +821,21 @@ def test_a_tree_from_before_any_run_is_taken_to_be_stale(ci):
     assert dropped(dependencies) == PATCHED
 
 
+def test_a_tree_the_last_run_did_not_see_is_dropped_by_the_next_run_that_does(
+    ci,
+):
+    # 🎓 A run in the container sees its own trees where QBox's are, which
+    # tools/devcontainer.py keeps apart from the host's, and drops and
+    # records those: the host's own is still patched by the older patches.
+    dependencies = make_dependencies(ci.root)
+    with another_in_place_of(ci.root / "build" / "qbox-dev"):
+        ci("lint")
+
+    ci("lint")
+
+    assert dropped(dependencies) == PATCHED
+
+
 def test_clean_drops_the_patched_dependencies_though_the_patches_are_the_same(
     ci,
 ):
@@ -1146,6 +1162,18 @@ def make_dependencies(root):
         (root / directory).mkdir(parents=True)
         (root / directory / "file").write_text("old\n")
     return {directory: root / directory for directory in DEPENDENCY_DIRECTORIES}
+
+
+@contextlib.contextmanager
+def another_in_place_of(tree):
+    """Put an empty tree where `tree` is, and `tree` back afterwards."""
+    aside = tree.rename(tree.with_name(f"{tree.name}-aside"))
+    tree.mkdir()
+    try:
+        yield
+    finally:
+        shutil.rmtree(tree)
+        aside.rename(tree)
 
 
 def dropped(dependencies):

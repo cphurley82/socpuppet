@@ -763,43 +763,57 @@ def ask_the_doctor(areas: list[str]) -> dict[str, Checked]:
 
 
 def drop_stale_dependencies(clean: bool) -> None:
-    """Drop the patched dependencies when the patches have changed.
+    """Drop a tree's patched dependencies when the patches have changed.
 
     git apply does not apply a patch twice, so a build tree whose
     dependencies an older set of patches was applied to stops at configure
-    with "patch does not apply". A hash of what the patches are made from
-    is kept in build/ci/, and when it has changed, or there is none, or
-    `clean` asks, each patched dependency is dropped from the trees, to be
-    fetched and patched again. What is not patched is slow to build, and
-    is kept.
+    with "patch does not apply". Each tree keeps a hash of what the patches
+    are made from, beside its dependencies, and when the patches' hash is
+    not its own, or it has none, or `clean` asks, each of its patched
+    dependencies is dropped, to be fetched and patched again. What is not
+    patched is slow to build, and is kept.
+
+    💡 The record is the tree's own, and not one for all of them: a run in
+    the container sees its own trees where QBox's are, which
+    tools/devcontainer.py keeps apart from the host's, and the host's are
+    left as they were.
     """
-    stamp = LOGS / ".patches"
     current = patches_hash()
-    same = stamp.exists() and stamp.read_text().strip() == current
-    if same and not clean:
-        return
+    patched = patched_dependencies()
     # socpuppet's trees, as the presets name them, and QBox's own patch to
     # rpclib in tools/build_qbox.py's tree, which CPM applies with `git am`
     # and which applied twice stops the configure. libqemu is left alone:
     # it is the slow one, and tools/build_qbox.py keeps its own patches.
-    patched = patched_dependencies()
-    stale = [
-        (REPO / tree / "_deps", name)
-        for tree in ("build/dev", "build/qbox-dev", "build/linux")
-        for name in patched
-    ] + [(REPO / "build" / "qbox" / "build" / "_deps", "rpclib")]
-    if any((deps / f"{name}-src").exists() for deps, name in stale):
-        why = (
-            "--clean asks"
-            if same
-            else "the patches have changed since they were applied, or "
-            "there is no record of them"
-        )
-        print(f"🧹 dropping the patched dependencies, as {why}")
-    for deps, name in stale:
-        for part in ("src", "build", "subbuild"):
-            shutil.rmtree(deps / f"{name}-{part}", ignore_errors=True)
-    stamp.write_text(current + "\n")
+    trees = {
+        REPO / "build" / "dev": patched,
+        REPO / "build" / "qbox-dev": patched,
+        REPO / "build" / "linux": patched,
+        REPO / "build" / "qbox" / "build": {"rpclib"},
+    }
+    for tree, names in trees.items():
+        deps = tree / "_deps"
+        record = deps / ".socpuppet-patches"
+        same = record.exists() and record.read_text().strip() == current
+        if same and not clean:
+            continue
+        if any((deps / f"{name}-src").exists() for name in names):
+            why = (
+                "--clean asks"
+                if same
+                else "the patches have changed since they were applied, or "
+                "there is no record of them"
+            )
+            print(
+                f"🧹 dropping {tree.relative_to(REPO)}'s patched "
+                f"dependencies, as {why}"
+            )
+        for name in names:
+            for part in ("src", "build", "subbuild"):
+                shutil.rmtree(deps / f"{name}-{part}", ignore_errors=True)
+        # A tree not made yet is recorded now, so that it is current once
+        # it is configured.
+        deps.mkdir(parents=True, exist_ok=True)
+        record.write_text(current + "\n")
 
 
 def patches_hash() -> str:
