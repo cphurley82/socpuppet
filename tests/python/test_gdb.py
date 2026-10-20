@@ -38,6 +38,11 @@ TRAINING_NS = 100_000
 #: Longer than the link's reset hold and its training, after which the CPU
 #: is let go and the short program runs.
 PAST_THE_RELEASE = sp.ms(10)
+#: How long a run with a ticking clock beside its CPU may go, in simulated
+#: time: longer than any debugger's session, whose clock ticks about a
+#: millisecond of it each millisecond of wall clock. The run ends at once
+#: when the clock is stopped.
+LONGER_THAN_A_SESSION = sp.ms(5000)
 #: Where each of two CPUs starts, when a test has two.
 RESET_VECTORS = {"spam": 0x100, "eggs": 0x200}
 #: How much of a firmware image a debugger reads back. The manager's
@@ -90,6 +95,37 @@ def cpu_waiting_for_a_debugger(port):
     platform.build()
     platform.poke(RESET_VECTOR, STORE_0X5A_THEN_SLEEP)
     return platform
+
+
+def a_cpu_beside_a_ticking_clock(port):
+    """A CPU waiting for a debugger, and a clock that keeps time moving.
+
+    🎓 A CPU asleep in wfi with nothing else to do lets a run end at once:
+    simulated time jumps to the end of it. On a board a timer is always
+    counting, and a 🎭 stand-in plays its part here: it waits a millisecond
+    of simulated time, then one of wall clock, over and over, so that time
+    moves while a test watches, at about the pace of the wall clock.
+
+    Returns the platform, built, and an event that stops the clock when it
+    is set, after which a run with nothing left to do ends at once.
+    """
+    stop = threading.Event()
+
+    def ticking():
+        while not stop.is_set():
+            yield sp.wait(sp.ms(1))
+            time.sleep(0.001)
+
+    platform = sp.Platform()
+    cpu = platform.add("cpu", a_cpu(reset_vector=RESET_VECTOR, gdb_port=port))
+    ram = platform.add("ram", sp.Memory(size=0x1000))
+    clock = platform.add("clock", sp.ScriptedBusMaster(ticking))
+    clocks_ram = platform.add("clocks_ram", sp.Memory(size=0x1000))
+    platform.connect(cpu.socket, ram.socket)
+    platform.connect(clock.socket, clocks_ram.socket)
+    platform.build()
+    platform.poke(RESET_VECTOR, STORE_0X5A_THEN_SLEEP, via=cpu.socket)
+    return platform, stop
 
 
 def run_with_a_debugger(
@@ -270,6 +306,55 @@ class TestWhenACpuReachesABreakpoint:
 
         assert not ended_while_stopped
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
+
+
+@pytest.mark.platform
+class TestWhenADebuggerInterruptsACpuAsleepInWfi:
+    def test_simulated_time_stands_still_while_it_is_stopped(self):
+        port = free_port()
+        platform, stop_the_clock = a_cpu_beside_a_ticking_clock(port)
+
+        def session(debugger):
+            try:
+                debugger.continue_()
+                # Ten milliseconds in, the program is long done and asleep.
+                wait_for_simulated_time(platform, sp.ms(10))
+                debugger.interrupt()
+                return how_far_simulated_time_moves(platform, seconds=0.5)
+            finally:
+                stop_the_clock.set()
+
+        moved = run_with_a_debugger(
+            platform,
+            port,
+            session,
+            run=lambda: platform.run(LONGER_THAN_A_SESSION),
+        )
+
+        assert moved == 0
+
+
+def wait_for_simulated_time(platform, moment, timeout=10):
+    """Wait until a platform running on another thread is at `moment`.
+
+    `timeout` is in seconds of wall clock, after which it gives up.
+    """
+    deadline = time.monotonic() + timeout
+    while platform.time < moment:
+        if time.monotonic() > deadline:
+            raise TimeoutError(
+                f"Simulated time is still {platform.time} ps, short of "
+                f"{moment} ps, after {timeout} s."
+            )
+        time.sleep(0.01)
+
+
+def how_far_simulated_time_moves(platform, seconds):
+    """How far a platform running on another thread gets in `seconds` of
+    wall clock, in the unit `sp.ns` returns."""
+    start = platform.time
+    time.sleep(seconds)
+    return platform.time - start
 
 
 @pytest.mark.platform
