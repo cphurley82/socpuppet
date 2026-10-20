@@ -794,6 +794,94 @@ class TestWhenTheClientNamesDotDotInWhatChangesTheTree:
         assert sorted(share.rglob("*")) == before
 
 
+class TestWhenTheClientReusesAFidThatIsInUse:
+    """A fid in use stays as it is: 9P's rules, as QEMU's server has them.
+
+    💡 Linux never does this: these are another client's mistakes, which
+    would otherwise leave a file of this machine's open for nothing.
+    """
+
+    def test_a_walk_to_a_fid_walked_to_is_einval_and_it_names_its_file(
+        self, served
+    ):
+        walk(served, [b"spam.txt"], to_fid=2)
+
+        answer = walk(served, [b"eggs"], to_fid=2)
+        fields, _ = getattr_(served, 2)
+
+        assert answer.error == EINVAL
+        assert fields["size"] == len(b"spam spam spam\n")
+
+    def test_a_walk_to_an_open_fid_is_einval_and_it_still_reads_its_file(
+        self, served
+    ):
+        walk(served, [b"spam.txt"], to_fid=2)
+        open_(served, 2)
+
+        answer = walk(served, [b"eggs"], to_fid=2)
+        read = Answer(served(t(ninep.TREAD, (2, 4), (0, 8), (4, 4))))
+
+        assert answer.error == EINVAL
+        assert read.bytes(read.number(4)) == b"spam"
+
+    def test_a_walk_of_an_open_fid_to_itself_is_einval_and_it_still_reads(
+        self, served
+    ):
+        walk(served, [b"spam.txt"], to_fid=2)
+        open_(served, 2)
+
+        answer = walk(served, [], from_fid=2, to_fid=2)
+        read = Answer(served(t(ninep.TREAD, (2, 4), (0, 8), (4, 4))))
+
+        assert answer.error == EINVAL
+        assert read.bytes(read.number(4)) == b"spam"
+
+    def test_an_attach_to_an_open_fid_is_einval_and_it_still_reads(
+        self, served
+    ):
+        walk(served, [b"spam.txt"], to_fid=2)
+        open_(served, 2)
+
+        answer = Answer(
+            served(
+                t(
+                    ninep.TATTACH,
+                    (2, 4),
+                    (ninep.NO_FID, 4),
+                    b"nobody",
+                    b"",
+                    (0, 4),
+                )
+            )
+        )
+        read = Answer(served(t(ninep.TREAD, (2, 4), (0, 8), (4, 4))))
+
+        assert answer.error == EINVAL
+        assert read.bytes(read.number(4)) == b"spam"
+
+    @pytest.mark.parametrize(
+        "request_",
+        [
+            t(ninep.TLOPEN, (2, 4), (0, 4)),
+            t(ninep.TLCREATE, (2, 4), b"new.txt", (1, 4), (0o644, 4), (0, 4)),
+        ],
+        ids=["lopen", "lcreate"],
+    )
+    def test_opening_it_again_is_einval_and_it_still_lists_its_directory(
+        self, served, share, request_
+    ):
+        walk(served, [], to_fid=2)
+        open_(served, 2)
+        before = sorted(share.rglob("*"))
+
+        answer = Answer(served(request_))
+        listing = Answer(served(t(ninep.TREADDIR, (2, 4), (0, 8), (4096, 4))))
+
+        assert answer.error == EINVAL
+        assert b"spam.txt" in entry_names(listing)
+        assert sorted(share.rglob("*")) == before
+
+
 class TestWhenALinkMadeSinceLeadsAFidOutOfTheShare:
     def test_using_the_fid_is_refused(self, served, share):
         (share / "d" / "e").mkdir(parents=True)
