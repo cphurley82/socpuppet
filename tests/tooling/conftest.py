@@ -230,12 +230,12 @@ def cmake_project(tmp_path_factory):
     """Make a CMake project from its files, given as {path: contents}.
 
     The project's CMakeLists.txt is written for it, up to and including the
-    line that includes cmake/DevChecks.cmake; `cmake_lists` is what follows.
-    Its source directory is a throwaway git repository carrying the real
-    lint configuration.
+    line that includes cmake/DevChecks.cmake; `cmake_lists` is what follows,
+    and `before_project` goes ahead of its project(). Its source directory
+    is a throwaway git repository carrying the real lint configuration.
     """
 
-    def make(files, cmake_lists):
+    def make(files, cmake_lists, before_project=""):
         root = tmp_path_factory.mktemp("project")
         source = root / "source"
         source.mkdir()
@@ -245,7 +245,8 @@ def cmake_project(tmp_path_factory):
             (source / path).write_text(contents)
         (source / "CMakeLists.txt").write_text(
             "cmake_minimum_required(VERSION ${CMAKE_VERSION})\n"
-            "project(fixture LANGUAGES CXX)\n"
+            + before_project
+            + "project(fixture LANGUAGES CXX)\n"
             f"include({REPO / 'cmake' / 'DevChecks.cmake'})\n" + cmake_lists
         )
         return CMakeProject(source, root / "build")

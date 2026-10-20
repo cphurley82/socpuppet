@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
+include(cmake/MacSdk.cmake)
 project(socpuppet LANGUAGES CXX C)
 
 # SystemC bakes the C++ standard into a link-time check, so the library and
