@@ -82,6 +82,24 @@ def mode_of(attr):
     return attr[9]
 
 
+def times_of(attr):
+    """The access and modification times, each as Linux reads it.
+
+    That is signed seconds, then the nanoseconds left over.
+    """
+    return (signed(attr[3]), attr[6]), (signed(attr[4]), attr[7])
+
+
+def signed(number):
+    """A 64-bit field read as Linux reads a signed one."""
+    return number - 2**64 if number >= 2**63 else number
+
+
+def unsigned(number):
+    """A signed number as a 64-bit field carries it."""
+    return number & 0xFFFF_FFFF_FFFF_FFFF
+
+
 def look_up(served, text, *, under=ROOT):
     error, body = ask(served, fuse.LOOKUP, name(text), node=under)
     assert error == 0, os.strerror(error)
@@ -97,6 +115,19 @@ def open_it(served, node, *, directory=False, flags=O_RDWR):
 
 def read_in(fh, offset, size):
     return READ_IN.pack(fh, offset, size, 0, 0, 0, 0)
+
+
+def setattr_in(valid, *, size=0, atime=(0, 0), mtime=(0, 0), mode=0):
+    """A SETATTR body, with each time as Linux sends it.
+
+    That is signed seconds, in a field FUSE calls unsigned, then the
+    nanoseconds left over.
+    """
+    (atime_s, atime_ns), (mtime_s, mtime_ns) = atime, mtime
+    return struct.pack(
+        "<IIQQQQQQIIIIIIII", valid, 0, 0, size, 0, unsigned(atime_s),
+        unsigned(mtime_s), 0, atime_ns, mtime_ns, 0, mode, 0, 0, 0, 0,
+    )  # fmt: skip
 
 
 def dirents(body, *, plus=False):
@@ -186,6 +217,22 @@ class TestWhenTheClientAsksForANodesAttributes:
             0o040000,
             104,
         )
+
+
+class TestWhenAFileIsDatedBefore1970:
+    def test_getattr_gives_negative_seconds_and_the_nanoseconds_left_over(
+        self, served, tmp_path
+    ):
+        node = look_up(served, "spam.txt")
+        # 🎓 Linux reads a time's seconds as a signed number: 1.5 s before
+        # 1970 is -2 s and 500 000 000 ns.
+        before_1970 = -1_500_000_000
+        os.utime(tmp_path / "spam.txt", ns=(before_1970, before_1970))
+
+        error, body = ask(served, fuse.GETATTR, bytes(16), node=node)
+
+        assert error == 0
+        assert times_of(ATTR.unpack_from(body, 16)) == ((-2, 500_000_000),) * 2
 
 
 class TestWhenTheClientReadsAFile:
@@ -574,6 +621,18 @@ class TestWhenTheClientChangesAFilesModeAndTimes:
             1_000_000,
             2_000_000,
         )
+
+    def test_a_time_before_1970_is_set_from_its_negative_seconds(
+        self, served, tmp_path
+    ):
+        node = look_up(served, "spam.txt")
+        # 🎓 1.5 s before 1970 is -2 s and 500 000 000 ns, as Linux sends it.
+        before_1970 = setattr_in(fuse.FATTR_MTIME, mtime=(-2, 500_000_000))
+
+        error, _ = ask(served, fuse.SETATTR, before_1970, node=node)
+
+        assert error == 0
+        assert (tmp_path / "spam.txt").stat().st_mtime_ns == -1_500_000_000
 
 
 class TestWhenAnErrorHasNoLinuxNumberInTheTable:
