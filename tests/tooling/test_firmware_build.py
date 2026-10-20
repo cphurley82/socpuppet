@@ -514,6 +514,20 @@ def test_each_image_is_configured_for_its_board_and_shield_with_our_module(
             assert (firmware.out / f"{name_of(image)}.{kind}").exists()
 
 
+def test_an_image_is_built_in_this_machines_folder(firmware):
+    # 🎓 A Mac's build/firmware is shared with the Linux of Docker's
+    # container, and what each compiles is its own.
+    firmware.sdk_release()
+
+    result = firmware.run("zephyr")
+
+    assert result.returncode == 0, result.stdout
+    for image in BUILD.IMAGES:
+        build = f"build_{name_of(image)}"
+        assert (firmware.machine / build / "zephyr" / "zephyr.elf").exists()
+        assert not (firmware.out / build).exists()
+
+
 def test_an_image_built_before_with_another_sdk_is_configured_afresh(firmware):
     # 🎓 Zephyr keeps where it found the SDK in a build directory's cache,
     # and looks there again: an SDK that has moved since is not found.
@@ -1096,7 +1110,7 @@ class Firmware:
 
     def configured_before(self, image, *, sdk):
         """Leave an image's build directory as if configured with `sdk`."""
-        build = self.out / f"build_{name_of(image)}"
+        build = self.machine / f"build_{name_of(image)}"
         build.mkdir(parents=True)
         (build / "CMakeCache.txt").write_text(
             f"ZEPHYR_SDK_INSTALL_DIR:INTERNAL={sdk}\n"
@@ -1104,11 +1118,11 @@ class Firmware:
 
     def configure_of(self, image):
         """The arguments cmake was given to configure an image's build."""
-        build = str(self.out / f"build_{name_of(image)}")
+        build = f"build_{name_of(image)}"
         (configure,) = [
             args
             for args in (call["args"] for call in self.calls("cmake"))
-            if "-B" in args and args[args.index("-B") + 1] == build
+            if "-B" in args and Path(args[args.index("-B") + 1]).name == build
         ]
         return configure
 

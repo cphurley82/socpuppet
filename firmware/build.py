@@ -345,9 +345,10 @@ class Build:
         self.versions = {
             name: pin["version"] for name, pin in self.pins.items()
         }
-        # What runs on this machine is kept in a directory named for it:
-        # a Mac's out is shared with Linux's in Docker, which builds the
-        # kernel there (tools/devcontainer.py makes Linux's a volume).
+        # What runs on this machine, and what its tools build, is kept in a
+        # directory named for it: a Mac's out is shared with Linux's in
+        # Docker, which builds there too (tools/devcontainer.py makes
+        # Linux's a volume).
         self.machine = out / sdk_host()
         sdk_version = self.versions["sdk"]
         self.sdk_dir = self.machine / f"zephyr-sdk-{sdk_version}"
@@ -680,20 +681,21 @@ class Build:
             source = REPOSITORY / image.application
         else:
             source = self.zephyr_dir / image.application
-        build = self.out / f"build_{name}"
+        # Compiled by this machine's SDK, so in its folder, with the log
+        # beside the images, where a Mac reads it when Docker built it in
+        # Linux's volume.
+        build = self.machine / f"build_{name}"
+        log = self.out / f"build_{name}.log"
         env = {
             "ZEPHYR_BASE": str(self.zephyr_dir),
             "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
             "ZEPHYR_SDK_INSTALL_DIR": str(self.sdk_dir),
             "PATH": f"{self.venv / 'bin'}{os.pathsep}{os.environ['PATH']}",
         }
-        log = build.with_suffix(".log")
         cmake = str(self.venv / "bin" / "cmake")
         # Zephyr keeps the SDK's path, and its compilers, in the cache, and a
         # cache cannot change compilers: a build directory configured with
-        # another SDK (another pin, the other machine's build in a shared
-        # out, or one from before the SDK had a machine's folder) is
-        # configured afresh.
+        # another SDK, of another pin, is configured afresh.
         cached_sdk = cache_entry(
             build / "CMakeCache.txt", "ZEPHYR_SDK_INSTALL_DIR"
         )
