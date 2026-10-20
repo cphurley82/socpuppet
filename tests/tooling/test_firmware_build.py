@@ -178,7 +178,20 @@ sys.exit(status)
 """
 
 # What EDK2's set-up script does here: put its build on the PATH.
-EDKSETUP = 'build() { "$FAKE_BUILD" "$@"; }\n'
+# What EDK2's setup does here: copy its Conf template where there is none,
+# or over the one there with --reconfig, as the real one does, and give a
+# build that stops on a Conf that is not its own tree's.
+EDKSETUP = """\
+conf="$CONF_PATH/tools_def.txt"
+template="$EDK_TOOLS_PATH/Conf/tools_def.template"
+reconfig=FALSE
+for arg in "$@"; do [ "$arg" = --reconfig ] && reconfig=TRUE; done
+[ -e "$conf" ] && [ $reconfig != TRUE ] || cp "$template" "$conf"
+build() {
+    cmp -s "$conf" "$template" || { echo "Conf is not this tree's"; return 1; }
+    "$FAKE_BUILD" "$@"
+}
+"""
 
 # A disassembly as objdump prints it, with no aliases: an address and a
 # colon, a tab, the instruction, a tab, its operands. Lines that are not
@@ -716,6 +729,20 @@ def test_edk2_is_built_with_its_submodules_and_its_fd_kept(firmware):
     assert (firmware.out / "uefi.fd").read_text() == "uefi"
 
 
+def test_edk2_is_built_with_no_conf_an_earlier_build_left(firmware):
+    # 🎓 EDK2's setup copies its Conf templates only where there are none,
+    # so one left by a tree at an earlier tag would be built with.
+    firmware.sdk_release()
+    firmware.run("edk2")
+    (firmware.out / "build_edk2" / "Conf" / "tools_def.txt").write_text(
+        "spam\n"
+    )
+
+    result = firmware.run("edk2")
+
+    assert result.returncode == 0, result.stdout
+
+
 def test_linux_without_bc_stops_before_anything_is_fetched(firmware):
     firmware.sdk_release()
     firmware.linux_release()
@@ -1016,7 +1043,9 @@ class Firmware:
         zephyr = self.clones / "zephyr" / "scripts" / "requirements-base.txt"
         zephyr.parent.mkdir(parents=True)
         zephyr.write_text("spam\n")
-        (self.clones / "edk2").mkdir(parents=True)
+        conf = self.clones / "edk2" / "BaseTools" / "Conf"
+        conf.mkdir(parents=True)
+        (conf / "tools_def.template").write_text("eggs\n")
         (self.clones / "edk2" / "edksetup.sh").write_text(EDKSETUP)
 
     def path_without(self, program):
