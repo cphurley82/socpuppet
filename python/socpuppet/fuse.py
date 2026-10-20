@@ -538,11 +538,14 @@ def _time(
     """A time SETATTR sets, in nanoseconds.
 
     It is now, the one the request carries, or the one the file has, as
-    the request's flags say.
+    the request's flags say. The one carried is refused if its nanoseconds
+    make a second or more, as Linux's utimensat refuses them.
     """
     if now:
         return time.time_ns()
     if given:
+        if nanoseconds >= 1_000_000_000:
+            raise _Refused("EINVAL")
         return seconds * 1_000_000_000 + nanoseconds
     return kept
 
