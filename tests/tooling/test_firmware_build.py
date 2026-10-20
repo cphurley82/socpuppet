@@ -380,6 +380,20 @@ def test_opensbi_is_linked_to_start_at_the_hosts_ram(firmware):
 
 
 @pytest.mark.parametrize("part", ["opensbi", "edk2"])
+def test_a_part_is_built_in_this_machines_folder(firmware, part):
+    # 🎓 Each is compiled by this machine's LLVM, and a Mac's build/firmware
+    # is shared with the Linux of Docker's container.
+    firmware.sdk_release()
+
+    result = firmware.run(part)
+
+    assert result.returncode == 0, result.stdout
+    built = f"build_{part}"
+    assert any((firmware.machine / built).rglob("*"))
+    assert not (firmware.out / built).exists()
+
+
+@pytest.mark.parametrize("part", ["opensbi", "edk2"])
 def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
     firmware.sdk_release()
     patch = firmware.root / "cmake" / "patches" / f"{part}-spam.patch"
@@ -748,7 +762,7 @@ def test_edk2_is_built_with_no_conf_an_earlier_build_left(firmware):
     # so one left by a tree at an earlier tag would be built with.
     firmware.sdk_release()
     firmware.run("edk2")
-    (firmware.out / "build_edk2" / "Conf" / "tools_def.txt").write_text(
+    (firmware.machine / "build_edk2" / "Conf" / "tools_def.txt").write_text(
         "spam\n"
     )
 
