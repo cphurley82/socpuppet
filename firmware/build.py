@@ -691,9 +691,19 @@ class Build:
         }
         log = build.with_suffix(".log")
         cmake = str(self.venv / "bin" / "cmake")
+        # Zephyr keeps the SDK's path, and its compilers, in the cache, and a
+        # cache cannot change compilers: a build directory configured with
+        # another SDK (another pin, the other machine's build in a shared
+        # out, or one from before the SDK had a machine's folder) is
+        # configured afresh.
+        cached_sdk = cache_entry(
+            build / "CMakeCache.txt", "ZEPHYR_SDK_INSTALL_DIR"
+        )
+        fresh = cached_sdk is not None and cached_sdk != str(self.sdk_dir)
         logged(
             log,
             *(cmake, "-S", str(source), "-B", str(build), "-G", "Ninja"),
+            *(["--fresh"] if fresh else []),
             f"-DBOARD={image.board}",
             *([f"-DSHIELD={image.shield}"] if image.shield else []),
             *(f"-D{option}" for option in image.options),
@@ -968,6 +978,17 @@ def logged(
         raise Failed(
             "\n".join([*tail, f"{Path(command[0]).name} failed: see {log}"])
         )
+
+
+def cache_entry(cache: Path, name: str) -> str | None:
+    """What a CMake cache holds for `name`, or None if it has no such entry."""
+    if not cache.exists():
+        return None
+    for line in cache.read_text(errors="replace").splitlines():
+        key, _, value = line.partition("=")
+        if key.split(":", 1)[0] == name:
+            return value
+    return None
 
 
 def elf_header(path: Path) -> tuple[int, int]:

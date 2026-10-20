@@ -457,6 +457,41 @@ def test_each_image_is_configured_for_its_board_and_shield_with_our_module(
             assert (firmware.out / f"{name_of(image)}.{kind}").exists()
 
 
+def test_an_image_built_before_with_another_sdk_is_configured_afresh(firmware):
+    # 🎓 Zephyr keeps where it found the SDK in a build directory's cache,
+    # and looks there again: an SDK that has moved since is not found.
+    firmware.sdk_release()
+    image = BUILD.IMAGES[0]
+    firmware.configured_before(image, sdk=firmware.out / firmware.sdk.name)
+
+    result = firmware.run("zephyr")
+
+    assert result.returncode == 0, result.stdout
+    assert "--fresh" in firmware.configure_of(image)
+
+
+def test_an_image_built_before_with_this_sdk_keeps_its_configuration(firmware):
+    firmware.sdk_release()
+    image = BUILD.IMAGES[0]
+    firmware.configured_before(image, sdk=firmware.sdk)
+
+    result = firmware.run("zephyr")
+
+    assert result.returncode == 0, result.stdout
+    assert "--fresh" not in firmware.configure_of(image)
+
+
+def test_an_image_never_built_is_configured_with_nothing_to_start_afresh(
+    firmware,
+):
+    firmware.sdk_release()
+
+    result = firmware.run("zephyr")
+
+    assert result.returncode == 0, result.stdout
+    assert "--fresh" not in firmware.configure_of(BUILD.IMAGES[0])
+
+
 def test_the_opcodes_file_counts_each_instruction_most_used_first(firmware):
     firmware.sdk_release()
 
@@ -984,6 +1019,24 @@ class Firmware:
     def forget_calls(self):
         """Start the log of programs again, after a test's setting up."""
         self.log.unlink()
+
+    def configured_before(self, image, *, sdk):
+        """Leave an image's build directory as if configured with `sdk`."""
+        build = self.out / f"build_{name_of(image)}"
+        build.mkdir(parents=True)
+        (build / "CMakeCache.txt").write_text(
+            f"ZEPHYR_SDK_INSTALL_DIR:INTERNAL={sdk}\n"
+        )
+
+    def configure_of(self, image):
+        """The arguments cmake was given to configure an image's build."""
+        build = str(self.out / f"build_{name_of(image)}")
+        (configure,) = [
+            args
+            for args in (call["args"] for call in self.calls("cmake"))
+            if "-B" in args and args[args.index("-B") + 1] == build
+        ]
+        return configure
 
     def compiled(self):
         """What the SDK's gcc compiled: {image's name: gcc's arguments}."""
