@@ -1,10 +1,12 @@
 #include "socpuppet/models/qbox_cpu.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include <async_event.h>
 #include <cci_configuration>
@@ -181,6 +183,12 @@ struct QboxCpu::Core {
   void KeepTheKernelWaiting() { held_.async_attach_suspending(); }
   void LetTheKernelGo() { held_.async_detach_suspending(); }
 
+  // Has QBox tell `told` on SystemC's thread, as QEMU's machine stops for
+  // the debugger and runs again (a patch: docs/upstream.md).
+  void HearWhenTheMachineStopsOrRuns(std::function<void(bool stopped)> told) {
+    core_.set_machine_state_callback(std::move(told));
+  }
+
   // Starts QEMU's own GDB server on the port.
   void StartTheGdbServer(std::uint16_t port) {
     instance_.get().start_gdb_server("tcp::" + std::to_string(port));
@@ -207,7 +215,6 @@ struct QboxCpu::Core {
   // there.
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {
-    if (cpu_.held_) cpu_.AccessedWhileHeld();
     CatchUpIfPastTheQuantum(delay);
     cpu_.socket->b_transport(transaction, delay);
     CatchUpIfPastTheQuantum(delay);
@@ -283,6 +290,8 @@ QboxCpu::QboxCpu(const sc_core::sc_module_name& name, std::uint64_t xlen,
   // Once, in the first delta cycle, before QBox's thread runs the CPU; and
   // the rest once the board has settled.
   if (gdb_port != 0) {
+    core_->HearWhenTheMachineStopsOrRuns(
+        [this](bool stopped) { OnTheMachineStoppedOrRunning(stopped); });
     SC_METHOD(HoldForTheDebugger);
     SC_THREAD(HoldOnceTheBoardHasSettled);
     SC_THREAD(HoldTheClock);
@@ -358,11 +367,19 @@ void QboxCpu::HeldAtItsFirstInstruction() {
   core_->StartTheGdbServer(gdb_port_);
 }
 
-// The debugger has continued, and the CPU runs: time moves on.
-void QboxCpu::AccessedWhileHeld() {
-  held_ = false;
-  core_->LetTheKernelGo();
-  hold_the_clock_ = false;
+// QEMU's machine has stopped for the debugger, at a breakpoint, as it
+// attached or as it paused the CPU, and time stands still; or the debugger
+// has said continue, and time moves on. QBox tells of it on SystemC's
+// thread, and the notification is immediate, so the clock is held before
+// the kernel can move time on or end the run for want of anything to do.
+void QboxCpu::OnTheMachineStoppedOrRunning(bool stopped) {
+  if (stopped) {
+    core_->KeepTheKernelWaiting();
+  } else {
+    held_ = false;
+    core_->LetTheKernelGo();
+  }
+  hold_the_clock_ = stopped;
   clock_.notify();
 }
 

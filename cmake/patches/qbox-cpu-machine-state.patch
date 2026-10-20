@@ -1,0 +1,88 @@
+diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/include/cpu.h
+index 386a71db..2c4f7df2 100644
+--- a/qemu-components/common/include/cpu.h
++++ b/qemu-components/common/include/cpu.h
+@@ -14,6 +14,7 @@
+ #include <condition_variable>
+ #include <atomic>
+ #include <chrono>
++#include <functional>
+ 
+ #include <tlm>
+ #include <tlm_utils/simple_initiator_socket.h>
+@@ -156,6 +157,12 @@ protected:
+ 
+     gs::async_event m_qemu_kick_ev;
+     sc_core::sc_event_or_list m_external_ev;
++    /* Told on SystemC's thread when the machine stops and when it runs
++     * again, in coroutine mode: a debugger's breakpoint, attach, pause and
++     * continue. Only a change is told, and QEMU starts the machine as it is
++     * initialised, so it starts out running. */
++    std::function<void(bool stopped)> m_machine_state_cb;
++    bool m_machine_stopped = false;
+     sc_core::sc_process_handle m_sc_thread; // used for co-routines
+ 
+     std::atomic<bool> m_signaled;
+@@ -397,6 +404,24 @@ protected:
+             while (!m_inst.can_run() && !m_finished) {
+                 wait_for_work();
+             }
++        } else if (m_coroutines) {
++            /*
++             * Whether the machine is stopped, and whether the CPU can run,
++             * are read under one hold of the BQL, as vm_start() changes
++             * both under one: so the two are never seen half changed.
++             */
++            for (;;) {
++                m_inst.get().lock_iothread();
++                const bool stopped = m_inst.get().vm_is_stopped();
++                const bool runnable = m_cpu.can_run();
++                m_inst.get().unlock_iothread();
++                if (stopped != m_machine_stopped) {
++                    m_machine_stopped = stopped;
++                    if (m_machine_state_cb) m_machine_state_cb(stopped);
++                }
++                if (runnable || m_finished) break;
++                wait_for_work();
++            }
+         } else {
+             while (!m_cpu.can_run() && !m_finished) {
+                 if (!m_coroutines && !m_inst.is_tcg_enabled()) {
+@@ -625,6 +650,10 @@ public:
+      */
+     bool can_run() override { return m_cpu.can_run(); }
+ 
++    /* What to tell, on SystemC's thread, when the machine stops and when it
++     * runs again. Coroutine mode only. */
++    void set_machine_state_callback(std::function<void(bool stopped)> cb) { m_machine_state_cb = std::move(cb); }
++
+     void retrieve_qemu_cpu()
+     {
+         if (m_cpu_type.empty()) {
+diff --git a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
+index cfb0508f..12100c64 100644
+--- a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
++++ b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
+@@ -133,6 +133,9 @@ public:
+     void start_gdb_server(std::string port);
+     void vm_start();
+     void vm_stop_paused();
++    /* Whether the machine is stopped, or about to be. Call it with the BQL
++     * held. */
++    bool vm_is_stopped();
+ 
+     void lock_iothread();
+     void unlock_iothread();
+diff --git a/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc b/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
+index 9d1741af..a970b467 100644
+--- a/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
++++ b/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
+@@ -103,6 +103,8 @@ void LibQemu::vm_start() { m_int->exports().vm_start(); }
+ 
+ void LibQemu::vm_stop_paused() { m_int->exports().vm_stop_paused(); }
+ 
++bool LibQemu::vm_is_stopped() { return m_int->exports().vm_is_stopped(); }
++
+ int64_t LibQemu::get_virtual_clock() { return m_int->exports().clock_virtual_get_ns(); }
+ 
+ void LibQemu::tb_invalidate_phys_range(uint64_t start, uint64_t end)

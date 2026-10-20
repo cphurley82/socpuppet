@@ -85,16 +85,21 @@ def cpu_waiting_for_a_debugger(port):
     return platform
 
 
-def run_with_a_debugger(platform, port, session, hang_up=GdbClient.close):
+def run_with_a_debugger(
+    platform, port, session, hang_up=GdbClient.close, run=None
+):
     """Run `platform` with a debugger attached, and return what it found.
 
     `session` is what the debugger does: it is called with a GdbClient, on
     a thread of its own, because the CPU waits for the debugger while the
     platform runs. Whatever it does, the CPU is told to continue
     afterwards, so that the run always ends. `hang_up` is how the debugger
-    leaves after that.
+    leaves after that, and `run` how the platform is run meanwhile, as for
+    `run_with_debuggers`.
     """
-    return run_with_debuggers(platform, {port: session}, hang_up=hang_up)[port]
+    return run_with_debuggers(
+        platform, {port: session}, run=run, hang_up=hang_up
+    )[port]
 
 
 def run_with_debuggers(
@@ -222,9 +227,42 @@ class TestWhenACpuReachesABreakpoint:
             debugger.wait_for_a_stop()
             # 💡 A server that reported the stop twice would answer this
             # question with its second report.
-            return debugger.program_counter()
+            pc = debugger.program_counter()
+            # ⚠️ As GDB does at a stop: QEMU's CPU, told to continue with a
+            # breakpoint where it is, stops there again.
+            debugger.remove_breakpoint(the_store)
+            return pc
 
         assert run_with_a_debugger(platform, port, session) == the_store
+
+    def test_the_run_waits_while_it_is_stopped_and_ends_once_it_goes_on(self):
+        # 🎓 Simulated time stands still while the debugger has the CPU:
+        # a run of ten microseconds, which the program takes far less than,
+        # is not over.
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port)
+        the_store = RESET_VECTOR + 8  # the program's third instruction
+        ended = threading.Event()
+
+        def run():
+            platform.run(sp.us(10))
+            ended.set()
+
+        def session(debugger):
+            debugger.set_breakpoint(the_store)
+            debugger.continue_()
+            debugger.wait_for_a_stop()
+            # Half a second of wall clock, for a run that would end to end.
+            ended_while_stopped = ended.wait(0.5)
+            debugger.remove_breakpoint(the_store)
+            return ended_while_stopped
+
+        ended_while_stopped = run_with_a_debugger(
+            platform, port, session, run=run
+        )
+
+        assert not ended_while_stopped
+        assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
 
 
 @pytest.mark.platform

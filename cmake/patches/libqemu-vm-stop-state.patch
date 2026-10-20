@@ -1,0 +1,118 @@
+diff --git a/include/system/runstate.h b/include/system/runstate.h
+index 929379ada..0e17829c9 100644
+--- a/include/system/runstate.h
++++ b/include/system/runstate.h
+@@ -146,6 +146,7 @@ void qemu_system_debug_request(void);
+ void qemu_system_vmstop_request(RunState reason);
+ void qemu_system_vmstop_request_prepare(void);
+ bool qemu_vmstop_requested(RunState *r);
++bool qemu_vm_stop_pending(void);
+ ShutdownCause qemu_shutdown_requested_get(void);
+ bool qemu_force_shutdown_requested(void);
+ ShutdownCause qemu_reset_requested_get(void);
+diff --git a/libqemu/exports.py b/libqemu/exports.py
+index 7499b94d8..e830a4323 100755
+--- a/libqemu/exports.py
++++ b/libqemu/exports.py
+@@ -362,6 +362,7 @@
+ PrivateInclude('system/runstate.h')
+ ExportedFct('vm_start', 'void', [])
+ ExportedFct('vm_stop_paused', 'void', [], priv = 'libqemu_vm_stop_paused')
++ExportedFct('vm_is_stopped', 'bool', [], priv = 'libqemu_vm_is_stopped')
+ 
+ PublicInclude('libqemu/wrappers/timer.h')
+ ExportedType('QemuTimer', 'QEMUTimer')
+diff --git a/libqemu/wrappers/cpu.c b/libqemu/wrappers/cpu.c
+index 9f68218cf..759fe35c7 100644
+--- a/libqemu/wrappers/cpu.c
++++ b/libqemu/wrappers/cpu.c
+@@ -235,6 +235,16 @@ void libqemu_vm_stop_paused(void)
+     vm_stop(RUN_STATE_PAUSED);
+ }
+ 
++/*
++ * Whether the machine is stopped, or is about to be: a vCPU that stops at a
++ * breakpoint asks the main loop to stop the machine, and until it has, the
++ * machine still runs. Call it with the BQL held.
++ */
++bool libqemu_vm_is_stopped(void)
++{
++    return !runstate_is_running() || qemu_vm_stop_pending();
++}
++
+ void libqemu_cpu_set_vcpu_dirty(Object *obj, bool dirty)
+ {
+     CPU(obj)->vcpu_dirty = dirty;
+diff --git a/libqemu/wrappers/cpu.h b/libqemu/wrappers/cpu.h
+index 7f88fbf7f..d584cbb11 100644
+--- a/libqemu/wrappers/cpu.h
++++ b/libqemu/wrappers/cpu.h
+@@ -45,6 +45,7 @@ int libqemu_cpu_get_index(const Object *obj);
+ uintptr_t libqemu_cpu_get_mem_io_pc(Object *cpu);
+ 
+ void libqemu_vm_stop_paused(void);
++bool libqemu_vm_is_stopped(void);
+ 
+ void libqemu_cpu_set_vcpu_dirty(Object *obj, bool dirty);
+ 
+diff --git a/libqemu/wrappers/gdbserver.c b/libqemu/wrappers/gdbserver.c
+index 27ea786a6..c11c3d2ee 100644
+--- a/libqemu/wrappers/gdbserver.c
++++ b/libqemu/wrappers/gdbserver.c
+@@ -22,6 +22,25 @@
+ #include "gdbserver.h"
+ #include "qapi/error.h"
+ #include "qemu/error-report.h"
++#include "hw/core/cpu.h"
++#include "system/runstate.h"
++
++/*
++ * Once the GDB server is up, every stop of the machine is told to every
++ * vCPU, as a continue is, so that the platform hears of it even from a vCPU
++ * that is asleep.
++ */
++static void kick_on_stop(void *opaque, bool running, RunState state)
++{
++    CPUState *cpu;
++
++    if (running) {
++        return;
++    }
++    CPU_FOREACH(cpu) {
++        qemu_cpu_kick(cpu);
++    }
++}
+ 
+ void libqemu_gdbserver_start(const char *port_or_path)
+ {
+@@ -32,4 +51,5 @@ void libqemu_gdbserver_start(const char *port_or_path)
+         error_free(err);
+         exit(1);
+     }
++    qemu_add_vm_change_state_handler(kick_on_stop, NULL);
+ }
+diff --git a/system/runstate.c b/system/runstate.c
+index 734e3c037..884306bd0 100644
+--- a/system/runstate.c
++++ b/system/runstate.c
+@@ -503,6 +503,20 @@ static int qemu_debug_requested(void)
+     return r;
+ }
+ 
++/*
++ * Whether a stop has been asked for that the main loop has yet to make:
++ * a vCPU's at a breakpoint, or another of a vCPU's own.
++ */
++bool qemu_vm_stop_pending(void)
++{
++    bool pending;
++
++    qemu_mutex_lock(&vmstop_lock);
++    pending = vmstop_requested != RUN_STATE__MAX;
++    qemu_mutex_unlock(&vmstop_lock);
++    return pending || debug_requested;
++}
++
+ /*
+  * Reset the VM. Issue an event unless @reason is SHUTDOWN_CAUSE_NONE.
+  */

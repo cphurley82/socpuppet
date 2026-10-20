@@ -1459,6 +1459,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: nothing to undo; the halt line is the better hold either way, since it also keeps time still.
 
+### The platform is never told that the debugger has stopped QEMU's machine
+
+- **Where**: QEMU's `system/runstate.c` and `gdbstub/`, as libqemu carries them, and `qemu-components/common/include/cpu.h`'s `prepare_run_cpu` in `COROUTINE` mode.
+- **What is wrong**: QEMU's GDB server stops the machine on QEMU's own main thread, at a breakpoint, when a debugger attaches, and when it pauses the CPU, and starts it again at its continue. QBox's CPU loop only sees that the CPU cannot run, which is also what a CPU asleep in `wfi` looks like, and nothing it waits on keeps the kernel waiting. So while the debugger has the CPU, simulated time moves on for the rest of the platform, or a run with nothing else to do ends, CPU still stopped. A breakpoint is the worst case: the CPU stops on SystemC's thread and only asks the main loop to stop the machine, so the machine still reads as running for a while. And a stop the debugger makes of a CPU asleep wakes nothing on SystemC's side.
+- **How to see it**: `tests/python/test_gdb.py`'s `test_the_run_waits_while_it_is_stopped_and_ends_once_it_goes_on` under `ctest --preset qbox`, without the patches: the run of ten microseconds is over while the CPU sits at its breakpoint, and QBox says `icount sleep disabled and no active timers`.
+- **What we do**: `cmake/patches/libqemu-vm-stop-state.patch` exports `vm_is_stopped`, which is true while the machine is stopped and while a stop is asked for that the main loop has yet to make, and, once the GDB server is up, has every stop of the machine kick every CPU, as a continue already does. `cmake/patches/qbox-cpu-machine-state.patch` gives libqemu-cxx `vm_is_stopped()`, and has `QemuCpu`'s coroutine loop read it with `can_run()` in one hold of the big lock and tell a callback, `set_machine_state_callback`, each time it changes, on SystemC's thread. `src/socpuppet/models/qbox_cpu.cpp` holds the clock and keeps the kernel waiting from there, where it used to take the CPU's first bus access for the debugger's first continue.
+- **Upstream fix**: the same, as an event of `QemuCpu`'s that a platform can wait on: "the machine stopped" is what any platform with a clock of its own needs to hear.
+- **Kind**: missing feature.
+- **When it lands**: delete both patch files, and register with QBox's own.
+
 ### A CPU that traps on every fetch never yields the simulation
 
 - **Where**: QEMU's `accel/tcg/cpu-exec.c` under `icount`, as QBox runs it in `COROUTINE` mode (`qemu-components/common/include/cpu.h`): the deadline timer that ends a quantum fires on QEMU's instruction count.
