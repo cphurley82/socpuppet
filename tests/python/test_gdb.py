@@ -31,6 +31,13 @@ from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 RESET_VECTOR = 0x100
+#: Where the far die's bus has the link's registers, when a test has a link,
+#: and how long the link trains, which is after UCIe's 4 ms reset hold.
+LINK_REGISTERS = 0x1001_0000
+TRAINING_NS = 100_000
+#: Longer than the link's reset hold and its training, after which the CPU
+#: is let go and the short program runs.
+PAST_THE_RELEASE = sp.ms(10)
 #: Where each of two CPUs starts, when a test has two.
 RESET_VECTORS = {"spam": 0x100, "eggs": 0x200}
 #: How much of a firmware image a debugger reads back. The manager's
@@ -403,6 +410,85 @@ def two_cpus_waiting_for_debuggers(spams_port, eggs_port):
             via=platform.port(f"{name}_cpu.socket"),
         )
     return platform
+
+
+def a_cpu_behind_two_system_controllers_and_a_link(port):
+    """A CPU with a GDB port whose reset comes from a die-to-die link.
+
+    🎭 A scripted manager on the far die brings the link up and lets the
+    CPU go, and the link's hold reaches the CPU through two system
+    controllers, one more than on the host: a stage more for the reset to
+    rise through as the run starts.
+    """
+    platform = sp.Platform()
+    compute = platform.group("compute")
+    io = platform.group("io")
+    link = platform.link(
+        "d2d", sp.D2dLink(training_ns=TRAINING_NS), compute, io
+    )
+    manager = io.add(
+        "cpu", sp.ScriptedBusMaster(sp.IoManager(link=LINK_REGISTERS).script)
+    )
+    bus = io.add("bus", sp.Router())
+    platform.connect(manager.socket, bus.target)
+    platform.connect(link.b.initiator, bus.add_input())
+    platform.connect(link.b.irq, manager.irq)
+    bus.map(link.b.sideband, base=LINK_REGISTERS)
+
+    cpu = compute.add("cpu", a_cpu(reset_vector=RESET_VECTOR, gdb_port=port))
+    ram = compute.add("ram", sp.Memory(size=0x1000))
+    first = compute.add("first_syscon", sp.SystemController())
+    second = compute.add("second_syscon", sp.SystemController())
+    compute_bus = compute.add("bus", sp.Router())
+    platform.connect(cpu.socket, compute_bus.target)
+    compute_bus.map(ram.socket, base=0)
+    compute_bus.map(first.socket, base=0x1000)
+    compute_bus.map(second.socket, base=0x2000)
+    platform.connect(link.a.reset, first.hold)
+    platform.connect(first.reset, second.hold)
+    platform.connect(second.reset, cpu.reset)
+    platform.build()
+    platform.poke(RESET_VECTOR, STORE_0X5A_THEN_SLEEP, via=cpu.socket)
+    return platform
+
+
+@pytest.mark.platform
+@pytest.mark.only_on_qbox(
+    "DBT-RISE's core looks at its reset two delta cycles in, and a third "
+    "stage raises it in the third (docs/upstream.md)"
+)
+class TestWhenACpusResetComesThroughALinkAndTwoSystemControllers:
+    def test_a_debugger_finds_it_held_at_its_first_instruction_after_the_release(
+        self,
+    ):
+        port = free_port()
+        platform = a_cpu_behind_two_system_controllers_and_a_link(port)
+
+        def session(debugger):
+            # 💡 The link's reset hold and its training take simulated
+            # time: a CPU held before its reset rose is found at time 0.
+            return debugger.program_counter(), platform.time
+
+        pc, found_at = run_with_a_debugger(
+            platform, port, session, run=lambda: platform.run(PAST_THE_RELEASE)
+        )
+
+        assert pc == RESET_VECTOR
+        assert found_at > 0
+
+    def test_once_the_debugger_says_continue_the_program_runs(self):
+        port = free_port()
+        platform = a_cpu_behind_two_system_controllers_and_a_link(port)
+
+        run_with_a_debugger(
+            platform,
+            port,
+            lambda debugger: None,
+            run=lambda: platform.run(PAST_THE_RELEASE),
+        )
+
+        cpu = platform.port("compute.cpu.socket")
+        assert platform.peek32(RESET_VECTOR + 0x200, via=cpu) == 0x5A
 
 
 @pytest.mark.platform
