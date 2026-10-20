@@ -299,12 +299,10 @@ class TestWhenTheClientCreatesAFile:
 class TestWhenTheClientChangesAFilesAttributes:
     def test_a_new_size_truncates_it(self, served, tmp_path):
         node = look_up(served, "spam.txt")
-        setattr_in = struct.pack(
-            "<IIQQQQQQIIIIIIII", fuse.FATTR_SIZE, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-        )  # fmt: skip
 
-        error, body = ask(served, fuse.SETATTR, setattr_in, node=node)
+        error, body = ask(
+            served, fuse.SETATTR, setattr_in(fuse.FATTR_SIZE, size=4), node=node
+        )
 
         assert (error, size_of(ATTR.unpack_from(body, 16))) == (0, 4)
         assert (tmp_path / "spam.txt").read_bytes() == b"spam"
@@ -607,12 +605,11 @@ class TestWhenTheClientChangesAFilesModeAndTimes:
     def test_the_file_has_them(self, served, tmp_path):
         node = look_up(served, "spam.txt")
         valid = fuse.FATTR_MODE | fuse.FATTR_ATIME | fuse.FATTR_MTIME
-        setattr_in = struct.pack(
-            "<IIQQQQQQIIIIIIII", valid, 0, 0, 0, 0, 1_000_000, 2_000_000, 0,
-            0, 0, 0, 0o100400, 0, 0, 0, 0,
-        )  # fmt: skip
+        mode_and_times = setattr_in(
+            valid, atime=(1_000_000, 0), mtime=(2_000_000, 0), mode=0o100400
+        )
 
-        error, _ = ask(served, fuse.SETATTR, setattr_in, node=node)
+        error, _ = ask(served, fuse.SETATTR, mode_and_times, node=node)
 
         found = (tmp_path / "spam.txt").stat()
         assert error == 0
