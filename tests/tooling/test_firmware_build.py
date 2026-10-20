@@ -393,6 +393,21 @@ def test_a_part_is_built_in_this_machines_folder(firmware, part):
     assert not (firmware.out / built).exists()
 
 
+def test_edk2s_tree_is_in_this_machines_folder_as_it_compiles_its_tools_there(
+    firmware,
+):
+    # 🎓 EDK2's BaseTools are compiled inside its tree, by this machine's
+    # own compiler, and a Mac's build/firmware is shared with the Linux of
+    # Docker's container.
+    firmware.sdk_release()
+
+    result = firmware.run("edk2")
+
+    assert result.returncode == 0, result.stdout
+    assert (firmware.machine / "edk2" / "edksetup.sh").exists()
+    assert not (firmware.out / "edk2").exists()
+
+
 @pytest.mark.parametrize("part", ["opensbi", "edk2"])
 def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
     firmware.sdk_release()
@@ -403,7 +418,7 @@ def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
     result = firmware.run(part)
 
     assert result.returncode == 0, result.stdout
-    assert (firmware.out / part / "PATCHED").read_text() == "eggs\n"
+    assert (firmware.tree(part) / "PATCHED").read_text() == "eggs\n"
 
 
 @pytest.mark.parametrize(
@@ -418,7 +433,7 @@ def test_a_tree_pinned_anew_is_cloned_afresh_at_its_tag(firmware, part, tree):
     result = firmware.run(part)
 
     assert result.returncode == 0, result.stdout
-    assert (firmware.out / tree / ".git" / "TAG").read_text() == "spam"
+    assert (firmware.tree(tree) / ".git" / "TAG").read_text() == "spam"
 
 
 @pytest.mark.parametrize(
@@ -428,7 +443,7 @@ def test_a_tree_pinned_anew_is_cloned_afresh_at_its_tag(firmware, part, tree):
 def test_a_tree_at_its_pinned_tag_is_kept(firmware, part, tree):
     firmware.sdk_release()
     firmware.run(part)
-    kept = firmware.out / tree / "spam"
+    kept = firmware.tree(tree) / "spam"
     kept.write_text("eggs")
 
     result = firmware.run(part)
@@ -959,6 +974,12 @@ class Firmware:
     def machine(self):
         """Where the tools of the machine the script is run as go."""
         return self.out / self.host
+
+    def tree(self, name):
+        """Where a source tree is: EDK2's, which its build compiles its
+        tools into, in this machine's folder, and the others beside the
+        images."""
+        return (self.machine if name == "edk2" else self.out) / name
 
     @property
     def sdk(self):

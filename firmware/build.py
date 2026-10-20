@@ -767,7 +767,9 @@ class Build:
         and the console is where it is watched.
         """
         self.llvm()
-        source = self.out / "edk2"
+        # In this machine's folder, not beside OpenSBI's and Zephyr's trees:
+        # BaseTools are compiled inside it, by this machine's own compiler.
+        source = self.machine / "edk2"
         fetch(
             "EDK2",
             "https://github.com/tianocore/edk2",
@@ -783,9 +785,6 @@ class Build:
         )
         patch(source, "edk2-*.patch")
         say("Building EDK2 for the host")
-        # ⚠️ BaseTools is compiled in the tree, which is shared, and not in
-        # this machine's folder: one build/firmware builds EDK2 for one
-        # machine, until the Mac's build of it comes and moves them.
         logged(
             self.log_of("edk2_basetools"),
             *("make", "-C", str(source / "BaseTools"), "--jobs"),
