@@ -300,11 +300,11 @@ Each entry says:
 
 - **Where**: `src/sysc/core_complex.cpp`, the start of `run()`: `wait(SC_ZERO_TIME)` twice, then a look at `rst_i`.
 - **What is wrong**: the core decides whether it is in reset two delta cycles into the run. A board whose reset reaches the core through one more stage than socpuppet's host has (the link's hold, then two system controllers) raises it in the third, so the core has started by then: it runs at time zero until it next looks, which with a debugger means it waits for the debugger at its reset vector before its reset, and the debugger's continue runs it through the board's reset. `rst_cb` sees the rise, so the core does start over at the release.
-- **How to see it**: `tests/python/test_gdb.py`'s `TestWhenACpusResetComesThroughALinkAndTwoSystemControllers` on the DBT-RISE CPU: the debugger finds the CPU at time zero, not at the release. The test is marked `only_on_qbox` for it.
-- **What we do**: nothing, and this entry; no board of socpuppet's has the extra stage. QBox's CPU waits for its reset to rise or for the smallest step of time, whichever comes first, instead (`src/socpuppet/models/qbox_cpu.cpp`).
-- **Upstream fix**: the same wait in `run()`, which would start every core one step of time later, or a wait for the end of time zero's delta cycles, which SystemC has no event for: a stage callback at `SC_PRE_TIMESTEP` runs only as time moves on, and may not notify an event.
-- **Kind**: limitation.
-- **When it lands**: drop the marker.
+- **How to see it**: `tests/python/test_gdb.py`'s `TestWhenACpusResetComesThroughALinkAndTwoSystemControllers` on the DBT-RISE CPU, with the patch taken out: the debugger finds the CPU at time zero, not at the release.
+- **What we do**: `cmake/patches/dbt-rise-riscv-debugger-waits-for-reset.patch`. A core with a GDB server waits, before its first look, for its reset to rise or for the smallest step of time, whichever comes first, as QBox's CPU does (`src/socpuppet/models/qbox_cpu.cpp`): the debugger then finds it held at its reset vector after the release. A core without a debugger starts at time zero, as before, and starts over at the release as `rst_cb` has it.
+- **Upstream fix**: the patch, which leaves a core without a debugger as it is. For every core the same wait would start each one step of time later; a wait for the end of time zero's delta cycles would not, but SystemC has no event for it: a stage callback at `SC_PRE_TIMESTEP` runs only as time moves on, and may not notify an event.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
 
 ### The library is `SHARED` whatever the build asks for
 

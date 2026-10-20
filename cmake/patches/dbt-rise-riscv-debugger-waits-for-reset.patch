@@ -1,0 +1,18 @@
+diff --git a/src/sysc/core_complex.cpp b/src/sysc/core_complex.cpp
+index bad7f30..5389816 100644
+--- a/src/sysc/core_complex.cpp
++++ b/src/sysc/core_complex.cpp
+@@ -380,6 +380,13 @@ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::c
+ template <unsigned int BUSWIDTH, typename QK> void core_complex<BUSWIDTH, QK>::run() {
+     reset(GET_PROP_VALUE(reset_address));
+     wait(SC_ZERO_TIME); // separate from elaboration phase
++    // A core with a GDB server stops for the debugger at its first instruction. A reset driven through more than one
++    // process can rise after the core's first look, two delta cycles in, and the core would then stop for the
++    // debugger before its reset, which the debugger's continue would run it through. So such a core waits for its
++    // reset to rise or for the smallest step of time, whichever comes first. A core without a debugger starts at time
++    // zero, and starts over when its reset rises, as before.
++    if(GET_PROP_VALUE(gdb_server_port) != 0)
++        wait(sc_core::sc_get_time_resolution(), rst_i.posedge_event());
+     do {
+         wait(SC_ZERO_TIME);
+         if(rst_i.read() || reset_seen) {

@@ -538,10 +538,6 @@ def a_cpu_behind_two_system_controllers_and_a_link(port):
 
 
 @pytest.mark.platform
-@pytest.mark.only_on_qbox(
-    "DBT-RISE's core looks at its reset two delta cycles in, and a third "
-    "stage raises it in the third (docs/upstream.md)"
-)
 class TestWhenACpusResetComesThroughALinkAndTwoSystemControllers:
     def test_a_debugger_finds_it_held_at_its_first_instruction_after_the_release(
         self,
@@ -551,7 +547,8 @@ class TestWhenACpusResetComesThroughALinkAndTwoSystemControllers:
 
         def session(debugger):
             # 💡 The link's reset hold and its training take simulated
-            # time: a CPU held before its reset rose is found at time 0.
+            # time: a CPU held before its reset rose is found at time 0, or
+            # the smallest step of time in.
             return debugger.program_counter(), platform.time
 
         pc, found_at = run_with_a_debugger(
@@ -559,7 +556,7 @@ class TestWhenACpusResetComesThroughALinkAndTwoSystemControllers:
         )
 
         assert pc == RESET_VECTOR
-        assert found_at > 0
+        assert found_at >= sp.ns(TRAINING_NS)
 
     def test_once_the_debugger_says_continue_the_program_runs(self):
         port = free_port()
@@ -696,16 +693,18 @@ class TestWhenEachOfTheHostsThreeCpusHasAGdbPort:
         self, firmware
     ):
         # `monitor sysc print_time` is a command each CPU adds to its own
-        # GDB server. The manager's CPU and the SSD's stop at power-on.
-        # The host's is held in reset until the manager has brought the
-        # link up, so it stops later.
+        # GDB server. The manager's CPU and the SSD's stop at power-on, the
+        # smallest step of time in, having waited that long for a reset
+        # that does not come (docs/upstream.md). The host's is held in
+        # reset until the manager has brought the link up, so it stops
+        # later.
         debugged = ThreeDebuggedCpus(firmware)
 
         found = debugged.each(
             lambda debugger: debugger.monitor("sysc print_time")
         )
 
-        assert found["manager"] == found["ssd"] == "0 s"
+        assert found["manager"] == found["ssd"] == "1 ps"
         assert re.fullmatch(r"[1-9]\d* (fs|ps|ns|us|ms|s)", found["host"])
 
     def test_once_every_debugger_has_said_continue_the_hosts_disk_test_passes(
