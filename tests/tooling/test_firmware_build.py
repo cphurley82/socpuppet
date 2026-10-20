@@ -103,6 +103,13 @@ elif name == "git" and "clone" in args:
         shutil.copytree(template, directory)
     if status == 0:
         write(os.path.join(directory, ".git", "TAG"), after("--branch"))
+elif name == "git" and "--points-at" in args:
+    tag = os.path.join(after("-C"), ".git", "TAG")
+    if os.path.exists(tag):
+        print(open(tag).read())
+    else:
+        print(f"fatal: not a git repository: {after('-C')}")
+        status = 128
 elif name == "git" and "apply" in args:
     # A tree's patches are kept in one file of it, PATCHED, in the order
     # they were applied; checking the tree out again throws them away.
@@ -373,18 +380,34 @@ def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
 
 
 @pytest.mark.parametrize(
-    ("part", "pinned"),
+    ("part", "tree"),
     [("opensbi", "opensbi"), ("edk2", "edk2"), ("zephyr-tree", "zephyr")],
 )
-def test_a_tree_pinned_anew_is_cloned_afresh_at_its_tag(firmware, part, pinned):
+def test_a_tree_pinned_anew_is_cloned_afresh_at_its_tag(firmware, part, tree):
     firmware.sdk_release()
     firmware.run(part)
-    firmware.pin(pinned, "spam")
+    firmware.pin(tree, "spam")
 
     result = firmware.run(part)
 
     assert result.returncode == 0, result.stdout
-    assert (firmware.out / pinned / ".git" / "TAG").read_text() == "spam"
+    assert (firmware.out / tree / ".git" / "TAG").read_text() == "spam"
+
+
+@pytest.mark.parametrize(
+    ("part", "tree"),
+    [("opensbi", "opensbi"), ("edk2", "edk2"), ("zephyr-tree", "zephyr")],
+)
+def test_a_tree_at_its_pinned_tag_is_kept(firmware, part, tree):
+    firmware.sdk_release()
+    firmware.run(part)
+    kept = firmware.out / tree / "spam"
+    kept.write_text("eggs")
+
+    result = firmware.run(part)
+
+    assert result.returncode == 0, result.stdout
+    assert kept.read_text() == "eggs"
 
 
 # Zephyr's tree.
