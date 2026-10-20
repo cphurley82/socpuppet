@@ -92,6 +92,7 @@ class Twister:
         }
         self.python(self.out / "zephyr" / "scripts" / "twister")
         self.python(self.machine / "venv" / "bin" / "python")
+        self.python(self.machine / "venv" / "bin" / "west")
         self.sdk.mkdir(parents=True)
         for rom in ("rom_rv32.elf", "rom_rv64.elf"):
             (self.out / rom).touch()
@@ -102,7 +103,7 @@ class Twister:
         path.write_text(f"#!{sys.executable}\n{PYTHON}")
         path.chmod(0o755)
 
-    def run(self, *args):
+    def run(self, *args, **env):
         result = subprocess.run(
             [sys.executable, str(self.root / "firmware" / "twister.py"), *args],
             cwd=self.root,
@@ -110,12 +111,27 @@ class Twister:
                 **os.environ,
                 "LOG": str(self.log),
                 "UV_PROJECT_ENVIRONMENT": str(self.project),
+                **env,
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
         )
         return result
+
+    def run_in_the_container(self, volume, *args):
+        """Run as twister runs in Docker, with `volume` as its own.
+
+        A logging uv comes first on the PATH, so that a run that would make
+        a venv on the volume makes nothing real.
+        """
+        programs = volume.parent / "bin"
+        self.python(programs / "uv")
+        return self.run(
+            *args,
+            SOCPUPPET_TWISTER_HOME=str(volume),
+            PATH=f"{programs}{os.pathsep}{os.environ['PATH']}",
+        )
 
     def runs(self):
         """Each run of twister: its arguments after the script's path."""
@@ -250,6 +266,31 @@ def test_twister_is_run_with_this_machines_sdk_and_venv(twister):
     (call,) = twister.twisters()
     assert call["env"]["ZEPHYR_SDK_INSTALL_DIR"] == str(twister.sdk)
     assert call["python"] == str(twister.machine / "venv" / "bin" / "python")
+
+
+def test_in_dockers_volume_twister_is_run_with_this_machines_sdk_and_venv(
+    twister, tmp_path
+):
+    # 🎓 On an Intel Mac twister runs in Docker's container, where this
+    # machine's folder is a Docker volume already.
+    result = twister.run_in_the_container(
+        tmp_path / "volume", "-T", "tests/kernel/sleep"
+    )
+
+    assert result.returncode == 0, result.stdout
+    (call,) = twister.twisters()
+    assert call["env"]["ZEPHYR_SDK_INSTALL_DIR"] == str(twister.sdk)
+    assert call["python"] == str(twister.machine / "venv" / "bin" / "python")
+
+
+def test_in_dockers_volume_the_sdk_is_not_copied_to_twisters_own(
+    twister, tmp_path
+):
+    volume = tmp_path / "volume"
+
+    twister.run_in_the_container(volume, "-T", "tests/kernel/sleep")
+
+    assert not (volume / twister.sdk.name).exists()
 
 
 def this_machine():
