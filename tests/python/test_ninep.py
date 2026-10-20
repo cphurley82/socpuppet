@@ -164,6 +164,7 @@ def getattr_(directory, fid):
     answer = Answer(
         directory(t(ninep.TGETATTR, (fid, 4), (ninep.GETATTR_BASIC, 8)))
     )
+    assert answer.kind == ninep.TGETATTR + 1, f"errno {answer.error}"
     names = [
         "valid",
         "qid",
@@ -208,6 +209,11 @@ def entries(listing):
 def entry_names(listing):
     """An Rreaddir's entries' names."""
     return [name for _, name in entries(listing)]
+
+
+def signed(number):
+    """A 64-bit field read as Linux reads a signed one."""
+    return number - 2**64 if number >= 2**63 else number
 
 
 def unlinkat(directory, fid, name, flags=0):
@@ -357,6 +363,21 @@ class TestWhenTheClientReadsAFile:
         assert fields["size"] == 15
         assert fields["mode"] == (share / "spam.txt").stat().st_mode
         assert read_to_the_end
+
+    def test_getattr_of_a_file_dated_before_1970_gives_negative_seconds_and_the_nanoseconds_left_over(
+        self, served, share
+    ):
+        # 🎓 Linux reads a time's seconds as a signed number: 1.5 s before
+        # 1970 is -2 s and 500 000 000 ns.
+        before_1970 = -1_500_000_000
+        os.utime(share / "spam.txt", ns=(before_1970, before_1970))
+        walk(served, [b"spam.txt"], to_fid=2)
+
+        fields, _ = getattr_(served, 2)
+
+        for time in ("atime", "mtime"):
+            assert signed(fields[time]) == -2
+            assert fields[f"{time}_nsec"] == 500_000_000
 
 
 class TestWhenTheClientAsksForMoreThanAMessageHolds:

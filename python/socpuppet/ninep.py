@@ -388,12 +388,9 @@ class Directory:
             + _number(found.st_size, 8)
             + _number(found.st_blksize, 8)
             + _number(found.st_blocks, 8)
-            + _number(int(found.st_atime), 8)
-            + _number(found.st_atime_ns % 1_000_000_000, 8)
-            + _number(int(found.st_mtime), 8)
-            + _number(found.st_mtime_ns % 1_000_000_000, 8)
-            + _number(int(found.st_ctime), 8)
-            + _number(found.st_ctime_ns % 1_000_000_000, 8)
+            + _time_fields(found.st_atime_ns)
+            + _time_fields(found.st_mtime_ns)
+            + _time_fields(found.st_ctime_ns)
             + _number(0, 8) * 4
         )
 
@@ -564,6 +561,16 @@ def _time(
     if not valid & set_bit:
         return kept
     return given if valid & given_bit else now
+
+
+def _time_fields(ns: int) -> bytes:
+    """A time as Rgetattr gives it: seconds, then nanoseconds left over.
+
+    🎓 The seconds go as a two's-complement 64-bit number, which Linux reads
+    back as a signed one, so a time before 1970 is negative.
+    """
+    seconds, nanoseconds = divmod(ns, 1_000_000_000)
+    return _number(seconds & 0xFFFF_FFFF_FFFF_FFFF, 8) + _number(nanoseconds, 8)
 
 
 def _dirent_type(mode: int) -> int:
