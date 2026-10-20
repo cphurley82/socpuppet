@@ -104,6 +104,9 @@ O_TRUNC = 0o1000
 O_APPEND = 0o2000
 
 HEADER = struct.Struct("<IBH")
+#: What an Rread or an Rreaddir holds before its data: the header, and the
+#: count of bytes that follow.
+_COUNTED_HEADER_SIZE = HEADER.size + 4
 
 
 class _Refused(Exception):
@@ -166,6 +169,8 @@ class Directory:
     def __init__(self, root: str | os.PathLike[str]) -> None:
         self.root = Path(root).resolve()
         self._fids: dict[int, Fid] = {}
+        #: The most a message may be, as Tversion agreed it.
+        self._message_size = MAX_MESSAGE_SIZE
         self._handlers: dict[int, Callable[[_Reader], bytes]] = {
             TVERSION: self._version,
             TATTACH: self._attach,
@@ -285,7 +290,8 @@ class Directory:
         for number in list(self._fids):
             self._let_go(number)
         agreed = VERSION if version.startswith(VERSION) else UNKNOWN_VERSION
-        return _number(min(size, MAX_MESSAGE_SIZE), 4) + _string(agreed)
+        self._message_size = min(size, MAX_MESSAGE_SIZE)
+        return _number(self._message_size, 4) + _string(agreed)
 
     def _attach(self, body: _Reader) -> bytes:
         fid = body.number(4)
@@ -338,11 +344,15 @@ class Directory:
     def _read(self, body: _Reader) -> bytes:
         fid = self._fid(body.number(4))
         offset = body.number(8)
-        count = body.number(4)
+        count = self._fitting(body.number(4))
         if fid.file is None:
             raise _Refused("EBADF")
         data = os.pread(fid.file.fileno(), count, offset)
         return _number(len(data), 4) + data
+
+    def _fitting(self, count: int) -> int:
+        """`count`, or less if its answer would not fit in one message."""
+        return min(count, self._message_size - _COUNTED_HEADER_SIZE)
 
     def _write(self, body: _Reader) -> bytes:
         fid = self._fid(body.number(4))
@@ -453,7 +463,7 @@ class Directory:
     def _readdir(self, body: _Reader) -> bytes:
         fid = self._fid(body.number(4))
         offset = body.number(8)
-        count = body.number(4)
+        count = self._fitting(body.number(4))
         if fid.entries is None:
             raise _Refused("EBADF")
         data = b""
