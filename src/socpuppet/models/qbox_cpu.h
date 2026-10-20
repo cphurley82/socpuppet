@@ -86,12 +86,13 @@ class QboxCpu : public sc_core::sc_module {
   // instruction, and a stopped CPU stops the world, as the DBT-RISE CPU
   // does: a method run once as the simulation starts holds the CPU; a
   // thread that lets the board settle sees whether it is held with its
-  // reset low, and then time stands still and the port opens; the first
-  // access tells of the debugger's continue, and time moves on.
+  // reset low, and then time stands still and the port opens; and QEMU
+  // tells of each time its machine stops for the debugger and runs again,
+  // and time stands still or moves on with it.
   void HoldForTheDebugger();
   void HoldOnceTheBoardHasSettled();
   void HeldAtItsFirstInstruction();
-  void AccessedWhileHeld();
+  void OnTheMachineStoppedOrRunning(bool stopped);
   // The thread that holds the clock and lets it go, as asked.
   void HoldTheClock();
 
