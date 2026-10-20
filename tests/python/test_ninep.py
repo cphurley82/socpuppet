@@ -96,8 +96,18 @@ def share(tmp_path):
 @pytest.fixture
 def served(share):
     """The share served, with the client attached to its root as ROOT_FID."""
+    return serve(share, message_size=65536)
+
+
+def serve(share, *, message_size):
+    """`share` served to a client that takes messages of `message_size`.
+
+    The client is attached to its root as ROOT_FID.
+    """
     directory = ninep.Directory(share)
-    answer = Answer(directory(t(ninep.TVERSION, (65536, 4), b"9P2000.L")))
+    answer = Answer(
+        directory(t(ninep.TVERSION, (message_size, 4), b"9P2000.L"))
+    )
     assert answer.kind == ninep.TVERSION + 1
     attached = Answer(
         directory(
@@ -182,6 +192,22 @@ def getattr_(directory, fid):
         for name in names
     }
     return fields, answer.read_to_the_end
+
+
+def entries(listing):
+    """An Rreaddir's entries, each its type and its name."""
+    found = []
+    end = listing.at + 4 + listing.number(4)
+    while listing.at < end:
+        listing.qid()
+        listing.number(8)  # The offset of the entry after it.
+        found.append((listing.number(1), listing.string()))
+    return found
+
+
+def entry_names(listing):
+    """An Rreaddir's entries' names."""
+    return [name for _, name in entries(listing)]
 
 
 def unlinkat(directory, fid, name, flags=0):
@@ -331,6 +357,48 @@ class TestWhenTheClientReadsAFile:
         assert fields["size"] == 15
         assert fields["mode"] == (share / "spam.txt").stat().st_mode
         assert read_to_the_end
+
+
+class TestWhenTheClientAsksForMoreThanAMessageHolds:
+    """A count past what fits in the message size agreed is cut to fit.
+
+    💡 Linux asks for no more than fits, and the virtio device has a
+    buffer of that size for the answer: an answer any longer would not
+    fit in it.
+    """
+
+    def test_a_read_gives_as_much_as_fills_one_message(self, share):
+        data = bytes(range(256)) * 32
+        (share / "big").write_bytes(data)
+        directory = serve(share, message_size=4096)
+        walk(directory, [b"big"], to_fid=2)
+        open_(directory, 2)
+
+        read = Answer(directory(t(ninep.TREAD, (2, 4), (0, 8), (8192, 4))))
+
+        # 💡 An Rread is size[4] type[1] tag[2] count[4] and the data.
+        assert read.size == 4096
+        assert read.number(4) == 4096 - 11
+        assert read.bytes(4096 - 11) == data[: 4096 - 11]
+
+    def test_a_listing_gives_as_many_entries_as_fit_in_one_message(self, share):
+        for number in range(300):
+            (share / f"spam-{number:03}").touch()
+        directory = serve(share, message_size=4096)
+        walk(directory, [], to_fid=2)
+        open_(directory, 2)
+
+        listing = Answer(
+            directory(t(ninep.TREADDIR, (2, 4), (0, 8), (65536, 4)))
+        )
+
+        names = entry_names(listing)
+        assert names == [b".", b"..", b"eggs"] + [
+            f"spam-{number:03}".encode() for number in range(len(names) - 3)
+        ]
+        # An entry is qid[13] offset[8] type[1] and its name, a string.
+        next_entry = 13 + 8 + 1 + 2 + len(b"spam-300")
+        assert listing.size <= 4096 < listing.size + next_entry
 
 
 class TestWhenTheClientWritesAFile:
@@ -497,14 +565,7 @@ class TestWhenTheClientListsADirectory:
 
         answer = Answer(served(t(ninep.TREADDIR, (2, 4), (0, 8), (4096, 4))))
 
-        entries = []
-        count = answer.number(4)
-        end = answer.at + count
-        while answer.at < end:
-            answer.qid()
-            answer.number(8)
-            entries.append((answer.number(1), answer.string()))
-        assert entries == [
+        assert entries(answer) == [
             (ninep.DT_DIR, b"."),
             (ninep.DT_DIR, b".."),
             (ninep.DT_DIR, b"eggs"),
