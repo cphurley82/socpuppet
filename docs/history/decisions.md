@@ -2,6 +2,11 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-10-20
+
+- **Docker's container is a machine of its own**, with its own compiler and the repository at `/workspace`, so what it builds for itself is kept apart from the host's on every host, not only on a Mac: QBox's two trees, its firmware tools in `build/firmware/linux-<processor>`, and twister's folder. On a Mac each is a Docker volume, as before; on Linux a folder of `build/container`, made first as the caller's, since a named volume is root's and the container runs as the caller ([development.md](../development.md)). ↔ Reverses 9b657b7's "on Linux QBox's trees are the repository's own", which was about speed: the container, with GCC 13 and other paths, built into the host's own trees.
+- **A tree that a build compiles this machine's tools into is the machine's**: EDK2's, whose BaseTools are built inside it, joins the kernel's in `build/firmware/<machine>`.
+
 ## 2026-10-18
 
 - **M20 meets 🎭 the virtio cast, and only the virtio cast.** Linux's console is the virtio console (`hvc0`) and its root the virtio disk, and every one of the five virtio devices is brought up under Linux's own driver before any hardware model takes a stand-in's place: the 16550 as Linux's console, the drive (M24) and the network card (M17) are each a later step. Asked by the maintainer, so that a kernel meets the small, tested models first and a real block replaces one at a time. ↔ Amends the 2026-10-17 decision's "console on the 16550". `firmware/rootfs/etc/inittab` puts the shell on `hvc0`.

@@ -91,9 +91,9 @@ def main() -> int:
 def in_docker(arguments: list[str]) -> int:
     """Run the same command in the devcontainer's image, on the volume.
 
-    tools/devcontainer.py mounts the volume, socpuppet-twister, at /twister
-    on a Mac, and passes socpuppet's variables in: these two say to use it,
-    and to build a socpuppet for Linux first.
+    tools/devcontainer.py keeps twister's own folder at its TWISTER_HOME,
+    apart from the host's, and passes socpuppet's variables in: these two
+    say to use it, and to build a socpuppet for Linux first.
     """
     return subprocess.run(
         [
@@ -102,7 +102,9 @@ def in_docker(arguments: list[str]) -> int:
         ],
         env={
             **os.environ,
-            "SOCPUPPET_TWISTER_HOME": "/twister",
+            "SOCPUPPET_TWISTER_HOME": str(
+                load(REPOSITORY / "tools" / "devcontainer.py").TWISTER_HOME
+            ),
             "SOCPUPPET_TWISTER_BUILD": "1",
         },
     ).returncode

@@ -239,14 +239,26 @@ def main() -> int:
     out = args.out.resolve()
     try:
         here = [p for p in parts if not builds_in_docker(p, sdk_host())]
+        docker = (
+            parts if args.in_docker else [p for p in parts if p not in here]
+        )
+        if docker and out != OUT:
+            which = "every part" if docker == parts else ", ".join(docker)
+            raise Failed(
+                f"Here {which} builds in Docker, which builds into "
+                "build/firmware, the default, where tools/devcontainer.py "
+                "keeps the container's own tools apart from this machine's: "
+                "in another output directory the two would share one folder. "
+                "Leave out --out, and copy the images from build/firmware."
+            )
         if args.in_docker or not here:
-            return in_docker(parts, out, args.jobs)
+            return in_docker(parts, args.jobs)
         check_the_machine(here)
         build = Build(out, args.jobs)
         for part in parts:
             if part in here:
                 build.parts[part]()
-            elif status := in_docker([part], out, args.jobs):
+            elif status := in_docker([part], args.jobs):
                 return status
     except Failed as failure:
         print(f"❌ {failure}", file=sys.stderr)
@@ -285,34 +297,16 @@ def check_the_machine(parts: list[str]) -> None:
                 )
 
 
-def in_docker(parts: list[str], out: Path, jobs: int) -> int:
+def in_docker(parts: list[str], jobs: int) -> int:
     """Run the same build in the devcontainer's image. Returns its status.
 
-    The image is Linux, which the SDK has a toolchain for. The repository
-    is at /workspace in there, so the output directory has to be inside it,
-    where a path the build writes into an image (a source file's, for a
-    debugger) is good in any container that has the repository there.
+    The image is Linux, which the SDK has a toolchain for. It builds into
+    build/firmware, its default in there too.
     """
-    if not out.is_relative_to(REPOSITORY):
-        raise Failed(
-            f"{out} is outside the repository, which is all the "
-            "devcontainer's image sees. Build into a directory inside it, "
-            "and copy the images from there."
-        )
-    if "linux" in parts and sdk_host().startswith("macos") and out != OUT:
-        raise Failed(
-            "On a Mac the kernel builds in Docker into build/firmware, "
-            "the default, where tools/devcontainer.py puts a Docker volume "
-            "for Linux's tools: a Mac's own file system takes two of the "
-            "kernel's names that differ only in their case for one. Build "
-            "it there, and copy the images from there."
-        )
-    inside = Path("/workspace") / out.relative_to(REPOSITORY)
     return subprocess.run(
         [
             str(REPOSITORY / "tools" / "devcontainer.py"),
-            *("python3", "firmware/build.py", *parts),
-            *("--out", str(inside), "-j", str(jobs)),
+            *("python3", "firmware/build.py", *parts, "-j", str(jobs)),
         ],
         cwd=REPOSITORY,
     ).returncode
@@ -346,9 +340,9 @@ class Build:
             name: pin["version"] for name, pin in self.pins.items()
         }
         # What runs on this machine, and what its tools build, is kept in a
-        # directory named for it: a Mac's out is shared with Linux's in
-        # Docker, which builds there too (tools/devcontainer.py makes
-        # Linux's a volume).
+        # directory named for it. Docker's container, a machine of its own,
+        # builds into the same out, where tools/devcontainer.py keeps its
+        # directory apart from the host's.
         self.machine = out / sdk_host()
         sdk_version = self.versions["sdk"]
         self.sdk_dir = self.machine / f"zephyr-sdk-{sdk_version}"

@@ -834,7 +834,8 @@ def test_in_docker_the_same_build_runs_in_the_devcontainers_image(firmware):
     (call,) = firmware.calls("devcontainer.py")
     command = call["args"]
     assert command[:3] == ["python3", "firmware/build.py", "rom"]
-    assert command[command.index("--out") + 1] == "/workspace/build/firmware"
+    # Into build/firmware, which is its default in the container too.
+    assert "--out" not in command
     assert command[command.index("-j") + 1] == "3"
     assert firmware.calls("curl") == []
 
@@ -862,12 +863,7 @@ def test_on_an_apple_silicon_mac_the_kernel_goes_to_docker_and_the_rom_builds_he
     assert result.returncode == 0, result.stdout
     assert set(firmware.compiled()) == {"rom_rv64", "rom_rv32", "sbi_payload"}
     (call,) = firmware.calls("devcontainer.py")
-    assert call["args"][:4] == [
-        "python3",
-        "firmware/build.py",
-        "linux",
-        "--out",
-    ]
+    assert call["args"][:3] == ["python3", "firmware/build.py", "linux"]
 
 
 def test_on_an_intel_mac_every_part_goes_to_docker_in_one_run(firmware):
@@ -877,33 +873,32 @@ def test_on_an_intel_mac_every_part_goes_to_docker_in_one_run(firmware):
 
     assert result.returncode == 0, result.stdout
     (call,) = firmware.calls("devcontainer.py")
-    assert call["args"][:5] == [
-        *("python3", "firmware/build.py", "rom", "linux", "--out"),
-    ]
+    assert call["args"][:4] == ["python3", "firmware/build.py", "rom", "linux"]
     assert firmware.compiled() == {}
 
 
-def test_on_a_mac_the_kernel_into_an_output_directory_of_its_own_is_refused(
-    firmware,
+@pytest.mark.parametrize(
+    ("host", "args"),
+    [
+        (HOST, ("--in-docker", "rom", "--out", "build/spam")),
+        (HOST, ("--in-docker", "rom", "--out", "{elsewhere}")),
+        ("macos-aarch64", ("linux", "--out", "build/spam")),
+        ("macos-x86_64", ("rom", "--out", "build/spam")),
+    ],
+)
+def test_in_docker_an_output_directory_other_than_build_firmware_is_refused(
+    firmware, tmp_path, host, args
 ):
-    # 🎓 Docker's volume for Linux's tools, where the kernel's tree keeps
-    # the case of its names, is over build/firmware's folder for Linux.
-    firmware.host = "macos-aarch64"
+    # 🎓 Docker's container is a machine of its own, whose folder in
+    # build/firmware tools/devcontainer.py keeps apart from the host's: in
+    # another output directory the two would share one.
+    firmware.host = host
+    elsewhere = str(tmp_path / "elsewhere")
 
-    result = firmware.run("linux", "--out", "build/spam")
+    result = firmware.run(*(arg.format(elsewhere=elsewhere) for arg in args))
 
     assert result.returncode == 1
     assert "build/firmware" in result.stdout
-    assert firmware.calls("devcontainer.py") == []
-
-
-def test_in_docker_an_output_directory_outside_the_repository_is_refused(
-    firmware, tmp_path
-):
-    result = firmware.run("--in-docker", "--out", str(tmp_path / "elsewhere"))
-
-    assert result.returncode == 1
-    assert "outside the repository" in result.stdout
     assert firmware.calls("devcontainer.py") == []
 
 

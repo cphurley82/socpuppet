@@ -7,10 +7,12 @@ without Docker.
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import platform
 import pty
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +22,15 @@ import pytest
 from conftest import AS_ON
 
 REPO = Path(__file__).resolve().parents[2]
-SCRIPT = REPO / "tools" / "devcontainer.py"
 DOCKERFILE = REPO / ".devcontainer" / "Dockerfile"
+#: What the script reads of its repository, which each test copies into a
+#: throwaway one, so that what the script makes there is the test's.
+READS = (
+    "tools/devcontainer.py",
+    ".devcontainer/Dockerfile",
+    "firmware/build.py",
+    "firmware/twister.py",
+)
 TAG = (
     "socpuppet-dev:" + hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()[:12]
 )
@@ -35,6 +44,15 @@ with open(os.environ["LOG"], "a") as log:
 if args[:2] == ["image", "inspect"]:
     sys.exit(0 if args[2] in os.environ.get("IMAGES", "").split() else 1)
 """
+
+# Where the container has twister's own folder, as the script names it for
+# firmware/twister.py.
+_spec = importlib.util.spec_from_file_location(
+    "devcontainer", REPO / "tools" / "devcontainer.py"
+)
+_script = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_script)
+TWISTER_HOME = str(_script.TWISTER_HOME)
 
 # What the tool does differently on a Mac and on Linux is tested on the
 # machine the tests run on.
@@ -70,6 +88,10 @@ def devcontainer(tmp_path):
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     log = tmp_path / "log"
+    root = tmp_path / "repo"
+    for path in READS:
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(REPO / path, root / path)
 
     def install(name, body):
         program = bin_directory / name
@@ -106,7 +128,12 @@ def devcontainer(tmp_path):
         ours, theirs = pty.openpty() if terminal else (None, None)
         on = ("-c", AS_ON, *as_on) if as_on else ()
         result = subprocess.run(
-            [sys.executable, *on, str(SCRIPT), *args],
+            [
+                sys.executable,
+                *on,
+                str(root / "tools" / "devcontainer.py"),
+                *args,
+            ],
             env={
                 **inherited,
                 "PATH": path,
@@ -125,6 +152,7 @@ def devcontainer(tmp_path):
         lines = log.read_text().splitlines() if log.exists() else []
         return result, [json.loads(line) for line in lines]
 
+    run.root = root
     return run
 
 
@@ -153,7 +181,7 @@ def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_work
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
-    assert f"{REPO}:/workspace" in values(run, "--volume")
+    assert f"{devcontainer.root}:/workspace" in values(run, "--volume")
     assert values(run, "--workdir") == ["/workspace"]
     assert run[-len(command) - 1 :] == [TAG, *command]
 
@@ -166,8 +194,9 @@ def test_an_image_is_built_from_the_dockerfile_when_none_has_its_hash_and_is_als
     assert result.returncode == 0, result.stdout
     (build,) = [call[1:] for call in calls if call[0] == "build"]
     assert set(values(build, "--tag")) == {TAG, "socpuppet-dev"}
-    assert values(build, "--file") == [str(DOCKERFILE)]
-    assert build[-1] == str(DOCKERFILE.parent)
+    dockerfile = devcontainer.root / ".devcontainer" / "Dockerfile"
+    assert values(build, "--file") == [str(dockerfile)]
+    assert build[-1] == str(dockerfile.parent)
     assert position(calls, "build") < position(calls, "run")
 
 
@@ -213,15 +242,59 @@ def test_on_a_mac_linuxs_firmware_tools_are_a_docker_volume_in_build_firmware_li
     )
 
 
-@ON_LINUX
-def test_on_linux_qboxs_trees_are_the_repositorys_own_as_any_other_build_tree(
+#: What the container builds for itself, on Linux: the folder of
+#: build/container each is kept in, and where the container has it.
+KEPT_APART = {
+    "qbox": QBOX,
+    "qbox-dev": QBOX_DEV,
+    "firmware-linux": "/workspace/build/firmware/linux-x86_64",
+    "twister": TWISTER_HOME,
+}
+
+
+def test_on_linux_what_the_container_builds_for_itself_is_kept_in_build_container(
     devcontainer,
 ):
-    result, calls = devcontainer("true")
+    # 🎓 The container is a Linux machine of its own, with its own compiler
+    # and the repository at /workspace: what it builds for itself is not
+    # the host's, though the host is Linux too.
+    result, calls = devcontainer("true", as_on=("Linux", "x86_64"))
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
-    assert values(run, "--volume") == [f"{REPO}:/workspace"]
+    volumes = values(run, "--volume")
+    for folder, there in KEPT_APART.items():
+        kept = devcontainer.root / "build" / "container" / folder
+        assert f"{kept}:{there}" in volumes
+
+
+def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_docker_runs(
+    devcontainer,
+):
+    # 💡 Docker makes a folder it is to mount that is not there, and makes
+    # it root's.
+    made = [
+        each
+        for folder, there in KEPT_APART.items()
+        for each in made_for(devcontainer.root, folder, there)
+    ]
+    assert not any(each.exists() for each in made)
+
+    result, _ = devcontainer("true", as_on=("Linux", "x86_64"))
+
+    assert result.returncode == 0, result.stdout
+    for each in made:
+        assert each.is_dir(), each
+        assert each.stat().st_uid == os.getuid(), each
+
+
+def made_for(root, folder, there):
+    """The folder of build/container that is mounted at `there`, and the
+    mount point too when it is in the repository."""
+    made = [root / "build" / "container" / folder]
+    if there.startswith("/workspace/"):
+        made.append(root / Path(there).relative_to("/workspace"))
+    return made
 
 
 def test_uvs_environment_cache_and_pythons_are_under_build_so_they_outlive_the_container(
