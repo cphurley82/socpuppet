@@ -471,13 +471,12 @@ class Build:
         Nothing built here needs any of Zephyr's external modules, so only
         the one repository is fetched.
         """
-        if not self.zephyr_dir.is_dir():
-            say(f"Fetching Zephyr {self.versions['zephyr']}")
-            clone(
-                "https://github.com/zephyrproject-rtos/zephyr",
-                self.versions["zephyr"],
-                self.zephyr_dir,
-            )
+        fetch(
+            "Zephyr",
+            "https://github.com/zephyrproject-rtos/zephyr",
+            self.versions["zephyr"],
+            self.zephyr_dir,
+        )
         patch(self.zephyr_dir, "zephyr-*.patch")
         # The Python packages Zephyr's build scripts import, with CMake and
         # Ninja, and what twister imports, in an environment of their own.
@@ -613,13 +612,12 @@ class Build:
         """
         self.llvm()
         source = self.out / "opensbi"
-        if not source.is_dir():
-            say(f"Fetching OpenSBI {self.versions['opensbi']}")
-            clone(
-                "https://github.com/riscv-software-src/opensbi",
-                self.versions["opensbi"],
-                source,
-            )
+        fetch(
+            "OpenSBI",
+            "https://github.com/riscv-software-src/opensbi",
+            self.versions["opensbi"],
+            source,
+        )
         patch(source, "opensbi-*.patch")
         say("Building OpenSBI for the host")
         built = self.out / "build_opensbi"
@@ -771,17 +769,19 @@ class Build:
         """
         self.llvm()
         source = self.out / "edk2"
-        if not source.is_dir():
-            say(f"Fetching EDK2 {self.versions['edk2']}")
-            clone(
-                "https://github.com/tianocore/edk2",
-                self.versions["edk2"],
-                source,
-            )
-            run(
-                *("git", "-C", str(source), "submodule", "--quiet", "update"),
-                *("--init", "--depth", "1"),
-            )
+        fetch(
+            "EDK2",
+            "https://github.com/tianocore/edk2",
+            self.versions["edk2"],
+            source,
+        )
+        # Every time, and not only after a clone: a fetch cut short here
+        # leaves the tree at its tag with its submodules empty, and with
+        # them all there it does nothing.
+        run(
+            *("git", "-C", str(source), "submodule", "--quiet", "update"),
+            *("--init", "--depth", "1"),
+        )
         patch(source, "edk2-*.patch")
         say("Building EDK2 for the host")
         logged(
@@ -1038,8 +1038,25 @@ def checksum_of(sums: Path, name: str) -> str:
     raise Failed(f"The SDK's release lists no checksum for {name}.")
 
 
-def clone(url: str, tag: str, into: Path) -> None:
-    """Clone a repository at one tag, one commit deep."""
+def fetch(name: str, url: str, tag: str, into: Path) -> None:
+    """Clone `name`'s repository at its pinned tag, one commit deep.
+
+    A tree at `into` that is at the tag is kept. One at another tag, pinned
+    before, or cut short as it was cloned, is removed and cloned again.
+
+    💡 A git tree can say which tag it is at, so it keeps one folder
+    whatever its version. A tarball cannot, so the kernel's folder is
+    named for its version instead.
+    """
+    found = subprocess.run(
+        ["git", "-C", str(into), "tag", "--points-at", "HEAD"],
+        capture_output=True,
+        encoding="utf-8",
+    )
+    if found.returncode == 0 and tag in found.stdout.split():
+        return
+    say(f"Fetching {name} {tag}")
+    shutil.rmtree(into, ignore_errors=True)
     run(
         *("git", "clone", "--quiet", "--depth", "1", "--branch", tag),
         *("-c", "advice.detachedHead=false", url, str(into)),

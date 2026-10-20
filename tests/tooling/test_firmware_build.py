@@ -92,11 +92,17 @@ elif name == "curl":
         # What curl --fail exits with when the server says no.
         status = 22
 elif name == "git" and "clone" in args:
+    # A clone keeps the tag it was made at in .git/TAG, and, as git's own,
+    # refuses to clone into a directory with anything in it.
     url, directory = args[-2], args[-1]
     template = os.path.join(os.environ["CLONES"], os.path.basename(url))
-    if os.path.isdir(template):
+    if os.path.isdir(directory) and os.listdir(directory):
+        print(f"fatal: destination path '{directory}' already exists")
+        status = 128
+    elif os.path.isdir(template):
         shutil.copytree(template, directory)
-    os.makedirs(os.path.join(directory, ".git"), exist_ok=True)
+    if status == 0:
+        write(os.path.join(directory, ".git", "TAG"), after("--branch"))
 elif name == "git" and "apply" in args:
     # A tree's patches are kept in one file of it, PATCHED, in the order
     # they were applied; checking the tree out again throws them away.
@@ -364,6 +370,21 @@ def test_a_patch_that_changes_is_the_one_built_and_alone(firmware, part):
 
     assert result.returncode == 0, result.stdout
     assert (firmware.out / part / "PATCHED").read_text() == "eggs\n"
+
+
+@pytest.mark.parametrize(
+    ("part", "pinned"),
+    [("opensbi", "opensbi"), ("edk2", "edk2"), ("zephyr-tree", "zephyr")],
+)
+def test_a_tree_pinned_anew_is_cloned_afresh_at_its_tag(firmware, part, pinned):
+    firmware.sdk_release()
+    firmware.run(part)
+    firmware.pin(pinned, "spam")
+
+    result = firmware.run(part)
+
+    assert result.returncode == 0, result.stdout
+    assert (firmware.out / pinned / ".git" / "TAG").read_text() == "spam"
 
 
 # Zephyr's tree.
@@ -953,11 +974,12 @@ class Firmware:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.pin("alpine", version, "0" * 64 if corrupt else digest)
 
-    def pin(self, name, version, sha256):
+    def pin(self, name, version, sha256=None):
         """Write one entry of the copy of versions.toml the script reads."""
         versions = self.root / "firmware" / "versions.toml"
         pins = {**BUILD.read_pins(versions), name: {"version": version}}
-        pins[name]["sha256"] = sha256
+        if sha256 is not None:
+            pins[name]["sha256"] = sha256
         versions.write_text(
             "\n".join(
                 f"[{each}]\n"
