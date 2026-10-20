@@ -799,7 +799,11 @@ class Build:
             self.out / "build_edk2.log",
             "bash",
             "-c",
-            'source "$0" BaseTools && build "$@"',
+            # 🎓 EDK2's setup copies its Conf templates only where there are
+            # none, so one an earlier build left, perhaps from a tree at
+            # another tag, would be built with: --reconfig copies them
+            # every time.
+            'source "$0" BaseTools --reconfig && build "$@"',
             str(source / "edksetup.sh"),
             *("-a", "RISCV64", "-t", toolchain, "-b", target),
             *("-p", "OvmfPkg/RiscVVirt/RiscVVirtQemu.dsc"),
