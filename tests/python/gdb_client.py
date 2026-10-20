@@ -164,6 +164,15 @@ class GdbClient:
         """
         self.send("c")
 
+    def interrupt(self):
+        """Stop a running CPU, as Ctrl-C in GDB does.
+
+        It is one byte, 0x03, sent outside any packet. Returns what the
+        server said of the stop, as `wait_for_a_stop` does.
+        """
+        self._socket.sendall(b"\x03")
+        return self._reply()
+
     def wait_for_a_stop(self):
         """Wait for a CPU that was told to continue to stop, at a breakpoint.
 
