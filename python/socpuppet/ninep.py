@@ -135,10 +135,16 @@ class _Reader:
         self.body = body
         self.at = 0
 
-    def number(self, width: int) -> int:
-        value = int.from_bytes(self.body[self.at : self.at + width], "little")
+    def number(self, width: int, *, signed: bool = False) -> int:
+        value = int.from_bytes(
+            self.body[self.at : self.at + width], "little", signed=signed
+        )
         self.at += width
         return value
+
+    def time(self) -> tuple[int, int]:
+        """A time as Tsetattr gives it: signed seconds, then nanoseconds."""
+        return self.number(8, signed=True), self.number(8)
 
     def string(self) -> bytes:
         length = self.number(2)
@@ -401,8 +407,8 @@ class Directory:
         uid = body.number(4)
         gid = body.number(4)
         size = body.number(8)
-        atime = body.number(8) * 1_000_000_000 + body.number(8)
-        mtime = body.number(8) * 1_000_000_000 + body.number(8)
+        atime = body.time()
+        mtime = body.time()
         path = fid.path
         # ⚠️ A link's own mode and size cannot be set, and setting them on
         # its target would reach outside the share.
@@ -555,12 +561,26 @@ def _open(path: Path, flags: int, mode: int = 0o644) -> IO[bytes]:
 
 
 def _time(
-    valid: int, set_bit: int, given_bit: int, given: int, now: int, kept: int
+    valid: int,
+    set_bit: int,
+    given_bit: int,
+    given: tuple[int, int],
+    now: int,
+    kept: int,
 ) -> int:
-    """A time Tsetattr sets, in ns: now, the one given, or the file's own."""
+    """A time Tsetattr sets, in ns: now, the one given, or the file's own.
+
+    The one given is its seconds and its nanoseconds, which are refused if
+    they make a second or more, as Linux's utimensat refuses them.
+    """
     if not valid & set_bit:
         return kept
-    return given if valid & given_bit else now
+    if not valid & given_bit:
+        return now
+    seconds, nanoseconds = given
+    if nanoseconds >= 1_000_000_000:
+        raise _Refused("EINVAL")
+    return seconds * 1_000_000_000 + nanoseconds
 
 
 def _time_fields(ns: int) -> bytes:

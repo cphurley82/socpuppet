@@ -138,8 +138,13 @@ def open_(directory, fid, flags=0):
     return Answer(directory(t(ninep.TLOPEN, (fid, 4), (flags, 4))))
 
 
-def setattr_(directory, fid, valid, *, mode=0, size=0, atime=0, mtime=0):
-    """Tsetattr of `fid`, with what `valid` says set: times in whole seconds."""
+def setattr_(
+    directory, fid, valid, *, mode=0, size=0, atime=0, mtime=0, mtime_ns=0
+):
+    """Tsetattr of `fid`, with what `valid` says set.
+
+    A time is its seconds and its nanoseconds, each as the message has it.
+    """
     return Answer(
         directory(
             t(
@@ -153,7 +158,7 @@ def setattr_(directory, fid, valid, *, mode=0, size=0, atime=0, mtime=0):
                 (atime, 8),
                 (0, 8),
                 (mtime, 8),
-                (0, 8),
+                (mtime_ns, 8),
             )
         )
     )
@@ -214,6 +219,11 @@ def entry_names(listing):
 def signed(number):
     """A 64-bit field read as Linux reads a signed one."""
     return number - 2**64 if number >= 2**63 else number
+
+
+def unsigned(number):
+    """A signed number as a 64-bit field carries it."""
+    return number & 0xFFFF_FFFF_FFFF_FFFF
 
 
 def unlinkat(directory, fid, name, flags=0):
@@ -564,15 +574,50 @@ class TestWhenTheClientSetsAttributes:
         assert answer.error == ELOOP
         assert outside.read_bytes() == b"eggs"
 
-    def test_a_time_too_big_for_this_machine_is_einval(self, served):
+    def test_a_time_before_1970_is_set_from_its_negative_seconds(
+        self, served, share
+    ):
+        walk(served, [b"spam.txt"], to_fid=2)
+
+        # 🎓 1.5 s before 1970 is -2 s and 500 000 000 ns, as Linux sends it.
+        answer = setattr_(
+            served,
+            2,
+            ninep.SETATTR_MTIME | ninep.SETATTR_MTIME_SET,
+            mtime=unsigned(-2),
+            mtime_ns=500_000_000,
+        )
+
+        assert answer.kind == ninep.TSETATTR + 1
+        assert (share / "spam.txt").stat().st_mtime_ns == -1_500_000_000
+
+    def test_nanoseconds_of_a_second_or_more_are_einval(self, served):
+        # 🎓 As Linux's own utimensat answers them.
         walk(served, [b"spam.txt"], to_fid=2)
 
         answer = setattr_(
             served,
             2,
             ninep.SETATTR_MTIME | ninep.SETATTR_MTIME_SET,
-            mtime=2**63,
+            mtime_ns=1_000_000_000,
         )
+
+        assert answer.error == EINVAL
+
+    def test_a_time_not_being_set_is_not_looked_at(self, served, share):
+        walk(served, [b"spam.txt"], to_fid=2)
+
+        answer = setattr_(
+            served, 2, ninep.SETATTR_SIZE, size=4, mtime_ns=1_000_000_000
+        )
+
+        assert answer.kind == ninep.TSETATTR + 1
+        assert (share / "spam.txt").read_bytes() == b"spam"
+
+    def test_a_size_too_big_for_this_machine_is_einval(self, served):
+        walk(served, [b"spam.txt"], to_fid=2)
+
+        answer = setattr_(served, 2, ninep.SETATTR_SIZE, size=2**64 - 1)
 
         assert answer.error == EINVAL
 
