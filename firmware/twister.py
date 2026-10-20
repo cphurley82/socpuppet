@@ -27,11 +27,13 @@ importable from python/.
 On an Intel Mac it runs itself in the devcontainer's image, as
 firmware/build.py does, since the Zephyr SDK has no toolchain for one.
 There it builds a socpuppet for Linux in build/linux first, and keeps
-Zephyr, the SDK, a venv and twister's build directories on a Docker volume,
+Zephyr's tree and twister's build directories on a Docker volume,
 socpuppet-twister: a compiler that reads its headers through Docker's file
 sharing takes ten times as long (docs/twister-spike.md has the figures).
-They are copied to the volume the first time and when their versions
-change, and `docker volume rm socpuppet-twister` throws the copy away.
+Zephyr is copied to the volume the first time and when its version
+changes, and `docker volume rm socpuppet-twister` throws the copy away.
+The SDK and the venv are Linux's own, in build/firmware/linux-x86_64,
+which tools/devcontainer.py makes a Docker volume already.
 """
 
 import importlib.util
@@ -118,18 +120,18 @@ class Twister:
         self.project_venv = Path(
             os.environ.get("UV_PROJECT_ENVIRONMENT", REPOSITORY / ".venv")
         )
-        # In the container, Zephyr, the SDK, the venv and twister's build
-        # directories are on the volume, and its verdicts come back.
+        # In the container, Zephyr and twister's build directories are on
+        # twister's volume, and its verdicts come back; out of it they are
+        # in build/firmware and build/twister.
         self.home = os.environ.get("SOCPUPPET_TWISTER_HOME")
-        # Out of it, build/firmware has Zephyr, and the directory of this
-        # machine's tools the SDK and the venv.
+        # The SDK and the venv are always in this machine's folder, which
+        # in the container is a Docker volume of its own.
         self.machine = (
             FIRMWARE / load(REPOSITORY / "firmware" / "build.py").sdk_host()
         )
         self.zephyr = Path(self.home or FIRMWARE) / "zephyr"
-        tools = Path(self.home) if self.home else self.machine
-        self.sdk = tools / self.sdk_name
-        self.venv = tools / "venv"
+        self.sdk = self.machine / self.sdk_name
+        self.venv = self.machine / "venv"
         self.out = Path(self.home) / "out" if self.home else OUT
         self.runs: list[str] = []
 
@@ -141,8 +143,7 @@ class Twister:
         self.check_socpuppet()
         if self.home:
             self.fill_the_volume()
-        else:
-            self.install_what_twister_imports(self.venv)
+        self.install_what_twister_imports()
         self.set_up()
         status = 0
         if arguments[:1] == ["--suites"]:
@@ -157,8 +158,8 @@ class Twister:
         """Stop if what firmware/build.py fetches and builds is not there."""
         for each in (
             FIRMWARE / "zephyr",
-            self.machine / "venv" / "bin" / "python",
-            self.machine / self.sdk_name,
+            self.venv / "bin" / "python",
+            self.sdk,
             FIRMWARE / "rom_rv32.elf",
             FIRMWARE / "rom_rv64.elf",
         ):
@@ -217,10 +218,10 @@ class Twister:
         command("uv", "run", "cmake", "--build", "--preset", "linux")
 
     def fill_the_volume(self) -> None:
-        """Copy Zephyr and the SDK to the volume, once for each version.
+        """Copy Zephyr to the volume, once for each version.
 
-        A stamp of the two versions says whether the volume's copy is the
-        one build/firmware has.
+        A stamp of its version says whether the volume's copy is the one
+        build/firmware has.
         """
         assert self.home
         home = Path(self.home)
@@ -236,13 +237,13 @@ class Twister:
             capture_output=True,
             text=True,
         ).stdout.strip()
-        stamp = f"{described or 'unknown'} {self.sdk_name}"
+        stamp = described or "unknown"
         if (
             not (home / "stamp").exists()
             or (home / "stamp").read_text().strip() != stamp
         ):
-            say("Copying Zephyr and the SDK to the volume, once a version")
-            for each in ("zephyr", self.sdk_name, "venv", ".west"):
+            say("Copying Zephyr to the volume, once a version")
+            for each in ("zephyr", ".west"):
                 shutil.rmtree(home / each, ignore_errors=True)
             shutil.copytree(
                 FIRMWARE / "zephyr",
@@ -250,14 +251,9 @@ class Twister:
                 symlinks=True,
                 ignore=shutil.ignore_patterns(".git"),
             )
-            shutil.copytree(
-                self.machine / self.sdk_name,
-                home / self.sdk_name,
-                symlinks=True,
-            )
             initialized = subprocess.run(
                 [
-                    str(self.machine / "venv" / "bin" / "west"),
+                    str(self.venv / "bin" / "west"),
                     *("init", "--local", "zephyr"),
                 ],
                 cwd=home,
@@ -270,32 +266,17 @@ class Twister:
                     f"{initialized.stderr}"
                 )
             (home / "stamp").write_text(stamp + "\n")
-        if not runs(self.venv / "bin" / "python", "-c", TWISTER_IMPORTS):
-            say("Making the volume's venv")
-            shutil.rmtree(self.venv, ignore_errors=True)
-            command(
-                *("uv", "venv", "--quiet", "--python-preference"),
-                *("only-managed", str(self.venv)),
-                env={"UV_PYTHON_INSTALL_DIR": str(home / "python")},
-            )
-            command(
-                *("uv", "pip", "install", "--quiet"),
-                *("--python", str(self.venv / "bin" / "python")),
-                "--requirement",
-                str(self.zephyr / "scripts" / "requirements-base.txt"),
-                *("--requirement", str(REQUIREMENTS), "cmake", "ninja"),
-            )
 
-    def install_what_twister_imports(self, venv: Path) -> None:
+    def install_what_twister_imports(self) -> None:
         """Install what twister imports, if the venv lacks it.
 
         firmware/build.py puts it in Zephyr's venv from the start, so this
         is for a venv made before it did.
         """
-        if not runs(venv / "bin" / "python", "-c", TWISTER_IMPORTS):
+        if not runs(self.venv / "bin" / "python", "-c", TWISTER_IMPORTS):
             command(
                 *("uv", "pip", "install", "--quiet"),
-                *("--python", str(venv / "bin" / "python")),
+                *("--python", str(self.venv / "bin" / "python")),
                 *("--requirement", str(REQUIREMENTS)),
             )
 

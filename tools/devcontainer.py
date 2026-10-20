@@ -131,8 +131,8 @@ def docker_options() -> list[str]:
         options += [
             *("--volume", "socpuppet-qbox:/workspace/build/qbox"),
             *("--volume", "socpuppet-qbox-dev:/workspace/build/qbox-dev"),
-            # And twister's Zephyr, SDK, venv and builds, for the same
-            # reason (firmware/twister.py).
+            # And twister's Zephyr and builds, for the same reason
+            # (firmware/twister.py).
             *("--volume", "socpuppet-twister:/twister"),
             # And Linux's own firmware tools, its SDK, LLVM and venv and
             # the kernel's tree, where firmware/build.py keeps a machine's,
