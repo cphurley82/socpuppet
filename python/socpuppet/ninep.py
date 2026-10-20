@@ -10,6 +10,7 @@ whose numbers are little-endian and whose strings are `length[2] bytes`.
 A **fid** is the client's name for a place in the tree it has walked to:
 `Tattach` gives the first one, the root, `Twalk` makes another from it a
 name at a time, `Tlopen` opens what one names, and `Tclunk` lets it go.
+A fid in use is not given out again until then, nor opened twice.
 A **qid** is the server's name for a file, `type[1] version[4] path[8]`:
 whether it is a directory, a link or a file, a version that changes when
 it does, and a number that is its inode's.
@@ -126,6 +127,11 @@ class Fid:
     #: An open directory's entries, as the client reads them: (qid, type,
     #: name).
     entries: list[tuple[bytes, int, bytes]] | None = None
+
+    @property
+    def is_open(self) -> bool:
+        """Whether Tlopen or Tlcreate has opened what the fid names."""
+        return self.file is not None or self.entries is not None
 
 
 class _Reader:
@@ -244,6 +250,19 @@ class Directory:
             raise _Refused("EACCES")
         return fid
 
+    def _unopened(self, number: int) -> Fid:
+        """What fid `number` names, which must not be open already."""
+        fid = self._fid(number)
+        if fid.is_open:
+            raise _Refused("EINVAL")
+        return fid
+
+    def _unused(self, number: int) -> int:
+        """`number`, which must not be a fid in use already."""
+        if number in self._fids:
+            raise _Refused("EINVAL")
+        return number
+
     def _inside(self, path: Path) -> bool:
         """Whether `path` is in the share, its last name not followed."""
         if path == self.root:
@@ -300,7 +319,7 @@ class Directory:
         return _number(self._message_size, 4) + _string(agreed)
 
     def _attach(self, body: _Reader) -> bytes:
-        fid = body.number(4)
+        fid = self._unused(body.number(4))
         self._fids[fid] = Fid(self.root)
         return self._qid(self.root)
 
@@ -312,7 +331,12 @@ class Directory:
         fid = body.number(4)
         new_fid = body.number(4)
         names = [body.string() for _ in range(body.number(2))]
-        path = self._fid(fid).path
+        start = self._fid(fid)
+        if new_fid == fid:
+            self._unopened(fid)
+        else:
+            self._unused(new_fid)
+        path = start.path
         qids: list[bytes] = []
         for name in names:
             child = self._child(path, name, changing=False)
@@ -327,7 +351,7 @@ class Directory:
         return _number(len(qids), 2) + b"".join(qids)
 
     def _lopen(self, body: _Reader) -> bytes:
-        fid = self._fid(body.number(4))
+        fid = self._unopened(body.number(4))
         flags = body.number(4)
         if fid.path.is_symlink():
             raise _Refused("ELOOP")
@@ -338,7 +362,7 @@ class Directory:
         return self._qid(fid.path) + _number(0, 4)
 
     def _lcreate(self, body: _Reader) -> bytes:
-        fid = self._fid(body.number(4))
+        fid = self._unopened(body.number(4))
         name = body.string()
         flags = body.number(4)
         mode = body.number(4)
