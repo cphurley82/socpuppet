@@ -849,8 +849,10 @@ class Build:
         the refusal is turned off, as it is for OpenSBI.
         """
         self.llvm()
-        source = self.machine / "linux"
         version = self.versions["linux"]
+        # Named for its version, as the tarball's own folder is, so that a
+        # pin changed is fetched afresh.
+        source = self.machine / f"linux-{version}"
         if not source.is_dir():
             say(f"Fetching Linux {version}")
             with self.staging(source) as name:
@@ -861,7 +863,7 @@ class Build:
                     staging,
                     sha256=self.pins["linux"]["sha256"],
                 )
-                (staging / f"linux-{version}").rename(source)
+                (staging / source.name).rename(source)
         say("Building Linux for the host")
         built = self.machine / "build_linux"
         built.mkdir(exist_ok=True)
