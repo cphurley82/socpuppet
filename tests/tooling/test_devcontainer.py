@@ -15,7 +15,7 @@ import pty
 import shutil
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -381,3 +381,66 @@ def test_from_a_script_the_container_is_given_no_terminal(devcontainer):
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     assert "--tty" not in run
+
+
+def test_vs_codes_devcontainer_has_the_repository_at_workspace_as_the_script():
+    vs_code = jsonc(REPO / ".devcontainer" / "devcontainer.json")
+
+    assert fields(vs_code["workspaceMount"])["target"] == "/workspace"
+    assert vs_code["workspaceFolder"] == "/workspace"
+
+
+@pytest.mark.parametrize("processor", ["arm64", "x86_64"])
+def test_vs_codes_devcontainer_mounts_each_volume_the_script_mounts_on_a_mac_of_either_processor(
+    devcontainer, processor
+):
+    # 🎓 VS Code reads .devcontainer/devcontainer.json and not the script,
+    # and a JSON file cannot ask which processor it is on: the container's
+    # firmware folder is mounted for both. Twister's own folder is only for
+    # firmware/twister.py run through the script, which says to use it.
+    result, calls = devcontainer("true", as_on=("Darwin", processor))
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    vs_code = jsonc(REPO / ".devcontainer" / "devcontainer.json")
+
+    mounts = [fields(each) for each in vs_code["mounts"]]
+    for volume in values(run, "--volume"):
+        source, target = volume.split(":")
+        if source != str(devcontainer.root) and target != TWISTER_HOME:
+            assert any(
+                mount["source"] == source
+                and mount["target"] == target
+                and mount["type"] == "volume"
+                for mount in mounts
+            )
+
+
+def test_vs_codes_devcontainer_makes_each_mount_point_in_the_repository_first(
+    tmp_path,
+):
+    # 💡 Docker makes a folder it is to mount that is not there, and on
+    # Linux makes it root's. VS Code runs initializeCommand on the host,
+    # as the caller, in the repository, before it makes the container.
+    vs_code = jsonc(REPO / ".devcontainer" / "devcontainer.json")
+
+    subprocess.run(
+        vs_code["initializeCommand"], shell=True, cwd=tmp_path, check=True
+    )
+
+    for mount in vs_code["mounts"]:
+        target = PurePosixPath(fields(mount)["target"])
+        if target.is_relative_to("/workspace"):
+            assert (tmp_path / target.relative_to("/workspace")).is_dir()
+
+
+def jsonc(path):
+    """A JSON file that may have // comments on lines of their own."""
+    lines = path.read_text().splitlines()
+    return json.loads(
+        "\n".join(line for line in lines if not line.strip().startswith("//"))
+    )
+
+
+def fields(mount):
+    """A mount's `key=value,...` string as a dict."""
+    return dict(field.split("=", 1) for field in mount.split(","))
