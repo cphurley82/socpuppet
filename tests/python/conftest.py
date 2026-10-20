@@ -83,19 +83,32 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(items):
-    """Put the long tests first, and the rest in the order they were in.
+    """Skip what QBox's CPU does or does not run, then put the long first.
 
     pytest-xdist hands the tests out to its workers in this order. Started
     last, a long test would keep the whole run waiting while every other
-    worker sat idle.
+    worker sat idle. The rest stay in the order they were in.
     """
+    _skip_for_the_cpu(items)
     items.sort(key=lambda item: item.get_closest_marker("long") is None)
 
 
-def pytest_runtest_setup(item):
-    fate = item.get_closest_marker("not_on_qbox")
-    if fate is not None and os.environ.get("SOCPUPPET_CPU") == "qbox_cpu":
-        pytest.skip(f"on QBox: {fate.args[0]}")
-    only = item.get_closest_marker("only_on_qbox")
-    if only is not None and os.environ.get("SOCPUPPET_CPU") != "qbox_cpu":
-        pytest.skip(f"not on QBox: {only.args[0]}")
+def _skip_for_the_cpu(items):
+    """Mark to skip the tests that SOCPUPPET_CPU's CPU does not run.
+
+    💡 A skip marker, not pytest.skip() at setup: socpuppet.pytest_plugin
+    runs a `platform` test that has one in pytest's own process, so none
+    is started only to skip there.
+    """
+    on_qbox = os.environ.get("SOCPUPPET_CPU") == "qbox_cpu"
+    for item in items:
+        not_on = item.get_closest_marker("not_on_qbox")
+        if not_on is not None and on_qbox:
+            item.add_marker(
+                pytest.mark.skip(reason=f"on QBox: {not_on.args[0]}")
+            )
+        only_on = item.get_closest_marker("only_on_qbox")
+        if only_on is not None and not on_qbox:
+            item.add_marker(
+                pytest.mark.skip(reason=f"not on QBox: {only_on.args[0]}")
+            )
