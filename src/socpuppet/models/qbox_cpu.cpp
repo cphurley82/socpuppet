@@ -110,14 +110,6 @@ void Configure(const std::string& path, std::uint64_t reset_vector) {
   // from that thread, then waits for ever (docs/upstream.md).
 }
 
-// How many delta cycles a board takes to raise the CPU's reset at power-on,
-// if it does: the host's link writes its hold in the first, the system
-// controller sees it and drives `reset` in the second, and the CPU's input
-// reads high in the third. ⚠️ A board with one more stage between the
-// reset's source and the CPU would read low here, and be held and listened
-// for a delta cycle too soon.
-constexpr int kDeltaCyclesForABoardToRaiseReset = 2;
-
 }  // namespace
 
 // QBox's CPU, `cpu_riscv64`, the QEMU it runs in, and what it takes to fit
@@ -343,14 +335,19 @@ void QboxCpu::HoldForTheDebugger() {
   held_ = true;
 }
 
-// After the board's own first steps, which may have raised the CPU's reset:
-// with the reset low, the CPU is held at its first instruction. With it
-// high, OnReset() sees to it at the release.
+// Once the board has done all it does before any time passes, which may
+// have raised the CPU's reset through any number of stages: with the reset
+// low, the CPU is held at its first instruction. With it high, OnReset()
+// sees to it at the release. 🎓 A reset raised at power-on rises before any
+// time passes, so the wait is for its rise or for the smallest step of
+// time, whichever comes first. The CPU has been halted since the first
+// delta cycle, so the step costs it nothing, and the board is found one
+// step on. ⚠️ The rise ends the wait so that this is done before OnReset()
+// can hold the clock at a release, which would keep the step from coming;
+// and a CPU the debugger has let go by then is not held again.
 void QboxCpu::HoldOnceTheBoardHasSettled() {
-  for (int cycle = 0; cycle < kDeltaCyclesForABoardToRaiseReset; ++cycle) {
-    wait(sc_core::SC_ZERO_TIME);
-  }
-  if (!reset.read()) HeldAtItsFirstInstruction();
+  wait(sc_core::sc_get_time_resolution(), reset.posedge_event());
+  if (!reset.read() && held_) HeldAtItsFirstInstruction();
 }
 
 // The CPU is held where its firmware starts, with its reset released: time
