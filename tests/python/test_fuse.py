@@ -634,6 +634,15 @@ class TestWhenTheClientChangesAFilesModeAndTimes:
         assert error == 0
         assert (tmp_path / "spam.txt").stat().st_mtime_ns == -1_500_000_000
 
+    def test_nanoseconds_of_a_second_or_more_are_einval(self, served):
+        # 🎓 As Linux's own utimensat answers them.
+        node = look_up(served, "spam.txt")
+        too_many = setattr_in(fuse.FATTR_MTIME, mtime=(0, 1_000_000_000))
+
+        error, _ = ask(served, fuse.SETATTR, too_many, node=node)
+
+        assert error == EINVAL
+
 
 class TestWhenAnErrorHasNoLinuxNumberInTheTable:
     def test_it_is_answered_as_eio(self):
