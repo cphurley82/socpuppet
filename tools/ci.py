@@ -1,16 +1,21 @@
-"""Run CI's jobs: every one that can run on this machine, or one in CI.
+"""Run CI's jobs: those that can run on this machine, or one in CI.
+
+CI's jobs are in two tiers: the quick tier, on every push and pull request
+(ci.yml), and the nightly tier (nightly.yml), which runs everything on
+every machine.
 
 Usage:
-  uv run python tools/ci.py [-j N] [JOB ...]    every job that can run here,
-                                                or the jobs named
+  uv run python tools/ci.py [-j N] [JOB ...]    the nightly tier's jobs that
+                                                can run here, or those named
+  uv run python tools/ci.py --quick [-j N]      the quick tier's, as a push
   uv run python tools/ci.py --list              the jobs, and how to run each
   uv run python tools/ci.py run JOB [JOB ...]   in CI
 
-Here, up to three jobs run at a time, quick ones first, and each step's
+Here, up to three jobs run at a time, short ones first, and each step's
 output is kept in build/ci/. A job named without the jobs it needs takes
 what they make as made already.
 
-`run` is what each job of .github/workflows/ci.yml calls: it runs the steps
+`run` is what each job of both workflows calls: it runs the steps
 of the jobs named, in order, with their output in CI's log, and stops at the
 first that fails.
 """
@@ -53,6 +58,18 @@ class Mode(enum.Enum):
 
     HERE = enum.auto()
     CI = enum.auto()
+
+
+class Tier(enum.Enum):
+    """A tier of CI's jobs, by the workflow that runs it.
+
+    The quick tier runs on every push and pull request, and leaves out what
+    takes longest. The nightly tier is every job but test-quick, on every
+    machine, and is what a run here runs unless asked otherwise.
+    """
+
+    QUICK = "ci.yml"
+    NIGHTLY = "nightly.yml"
 
 
 class NoMatch(Exception):
@@ -109,6 +126,8 @@ class Job:
     blurb: str
     # Its steps, or what makes them for where it runs.
     steps: tuple[Step, ...] | Callable[[Mode], tuple[Step, ...]]
+    # The tiers it is in: the quick, the nightly, or both.
+    tiers: tuple[Tier, ...]
     # The jobs whose output this one reads, which come before it in JOBS.
     needs: tuple[str, ...] = ()
     # What it builds in, or writes to, that no other job may use while it
@@ -282,28 +301,32 @@ FIRMWARE = (
 )
 
 
-# Quick first: when two jobs could start, the one higher in the table does.
+# Short first: when two jobs could start, the one higher in the table does.
 JOBS = [
     Job(
         "lint",
         "formatting and static checks on every file",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(Step("lint", ("uv", "run", "python", "tools/lint.py")),),
     ),
     Job(
         "fetch-sdk",
         "fetch the Zephyr SDK's RISC-V toolchain",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(Step("fetch", ("uv", "run", "firmware/build.py", "sdk")),),
         areas=("firmware",),
     ),
     Job(
         "fetch-llvm",
         "fetch the Zephyr SDK's LLVM, which builds OpenSBI and EDK2",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(Step("fetch", ("uv", "run", "firmware/build.py", "llvm")),),
         areas=("firmware",),
     ),
     Job(
         "fetch-zephyr",
         "fetch Zephyr, and make a venv for its build scripts and twister",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(
             Step("fetch", ("uv", "run", "firmware/build.py", "zephyr-tree")),
         ),
@@ -312,6 +335,7 @@ JOBS = [
     Job(
         "firmware-rom",
         "build the boot ROMs, and the payload of ours for OpenSBI",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         needs=("fetch-sdk",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "rom")),),
         areas=("firmware",),
@@ -319,6 +343,7 @@ JOBS = [
     Job(
         "firmware-opensbi",
         "build OpenSBI for the host",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "opensbi")),),
         areas=("firmware",),
@@ -326,6 +351,7 @@ JOBS = [
     Job(
         "firmware-zephyr",
         "build Zephyr's images for the boards",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         needs=("fetch-sdk", "fetch-zephyr"),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "zephyr")),),
         areas=("firmware",),
@@ -333,6 +359,7 @@ JOBS = [
     Job(
         "firmware-edk2",
         "build EDK2, UEFI, for the host",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "edk2")),),
         areas=("firmware", "edk2"),
@@ -340,6 +367,7 @@ JOBS = [
     Job(
         "firmware-linux",
         "build Linux, a stock kernel, for the host",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         needs=("fetch-llvm",),
         steps=(Step("build", ("uv", "run", "firmware/build.py", "linux")),),
         areas=("firmware", "linux"),
@@ -347,6 +375,7 @@ JOBS = [
     Job(
         "test",
         "build the dev tree and run every test",
+        tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
         uses=("build/dev", "extension"),
         steps=(
@@ -362,6 +391,7 @@ JOBS = [
     Job(
         "test-quick",
         "build the dev tree and run every test but the long ones",
+        tiers=(Tier.QUICK,),
         needs=FIRMWARE,
         uses=("build/dev", "extension"),
         steps=(
@@ -378,6 +408,7 @@ JOBS = [
     Job(
         "on-demand",
         "build the dev tree and run the tests too long for every run",
+        tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
         uses=("build/dev", "extension"),
         steps=(
@@ -395,6 +426,7 @@ JOBS = [
     Job(
         "tidy",
         "clang-tidy over our C++, and each header compiled on its own",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=tidy_steps("dev"),
         uses=("build/dev",),
         # clang-tidy reads the compile commands of this machine's compiler,
@@ -406,6 +438,7 @@ JOBS = [
     Job(
         "twister",
         "Zephyr's test suites, and ours, on every board, run by twister",
+        tiers=(Tier.NIGHTLY,),
         # Twister builds its own images, with Zephyr and the SDK, and each
         # boots from the ROM.
         needs=("fetch-sdk", "fetch-zephyr", "firmware-rom"),
@@ -430,6 +463,7 @@ JOBS = [
     Job(
         "coverage",
         "which lines of our C++ and Python the tests run, against a floor",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(
             Step("configure", ("uv", "run", "cmake", "--preset", "coverage")),
             Step(
@@ -447,6 +481,7 @@ JOBS = [
     Job(
         "sanitizers",
         "the C++ tests, built to stop at a memory error or undefined behavior",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(
             Step("configure", ("uv", "run", "cmake", "--preset", "asan")),
             Step(
@@ -461,6 +496,7 @@ JOBS = [
     Job(
         "qbox-build",
         "build QBox, QEMU in SystemC, for the second hart",
+        tiers=(Tier.NIGHTLY,),
         steps=(Step("build", ("uv", "run", "tools/build_qbox.py")),),
         uses=("build/qbox",),
         areas=("build", "qbox", "network"),
@@ -468,6 +504,7 @@ JOBS = [
     Job(
         "qbox-tidy",
         "clang-tidy over the QBox adapter, which the dev tree leaves out",
+        tiers=(Tier.NIGHTLY,),
         needs=("qbox-build",),
         steps=tidy_steps("qbox"),
         uses=("build/qbox-dev",),
@@ -476,6 +513,7 @@ JOBS = [
     Job(
         "qbox",
         "build and test with QBox's CPU as the second hart, then twister on it",
+        tiers=(Tier.NIGHTLY,),
         needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
         steps=qbox_steps(),
         uses=("build/qbox-dev", "extension", "build/twister"),
@@ -484,6 +522,7 @@ JOBS = [
     Job(
         "wheel",
         "build the wheels a user installs, and test one installed two ways",
+        tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
         steps=wheel_steps,
         fresh=(WHEELHOUSE,),
@@ -496,6 +535,7 @@ JOBS = [
     Job(
         "devcontainer",
         "build and test in the devcontainer's image, as Linux with GCC",
+        tiers=(Tier.NIGHTLY,),
         # In build/linux, so that the host's own build/dev is left alone.
         steps=tuple(
             Step(label, ("tools/devcontainer.py", "uv", "run", *argv))
@@ -530,7 +570,8 @@ def main() -> int:
     if args.list:
         list_jobs(args.docker)
         return 0
-    return run_here(args.jobs, args.parallel, args.docker, args.clean)
+    tier = Tier.QUICK if args.quick else Tier.NIGHTLY
+    return run_here(args.jobs, tier, args.parallel, args.docker, args.clean)
 
 
 def parse_here(arguments: list[str]) -> argparse.Namespace:
@@ -545,8 +586,16 @@ def parse_here(arguments: list[str]) -> argparse.Namespace:
         nargs="*",
         choices=list(JOBS_BY_NAME),
         metavar="job",
-        help="run only these (default: every one that can run here): "
+        help="run only these (default: every job of the nightly tier that "
+        "can run here): "
         "%(choices)s",
+    )
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="run the quick tier's jobs, which CI runs on every push "
+        f"({Tier.QUICK.value}), and not the nightly tier's "
+        f"({Tier.NIGHTLY.value})",
     )
     parser.add_argument(
         "--docker",
@@ -572,7 +621,15 @@ def parse_here(arguments: list[str]) -> argparse.Namespace:
         metavar="N",
         help="run up to N jobs at once (default: %(default)s)",
     )
-    return parser.parse_args(arguments)
+    args = parser.parse_args(arguments)
+    if args.quick and args.jobs:
+        parser.error(
+            "--quick runs the quick tier's jobs, not jobs named ("
+            + " ".join(args.jobs)
+            + "): leave out --quick to run those, or the names to run the "
+            "quick tier"
+        )
+    return args
 
 
 def at_least_one(text: str) -> int:
@@ -609,6 +666,8 @@ def list_jobs(docker: bool) -> None:
     settled = settle(JOBS, docker)
     for job in JOBS:
         print(f"{job.name:<{NAME_WIDTH}}  {job.blurb}")
+        workflows = " and ".join(t.value for t in Tier if t in job.tiers)
+        print(f"{indent}runs in {workflows}")
         if job.needs:
             print(f"{indent}needs {', '.join(job.needs)}")
         outcome = settled.get(job.name)
@@ -706,14 +765,21 @@ class JobEnded:
     outcome: Outcome
 
 
-def run_here(names: list[str], parallel: int, docker: bool, clean: bool) -> int:
-    """Run the jobs named, or every one, here. Returns the exit status.
+def run_here(
+    names: list[str], tier: Tier, parallel: int, docker: bool, clean: bool
+) -> int:
+    """Run the jobs named, or every job of a tier, here.
 
-    `docker` says whether the jobs in Docker were asked for, and `clean`
-    whether to drop the patched dependencies whatever the patches are.
+    Returns the exit status. `docker` says whether the jobs in Docker were
+    asked for, and `clean` whether to drop the patched dependencies
+    whatever the patches are.
     """
     started = time.monotonic()
-    jobs = [job for job in JOBS if not names or job.name in names]
+    jobs = (
+        [job for job in JOBS if job.name in names]
+        if names
+        else [job for job in JOBS if tier in job.tiers]
+    )
     LOGS.mkdir(parents=True, exist_ok=True)
     drop_stale_dependencies(clean)
     # A job in Docker that was named was asked for.

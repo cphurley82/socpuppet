@@ -138,6 +138,7 @@ AREAS = {area.name: area for area in load(REPO / "tools" / "doctor.py").AREAS}
 JOBS_HERE = [job for job in JOBS if not job.docker]
 DOCKER_JOBS = [job.name for job in JOBS if job.docker]
 DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
+TIER = RUNNER_MODULE.Tier
 
 
 @pytest.fixture
@@ -386,13 +387,45 @@ def test_the_command_to_run_a_job_here_names_what_it_needs_before_it(ci, job):
         assert named.index(need) < named.index(job.name)
 
 
-def test_with_no_job_named_every_job_that_can_run_here_runs_and_passes(ci):
+def test_with_no_job_named_every_nightly_job_that_can_run_here_runs_and_no_other(
+    ci,
+):
     result, _ = ci(makes=ONE_WHEEL)
 
     assert result.returncode == 0, result.stdout
     assert verdicts(result.stdout) == {
-        job.name: "✅" if job in JOBS_HERE else "⏭" for job in JOBS
+        job.name: "✅" if job in JOBS_HERE else "⏭"
+        for job in JOBS
+        if TIER.NIGHTLY in job.tiers
     }
+
+
+def test_quick_runs_every_job_of_the_quick_tier_that_can_run_here_and_no_other(
+    ci,
+):
+    result, _ = ci("--quick")
+
+    assert result.returncode == 0, result.stdout
+    assert verdicts(result.stdout) == {
+        job.name: "✅" if job in JOBS_HERE else "⏭"
+        for job in JOBS
+        if TIER.QUICK in job.tiers
+    }
+
+
+def test_quick_with_a_job_named_is_refused_and_runs_nothing(ci):
+    result, lines = ci("--quick", "lint")
+
+    assert result.returncode == 2
+    assert "--quick" in error_line(result.stdout)
+    assert "lint" in error_line(result.stdout)
+    assert lines == []
+
+
+@pytest.mark.parametrize("job", JOBS, ids=lambda job: job.name)
+def test_a_job_needs_only_jobs_that_are_in_every_tier_it_is_in(job):
+    for need in job.needs:
+        assert set(job.tiers) <= set(JOBS_BY_NAME[need].tiers)
 
 
 def test_a_failed_step_shows_where_its_output_is_and_how_it_ends(ci):
@@ -791,6 +824,17 @@ def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
     for name in DOCKER_JOBS:
         assert "⏭" in entries[name]
         assert "--docker" in entries[name]
+
+
+def test_the_list_says_which_workflows_run_each_job(ci):
+    result, _ = ci("--list")
+
+    entries = listed(result.stdout)
+    for job in JOBS:
+        for tier in TIER:
+            assert (tier.value in entries[job.name]) == (tier in job.tiers), (
+                job.name
+            )
 
 
 def test_the_list_says_which_jobs_this_machine_is_missing_something_for(ci):
@@ -1317,6 +1361,11 @@ def listed(output):
             entries[name] = ""
         entries[name] += line + "\n"
     return entries
+
+
+def error_line(output):
+    """The line where argparse says what it refused."""
+    return next(line for line in output.splitlines() if "error:" in line)
 
 
 def needs_line(entry):
