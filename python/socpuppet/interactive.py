@@ -27,6 +27,9 @@ from socpuppet.placed import PlacedFarEnd
 from socpuppet.platform import Platform
 from socpuppet.time import s
 
+#: The key that leaves: Ctrl-], as telnet and `virsh console` have it.
+#: 💡 Not QEMU's Ctrl-A, which a shell's line editing takes for Home.
+LEAVE = b"\x1d"
 #: Seconds on the wall between two looks at the terminal while the CPU
 #: works: often enough that a key seems to land at once.
 LOOK_EVERY = 0.01
@@ -46,7 +49,8 @@ def interact(
     What each console in `screen` prints is written to standard output as
     it comes, and what comes in on standard input is typed at `keyboard`.
     A terminal hands over each key as it is pressed, as a serial line
-    does, and is put back as it was at the end.
+    does, and is put back as it was at the end. Ctrl-] (`LEAVE`) ends
+    the run.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
@@ -88,15 +92,17 @@ def _run(
                 platform.step()
             elif waited:
                 platform.run(waited)
-            if typed:
-                keyboard.write(typed)
         else:
+            typed = b""
             if time.monotonic() >= look_again:
                 _show(screen, shown)
-                if typed := _keys(0):
-                    keyboard.write(typed)
+                typed = _keys(0)
                 look_again = time.monotonic() + LOOK_EVERY
             platform.step()
+        if LEAVE in typed:
+            return
+        if typed:
+            keyboard.write(typed)
 
 
 def _show(screen: Sequence[PlacedFarEnd], shown: list[int]) -> None:

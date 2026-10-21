@@ -11,6 +11,7 @@ import os
 import select
 import subprocess
 import sys
+import termios
 import time
 
 import pytest
@@ -49,6 +50,17 @@ class TestWhenSomeoneTypesAtTheTerminal:
         terminal.wait_for(b"kernel")
 
 
+class TestWhenSomeonePressesCtrlRightBracket:
+    def test_interact_returns_and_the_terminal_is_as_it_was(self, terminal):
+        # 🎓 Ctrl-] is the key telnet and `virsh console` leave by.
+        terminal.wait_for(SHELL_PROMPT.encode())
+
+        terminal.type(b"\x1d")
+
+        assert terminal.exit_status() == 0
+        assert terminal.settings() == terminal.settings_at_the_start
+
+
 #: What the process runs: the host with Zephyr's shell, and `interact` at
 #: its UART.
 INTERACTING = """
@@ -78,6 +90,7 @@ class Terminal:
         # after it.
         self.seen = 0
         self.controller, self.device = os.openpty()
+        self.settings_at_the_start = self.settings()
         self.process = subprocess.Popen(
             [sys.executable, "-c", INTERACTING, str(image)],
             stdin=self.device,
@@ -85,6 +98,20 @@ class Terminal:
             stderr=subprocess.PIPE,
             env=environment(),
         )
+
+    def settings(self):
+        """The terminal's settings, as `termios` has them."""
+        return termios.tcgetattr(self.device)
+
+    def exit_status(self):
+        """How the process ended, once it has, within `PATIENCE`."""
+        try:
+            return self.process.wait(timeout=PATIENCE)
+        except subprocess.TimeoutExpired:
+            pytest.fail(
+                f"The process was still running {PATIENCE} s later. The "
+                f"terminal showed:\n{self.screen.decode(errors='replace')}"
+            )
 
     def type(self, keys):
         os.write(self.controller, keys)
