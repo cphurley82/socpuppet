@@ -212,6 +212,15 @@ class Platform:
         """
         return self.native().step()
 
+    @property
+    def time_to_next_activity(self) -> int | None:
+        """How long until anything next happens, or None if nothing will.
+
+        Asking lets everything that happens at this moment happen first,
+        so the answer is from the moment settled.
+        """
+        return self.native().picoseconds_to_next_activity()
+
     def run_until(
         self, condition: Callable[[], bool], timeout: int | None = None
     ) -> bool:
@@ -228,7 +237,7 @@ class Platform:
             # Asking what comes next lets everything that happens at this
             # moment happen first, so the condition is looked at with the
             # moment settled, and before the clock leaves it.
-            ahead = native.picoseconds_to_next_activity()
+            ahead = self.time_to_next_activity
             if condition():
                 return True
             if ahead is None:

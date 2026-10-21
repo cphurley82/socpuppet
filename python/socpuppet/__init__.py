@@ -57,7 +57,7 @@ from socpuppet.ops import (
 from socpuppet.pcie_host import PcieFunction, PcieHost
 from socpuppet.platform import Platform
 from socpuppet.ssd_firmware import SsdFirmware
-from socpuppet.time import ms, ns, us
+from socpuppet.time import ms, ns, s, us
 from socpuppet.trace import TraceRecord
 from socpuppet.trace import render as render_trace
 from socpuppet.transcript import Transcript
@@ -136,6 +136,7 @@ __all__ = [
     "render_sideband",
     "render_trace",
     "render_transcript",
+    "s",
     "us",
     "wait",
     "wait_irq",

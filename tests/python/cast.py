@@ -52,6 +52,10 @@ __all__ = [
 HELLO_WORLD = "hello_world_socpuppet_host.elf"
 SYNCHRONIZATION = "synchronization_socpuppet_host.elf"
 SHELL = "shell_module_socpuppet_host.elf"
+#: How the shell prompts, by the sample's configuration, and how its answer
+#: to `kernel version` starts.
+SHELL_PROMPT = "uart:~$ "
+SHELL_VERSION = "Zephyr version"
 #: What `hello_world` prints.
 GREETING = "Hello World! socpuppet_host"
 #: The boot ROM's program (firmware/rom), built for each kind of CPU.

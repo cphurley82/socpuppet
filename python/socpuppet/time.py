@@ -18,3 +18,8 @@ def us(count: int) -> int:
 def ms(count: int) -> int:
     """`count` milliseconds."""
     return count * 1_000_000_000
+
+
+def s(count: float) -> int:
+    """`count` seconds, to the nearest picosecond."""
+    return round(count * 1_000_000_000_000)
