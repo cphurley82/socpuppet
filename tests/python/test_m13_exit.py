@@ -22,14 +22,11 @@ import functools
 import pytest
 
 import socpuppet as sp
-from cast import SHELL, boot
+from cast import SHELL, SHELL_PROMPT, SHELL_VERSION, boot
 from link_trace import sent_to_the_compute_die
 from socpuppet.boards.host import IMSIC_BASE, UART_SOURCE, host
 from socpuppet.boards.manager import add_manager, scripted_manager
 
-PROMPT = "uart:~$ "
-#: How the shell's answer to `kernel version` starts.
-VERSION = "Zephyr version"
 #: Zephyr starts in a millisecond or two, and the shell answers a line in
 #: less. This leaves room and still ends a run that never answers.
 LONG_ENOUGH = sp.ms(200)
@@ -40,7 +37,7 @@ def a_host_running_the_shell(firmware, **described):
     board = host(**described)
     boot(board, firmware, host=SHELL)
     board.platform.run_until(
-        lambda: PROMPT in board.uart.output, timeout=LONG_ENOUGH
+        lambda: SHELL_PROMPT in board.uart.output, timeout=LONG_ENOUGH
     )
     return board
 
@@ -73,7 +70,7 @@ class TestWhenTheHostRunsZephyrsShell:
     def test_it_prompts(self, firmware):
         board = a_host_running_the_shell(firmware)
 
-        assert PROMPT in board.uart.output
+        assert SHELL_PROMPT in board.uart.output
 
 
 @pytest.mark.platform
@@ -81,9 +78,9 @@ class TestWhenPythonTypesACommandAtTheHostsShell:
     def test_the_shell_answers_it(self, firmware):
         board = a_host_running_the_shell(firmware)
 
-        type_and_wait_for(board, "kernel version\n", VERSION)
+        type_and_wait_for(board, "kernel version\n", SHELL_VERSION)
 
-        assert VERSION in board.uart.output
+        assert SHELL_VERSION in board.uart.output
 
     def test_the_shell_echoes_what_was_typed_as_a_terminal_expects(
         self, firmware
@@ -91,7 +88,7 @@ class TestWhenPythonTypesACommandAtTheHostsShell:
         board = a_host_running_the_shell(firmware)
         before = len(board.uart.output)
 
-        type_and_wait_for(board, "kernel version\n", VERSION)
+        type_and_wait_for(board, "kernel version\n", SHELL_VERSION)
 
         assert "kernel version" in board.uart.output[before:]
 
@@ -104,7 +101,7 @@ class TestWhenPythonTypesACommandAtTheHostsShell:
         board = a_host_running_the_shell(firmware, trace=True)
         before = len(console_interrupts(board))
 
-        type_and_wait_for(board, "kernel version\n", VERSION)
+        type_and_wait_for(board, "kernel version\n", SHELL_VERSION)
 
         assert len(console_interrupts(board)) > before
 
@@ -113,7 +110,7 @@ class TestWhenPythonTypesACommandAtTheHostsShell:
         # received byte and for room to transmit, in whatever order they
         # came.
         board = a_host_running_the_shell(firmware)
-        type_and_wait_for(board, "kernel version\n", VERSION)
+        type_and_wait_for(board, "kernel version\n", SHELL_VERSION)
         answered = len(board.uart.output)
 
         type_and_wait_for(board, "kernel uptime\n", "Uptime:")
@@ -131,7 +128,7 @@ class TestWhenPythonTypesTwoCommandsAtOnce:
             lambda: "Uptime:" in board.uart.output, timeout=LONG_ENOUGH
         )
 
-        assert VERSION in board.uart.output
+        assert SHELL_VERSION in board.uart.output
         assert "Uptime:" in board.uart.output
 
 
@@ -149,7 +146,7 @@ class TestWhenPythonTypesWhileTheShellIsStillPrinting:
         board.platform.run_until(
             lambda: "kernel" in board.uart.output[shown:], timeout=LONG_ENOUGH
         )
-        still_printing = VERSION not in board.uart.output
+        still_printing = SHELL_VERSION not in board.uart.output
 
         board.uart.write("kernel uptime\n")
         board.platform.run_until(
@@ -157,7 +154,7 @@ class TestWhenPythonTypesWhileTheShellIsStillPrinting:
         )
 
         assert still_printing
-        assert VERSION in board.uart.output
+        assert SHELL_VERSION in board.uart.output
         assert "Uptime:" in board.uart.output
 
 
@@ -178,7 +175,7 @@ class TestWhenTheHostsShellIsAcrossTheRealLink:
         )
         before = len(console_interrupts(board))
 
-        type_and_wait_for(board, "kernel version\n", VERSION)
+        type_and_wait_for(board, "kernel version\n", SHELL_VERSION)
 
-        assert VERSION in board.uart.output
+        assert SHELL_VERSION in board.uart.output
         assert len(console_interrupts(board)) > before
