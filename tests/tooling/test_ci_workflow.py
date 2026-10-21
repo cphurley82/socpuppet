@@ -136,7 +136,7 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
     # runners names its own in a key with matrix.os.
     for name, job in WORKFLOW.items():
         for key, ubuntus in ubuntus_in_cache_keys(job):
-            assert not ubuntus or sorted(ubuntus) == runners(job), (
+            assert not ubuntus or ubuntus == set(runners(job)), (
                 f"{name}: {key}"
             )
 
