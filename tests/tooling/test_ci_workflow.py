@@ -122,9 +122,7 @@ def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldes
         allowed = DEFAULT_UBUNTUS | (
             {OLDEST_UBUNTU} if name in ON_THE_OLDEST_UBUNTU_TOO else set()
         )
-        ubuntus = {
-            runner for runner in runners(job) if runner.startswith("ubuntu")
-        }
+        ubuntus = ubuntus_of(job)
         assert ubuntus & DEFAULT_UBUNTUS, name
         assert ubuntus <= allowed, name
 
