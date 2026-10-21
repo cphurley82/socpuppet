@@ -11,21 +11,15 @@ import re
 import fat_image
 import gpt_image
 import socpuppet as sp
-from cast import LINUX_BIN, ROOTFS_EXT4, UEFI_FD
+from cast import FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4, UEFI_FD
 from console import plain
-from opensbi_boots import a_host_with_opensbi, loaded_by_python
-from socpuppet.boards.virtio import Virtio
-
-#: A virtio disk's sector.
-SECTOR = 512
+from opensbi_boots import a_host_with_opensbi
+from socpuppet import linux
+from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: How a busybox shell that is logged in as root prompts on the host, by
 #: Alpine's /etc/profile: the host's name, the directory, and a hash.
 PROMPT = re.compile(r"socpuppet:\S+# $")
-#: What the kernel is told: its console is 🎭 the virtio console, its early
-#: messages go through OpenSBI's console until that is up, and its root
-#: filesystem is 🎭 the virtio disk, writable.
-BOOTARGS = "console=hvc0 earlycon=sbi root=/dev/vda rw"
 #: The same through UEFI, whose disk has the root in its second partition.
 #: 🎓 The kernel's EFI stub is given no command line by the boot manager,
 #: and then leaves the devicetree's `bootargs` as they are.
@@ -89,23 +83,17 @@ def type_and_wait_for_the_prompt(board, command):
 def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     """A host built with the kernel and its root filesystem in place.
 
-    🎭 The quick way: OpenSBI's `fw_jump`, the kernel and the devicetree
-    in RAM, and the root filesystem image on the virtio disk, a disk as
-    big as the image. `share` is a directory of this machine for Linux to
+    🎭 The quick way, as `socpuppet.linux` boots it, from the directory
+    the `firmware` fixture finds the images in, so that a missing one
+    skips the test. `share` is a directory of this machine for Linux to
     mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
     debugger.
     """
-    rootfs = firmware(ROOTFS_EXT4).read_bytes()
-    board, layout = a_host_with_opensbi(
-        firmware,
-        LINUX_BIN,
-        virtio=Virtio(blocks=len(rootfs) // SECTOR, share=share),
-        bootargs=BOOTARGS,
-        gdb_port=gdb_port,
+    for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
+        firmware(image)  # a missing image skips the test
+    return linux.host_with_linux(
+        firmware(LINUX_BIN).parent, share=share, gdb_port=gdb_port
     )
-    board.virtio.blk.load(rootfs)
-    loaded_by_python(board, layout, firmware)
-    return board
 
 
 def a_disk_as_a_servers(firmware):

@@ -13,11 +13,8 @@ from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import SYSCON_BASE
-from socpuppet.boards.host import RAM_BASE, RAM_SIZE, host
+from socpuppet.boards.host import MODEL, RAM_BASE, RAM_SIZE, host
 from socpuppet.regs import system_controller
-
-#: What the devicetree names the board, which OpenSBI's banner repeats.
-MODEL = "socpuppet host"
 
 
 def a_host_with_opensbi(

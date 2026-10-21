@@ -19,14 +19,13 @@ import socpuppet as sp
 from cast import SBI_PAYLOAD_BIN, TEST_PAYLOAD_BIN
 from devicetree_compiler import needs_dtc
 from opensbi_boots import (
-    MODEL,
     a_host_with_opensbi,
     in_the_flash,
     loaded_by_python,
     switched_off,
 )
 from socpuppet import opensbi
-from socpuppet.boards.host import RAM_BASE
+from socpuppet.boards.host import MODEL, RAM_BASE
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
 #: boot of OpenSBI takes seconds, so the tests are handed out first.

@@ -37,6 +37,8 @@ if TYPE_CHECKING:
     from socpuppet.placed import Port
     from socpuppet.platform import Platform
 
+#: The file `firmware/build.py opensbi` leaves `fw_jump` in, as its bytes.
+FW_JUMP_BIN = "fw_jump.bin"
 #: How wide the CPU is that `fw_jump` is built for (`firmware/build.py`).
 XLEN = 64
 #: Where `fw_jump` jumps, from the start of RAM: FW_JUMP_OFFSET in OpenSBI's
