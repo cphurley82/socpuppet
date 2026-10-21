@@ -9,6 +9,8 @@ the terminal as it comes, and what is typed there goes to the firmware.
     board.platform.load_elf("build/firmware/shell_module_socpuppet_host.elf")
     interact(board.platform, screen=[board.uart], keyboard=board.uart)
 
+Ctrl-] (`LEAVE`) gives the terminal back.
+
 💡 While the CPU works, the simulation runs as fast as it can. While it
 sleeps, waiting for a timer or a key, the simulated clock keeps to the
 wall's: a sleep of two seconds takes two, and an idle prompt costs the
