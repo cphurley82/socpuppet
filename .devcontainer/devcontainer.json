@@ -9,8 +9,11 @@
   // and on Linux makes it root's.
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
-  "initializeCommand": "mkdir -p build/qbox build/qbox-dev build/firmware/linux-aarch64 build/firmware/linux-x86_64",
+  "initializeCommand": "mkdir -p build/linux build/container/ubuntu-26.04/linux build/qbox build/qbox-dev build/firmware/linux-aarch64 build/firmware/linux-x86_64",
   "mounts": [
+    // The linux preset's tree, a folder of the host's as the script has it,
+    // so that tools/ci.py on the host looks after its dependencies.
+    "source=${localWorkspaceFolder}/build/container/ubuntu-26.04/linux,target=/workspace/build/linux,type=bind",
     "source=socpuppet-qbox-ubuntu-26.04,target=/workspace/build/qbox,type=volume",
     "source=socpuppet-qbox-dev-ubuntu-26.04,target=/workspace/build/qbox-dev,type=volume",
     // Linux's firmware tools, in build/firmware/linux-<processor>: this file

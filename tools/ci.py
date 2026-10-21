@@ -163,6 +163,11 @@ class Job:
         return self.steps if isinstance(self.steps, tuple) else self.steps(mode)
 
 
+# The Ubuntus the devcontainer jobs build in, in the devcontainer's image
+# (tools/devcontainer.py --ubuntu): the default, the Dockerfile's
+# ARG UBUNTU, and the oldest socpuppet supports.
+UBUNTUS = ("26.04", "24.04")
+
 # What configures the dev tree, and what builds it. A run here also
 # configures build/dev for dev again with it, after a job that configured
 # it with another preset.
@@ -889,6 +894,19 @@ def drop_stale_dependencies(clean: bool) -> None:
         REPO / "build" / "dev": patched,
         REPO / "build" / "qbox-dev": patched,
         REPO / "build" / "linux": patched,
+        # The linux preset's tree of each Ubuntu's container, which is
+        # build/linux in there (tools/devcontainer.py): those of the Ubuntus
+        # the devcontainer jobs build on, and any other there is.
+        **dict.fromkeys(
+            {
+                *(
+                    REPO / "build" / "container" / f"ubuntu-{version}" / "linux"
+                    for version in UBUNTUS
+                ),
+                *(REPO / "build" / "container").glob("ubuntu-*/linux"),
+            },
+            patched,
+        ),
         REPO / "build" / "qbox" / "build": {"rpclib"},
     }
     for tree, names in trees.items():

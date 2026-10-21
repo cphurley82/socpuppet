@@ -898,6 +898,22 @@ def test_a_tree_the_last_run_did_not_see_is_dropped_by_the_next_run_that_does(
     assert dropped(dependencies) == PATCHED
 
 
+def test_the_linux_tree_of_another_ubuntus_container_is_looked_after_too(ci):
+    tree = ci.root / "build" / "container" / "ubuntu-28.04" / "linux"
+    ci("lint")
+    (ci.root / "cmake" / "patches" / "eggs-fix.patch").write_text("two\n")
+    patched, unpatched = (
+        tree / "_deps" / f"{name}-src" for name in ("eggs", "spam")
+    )
+    for each in (patched, unpatched):
+        each.mkdir(parents=True)
+
+    ci("lint")
+
+    assert not patched.exists()
+    assert unpatched.exists()
+
+
 def test_clean_drops_the_patched_dependencies_though_the_patches_are_the_same(
     ci,
 ):
@@ -1201,7 +1217,16 @@ def write_fake(path, program=FAKE):
 # two (tools/build_qbox.py's tree).
 DEPENDENCY_DIRECTORIES = [
     f"{tree}/_deps/{name}-{part}"
-    for tree in ("build/dev", "build/qbox-dev")
+    for tree in (
+        "build/dev",
+        "build/qbox-dev",
+        # The linux preset's tree of each Ubuntu the devcontainer jobs build
+        # in (tools/devcontainer.py).
+        *(
+            f"build/container/ubuntu-{version}/linux"
+            for version in RUNNER_MODULE.UBUNTUS
+        ),
+    )
     for name in ("spam", "eggs", "ham_core")
     for part in ("src", "build", "subbuild")
 ] + [

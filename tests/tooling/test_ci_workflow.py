@@ -248,6 +248,12 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
     assert checked >= ON_THE_OLDEST_UBUNTU_TOO
 
 
+def test_the_runner_builds_in_the_devcontainers_image_on_the_default_ubuntu_and_the_oldest():
+    assert set(RUNNER.UBUNTUS) == {
+        name.removeprefix("ubuntu-") for name in (DEFAULT_UBUNTU, OLDEST_UBUNTU)
+    }
+
+
 def test_the_devcontainers_image_is_the_default_ubuntu():
     dockerfile = REPO / ".devcontainer" / "Dockerfile"
     version = DEFAULT_UBUNTU.removeprefix("ubuntu-")

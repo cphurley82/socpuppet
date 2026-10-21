@@ -45,6 +45,8 @@ TAG = f"socpuppet-dev:ubuntu-{DEFAULT_UBUNTU}-{DOCKERFILE_HASH}"
 OLDEST_TAG = f"socpuppet-dev:ubuntu-{OLDEST_UBUNTU}-{DOCKERFILE_HASH}"
 
 # A docker that logs each command, and has an image only if the test said so.
+# When it is to run a container, it also writes down which of the folders
+# its volumes mount, and of their mount points in the repository, are there.
 DOCKER = """
 import json, os, sys
 args = sys.argv[1:]
@@ -52,6 +54,16 @@ with open(os.environ["LOG"], "a") as log:
     log.write(json.dumps(args) + "\\n")
 if args[:2] == ["image", "inspect"]:
     sys.exit(0 if args[2] in os.environ.get("IMAGES", "").split() else 1)
+if args[:1] == ["run"]:
+    volumes = [args[i + 1] for i, word in enumerate(args) if word == "--volume"]
+    root = next(v.split(":")[0] for v in volumes if v.endswith(":/workspace"))
+    there = []
+    for volume in volumes:
+        source, target = volume.split(":")
+        point = os.path.join(root, target.removeprefix("/workspace/"))
+        there += [path for path in (source, point) if os.path.isdir(path)]
+    with open(os.environ["LOG"] + ".there", "w") as log:
+        json.dump(there, log)
 """
 
 # Where the container has twister's own folder, as the script names it for
@@ -72,15 +84,21 @@ ON_A_MAC = pytest.mark.skipif(
     platform.system() != "Darwin", reason="what it does on a Mac, run there"
 )
 
+
+def json_preset(name):
+    """A configure preset of CMakePresets.json, by its name."""
+    return next(
+        preset
+        for preset in json.loads((REPO / "CMakePresets.json").read_text())[
+            "configurePresets"
+        ]
+        if preset["name"] == name
+    )
+
+
 # Where the qbox preset puts QBox and socpuppet's tree built with it, in the
 # container.
-QBOX_PRESET = next(
-    preset
-    for preset in json.loads((REPO / "CMakePresets.json").read_text())[
-        "configurePresets"
-    ]
-    if preset["name"] == "qbox"
-)
+QBOX_PRESET = json_preset("qbox")
 QBOX_DEV = QBOX_PRESET["binaryDir"].replace("${sourceDir}", "/workspace")
 QBOX = str(
     Path(
@@ -161,7 +179,12 @@ def devcontainer(tmp_path):
         lines = log.read_text().splitlines() if log.exists() else []
         return result, [json.loads(line) for line in lines]
 
+    def there_when_it_ran():
+        """The folders that were there when the container was to run."""
+        return set(json.loads(Path(f"{log}.there").read_text()))
+
     run.root = root
+    run.there_when_it_ran = there_when_it_ran
     return run
 
 
@@ -338,7 +361,48 @@ def test_on_linux_what_the_container_builds_for_itself_is_kept_in_a_folder_of_bu
         assert f"{kept / folder}:{there}" in volumes
 
 
-def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_docker_runs(
+#: Where the container has the linux preset's tree.
+LINUX_TREE = json_preset("linux")["binaryDir"].replace(
+    "${sourceDir}", "/workspace"
+)
+BOTH_SYSTEMS = pytest.mark.parametrize(
+    "system", ["Linux", "Darwin"], ids=["on_linux", "on_a_mac"]
+)
+
+
+@BOTH_SYSTEMS
+def test_the_linux_presets_tree_is_a_folder_of_build_container_named_for_the_images_ubuntu(
+    devcontainer, system
+):
+    # 💡 A folder of the host's even on a Mac, and not a volume, so that
+    # tools/ci.py there sees its dependencies and drops those the patches
+    # have outdated.
+    result, calls = devcontainer(
+        "--ubuntu", "28.04", "true", as_on=(system, "x86_64")
+    )
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    kept = devcontainer.root / "build" / "container" / "ubuntu-28.04" / "linux"
+    assert f"{kept}:{LINUX_TREE}" in values(run, "--volume")
+
+
+@BOTH_SYSTEMS
+def test_the_linux_presets_folder_and_its_mount_point_are_made_before_docker_runs(
+    devcontainer, system
+):
+    made = made_for(devcontainer.root, "ubuntu-28.04", "linux", LINUX_TREE)
+    assert not any(each.exists() for each in made)
+
+    result, _ = devcontainer(
+        "--ubuntu", "28.04", "true", as_on=(system, "x86_64")
+    )
+
+    assert result.returncode == 0, result.stdout
+    assert {str(each) for each in made} <= devcontainer.there_when_it_ran()
+
+
+def test_on_linux_a_missing_folder_kept_apart_is_made_before_docker_runs(
     devcontainer,
 ):
     # 💡 Docker makes a folder it is to mount that is not there, and makes
@@ -354,9 +418,7 @@ def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_dock
     result, _ = devcontainer("true", as_on=("Linux", "x86_64"))
 
     assert result.returncode == 0, result.stdout
-    for each in made:
-        assert each.is_dir(), each
-        assert each.stat().st_uid == os.getuid(), each
+    assert {str(each) for each in made} <= devcontainer.there_when_it_ran()
 
 
 def from_ubuntu(root, version):
@@ -491,13 +553,35 @@ def test_vs_codes_devcontainer_mounts_each_volume_the_script_mounts_on_a_mac_of_
     mounts = [fields(each) for each in vs_code["mounts"]]
     for volume in values(run, "--volume"):
         source, target = volume.split(":")
-        if source != str(devcontainer.root) and target != TWISTER_HOME:
+        # A folder of the host's is not a volume (the next test).
+        if not source.startswith("/") and target != TWISTER_HOME:
             assert any(
                 mount["source"] == source
                 and mount["target"] == target
                 and mount["type"] == "volume"
                 for mount in mounts
             )
+
+
+def test_vs_codes_devcontainer_mounts_the_linux_presets_tree_from_the_scripts_folder_for_the_images_ubuntu(
+    devcontainer,
+):
+    result, calls = devcontainer("true", as_on=("Darwin", "x86_64"))
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    (source,) = [
+        volume.split(":")[0]
+        for volume in values(run, "--volume")
+        if volume.endswith(f":{LINUX_TREE}")
+    ]
+    vs_code = jsonc(REPO / ".devcontainer" / "devcontainer.json")
+
+    folder = Path(source).relative_to(devcontainer.root)
+    assert {
+        "source": f"${{localWorkspaceFolder}}/{folder}",
+        "target": LINUX_TREE,
+        "type": "bind",
+    } in [fields(each) for each in vs_code["mounts"]]
 
 
 def test_vs_codes_devcontainer_makes_each_mount_point_in_the_repository_first(
@@ -516,6 +600,23 @@ def test_vs_codes_devcontainer_makes_each_mount_point_in_the_repository_first(
         target = PurePosixPath(fields(mount)["target"])
         if target.is_relative_to("/workspace"):
             assert (tmp_path / target.relative_to("/workspace")).is_dir()
+
+
+def test_vs_codes_devcontainer_makes_each_folder_of_the_repository_it_binds_first(
+    tmp_path,
+):
+    # 💡 Docker does not make the host's folder a bind mounts.
+    vs_code = jsonc(REPO / ".devcontainer" / "devcontainer.json")
+
+    subprocess.run(
+        vs_code["initializeCommand"], shell=True, cwd=tmp_path, check=True
+    )
+
+    for mount in vs_code["mounts"]:
+        source = fields(mount)["source"]
+        if source.startswith("${localWorkspaceFolder}/"):
+            folder = source.removeprefix("${localWorkspaceFolder}/")
+            assert (tmp_path / folder).is_dir()
 
 
 def jsonc(path):

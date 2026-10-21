@@ -29,6 +29,10 @@ DOCKERFILE = REPOSITORY / ".devcontainer" / "Dockerfile"
 WORKSPACE = PurePosixPath("/workspace")
 #: Where the container has twister's own folder (firmware/twister.py).
 TWISTER_HOME = PurePosixPath("/twister")
+#: What is kept apart in a folder of the host's on a Mac too, and not in a
+#: volume: the linux preset's tree, whose patched dependencies tools/ci.py
+#: looks after from the host, which cannot see into a volume.
+IN_A_FOLDER = {"linux"}
 
 # uv's venv, its cache and its Pythons, which are kept in build/ so that
 # they outlive the container. firmware/twister.py runs in the same image
@@ -165,13 +169,15 @@ def kept_apart() -> dict[str, PurePosixPath]:
     Each is where the container has it. 🎓 The container is a Linux
     machine of its own, with its own compiler and the repository at
     /workspace, so what it builds for itself is not the host's, though
-    the host is Linux too. uv's venv, cache and Pythons, and the linux
-    preset's tree, build/linux, are the container's alone already, and
-    nothing of the host's is where they are. ⚠️ build/linux is not named
-    for the image's Ubuntu, since tools/ci.py and firmware/twister.py look
-    after its dependencies where it is: after a new Ubuntu, delete it.
+    the host is Linux too. uv's venv, cache and Pythons are the
+    container's alone already, and nothing of the host's is where they
+    are.
     """
     return {
+        # The linux preset's tree, which the devcontainer jobs of
+        # tools/ci.py build and test, and firmware/twister.py builds on an
+        # Intel Mac.
+        "linux": WORKSPACE / "build" / "linux",
         # QBox, and socpuppet's tree built with it, where
         # tools/build_qbox.py and the qbox preset put them.
         "qbox": WORKSPACE / "build" / "qbox",
@@ -195,17 +201,19 @@ def apart_from_the_host(name: str, version: str) -> str:
     It is for the image on Ubuntu `version`, and named for that Ubuntu, so
     an image of another Ubuntu starts afresh. 🎓 What the container builds
     for itself was built by that Ubuntu's compiler against its libraries,
-    and another Ubuntu's compiler should not build on top of it. On a Mac it
-    is a Docker volume, socpuppet-<name>-<the image's Ubuntu>, such as
+    and another Ubuntu's compiler should not build on top of it. On a Mac,
+    but for what is IN_A_FOLDER, it is a Docker volume,
+    socpuppet-<name>-<the image's Ubuntu>, such as
     socpuppet-qbox-ubuntu-26.04: Docker Desktop reads the Mac's files
     through file sharing, which a compiler finds ten times slower than a
     volume (docs/twister-spike.md), and a Mac's file system takes two of the
     kernel's names that differ only in their case for one. `docker volume
-    rm` throws an old Ubuntu's away. On Linux it is a folder of
-    build/container/<the image's Ubuntu>, which the container writes as the
-    caller, and `rm -rf` throws an old Ubuntu's away.
+    rm` throws an old Ubuntu's away. On Linux, and for what is IN_A_FOLDER
+    on a Mac too, it is a folder of build/container/<the image's Ubuntu>,
+    which the container writes as the caller, and `rm -rf` throws an old
+    Ubuntu's away.
     """
-    if platform.system() == "Darwin":
+    if platform.system() == "Darwin" and name not in IN_A_FOLDER:
         return f"socpuppet-{name}-{ubuntu_label(version)}"
     return str(
         REPOSITORY / "build" / "container" / ubuntu_label(version) / name
@@ -230,14 +238,15 @@ def ubuntu_label(version: str) -> str:
 
 
 def make_room(mounts: dict[str, PurePosixPath]) -> None:
-    """On Linux, make each folder `mounts` mounts, as the caller's.
+    """Make each folder `mounts` mounts, as the caller's, not a volume.
 
     And where it is mounted, if that is in the repository. 💡 Docker makes
-    a folder it is to mount that is not there, and makes it root's.
+    a folder it is to mount that is not there, and on Linux makes it
+    root's.
     """
-    if platform.system() == "Darwin":
-        return
     for source, there in mounts.items():
+        if not Path(source).is_absolute():
+            continue  # a volume (apart_from_the_host), which Docker makes
         Path(source).mkdir(parents=True, exist_ok=True)
         if there.is_relative_to(WORKSPACE):
             point = REPOSITORY / there.relative_to(WORKSPACE)
