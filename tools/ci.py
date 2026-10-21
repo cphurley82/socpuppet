@@ -123,8 +123,6 @@ class Job:
     # coverage job, the extension in python/socpuppet is the one built to
     # measure coverage.
     reconfigures_dev: bool = False
-    # The one system it runs on (platform.system()'s name), if not every.
-    only_on: str = ""
     # Directories emptied before its steps, of what an earlier run left.
     fresh: tuple[str, ...] = ()
     # Directories made before its steps if they are not there, so that they
@@ -361,9 +359,10 @@ JOBS = [
         "clang-tidy over our C++, and each header compiled on its own",
         steps=tidy_steps("dev"),
         uses=("build/dev",),
-        # clang-tidy reads GCC's compile commands and standard library, so
-        # it reads our code the way the Linux build compiles it.
-        only_on="Linux",
+        # clang-tidy reads the compile commands of this machine's compiler,
+        # and its standard library: GCC's and libstdc++ on Linux, Apple
+        # clang's and the SDK's libc++ on a Mac. So each system's run checks
+        # our code the way that system compiles it.
         areas=("build",),
     ),
     Job(
@@ -435,7 +434,6 @@ JOBS = [
         needs=("qbox-build",),
         steps=tidy_steps("qbox"),
         uses=("build/qbox-dev",),
-        only_on="Linux",
         areas=("build",),
     ),
     Job(
@@ -854,13 +852,10 @@ def patched_dependencies() -> set[str]:
 def why_skipped(job: Job, docker: bool) -> str | None:
     """Why a run here skips a job, or None if it runs it.
 
-    A job is skipped when it runs on another system, when it was not asked
-    for, or when CI would skip it too. `docker` says whether the jobs in
-    Docker were asked for. Whether this machine has what a job needs is
-    tools/doctor.py's to say.
+    A job is skipped when it was not asked for, or when CI would skip it
+    too. `docker` says whether the jobs in Docker were asked for. Whether
+    this machine has what a job needs is tools/doctor.py's to say.
     """
-    if job.only_on and platform.system() != job.only_on:
-        return f"runs on {job.only_on} alone"
     if job.docker and not docker:
         return "runs in Docker, which --docker asks for"
     if job.changed and not changed_from_main(job.changed):
