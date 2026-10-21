@@ -153,7 +153,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 
 ## 6. Before your first push
 
-CI runs two checks that `ctest` does not, on Linux and on both kinds of Mac. Run them once now to be sure the toolchain is complete:
+CI runs two checks that `ctest` does not, on Linux and on a Mac. Run them once now to be sure the toolchain is complete:
 
 ```sh
 uv run cmake --build --preset dev --target tidy            # clang-tidy, about 1 minute here
