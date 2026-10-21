@@ -830,19 +830,38 @@ jobs:
           name: wheels-${{ matrix.os }}
           path: build/wheelhouse/*.whl
 
-  devcontainer:
-    # The tests, built in the devcontainer's image: Linux with GCC, which
-    # is what a contributor's editor builds in. Only when the image changes.
-    name: Build and test (devcontainer)
+  devcontainer-26-04:
+    # The tests, built in the devcontainer's image on Ubuntu 26.04: Linux with
+    # its own GCC, as a contributor's editor or tools/devcontainer.py
+    # --ubuntu 26.04 builds it, from the Dockerfile as it is tonight.
+    name: Build and test (devcontainer, Ubuntu 26.04)
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
-      - uses: dorny/paths-filter@v4
-        id: changed
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
         with:
-          filters: |
-            devcontainer:
-              - '.devcontainer/**'
-      - if: steps.changed.outputs.devcontainer == 'true'
-        run: uv run python tools/ci.py run devcontainer
+          pattern: firmware-*
+          merge-multiple: true
+          path: build/firmware
+      - run: uv run python tools/ci.py run devcontainer-26-04
+
+  devcontainer-24-04:
+    # The tests, built in the devcontainer's image on Ubuntu 24.04: Linux with
+    # its own GCC, as a contributor's editor or tools/devcontainer.py
+    # --ubuntu 24.04 builds it, from the Dockerfile as it is tonight.
+    name: Build and test (devcontainer, Ubuntu 24.04)
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: build/firmware
+      - run: uv run python tools/ci.py run devcontainer-24-04

@@ -147,9 +147,6 @@ class Job:
     # Directories made before its steps if they are not there, so that they
     # are the user's who runs it, and not the root of a container's.
     made: tuple[str, ...] = ()
-    # A path it runs for a change to, as CI's paths filter has it: here, it
-    # runs when the path differs from main's.
-    changed: str = ""
     # What it needs of this machine, as the areas tools/doctor.py checks.
     # A job in Docker needs Docker too.
     areas: tuple[str, ...] = ()
@@ -221,6 +218,28 @@ def qbox_steps() -> tuple[Step, ...]:
             env={"SOCPUPPET_CPU": "qbox_cpu"},
         ),
     )
+
+
+def devcontainer_steps(ubuntu: str) -> tuple[Step, ...]:
+    """Build the linux preset's tree in the image on `ubuntu`, and test it."""
+    inside = ("tools/devcontainer.py", "--ubuntu", ubuntu, "uv", "run")
+    return (
+        Step("configure", (*inside, "cmake", "--preset", "linux")),
+        Step("build", (*inside, "cmake", "--build", "--preset", "linux")),
+        Step(
+            "ctest",
+            (*inside, "ctest", "--preset", "linux"),
+            env=REQUIRE_FIRMWARE,
+        ),
+    )
+
+
+def container_tree(ubuntu: str) -> str:
+    """The linux preset's tree of `ubuntu`'s container, from the top.
+
+    It is build/linux in the container, kept apart by tools/devcontainer.py.
+    """
+    return f"build/container/ubuntu-{ubuntu}/linux"
 
 
 def wheel_steps(mode: Mode) -> tuple[Step, ...]:
@@ -537,22 +556,19 @@ JOBS = [
         docker=ON_LINUX,
         areas=("network",) if ON_LINUX else ("build", "network", "wheel"),
     ),
-    Job(
-        "devcontainer",
-        "build and test in the devcontainer's image, as Linux with GCC",
-        tiers=(Tier.NIGHTLY,),
-        # In build/linux, so that the host's own build/dev is left alone.
-        steps=tuple(
-            Step(label, ("tools/devcontainer.py", "uv", "run", *argv))
-            for label, argv in (
-                ("configure", ("cmake", "--preset", "linux")),
-                ("build", ("cmake", "--build", "--preset", "linux")),
-                ("ctest", ("ctest", "--preset", "linux")),
-            )
-        ),
-        uses=("build/linux", "extension"),
-        docker=True,
-        changed=".devcontainer",
+    *(
+        Job(
+            f"devcontainer-{ubuntu.replace('.', '-')}",
+            f"build and test in the devcontainer's image on Ubuntu {ubuntu}",
+            tiers=(Tier.NIGHTLY,),
+            needs=FIRMWARE,
+            # In the linux preset's tree, which the container keeps apart for
+            # each Ubuntu, so that the host's own build/dev is left alone.
+            steps=devcontainer_steps(ubuntu),
+            uses=(container_tree(ubuntu), "extension"),
+            docker=True,
+        )
+        for ubuntu in UBUNTUS
     ),
 ]
 
@@ -899,10 +915,7 @@ def drop_stale_dependencies(clean: bool) -> None:
         # the devcontainer jobs build on, and any other there is.
         **dict.fromkeys(
             {
-                *(
-                    REPO / "build" / "container" / f"ubuntu-{version}" / "linux"
-                    for version in UBUNTUS
-                ),
+                *(REPO / container_tree(version) for version in UBUNTUS),
                 *(REPO / "build" / "container").glob("ubuntu-*/linux"),
             },
             patched,
@@ -973,34 +986,13 @@ def patched_dependencies() -> set[str]:
 def why_skipped(job: Job, docker: bool) -> str | None:
     """Why a run here skips a job, or None if it runs it.
 
-    A job is skipped when it was not asked for, or when CI would skip it
-    too. `docker` says whether the jobs in Docker were asked for. Whether
-    this machine has what a job needs is tools/doctor.py's to say.
+    A job is skipped when it runs in Docker and that was not asked for.
+    `docker` says whether the jobs in Docker were asked for. Whether this
+    machine has what a job needs is tools/doctor.py's to say.
     """
     if job.docker and not docker:
         return "runs in Docker, which --docker asks for"
-    if job.changed and not changed_from_main(job.changed):
-        return f"{job.changed} is the same as main's, so CI skips it too"
     return None
-
-
-def changed_from_main(path: str) -> bool:
-    """Whether this branch has changed a path, committed or not, or added to it.
-
-    As CI's paths filter does for a pull request, it compares with where
-    the branch left main, so that what main has done since does not count.
-    """
-    base = git("merge-base", "main", "HEAD").stdout.strip()
-    untracked = git("ls-files", "--others", "--exclude-standard", "--", path)
-    differs = git("diff", "--quiet", base, "--", path)
-    return bool(untracked.stdout) or differs.returncode != 0
-
-
-def git(*args: str) -> subprocess.CompletedProcess[str]:
-    """Ask git something about the repository."""
-    return subprocess.run(
-        ["git", *args], cwd=REPO, capture_output=True, text=True
-    )
 
 
 class Run:

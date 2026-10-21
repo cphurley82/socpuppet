@@ -137,7 +137,6 @@ AREAS = {area.name: area for area in load(REPO / "tools" / "doctor.py").AREAS}
 # The jobs that run here with no option given, and the jobs in Docker.
 JOBS_HERE = [job for job in JOBS if not job.docker]
 DOCKER_JOBS = [job.name for job in JOBS if job.docker]
-DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
 TIER = RUNNER_MODULE.Tier
 
 
@@ -168,8 +167,6 @@ def ci(tmp_path):
     (root / "cmake" / "Dependencies.cmake").write_text(DEPENDENCIES)
     (root / "cmake" / "patches" / "eggs-fix.patch").write_text("one\n")
     (root / ".python-version").write_text(f"{PYTHON}\n")
-    git(root, "init", "-q", "-b", "main")
-    commit_everything(root)
     bin_directory = tmp_path / "bin"
     write_fake(bin_directory / "uv")
     log = tmp_path / "log"
@@ -629,9 +626,7 @@ def test_jobs_that_need_nothing_of_this_machine_do_not_ask_the_doctor(ci):
 
 
 def test_the_doctor_is_asked_about_docker_when_a_job_in_docker_will_run(ci):
-    change_what_the_docker_jobs_run_for(ci.root)
-
-    ci("devcontainer")
+    ci(DOCKER_JOBS[0])
     ci("test")
 
     with_docker, without = ci.doctor_asked()
@@ -717,7 +712,6 @@ def test_without_docker_asked_for_the_jobs_in_docker_are_skipped_saying_so(
 def test_with_docker_asked_for_and_missing_its_jobs_are_skipped_saying_why(
     ci,
 ):
-    change_what_the_docker_jobs_run_for(ci.root)
     missing = {
         "docker": {
             "optional": AREAS["docker"].optional,
@@ -737,73 +731,9 @@ def test_with_docker_asked_for_and_missing_its_jobs_are_skipped_saying_why(
 
 
 def test_a_job_in_docker_named_on_its_own_runs_without_docker_asked_for(ci):
-    change_what_the_docker_jobs_run_for(ci.root)
-
     result, _ = ci(*DOCKER_JOBS)
 
     assert "⏭" not in verdicts(result.stdout).values()
-
-
-def test_the_devcontainer_is_skipped_when_it_is_the_same_as_mains(ci):
-    result, lines = ci("devcontainer")
-
-    assert result.returncode == 0, result.stdout
-    assert summary_of(result.stdout, "devcontainer") == (
-        f"⏭  devcontainer: {DEVCONTAINER.changed} is the same as main's, "
-        "so CI skips it too"
-    )
-    assert lines == []
-
-
-def test_the_devcontainer_runs_for_a_change_not_yet_committed(ci):
-    change_what_it_runs_for(ci.root, DEVCONTAINER)
-
-    result, _ = ci("devcontainer")
-
-    assert verdicts(result.stdout) == {"devcontainer": "✅"}
-
-
-def test_the_devcontainer_runs_for_a_change_committed_on_a_branch(ci):
-    git = [
-        "git",
-        "-C",
-        str(ci.root),
-        "-c",
-        "user.name=spam",
-        "-c",
-        "user.email=-",
-    ]
-    subprocess.run([*git, "switch", "-q", "-c", "spam"], check=True)
-    change_what_it_runs_for(ci.root, DEVCONTAINER)
-    subprocess.run([*git, "add", "."], check=True)
-    subprocess.run([*git, "commit", "-q", "-m", "eggs"], check=True)
-
-    result, _ = ci("devcontainer")
-
-    assert verdicts(result.stdout) == {"devcontainer": "✅"}
-
-
-def test_the_devcontainer_is_skipped_for_a_change_main_made_since_the_branch(
-    ci,
-):
-    git = [
-        "git",
-        "-C",
-        str(ci.root),
-        "-c",
-        "user.name=spam",
-        "-c",
-        "user.email=-",
-    ]
-    subprocess.run([*git, "branch", "spam"], check=True)
-    change_what_it_runs_for(ci.root, DEVCONTAINER)
-    subprocess.run([*git, "add", "."], check=True)
-    subprocess.run([*git, "commit", "-q", "-m", "eggs"], check=True)
-    subprocess.run([*git, "switch", "-q", "spam"], check=True)
-
-    result, _ = ci("devcontainer")
-
-    assert verdicts(result.stdout) == {"devcontainer": "⏭"}
 
 
 def test_the_clang_tidy_jobs_run_here_whatever_the_system(ci):
@@ -1196,13 +1126,23 @@ def test_a_step_whose_files_are_not_there_fails_and_names_what_it_wanted(
     assert "no file matches build/wheelhouse/" in result.stdout
 
 
-def test_devcontainer_builds_and_tests_the_linux_tree_in_docker(ci):
-    _, lines = ci("run", "devcontainer")
+@pytest.mark.parametrize(
+    ("ubuntu", "job"),
+    [("26.04", "devcontainer-26-04"), ("24.04", "devcontainer-24-04")],
+)
+def test_a_devcontainer_job_builds_and_tests_the_linux_tree_in_its_ubuntus_image_requiring_the_firmware(
+    ci, ubuntu, job
+):
+    ci("run", job)
 
-    assert lines == [
-        "devcontainer.py uv run cmake --preset linux",
-        "devcontainer.py uv run cmake --build --preset linux",
-        "devcontainer.py uv run ctest --preset linux",
+    in_container = f"devcontainer.py --ubuntu {ubuntu}"
+    assert steps_and_their_env(ci) == [
+        (f"{in_container} uv run cmake --preset linux", {}),
+        (f"{in_container} uv run cmake --build --preset linux", {}),
+        (
+            f"{in_container} uv run ctest --preset linux",
+            {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+        ),
     ]
 
 
@@ -1268,29 +1208,6 @@ def another_in_place_of(tree):
 
 def dropped(dependencies):
     return {name for name, path in dependencies.items() if not path.exists()}
-
-
-def git(root, *args):
-    who = ["-c", "user.name=spam", "-c", "user.email=-"]
-    subprocess.run(["git", "-C", str(root), *who, *args], check=True)
-
-
-def commit_everything(root):
-    git(root, "add", ".")
-    git(root, "commit", "-q", "-m", "spam")
-
-
-def change_what_it_runs_for(root, job):
-    """Add a file where a job that runs for a change looks for one."""
-    path = root / job.changed / "spam"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("eggs\n")
-
-
-def change_what_the_docker_jobs_run_for(root):
-    for name in DOCKER_JOBS:
-        if JOBS_BY_NAME[name].changed:
-            change_what_it_runs_for(root, JOBS_BY_NAME[name])
 
 
 def wait_for(condition, seconds=10):
