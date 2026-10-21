@@ -122,6 +122,13 @@ def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldes
         assert ubuntus <= allowed, name
 
 
+def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default():
+    for name in ON_THE_OLDEST_UBUNTU_TOO:
+        assert {DEFAULT_UBUNTU, OLDEST_UBUNTU} <= set(
+            runners(WORKFLOW[name])
+        ), name
+
+
 def runners(job):
     """The runners a job of the workflow runs on: its matrix's, or its own."""
     if job["runs-on"] == "${{ matrix.os }}":
