@@ -1,6 +1,6 @@
-""".github/workflows/ci.yml, held to the jobs tools/ci.py runs.
+""".github/workflows, held to the jobs tools/ci.py runs.
 
-The workflow is written by hand, and each of its jobs is a thin wrapper:
+Each workflow is written by hand, and each of its jobs is a thin wrapper:
 GitHub's plumbing (a checkout, packages, caches, artifacts) around a step
 that runs `uv run python tools/ci.py run JOB`. These tests keep the two to
 the same jobs, so that what a developer runs here is what CI runs.
@@ -33,7 +33,18 @@ def load_runner():
 
 RUNNER = load_runner()
 JOBS = {job.name: job for job in RUNNER.JOBS}
-WORKFLOW = yaml.safe_load((WORKFLOWS / "ci.yml").read_text())["jobs"]
+# Each workflow's jobs, by its file's name.
+WORKFLOW_FILES = {
+    path.name: yaml.safe_load(path.read_text())["jobs"]
+    for path in sorted(WORKFLOWS.glob("*.yml"))
+}
+# Every job of every workflow: where it is, as file: job, its name, and it.
+WORKFLOW_JOBS = [
+    (f"{file}: {name}", name, job)
+    for file, jobs in WORKFLOW_FILES.items()
+    for name, job in jobs.items()
+]
+WORKFLOW = WORKFLOW_FILES["ci.yml"]
 
 # A job that builds QBox, or runs on what that built, is given three hours:
 # half GitHub's own limit, and four times the 45 minutes that the first run
@@ -68,33 +79,33 @@ def test_the_workflow_has_a_job_for_each_job_of_the_runner():
     assert set(WORKFLOW) == set(JOBS)
 
 
-def test_each_job_of_the_workflow_waits_for_the_jobs_it_needs():
-    for name, job in WORKFLOW.items():
+def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs():
+    for where, name, job in WORKFLOW_JOBS:
         needs = job.get("needs", [])
         needs = [needs] if isinstance(needs, str) else needs
-        assert set(needs) == set(JOBS[name].needs), name
+        assert set(needs) == set(JOBS[name].needs), where
 
 
-def test_each_job_of_the_workflow_ends_by_running_itself_with_the_runner():
-    for name, job in WORKFLOW.items():
+def test_each_job_of_a_workflow_ends_by_running_itself_with_the_runner():
+    for where, name, job in WORKFLOW_JOBS:
         named = jobs_run(job)
-        assert named, name
-        assert named[-1] == name
+        assert named, where
+        assert named[-1] == name, where
 
 
-def test_each_job_of_the_workflow_runs_no_other_job_but_one_it_needs():
-    for name, job in WORKFLOW.items():
-        assert set(jobs_run(job)[:-1]) <= RUNNER.needed_by(JOBS[name]), name
+def test_each_job_of_a_workflow_runs_no_other_job_but_one_it_needs():
+    for where, name, job in WORKFLOW_JOBS:
+        assert set(jobs_run(job)[:-1]) <= RUNNER.needed_by(JOBS[name]), where
 
 
 def test_no_other_step_runs_what_a_job_of_the_runner_runs():
-    for name, job in WORKFLOW.items():
+    for where, _, job in WORKFLOW_JOBS:
         for step in job["steps"]:
             command = step.get("run", "")
             if command.startswith(RUN):
                 continue
             for program in PROGRAMS:
-                assert program not in command, f"{name}: {command}"
+                assert program not in command, f"{where}: {command}"
 
 
 def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
@@ -103,28 +114,31 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
         for name, job in JOBS.items()
         if name == "qbox-build" or "qbox-build" in RUNNER.needed_by(job)
     }
-    limits = {
-        name: job["timeout-minutes"]
-        for name, job in WORKFLOW.items()
-        if "timeout-minutes" in job
-    }
-    assert limits == dict.fromkeys(with_qbox, QBOX_TIME_LIMIT)
+    for file, jobs in WORKFLOW_FILES.items():
+        limits = {
+            name: job["timeout-minutes"]
+            for name, job in jobs.items()
+            if "timeout-minutes" in job
+        }
+        assert limits == dict.fromkeys(
+            with_qbox & set(jobs), QBOX_TIME_LIMIT
+        ), file
 
 
 def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
-    for name, job in WORKFLOW.items():
+    for where, _, job in WORKFLOW_JOBS:
         if "matrix" in job.get("strategy", {}):
-            assert job["strategy"]["fail-fast"] is False, name
+            assert job["strategy"]["fail-fast"] is False, where
 
 
 def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldest_too():
-    for name, job in WORKFLOW.items():
+    for where, name, job in WORKFLOW_JOBS:
         allowed = DEFAULT_UBUNTUS | (
             {OLDEST_UBUNTU} if name in ON_THE_OLDEST_UBUNTU_TOO else set()
         )
         ubuntus = ubuntus_of(job)
-        assert ubuntus & DEFAULT_UBUNTUS, name
-        assert ubuntus <= allowed, name
+        assert ubuntus & DEFAULT_UBUNTUS, where
+        assert ubuntus <= allowed, where
 
 
 def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default():
@@ -138,26 +152,31 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
     # What a cache holds was built for the runner that made it, and a job
     # on another Ubuntu would take it for its own. A job on several
     # runners names its own in a key with matrix.os.
-    for name, job in WORKFLOW.items():
+    for where, _, job in WORKFLOW_JOBS:
         for key, ubuntus in ubuntus_in_cache_keys(job):
-            assert not ubuntus or ubuntus == set(runners(job)), f"{name}: {key}"
+            assert not ubuntus or ubuntus == set(runners(job)), (
+                f"{where}: {key}"
+            )
 
 
 def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
-    seen = set()
-    for name, job in WORKFLOW.items():
-        for key in cache_keys(job):
-            cache = cache_named_by(key)
-            if cache in PORTABLE_CACHES:
-                seen.add(cache)
-                named = {
-                    word
-                    for word in ("runner.os", "runner.arch", "matrix.os")
-                    if word in key
-                }
-                assert named == {"runner.os", "runner.arch"}, f"{name}: {key}"
-                assert not UBUNTU.search(key), f"{name}: {key}"
-    assert seen == PORTABLE_CACHES
+    for file, jobs in WORKFLOW_FILES.items():
+        seen = set()
+        for name, job in jobs.items():
+            for key in cache_keys(job):
+                cache = cache_named_by(key)
+                if cache in PORTABLE_CACHES:
+                    seen.add(cache)
+                    named = {
+                        word
+                        for word in ("runner.os", "runner.arch", "matrix.os")
+                        if word in key
+                    }
+                    assert named == {"runner.os", "runner.arch"}, (
+                        f"{file}: {name}: {key}"
+                    )
+                    assert not UBUNTU.search(key), f"{file}: {name}: {key}"
+        assert seen == PORTABLE_CACHES, file
 
 
 def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_on():
@@ -165,12 +184,12 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
     # each Ubuntu runner, 24.04 and 26.04, Intel and Arm, and each leg would
     # take another's build for its own.
     checked = set()
-    for name, job in WORKFLOW.items():
+    for where, name, job in WORKFLOW_JOBS:
         if len(ubuntus_of(job)) < 2:
             continue
         checked.add(name)
         for key in keys_of_what_it_builds(job):
-            assert "matrix.os" in key, f"{name}: {key}"
+            assert "matrix.os" in key, f"{where}: {key}"
     assert checked >= ON_THE_OLDEST_UBUNTU_TOO
 
 
