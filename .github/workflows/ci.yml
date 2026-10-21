@@ -75,7 +75,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
         if: steps.cache.outputs.cache-hit != 'true'
@@ -152,7 +152,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -190,7 +190,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -232,7 +232,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
         if: steps.images.outputs.cache-hit != 'true'
@@ -243,7 +243,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-ubuntu-24.04-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-ubuntu-26.04-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -285,7 +285,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -327,7 +327,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-24.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -400,7 +400,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dev/_deps
-          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run tidy
 
   twister:
@@ -482,7 +482,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dev/_deps
-          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run coverage
       - name: Show the figures on the job's page
         if: always()
@@ -515,7 +515,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build/dev/_deps
-          key: deps-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run sanitizers
 
   qbox-build:
@@ -593,13 +593,13 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/qbox/install
-          key: qbox-ubuntu-24.04-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          key: qbox-ubuntu-26.04-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
           fail-on-cache-miss: true
       - name: Cache fetched dependencies
         uses: actions/cache@v6
         with:
           path: build/qbox-dev/_deps
-          key: deps-qbox-ubuntu-24.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+          key: deps-qbox-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run qbox-tidy
 
   qbox:

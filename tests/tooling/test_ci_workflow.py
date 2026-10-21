@@ -7,6 +7,7 @@ the same jobs, so that what a developer runs here is what CI runs.
 """
 
 import importlib.util
+import re
 from pathlib import Path
 
 import yaml
@@ -127,6 +128,24 @@ def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default():
         assert {DEFAULT_UBUNTU, OLDEST_UBUNTU} <= set(
             runners(WORKFLOW[name])
         ), name
+
+
+def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
+    # What a cache holds was built for the runner that made it, and a job
+    # on another Ubuntu would take it for its own. A job on several
+    # runners names its own in a key with matrix.os.
+    for name, job in WORKFLOW.items():
+        for key, ubuntus in ubuntus_in_cache_keys(job):
+            assert not ubuntus or sorted(ubuntus) == runners(job), (
+                f"{name}: {key}"
+            )
+
+
+def ubuntus_in_cache_keys(job):
+    """Each cache key of a job's steps, with the Ubuntu runners it names."""
+    for step in job["steps"]:
+        key = step.get("with", {}).get("key", "")
+        yield key, set(re.findall(r"ubuntu-\d+\.\d+(?:-arm)?", key))
 
 
 def runners(job):
