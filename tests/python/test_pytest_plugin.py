@@ -215,6 +215,57 @@ class TestWhenAPlatformTestIsTheLastOneInItsClass:
         result.assert_outcomes(passed=3)
 
 
+class TestWhenAPlatformTestAsksForATemporaryDirectory:
+    def test_it_is_inside_the_sessions_own(self, session_with_socpuppet):
+        # Its process then has a temporary directory of its own to clear
+        # away, and leaves alone those that other sessions left behind.
+        sessions_own = session_with_socpuppet.path / "sessions-own"
+        session_with_socpuppet.makepyfile(
+            f"""
+            from pathlib import Path
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_checks_where_its_directory_is(tmp_path):
+                assert tmp_path.is_relative_to(Path({str(sessions_own)!r}))
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess(
+            f"--basetemp={sessions_own}"
+        )
+
+        result.assert_outcomes(passed=1)
+
+
+class TestWhenAPlatformTestRunsAfterOneThatWroteToItsTemporaryDirectory:
+    def test_what_the_earlier_test_wrote_is_still_there(
+        self, session_with_socpuppet
+    ):
+        session_with_socpuppet.makepyfile(
+            """
+            import pytest
+
+            left_behind = []
+
+            def test_that_leaves_a_file(tmp_path):
+                (tmp_path / "spam").write_text("eggs")
+                left_behind.append(tmp_path / "spam")
+
+            @pytest.mark.platform
+            def test_on_a_platform(tmp_path):
+                pass
+
+            def test_that_looks_for_the_file():
+                assert left_behind[0].read_text() == "eggs"
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=3)
+
+
 class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     @pytest.fixture
     def result(self, session_with_socpuppet):
