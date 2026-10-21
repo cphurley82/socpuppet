@@ -40,6 +40,8 @@ from socpuppet.placed import (
 )
 from socpuppet.platform import Group, Platform
 
+#: A sector of the virtio disk, in bytes: what `Virtio.blocks` counts.
+SECTOR = 512
 #: How far apart the slots are: QEMU's `virt` has the same, a page each.
 VIRTIO_SLOT_STRIDE = 0x1000
 
@@ -49,7 +51,7 @@ class Virtio:
     """What the host's virtio devices are told when the host is described.
 
     `seed` is what the entropy device's bytes come from, so that a run can
-    be repeated. `blocks` is how many 512-byte sectors the disk has: 1 MiB
+    be repeated. `blocks` is how many sectors (`SECTOR`) the disk has: 1 MiB
     unless told otherwise. `mac` is the network device's address, as a
     48-bit number with its first byte highest (`VirtioNet`). `share` is a
     directory of this machine that the file system device and the 9P

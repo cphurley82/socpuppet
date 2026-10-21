@@ -17,7 +17,7 @@ import functools
 import socpuppet as sp
 from disk_access import IMAGE as DISK_TEST
 from manager_firmware import IMAGE as MANAGER
-from socpuppet import boot_image
+from socpuppet import boot_image, linux, opensbi
 from socpuppet.boards.boot import from_rom
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
@@ -61,7 +61,7 @@ ROM_FOR_A_32_BIT_CPU = "rom_rv32.elf"
 #: kernel sits on, as an ELF file and as its bytes; and `test_payload`, the
 #: supervisor-mode program OpenSBI ships for it to jump to.
 FW_JUMP = "fw_jump.elf"
-FW_JUMP_BIN = "fw_jump.bin"
+FW_JUMP_BIN = opensbi.FW_JUMP_BIN
 TEST_PAYLOAD = "test_payload.elf"
 TEST_PAYLOAD_BIN = "test_payload.bin"
 #: A next stage for OpenSBI of socpuppet's own (firmware/sbi_payload), which
@@ -72,12 +72,12 @@ SBI_PAYLOAD_BIN = "sbi_payload.bin"
 UEFI_FD = "uefi.fd"
 #: 🐧 Linux (firmware/build.py): the kernel as the flat Image `fw_jump`
 #: jumps to, as vmlinux with its symbols, and as its System.map.
-LINUX_BIN = "linux.bin"
+LINUX_BIN = linux.LINUX_BIN
 LINUX = "linux.elf"
 LINUX_MAP = "linux.map"
 #: The kernel's root filesystem (firmware/build.py): Alpine's mini root with
 #: an inittab of ours, as an ext4 image for 🎭 the virtio disk.
-ROOTFS_EXT4 = "rootfs.ext4"
+ROOTFS_EXT4 = linux.ROOTFS_EXT4
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

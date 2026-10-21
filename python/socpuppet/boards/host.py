@@ -123,6 +123,9 @@ from socpuppet.time import ms
 #: Which of its two CPUs the host has: socpuppet's own, or QEMU's.
 type HostCpu = Literal["dbt_rise_cpu", "qbox_cpu"]
 
+#: The name socpuppet gives the host in its devicetree (`model`), which
+#: OpenSBI's banner repeats as the platform's name.
+MODEL = "socpuppet host"
 #: Where the RAM starts, and where the CPU starts executing.
 RAM_BASE = 0x8000_0000
 RAM_SIZE = 64 * 1024 * 1024
