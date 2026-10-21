@@ -33,10 +33,15 @@ def load_runner():
 
 RUNNER = load_runner()
 JOBS = {job.name: job for job in RUNNER.JOBS}
-# Each workflow's jobs, by its file's name.
-WORKFLOW_FILES = {
-    path.name: yaml.safe_load(path.read_text())["jobs"]
+TIER = RUNNER.Tier
+# Each workflow, and its jobs, by its file's name.
+WORKFLOW_DEFINITIONS = {
+    path.name: yaml.safe_load(path.read_text())
     for path in sorted(WORKFLOWS.glob("*.yml"))
+}
+WORKFLOW_FILES = {
+    file: definition["jobs"]
+    for file, definition in WORKFLOW_DEFINITIONS.items()
 }
 # Every job of every workflow: where it is, as file: job, its name, and it.
 WORKFLOW_JOBS = [
@@ -44,7 +49,6 @@ WORKFLOW_JOBS = [
     for file, jobs in WORKFLOW_FILES.items()
     for name, job in jobs.items()
 ]
-WORKFLOW = WORKFLOW_FILES["ci.yml"]
 
 # A job that builds QBox, or runs on what that built, is given three hours:
 # half GitHub's own limit, and four times the 45 minutes that the first run
@@ -71,12 +75,62 @@ ON_THE_OLDEST_UBUNTU_TOO = {
 PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
 
 
-def test_ci_is_the_only_workflow():
-    assert sorted(path.name for path in WORKFLOWS.iterdir()) == ["ci.yml"]
+# A job of the quick tier that runs some of what one of the nightly tier
+# runs, by the name of the nightly's: the quick tests are the dev tests
+# but the long ones.
+NIGHTLY_COUNTERPART = {"test-quick": "test"}
 
 
-def test_the_workflow_has_a_job_for_each_job_of_the_runner():
-    assert set(WORKFLOW) == set(JOBS)
+def test_there_is_a_workflow_for_each_tier_and_no_other():
+    assert sorted(path.name for path in WORKFLOWS.iterdir()) == sorted(
+        tier.value for tier in TIER
+    )
+
+
+def test_each_workflow_has_a_job_for_each_job_of_its_tier_and_no_other():
+    for tier in TIER:
+        assert set(WORKFLOW_FILES[tier.value]) == {
+            name for name, job in JOBS.items() if tier in job.tiers
+        }, tier.value
+
+
+def test_a_job_in_both_tiers_is_the_same_in_both_workflows_but_for_its_machines():
+    # Word for word, comments too, so that the two copies cannot drift.
+    quick = WORKFLOW_FILES[TIER.QUICK.value]
+    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    for name in set(quick) & set(nightly):
+        assert without_its_machines(TIER.QUICK, name) == without_its_machines(
+            TIER.NIGHTLY, name
+        ), name
+
+
+def test_each_machine_the_quick_tier_runs_a_job_on_the_nightly_runs_it_on_too():
+    quick = WORKFLOW_FILES[TIER.QUICK.value]
+    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    for name, job in quick.items():
+        counterpart = nightly[NIGHTLY_COUNTERPART.get(name, name)]
+        assert set(runners(job)) <= set(runners(counterpart)), name
+
+
+def test_a_push_to_main_and_a_pull_request_start_the_quick_tier():
+    triggers = triggers_of(TIER.QUICK)
+    assert "main" in triggers["push"]["branches"]
+    assert "pull_request" in triggers
+
+
+def test_only_a_schedule_or_a_person_starts_the_nightly_tier():
+    triggers = triggers_of(TIER.NIGHTLY)
+    assert set(triggers) == {"schedule", "workflow_dispatch"}
+
+
+def test_neither_tier_queues_behind_the_other():
+    # Runs of one concurrency group wait for each other, and a newer one
+    # waiting takes the place of an older one. A group's fixed part, before
+    # anything GitHub fills in, keeps one tier's apart from the other's.
+    quick = fixed_part_of_group(TIER.QUICK)
+    nightly = fixed_part_of_group(TIER.NIGHTLY)
+    assert not quick.startswith(nightly)
+    assert not nightly.startswith(quick)
 
 
 def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs():
@@ -141,11 +195,12 @@ def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldes
         assert ubuntus <= allowed, where
 
 
-def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default():
+def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default_every_night():
+    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
     for name in ON_THE_OLDEST_UBUNTU_TOO:
-        assert {DEFAULT_UBUNTU, OLDEST_UBUNTU} <= set(
-            runners(WORKFLOW[name])
-        ), name
+        assert {DEFAULT_UBUNTU, OLDEST_UBUNTU} <= set(runners(nightly[name])), (
+            name
+        )
 
 
 def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
@@ -197,6 +252,31 @@ def test_the_devcontainers_image_is_the_default_ubuntu():
     dockerfile = REPO / ".devcontainer" / "Dockerfile"
     version = DEFAULT_UBUNTU.removeprefix("ubuntu-")
     assert set(base_images(dockerfile)) == {f"ubuntu:{version}"}
+
+
+def without_its_machines(tier, name):
+    """A job's text in a tier's workflow, less the line of its matrix's
+    machines."""
+    text = (WORKFLOWS / tier.value).read_text()
+    start = re.search(rf"^  {re.escape(name)}:$", text, re.MULTILINE).end()
+    following = re.compile(r"^  \S", re.MULTILINE).search(text, start)
+    block = text[start : following.start() if following else len(text)]
+    return [
+        line
+        for line in block.splitlines()
+        if not line.strip().startswith("os: ")
+    ]
+
+
+def fixed_part_of_group(tier):
+    """A tier's concurrency group up to the first `${{`, GitHub's to fill."""
+    group = WORKFLOW_DEFINITIONS[tier.value]["concurrency"]["group"]
+    return group.split("${{")[0]
+
+
+def triggers_of(tier):
+    """What starts a tier's workflow: its `on`, which YAML reads as True."""
+    return WORKFLOW_DEFINITIONS[tier.value][True]
 
 
 def base_images(dockerfile):

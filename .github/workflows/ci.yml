@@ -1,27 +1,27 @@
 name: CI
 
+# The quick tier, on every push to main and every pull request: lint, the
+# firmware, the tests but the long ones on Linux and on an Intel Mac, and
+# clang-tidy, coverage and the sanitizers on Linux. It answers in about half
+# an hour. The rest is nightly.yml's: the long tests and the on-demand
+# ones, twister, QBox, the wheels and the devcontainer, on every machine CI
+# has. On a developer's machine, `uv run python tools/ci.py` runs that, and
+# `--quick` runs this.
+#
 # Every job here is a thin wrapper around tools/ci.py, which holds each
 # job's steps: what is left in this file is GitHub's plumbing, the checkout,
 # the packages, the caches and the artifacts. A job's log opens with the
-# command that runs the same job on a developer's machine, and
-# `uv run python tools/ci.py` runs every one that can run there.
-# tests/tooling/test_ci_workflow.py keeps the two to the same jobs.
+# command that runs the same job on a developer's machine.
+# tests/tooling/test_ci_workflow.py keeps the two to the same jobs, and a
+# job this file shares with nightly.yml to the same definition, but for the
+# machines it runs on.
 #
 # Nothing waits for lint: a job waits only for a job whose output it reads.
 #
-# The Macs are Apple silicon (macos-15, and macos-26) and Intel
-# (macos-26-intel and macos-15-intel). An Intel Mac runs here what it runs
-# natively, as tools/ci.py runs it there; what it builds in the
-# devcontainer's image, the firmware and twister, it does not, as GitHub's
-# Macs have no Docker. macos-26-intel runs each of those jobs but the two
-# clang-tidy ones; macos-15-intel, an older Xcode and SDK, only test.
-#
-# The clang-tidy jobs run on one Linux and one Mac, the newest, macos-26,
-# where qbox-build builds QBox for qbox-tidy. That is enough: clang-tidy
-# reads the compile commands, and an Intel Mac's are an Apple silicon
-# one's; the Intel Mac's builds already meet Homebrew's /usr/local; and
-# qbox-tidy on one ran for 50 minutes and then lost its runner, most likely
-# to a lack of memory. Here, tools/ci.py runs both on any machine.
+# The one Mac here is an Intel Mac: the slowest machine CI has, so its leg
+# sets the pace of the run, and the one most often broken by what only it
+# has (Homebrew's headers in /usr/local). GitHub runs five Macs at a time
+# for an account; nightly.yml takes the rest.
 
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        os: [ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -113,7 +113,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        os: [ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -358,49 +358,10 @@ jobs:
             build/firmware/rootfs.ext4
           if-no-files-found: error
 
-  test:
-    name: Build and test (${{ matrix.os }}, Python ${{ matrix.python }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Ubuntu 24.04 too, the oldest we support, with its older GCC (13)
-        # and system libraries.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26-intel, macos-15-intel]
-        # The Python the tools are pinned to (.python-version). The oldest
-        # and the newest we support are tested by the wheel job, which
-        # builds a wheel for each and runs the Python tests against it.
-        # That matters for 3.14, which changed how CPython guards against
-        # stack overflow: the PythonExecutor exists to stay clear of that.
-        python: ["3.13"]
-    env:
-      UV_PYTHON: ${{ matrix.python }}
-    steps:
-      - uses: actions/checkout@v7
-      # dtc checks the devicetrees the boards generate and compiles the one
-      # a boot under OpenSBI is handed. Without it those tests skip here.
-      - name: Install system packages
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - name: Install the devicetree compiler
-        if: runner.os == 'macOS'
-        run: brew install dtc
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
-      - run: uv run python tools/ci.py run test
-
   test-quick:
+    # The dev tree's build and its tests but those marked long
+    # (tests/python/conftest.py), which take most of the time and are
+    # nightly.yml's.
     name: Build and test, but the long tests (${{ matrix.os }})
     needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
     runs-on: ${{ matrix.os }}
@@ -430,41 +391,18 @@ jobs:
           path: build/firmware
       - run: uv run python tools/ci.py run test-quick
 
-  on-demand:
-    # The tests marked on_demand, too long for every run. On one Linux.
-    name: The on-demand tests
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
-      - run: uv run python tools/ci.py run on-demand
-
   tidy:
     # clang-tidy over our own C++, and each of our headers compiled on its
     # own. Nothing else is built: clang-tidy reads the sources and the
     # compile commands that configuring writes, which are GCC's on Linux
-    # and Apple clang's on a Mac, each with its own standard library. One
-    # Linux and one Mac are enough, the newest of each.
+    # and Apple clang's on a Mac, each with its own standard library, so a
+    # system's leg checks our code the way that system compiles it.
     name: clang-tidy and header check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-26]
+        os: [ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -477,72 +415,6 @@ jobs:
           path: build/dev/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run tidy
-
-  twister:
-    # Zephyr's own test suites, and ours, run on every board by twister,
-    # Zephyr's test runner, with socpuppet as the emulator: the
-    # board-compliance run (docs/twister.md). Twister builds an image and
-    # runs it in one breath, so this one job has both what builds firmware
-    # and what runs it: Zephyr, its SDK and its venv, from their caches.
-    #
-    # On Linux and on a Mac. The Mac's runner is Apple silicon, the one Mac
-    # the Zephyr SDK has a toolchain for, and so the one place twister runs
-    # on macOS itself: an Intel Mac runs it in the devcontainer's image,
-    # and so not here.
-    name: Twister (Zephyr's tests on the boards, ${{ matrix.os }})
-    needs: [fetch-sdk, fetch-zephyr, firmware-rom]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, macos-15]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Restore the Zephyr SDK
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - name: Restore Zephyr and its venv
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/*/python
-            build/firmware/*/venv
-            build/firmware/zephyr
-          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
-          fail-on-cache-miss: true
-      # The boot ROMs, which every run starts in.
-      - uses: actions/download-artifact@v8
-        with:
-          name: firmware-rom
-          path: build/firmware
-      - run: uv run python tools/ci.py run twister
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: twister-${{ matrix.os }}
-          # The verdicts, twister's own account of each run, and each
-          # scenario's build log, its console, and what the emulator said
-          # of how the run ended.
-          path: |
-            build/twister/out/*/twister.json
-            build/twister/out/*/twister*.xml
-            build/twister/out/*/twister.log
-            build/twister/out/**/build.log
-            build/twister/out/**/handler.log
-            build/twister/out/**/handler_stderr.log
 
   coverage:
     # Which lines of our own C++ and Python the tests run. The job fails if
@@ -594,275 +466,3 @@ jobs:
           key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
       - run: uv run python tools/ci.py run sanitizers
 
-  qbox-build:
-    # QBox, Qualcomm's QEMU in SystemC, which the qbox_cpu is built on. It
-    # is GPL-2.0 and built from source, which takes a quarter of an hour on
-    # CI's Linux runner, so what it installs is cached, keyed on QBox's pin
-    # and its patches, and this job builds it only when those change. The
-    # system's libraries it links are the runner's, so the key names the
-    # runner too.
-    #
-    # The jobs that build on QBox take it from this job, as an artifact of
-    # the run, not from the cache: GitHub drops the least recently used
-    # entries when a repository's caches pass 10 GB, and QBox was dropped
-    # once between this job finding it and the next one restoring it.
-    name: QBox (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        # Ubuntu 24.04 too, the oldest we support: QBox links more of the
-        # system's libraries than anything else, and they differ most there.
-        # macos-26 builds it for qbox-tidy.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26, macos-26-intel]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Restore QBox
-        id: qbox
-        uses: actions/cache/restore@v6
-        with:
-          path: build/qbox/install
-          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
-      - name: Install QBox's packages
-        # As the devcontainer's image has them (.devcontainer/Dockerfile).
-        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
-            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
-            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
-            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
-      - name: Install QBox's packages
-        # As docs/setup.md lists them for a Mac.
-        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'macOS'
-        run: |
-          brew install asio glib jpeg-turbo libelf libslirp libzip meson \
-            ninja pixman pkgconf sdl2
-      - uses: astral-sh/setup-uv@v7
-        if: steps.qbox.outputs.cache-hit != 'true'
-      - if: steps.qbox.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run qbox-build
-      - name: Keep QBox
-        if: steps.qbox.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: build/qbox/install
-          key: ${{ steps.qbox.outputs.cache-primary-key }}
-      - name: Pack QBox
-        # In a tarball, which keeps the links between its libraries; an
-        # artifact on its own would make copies of them.
-        run: tar -czf qbox-install.tar.gz build/qbox/install
-      - uses: actions/upload-artifact@v7
-        with:
-          name: qbox-${{ matrix.os }}
-          path: qbox-install.tar.gz
-
-  qbox-tidy:
-    # clang-tidy over the adapter of QBox's CPU, which the tidy job's tree
-    # leaves out.
-    name: clang-tidy and header check with QBox (${{ matrix.os }})
-    needs: qbox-build
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, macos-26]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        # socpuppet's, and QBox's (.devcontainer/Dockerfile).
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zlib1g-dev device-tree-compiler \
-            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
-            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
-            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
-            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
-      - name: Install QBox's packages
-        # As docs/setup.md lists them for a Mac.
-        if: runner.os == 'macOS'
-        run: |
-          brew install asio glib jpeg-turbo libelf libslirp libzip meson \
-            ninja pixman pkgconf sdl2
-      - uses: astral-sh/setup-uv@v7
-      - name: Take QBox from qbox-build
-        uses: actions/download-artifact@v8
-        with:
-          name: qbox-${{ matrix.os }}
-      - run: tar -xzf qbox-install.tar.gz
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/qbox-dev/_deps
-          key: deps-qbox-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv run python tools/ci.py run qbox-tidy
-
-  qbox:
-    # The qbox_cpu, QEMU's RISC-V CPU inside SystemC, as a second hart
-    # beside DBT-RISE's (docs/models/qbox-cpu.md): the bus-master contract,
-    # the hart's suite with QBox's fates skipped, the Python boots of the
-    # host, and twister's suites on the host board.
-    #
-    # On Linux, and on a Mac natively, with Homebrew's packages
-    # (docs/setup.md): nothing but this leg would say that the patches
-    # QBox needs on a Mac (docs/upstream.md) had stopped working there.
-    # An Intel Mac stops before twister, which it runs in the
-    # devcontainer's image, and so needs neither Zephyr nor its SDK.
-    name: Build and test with QBox's CPU (${{ matrix.os }})
-    needs:
-      - fetch-sdk
-      - fetch-zephyr
-      - firmware-rom
-      - firmware-opensbi
-      - firmware-zephyr
-      - firmware-edk2
-      - firmware-linux
-      - qbox-build
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        # Ubuntu 24.04 too, as qbox-build is.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26-intel]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        # socpuppet's and the firmware's, and QBox's
-        # (.devcontainer/Dockerfile).
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zlib1g-dev device-tree-compiler uuid-dev acpica-tools \
-            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
-            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
-            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
-            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
-      - name: Install Homebrew's packages
-        # QBox's, as docs/setup.md lists them for a Mac, and dtc.
-        if: runner.os == 'macOS'
-        run: |
-          brew install acpica asio dtc glib jpeg-turbo libelf libslirp libzip \
-            meson ninja pixman pkgconf sdl2
-      - uses: astral-sh/setup-uv@v7
-      - name: Take QBox from qbox-build
-        uses: actions/download-artifact@v8
-        with:
-          name: qbox-${{ matrix.os }}
-      - run: tar -xzf qbox-install.tar.gz
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/qbox-dev/_deps
-          key: deps-qbox-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Restore the Zephyr SDK
-        if: ${{ !endsWith(matrix.os, '-intel') }}
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - name: Restore Zephyr and its venv
-        if: ${{ !endsWith(matrix.os, '-intel') }}
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/*/python
-            build/firmware/*/venv
-            build/firmware/zephyr
-          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
-          fail-on-cache-miss: true
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
-      - run: uv run python tools/ci.py run qbox
-      - uses: actions/upload-artifact@v7
-        if: ${{ always() && !endsWith(matrix.os, '-intel') }}
-        with:
-          name: twister-qbox-${{ matrix.os }}
-          path: |
-            build/twister/out/*/twister.json
-            build/twister/out/*/twister*.xml
-            build/twister/out/*/twister.log
-            build/twister/out/**/build.log
-            build/twister/out/**/handler.log
-            build/twister/out/**/handler_stderr.log
-
-  wheel:
-    # The wheels a user will install, built by cibuildwheel as configured in
-    # pyproject.toml: one per Python version, for Linux on Intel and Arm
-    # (manylinux) and for macOS on Apple silicon and on Intel. cibuildwheel
-    # installs each into a fresh environment and runs the Python tests
-    # against it, and then one is installed the way a user would, with uv
-    # and with pip, and boots real firmware. Nothing is published from here.
-    #
-    # Nearly all of a wheel is the dependencies, which are the same for
-    # every Python version. A compiler cache (ccache, set up in
-    # pyproject.toml) lets the second and third wheel take them from the
-    # first, and keeping the cache from one run to the next lets the first
-    # take them from last time. On Linux the build runs in a container,
-    # which sees the runner's files under /host.
-    name: Portable wheels (${{ matrix.os }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-15, macos-26-intel]
-    env:
-      CCACHE_DIR: ${{ startsWith(matrix.os, 'ubuntu') && '/host/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
-      CCACHE_COMPRESS: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache compiled dependencies
-        uses: actions/cache@v6
-        with:
-          path: ${{ startsWith(matrix.os, 'ubuntu') && '/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
-          # Saved once for each set of dependencies. Our own few files are
-          # compiled every time, which is what a change to them needs.
-          key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
-      # dtc compiles the devicetree a boot under OpenSBI is handed.
-      - name: Install the devicetree compiler
-        run: |
-          if [[ $RUNNER_OS == macOS ]]; then
-            brew install dtc
-          else
-            sudo apt-get update && sudo apt-get install -y device-tree-compiler
-          fi
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
-      - run: uv run python tools/ci.py run wheel
-      - uses: actions/upload-artifact@v7
-        with:
-          name: wheels-${{ matrix.os }}
-          path: build/wheelhouse/*.whl
-
-  devcontainer:
-    # The tests, built in the devcontainer's image: Linux with GCC, which
-    # is what a contributor's editor builds in. Only when the image changes.
-    name: Build and test (devcontainer)
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - uses: dorny/paths-filter@v4
-        id: changed
-        with:
-          filters: |
-            devcontainer:
-              - '.devcontainer/**'
-      - if: steps.changed.outputs.devcontainer == 'true'
-        run: uv run python tools/ci.py run devcontainer
