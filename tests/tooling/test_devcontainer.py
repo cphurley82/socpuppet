@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import pty
+import re
 import shutil
 import subprocess
 import sys
@@ -252,20 +253,23 @@ KEPT_APART = {
 }
 
 
-def test_on_linux_what_the_container_builds_for_itself_is_kept_in_build_container(
+def test_on_linux_what_the_container_builds_for_itself_is_kept_in_a_folder_of_build_container_named_for_the_images_ubuntu(
     devcontainer,
 ):
     # 🎓 The container is a Linux machine of its own, with its own compiler
     # and the repository at /workspace: what it builds for itself is not
-    # the host's, though the host is Linux too.
+    # the host's, though the host is Linux too. Nor is what GCC 13 built
+    # against Ubuntu 24.04's libraries a tree for GCC 15 on 26.04.
+    from_ubuntu(devcontainer.root, "28.04")
+
     result, calls = devcontainer("true", as_on=("Linux", "x86_64"))
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     volumes = values(run, "--volume")
+    kept = devcontainer.root / "build" / "container" / "ubuntu-28.04"
     for folder, there in KEPT_APART.items():
-        kept = devcontainer.root / "build" / "container" / folder
-        assert f"{kept}:{there}" in volumes
+        assert f"{kept / folder}:{there}" in volumes
 
 
 def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_docker_runs(
@@ -273,10 +277,11 @@ def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_dock
 ):
     # 💡 Docker makes a folder it is to mount that is not there, and makes
     # it root's.
+    from_ubuntu(devcontainer.root, "28.04")
     made = [
         each
         for folder, there in KEPT_APART.items()
-        for each in made_for(devcontainer.root, folder, there)
+        for each in made_for(devcontainer.root, "ubuntu-28.04", folder, there)
     ]
     assert not any(each.exists() for each in made)
 
@@ -288,10 +293,23 @@ def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_dock
         assert each.stat().st_uid == os.getuid(), each
 
 
-def made_for(root, folder, there):
-    """The folder of build/container that is mounted at `there`, and the
-    mount point too when it is in the repository."""
-    made = [root / "build" / "container" / folder]
+def from_ubuntu(root, version):
+    """Make the repository's Dockerfile build from Ubuntu `version`."""
+    dockerfile = root / ".devcontainer" / "Dockerfile"
+    text, replaced = re.subn(
+        r"^FROM ubuntu:\S+",
+        f"FROM ubuntu:{version}",
+        dockerfile.read_text(),
+        flags=re.MULTILINE,
+    )
+    assert replaced == 1, "the Dockerfile has no single FROM ubuntu: line"
+    dockerfile.write_text(text)
+
+
+def made_for(root, ubuntu, folder, there):
+    """The folder of build/container/<ubuntu> that is mounted at `there`,
+    and the mount point too when it is in the repository."""
+    made = [root / "build" / "container" / ubuntu / folder]
     if there.startswith("/workspace/"):
         made.append(root / Path(there).relative_to("/workspace"))
     return made

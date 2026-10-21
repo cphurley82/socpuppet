@@ -176,11 +176,29 @@ def apart_from_the_host(name: str) -> str:
     slower than a volume (docs/twister-spike.md), and a Mac's file system
     takes two of the kernel's names that differ only in their case for one.
     `docker volume rm` throws one away. On Linux it is a folder of
-    build/container, which the container writes as the caller.
+    build/container/<the image's Ubuntu>, which the container writes as the
+    caller, so an image of a new Ubuntu starts afresh and `rm -rf` throws
+    an old one's away.
     """
     if platform.system() == "Darwin":
         return f"socpuppet-{name}"
-    return str(REPOSITORY / "build" / "container" / name)
+    return str(REPOSITORY / "build" / "container" / ubuntu() / name)
+
+
+def ubuntu() -> str:
+    """The Ubuntu the image builds on, as ubuntu-26.04, from its FROM line.
+
+    🎓 What the container builds for itself was built by that Ubuntu's
+    compiler against its libraries, and another Ubuntu's compiler should
+    not build on top of it.
+    """
+    words = next(
+        words
+        for words in map(str.split, DOCKERFILE.read_text().splitlines())
+        if words and words[0].upper() == "FROM"
+    )
+    image = next(word for word in words[1:] if not word.startswith("--"))
+    return image.replace(":", "-")
 
 
 def make_room(apart: dict[str, PurePosixPath]) -> None:
