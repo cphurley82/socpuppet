@@ -35,14 +35,15 @@ jobs:
   fetch-sdk:
     # The Zephyr SDK's RISC-V toolchain, for the machine it runs on, kept
     # in a cache keyed on its version, and fetched only when that changes.
-    # The jobs that build with it restore it from there.
+    # The jobs that build with it restore it from there. Its tools are
+    # prebuilt to run on any Linux, so the key names the runner's system
+    # and processor and not its Ubuntu: one copy serves 24.04 and 26.04.
     name: Zephyr SDK (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu 24.04 too, for the qbox job's leg there.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -50,7 +51,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
         if: steps.cache.outputs.cache-hit != 'true'
@@ -75,7 +76,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
         if: steps.cache.outputs.cache-hit != 'true'
@@ -90,15 +91,15 @@ jobs:
 
   fetch-zephyr:
     # Zephyr itself, at its tag, and a venv with what its build scripts and
-    # twister import, whose Python is a program for the runner it was made
-    # on. Cached as the SDK is.
+    # twister import, whose Python is a program for the runner's system and
+    # processor: uv's own, which runs on any Ubuntu, with packages that are
+    # manylinux wheels, which do too. Cached as the SDK is.
     name: Zephyr (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu 24.04 too, for the qbox job's leg there.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -110,7 +111,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           lookup-only: true
       - uses: astral-sh/setup-uv@v7
         if: steps.cache.outputs.cache-hit != 'true'
@@ -152,7 +153,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -190,7 +191,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -232,7 +233,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
         if: steps.images.outputs.cache-hit != 'true'
@@ -243,7 +244,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-ubuntu-26.04-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -285,7 +286,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -327,7 +328,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/llvm-*
-          key: llvm-linux-x86_64-ubuntu-26.04-${{ hashFiles('firmware/versions.toml') }}
+          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - uses: astral-sh/setup-uv@v7
         if: steps.images.outputs.cache-hit != 'true'
@@ -435,7 +436,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
         uses: actions/cache/restore@v6
@@ -445,7 +446,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
       # The boot ROMs, which every run starts in.
       - uses: actions/download-artifact@v8
@@ -663,7 +664,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml') }}
+          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
           fail-on-cache-miss: true
       - name: Restore Zephyr and its venv
         uses: actions/cache/restore@v6
@@ -673,7 +674,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-${{ matrix.os }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
           fail-on-cache-miss: true
       - name: Take the firmware the firmware jobs built
         uses: actions/download-artifact@v8

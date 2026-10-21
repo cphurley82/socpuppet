@@ -16,6 +16,8 @@ REPO = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO / ".github" / "workflows"
 # How a job of the workflow runs a job of the runner.
 RUN = "uv run python tools/ci.py run "
+# A GitHub runner of Ubuntu, as a label names it.
+UBUNTU = re.compile(r"ubuntu-\d+\.\d+(?:-arm)?")
 
 
 def load_runner():
@@ -42,16 +44,18 @@ DEFAULT_UBUNTU = "ubuntu-26.04"
 DEFAULT_UBUNTUS = {DEFAULT_UBUNTU, f"{DEFAULT_UBUNTU}-arm"}
 # The oldest Ubuntu socpuppet supports, with an older GCC and older system
 # libraries. These jobs run on it too: the build and the tests, and QBox,
-# which links the most of the system's libraries, with the caches of
-# Zephyr and its SDK that QBox's job restores.
+# which links the most of the system's libraries. QBox's job restores the
+# same Zephyr and SDK there as on the default (PORTABLE_CACHES).
 OLDEST_UBUNTU = "ubuntu-24.04"
 ON_THE_OLDEST_UBUNTU_TOO = {
-    "fetch-sdk",
-    "fetch-zephyr",
     "test",
     "qbox-build",
     "qbox",
 }
+# The caches whose contents run on any Linux of the same processor, as on
+# any Mac: the Zephyr SDK's prebuilt tools, its LLVM, and Zephyr with a venv
+# on uv's own Python. One copy serves every Ubuntu.
+PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
 
 
 def test_ci_is_the_only_workflow():
@@ -136,9 +140,24 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
     # runners names its own in a key with matrix.os.
     for name, job in WORKFLOW.items():
         for key, ubuntus in ubuntus_in_cache_keys(job):
-            assert not ubuntus or ubuntus == set(runners(job)), (
-                f"{name}: {key}"
-            )
+            assert not ubuntus or ubuntus == set(runners(job)), f"{name}: {key}"
+
+
+def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
+    seen = set()
+    for name, job in WORKFLOW.items():
+        for key in cache_keys(job):
+            cache = cache_named_by(key)
+            if cache in PORTABLE_CACHES:
+                seen.add(cache)
+                named = {
+                    word
+                    for word in ("runner.os", "runner.arch", "matrix.os")
+                    if word in key
+                }
+                assert named == {"runner.os", "runner.arch"}, f"{name}: {key}"
+                assert not UBUNTU.search(key), f"{name}: {key}"
+    assert seen == PORTABLE_CACHES
 
 
 def test_the_devcontainers_image_is_the_default_ubuntu():
@@ -157,9 +176,20 @@ def base_images(dockerfile):
 
 def ubuntus_in_cache_keys(job):
     """Each cache key of a job's steps, with the Ubuntu runners it names."""
+    for key in cache_keys(job):
+        yield key, set(UBUNTU.findall(key))
+
+
+def cache_keys(job):
+    """The key of each cache a job of the workflow keeps or restores."""
     for step in job["steps"]:
-        key = step.get("with", {}).get("key", "")
-        yield key, set(re.findall(r"ubuntu-\d+\.\d+(?:-arm)?", key))
+        if "key" in step.get("with", {}):
+            yield step["with"]["key"]
+
+
+def cache_named_by(key):
+    """The cache a key is for: its first word, as in sdk-, zephyr-, llvm-."""
+    return key.split("-")[0]
 
 
 def runners(job):
