@@ -72,6 +72,11 @@
       "execution": { "jobs": 8 }
     },
     {
+      "name": "quick",
+      "inherits": "dev",
+      "environment": { "SOCPUPPET_SKIP_LONG": "1" }
+    },
+    {
       "name": "asan",
       "configurePreset": "asan",
       "output": { "outputOnFailure": true },
