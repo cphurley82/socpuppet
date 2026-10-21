@@ -1,5 +1,5 @@
-# The same environment CI uses: Ubuntu 24.04 with GCC 13.
-FROM ubuntu:24.04
+# The same environment CI uses by default: Ubuntu 26.04 with GCC 15.
+FROM ubuntu:26.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         acpica-tools \

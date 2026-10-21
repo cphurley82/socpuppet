@@ -26,7 +26,7 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
 
 ## 1. System packages
 
-### Ubuntu (24.04 or 26.04)
+### Ubuntu (26.04 or 24.04)
 
 ```sh
 sudo apt-get update && sudo apt-get install -y \

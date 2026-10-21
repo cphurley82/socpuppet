@@ -2,7 +2,7 @@
 
 ## What you need
 
-A C++20 compiler, [uv](https://docs.astral.sh/uv/), git, and a few system packages. [Setting up a machine for development](setup.md) lists them for Ubuntu and macOS and goes from a bare install to every test passing, QBox included; or open the repo in the devcontainer (`.devcontainer/`), which is the CI environment. Ubuntu 24.04 and macOS are both supported and both run in CI.
+A C++20 compiler, [uv](https://docs.astral.sh/uv/), git, and a few system packages. [Setting up a machine for development](setup.md) lists them for Ubuntu and macOS and goes from a bare install to every test passing, QBox included; or open the repo in the devcontainer (`.devcontainer/`), which is Ubuntu 26.04, as CI is by default. Ubuntu 26.04, Ubuntu 24.04 and macOS are all supported, and all three run in CI.
 
 ## The loop
 

@@ -141,6 +141,20 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
             )
 
 
+def test_the_devcontainers_image_is_the_default_ubuntu():
+    dockerfile = REPO / ".devcontainer" / "Dockerfile"
+    version = DEFAULT_UBUNTU.removeprefix("ubuntu-")
+    assert set(base_images(dockerfile)) == {f"ubuntu:{version}"}
+
+
+def base_images(dockerfile):
+    """The image each FROM instruction of a Dockerfile builds on."""
+    for line in dockerfile.read_text().splitlines():
+        words = line.split()
+        if words and words[0].upper() == "FROM":
+            yield next(word for word in words[1:] if not word.startswith("--"))
+
+
 def ubuntus_in_cache_keys(job):
     """Each cache key of a job's steps, with the Ubuntu runners it names."""
     for step in job["steps"]:
