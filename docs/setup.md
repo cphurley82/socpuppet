@@ -138,7 +138,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 
 ⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-💡 The native build on a Mac takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)), and it works on both kinds. On an Apple silicon MacBook Air (M4, macOS 26) QBox took 5½ minutes, socpuppet 2 and the suite 1; on an Intel 2019 Mac Pro, 9 minutes for QBox and 4 for the suite. CI builds it natively on an Apple silicon runner too.
+💡 The native build on a Mac takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)), and it works on both kinds. On an Apple silicon MacBook Air (M4, macOS 26) QBox took 5½ minutes, socpuppet 2 and the suite 1; on an Intel 2019 Mac Pro, 9 minutes for QBox and 4 for the suite. CI builds it natively on an Apple silicon runner and on an Intel one too.
 
 On a Mac the same four commands can also run in the devcontainer's image, which is Linux with GCC, as CI builds, and has QBox's packages already. `tools/devcontainer.py` goes in front of each:
 
@@ -153,7 +153,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 
 ## 6. Before your first push
 
-CI runs two checks that `ctest` does not. Run them once now to be sure the toolchain is complete:
+CI runs two checks that `ctest` does not, on Linux and on both kinds of Mac. Run them once now to be sure the toolchain is complete:
 
 ```sh
 uv run cmake --build --preset dev --target tidy            # clang-tidy, about 1 minute here
