@@ -935,7 +935,10 @@ def test_qbox_build_builds_qbox(ci):
     assert lines == ["uv run tools/build_qbox.py"]
 
 
-def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_qboxs_cpu(
+@pytest.mark.skipif(
+    RUNNER_MODULE.INTEL_MAC, reason="an Intel Mac stops qbox before twister"
+)
+def test_qbox_off_an_intel_mac_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_qboxs_cpu(
     ci,
 ):
     ci("run", "qbox")
@@ -953,12 +956,12 @@ def test_qbox_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_q
 
 
 @pytest.mark.skipif(not RUNNER_MODULE.INTEL_MAC, reason="for an Intel Mac")
-def test_qbox_here_on_an_intel_mac_stops_before_twister_which_would_run_in_a_container_without_qbox(
-    ci,
-):
+@pytest.mark.parametrize("where", [(), ("run",)], ids=["here", "in CI"])
+def test_qbox_on_an_intel_mac_stops_before_twister(ci, where):
     # Twister runs there in the devcontainer's image, on a socpuppet built
     # for Linux without QBox, and every scenario fails with "no qbox_cpu".
-    result, _ = ci("qbox")
+    # CI's Intel Macs have no Docker at all.
+    result, _ = ci(*where, "qbox")
 
     assert result.returncode == 0, result.stdout
     commands = [c["command"] for c in ci.commands()]
