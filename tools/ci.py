@@ -274,6 +274,16 @@ FIRMWARE = (
 )
 
 
+# What configures and builds the dev tree.
+DEV_BUILD = (
+    Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
+    Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
+)
+
+# A missing firmware image fails its boot test instead of skipping it.
+REQUIRE_FIRMWARE = {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
+
+
 # Quick first: when two jobs could start, the one higher in the table does.
 JOBS = [
     Job(
@@ -350,6 +360,39 @@ JOBS = [
                 # A missing firmware image fails its boot test instead of
                 # skipping it.
                 env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+            ),
+        ),
+        areas=("build",),
+    ),
+    Job(
+        "test-quick",
+        "build the dev tree and run every test but the long ones",
+        needs=FIRMWARE,
+        uses=("build/dev", "extension"),
+        steps=(
+            *DEV_BUILD,
+            # The quick preset leaves out the tests marked long.
+            Step(
+                "ctest",
+                ("uv", "run", "ctest", "--preset", "quick"),
+                env=REQUIRE_FIRMWARE,
+            ),
+        ),
+        areas=("build",),
+    ),
+    Job(
+        "on-demand",
+        "build the dev tree and run the tests too long for every run",
+        needs=FIRMWARE,
+        uses=("build/dev", "extension"),
+        steps=(
+            *DEV_BUILD,
+            # -m picks out the tests marked on_demand, and
+            # SOCPUPPET_ON_DEMAND=1 stops socpuppet's plugin skipping them.
+            Step(
+                "pytest",
+                ("uv", "run", "pytest", "-m", "on_demand"),
+                env={**REQUIRE_FIRMWARE, "SOCPUPPET_ON_DEMAND": "1"},
             ),
         ),
         areas=("build",),

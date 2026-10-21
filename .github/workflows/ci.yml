@@ -400,6 +400,59 @@ jobs:
           path: build/firmware
       - run: uv run python tools/ci.py run test
 
+  test-quick:
+    name: Build and test, but the long tests (${{ matrix.os }})
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26-intel]
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - name: Install the devicetree compiler
+        if: runner.os == 'macOS'
+        run: brew install dtc
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/dev/_deps
+          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: build/firmware
+      - run: uv run python tools/ci.py run test-quick
+
+  on-demand:
+    # The tests marked on_demand, too long for every run. On one Linux.
+    name: The on-demand tests
+    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install system packages
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+      - uses: astral-sh/setup-uv@v7
+      - name: Cache fetched dependencies
+        uses: actions/cache@v6
+        with:
+          path: build/dev/_deps
+          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+      - name: Take the firmware the firmware jobs built
+        uses: actions/download-artifact@v8
+        with:
+          pattern: firmware-*
+          merge-multiple: true
+          path: build/firmware
+      - run: uv run python tools/ci.py run on-demand
+
   tidy:
     # clang-tidy over our own C++, and each of our headers compiled on its
     # own. Nothing else is built: clang-tidy reads the sources and the

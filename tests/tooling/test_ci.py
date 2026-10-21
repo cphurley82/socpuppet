@@ -295,6 +295,33 @@ def test_run_test_requires_the_firmware_of_ctest_and_not_of_the_build(ci):
     }
 
 
+def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_the_firmware(
+    ci,
+):
+    ci("run", "test-quick")
+
+    assert steps_and_their_env(ci) == [
+        ("uv run cmake --preset dev", {}),
+        ("uv run cmake --build --preset dev", {}),
+        ("uv run ctest --preset quick", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
+    ]
+
+
+def test_run_on_demand_builds_the_dev_tree_then_runs_the_on_demand_tests_requiring_the_firmware(
+    ci,
+):
+    ci("run", "on-demand")
+
+    assert steps_and_their_env(ci) == [
+        ("uv run cmake --preset dev", {}),
+        ("uv run cmake --build --preset dev", {}),
+        (
+            "uv run pytest -m on_demand",
+            {"SOCPUPPET_REQUIRE_FIRMWARE": "1", "SOCPUPPET_ON_DEMAND": "1"},
+        ),
+    ]
+
+
 def test_run_stops_a_job_at_the_step_that_fails_and_says_which(ci):
     result, lines = ci("run", "test", FAIL_ON="--build")
 
@@ -1210,6 +1237,11 @@ def alive(pid):
     except ProcessLookupError:
         return False
     return True
+
+
+def steps_and_their_env(ci):
+    """Each command the fakes ran, in order, with the variables it was given."""
+    return [(command["command"], command["env"]) for command in ci.commands()]
 
 
 def files_in(directory):
