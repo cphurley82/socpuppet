@@ -18,6 +18,8 @@ WORKFLOWS = REPO / ".github" / "workflows"
 RUN = "uv run python tools/ci.py run "
 # A GitHub runner of Ubuntu, as a label names it.
 UBUNTU = re.compile(r"ubuntu-\d+\.\d+(?:-arm)?")
+# The key of a cache kept under the key its restore step looked for.
+KEPT = re.compile(r"\$\{\{ steps\.\w+\.outputs\.cache-primary-key \}\}")
 
 
 def load_runner():
@@ -160,6 +162,20 @@ def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
     assert seen == PORTABLE_CACHES
 
 
+def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_on():
+    # A key that names only the system, or ubuntu-latest, is the same on
+    # each Ubuntu runner, 24.04 and 26.04, Intel and Arm, and each leg would
+    # take another's build for its own.
+    checked = set()
+    for name, job in WORKFLOW.items():
+        if len(ubuntus_of(job)) < 2:
+            continue
+        checked.add(name)
+        for key in keys_of_what_it_builds(job):
+            assert "matrix.os" in key, f"{name}: {key}"
+    assert checked >= ON_THE_OLDEST_UBUNTU_TOO
+
+
 def test_the_devcontainers_image_is_the_default_ubuntu():
     dockerfile = REPO / ".devcontainer" / "Dockerfile"
     version = DEFAULT_UBUNTU.removeprefix("ubuntu-")
@@ -185,6 +201,21 @@ def cache_keys(job):
     for step in job["steps"]:
         if "key" in step.get("with", {}):
             yield step["with"]["key"]
+
+
+def keys_of_what_it_builds(job):
+    """A job's cache keys, less the portable caches and the saves that keep
+    a restore's own key."""
+    for key in cache_keys(job):
+        if cache_named_by(key) not in PORTABLE_CACHES and not KEPT.fullmatch(
+            key
+        ):
+            yield key
+
+
+def ubuntus_of(job):
+    """The Ubuntu runners a job of the workflow runs on."""
+    return {runner for runner in runners(job) if UBUNTU.fullmatch(runner)}
 
 
 def cache_named_by(key):
