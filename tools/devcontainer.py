@@ -28,7 +28,9 @@ TWISTER_HOME = PurePosixPath("/twister")
 
 # uv's venv, its cache and its Pythons, which are kept in build/ so that
 # they outlive the container. firmware/twister.py runs in the same image
-# with the same venv and Python.
+# with the same venv and Python. 💡 They outlive a new Ubuntu too: the
+# Python is uv's own, which runs on any, and the venv holds only tools, as
+# manylinux wheels, since `uv sync` never builds socpuppet (pyproject.toml).
 UV = {
     "UV_PROJECT_ENVIRONMENT": f"{WORKSPACE}/build/linux-venv",
     "UV_PYTHON_INSTALL_DIR": f"{WORKSPACE}/build/linux-python",
@@ -148,7 +150,9 @@ def kept_apart() -> dict[str, PurePosixPath]:
     /workspace, so what it builds for itself is not the host's, though
     the host is Linux too. uv's venv, cache and Pythons, and the linux
     preset's tree, build/linux, are the container's alone already, and
-    nothing of the host's is where they are.
+    nothing of the host's is where they are. ⚠️ build/linux is not named
+    for the image's Ubuntu, since tools/ci.py and firmware/twister.py look
+    after its dependencies where it is: after a new Ubuntu, delete it.
     """
     return {
         # QBox, and socpuppet's tree built with it, where

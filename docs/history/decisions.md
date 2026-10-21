@@ -2,6 +2,10 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-10-21
+
+- **What the container builds for itself is named for the image's Ubuntu**, read from the Dockerfile's `FROM`: on Linux `build/container/ubuntu-26.04/<tree>`, on a Mac the volume `socpuppet-<tree>-ubuntu-26.04`, which `.devcontainer/devcontainer.json` names too. An image of a new Ubuntu starts in fresh trees, where GCC 15 had built on what GCC 13 made against 24.04's libraries; the old ones are left to delete ([development.md](../development.md)). uv's venv and Python are not, since the Python is uv's own and the venv holds only manylinux wheels; nor is `build/linux`, whose dependencies `tools/ci.py` and `firmware/twister.py` look after where it is. ↔ Amends the 2026-10-20 "Docker's container is a machine of its own".
+
 ## 2026-10-20
 
 - **Ubuntu 26.04 is the default**, for CI's runners and the devcontainer's image, where 24.04 was. GitHub's 26.04 runners are generally available, and `ubuntu-latest` moves to them in October and November 2026. 24.04 is still supported, and CI keeps a leg on it where an older Ubuntu differs most: the build and the tests, with GCC 13, and QBox, which links more of the system's libraries than anything else. The jobs that build firmware, check the code or make the wheels run on 26.04 alone, since what they produce does not depend on the Ubuntu they run on. ↔ Amends M0's "a devcontainer that is the CI environment": it is CI's default one now, beside a leg on 24.04.
