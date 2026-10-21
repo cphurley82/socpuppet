@@ -225,7 +225,12 @@ def ci(tmp_path):
         return log.read_text().splitlines() if log.exists() else []
 
     def pids():
-        return [int(line) for line in Path(f"{log}.pids").read_text().split()]
+        path = Path(f"{log}.pids")
+        return (
+            [int(line) for line in path.read_text().split()]
+            if path.exists()
+            else []
+        )
 
     def commands():
         path = Path(f"{log}.json")
@@ -532,7 +537,9 @@ def test_the_list_shows_a_command_that_runs_each_job_here_and_runs_none(ci):
 def test_an_interrupted_run_stops_its_steps_and_says_how_far_it_got(ci):
     # Far longer than the test waits for the step to be stopped.
     run = ci.start("lint", SLOW="30")
-    wait_for(lambda: ci.lines())
+    # The step says its process id after its command line, and a step
+    # stopped between the two would leave nothing to look for.
+    wait_for(ci.pids)
 
     run.send_signal(signal.SIGINT)
     stdout, _ = run.communicate(timeout=10)
