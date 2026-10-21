@@ -13,8 +13,12 @@ name: CI
 # macos-15-intel). An Intel Mac runs here what it runs natively, as
 # tools/ci.py runs it there; what it builds in the devcontainer's image,
 # the firmware and twister, it does not, as GitHub's Macs have no Docker.
-# macos-26-intel runs each of those jobs; macos-15-intel, an older Xcode
-# and SDK, only the quick ones, test and tidy.
+# macos-26-intel runs each of those jobs but qbox-tidy; macos-15-intel, an
+# older Xcode and SDK, only the quick ones, test and tidy. qbox-tidy there
+# ran for 50 minutes and then lost its runner, most likely to a lack of
+# memory, and it would add little: the Intel Mac's QBox build already meets
+# Homebrew's /usr/local, and the Apple silicon Mac checks the adapter with
+# Apple clang.
 
 on:
   push:
@@ -595,7 +599,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15, macos-26-intel]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -727,10 +731,10 @@ jobs:
   wheel:
     # The wheels a user will install, built by cibuildwheel as configured in
     # pyproject.toml: one per Python version, for Linux on Intel and Arm
-    # (manylinux) and for macOS on Apple silicon and on Intel. cibuildwheel installs each
-    # into a fresh environment and runs the Python tests against it, and
-    # then one is installed the way a user would, with uv and with pip, and
-    # boots real firmware. Nothing is published from here.
+    # (manylinux) and for macOS on Apple silicon and on Intel. cibuildwheel
+    # installs each into a fresh environment and runs the Python tests
+    # against it, and then one is installed the way a user would, with uv
+    # and with pip, and boots real firmware. Nothing is published from here.
     #
     # Nearly all of a wheel is the dependencies, which are the same for
     # every Python version. A compiler cache (ccache, set up in
