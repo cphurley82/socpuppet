@@ -18,7 +18,9 @@ machine almost nothing. 🎓 QEMU does the same with `-icount sleep=on`.
 import os
 import select
 import sys
+import termios
 import time
+import tty
 from collections.abc import Sequence
 
 from socpuppet.placed import PlacedFarEnd
@@ -43,12 +45,31 @@ def interact(
 
     What each console in `screen` prints is written to standard output as
     it comes, and what comes in on standard input is typed at `keyboard`.
+    A terminal hands over each key as it is pressed, as a serial line
+    does, and is put back as it was at the end.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
     that is a CPU asleep. That stretch is waited out on the wall, and a
     key ends the wait.
     """
+    keys = sys.stdin.fileno()
+    settings = termios.tcgetattr(keys) if os.isatty(keys) else None
+    if settings is not None:
+        tty.setraw(keys)
+    try:
+        _run(platform, screen, keyboard)
+    finally:
+        if settings is not None:
+            termios.tcsetattr(keys, termios.TCSADRAIN, settings)
+
+
+def _run(
+    platform: Platform,
+    screen: Sequence[PlacedFarEnd],
+    keyboard: PlacedFarEnd,
+) -> None:
+    """Run `platform`, showing `screen` and typing at `keyboard`."""
     shown = [0] * len(screen)
     look_again = 0.0
     while True:
