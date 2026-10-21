@@ -36,6 +36,22 @@ WORKFLOW = yaml.safe_load((WORKFLOWS / "ci.yml").read_text())["jobs"]
 # included. A run that takes longer has gone wrong.
 QBOX_TIME_LIMIT = 180
 
+# The Ubuntu a job runs on unless it says otherwise, on Intel or on Arm.
+DEFAULT_UBUNTU = "ubuntu-26.04"
+DEFAULT_UBUNTUS = {DEFAULT_UBUNTU, f"{DEFAULT_UBUNTU}-arm"}
+# The oldest Ubuntu socpuppet supports, with an older GCC and older system
+# libraries. These jobs run on it too: the build and the tests, and QBox,
+# which links the most of the system's libraries, with the caches of
+# Zephyr and its SDK that QBox's job restores.
+OLDEST_UBUNTU = "ubuntu-24.04"
+ON_THE_OLDEST_UBUNTU_TOO = {
+    "fetch-sdk",
+    "fetch-zephyr",
+    "test",
+    "qbox-build",
+    "qbox",
+}
+
 
 def test_ci_is_the_only_workflow():
     assert sorted(path.name for path in WORKFLOWS.iterdir()) == ["ci.yml"]
@@ -92,6 +108,25 @@ def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
     for name, job in WORKFLOW.items():
         if "matrix" in job.get("strategy", {}):
             assert job["strategy"]["fail-fast"] is False, name
+
+
+def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldest_too():
+    for name, job in WORKFLOW.items():
+        allowed = DEFAULT_UBUNTUS | (
+            {OLDEST_UBUNTU} if name in ON_THE_OLDEST_UBUNTU_TOO else set()
+        )
+        ubuntus = {
+            runner for runner in runners(job) if runner.startswith("ubuntu")
+        }
+        assert ubuntus & DEFAULT_UBUNTUS, name
+        assert ubuntus <= allowed, name
+
+
+def runners(job):
+    """The runners a job of the workflow runs on: its matrix's, or its own."""
+    if job["runs-on"] == "${{ matrix.os }}":
+        return job["strategy"]["matrix"]["os"]
+    return [job["runs-on"]]
 
 
 def jobs_run(job):
