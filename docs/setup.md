@@ -149,7 +149,7 @@ tools/devcontainer.py uv run cmake --build --preset qbox
 SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 ```
 
-💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees on Docker volumes (`socpuppet-qbox` and `socpuppet-qbox-dev`), because a compiler reading the Mac's files through Docker is ten times slower. In the container the volumes sit where `build/qbox` and `build/qbox-dev` are, in front of whatever the Mac has there, so a native build and this one do not disturb each other. `docker volume rm socpuppet-qbox socpuppet-qbox-dev` is how to start this one again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
+💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees on Docker volumes named for the image's Ubuntu (`socpuppet-qbox-ubuntu-26.04` and `socpuppet-qbox-dev-ubuntu-26.04`), because a compiler reading the Mac's files through Docker is ten times slower. In the container the volumes sit where `build/qbox` and `build/qbox-dev` are, in front of whatever the Mac has there, so a native build and this one do not disturb each other. `docker volume rm socpuppet-qbox-ubuntu-26.04 socpuppet-qbox-dev-ubuntu-26.04` is how to start this one again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
 
 ## 6. Before your first push
 
