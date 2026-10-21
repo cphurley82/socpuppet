@@ -36,6 +36,18 @@ class TestWhenSomeoneTypesAtTheTerminal:
 
         terminal.wait_for(SHELL_VERSION.encode())
 
+    def test_a_key_reaches_the_firmware_without_waiting_for_enter(
+        self, terminal
+    ):
+        terminal.wait_for(SHELL_PROMPT.encode())
+
+        # Tab asks the shell to finish the word, and `kernel` is the one
+        # command that starts `kern`. A terminal that kept the line until
+        # Enter would show only what was typed.
+        terminal.type(b"kern\t")
+
+        terminal.wait_for(b"kernel")
+
 
 #: What the process runs: the host with Zephyr's shell, and `interact` at
 #: its UART.
