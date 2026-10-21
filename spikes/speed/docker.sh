@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs run.sh in the devcontainer's image, which is what CI builds in
-# (Ubuntu 24.04, GCC 13), for the speed spike's Docker columns.
+# (Ubuntu 26.04 with GCC 15 since 2026-10-20, 24.04 with GCC 13 before:
+# each result's commit says which), for the speed spike's Docker columns.
 #
 #   spikes/speed/docker.sh amd64 --env docker-amd64-on-macpro
 #   spikes/speed/docker.sh arm64 --env docker-arm64-on-air

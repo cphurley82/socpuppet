@@ -246,7 +246,7 @@ The Mac's leg first ran later the same day, and passed the same 113 scenarios in
 |---|---|---|---|---|
 | Apple silicon Mac (M4), on macOS itself | 10 | 3 min | 6 min 31 s | 31 s |
 | Intel Mac, in Docker with the volume | 16 | 12 min | 7 min 40 s | 38 s |
-| CI, `ubuntu-24.04` (three runs) | 4 | 5 to 8 min | 11 to 19 min | 28 s |
+| CI, `ubuntu-24.04`, before CI moved to 26.04 (three runs) | 4 | 5 to 8 min | 11 to 19 min | 28 s |
 | CI, `macos-15` (one run) | 3 | 9 min | 23 min | 15 s |
 
 🎓 Twister's minutes are nearly all CMake and the compiler, a build for each scenario and as many at once as there are cores, so the column follows the cores and how fast each is. Ten of Apple's beat sixteen of Intel's that reach their files through a container. The last column does not follow it: a scenario's own run is one thread of the simulator, and the same scenario took twice as long on the M4, with ten running at once and six of its cores the slow kind, as on the runner's three. That reading is a guess and was not looked into, since every scenario has its time several times over in all four places.
