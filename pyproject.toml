@@ -65,7 +65,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16",
-    "rumdl==0.2.78",
+    "rumdl==0.2.79",
     # pyfatfs is built on PyFilesystem2, which still imports
     # pkg_resources, and setuptools 81 has none (docs/upstream.md).
     "setuptools<81",
