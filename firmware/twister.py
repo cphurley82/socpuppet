@@ -28,10 +28,11 @@ On an Intel Mac it runs itself in the devcontainer's image, as
 firmware/build.py does, since the Zephyr SDK has no toolchain for one.
 There it builds a socpuppet for Linux in build/linux first, and keeps
 Zephyr's tree and twister's build directories on a Docker volume,
-socpuppet-twister: a compiler that reads its headers through Docker's file
-sharing takes ten times as long (docs/twister-spike.md has the figures).
-Zephyr is copied to the volume the first time and when its version
-changes, and `docker volume rm socpuppet-twister` throws the copy away.
+socpuppet-twister-<the image's Ubuntu>, which tools/devcontainer.py names:
+a compiler that reads its headers through Docker's file sharing takes ten
+times as long (docs/twister-spike.md has the figures). Zephyr is copied to
+the volume the first time and when its version changes, and
+`docker volume rm` throws the copy away.
 The SDK and the venv are Linux's own, in build/firmware/linux-x86_64,
 which tools/devcontainer.py makes a Docker volume already.
 """

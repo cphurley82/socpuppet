@@ -171,17 +171,18 @@ def kept_apart() -> dict[str, PurePosixPath]:
 def apart_from_the_host(name: str) -> str:
     """What is mounted to keep `name` apart from the host's own.
 
-    On a Mac it is a Docker volume, socpuppet-<name>: Docker Desktop reads
+    It is named for the image's Ubuntu, so an image of a new Ubuntu starts
+    afresh. On a Mac it is a Docker volume, socpuppet-<name>-<the image's
+    Ubuntu>, such as socpuppet-qbox-ubuntu-26.04: Docker Desktop reads
     the Mac's files through file sharing, which a compiler finds ten times
     slower than a volume (docs/twister-spike.md), and a Mac's file system
     takes two of the kernel's names that differ only in their case for one.
-    `docker volume rm` throws one away. On Linux it is a folder of
+    `docker volume rm` throws an old Ubuntu's away. On Linux it is a folder of
     build/container/<the image's Ubuntu>, which the container writes as the
-    caller, so an image of a new Ubuntu starts afresh and `rm -rf` throws
-    an old one's away.
+    caller, and `rm -rf` throws an old Ubuntu's away.
     """
     if platform.system() == "Darwin":
-        return f"socpuppet-{name}"
+        return f"socpuppet-{name}-{ubuntu()}"
     return str(REPOSITORY / "build" / "container" / ubuntu() / name)
 
 

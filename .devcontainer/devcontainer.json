@@ -2,19 +2,21 @@
   "name": "socpuppet",
   "build": { "dockerfile": "Dockerfile" },
   // The repository at /workspace, and the container's own trees kept apart
-  // from the host's in Docker volumes, as tools/devcontainer.py has them on
-  // a Mac, which says why. Their mount points are made first, on the host:
-  // Docker makes a missing one, and on Linux makes it root's.
+  // from the host's in the Docker volumes tools/devcontainer.py mounts on a
+  // Mac, which says why. Their names end in the image's Ubuntu: change them
+  // with the Dockerfile's FROM line (a test holds them to the script). Their
+  // mount points are made first, on the host: Docker makes a missing one,
+  // and on Linux makes it root's.
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
   "initializeCommand": "mkdir -p build/qbox build/qbox-dev build/firmware/linux-aarch64 build/firmware/linux-x86_64",
   "mounts": [
-    "source=socpuppet-qbox,target=/workspace/build/qbox,type=volume",
-    "source=socpuppet-qbox-dev,target=/workspace/build/qbox-dev,type=volume",
+    "source=socpuppet-qbox-ubuntu-26.04,target=/workspace/build/qbox,type=volume",
+    "source=socpuppet-qbox-dev-ubuntu-26.04,target=/workspace/build/qbox-dev,type=volume",
     // Linux's firmware tools, in build/firmware/linux-<processor>: this file
     // cannot ask which processor it is on, so both are mounted.
-    "source=socpuppet-firmware-linux,target=/workspace/build/firmware/linux-aarch64,type=volume",
-    "source=socpuppet-firmware-linux,target=/workspace/build/firmware/linux-x86_64,type=volume"
+    "source=socpuppet-firmware-linux-ubuntu-26.04,target=/workspace/build/firmware/linux-aarch64,type=volume",
+    "source=socpuppet-firmware-linux-ubuntu-26.04,target=/workspace/build/firmware/linux-x86_64,type=volume"
   ],
   "postCreateCommand": "uv sync",
   "customizations": {
