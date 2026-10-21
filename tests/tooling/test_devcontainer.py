@@ -32,9 +32,17 @@ READS = (
     "firmware/build.py",
     "firmware/twister.py",
 )
-TAG = (
-    "socpuppet-dev:" + hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()[:12]
-)
+#: The Ubuntu the image builds on unless it is asked for another, as the
+#: Dockerfile's ARG UBUNTU says.
+DEFAULT_UBUNTU = re.search(
+    r"^ARG UBUNTU=(\S+)$", DOCKERFILE.read_text(), re.MULTILINE
+)[1]
+#: The oldest Ubuntu socpuppet supports, whose image is asked for by name.
+OLDEST_UBUNTU = "24.04"
+DOCKERFILE_HASH = hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()[:12]
+#: The image's name, for the default Ubuntu and for the oldest.
+TAG = f"socpuppet-dev:ubuntu-{DEFAULT_UBUNTU}-{DOCKERFILE_HASH}"
+OLDEST_TAG = f"socpuppet-dev:ubuntu-{OLDEST_UBUNTU}-{DOCKERFILE_HASH}"
 
 # A docker that logs each command, and has an image only if the test said so.
 DOCKER = """
@@ -162,6 +170,11 @@ def runs(calls):
     return [call[1:] for call in calls if call[0] == "run"]
 
 
+def builds(calls):
+    """The arguments of each `docker build` among docker's calls."""
+    return [call[1:] for call in calls if call[0] == "build"]
+
+
 def values(call, option):
     """What each `option VALUE` of a docker command gave, in order."""
     return [call[i + 1] for i, word in enumerate(call[:-1]) if word == option]
@@ -187,18 +200,61 @@ def test_the_command_runs_in_the_devcontainers_image_with_the_repository_at_work
     assert run[-len(command) - 1 :] == [TAG, *command]
 
 
-def test_an_image_is_built_from_the_dockerfile_when_none_has_its_hash_and_is_also_named_socpuppet_dev(
+def test_an_image_is_built_from_the_dockerfile_when_none_has_its_hash(
     devcontainer,
 ):
     result, calls = devcontainer("true", images=())
 
     assert result.returncode == 0, result.stdout
-    (build,) = [call[1:] for call in calls if call[0] == "build"]
-    assert set(values(build, "--tag")) == {TAG, "socpuppet-dev"}
+    (build,) = builds(calls)
+    assert values(build, "--tag") == [TAG]
     dockerfile = devcontainer.root / ".devcontainer" / "Dockerfile"
     assert values(build, "--file") == [str(dockerfile)]
     assert build[-1] == str(dockerfile.parent)
     assert position(calls, "build") < position(calls, "run")
+
+
+def test_without_ubuntu_given_the_image_is_built_from_the_dockerfiles_ubuntu(
+    devcontainer,
+):
+    from_ubuntu(devcontainer.root, "28.04")
+
+    result, calls = devcontainer("true", images=())
+
+    assert result.returncode == 0, result.stdout
+    (build,) = builds(calls)
+    assert "UBUNTU=28.04" in values(build, "--build-arg")
+
+
+def test_with_ubuntu_given_first_the_image_is_built_from_it_and_named_for_it_and_the_command_runs_there(
+    devcontainer,
+):
+    result, calls = devcontainer("--ubuntu", OLDEST_UBUNTU, "true", images=())
+
+    assert result.returncode == 0, result.stdout
+    (build,) = builds(calls)
+    assert f"UBUNTU={OLDEST_UBUNTU}" in values(build, "--build-arg")
+    assert OLDEST_TAG in values(build, "--tag")
+    (run,) = runs(calls)
+    assert run[-2:] == [OLDEST_TAG, "true"]
+
+
+def test_with_ubuntu_given_after_the_command_it_is_the_commands_own(
+    devcontainer,
+):
+    result, calls = devcontainer("echo", "--ubuntu", OLDEST_UBUNTU)
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    assert run[-4:] == [TAG, "echo", "--ubuntu", OLDEST_UBUNTU]
+
+
+def test_with_ubuntu_given_and_no_version_the_usage_is_printed(devcontainer):
+    result, calls = devcontainer("--ubuntu")
+
+    assert result.returncode == 2
+    assert "usage: tools/devcontainer.py" in result.stdout
+    assert not calls
 
 
 def test_an_image_already_built_from_this_dockerfile_is_not_built_again(
@@ -256,16 +312,23 @@ def test_on_a_mac_what_the_container_builds_for_itself_is_a_docker_volume_named_
         assert f"socpuppet-{folder}-ubuntu-28.04:{there}" in volumes
 
 
+@pytest.mark.parametrize(
+    "given", [False, True], ids=["the_dockerfiles_ubuntu", "ubuntu_given"]
+)
 def test_on_linux_what_the_container_builds_for_itself_is_kept_in_a_folder_of_build_container_named_for_the_images_ubuntu(
-    devcontainer,
+    devcontainer, given
 ):
     # 🎓 The container is a Linux machine of its own, with its own compiler
     # and the repository at /workspace: what it builds for itself is not
     # the host's, though the host is Linux too. Nor is what GCC 13 built
     # against Ubuntu 24.04's libraries a tree for GCC 15 on 26.04.
-    from_ubuntu(devcontainer.root, "28.04")
+    if given:
+        leading = ("--ubuntu", "28.04")
+    else:
+        from_ubuntu(devcontainer.root, "28.04")
+        leading = ()
 
-    result, calls = devcontainer("true", as_on=("Linux", "x86_64"))
+    result, calls = devcontainer(*leading, "true", as_on=("Linux", "x86_64"))
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
@@ -297,15 +360,16 @@ def test_on_linux_a_missing_folder_kept_apart_is_made_as_the_callers_before_dock
 
 
 def from_ubuntu(root, version):
-    """Make the repository's Dockerfile build from Ubuntu `version`."""
+    """Make the repository's Dockerfile build from Ubuntu `version` unless
+    asked for another."""
     dockerfile = root / ".devcontainer" / "Dockerfile"
     text, replaced = re.subn(
-        r"^FROM ubuntu:\S+",
-        f"FROM ubuntu:{version}",
+        r"^ARG UBUNTU=\S+",
+        f"ARG UBUNTU={version}",
         dockerfile.read_text(),
         flags=re.MULTILINE,
     )
-    assert replaced == 1, "the Dockerfile has no single FROM ubuntu: line"
+    assert replaced == 1, "the Dockerfile has no single ARG UBUNTU= line"
     dockerfile.write_text(text)
 
 

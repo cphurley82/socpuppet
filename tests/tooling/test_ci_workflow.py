@@ -280,11 +280,19 @@ def triggers_of(tier):
 
 
 def base_images(dockerfile):
-    """The image each FROM instruction of a Dockerfile builds on."""
+    """The image each FROM instruction of a Dockerfile builds on, with each
+    ARG before it as its default."""
+    defaults = {}
     for line in dockerfile.read_text().splitlines():
         words = line.split()
+        if words and words[0].upper() == "ARG" and "=" in words[1]:
+            name, default = words[1].split("=", 1)
+            defaults[name] = default
         if words and words[0].upper() == "FROM":
-            yield next(word for word in words[1:] if not word.startswith("--"))
+            image = next(
+                word for word in words[1:] if not word.startswith("--")
+            )
+            yield re.sub(r"\$\{(\w+)\}", lambda m: defaults[m[1]], image)
 
 
 def ubuntus_in_cache_keys(job):

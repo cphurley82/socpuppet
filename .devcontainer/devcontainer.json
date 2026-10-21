@@ -4,7 +4,7 @@
   // The repository at /workspace, and the container's own trees kept apart
   // from the host's in the Docker volumes tools/devcontainer.py mounts on a
   // Mac, which says why. Their names end in the image's Ubuntu: change them
-  // with the Dockerfile's FROM line (a test holds them to the script). Their
+  // with the Dockerfile's ARG UBUNTU (a test holds them to the script). Their
   // mount points are made first, on the host: Docker makes a missing one,
   // and on Linux makes it root's.
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",

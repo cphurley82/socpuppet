@@ -1,5 +1,8 @@
-# The same environment CI uses by default: Ubuntu 26.04 with GCC 15.
-FROM ubuntu:26.04
+# The same environment CI uses by default: Ubuntu 26.04 with GCC 15. Built
+# with --build-arg UBUNTU=24.04 (tools/devcontainer.py --ubuntu 24.04), it is
+# the oldest Ubuntu socpuppet supports, with GCC 13.
+ARG UBUNTU=26.04
+FROM ubuntu:${UBUNTU}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         acpica-tools \

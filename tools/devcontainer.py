@@ -4,15 +4,19 @@
 Usage:
   tools/devcontainer.py uv run cmake --preset qbox
   tools/devcontainer.py bash
+  tools/devcontainer.py --ubuntu 24.04 bash
 
-The image is Linux with GCC, which is what CI builds in. It is built the
-first time, and again whenever .devcontainer/Dockerfile changes.
+The image is Linux with GCC, which is what CI builds in, on the Ubuntu the
+Dockerfile's ARG UBUNTU names unless --ubuntu, before the command, names
+another. Each Ubuntu's is built the first time it is asked for, and again
+whenever .devcontainer/Dockerfile changes.
 """
 
 import hashlib
 import importlib.util
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -41,9 +45,16 @@ UV = {
 def main() -> int:
     """Run the command given, in the image. Returns 1 or 2 if it cannot."""
     command = sys.argv[1:]
-    if not command:
+    # Only the first words: after the command, --ubuntu is the command's.
+    if command[:1] == ["--ubuntu"]:
+        version = command[1] if len(command) > 1 else ""
+        command = command[2:]
+    else:
+        version = default_ubuntu()
+    if not version or not command:
         print(
-            "usage: tools/devcontainer.py COMMAND [ARGUMENT...]",
+            "usage: tools/devcontainer.py [--ubuntu VERSION] COMMAND "
+            "[ARGUMENT...]",
             file=sys.stderr,
         )
         return 2
@@ -55,11 +66,16 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    built = image()
+    built = image(version)
     if not built:
         return 1
-    apart = kept_apart()
-    make_room(apart)
+    # Each mount that keeps what the container builds for itself apart from
+    # the host's own: what is mounted, and where the container has it.
+    mounts = {
+        apart_from_the_host(name, version): there
+        for name, there in kept_apart().items()
+    }
+    make_room(mounts)
     # Docker takes this process's place, so that the terminal, and Ctrl-C,
     # are the command's.
     os.execvp(
@@ -72,49 +88,50 @@ def main() -> int:
                 "--workdir",
                 str(WORKSPACE),
             ),
-            *docker_options(apart),
+            *docker_options(mounts),
             built,
             *command,
         ],
     )
 
 
-def image() -> str | None:
-    """The image, built from the Dockerfile if it is not there yet.
+def image(version: str) -> str | None:
+    """The image on Ubuntu `version`, built from the Dockerfile if need be.
 
-    It is named after the Dockerfile's contents, so a change to the
-    Dockerfile builds it again. It is socpuppet-dev too, the name that
-    stands for whichever was built last. None if it could not be built,
-    which docker has said why.
+    It is named after its Ubuntu and the Dockerfile's contents, so a change
+    to the Dockerfile builds it again. None if it could not be built, which
+    docker has said why.
     """
     digest = hashlib.sha256(DOCKERFILE.read_bytes()).hexdigest()
-    name = f"socpuppet-dev:{digest[:12]}"
+    name = f"socpuppet-dev:{ubuntu_label(version)}-{digest[:12]}"
     there = subprocess.run(
         ["docker", "image", "inspect", name], capture_output=True
     )
     if there.returncode != 0:
         built = subprocess.run(
             [
-                *("docker", "build", "--tag", name, "--tag", "socpuppet-dev"),
+                *("docker", "build", "--tag", name),
+                *("--build-arg", f"UBUNTU={version}"),
                 *("--file", str(DOCKERFILE), str(DOCKERFILE.parent)),
             ]
         )
         if built.returncode != 0:
             print(
-                "The devcontainer's image did not build: Docker says why "
-                "above. Is Docker running, and does .devcontainer/Dockerfile "
-                "build?",
+                f"The devcontainer's image on Ubuntu {version} did not "
+                "build: Docker says why above. Is Docker running, is "
+                f"ubuntu:{version} an image Docker Hub has, and does "
+                ".devcontainer/Dockerfile build?",
                 file=sys.stderr,
             )
             return None
     return name
 
 
-def docker_options(apart: dict[str, PurePosixPath]) -> list[str]:
+def docker_options(mounts: dict[str, PurePosixPath]) -> list[str]:
     """What `docker run` is told, beyond the repository and the command.
 
-    `apart` is what the container keeps apart from the host, as
-    `kept_apart()` has it.
+    `mounts` keep what the container builds for itself apart from the
+    host's own: what is mounted, and where the container has it.
     """
     options = [f"{name}={value}" for name, value in UV.items()]
     # socpuppet's own variables, such as SOCPUPPET_REQUIRE_FIRMWARE and
@@ -133,8 +150,8 @@ def docker_options(apart: dict[str, PurePosixPath]) -> list[str]:
         # only root can remove. Docker Desktop on a Mac maps the user by
         # itself.
         options += ["--user", f"{os.getuid()}:{os.getgid()}"]
-    for name, there in apart.items():
-        options += ["--volume", f"{apart_from_the_host(name)}:{there}"]
+    for source, there in mounts.items():
+        options += ["--volume", f"{source}:{there}"]
     # From a terminal, the command has one, so that a shell in the
     # container works.
     if sys.stdin.isatty() and sys.stdout.isatty():
@@ -172,50 +189,56 @@ def kept_apart() -> dict[str, PurePosixPath]:
     }
 
 
-def apart_from_the_host(name: str) -> str:
+def apart_from_the_host(name: str, version: str) -> str:
     """What is mounted to keep `name` apart from the host's own.
 
-    It is named for the image's Ubuntu, so an image of a new Ubuntu starts
-    afresh. On a Mac it is a Docker volume, socpuppet-<name>-<the image's
-    Ubuntu>, such as socpuppet-qbox-ubuntu-26.04: Docker Desktop reads
-    the Mac's files through file sharing, which a compiler finds ten times
-    slower than a volume (docs/twister-spike.md), and a Mac's file system
-    takes two of the kernel's names that differ only in their case for one.
-    `docker volume rm` throws an old Ubuntu's away. On Linux it is a folder of
+    It is for the image on Ubuntu `version`, and named for that Ubuntu, so
+    an image of another Ubuntu starts afresh. 🎓 What the container builds
+    for itself was built by that Ubuntu's compiler against its libraries,
+    and another Ubuntu's compiler should not build on top of it. On a Mac it
+    is a Docker volume, socpuppet-<name>-<the image's Ubuntu>, such as
+    socpuppet-qbox-ubuntu-26.04: Docker Desktop reads the Mac's files
+    through file sharing, which a compiler finds ten times slower than a
+    volume (docs/twister-spike.md), and a Mac's file system takes two of the
+    kernel's names that differ only in their case for one. `docker volume
+    rm` throws an old Ubuntu's away. On Linux it is a folder of
     build/container/<the image's Ubuntu>, which the container writes as the
     caller, and `rm -rf` throws an old Ubuntu's away.
     """
     if platform.system() == "Darwin":
-        return f"socpuppet-{name}-{ubuntu()}"
-    return str(REPOSITORY / "build" / "container" / ubuntu() / name)
-
-
-def ubuntu() -> str:
-    """The Ubuntu the image builds on, as ubuntu-26.04, from its FROM line.
-
-    🎓 What the container builds for itself was built by that Ubuntu's
-    compiler against its libraries, and another Ubuntu's compiler should
-    not build on top of it.
-    """
-    words = next(
-        words
-        for words in map(str.split, DOCKERFILE.read_text().splitlines())
-        if words and words[0].upper() == "FROM"
+        return f"socpuppet-{name}-{ubuntu_label(version)}"
+    return str(
+        REPOSITORY / "build" / "container" / ubuntu_label(version) / name
     )
-    image = next(word for word in words[1:] if not word.startswith("--"))
-    return image.replace(":", "-")
 
 
-def make_room(apart: dict[str, PurePosixPath]) -> None:
-    """On Linux, make each folder kept `apart`, as the caller's.
+def default_ubuntu() -> str:
+    """The Ubuntu the image builds on unless asked for another, as 26.04.
+
+    It is the default of the Dockerfile's ARG UBUNTU.
+    """
+    found = re.search(
+        r"^ARG UBUNTU=(\S+)$", DOCKERFILE.read_text(), re.MULTILINE
+    )
+    assert found, f"{DOCKERFILE} has no ARG UBUNTU= line"
+    return found[1]
+
+
+def ubuntu_label(version: str) -> str:
+    """An Ubuntu as an image, a volume or a folder names it: ubuntu-26.04."""
+    return f"ubuntu-{version}"
+
+
+def make_room(mounts: dict[str, PurePosixPath]) -> None:
+    """On Linux, make each folder `mounts` mounts, as the caller's.
 
     And where it is mounted, if that is in the repository. 💡 Docker makes
     a folder it is to mount that is not there, and makes it root's.
     """
     if platform.system() == "Darwin":
         return
-    for name, there in apart.items():
-        Path(apart_from_the_host(name)).mkdir(parents=True, exist_ok=True)
+    for source, there in mounts.items():
+        Path(source).mkdir(parents=True, exist_ok=True)
         if there.is_relative_to(WORKSPACE):
             point = REPOSITORY / there.relative_to(WORKSPACE)
             point.mkdir(parents=True, exist_ok=True)
