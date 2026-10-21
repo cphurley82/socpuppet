@@ -210,47 +210,50 @@ def test_an_image_already_built_from_this_dockerfile_is_not_built_again(
     assert not [call for call in calls if call[0] == "build"]
 
 
-@ON_A_MAC
-def test_on_a_mac_qboxs_two_trees_are_docker_volumes_where_the_qbox_preset_looks(
-    devcontainer,
-):
-    result, calls = devcontainer("true")
-
-    assert result.returncode == 0, result.stdout
-    (run,) = runs(calls)
-    volumes = values(run, "--volume")
-    assert f"socpuppet-qbox:{QBOX}" in volumes
-    assert f"socpuppet-qbox-dev:{QBOX_DEV}" in volumes
-
-
 @pytest.mark.parametrize(
     ("processor", "linux"),
     [("arm64", "linux-aarch64"), ("x86_64", "linux-x86_64")],
 )
-def test_on_a_mac_linuxs_firmware_tools_are_a_docker_volume_in_build_firmware_linux_and_the_processor(
+def test_on_a_mac_linuxs_firmware_tools_are_a_docker_volume_named_for_the_images_ubuntu_in_build_firmware_linux_and_the_processor(
     devcontainer, processor, linux
 ):
     # 🎓 firmware/build.py keeps a machine's tools in build/firmware/<the
     # SDK's name for the machine>, and the container's Linux is the Mac's
     # kind of processor.
+    from_ubuntu(devcontainer.root, "28.04")
+
     result, calls = devcontainer("true", as_on=("Darwin", processor))
 
     assert result.returncode == 0, result.stdout
     (run,) = runs(calls)
     assert (
-        f"socpuppet-firmware-linux:/workspace/build/firmware/{linux}"
-        in values(run, "--volume")
+        "socpuppet-firmware-linux-ubuntu-28.04:"
+        f"/workspace/build/firmware/{linux}" in values(run, "--volume")
     )
 
 
-#: What the container builds for itself, on Linux: the folder of
-#: build/container each is kept in, and where the container has it.
+#: What the container builds for itself, on an Intel machine: the name it
+#: is kept under, and where the container has it.
 KEPT_APART = {
     "qbox": QBOX,
     "qbox-dev": QBOX_DEV,
     "firmware-linux": "/workspace/build/firmware/linux-x86_64",
     "twister": TWISTER_HOME,
 }
+
+
+def test_on_a_mac_what_the_container_builds_for_itself_is_a_docker_volume_named_for_the_images_ubuntu(
+    devcontainer,
+):
+    from_ubuntu(devcontainer.root, "28.04")
+
+    result, calls = devcontainer("true", as_on=("Darwin", "x86_64"))
+
+    assert result.returncode == 0, result.stdout
+    (run,) = runs(calls)
+    volumes = values(run, "--volume")
+    for folder, there in KEPT_APART.items():
+        assert f"socpuppet-{folder}-ubuntu-28.04:{there}" in volumes
 
 
 def test_on_linux_what_the_container_builds_for_itself_is_kept_in_a_folder_of_build_container_named_for_the_images_ubuntu(
