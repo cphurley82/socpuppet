@@ -141,3 +141,19 @@ class TestWhenFirmwareSleepsUntilTheUartInterrupts:
         platform.run(sp.us(100))
 
         assert uart.output == ""
+
+
+@pytest.mark.platform
+class TestWhenPythonReadsWhatIsNewOnTheUart:
+    def test_from_inside_a_character_it_gets_the_rest_of_the_bytes_as_they_are(
+        self,
+    ):
+        # As a terminal does that shows each byte once, and may have read
+        # to the middle of a character.
+        platform, uart = a_cpu_running(ECHO)
+        uart.write(b"spam \xc3\xa9\n")  # "é" is the two bytes C3 A9
+        # Eight bytes at six instructions each: a hundred microseconds is
+        # far more than they need.
+        platform.run(sp.us(100))
+
+        assert uart.output_since(6) == b"\xa9\n"
