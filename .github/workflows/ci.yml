@@ -41,7 +41,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        # Ubuntu 24.04 too, for the qbox job's leg there.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -96,7 +97,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        # Ubuntu 24.04 too, for the qbox job's leg there.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -348,7 +350,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        # Ubuntu 24.04 too, the oldest we support, with its older GCC (13)
+        # and system libraries.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
         # The Python the tools are pinned to (.python-version). The oldest
         # and the newest we support are tested by the wheel job, which
         # builds a wheel for each and runs the Python tests against it.
@@ -527,7 +531,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        # Ubuntu 24.04 too, the oldest we support: QBox links more of the
+        # system's libraries than anything else, and they differ most there.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for QBox in the cache
@@ -620,7 +626,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        # Ubuntu 24.04 too, as qbox-build is.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
