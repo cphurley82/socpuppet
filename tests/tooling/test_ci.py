@@ -135,13 +135,8 @@ JOBS_BY_NAME = {job.name: job for job in JOBS}
 # The areas of this machine tools/doctor.py checks, by their names.
 AREAS = {area.name: area for area in load(REPO / "tools" / "doctor.py").AREAS}
 # The jobs that run here with no option given, and the jobs in Docker.
-JOBS_HERE = [
-    job
-    for job in JOBS
-    if not job.docker and job.only_on in ("", platform.system())
-]
+JOBS_HERE = [job for job in JOBS if not job.docker]
 DOCKER_JOBS = [job.name for job in JOBS if job.docker]
-LINUX_JOBS = [job.name for job in JOBS if job.only_on == "Linux"]
 DEVCONTAINER = JOBS_BY_NAME["devcontainer"]
 
 
@@ -744,23 +739,12 @@ def test_the_devcontainer_is_skipped_for_a_change_main_made_since_the_branch(
     assert verdicts(result.stdout) == {"devcontainer": "⏭"}
 
 
-@pytest.mark.skipif(platform.system() == "Linux", reason="for another system")
-def test_off_linux_the_jobs_for_linux_alone_are_skipped_saying_so(ci):
-    result, lines = ci(*LINUX_JOBS)
+def test_the_clang_tidy_jobs_run_here_whatever_the_system(ci):
+    # On a Mac clang-tidy reads Apple clang's compile commands, and so
+    # checks our code the way a Mac compiles it.
+    result, _ = ci("tidy", "qbox-tidy")
 
-    assert result.returncode == 0, result.stdout
-    for name in LINUX_JOBS:
-        assert summary_of(result.stdout, name) == (
-            f"⏭  {name}: runs on Linux alone"
-        )
-    assert lines == []
-
-
-@pytest.mark.skipif(platform.system() != "Linux", reason="for Linux")
-def test_on_linux_the_jobs_for_linux_alone_run(ci):
-    result, _ = ci(*LINUX_JOBS)
-
-    assert verdicts(result.stdout) == dict.fromkeys(LINUX_JOBS, "✅")
+    assert verdicts(result.stdout) == {"tidy": "✅", "qbox-tidy": "✅"}
 
 
 def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
