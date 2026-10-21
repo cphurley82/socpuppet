@@ -1226,10 +1226,10 @@ Two more things read in the same file and not acted on:
 - **Where**: `fs/__init__.py` and `fs/opener/__init__.py`, `__import__("pkg_resources").declare_namespace(__name__)`.
 - **What is wrong**: PyFilesystem2 declares its namespace packages the old way, through setuptools' `pkg_resources`, which setuptools deprecated and removed in version 81. In an environment with a newer setuptools, or none, `import fs` fails with `ModuleNotFoundError: No module named 'pkg_resources'`, and with it every import of pyfatfs. With an older one it imports, and warns three times.
 - **How to see it**: `uv run --no-project --with pyfatfs python -c "import pyfatfs.PyFatFS"`.
-- **What we do**: `pyproject.toml`'s dev group holds `setuptools<81`, and `fat_image` imports pyfatfs with the warnings silenced.
+- **What we do**: `pyproject.toml`'s dev group and the wheels' `test-requires` hold `setuptools<81`, `.github/dependabot.yml` ignores setuptools 81 and later so that its weekly pull request does not lift the cap, and `fat_image` imports pyfatfs with the warnings silenced.
 - **Upstream fix**: implicit namespace packages (PEP 420): drop the two lines and the `__init__.py` files that hold only them. Whether it is reported there already has not been looked at.
 - **Kind**: build.
-- **When it lands**: the pin and the silenced warnings go.
+- **When it lands**: the pin, the Dependabot ignore and the silenced warnings go.
 
 ## OpenSBI
 

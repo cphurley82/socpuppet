@@ -18,3 +18,8 @@ updates:
     groups:
       tools:
         patterns: ["*"]
+    # PyFilesystem2, under pyfatfs, still imports pkg_resources, which
+    # setuptools 81 removed, so the cap stays (docs/upstream.md).
+    ignore:
+      - dependency-name: setuptools
+        versions: [">=81"]
