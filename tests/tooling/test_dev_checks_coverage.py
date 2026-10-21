@@ -228,7 +228,10 @@ def reported_files(output):
     The table has a header row starting "File" and ends with a TOTAL row.
     """
     lines = output.splitlines()
-    first = next(i for i, line in enumerate(lines) if line.startswith("File "))
+    headers = [i for i, line in enumerate(lines) if line.startswith("File ")]
+    # Without the table, what the build said instead is what explains it.
+    assert headers, f"The output has no table of files:\n{output}"
+    first = headers[0]
     last = next(i for i, line in enumerate(lines) if line.startswith("TOTAL"))
     rows = [
         line for line in lines[first + 1 : last] if not line.startswith("-")
