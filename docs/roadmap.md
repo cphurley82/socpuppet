@@ -25,7 +25,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M21 | Twister and ztest: Zephyr's own tests on the puppet | M14 | Zephyr's suites pass on all three boards under twister in CI, and a ztest suite of ours for each driver ([twister.md](twister.md)) | ✅ |
 | M22 | The hart Linux needs | M13 | bare-metal programs run with paging on, in user mode, take a supervisor's interrupt, use the counters, floating point and atomics, and trap where OpenSBI can catch them (`tests/cpp/platform/cpu_test.cpp`) | ✅ |
 | M26 | The fast hart, a spike | M22 | a report: the hart timed on every CPU that builds here, and which one ships ([history/speed-spike.md](history/speed-spike.md)) | ✅ |
-| M27 | QBox, the second hart | M26 | the bus-master contract, the hart's suite and the Python boots pass on QEMU's CPU, built from source, on every push (`ctest --preset qbox`) | ✅ |
+| M27 | QBox, the second hart | M26 | the bus-master contract, the hart's suite and the Python boots pass on QEMU's CPU, built from source, in CI (`ctest --preset qbox`) | ✅ |
 | M23 | OpenSBI boots | M14, M22 | OpenSBI's banner and its test payload on the console, from the ROM and the quick way, on a devicetree in Linux's dialect from `host()` (`test_m23_exit.py`) | ✅ |
 | M28 | UEFI boots | M23 | the UEFI shell's prompt, with paging on and the timer ticking in supervisor mode, on both harts; Python types `ver` and `memmap` and resets it (`test_m28_exit.py`) | ✅ |
 | M25 | Virtio spike | M23, M28 | five stand-ins behind `virtio-mmio`, driven first by Python and then by Zephyr's and UEFI's own drivers; a report ([history/virtio-spike.md](history/virtio-spike.md)) | ✅ |
@@ -72,7 +72,7 @@ The chain through Phase 5 is stricter than the table's "Needs" column, on purpos
 - Its exit test is automated and runs in GitHub Actions. A spike's exit is a report and a recommendation, and the maintainer decides.
 - Every slot has one contract suite; a 🎭 stand-in and the full model both pass it before either is used in a boot. Stand-in configurations from earlier milestones stay in CI.
 - Model logic is plain C++, unit-tested without the SystemC kernel; a borrowed model is tested through its contract, behind its adapter.
-- Zephyr's own test suites run on every board under twister in CI (from M21), and Linux boots to its prompt in CI in the quick tier (from M20). Linux through UEFI from a server's disk, the quick way and from the flash, runs on demand (`SOCPUPPET_ON_DEMAND=1`).
+- Zephyr's own test suites run on every board under twister in CI (from M21), and Linux boots to its prompt in CI every night (from M20). Linux through UEFI from a server's disk, the quick way and from the flash, runs on demand (`SOCPUPPET_ON_DEMAND=1`), which CI's nightly run asks for.
 
 A milestone's steps are planned when it starts, one `/tdd` session each, and live in its commits. When it is done its row above gets a ✅, what it decided goes to [history/decisions.md](history/decisions.md), what it taught to [history/lessons.md](history/lessons.md), and anything it left for later joins the loose ends below.
 

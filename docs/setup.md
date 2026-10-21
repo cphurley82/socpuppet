@@ -153,7 +153,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 
 ## 6. Before your first push
 
-CI runs two checks that `ctest` does not, on Linux and on a Mac. Run them once now to be sure the toolchain is complete:
+CI runs two checks that `ctest` does not, on Linux on every push and on a Mac every night. Run them once now to be sure the toolchain is complete:
 
 ```sh
 uv run cmake --build --preset dev --target tidy            # clang-tidy, about 1 minute here
@@ -162,10 +162,11 @@ uv run cmake --build --preset dev --target check_headers   # each header compile
 
 ✅ Both finish without an error. [development.md](development.md#before-you-push) says what each catches.
 
-To run every one of CI's jobs here before a push, the way CI runs them, there is one command. It takes the better part of an hour the first time, and says how far it has got as it goes ([development.md](development.md#running-cis-jobs-here)):
+To run CI's jobs here, the way CI runs them, there is one command. It runs what CI runs every night, takes the better part of an hour the first time, and says how far it has got as it goes ([development.md](development.md#running-cis-jobs-here)):
 
 ```sh
-uv run python tools/ci.py               # add --docker for the wheels and the devcontainer
+uv run python tools/ci.py               # add --docker for the wheels and the devcontainer on both Ubuntus
+uv run python tools/ci.py --quick       # just what a push runs, before you push
 ```
 
 ## When something goes wrong

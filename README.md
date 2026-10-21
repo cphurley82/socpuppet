@@ -2,6 +2,10 @@
 
 **SoC Puppet** (say "sock puppet") is an open-source virtual platform: a whole system-on-chip simulated on your laptop, with Python pulling the strings.
 
+[![Nightly](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml) [![CI](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml)
+
+🌙 Every push runs the quick tests on Linux and an Intel Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
+
 > 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell Python types at ([booting Linux](docs/linux.md)). Next on stage, Linux's root filesystem on the SSD ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?

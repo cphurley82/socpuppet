@@ -29,7 +29,7 @@ uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 | `uv run python tools/lint.py [--fix] [linter ...]` | The linters on their own. Nothing needs to be built first. Name linters to run only those. |
 | `uv run cmake --build --preset dev --target tidy` and `--target check_headers` | What CI checks that `ctest` does not: clang-tidy over our C++, and each header compiled on its own. [development.md](development.md#before-you-push) says what each catches. |
 
-CI runs all of it on every push. 💡 In CI the build does not format anything: a misformatted file fails the lint job there, so that it gets fixed in the repository and not in a checkout that is about to be thrown away.
+CI runs all of it on every push, and the rest of CI's jobs every night ([development.md](development.md#running-cis-jobs-here)). 💡 In CI the build does not format anything: a misformatted file fails the lint job there, so that it gets fixed in the repository and not in a checkout that is about to be thrown away.
 
 ## C++
 
