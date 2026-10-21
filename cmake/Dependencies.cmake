@@ -177,10 +177,10 @@ FetchContent_Declare(scc
   #
   # The second is for clang-tidy. SCC bundles CCI, whose map element
   # references convert implicitly from void* through a protected constructor.
-  # GCC 13's standard library asks about that conversion while it classifies
-  # CCI's iterators, and clang reports the protected constructor as an error
-  # where GCC only takes it for a "no". The patch makes the constructors
-  # explicit, so the question is never asked.
+  # GCC's standard library, 13's and 15's alike, asks about that conversion
+  # while it classifies CCI's iterators, and clang reports the protected
+  # constructor as an error where GCC only takes it for a "no". The patch
+  # makes the constructors explicit, so the question is never asked.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/scc-in-tree-systemc.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/scc-cci-explicit-elem-ref.patch
