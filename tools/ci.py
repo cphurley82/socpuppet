@@ -154,13 +154,13 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
     )
 
 
-def qbox_steps(mode: Mode) -> tuple[Step, ...]:
+def qbox_steps() -> tuple[Step, ...]:
     """Build and test the QBox tree, then run twister on the host board.
 
-    An Intel Mac runs twister in the devcontainer's image, on a socpuppet
-    built for Linux, which has no QBox: QBox here is built for the Mac. So
-    a run there stops after the tests. CI's Macs are Apple silicon, which
-    run twister natively.
+    On an Intel Mac, firmware/twister.py runs twister in the devcontainer's
+    image, not natively: here that image's socpuppet is built for Linux,
+    without QBox, which is built for the Mac; and CI's Intel Macs have no
+    Docker. So a run there stops after the tests.
     """
     steps = (
         Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
@@ -171,7 +171,7 @@ def qbox_steps(mode: Mode) -> tuple[Step, ...]:
             env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
         ),
     )
-    if mode is Mode.HERE and INTEL_MAC:
+    if INTEL_MAC:
         return steps
     return (
         *steps,
@@ -440,7 +440,7 @@ JOBS = [
         "qbox",
         "build and test with QBox's CPU as the second hart, then twister on it",
         needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
-        steps=qbox_steps,
+        steps=qbox_steps(),
         uses=("build/qbox-dev", "extension", "build/twister"),
         areas=("build",),
     ),
