@@ -26,7 +26,7 @@ jobs:
     # Formatting and static checks on every file, with nothing to build
     # first. ctest runs the same thing; this job says so in seconds.
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -66,7 +66,7 @@ jobs:
     # The SDK's LLVM, which builds OpenSBI and EDK2: two gigabytes, so
     # kept apart from the SDK, and cached as it is.
     name: Zephyr SDK's LLVM
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -96,7 +96,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for it in the cache
@@ -132,7 +132,7 @@ jobs:
     # jobs that boot it. Each is cached on what it is built from.
     name: Firmware (the boot ROMs)
     needs: fetch-sdk
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Cache the images
@@ -170,7 +170,7 @@ jobs:
     # OpenSBI for the host, built with the SDK's LLVM, and patched.
     name: Firmware (OpenSBI)
     needs: fetch-llvm
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Cache the images
@@ -210,7 +210,7 @@ jobs:
     # script, its lists, and what it reads of each application.
     name: Firmware (Zephyr's images)
     needs: [fetch-sdk, fetch-zephyr]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Cache the images
@@ -263,7 +263,7 @@ jobs:
     # EDK2, UEFI, for the host, built with the SDK's LLVM, and patched.
     name: Firmware (EDK2)
     needs: fetch-llvm
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Cache the images
@@ -301,7 +301,7 @@ jobs:
     # LLVM from the release tarball its pin names.
     name: Firmware (Linux)
     needs: fetch-llvm
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Cache the images
@@ -348,7 +348,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
         # The Python the tools are pinned to (.python-version). The oldest
         # and the newest we support are tested by the wheel job, which
         # builds a wheel for each and runs the Python tests against it.
@@ -386,7 +386,7 @@ jobs:
     # own. Nothing else is built: clang-tidy reads the sources and the
     # compile commands that configuring writes, which are GCC's.
     name: clang-tidy and header check
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -415,7 +415,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -468,7 +468,7 @@ jobs:
     # Which lines of our own C++ and Python the tests run. The job fails if
     # either falls below its floor (CMakePresets.json).
     name: Test coverage
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -501,7 +501,7 @@ jobs:
     # The C++ tests again, built so that a memory error or undefined
     # behavior stops the program instead of passing unnoticed.
     name: C++ tests under sanitizers
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -527,7 +527,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Look for QBox in the cache
@@ -569,7 +569,7 @@ jobs:
     # leaves out.
     name: clang-tidy and header check with QBox
     needs: qbox-build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
@@ -620,7 +620,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-26.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -707,7 +707,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15]
+        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-15]
     env:
       CCACHE_DIR: ${{ startsWith(matrix.os, 'ubuntu') && '/host/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
       CCACHE_COMPRESS: "1"
@@ -745,7 +745,7 @@ jobs:
     # The tests, built in the devcontainer's image: Linux with GCC, which
     # is what a contributor's editor builds in. Only when the image changes.
     name: Build and test (devcontainer)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7

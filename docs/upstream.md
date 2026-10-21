@@ -1193,6 +1193,20 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: `measured=False` and `unmeasured()` go.
 
+## actionlint
+
+[rhysd/actionlint](https://github.com/rhysd/actionlint), version `1.7.12` (the `actionlint-py` wheel in `uv.lock`). Not part of socpuppet: `tools/lint.py` checks the CI workflow with it.
+
+### GitHub's Ubuntu 26.04 runners are unknown labels
+
+- **Where**: `rule_runner_label.go`, the list of GitHub-hosted runner labels, which ends at `ubuntu-24.04` and `ubuntu-24.04-arm` in 1.7.12 and on `main` as of 2026-10-20.
+- **What is wrong**: GitHub's `ubuntu-26.04` and `ubuntu-26.04-arm` runners have been generally available since 2026-09-17, and actionlint reports each as `label "ubuntu-26.04" is unknown`.
+- **How to see it**: `runs-on: ubuntu-26.04` in any workflow, then `actionlint`.
+- **What we do**: no patch. `.github/actionlint.yaml` declares the two as if they were a self-hosted runner's labels.
+- **Upstream fix**: add both to the list, with Ubuntu 24.04's compatibility entries.
+- **Kind**: missing feature.
+- **When it lands**: `.github/actionlint.yaml` goes.
+
 ## pyfatfs
 
 [nathanhi/pyfatfs](https://github.com/nathanhi/pyfatfs), version `1.1.0` in `uv.lock`, with [PyFilesystem2](https://github.com/PyFilesystem/pyfilesystem2) (`fs`, `2.4.16`) under it. Not part of socpuppet: the tests make the FAT disk images they boot UEFI with by it (`tests/python/fat_image.py`, M25), and read back what firmware wrote.

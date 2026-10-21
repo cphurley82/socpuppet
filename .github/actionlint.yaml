@@ -1,0 +1,7 @@
+# GitHub's own Ubuntu 26.04 runners, which actionlint 1.7.12 does not know
+# yet and so takes for a self-hosted runner's labels (docs/upstream.md).
+# Goes once a release of actionlint names them.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm
