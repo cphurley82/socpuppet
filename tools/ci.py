@@ -144,6 +144,19 @@ class Job:
         return self.steps if isinstance(self.steps, tuple) else self.steps(mode)
 
 
+# What configures the dev tree, and what builds it. A run here also
+# configures build/dev for dev again with it, after a job that configured
+# it with another preset.
+CONFIGURE_DEV = ("uv", "run", "cmake", "--preset", "dev")
+DEV_BUILD = (
+    Step("configure", CONFIGURE_DEV),
+    Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
+)
+
+# A missing firmware image fails its boot test instead of skipping it.
+REQUIRE_FIRMWARE = {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
+
+
 def tidy_steps(preset: str) -> tuple[Step, ...]:
     """Configure a tree, then run clang-tidy and the header check over it."""
     build = ("uv", "run", "cmake", "--build", "--preset", preset)
@@ -168,7 +181,7 @@ def qbox_steps() -> tuple[Step, ...]:
         Step(
             "ctest",
             ("uv", "run", "ctest", "--preset", "qbox"),
-            env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+            env=REQUIRE_FIRMWARE,
         ),
     )
     if INTEL_MAC:
@@ -234,7 +247,7 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
             ),
         )
     firmware = {
-        "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+        **REQUIRE_FIRMWARE,
         "SOCPUPPET_FIRMWARE_DIR": str(REPO / "build" / "firmware"),
     }
     ours = Glob(f"{WHEELHOUSE}/*-{tag}-*.whl")
@@ -259,11 +272,6 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
     )
 
 
-# What configures build/dev for dev again, after a job that configured it
-# with another preset.
-RESTORE_DEV = ("uv", "run", "cmake", "--preset", "dev")
-
-
 # The jobs that build the firmware, every image of which the tests boot.
 FIRMWARE = (
     "firmware-rom",
@@ -272,16 +280,6 @@ FIRMWARE = (
     "firmware-edk2",
     "firmware-linux",
 )
-
-
-# What configures and builds the dev tree.
-DEV_BUILD = (
-    Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
-    Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
-)
-
-# A missing firmware image fails its boot test instead of skipping it.
-REQUIRE_FIRMWARE = {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
 
 
 # Quick first: when two jobs could start, the one higher in the table does.
@@ -352,14 +350,11 @@ JOBS = [
         needs=FIRMWARE,
         uses=("build/dev", "extension"),
         steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
-            Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
+            *DEV_BUILD,
             Step(
                 "ctest",
                 ("uv", "run", "ctest", "--preset", "dev"),
-                # A missing firmware image fails its boot test instead of
-                # skipping it.
-                env={"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+                env=REQUIRE_FIRMWARE,
             ),
         ),
         areas=("build",),
@@ -415,8 +410,7 @@ JOBS = [
         # boots from the ROM.
         needs=("fetch-sdk", "fetch-zephyr", "firmware-rom"),
         steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "dev")),
-            Step("build", ("uv", "run", "cmake", "--build", "--preset", "dev")),
+            *DEV_BUILD,
             # The tests that read Zephyr's tree, which only this job has.
             # One directory to a run of pytest, as ctest has it: each has
             # a conftest.py of its own.
@@ -1099,7 +1093,7 @@ class Run:
         log = LOGS / "restore-dev.log"
         with log.open("w") as output:
             restored = subprocess.run(
-                RESTORE_DEV,
+                CONFIGURE_DEV,
                 cwd=REPO,
                 stdout=output,
                 stderr=subprocess.STDOUT,
