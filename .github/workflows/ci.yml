@@ -9,16 +9,19 @@ name: CI
 #
 # Nothing waits for lint: a job waits only for a job whose output it reads.
 #
-# The Macs are Apple silicon (macos-15) and Intel (macos-26-intel and
-# macos-15-intel). An Intel Mac runs here what it runs natively, as
-# tools/ci.py runs it there; what it builds in the devcontainer's image,
-# the firmware and twister, it does not, as GitHub's Macs have no Docker.
-# macos-26-intel runs each of those jobs but qbox-tidy; macos-15-intel, an
-# older Xcode and SDK, only the quick ones, test and tidy. qbox-tidy there
-# ran for 50 minutes and then lost its runner, most likely to a lack of
-# memory, and it would add little: the Intel Mac's QBox build already meets
-# Homebrew's /usr/local, and the Apple silicon Mac checks the adapter with
-# Apple clang.
+# The Macs are Apple silicon (macos-15, and macos-26) and Intel
+# (macos-26-intel and macos-15-intel). An Intel Mac runs here what it runs
+# natively, as tools/ci.py runs it there; what it builds in the
+# devcontainer's image, the firmware and twister, it does not, as GitHub's
+# Macs have no Docker. macos-26-intel runs each of those jobs but the two
+# clang-tidy ones; macos-15-intel, an older Xcode and SDK, only test.
+#
+# The clang-tidy jobs run on one Linux and one Mac, the newest, macos-26,
+# where qbox-build builds QBox for qbox-tidy. That is enough: clang-tidy
+# reads the compile commands, and an Intel Mac's are an Apple silicon
+# one's; the Intel Mac's builds already meet Homebrew's /usr/local; and
+# qbox-tidy on one ran for 50 minutes and then lost its runner, most likely
+# to a lack of memory. Here, tools/ci.py runs both on any machine.
 
 on:
   push:
@@ -401,13 +404,14 @@ jobs:
     # clang-tidy over our own C++, and each of our headers compiled on its
     # own. Nothing else is built: clang-tidy reads the sources and the
     # compile commands that configuring writes, which are GCC's on Linux
-    # and Apple clang's on a Mac, each with its own standard library.
+    # and Apple clang's on a Mac, each with its own standard library. One
+    # Linux and one Mac are enough, the newest of each.
     name: clang-tidy and header check (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15, macos-26-intel, macos-15-intel]
+        os: [ubuntu-26.04, macos-26]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
@@ -552,7 +556,8 @@ jobs:
       matrix:
         # Ubuntu 24.04 too, the oldest we support: QBox links more of the
         # system's libraries than anything else, and they differ most there.
-        os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26-intel]
+        # macos-26 builds it for qbox-tidy.
+        os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
       - name: Look for QBox in the cache
@@ -599,7 +604,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-15]
+        os: [ubuntu-26.04, macos-26]
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
