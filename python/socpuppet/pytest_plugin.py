@@ -159,6 +159,17 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
     """Run one test in a fresh interpreter and return its reports."""
     config = item.config
     timeout = float(config.getini(_TIMEOUT_SETTING))
+    # The child's temporary directories go inside this session's. Left to
+    # itself, the child would make one beside every other session's and, on
+    # its way out, clear away those that are old enough: on a busy machine,
+    # trees of thousands of files, for minutes, while its time runs out. The
+    # child empties whatever directory it is given, so it gets a fresh one,
+    # never the session's own. There is no public way to the session's
+    # tmp_path_factory; pytest's own fixture reaches it the same way.
+    tmp_path_factory: pytest.TempPathFactory = (
+        config._tmp_path_factory  # type: ignore[attr-defined]
+    )
+    basetemp = tmp_path_factory.mktemp("platform")
     with tempfile.NamedTemporaryFile(mode="r", suffix=".jsonl") as report_file:
         child = subprocess.Popen(
             # A node id is relative to the rootdir, so anchor it there. The
@@ -169,6 +180,8 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
                 "pytest",
                 "--rootdir",
                 str(config.rootpath),
+                "--basetemp",
+                str(basetemp),
                 str(config.rootpath / item.nodeid),
             ],
             env={**os.environ, _REPORT_FILE_ENV: report_file.name},
