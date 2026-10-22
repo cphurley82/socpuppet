@@ -251,6 +251,34 @@ class TestWhenTheNandHasThisDrivesHeaderAndATableThatCannotBeIts:
 
         assert read == bytes(8 * 512)
 
+    def test_a_drivers_first_write_goes_to_the_first_page_after_the_reserve(
+        self, run_on_an_ssd
+    ):
+        # Nothing given out, the table says, and the next free page is
+        # the header's own: a firmware that took its word would program
+        # the drive's first page over the header. What is written is not
+        # the page of data the image already has after the reserve.
+        written = page_of(0x5A)
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.write_blocks(first=0, data=written)
+
+        nand = run_on_an_ssd(
+            script,
+            nand=lambda chip: a_nand_whose_table_cannot_be_its(
+                chip,
+                where_page_0=lambda shared: ftl.NOWHERE,
+                next_free=lambda shared: 0,
+            ),
+        ).nand
+
+        assert (
+            the_first_nand_page_after_the_reserve(nand)[: len(written)]
+            == written
+        )
+
 
 def a_nand_whose_table_cannot_be_its(chip, where_page_0, next_free):
     """`chip`'s image with this drive's header and a table that is not its.

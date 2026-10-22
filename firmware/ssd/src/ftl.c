@@ -81,7 +81,7 @@ uint32_t ftl_page_size(void)
  */
 static bool can_be_this_drives(void)
 {
-	if (next_free_nand_page > reserve + pages) {
+	if (next_free_nand_page < reserve || next_free_nand_page > reserve + pages) {
 		return false;
 	}
 	for (uint32_t page = 0; page < pages; ++page) {
