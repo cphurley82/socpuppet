@@ -207,6 +207,36 @@ class TestWhenTheSsdsNandWasProgrammedAtTheFactory:
 
 
 @pytest.mark.platform
+class TestWhenADriverShutsTheSsdDown:
+    def test_the_ssd_says_its_shutdown_is_complete(self, what_a_driver_does):
+        # 🐧 Linux waits for it before it switches the power off.
+        def steps(nvme):
+            yield from nvme.shut_down()
+            return True
+
+        assert what_a_driver_does(steps)
+
+    def test_what_was_written_is_on_the_nand_by_the_table_it_keeps_there(
+        self, run_on_an_ssd
+    ):
+        # 🎓 The table goes to the NAND's reserve, so that whoever reads the
+        # NAND next, the firmware when it starts again, or Python, finds
+        # the drive's pages where they are.
+        written = some_data(24)
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.write_blocks(first=8, data=written)
+            yield from nvme.shut_down()
+
+        nand = run_on_an_ssd(script).nand
+
+        drive = ftl.drive_image(nand.contents, nand.component)
+        assert drive[8 * 512 : 32 * 512] == written
+
+
+@pytest.mark.platform
 class TestWhenADriverReadsABlockThatWasNeverWritten:
     # An erased NAND page is all ones. The zeros are the firmware's.
     def test_it_gets_a_block_of_zeros(self, what_a_driver_does):

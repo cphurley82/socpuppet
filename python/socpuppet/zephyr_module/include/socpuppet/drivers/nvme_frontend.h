@@ -23,6 +23,10 @@
  *	if (happened & NVME_FRONTEND_STATUS_COMMAND_WAITING) {
  *		... nvme_frontend_read_command, do it, nvme_frontend_post ...
  *	}
+ *	if (happened & NVME_FRONTEND_STATUS_SHUTDOWN) {
+ *		... keep what must outlive the power ...
+ *		nvme_frontend_acknowledge(dev, NVME_FRONTEND_STATUS_SHUTDOWN);
+ *	}
  *
  * The reset comes first: what the host enabled is the controller as it is
  * after the reset. See docs/models/nvme-frontend.md in socpuppet.

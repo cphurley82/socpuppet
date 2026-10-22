@@ -16,6 +16,8 @@ it is also the place to read how an NVMe drive answers its host:
 2. If the host has reset or enabled the controller, see to that.
 3. If a command is waiting, read it, do what it says, and have the
    frontend post how it went.
+4. If the host is shutting the drive down, keep the FTL's table on the
+   NAND, and say the shutdown is complete.
 
 🎓 The part that turns the drive's blocks into pages of NAND flash is the
 flash translation layer (FTL). This one is as small as an FTL can be: a
@@ -153,6 +155,7 @@ class SsdFirmware:
         self._page_size = 0
         self._pages_per_block = 0
         self._pages = 0
+        self._reserve_pages = 0
         self._io_queue_pairs = 0
         self._vectors = 0
         # The I/O queues the host has had created, by identifier.
@@ -191,6 +194,8 @@ class SsdFirmware:
                 yield from self._the_host_enabled_the_controller()
             if status & nvme_frontend.STATUS_COMMAND_WAITING:
                 yield from self._deal_with_the_command()
+            if status & nvme_frontend.STATUS_SHUTDOWN:
+                yield from self._the_host_shut_the_controller_down()
 
     def _start_up(self) -> Steps[None]:
         # What is the chip, and what has the frontend got?
@@ -215,7 +220,8 @@ class SsdFirmware:
             page_size=self._page_size,
         )
         self._pages = shared.drive_pages
-        yield from self._load_the_table(shared.reserve_pages)
+        self._reserve_pages = shared.reserve_pages
+        yield from self._load_the_table()
         limits = yield read32(self._frontend + nvme_frontend.LIMITS)
         self._io_queue_pairs = (
             limits & nvme_frontend.LIMITS_IO_QUEUE_PAIRS_MASK
@@ -228,10 +234,11 @@ class SsdFirmware:
             self._frontend + nvme_frontend.INTERRUPT_ENABLE,
             nvme_frontend.INTERRUPT_ENABLE_ENABLED
             | nvme_frontend.INTERRUPT_ENABLE_DISABLED
-            | nvme_frontend.INTERRUPT_ENABLE_COMMAND_WAITING,
+            | nvme_frontend.INTERRUPT_ENABLE_COMMAND_WAITING
+            | nvme_frontend.INTERRUPT_ENABLE_SHUTDOWN,
         )
 
-    def _load_the_table(self, reserve_pages: int) -> Steps[None]:
+    def _load_the_table(self) -> Steps[None]:
         """Take the table the reserve holds, or else start an empty one.
 
         The reserve holds this drive's table if its header says so; a NAND
@@ -256,7 +263,7 @@ class SsdFirmware:
         )
         if table is None:
             self._page_map = {}
-            self._next_free_nand_page = reserve_pages
+            self._next_free_nand_page = self._reserve_pages
             return
         self._page_map = {
             page: where
@@ -264,6 +271,40 @@ class SsdFirmware:
             if where != ftl.NOWHERE
         }
         self._next_free_nand_page = table.next_free
+
+    def _the_host_shut_the_controller_down(self) -> Steps[None]:
+        """Keep the table in the reserve, and say the shutdown is done.
+
+        🐧 What the host asks before the power goes. The reserve is erased
+        whole, the table programmed, and the header last, as Zephyr's
+        `ftl_save` does: until the header is there, the reserve holds no
+        table at all. If the NAND will not take it, the host is not told,
+        and gives up waiting in its own time, as with Zephyr's.
+        """
+        where = tuple(
+            self._page_map.get(page, ftl.NOWHERE) for page in range(self._pages)
+        )
+        saved = ftl.saved_reserve(
+            ftl.Table(where, self._next_free_nand_page),
+            page_size=self._page_size,
+        )
+        for block in range(self._reserve_pages // self._pages_per_block):
+            if not (yield from self._erase_block(block)):
+                return
+        pages = len(saved) // self._page_size
+        for nand_page in (*range(1, pages), 0):
+            at = nand_page * self._page_size
+            yield write(self._page_buffer, saved[at : at + self._page_size])
+            if not (
+                yield from self._flash_page(
+                    flash_controller.COMMAND_PROGRAM_PAGE, nand_page
+                )
+            ):
+                return
+        yield write32(
+            self._frontend + nvme_frontend.STATUS,
+            nvme_frontend.STATUS_SHUTDOWN,
+        )
 
     def _the_host_reset_the_controller(self) -> Steps[None]:
         # The queues are gone, and what is on the drive stays. The
@@ -656,6 +697,15 @@ class SsdFirmware:
             self._flash + flash_controller.LOCAL_ADDRESS, self._page_buffer
         )
         return (yield from self._do(self._flash, command))
+
+    def _erase_block(self, block: int) -> Steps[bool]:
+        """Erase a NAND block, which makes all its pages read as ones."""
+        yield write32(self._flash + flash_controller.BLOCK, block)
+        return (
+            yield from self._do(
+                self._flash, flash_controller.COMMAND_ERASE_BLOCK
+            )
+        )
 
     def _do(self, device: int, command: int) -> Steps[bool]:
         """Give a device a command and wait for it. True if it was carried out.

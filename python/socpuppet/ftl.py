@@ -89,6 +89,40 @@ def nand_blocks(
     return blocks
 
 
+class Table(NamedTuple):
+    """A table the reserve holds."""
+
+    #: For each page of the drive, the NAND page that holds it, or NOWHERE.
+    where: tuple[int, ...]
+    #: The next NAND page nobody has.
+    next_free: int
+
+
+def saved_reserve(table: Table, *, page_size: int) -> bytes:
+    """What a save writes to the reserve: the header page, then the table.
+
+    Whole pages, each filled out with ones, as erased, for as many pages
+    as `saved_pages` says.
+    """
+    drive_pages = len(table.where)
+    saved = bytearray(
+        _ERASED
+        * (
+            saved_pages(drive_pages=drive_pages, page_size=page_size)
+            * page_size
+        )
+    )
+    for offset, word in (
+        (header.MAGIC, header.MAGIC_NUMBER),
+        (header.VERSION, header.VERSION_FIRST),
+        (header.PAGES, drive_pages),
+        (header.NEXT_FREE, table.next_free),
+    ):
+        struct.pack_into("<I", saved, offset, word)
+    struct.pack_into(f"<{drive_pages}{_ENTRY}", saved, page_size, *table.where)
+    return bytes(saved)
+
+
 def nand_image(drive: bytes, chip: IdealNand) -> bytes:
     """`chip` programmed with `drive`, as a factory would, for `nand.load`.
 
@@ -115,25 +149,11 @@ def nand_image(drive: bytes, chip: IdealNand) -> bytes:
         if any(piece):
             table[number] = reserve + len(data) // page_size
             data += piece.ljust(page_size, b"\0")
-    image = bytearray(_ERASED * (reserve * page_size))
-    for offset, word in (
-        (header.MAGIC, header.MAGIC_NUMBER),
-        (header.VERSION, header.VERSION_FIRST),
-        (header.PAGES, pages),
-        (header.NEXT_FREE, reserve + len(data) // page_size),
-    ):
-        struct.pack_into("<I", image, offset, word)
-    struct.pack_into(f"<{pages}{_ENTRY}", image, page_size, *table)
-    return bytes(image + data)
-
-
-class Table(NamedTuple):
-    """A table the reserve holds."""
-
-    #: For each page of the drive, the NAND page that holds it, or NOWHERE.
-    where: tuple[int, ...]
-    #: The next NAND page nobody has.
-    next_free: int
+    saved = saved_reserve(
+        Table(tuple(table), reserve + len(data) // page_size),
+        page_size=page_size,
+    )
+    return saved.ljust(reserve * page_size, _ERASED) + bytes(data)
 
 
 def saved_pages(*, drive_pages: int, page_size: int) -> int:

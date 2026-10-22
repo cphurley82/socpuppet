@@ -29,7 +29,7 @@
 /* Everything the status register can say, which is what can interrupt. */
 #define ANYTHING                                                                                   \
 	(NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |                            \
-	 NVME_FRONTEND_STATUS_COMMAND_WAITING)
+	 NVME_FRONTEND_STATUS_COMMAND_WAITING | NVME_FRONTEND_STATUS_SHUTDOWN)
 
 struct nvme_frontend_config {
 	mm_reg_t base;

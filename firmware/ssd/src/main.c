@@ -8,6 +8,8 @@
  *   2. If the host has reset or enabled the controller, see to that.
  *   3. If a command is waiting, read it, do what it says, and have the
  *      frontend post how it went.
+ *   4. If the host is shutting the drive down, keep the FTL's table on the
+ *      NAND, and say the shutdown is complete.
  *
  * python/socpuppet/ssd_firmware.py in socpuppet is the same firmware as a
  * Python script, which stands in for this one where there is no CPU.
@@ -79,6 +81,21 @@ int main(void)
 		}
 		if ((happened & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0) {
 			deal_with_the_command();
+		}
+		/*
+		 * The power is about to go: the table goes to the NAND, where
+		 * the next start finds it, and then the host is told the
+		 * shutdown is complete. If the NAND would not take it, the
+		 * host is not told, and gives up waiting in its own time.
+		 */
+		if ((happened & NVME_FRONTEND_STATUS_SHUTDOWN) != 0) {
+			if (ftl_save() == 0) {
+				nvme_frontend_acknowledge(ssd_frontend,
+							  NVME_FRONTEND_STATUS_SHUTDOWN);
+			} else {
+				printk("The table would not go to the NAND, so the drive "
+				       "will not find what was written to it.\n");
+			}
 		}
 	}
 
