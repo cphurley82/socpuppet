@@ -24,6 +24,7 @@ the two to each other (docs/models/ssd-firmware.md).
 from __future__ import annotations
 
 import struct
+from typing import NamedTuple
 
 from socpuppet.components import IdealNand
 from socpuppet.regs import ftl_header as header
@@ -48,6 +49,24 @@ def reserved_blocks(
     """
     needed = page_size + _ENTRY_SIZE * pages_per_block * chip_blocks
     return _whole(needed, pages_per_block * page_size)
+
+
+class Layout(NamedTuple):
+    """How a NAND's pages are shared between the FTL and the drive."""
+
+    #: How many pages, at the NAND's start, are the reserve. The drive's
+    #: pages start at this NAND page.
+    reserve_pages: int
+    #: How many pages the drive has: the NAND's others.
+    drive_pages: int
+
+
+def layout(blocks: int, *, pages_per_block: int, page_size: int) -> Layout:
+    """How a NAND of `blocks` blocks is shared between the FTL and the drive."""
+    reserve = pages_per_block * reserved_blocks(
+        blocks, pages_per_block=pages_per_block, page_size=page_size
+    )
+    return Layout(reserve, blocks * pages_per_block - reserve)
 
 
 def nand_blocks(
@@ -82,7 +101,7 @@ def nand_image(drive: bytes, chip: IdealNand) -> bytes:
     holds.
     """
     page_size = chip.page_size
-    reserve, pages = _layout(chip)
+    reserve, pages = _layout_of(chip)
     if len(drive) > pages * page_size:
         raise ValueError(
             f"The drive's image is {len(drive)} bytes, and the drive the "
@@ -116,7 +135,7 @@ def drive_image(nand: bytes, chip: IdealNand) -> bytes:
     holds a drive of zeros, as the firmware finds it.
     """
     page_size = chip.page_size
-    _, pages = _layout(chip)
+    _, pages = _layout_of(chip)
     said = tuple(
         struct.unpack_from("<I", nand, offset)[0]
         for offset in (header.MAGIC, header.VERSION, header.PAGES)
@@ -132,17 +151,13 @@ def drive_image(nand: bytes, chip: IdealNand) -> bytes:
     )
 
 
-def _layout(chip: IdealNand) -> tuple[int, int]:
-    """Where the drive's pages start on `chip`, and how many there are."""
-    reserve = (
-        reserved_blocks(
-            chip.blocks,
-            pages_per_block=chip.pages_per_block,
-            page_size=chip.page_size,
-        )
-        * chip.pages_per_block
+def _layout_of(chip: IdealNand) -> Layout:
+    """How `chip` is shared between the FTL and the drive."""
+    return layout(
+        chip.blocks,
+        pages_per_block=chip.pages_per_block,
+        page_size=chip.page_size,
     )
-    return reserve, chip.blocks * chip.pages_per_block - reserve
 
 
 def _whole(amount: int, size: int) -> int:

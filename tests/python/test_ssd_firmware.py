@@ -16,6 +16,7 @@ import pytest
 import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
+from socpuppet import ftl
 from socpuppet.boards.drive import VECTORS
 from socpuppet.boards.ssd import scripted_firmware
 from ssd_on_a_bus import (
@@ -55,7 +56,8 @@ def run_on_an_ssd(request, firmware):
     Every test that asks for this runs twice: once with 🎭 the Python
     stand-in for the SSD's firmware, and once with the real thing, the
     Zephyr application in firmware/ssd on the SSD's own CPU. What a host
-    sees has to be the same.
+    sees has to be the same, and what the SSD keeps on its NAND. Returns
+    the SSD.
     """
     image = (
         firmware(SSD_IMAGE) if request.param == "Zephyr for firmware" else None
@@ -80,6 +82,7 @@ def run_on_an_ssd(request, firmware):
         # more than either, and still ends a run that would never finish.
         platform.run_until(lambda: bool(finished), timeout=sp.ms(1000))
         assert finished, "The host's script did not get to its end."
+        return ssd
 
     return run
 
@@ -134,13 +137,50 @@ def what_a_raw_host_gets(run_on_an_ssd):
 
 @pytest.mark.platform
 class TestWhenADriverIdentifiesTheSsdsNamespace:
-    def test_it_learns_how_many_blocks_the_nand_holds(self, what_a_driver_does):
+    def test_it_learns_the_blocks_the_drive_was_described_with(
+        self, what_a_driver_does
+    ):
+        # 🎓 Not the whole NAND: its first blocks are the FTL's reserve.
         def steps(nvme):
             return (yield from nvme.identify_namespace())
 
         assert what_a_driver_does(steps) == sp.NvmeNamespace(
             blocks=BLOCKS, block_size=512
         )
+
+
+@pytest.mark.platform
+class TestWhenADriverWritesAPageOfTheDrive:
+    def test_it_goes_in_the_first_nand_page_after_the_ftls_reserve(
+        self, run_on_an_ssd
+    ):
+        # 🎓 The first page of the drive to be written takes the first NAND
+        # page nobody has, wherever it is on the drive: the reserve's pages
+        # are the FTL's own.
+        written = some_data(8)
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.write_blocks(first=24, data=written)
+
+        nand = run_on_an_ssd(script).nand
+
+        assert the_first_nand_page_after_the_reserve(nand)[: len(written)] == (
+            written
+        )
+
+
+def the_first_nand_page_after_the_reserve(nand):
+    """The bytes of the first NAND page the FTL does not keep for itself."""
+    chip = nand.component
+    shared = ftl.layout(
+        chip.blocks,
+        pages_per_block=chip.pages_per_block,
+        page_size=chip.page_size,
+    )
+    first = shared.reserve_pages * chip.page_size
+    return nand.contents[first : first + chip.page_size]
 
 
 @pytest.mark.platform

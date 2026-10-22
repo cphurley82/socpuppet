@@ -21,7 +21,6 @@
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
-#include <zephyr/drivers/flash.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/toolchain.h>
@@ -142,18 +141,17 @@ ZTEST(admin, test_an_opcode_that_is_no_admin_command_is_refused_as_that)
 
 ZTEST(admin, test_identify_says_the_namespace_has_the_drives_blocks_of_512_bytes)
 {
-	uint64_t nand_bytes;
-
-	zassert_ok(flash_get_size(ssd_nand, &nand_bytes));
+	/* The drive is the NAND less the FTL's reserve, in pages. */
+	uint64_t drive_bytes = (uint64_t)ftl_pages() * ftl_page_size();
 
 	identify(THE_NAMESPACE_ITSELF);
 
 	/*
-	 * Its size and its capacity, which are the NAND's, and then the
+	 * Its size and its capacity, which are the drive's, and then the
 	 * first format's block size, as a power of two.
 	 */
-	zassert_equal(sys_get_le64(&fetched[0]), nand_bytes / BLOCK_SIZE);
-	zassert_equal(sys_get_le64(&fetched[8]), nand_bytes / BLOCK_SIZE);
+	zassert_equal(sys_get_le64(&fetched[0]), drive_bytes / BLOCK_SIZE);
+	zassert_equal(sys_get_le64(&fetched[8]), drive_bytes / BLOCK_SIZE);
 	zassert_equal(1U << fetched[130], BLOCK_SIZE);
 }
 

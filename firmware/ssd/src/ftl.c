@@ -19,14 +19,33 @@
 #define MiB             (1ULL << 20)
 
 /* In the table, a page of the drive that is in no NAND page. */
-#define NOWHERE UINT32_MAX
+#define NOWHERE    UINT32_MAX
+/* How many bytes an entry of the table takes. */
+#define ENTRY_SIZE sizeof(uint32_t)
 
 static uint32_t page_size;
+/* How many pages the drive has: the NAND less the reserve. */
 static uint32_t pages;
 /* For each page of the drive, the NAND page that holds it. */
 static uint32_t *where;
 /* The next NAND page nobody has. */
 static uint32_t next_free_nand_page;
+
+/*
+ * How many of the NAND's blocks, at its start, are the FTL's reserve,
+ * where it keeps its table: the fewest whole blocks that hold a header
+ * page and an entry for each of the NAND's pages. socpuppet.ftl in
+ * socpuppet works it out the same way, and docs/models/ssd-firmware.md
+ * says why.
+ */
+static uint32_t reserved_blocks(uint32_t nand_blocks, uint32_t pages_per_block,
+				uint32_t nand_page_size)
+{
+	uint64_t needed = nand_page_size + (uint64_t)ENTRY_SIZE * pages_per_block * nand_blocks;
+	uint64_t block_size = (uint64_t)pages_per_block * nand_page_size;
+
+	return (uint32_t)((needed + block_size - 1) / block_size);
+}
 
 uint32_t ftl_pages(void)
 {
@@ -43,7 +62,14 @@ int ftl_start(void)
 	uint64_t bytes;
 	size_t room;
 
-	if (!device_is_ready(ssd_nand) || flash_get_size(ssd_nand, &bytes) != 0) {
+	/*
+	 * The NAND is written a page at a time and erased a block at a time,
+	 * which Zephyr's flash API calls a page.
+	 */
+	struct flash_pages_info block;
+
+	if (!device_is_ready(ssd_nand) || flash_get_size(ssd_nand, &bytes) != 0 ||
+	    flash_get_page_info_by_offs(ssd_nand, 0, &block) != 0) {
 		printk("The flash controller's driver did not start (it says why above), so there "
 		       "is no NAND.\n");
 		return -ENODEV;
@@ -55,9 +81,14 @@ int ftl_start(void)
 		       (uint32_t)(bytes / MiB), (uint32_t)(FLASH_API_REACH / MiB));
 		return -EFBIG;
 	}
-	/* The NAND is written a page at a time. */
 	page_size = flash_get_write_block_size(ssd_nand);
-	pages = bytes / page_size;
+	uint32_t pages_per_block = block.size / page_size;
+	uint32_t nand_blocks = bytes / block.size;
+	/* The drive is the NAND's pages after the reserve. */
+	uint32_t reserve =
+		reserved_blocks(nand_blocks, pages_per_block, page_size) * pages_per_block;
+
+	pages = (nand_blocks * pages_per_block) - reserve;
 
 	/*
 	 * The table has what is left of the buffer, and has to fit. On this
@@ -65,7 +96,7 @@ int ftl_start(void)
 	 * what there is. A board with a smaller buffer is what this is for.
 	 */
 	where = ssd_buffer_after_a_page(page_size, &room);
-	if (room / sizeof(*where) < pages) {
+	if (room / ENTRY_SIZE < pages) {
 		printk("A table for %u pages does not fit in what is left of the buffer, %u "
 		       "bytes. Describe a smaller drive, or a bigger buffer.\n",
 		       pages, (uint32_t)room);
@@ -74,7 +105,7 @@ int ftl_start(void)
 	for (uint32_t page = 0; page < pages; ++page) {
 		where[page] = NOWHERE;
 	}
-	next_free_nand_page = 0;
+	next_free_nand_page = reserve;
 
 	return 0;
 }
