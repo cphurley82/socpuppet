@@ -192,9 +192,11 @@ def saved_table(
 def _can_be_this_drives(table: Table, layout: Layout) -> bool:
     """Whether every page `table` gives out is one the NAND has given."""
     given_out = range(layout.reserve_pages, table.next_free)
-    return table.next_free <= layout.reserve_pages + layout.drive_pages and all(
-        where == NOWHERE or where in given_out for where in table.where
-    )
+    return (
+        layout.reserve_pages
+        <= table.next_free
+        <= layout.reserve_pages + layout.drive_pages
+    ) and all(where == NOWHERE or where in given_out for where in table.where)
 
 
 def drive_image(nand: bytes, chip: IdealNand) -> bytes:
