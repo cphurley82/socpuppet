@@ -9,10 +9,11 @@ import traceback
 import typing
 from collections.abc import Sequence
 
-from socpuppet import address_map, boot_image, interrupt_map, run
+from socpuppet import address_map, boot_image, interrupt_map, linux, run
 from socpuppet.address_map import MapEntry
 from socpuppet.boards.host import HOST_CPUS
 from socpuppet.components import Dialect
+from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
 from socpuppet.time import ms
@@ -169,9 +170,23 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "default is %(default)s)"
         ),
     )
+    commands.add_parser(
+        "linux",
+        help="boot Linux on the host, with this terminal at its console",
+        description=(
+            "Boot Linux on the host, the quick way, and put this terminal "
+            "at its console: the boot scrolls by, and then its shell is "
+            "yours. OpenSBI, the kernel and its root filesystem are the "
+            "ones firmware/build.py builds, looked for in "
+            "SOCPUPPET_FIRMWARE_DIR or else in build/firmware. Ctrl-] "
+            "leaves."
+        ),
+    )
     options = parser.parse_args(arguments)
 
-    if options.command == "run":
+    if options.command == "linux":
+        _linux()
+    elif options.command == "run":
         run.run(
             options.image,
             options.board,
@@ -191,6 +206,24 @@ def main(arguments: Sequence[str] | None = None) -> None:
         sys.stdout.write(
             _devicetree(options.description, options.via, options.dialect)
         )
+
+
+def _linux() -> None:
+    """Boot Linux on the host, with this terminal at its console.
+
+    An image or a tool that is missing, such as dtc, ends the command with
+    one line that says how to get it.
+    """
+    try:
+        board = linux.host_with_linux(run.firmware_directory())
+    except FileNotFoundError as missing:
+        sys.exit(str(missing))
+    assert board.virtio is not None  # the host was described with them
+    interact(
+        board.platform,
+        screen=[board.uart, board.virtio.console],
+        keyboard=board.virtio.console,
+    )
 
 
 def _add_description(command: argparse.ArgumentParser) -> None:

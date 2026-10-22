@@ -203,7 +203,7 @@ def run(
         )
     platform = stage.platform
     if from_rom:
-        rom_program = _firmware_directory() / _ROMS[cpu.xlen]
+        rom_program = firmware_directory() / _ROMS[cpu.xlen]
         if not rom_program.exists():
             sys.exit(
                 f"There is no boot ROM at {rom_program}. Build it with "
@@ -293,7 +293,7 @@ def _build(platform: Platform) -> None:
         sys.exit(str(refused))
 
 
-def _firmware_directory() -> pathlib.Path:
+def firmware_directory() -> pathlib.Path:
     """Where `firmware/build.py` left what it built."""
     return pathlib.Path(
         os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
