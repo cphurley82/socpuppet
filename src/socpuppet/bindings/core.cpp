@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -203,12 +204,17 @@ PYBIND11_MODULE(_core, m) {
                  .SetScript([&script] { return script.Play(); });
            })
       // What the serial transport at `path` (a UART, a virtio console) has
-      // transmitted so far. As bytes, because firmware may send anything.
-      .def("far_end_output",
-           [](NativePlatform& self, const std::string& path) {
-             return py::bytes(
-                 self.platform.ModuleAt<socpuppet::FarEnd>(path).Output());
-           })
+      // transmitted after its first `since` bytes, and nothing if it has
+      // not sent that many. As bytes, because firmware may send anything.
+      // Only that tail is copied, so a reader that keeps up pays for what
+      // is new, not for everything sent so far.
+      .def(
+          "far_end_output",
+          [](NativePlatform& self, const std::string& path, std::size_t since) {
+            const std::string_view output{
+                self.platform.ModuleAt<socpuppet::FarEnd>(path).Output()};
+            return py::bytes(output.substr(std::min(since, output.size())));
+          })
       // Hands the serial transport at `path` bytes to receive, as if they
       // had come in on its line.
       .def("far_end_write",
