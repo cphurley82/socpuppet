@@ -221,7 +221,7 @@ class SsdFirmware:
         )
         self._pages = shared.drive_pages
         self._reserve_pages = shared.reserve_pages
-        yield from self._load_the_table()
+        yield from self._load_the_table(shared)
         limits = yield read32(self._frontend + nvme_frontend.LIMITS)
         self._io_queue_pairs = (
             limits & nvme_frontend.LIMITS_IO_QUEUE_PAIRS_MASK
@@ -238,11 +238,12 @@ class SsdFirmware:
             | nvme_frontend.INTERRUPT_ENABLE_SHUTDOWN,
         )
 
-    def _load_the_table(self) -> Steps[None]:
+    def _load_the_table(self, shared: ftl.Layout) -> Steps[None]:
         """Take the table the reserve holds, or else start an empty one.
 
-        The reserve holds this drive's table if its header says so; a NAND
-        fresh from the factory, whose erased header says nothing, does not.
+        The reserve holds this drive's table if its header says so and the
+        table can be this drive's (`ftl.saved_table`); a NAND fresh from
+        the factory, whose erased header says nothing, holds none.
         """
         saved = bytearray()
         for nand_page in range(
@@ -259,7 +260,7 @@ class SsdFirmware:
                 )
             saved += yield read(self._page_buffer, self._page_size)
         table = ftl.saved_table(
-            bytes(saved), drive_pages=self._pages, page_size=self._page_size
+            bytes(saved), layout=shared, page_size=self._page_size
         )
         if table is None:
             self._page_map = {}

@@ -162,24 +162,38 @@ def saved_pages(*, drive_pages: int, page_size: int) -> int:
 
 
 def saved_table(
-    reserve: bytes, *, drive_pages: int, page_size: int
+    reserve: bytes, *, layout: Layout, page_size: int
 ) -> Table | None:
     """The table that `reserve`, the reserve's first pages, holds.
 
     `reserve` is at least the `saved_pages` the header and the table take.
-    None if its header is not one for a drive of `drive_pages`, as on a
-    NAND fresh from the factory, whose erased header says nothing.
+    None if its header is not one for a drive of `layout.drive_pages`, as
+    on a NAND fresh from the factory, whose erased header says nothing; or
+    if the table it holds cannot be this drive's: the pages given out so
+    far are the reserve's end up to the next free one, which is at most
+    the NAND's end, so an entry anywhere else is not one of this drive's.
     """
     said = tuple(
         struct.unpack_from("<I", reserve, offset)[0]
         for offset in (header.MAGIC, header.VERSION, header.PAGES)
     )
-    if said != (header.MAGIC_NUMBER, header.VERSION_FIRST, drive_pages):
+    if said != (header.MAGIC_NUMBER, header.VERSION_FIRST, layout.drive_pages):
         return None
     (next_free,) = struct.unpack_from("<I", reserve, header.NEXT_FREE)
-    return Table(
-        struct.unpack_from(f"<{drive_pages}{_ENTRY}", reserve, page_size),
+    table = Table(
+        struct.unpack_from(
+            f"<{layout.drive_pages}{_ENTRY}", reserve, page_size
+        ),
         next_free,
+    )
+    return table if _can_be_this_drives(table, layout) else None
+
+
+def _can_be_this_drives(table: Table, layout: Layout) -> bool:
+    """Whether every page `table` gives out is one the NAND has given."""
+    given_out = range(layout.reserve_pages, table.next_free)
+    return table.next_free <= layout.reserve_pages + layout.drive_pages and all(
+        where == NOWHERE or where in given_out for where in table.where
     )
 
 
@@ -187,14 +201,15 @@ def drive_image(nand: bytes, chip: IdealNand) -> bytes:
     """The drive that `nand`, every page of `chip`, holds, by its table.
 
     A page of the drive that no NAND page holds reads as zeros. A NAND
-    whose header is not one for this drive, such as one never programmed,
-    holds a drive of zeros, as the firmware finds it.
+    whose reserve holds no table that can be this drive's (`saved_table`),
+    such as one never programmed, holds a drive of zeros, as the firmware
+    finds it.
     """
     page_size = chip.page_size
-    _, pages = _layout_of(chip)
-    table = saved_table(nand, drive_pages=pages, page_size=page_size)
+    shared = _layout_of(chip)
+    table = saved_table(nand, layout=shared, page_size=page_size)
     if table is None:
-        return bytes(pages * page_size)
+        return bytes(shared.drive_pages * page_size)
     return b"".join(
         bytes(page_size)
         if where == NOWHERE

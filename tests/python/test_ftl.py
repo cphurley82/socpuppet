@@ -148,3 +148,40 @@ class TestWhenANandWasNeverProgrammed:
         erased = b"\xff" * CHIP_BYTES
 
         assert ftl.drive_image(erased, CHIP) == bytes(DRIVE_PAGES * PAGE)
+
+
+class TestWhenAReserveHasThisDrivesHeaderAndATableThatCannotBeIts:
+    @pytest.mark.parametrize(
+        ("where_page_0", "next_free"),
+        [
+            pytest.param(
+                0, AFTER_THE_RESERVE + 1, id="an entry in the reserve"
+            ),
+            pytest.param(
+                AFTER_THE_RESERVE + 1,
+                AFTER_THE_RESERVE + 1,
+                id="an entry at the next free page, which nobody has yet",
+            ),
+            pytest.param(
+                AFTER_THE_RESERVE,
+                CHIP_BYTES // PAGE + 1,
+                id="next free past the chip",
+            ),
+        ],
+    )
+    def test_the_drive_reads_as_zeros(self, where_page_0, next_free):
+        # The pages given out so far are the reserve's end up to the next
+        # free one. A table that says otherwise is not this drive's, like
+        # one for a drive of another size, however its header reads.
+        where = (where_page_0,) + (ftl.NOWHERE,) * (DRIVE_PAGES - 1)
+        nand = programmed(ftl.Table(where, next_free), page(b"spam"))
+
+        assert ftl.drive_image(nand, CHIP) == bytes(DRIVE_PAGES * PAGE)
+
+
+def programmed(table, *drive_pages):
+    """The chip holding `table` in its reserve, then `drive_pages` after it."""
+    reserve = ftl.saved_reserve(table, page_size=PAGE)
+    return loaded(
+        reserve.ljust(AFTER_THE_RESERVE * PAGE, b"\xff") + b"".join(drive_pages)
+    )
