@@ -30,6 +30,7 @@ __all__ = [
     "FW_JUMP_BIN",
     "GREETING",
     "HELLO_WORLD",
+    "INITRAMFS_CPIO",
     "LINUX",
     "LINUX_BIN",
     "LINUX_MAP",
@@ -82,6 +83,9 @@ LINUX_MAP = "linux.map"
 #: The kernel's root filesystem (firmware/build.py): Alpine's mini root with
 #: an inittab of ours, as an ext4 image for 🎭 the virtio disk.
 ROOTFS_EXT4 = linux.ROOTFS_EXT4
+#: What loads the kernel's NVMe modules and mounts a root on the drive
+#: (firmware/build.py): an initramfs, as an uncompressed cpio.
+INITRAMFS_CPIO = linux.INITRAMFS_CPIO
 
 
 #: The two ways the three CPUs of a host get their firmware, as what

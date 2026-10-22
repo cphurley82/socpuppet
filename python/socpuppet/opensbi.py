@@ -14,6 +14,14 @@ So the two stages are laid out as one run of bytes from the start of RAM,
     layout = opensbi.lay_out(fw_jump, payload, devicetree, ram=RAM_BASE)
     opensbi.load(platform, layout, rom=ROM_BASE, via=board.cpu.socket)
 
+🐧 A kernel can be given an initramfs too, which goes after the devicetree's
+copy. The devicetree says where it is, so its place comes first:
+
+    span = opensbi.initrd_span(initramfs, ram=RAM_BASE)
+    devicetree = compile(platform.devicetree(dialect="linux", initrd=span))
+    layout = opensbi.lay_out(fw_jump, kernel, devicetree, ram=RAM_BASE,
+                             initrd=initramfs)
+
 Or as one image in a flash, for a boot ROM to copy to RAM and start with
 the devicetree's address, which is how silicon boots:
 
@@ -47,12 +55,20 @@ NEXT_STAGE_OFFSET = 0x20_0000
 #: Where `fw_jump` copies the devicetree it was given before it jumps:
 #: FW_JUMP_FDT_OFFSET. It grows the copy there, so RAM after it must be free.
 DEVICETREE_COPY_OFFSET = 0x220_0000
+#: How much RAM the copy is left: a devicetree is kilobytes, and OpenSBI's
+#: fix-ups add a few more (`lib/utils/fdt/fdt_fixup.c`).
+DEVICETREE_ROOM = 0x20_0000
+#: 🐧 Where an initramfs goes, from the start of RAM: after the devicetree's
+#: copy and its room. The devicetree says where it is, so the place is fixed
+#: before the devicetree is made.
+INITRD_OFFSET = DEVICETREE_COPY_OFFSET + DEVICETREE_ROOM
 
 
 class Layout(NamedTuple):
     """OpenSBI and what it starts, as one run of bytes for the start of RAM."""
 
-    #: `fw_jump`, the next stage and the devicetree, with zeros between.
+    #: `fw_jump`, the next stage, the devicetree and any initramfs, with
+    #: zeros between.
     image: bytes
     #: Where the run goes: the start of RAM, where `fw_jump` starts.
     load_address: int
@@ -60,14 +76,31 @@ class Layout(NamedTuple):
     devicetree_at: int
 
 
+def initrd_span(initrd: bytes, *, ram: int) -> tuple[int, int]:
+    """Where `lay_out` puts an initramfs, in RAM at `ram`: (start, end).
+
+    The two the devicetree's `chosen` node gives Linux (`initrd=` of
+    `Platform.devicetree`).
+    """
+    start = ram + INITRD_OFFSET
+    return start, start + len(initrd)
+
+
 def lay_out(
-    fw_jump: bytes, next_stage: bytes, devicetree: bytes, *, ram: int
+    fw_jump: bytes,
+    next_stage: bytes,
+    devicetree: bytes,
+    *,
+    ram: int,
+    initrd: bytes | None = None,
 ) -> Layout:
-    """The three for RAM at `ram`, each where `fw_jump` wants it.
+    """The three for RAM at `ram`, and an initramfs, where `fw_jump` wants.
 
     The devicetree follows the next stage, on a boundary of 8 bytes, which
-    is what a devicetree must start on. Raises ValueError if `fw_jump` is
-    too big to leave room for the next stage where it jumps.
+    is what a devicetree must start on. An `initrd`, if there is one, goes
+    where `initrd_span` says. Raises ValueError if `fw_jump` is too big to
+    leave room for the next stage where it jumps, or if the devicetree
+    would reach the initramfs.
     """
     if len(fw_jump) > NEXT_STAGE_OFFSET:
         raise ValueError(
@@ -82,6 +115,18 @@ def lay_out(
     image += bytes(-len(image) % 8)
     devicetree_at = ram + len(image)
     image += devicetree
+    if initrd is not None:
+        if len(image) > INITRD_OFFSET:
+            raise ValueError(
+                f"The next stage and the devicetree run to {len(image):#x} "
+                "bytes into RAM, past where the initramfs goes, "
+                f"{INITRD_OFFSET:#x}. A kernel this big needs "
+                "FW_JUMP_FDT_OFFSET in firmware/build.py, and "
+                "opensbi.DEVICETREE_COPY_OFFSET and INITRD_OFFSET with it, "
+                "to move."
+            )
+        image += bytes(INITRD_OFFSET - len(image))
+        image += initrd
     return Layout(bytes(image), ram, devicetree_at)
 
 

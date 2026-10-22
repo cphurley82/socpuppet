@@ -7,6 +7,7 @@ from socpuppet import opensbi
 RAM = 0x8000_0000
 SPAM = b"spam" * 3
 EGGS = b"eggs"
+HAM = b"ham" * 5
 #: A devicetree's first bytes, its magic number.
 DEVICETREE = bytes.fromhex("d00dfeed")
 
@@ -24,6 +25,34 @@ class TestWhenAStageIsLaidOut:
         # The next stage ends 0x20_0004 into RAM: eight bytes on is 0x20_0008.
         assert layout.devicetree_at == RAM + 0x20_0008
         assert layout.image[0x20_0008:] == DEVICETREE
+
+
+class TestWhenAStageIsLaidOutWithAnInitramfs:
+    """🐧 An initramfs is put in RAM beside the kernel, and the devicetree
+    says where: so its place is known before the devicetree is made."""
+
+    def test_it_is_where_its_span_says(self):
+        start, end = opensbi.initrd_span(HAM, ram=RAM)
+
+        layout = opensbi.lay_out(SPAM, EGGS, DEVICETREE, ram=RAM, initrd=HAM)
+
+        assert layout.image[start - RAM : end - RAM] == HAM
+
+    def test_it_is_clear_of_the_room_fw_jump_copies_the_devicetree_into(self):
+        start, _ = opensbi.initrd_span(HAM, ram=RAM)
+
+        assert start >= (
+            RAM + opensbi.DEVICETREE_COPY_OFFSET + opensbi.DEVICETREE_ROOM
+        )
+
+    def test_a_stage_whose_devicetree_would_land_on_it_is_refused(self):
+        start, _ = opensbi.initrd_span(HAM, ram=RAM)
+        # The next stage ends where the initramfs starts: its devicetree,
+        # next, would be laid on the initramfs.
+        too_long = bytes(start - RAM - 0x20_0000)
+
+        with pytest.raises(ValueError, match=rf"initramfs.*{start - RAM:#x}"):
+            opensbi.lay_out(SPAM, too_long, DEVICETREE, ram=RAM, initrd=HAM)
 
 
 class TestWhenFwJumpWouldRunIntoTheNextStage:

@@ -32,14 +32,15 @@ def generate(
     dialect: Dialect = "zephyr",
     model: str | None = None,
     bootargs: str | None = None,
+    initrd: tuple[int, int] | None = None,
 ) -> str:
     """The devicetree source for the hardware reachable from the port `view`.
 
     `connections` are the platform's connections.
     Addresses are the ones a bus master at `view` uses. `dialect` is whose
     bindings the tree is in, `model` is the board's name, for the root to
-    give, and `bootargs` is the command line `chosen` hands an operating
-    system.
+    give, `bootargs` is the command line `chosen` hands an operating
+    system, and `initrd` where in memory its initramfs starts and ends.
 
     Each component describes its own nodes (`Component.device_nodes`),
     most of them one. What is decided here is where the nodes go: the CPU
@@ -64,7 +65,7 @@ def generate(
         label(master.path), _connected_ports(connections, master)
     )
     if cpu is not None:
-        lines += ["", *_chosen(nodes, dialect, bootargs)]
+        lines += ["", *_chosen(nodes, dialect, bootargs, initrd)]
         aliases = _aliases(nodes)
         if aliases:
             lines += ["", *_references("aliases", aliases)]
@@ -428,11 +429,13 @@ def _chosen(
     nodes: list[tuple[Placed, DeviceNode]],
     dialect: Dialect,
     bootargs: str | None,
+    initrd: tuple[int, int] | None,
 ) -> list[str]:
-    """The `chosen` node: what firmware is to use, and its command line.
+    """The `chosen` node: what firmware uses, its command line, its initramfs.
 
     Zephyr's names each device it chooses by reference. Linux's names the
-    console only, by the path to its node, in `stdout-path`.
+    console only, by the path to its node, in `stdout-path`. 🐧 Linux reads
+    the initramfs's start and end as numbers of as many cells as each has.
     """
     if dialect == "zephyr":
         chosen = _naming(_roles(nodes))
@@ -443,6 +446,12 @@ def _chosen(
         )
     if bootargs is not None:
         chosen.insert(0, f'bootargs = "{bootargs}";')
+    if initrd is not None:
+        start, end = initrd
+        chosen += [
+            f"linux,initrd-start = <{cells(start)}>;",
+            f"linux,initrd-end = <{cells(end)}>;",
+        ]
     return ["\tchosen {", *(f"\t\t{each}" for each in chosen), "\t};"]
 
 

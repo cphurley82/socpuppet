@@ -398,6 +398,7 @@ class Platform:
         dialect: Dialect = "zephyr",
         model: str | None = None,
         bootargs: str | None = None,
+        initrd: tuple[int, int] | None = None,
     ) -> str:
         """The devicetree source for what a bus master can reach.
 
@@ -406,8 +407,9 @@ class Platform:
 
         `dialect` is whose bindings it is in: Zephyr's, which socpuppet's
         boards are built with, or Linux's, which OpenSBI and Linux read.
-        `model` is the board's name, which the root gives, and `bootargs`
-        the command line an operating system is handed.
+        `model` is the board's name, which the root gives, `bootargs`
+        the command line an operating system is handed, and `initrd` where
+        its initramfs starts and ends in memory (`opensbi.initrd_span`).
         """
         return devicetree.generate(
             self._connections,
@@ -415,6 +417,7 @@ class Platform:
             dialect=dialect,
             model=model,
             bootargs=bootargs,
+            initrd=initrd,
         )
 
     def devicetree_overlay(
