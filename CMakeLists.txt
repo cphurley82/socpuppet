@@ -41,6 +41,7 @@ if(SOCPUPPET_BUILD_TESTS)
   # Spikes are tried out through tests, so they need the test setup.
   if(SOCPUPPET_BUILD_SPIKES)
     add_subdirectory(spikes/npu)
+    add_subdirectory(spikes/pciem)
     add_subdirectory(spikes/speed)
   endif()
 endif()
