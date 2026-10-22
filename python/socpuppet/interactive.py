@@ -59,20 +59,23 @@ def interact(
     sleeps, and every `LOOK_EVERY` while it works. So the run may go a
     little past the moment it came true.
 
+    Input that ends, such as a pipe whose writer is done, leaves the run
+    going, and then only `until` can end it.
+
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
     that is a CPU asleep. That stretch is waited out on the wall, and a
     key ends the wait.
     """
-    keys = sys.stdin.fileno()
-    settings = termios.tcgetattr(keys) if os.isatty(keys) else None
+    stdin = sys.stdin.fileno()
+    settings = termios.tcgetattr(stdin) if os.isatty(stdin) else None
     if settings is not None:
-        tty.setraw(keys)
+        tty.setraw(stdin)
     try:
         _run(platform, screen, keyboard, until)
     finally:
         if settings is not None:
-            termios.tcsetattr(keys, termios.TCSADRAIN, settings)
+            termios.tcsetattr(stdin, termios.TCSADRAIN, settings)
 
 
 def _run(
@@ -86,6 +89,7 @@ def _run(
     `until` is looked at whenever the terminal is.
     """
     shown = [0] * len(screen)
+    keys = _Keys()
     look_again = 0.0
     while True:
         ahead = platform.time_to_next_activity
@@ -99,7 +103,7 @@ def _run(
                 else min(ahead / s(1), LONGEST_WAIT)
             )
             waited_from = time.monotonic()
-            typed = _keys(wait)
+            typed = keys.within(wait)
             waited = s(time.monotonic() - waited_from)
             if ahead is not None and waited >= ahead:
                 platform.step()
@@ -111,7 +115,7 @@ def _run(
                 _show(screen, shown)
                 if until():
                     return
-                typed = _keys(0)
+                typed = keys.within(0)
                 look_again = time.monotonic() + LOOK_EVERY
             platform.step()
         if LEAVE in typed:
@@ -129,7 +133,25 @@ def _show(screen: Sequence[PlacedFarEnd], shown: list[int]) -> None:
     sys.stdout.buffer.flush()
 
 
-def _keys(within: float) -> bytes:
-    """What is typed within `within` seconds, or nothing if nothing is."""
-    typed, _, _ = select.select([sys.stdin], [], [], within)
-    return os.read(sys.stdin.fileno(), 4096) if typed else b""
+class _Keys:
+    """What comes in on standard input, until it ends.
+
+    💡 Input that has ended, such as a pipe whose writer is done, is
+    always ready to read and always reads nothing, so after it ends it is
+    not read again, and waiting for a key is a plain `time.sleep`.
+    """
+
+    def __init__(self) -> None:
+        self._ended = False
+
+    def within(self, seconds: float) -> bytes:
+        """What is typed within `seconds`, or nothing if nothing is."""
+        if self._ended:
+            time.sleep(seconds)
+            return b""
+        ready, _, _ = select.select([sys.stdin], [], [], seconds)
+        if not ready:
+            return b""
+        typed = os.read(sys.stdin.fileno(), 4096)
+        self._ended = not typed
+        return typed
