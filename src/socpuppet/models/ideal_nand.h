@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <span>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 #include <systemc>
 #include <tlm>
@@ -24,6 +27,20 @@ class IdealNand : public sc_core::sc_module {
       : sc_module(name), array_(geometry) {
     socket.register_b_transport(this, &IdealNand::b_transport);
   }
+
+  // 🧵 Programs `image` over the chip's pages in order, from the first, as
+  // a NAND programmer does. An image longer than the chip is refused.
+  void Load(std::span<const std::uint8_t> image) {
+    if (array_.Load(image) != NandResult::kDone) {
+      throw std::invalid_argument(
+          "The image is " + std::to_string(image.size()) +
+          " bytes, longer than the NAND " + std::string(name()) +
+          ", which holds " + std::to_string(array_.Size()) +
+          ". Give the NAND more blocks, or make the image smaller.");
+    }
+  }
+  // Every page of the chip, in order, the erased ones all ones.
+  std::vector<std::uint8_t> Contents() const { return array_.Contents(); }
 
  private:
   void b_transport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {

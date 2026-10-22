@@ -43,6 +43,7 @@ from socpuppet.placed import (
     Placed,
     PlacedBlock,
     PlacedConsole,
+    PlacedNand,
     PlacedNet,
     PlacedRouter,
     PlacedUart,
@@ -759,6 +760,10 @@ class IdealNand(Component):
     blocks: int
     pages_per_block: int = 64
     page_size: int = 4096
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedNand:
+        return PlacedNand(platform, path, self)
 
 
 class Imsic(Component):

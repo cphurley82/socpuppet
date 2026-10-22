@@ -22,6 +22,7 @@
 #include "socpuppet/core/elf_image.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
+#include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/virtio_9p.h"
 #include "socpuppet/models/virtio_blk.h"
@@ -238,6 +239,24 @@ PYBIND11_MODULE(_core, m) {
            [](NativePlatform& self, const std::string& path) {
              const std::vector<std::uint8_t> bytes =
                  self.platform.ModuleAt<socpuppet::VirtioBlk>(path).Contents();
+             return py::bytes(reinterpret_cast<const char*>(bytes.data()),
+                              bytes.size());
+           })
+      // Programs an image into the NAND chip at `path`, from its first page
+      // on. Too long an image is refused (ValueError).
+      .def("nand_load",
+           [](NativePlatform& self, const std::string& path,
+              const py::bytes& image) {
+             const std::string_view bytes{image};
+             self.platform.ModuleAt<socpuppet::IdealNand>(path).Load(
+                 std::span(reinterpret_cast<const std::uint8_t*>(bytes.data()),
+                           bytes.size()));
+           })
+      // Every page of the NAND chip at `path`, in order.
+      .def("nand_contents",
+           [](NativePlatform& self, const std::string& path) {
+             const std::vector<std::uint8_t> bytes =
+                 self.platform.ModuleAt<socpuppet::IdealNand>(path).Contents();
              return py::bytes(reinterpret_cast<const char*>(bytes.data()),
                               bytes.size());
            })

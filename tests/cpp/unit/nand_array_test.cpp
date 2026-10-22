@@ -1,5 +1,6 @@
 #include "socpuppet/core/nand_array.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -30,6 +31,23 @@ std::vector<std::uint8_t> SomePage(std::uint8_t first_byte = 1) {
     data[index] = static_cast<std::uint8_t>(first_byte + index);
   }
   return data;
+}
+
+// So many pages of data, page n starting at 16 * n, so that no two are
+// alike.
+std::vector<std::uint8_t> SomePages(std::uint8_t count) {
+  std::vector<std::uint8_t> data;
+  for (std::uint8_t page = 0; page < count; ++page) {
+    const std::vector<std::uint8_t> one = SomePage(16 * page);
+    data.insert(data.end(), one.begin(), one.end());
+  }
+  return data;
+}
+
+// How many bytes a chip holds.
+constexpr std::size_t BytesIn(const NandGeometry& geometry) {
+  return std::size_t{geometry.page_size} * geometry.pages_per_block *
+         geometry.blocks;
 }
 
 }  // namespace
@@ -150,6 +168,54 @@ TEST(WhenAPageIsProgrammedASecondTime, ItHoldsWhatWasProgrammedLast) {
   ASSERT_EQ(nand.ProgramPage(2, 5, SomePage(20)), NandResult::kDone);
 
   EXPECT_EQ(PageAt(nand, 2, 5), SomePage(20));
+}
+
+// 🧵 How Python programs a chip before a run, as a NAND programmer does a
+// chip before it is soldered on: an image, laid over the pages in order.
+TEST(WhenAnImageIsLoaded, ItsPagesAreTheArraysFirstInOrderAcrossBlocks) {
+  NandArray nand{kSmall};
+  const std::vector<std::uint8_t> image = SomePages(9);
+
+  ASSERT_EQ(nand.Load(image), NandResult::kDone);
+
+  EXPECT_EQ(PageAt(nand, 0, 0), SomePage(0));
+  EXPECT_EQ(PageAt(nand, 0, 7), SomePage(16 * 7));
+  // The ninth page is the first of the second block.
+  EXPECT_EQ(PageAt(nand, 1, 0), SomePage(16 * 8));
+}
+
+TEST(WhenAnImageIsLoaded, APageItEndsPartWayThroughIsFilledOutWithOnes) {
+  NandArray nand{kSmall};
+  const std::vector<std::uint8_t> image(20, 0x00);
+
+  ASSERT_EQ(nand.Load(image), NandResult::kDone);
+
+  std::vector<std::uint8_t> second(kSmall.page_size, 0xFF);
+  std::fill_n(second.begin(), 4, 0x00);
+  EXPECT_EQ(PageAt(nand, 0, 1), second);
+}
+
+TEST(WhenAnImageLongerThanTheChipIsLoaded, ItIsRefusedWithNothingProgrammed) {
+  NandArray nand{kSmall};
+  const std::vector<std::uint8_t> image(BytesIn(kSmall) + 1, 0x00);
+
+  EXPECT_EQ(nand.Load(image), NandResult::kOutOfRange);
+
+  EXPECT_EQ(PageAt(nand, 0, 0),
+            std::vector<std::uint8_t>(kSmall.page_size, 0xFF));
+}
+
+TEST(WhenTheContentsAreRead, TheyAreEveryPageInOrderAndErasedOnesAreOnes) {
+  NandArray nand{kSmall};
+  ASSERT_EQ(nand.ProgramPage(1, 2, SomePage()), NandResult::kDone);
+
+  const std::vector<std::uint8_t> contents = nand.Contents();
+
+  std::vector<std::uint8_t> expected(BytesIn(kSmall), 0xFF);
+  const std::size_t block_1_page_2 =
+      std::size_t{kSmall.page_size} * ((1 * kSmall.pages_per_block) + 2);
+  std::ranges::copy(SomePage(), expected.begin() + block_1_page_2);
+  EXPECT_EQ(contents, expected);
 }
 
 }  // namespace socpuppet
