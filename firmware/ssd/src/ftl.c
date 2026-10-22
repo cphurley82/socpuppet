@@ -112,6 +112,10 @@ static int load_the_table(void)
 		next_free_nand_page = sys_get_le32(&header[FTL_HEADER_NEXT_FREE]);
 		result = flash_read(ssd_nand, page_size, where, table_bytes);
 		this_drives = result == 0 && can_be_this_drives();
+		if (result == 0 && !this_drives) {
+			printk("The reserve's table cannot be this drive's, so the drive starts "
+			       "empty.\n");
+		}
 	}
 	if (result == 0 && !this_drives) {
 		for (size_t entry = 0; entry < table_bytes / ENTRY_SIZE; ++entry) {
