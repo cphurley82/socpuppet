@@ -40,6 +40,7 @@ from __future__ import annotations
 import sys
 from typing import NamedTuple
 
+from socpuppet import ftl
 from socpuppet.boards.boot import Boot
 from socpuppet.boards.cpu_kit import (
     CpuKit,
@@ -202,8 +203,14 @@ def add_ssd_function(
     flash = place.add("flash", FlashController())
     nand = place.add(
         "nand",
+        # The drive, and the FTL's reserve before it, where the firmware
+        # keeps its table (socpuppet.ftl).
         IdealNand(
-            blocks=blocks // DRIVE_BLOCKS_PER_NAND_BLOCK,
+            blocks=ftl.nand_blocks(
+                blocks // DRIVE_BLOCKS_PER_NAND_BLOCK,
+                pages_per_block=NAND_PAGES_PER_BLOCK,
+                page_size=NAND_PAGE_SIZE,
+            ),
             pages_per_block=NAND_PAGES_PER_BLOCK,
             page_size=NAND_PAGE_SIZE,
         ),

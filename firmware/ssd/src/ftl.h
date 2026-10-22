@@ -19,8 +19,12 @@
  *     left as rubbish until its block is erased. That is where garbage
  *     collection begins, and where this FTL stops.
  *
- * The table is in the SSD's buffer and nowhere else, so it does not
- * outlive the firmware. A real FTL keeps it on the NAND as well.
+ * The NAND's first blocks are a reserve, which no page of the drive goes
+ * in: the drive is the NAND less the reserve, and its pages start after
+ * it. It is where the table is to be kept (docs/models/ssd-firmware.md in
+ * socpuppet). 🚧 For now the table is in the SSD's buffer and nowhere
+ * else, so it does not outlive the firmware. A real FTL keeps it on the
+ * NAND as well.
  */
 
 #ifndef FIRMWARE_SSD_FTL_H_

@@ -28,6 +28,7 @@ import struct
 from collections.abc import Iterator
 from typing import NamedTuple
 
+from socpuppet import ftl
 from socpuppet.ops import Steps, read, read32, wait_irq, write, write32
 from socpuppet.regs import (
     command_device,
@@ -160,7 +161,7 @@ class SsdFirmware:
         # The flash translation layer: for each page of the drive that was
         # ever written, the NAND page that holds it. 🎓 An FTL calls this
         # its logical-to-physical table, L2P for short. And the next NAND
-        # page nobody has.
+        # page nobody has, which is after the FTL's reserve.
         self._page_map: dict[int, int] = {}
         self._next_free_nand_page = 0
 
@@ -206,7 +207,15 @@ class SsdFirmware:
             self._flash + flash_controller.PAGES_PER_BLOCK
         )
         blocks = yield read32(self._flash + flash_controller.BLOCKS)
-        self._pages = self._pages_per_block * blocks
+        # The NAND's first blocks are the FTL's reserve, where it keeps its
+        # table, and the drive is the rest (socpuppet.ftl).
+        shared = ftl.layout(
+            blocks,
+            pages_per_block=self._pages_per_block,
+            page_size=self._page_size,
+        )
+        self._pages = shared.drive_pages
+        self._next_free_nand_page = shared.reserve_pages
         limits = yield read32(self._frontend + nvme_frontend.LIMITS)
         self._io_queue_pairs = (
             limits & nvme_frontend.LIMITS_IO_QUEUE_PAIRS_MASK

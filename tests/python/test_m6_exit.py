@@ -20,7 +20,11 @@ from cast import DISK_TEST, SSD, boot
 from disk_access import assert_it_read_and_wrote, run_to_a_verdict
 from socpuppet import ztest
 from socpuppet.boards.host import host
-from socpuppet.boards.ssd import add_ssd, scripted_firmware
+from socpuppet.boards.ssd import (
+    DRIVE_BLOCKS_PER_NAND_BLOCK,
+    add_ssd,
+    scripted_firmware,
+)
 from ssd_zephyr_firmware import BANNER
 
 #: What is in the SSD's CPU's place.
@@ -83,8 +87,9 @@ class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
         assert ztest.parse(ssds_console.output).suites == ()
 
 
-#: The largest drive the SSD's firmware takes: 2 GiB, in 512-byte blocks.
-LARGEST_DRIVE = 2 * (1 << 30) // 512
+#: The largest drive the SSD's firmware takes: a NAND of 2 GiB, 8192 NAND
+#: blocks, less the 9 that are the FTL's reserve, in 512-byte blocks.
+LARGEST_DRIVE = (8192 - 9) * DRIVE_BLOCKS_PER_NAND_BLOCK
 
 
 @pytest.mark.platform

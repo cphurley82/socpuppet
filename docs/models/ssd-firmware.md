@@ -114,7 +114,7 @@ The header says whose table follows it:
 
 After it, from the reserve's second page, the table: for each page of the drive, the NAND page that holds it, a little-endian 32-bit word, all ones for none. An erased page reads all ones, so a NAND fresh from the factory has no header and holds a drive of zeros.
 
-🧵 `socpuppet.ftl` is the same layout in Python. `ftl.nand_image(drive, chip)` is a factory's image of a drive: its pages that are not zeros in NAND pages from the end of the reserve, in order, and the table that says so, for `nand.load` to program before a boot ([ideal-nand.md](ideal-nand.md)). `ftl.drive_image(nand.contents, chip)` reads a drive back. `ftl.nand_blocks` is the NAND a drive of so many NAND blocks needs besides its reserve. 🚧 The firmware does not read or save the table yet: that comes with M24, and the contract tests then hold the two copies to each other.
+🧵 `socpuppet.ftl` is the same layout in Python. `ftl.nand_image(drive, chip)` is a factory's image of a drive: its pages that are not zeros in NAND pages from the end of the reserve, in order, and the table that says so, for `nand.load` to program before a boot ([ideal-nand.md](ideal-nand.md)). `ftl.drive_image(nand.contents, chip)` reads a drive back. `ftl.nand_blocks` is the NAND, reserve and all, that a drive of so many NAND blocks needs, and `ftl.layout` how many of a NAND's pages are the reserve and how many the drive. Both firmwares keep the reserve for it, and the board gives the NAND the room (`ftl.nand_blocks`), so a drive is the size it was described as. 🚧 Neither reads or saves the table yet: that comes with M24, and the contract tests then hold the copies to each other.
 
 ### A command's data
 
@@ -152,14 +152,14 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 | Waits for the host | on the frontend's interrupt line | asleep, until the frontend's interrupt handler wakes it |
 | Takes | no simulated time | a few milliseconds to boot, and a millisecond or two for a command |
 | Keeps its table | in a Python dict, `firmware.page_map` | in the SSD's buffer, after the page of scratch and the page of the drive: four bytes for each page of the drive |
-| Biggest drive | any | 2 GiB |
+| Biggest drive | any | 2 GiB of NAND, less the FTL's reserve: 9 blocks |
 | A device that never finishes | the script gives up, and its error says which device | its driver gives up after a tenth of a second |
 | Says what went wrong | in a Python exception, which ends the run | on the SSD's console, and then waits there for ever |
 
 - 💡 **The time is the CPU's.** The core runs about ten million instructions in a simulated second, and clearing a 4 KiB page a byte at a time is four thousand of them. Nothing else on the SSD takes time yet, so for now the firmware is all of a command's latency.
 - **The table is made empty at every start**, an entry at a time, which takes the firmware about half a microsecond of simulated time for each page of the drive: a quarter of a second for 2 GiB. The host waits, as it would for a real drive. 🎓 An NVMe controller tells its host how long to be patient (`CAP.TO`), and [the frontend](nvme-frontend.md) says one second.
 - 💡 **When it cannot be a drive it says why, and what to change**: a NAND too big for it, a flash controller that reports an error or never answers, a NAND page bigger than the driver was built for. A line that starts `E:` is from a driver, in Zephyr's log, and comes before Zephyr's own banner, because drivers start first.
-- ⚠️ **2 GiB is Zephyr's limit, and not the hardware's.** Zephyr's flash API names a place on a flash with a signed 32-bit number on this CPU. The firmware checks, and given a bigger NAND it says so on its console and stops. [upstream.md](../upstream.md) has the details.
+- ⚠️ **2 GiB is Zephyr's limit, and not the hardware's.** Zephyr's flash API names a place on a flash with a signed 32-bit number on this CPU, so the NAND can be 2 GiB at most, and the drive that much less the FTL's reserve. The firmware checks, and given a bigger NAND it says so on its console and stops. [upstream.md](../upstream.md) has the details.
 
 ## Under the hood
 

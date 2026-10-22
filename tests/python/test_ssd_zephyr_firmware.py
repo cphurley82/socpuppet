@@ -8,6 +8,7 @@ the same tests. A console is something only the real one has.
 import pytest
 
 import socpuppet as sp
+from socpuppet import ftl
 from socpuppet.boards.cpu_kit import (
     PLIC_BASE,
     SRAM_BASE,
@@ -17,13 +18,21 @@ from socpuppet.boards.cpu_kit import (
     UART_BASE,
 )
 from socpuppet.boards.scripted_host import idle_host
-from socpuppet.boards.ssd import FLASH_BASE, ssd
+from socpuppet.boards.ssd import (
+    DRIVE_BLOCKS_PER_NAND_BLOCK,
+    FLASH_BASE,
+    NAND_PAGE_SIZE,
+    NAND_PAGES_PER_BLOCK,
+    ssd,
+)
 from socpuppet.regs import flash_controller
 from ssd_zephyr_firmware import BANNER
 from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512
+# The NAND's blocks, 256 KiB each, and there are this many in a GiB.
+NAND_BLOCKS_PER_GIB = BLOCKS_PER_GIB // DRIVE_BLOCKS_PER_NAND_BLOCK
 
 
 def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
@@ -65,9 +74,15 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
     """
 
     def test_the_firmware_says_so_and_stops(self, firmware):
+        # A drive of 3 GiB, on a NAND a little bigger: the FTL's reserve.
+        nand_mib = (
+            nand_blocks(3 * NAND_BLOCKS_PER_GIB)
+            * NAND_PAGES_PER_BLOCK
+            * NAND_PAGE_SIZE
+        ) >> 20
         refusal = (
-            "The NAND is 3072 MiB, and Zephyr's flash API reaches only "
-            "the first 2048 MiB of one on this CPU."
+            f"The NAND is {nand_mib} MiB, and Zephyr's flash API reaches "
+            "only the first 2048 MiB of one on this CPU."
         )
 
         # Firmware that carried on would make its table next, which takes
@@ -83,14 +98,28 @@ class TestWhenTheNandIsBiggerThanZephyrsFlashApiCanReach:
         assert refusal in said
         assert "a drive of" not in said
 
-    def test_a_nand_of_exactly_what_it_can_reach_is_a_drive(self, firmware):
-        banner = "a drive of 524288 pages of 4096 bytes\r\n"
+    def test_a_nand_of_exactly_what_it_can_reach_is_a_drive_less_its_reserve(
+        self, firmware
+    ):
+        # 🎓 2 GiB of NAND is 8192 blocks, and 9 of them are the reserve.
+        drive = 8192 - 9
+        assert nand_blocks(drive) == 2 * NAND_BLOCKS_PER_GIB
+        banner = (
+            f"a drive of {drive * NAND_PAGES_PER_BLOCK} pages of 4096 bytes\r\n"
+        )
 
         said = console_of_an_ssd(
-            firmware, blocks=2 * BLOCKS_PER_GIB, until=banner
+            firmware, blocks=drive * DRIVE_BLOCKS_PER_NAND_BLOCK, until=banner
         )
 
         assert banner in said
+
+
+def nand_blocks(drive):
+    """The NAND blocks the board gives a drive of `drive` NAND blocks."""
+    return ftl.nand_blocks(
+        drive, pages_per_block=NAND_PAGES_PER_BLOCK, page_size=NAND_PAGE_SIZE
+    )
 
 
 # The flash controller's registers that these tests set, and the bits of

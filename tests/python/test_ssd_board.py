@@ -8,6 +8,7 @@ import pytest
 import socpuppet as sp
 from devicetree_compiler import dtc_errors, needs_dtc
 from processes import run_socpuppet
+from socpuppet import ftl
 from socpuppet.boards import ssd as boards_ssd
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, SRAM_BASE, SYSCON_BASE
@@ -79,14 +80,15 @@ class TestTheZephyrBoardForTheSsd:
 
 class TestAnSsdOfSoManyBlocks:
     # A NAND page is eight of the drive's blocks, and 64 pages make a NAND
-    # block: 512 of the drive's blocks.
-    def test_has_a_nand_of_that_many_blocks_in_whole_nand_blocks(self):
+    # block: 512 of the drive's blocks. Besides them, the FTL's reserve,
+    # where it keeps its table (docs/models/ssd-firmware.md).
+    def test_has_a_nand_of_that_many_blocks_and_the_ftls_reserve(self):
         board = ssd(
             host=idle_host, blocks=2048, firmware=scripted_firmware().script
         )
 
         assert board.ssd.nand.component.parameters == {
-            "blocks": 4,
+            "blocks": ftl.nand_blocks(4, pages_per_block=64, page_size=4096),
             "pages_per_block": 64,
             "page_size": 4096,
         }

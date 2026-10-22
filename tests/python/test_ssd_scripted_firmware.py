@@ -9,6 +9,7 @@ table, and when it cannot go on it raises an error that says why.
 import pytest
 
 import socpuppet as sp
+from socpuppet import ftl
 from socpuppet.boards.ssd import scripted_firmware
 from socpuppet.regs import flash_controller
 from ssd_on_a_bus import NVME_BASE, RAM_BASE, host_with_an_ssd
@@ -18,7 +19,8 @@ from ssd_on_a_bus import NVME_BASE, RAM_BASE, host_with_an_ssd
 class TestWhenADriverHasWrittenToPagesOfTheSsd:
     # A NAND page is eight of the drive's blocks, so block 504 is in page
     # 63 of the drive and block 0 in page 0. The firmware gives each the
-    # next NAND page nobody has, in the order they were first written.
+    # next NAND page nobody has, in the order they were first written,
+    # from the first after the FTL's reserve.
     def test_the_stand_in_can_say_which_nand_page_holds_each(self):
         firmware = scripted_firmware()
 
@@ -29,10 +31,16 @@ class TestWhenADriverHasWrittenToPagesOfTheSsd:
             yield from nvme.write_blocks(first=0, data=bytes(512))
             yield from nvme.write_blocks(first=505, data=bytes(512))
 
-        platform, _ = host_with_an_ssd(script, firmware=firmware)
+        platform, ssd = host_with_an_ssd(script, firmware=firmware)
         platform.run()
 
-        assert firmware.page_map == {63: 0, 0: 1}
+        chip = ssd.nand.component
+        reserve = ftl.layout(
+            chip.blocks,
+            pages_per_block=chip.pages_per_block,
+            page_size=chip.page_size,
+        ).reserve_pages
+        assert firmware.page_map == {63: reserve, 0: reserve + 1}
 
 
 def firmware_with_a_flash_controller_whose_status_is(status):
