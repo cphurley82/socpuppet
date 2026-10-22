@@ -130,8 +130,13 @@ elif name == "make" and "ARCH=riscv" in args:
         write(f"{built}/arch/riscv/boot/Image", "Image")
         elf(f"{built}/vmlinux")
         write(f"{built}/System.map", "ffffffff80000000 T _start\n")
+        # The kernel's build makes its own tool for initramfs archives,
+        # and says which release it is.
+        write_fake(f"{built}/usr/gen_init_cpio")
+        makefile = open(os.path.join(after("-C"), "Makefile")).read()
+        write(f"{built}/include/config/kernel.release", makefile.split()[-1])
     for module in (a for a in args if a.endswith(".ko")):
-        write(f"{built}/{module}", "module")
+        write(f"{built}/{module}", module)
 elif name == "make" and any(a.startswith("O=") for a in args):
     built = next(a[2:] for a in args if a.startswith("O="))
     for each in ("fw_jump", "payloads/test"):
@@ -159,6 +164,29 @@ elif name == "mkfs.ext4":
     # inside it as it would a real one.
     shutil.make_archive(args[-2], "tar", after("-d"))
     os.replace(args[-2] + ".tar", args[-2])
+elif name == "gen_init_cpio":
+    # The archive is a line of JSON for each entry of the list, in the
+    # list's order, holding each file's text, so a test can read what is
+    # in it; and, as the real tool, it fails on a file that is not there.
+    # The list is in the kernel's format (usr/gen_init_cpio.c).
+    entries = []
+    for line in open(args[-1]).read().splitlines():
+        kind, entry, *fields = line.split()
+        if kind == "file" and not os.path.exists(fields[0]):
+            print(f"File {fields[0]} could not be opened for reading")
+            status = 1
+            break
+        entries.append(json.dumps({
+            "kind": kind,
+            "name": entry,
+            "data": open(fields[0], errors="replace").read()
+            if kind == "file" else None,
+            "to": fields[0] if kind == "slink" else None,
+            "device": " ".join(fields[3:]) if kind == "nod" else None,
+            "mode": fields[1] if kind in ("file", "slink") else fields[0],
+        }))
+    if status == 0:
+        write(after("-o"), "\n".join(entries) + "\n")
 elif name == "build":
     write(
         os.path.join(
@@ -731,6 +759,84 @@ def test_the_root_filesystem_is_alpines_minirootfs_with_our_inittab_in_ext4(
     assert files["sbin/init"].link == "/bin/busybox"
 
 
+def test_the_initramfs_is_made_by_the_kernels_own_tool_with_busybox_musl_nvme(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release(version="6.18.57")
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    listed = archived(firmware.out / "initramfs.cpio")
+    assert listed["/bin/busybox"].data == firmware.fake.read_text()
+    assert listed["/bin/sh"].to == "busybox"
+    assert listed["/lib/ld-musl-riscv64.so.1"].data == "musl\n"
+    assert listed["/lib/libc.musl-riscv64.so.1"].to == "ld-musl-riscv64.so.1"
+    modules = "/lib/modules/6.18.57/kernel/drivers/nvme/host"
+    for module in ("nvme-core.ko", "nvme.ko"):
+        assert listed[f"{modules}/{module}"].data == (
+            f"drivers/nvme/host/{module}"
+        )
+    assert listed["/dev/console"].device == "c 5 1"
+
+
+def test_the_initramfs_has_our_files_at_their_paths_with_their_modes(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    listed = archived(firmware.out / "initramfs.cpio")
+    assert listed["/init"].data == "spam\n"
+    assert listed["/init"].mode == "0755"
+    assert listed["/etc/spam"].data == "spam\n"
+    assert listed["/etc/spam"].mode == "0644"
+
+
+def test_every_entry_of_the_initramfs_comes_after_its_folder(firmware):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    listed = archived(firmware.out / "initramfs.cpio")
+    names = list(listed)
+    for name in names:
+        parent = str(Path(name).parent)
+        if parent != "/":
+            assert listed[parent].kind == "dir", name
+            assert names.index(parent) < names.index(name), name
+
+
+class Listed(NamedTuple):
+    """An entry of a fake initramfs: what kind it is, a file's text, a
+    link's target, a node's type and numbers, and its mode."""
+
+    kind: str
+    data: str | None
+    to: str | None
+    device: str | None
+    mode: str
+
+
+def archived(cpio):
+    """The entries of a fake initramfs, by name, in the order listed."""
+    entries = {}
+    for line in cpio.read_text().splitlines():
+        entry = json.loads(line)
+        name = entry.pop("name")
+        entries[name] = Listed(**entry)
+    return entries
+
+
 class Entry(NamedTuple):
     """A file of a fake image: its bytes, or what it is a link to."""
 
@@ -980,6 +1086,8 @@ class Firmware:
             "firmware/sbi_payload/spam.c",
             "firmware/sbi_payload/payload.ld",
             "firmware/rootfs/etc/inittab",
+            "firmware/initramfs/init",
+            "firmware/initramfs/etc/spam",
             "python/socpuppet/zephyr_module/zephyr/module.yml",
             "cmake/patches/opensbi-spam.patch",
             "cmake/patches/edk2-spam.patch",
@@ -987,6 +1095,8 @@ class Firmware:
         ):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             (self.root / path).write_text("spam\n")
+        (self.root / "firmware" / "initramfs" / "init").chmod(0o755)
+        (self.root / "firmware" / "initramfs" / "etc" / "spam").chmod(0o644)
         self.install(self.root / "tools" / "devcontainer.py")
         for program in (
             *("curl", "git", "make", "uv", "iasl", "build"),
@@ -1087,6 +1197,8 @@ class Firmware:
             path,
             {
                 "./bin/busybox": RUNNABLE,
+                "./lib/ld-musl-riscv64.so.1": "musl\n",
+                "./lib/libc.musl-riscv64.so.1": Link("ld-musl-riscv64.so.1"),
                 "./sbin/init": Link("/bin/busybox"),
                 "./etc/inittab": "::sysinit:/sbin/openrc sysinit\n",
                 "./etc/profile": "PS1=spam\n",

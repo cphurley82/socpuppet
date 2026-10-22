@@ -248,6 +248,20 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
     assert checked >= ON_THE_OLDEST_UBUNTU_TOO
 
 
+def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
+    for file, jobs in WORKFLOW_FILES.items():
+        kept = paths_kept_by(jobs["firmware-linux"])
+        assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
+        for paths in kept.values():
+            assert "build/firmware/initramfs.cpio" in paths, file
+
+
+def test_a_change_to_what_the_initramfs_is_made_of_is_a_new_linux_cache():
+    for file, jobs in WORKFLOW_FILES.items():
+        (key,) = keys_of_what_it_builds(jobs["firmware-linux"])
+        assert "firmware/initramfs/**" in hashed_by(key), file
+
+
 def test_the_runner_builds_in_the_devcontainers_image_on_the_default_ubuntu_and_the_oldest():
     assert set(RUNNER.UBUNTUS) == {
         name.removeprefix("ubuntu-") for name in (DEFAULT_UBUNTU, OLDEST_UBUNTU)
@@ -327,6 +341,30 @@ def keys_of_what_it_builds(job):
 def ubuntus_of(job):
     """The Ubuntu runners a job of the workflow runs on."""
     return {runner for runner in runners(job) if UBUNTU.fullmatch(runner)}
+
+
+# The actions that keep a job's files: in a cache, and as an artifact for
+# the jobs after it. Not actions/cache/restore, which keeps nothing.
+KEEPERS = ("actions/cache", "actions/upload-artifact")
+
+
+def paths_kept_by(job):
+    """The files each action of KEEPERS keeps for a job, by the action."""
+    return {
+        action: step["with"]["path"].split()
+        for step in job["steps"]
+        for action in KEEPERS
+        if step.get("uses", "").startswith(f"{action}@")
+    }
+
+
+def hashed_by(key):
+    """The patterns of the files a cache key hashes, by its hashFiles()."""
+    return {
+        pattern
+        for listed in re.findall(r"hashFiles\(([^)]*)\)", key)
+        for pattern in re.findall(r"""['"]([^'"]+)['"]""", listed)
+    }
 
 
 def cache_named_by(key):

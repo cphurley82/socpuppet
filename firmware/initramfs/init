@@ -1,0 +1,60 @@
+#!/bin/sh
+# 🐧 The first program Linux runs when it boots with the initramfs: it
+# loads the NVMe driver, which defconfig builds as modules, mounts the root
+# filesystem the command line names, and hands over to the root's own init.
+# What a distro's initramfs does, in a screenful. Its tools are busybox's.
+
+/bin/busybox mkdir -p /proc /sys /newroot
+/bin/busybox mount -t proc proc /proc
+/bin/busybox --install -s /bin
+mount -t sysfs sysfs /sys
+# The kernel mounts devtmpfs on /dev only when it mounts the root itself.
+mount -t devtmpfs devtmpfs /dev
+
+# Where firmware/build.py puts them (NVME_MODULES), by name, as a distro's
+# kernel keeps its modules; nvme-core first, since nvme needs it.
+modules=/lib/modules/$(uname -r)/kernel/drivers/nvme/host
+insmod "$modules/nvme-core.ko"
+insmod "$modules/nvme.ko"
+
+# The kernel leaves root=, rw and init= to whoever mounts the root, which
+# is this. A root is read-only unless the command line says rw.
+root=
+mode=ro
+init=/sbin/init
+read -r command_line </proc/cmdline
+for word in $command_line; do
+	case $word in
+	root=*) root=${word#root=} ;;
+	rw | ro) mode=$word ;;
+	init=*) init=${word#init=} ;;
+	esac
+done
+
+if [ -z "$root" ]; then
+	echo "initramfs: there is no root= on the command line, so there is" \
+		"nothing to mount. Here is a shell."
+	exec sh
+fi
+
+# The driver finds the drive's namespaces after insmod returns, so the
+# root's device comes when it comes: wait for it, ten seconds at most.
+tries=0
+while [ ! -b "$root" ]; do
+	if [ "$tries" -ge 100 ]; then
+		echo "initramfs: $root, the root on the command line, never" \
+			"appeared. Here is a shell, to look in /dev and /sys/block."
+		exec sh
+	fi
+	sleep 0.1
+	tries=$((tries + 1))
+done
+
+if ! mount -o "$mode" "$root" /newroot; then
+	echo "initramfs: $root would not mount (it says why above). Here is" \
+		"a shell."
+	exec sh
+fi
+umount /sys /proc
+mount --move /dev /newroot/dev
+exec switch_root /newroot "$init"
