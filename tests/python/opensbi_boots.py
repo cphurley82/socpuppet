@@ -16,29 +16,45 @@ from socpuppet.boards.host import MODEL, RAM_BASE, RAM_SIZE, host
 
 
 def a_host_with_opensbi(
-    firmware, payload, *, virtio=None, bootargs=None, ram=RAM_SIZE, gdb_port=0
+    firmware,
+    payload,
+    *,
+    virtio=None,
+    bootargs=None,
+    ram=RAM_SIZE,
+    gdb_port=0,
+    initrd=None,
+    drive_blocks=None,
 ):
     """A host described for OpenSBI and built, and OpenSBI's layout for it.
 
     `payload` is the file of the stage OpenSBI is to start. `virtio` is
     what the host's virtio devices are told, if it is to have them
     (`socpuppet.boards.virtio.Virtio`). `bootargs` is the kernel's command
-    line, if the devicetree is to carry one. `ram` is how many bytes of
-    RAM the host has. With a `gdb_port`, the CPU waits for a debugger on
-    it.
+    line, if the devicetree is to carry one, and `initrd` an initramfs for
+    it, if any. `ram` is how many bytes of RAM the host has. With a
+    `gdb_port`, the CPU waits for a debugger on it. `drive_blocks`, if
+    any, is how big the host's drive is.
     """
     board = host(
-        boot=from_rom, sbi=True, virtio=virtio, ram=ram, gdb_port=gdb_port
+        boot=from_rom,
+        sbi=True,
+        virtio=virtio,
+        ram=ram,
+        gdb_port=gdb_port,
+        drive_blocks=drive_blocks,
     )
+    span = None if initrd is None else opensbi.initrd_span(initrd, ram=RAM_BASE)
     layout = opensbi.lay_out(
         firmware(FW_JUMP_BIN).read_bytes(),
         firmware(payload).read_bytes(),
         devicetree.compile(
             board.platform.devicetree(
-                dialect="linux", model=MODEL, bootargs=bootargs
+                dialect="linux", model=MODEL, bootargs=bootargs, initrd=span
             )
         ),
         ram=RAM_BASE,
+        initrd=initrd,
     )
     board.platform.build()
     return board, layout
