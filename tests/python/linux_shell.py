@@ -6,6 +6,7 @@ waiting for the prompt and of typing at it, for every test that boots
 Linux.
 """
 
+import itertools
 import re
 
 import fat_image
@@ -148,6 +149,18 @@ def a_host_with_the_bootchain_and_the_initramfs(firmware, *, drive_blocks):
     return board
 
 
+def a_host_with_its_root_on_the_drive(firmware):
+    """M8's board, with Linux on the host and its root on the SSD.
+
+    As `socpuppet.linux` boots it (`root="drive"`), from the directory the
+    `firmware` fixture finds the images in, so that a missing one skips
+    the test.
+    """
+    for image in (INITRAMFS_CPIO, MANAGER, SSD):
+        firmware(image)
+    return linux.host_with_linux(linux_images(firmware), root="drive")
+
+
 def linux_images(firmware):
     """The directory the `firmware` fixture finds the images to boot in.
 
@@ -198,3 +211,16 @@ def a_host_with_uefi_and_linux(firmware, boot):
     board.virtio.blk.load(disk)
     boot(board, layout, firmware)
     return board
+
+
+def messages_taken(interrupts, queue):
+    """How many messages `queue`'s vector brought, on every CPU together.
+
+    `interrupts` is Linux's /proc/interrupts: a line for each interrupt,
+    its number, a count for each CPU, then what it is, its name last.
+    """
+    (line,) = [
+        each for each in interrupts.splitlines() if each.split()[-1:] == [queue]
+    ]
+    counts = itertools.takewhile(str.isdigit, line.split()[1:])
+    return sum(int(count) for count in counts)
