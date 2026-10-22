@@ -90,7 +90,7 @@ class NandArray {
     for (std::uint32_t block = 0; block < geometry_.blocks; ++block) {
       for (std::uint32_t page = 0; page < geometry_.pages_per_block; ++page) {
         const std::size_t at =
-            (std::size_t{block} * geometry_.pages_per_block + page) *
+            ((std::size_t{block} * geometry_.pages_per_block) + page) *
             geometry_.page_size;
         ReadPage(block, page, all.subspan(at, geometry_.page_size));
       }
