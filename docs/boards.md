@@ -604,7 +604,7 @@ What is different from booting OpenSBI's payloads:
 
 ## Booting Linux
 
-🐧 A stock Linux kernel boots on OpenSBI the way UEFI does, 2 MiB into RAM with the devicetree in `a1`, with its root filesystem on 🎭 the virtio disk and its console on the virtio console; and through UEFI too, from a disk cut up as a server's. [linux.md](linux.md) has the boot, typing at its shell, the virtio cast under Linux's drivers, a shared directory, and what to do when it does not boot.
+🐧 A stock Linux kernel boots on OpenSBI the way UEFI does, 2 MiB into RAM with the devicetree in `a1`, with its root filesystem on 🎭 the virtio disk and its console on the virtio console; and through UEFI too, from a disk cut up as a server's. `socpuppet linux` boots it with your terminal at its console. [linux.md](linux.md) has the boot, typing at its shell yourself or from Python, the virtio cast under Linux's drivers, a shared directory, and what to do when it does not boot.
 
 ## When the watchdog bites
 
