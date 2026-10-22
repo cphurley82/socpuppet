@@ -47,6 +47,7 @@ def interact(
     screen: Sequence[PlacedFarEnd],
     keyboard: PlacedFarEnd,
     until: Callable[[], bool] = lambda: False,
+    ready: Callable[[], bool] = lambda: True,
 ) -> None:
     """Run `platform` with this process's terminal at its consoles.
 
@@ -60,8 +61,12 @@ def interact(
     sleeps, and every `LOOK_EVERY` while it works. So the run may go a
     little past the moment it came true.
 
-    Input that ends, such as a pipe whose writer is done, leaves the run
-    going, and then only `until` can end it.
+    What is typed before `ready()` is true is held, and typed when it
+    comes true, as a person would wait for a prompt. `ready` is looked at
+    as `until` is, while something is held, and once true it is to stay
+    true. Input that ends, such
+    as a pipe whose writer is done, leaves the run going, and then only
+    `until` can end it.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
@@ -69,7 +74,7 @@ def interact(
     key ends the wait.
     """
     with _Keys() as keys:
-        _run(platform, screen, keyboard, until, keys)
+        _run(platform, screen, keyboard, until, ready, keys)
 
 
 def _run(
@@ -77,15 +82,19 @@ def _run(
     screen: Sequence[PlacedFarEnd],
     keyboard: PlacedFarEnd,
     until: Callable[[], bool],
+    ready: Callable[[], bool],
     keys: "_Keys",
 ) -> None:
     """Run `platform`, showing `screen` and typing at `keyboard`.
 
-    `until` is looked at whenever the terminal is.
+    `until` is looked at whenever the terminal is, and `ready` too while
+    something is held.
     """
     shown = [0] * len(screen)
     look_again = 0.0
+    held = b""
     while True:
+        looked = True
         ahead = platform.time_to_next_activity
         if ahead is None or ahead > platform.quantum:
             _show(screen, shown)
@@ -105,7 +114,8 @@ def _run(
                 platform.run(waited)
         else:
             typed = b""
-            if time.monotonic() >= look_again:
+            looked = time.monotonic() >= look_again
+            if looked:
                 _show(screen, shown)
                 if until():
                     return
@@ -114,8 +124,10 @@ def _run(
             platform.step()
         if LEAVE in typed:
             return
-        if typed:
-            keyboard.write(typed)
+        held += typed
+        if held and looked and ready():
+            keyboard.write(held)
+            held = b""
 
 
 def _show(screen: Sequence[PlacedFarEnd], shown: list[int]) -> None:
