@@ -1526,3 +1526,57 @@ Two more things read in the same file and not acted on:
 - **Upstream fix**: call `QemuCpu::end_of_simulation()` by its qualified name, which says the override is not wanted, or move what it does into a non-virtual function both call.
 - **Kind**: portability.
 - **When it lands**: the check goes back on in `.clang-tidy`.
+
+## pciem
+
+[cakehonolulu/pciem](https://github.com/cakehonolulu/pciem), pinned at `f80bbb71` ("Merge pull request #50 from 00xc/kernel/dma/cleanup", 2026-09-30) in `spikes/pciem/fetch.sh`. A Linux kernel module that lets a program be a PCIe device on the machine's own bus; the real-host spike puts the puppet's SSD there ([history/real-host-spike.md](history/real-host-spike.md)). Not part of the wheel: the module is GPLv2 and is built from source, as QBox is. Its README says the kernel components are GPLv2 and the examples dual MIT/GPLv2.
+
+### The header a program must include is GPL-2.0-only
+
+- **Where**: `include/pciem_api.h`, line 1: `SPDX-License-Identifier: GPL-2.0-only`.
+- **What is wrong**: it is the interface between the module and every program that talks to `/dev/pciem` (its structures, its ioctl numbers and the ring), so every such program includes it, and under a plain GPL-2.0-only it is not clear that one under another licence may. Linux's own user-API headers carry `WITH Linux-syscall-note`, which says a program using the kernel's interface is not a derived work of it. pciem's examples, which include the header, are dual MIT/GPLv2 themselves.
+- **How to see it**: `head -1 include/pciem_api.h`, and `grep -r SPDX examples` beside it.
+- **What we do**: the bridge is optional, from source and never in the wheel, and only the spike's `pciem_device.cpp` includes the header.
+- **Upstream fix**: `GPL-2.0-only WITH Linux-syscall-note` on the header, as Linux's `include/uapi` has, or the examples' `GPL-2.0 OR MIT`.
+- **Kind**: licence.
+- **When it lands**: the bridge could go in the wheel; whether it should is the maintainer's decision.
+
+### A BAR's memory is not cleared before the host reads it
+
+- **Where**: `kernel/framework/pciem.c`, around line 993, where a BAR's physical memory is prepared from the reserved region, and `pool.c`, which carves it.
+- **What is wrong**: the region is RAM that the kernel set aside at boot, and it holds whatever was there before. The host reads every register in a BAR, the ones the program never wrote included, so a device that sets only the registers it means gets garbage in the rest. Linux 7.0's NVMe driver reads the controller memory buffer's registers (CMBLOC, CMBSZ at `0x38` and `0x3C`) before it enables the controller.
+- **How to see it**: run `examples/nvme/nvme_card`, which writes only CAP and VS, on a machine whose region was used before boot. The kernel's log has `UBSAN: shift-out-of-bounds in drivers/nvme/host/pci.c:2451:14` in `nvme_map_cmb`, and then `failed to register the CMB`.
+- **What we do**: the bridge zeroes BAR0 through its own mapping before `PCIEM_IOCTL_START` (`spikes/pciem/pciem_device.cpp`).
+- **Upstream fix**: clear each BAR's memory when it is carved from the pool, or when the device is registered.
+- **Kind**: bug.
+- **When it lands**: the bridge's `memset` can go.
+
+### The virtual root has no MSI domain, so a device gets one interrupt
+
+- **Where**: `kernel/framework/pciem.c` line 797, `dev_set_msi_domain(&bridge->dev, pciem_virtual_root_nomsi_domain)`, and `pciem_trigger_msi`, which falls back to `dev->irq` when MSI-X is not enabled.
+- **What is wrong**: a device on the virtual root advertises its MSI-X capability, but the driver cannot enable it, so it gets one legacy interrupt (INTx). Every vector injected goes to that one line, and Linux's NVMe driver makes as many I/O queues as it has interrupts: one, whatever the device offers.
+- **How to see it**: a device with 9 MSI-X vectors, whose firmware answers 8 queues to Set Features: `/proc/interrupts` has only `nvme2q1`, and the kernel says `1/0/0 default/read/poll queues`.
+- **What we do**: nothing; the spike's drives work with one queue.
+- **Upstream fix**: an MSI domain for the virtual root, whose messages pciem delivers to the vectors' interrupts as it does INTx's.
+- **Kind**: missing feature.
+- **When it lands**: M31's tests can use a queue a CPU.
+
+### A full ring drops the host's writes
+
+- **Where**: `kernel/framework/userspace.c` line 392, `Shared ring buffer full, dropping event for userspace`.
+- **What is wrong**: the ring has 256 slots, and a write that finds it full is lost, with a warning in the kernel's log and nothing for the program. A lost doorbell is a command that never runs, and the host times it out 30 s later.
+- **How to see it**: not seen. The most the spike found waiting was 16 writes; a program slower to drain than the host is to write would see it.
+- **What we do**: drain the ring at every round of the pump, and before the simulation runs.
+- **Upstream fix**: hold the writing CPU until there is room, or count the lost writes where the program can read them.
+- **Kind**: limitation.
+- **When it lands**: nothing to delete; M31 could check the count.
+
+### The NVMe example's teardown closes the wrong descriptor
+
+- **Where**: `examples/nvme/nvme_card.c` line 1286, in `dev_destroy`: `close(dev->event_fd >= 0)`; and `main`, which allocates `disk_data` after `dev_alloc_resources` has.
+- **What is wrong**: it closes descriptor 1 or 0, standard output or input, rather than the eventfd, and the first 1 GiB disk buffer leaks.
+- **How to see it**: read the two lines.
+- **What we do**: nothing; the example was run once, as a baseline.
+- **Upstream fix**: `close(dev->event_fd)`, and one of the two `calloc`s.
+- **Kind**: bug.
+- **When it lands**: nothing of ours changes.

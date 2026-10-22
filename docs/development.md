@@ -159,6 +159,8 @@ uv run ctest --preset spike            # only the tests labelled `spike`
 
 The speed spike ([spikes/speed](../spikes/speed/README.md), report in [speed-spike.md](history/speed-spike.md)) is behind the same option and stays, unlike the others, so that every later change to the core can be timed against its results. `uv run ctest --preset speed` runs its three loops one at a time, verbosely, and `spikes/speed/run.sh` does one machine's whole column into `spikes/speed/results/`.
 
+The real-host spike ([spikes/pciem](../spikes/pciem/README.md), report in [real-host-spike.md](history/real-host-spike.md)) puts the puppet's drive on this machine's own PCIe bus through pciem, a kernel module, and is Linux-only. It is built only where `spikes/pciem/fetch.sh` has put pciem in `build/pciem` (or `-DPCIEM_DIR` says where), and its two tests need nothing more; running the drive needs the module loaded, which needs root and a reboot, and the README has the recipe. M31 keeps it until it has rebuilt the bridge.
+
 The earlier spikes have gone, each when the milestone it served had rebuilt what it found test-first, and each report names the last commit that held its code. [history/README.md](history/README.md) lists them, with the question each answered.
 
 ## Firmware

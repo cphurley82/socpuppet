@@ -71,6 +71,18 @@ What building socpuppet taught, by topic: the gotchas a contributor wants to kno
 - **A host's reset of the SSD is a handshake**: the frontend drops its queues and takes back ready, and firmware acknowledges from where it does its work, not from a handler ([models/nvme-frontend.md](../models/nvme-frontend.md)). The flash controller knows the NAND's geometry only after it is told to identify, so a read must not do anything. A refused write is a bus fault in Zephyr with the address in `mtval`.
 - Every model on the NVMe path answers a debug access, and a debug write lands and starts nothing; devices on the SSD's own bus decline a debugger's write. Nothing was borrowed for the SSD: FEMU, MQSim and SimpleSSD model the whole drive from the host's side. The glue between a socket and a register block exists four times, and a review asked for one class.
 
+## A real host, through pciem
+
+What the real-host spike (M30) taught, putting the puppet's drive on this machine's own PCIe bus ([real-host-spike.md](real-host-spike.md)).
+
+- ⚠️ **A real host reads a copy of the registers.** The host's reads never reach the program behind pciem: they read the BAR's memory, so what the host should read has to be put there first, and a write lands in that memory before the program hears of it. The device copies in what only it changes (CAP, VS, CSTS) and leaves what the host writes (CC, AQA, ASQ, ACQ, the doorbells) to pciem's shadow write. And the memory starts as whatever the RAM held: every register no one wrote has to be zeroed.
+- ⚠️ **A real host's clock does not stop for the drive.** A `CAP.TO` of 0 is "ready at once" to a host on the simulation's clock and "do not wait at all" to Linux, which waits `(CAP.TO + 1) / 2` whole seconds. A model that answers in no simulated time still answers in some wall time.
+- **Levels in, edges out.** The function's interrupt lines are levels, high while a completion is unacknowledged, and MSI-X is a message. A completion posted while the host is still working through the last ones keeps the line high and makes no new edge, so a vector is sent again after a completion queue's head doorbell while its line is still high, a delta cycle after the doorbell, once the line has had the time to fall.
+- **The host's IDs are a promise.** Linux keeps a table of devices it works around, QEMU's NVMe among them, and a borrowed ID brings its workarounds with it. The puppet has its own (`boards/drive.py`).
+- **Nothing outside a SystemC process may make a bus write that could wait**, so the pump drains the ring outside the kernel and a process of the bridge makes the writes, a delta cycle later. A debug read needs no process, and is how the pump copies registers out.
+- **pciem's header needs C++23 and SystemC refuses it.** `pciem_api.h` uses C11's `<stdatomic.h>`, which C++ has only from C++23, and SystemC is built for C++20 and stamps its standard into the link. One source file, with no SystemC in it, says everything to `/dev/pciem`.
+- ⚠️ **Find the drive by where it is, not by its name.** On a machine with NVMe drives of its own the puppet's is not `nvme0n1`; anything that formats it looks for it under pciem's bus first.
+
 ## Boot ROM, flash, watchdog, system controller
 
 - [models/rom.md](../models/rom.md), [spi-flash.md](../models/spi-flash.md), [watchdog.md](../models/watchdog.md), [system-controller.md](../models/system-controller.md) and [boot-image.md](../models/boot-image.md) say what each does and leaves out; `firmware/rom/README.md` is the ROM's program.
