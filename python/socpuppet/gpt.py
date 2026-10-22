@@ -1,10 +1,18 @@
-"""GPT disk images for 🎭 the virtio disk, as a server's disk is cut up.
+"""Disk images with a GUID partition table, as a server's disk is cut up.
+
+🎓 A GUID partition table (GPT) is how a disk says where its partitions
+are: a header at its start and a copy at its end, each pointing at a
+table of the partitions, every part of it held to a CRC-32. UEFI reads
+it, and so does Linux.
 
 `make` gives a whole disk with a GUID partition table and the partitions
 it is given, each starting on a mebibyte as partitioning tools put them,
-ready for `PlacedBlock.load`. The disk's GUIDs are fixed, so that two
-disks made of the same partitions are the same bytes.
+ready for a drive: `PlacedBlock.load` for 🎭 the virtio disk. The disk's
+GUIDs are fixed, so that two disks made of the same partitions are the
+same bytes.
 """
+
+from __future__ import annotations
 
 import struct
 import uuid

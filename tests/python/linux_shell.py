@@ -9,7 +9,6 @@ Linux.
 import re
 
 import fat_image
-import gpt_image
 import socpuppet as sp
 from cast import (
     FW_JUMP_BIN,
@@ -22,7 +21,7 @@ from cast import (
 )
 from console import plain
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
-from socpuppet import linux
+from socpuppet import gpt, linux
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
@@ -170,11 +169,11 @@ def a_disk_as_a_servers(firmware):
         {BOOT_PROGRAM: firmware(LINUX_BIN).read_bytes()},
         sectors=ESP_SECTORS,
     )
-    return gpt_image.make(
+    return gpt.make(
         [
-            gpt_image.Partition(gpt_image.EFI_SYSTEM, "EFI system", esp),
-            gpt_image.Partition(
-                gpt_image.LINUX_FILESYSTEM,
+            gpt.Partition(gpt.EFI_SYSTEM, "EFI system", esp),
+            gpt.Partition(
+                gpt.LINUX_FILESYSTEM,
                 "root",
                 firmware(ROOTFS_EXT4).read_bytes(),
             ),

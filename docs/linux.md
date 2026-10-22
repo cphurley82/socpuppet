@@ -120,7 +120,7 @@ mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt
 
 A server does not jump straight to its kernel: its UEFI firmware finds the kernel on a disk and starts it. The kernel's `Image` is a UEFI program too, by the EFI stub built into it, so the same file serves both ways.
 
-- **The disk is cut up as a server's**: a GUID partition table with an EFI system partition, FAT, holding the kernel as `EFI/BOOT/BOOTRISCV64.EFI`, where UEFI's boot manager looks on a disk it has no entry for, and the root filesystem in the second partition. `tests/python/gpt_image.py` and `fat_image.py` make it; `linux_shell.a_disk_as_a_servers` puts them together.
+- **The disk is cut up as a server's**: a GUID partition table with an EFI system partition, FAT, holding the kernel as `EFI/BOOT/BOOTRISCV64.EFI`, where UEFI's boot manager looks on a disk it has no entry for, and the root filesystem in the second partition. `socpuppet.gpt` and `tests/python/fat_image.py` make it; `linux_shell.a_disk_as_a_servers` puts them together.
 - **The command line** is still the devicetree's, `root=/dev/vda2` this time: the boot manager gives the stub none, and the stub then leaves `bootargs` as they are.
 - **It needs more RAM**: UEFI and the kernel together want more than 128 MiB, and the tests give 192.
 - **It is on demand**: the prompt comes at 318 s of the CPU's time, 9 s on the wall on QBox and two minutes on the interpreter, so the tests run only when asked, the quick way and from the flash: `SOCPUPPET_ON_DEMAND=1 uv run pytest tests/python/test_m20_exit.py`.
