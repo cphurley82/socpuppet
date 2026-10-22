@@ -188,6 +188,10 @@ PROGRAMS = {
 # What of ours goes into the root filesystem, laid over Alpine's files: a
 # tree shaped as the guest's, so firmware/rootfs/etc/inittab is /etc/inittab.
 ROOTFS_OVERLAY = REPOSITORY / "firmware" / "rootfs"
+# The stock kernel's NVMe driver, which defconfig builds as modules: make
+# targets, and where they land, in the kernel's build folder; in the order
+# they are loaded, since nvme needs nvme-core.
+NVME_MODULES = ("drivers/nvme/host/nvme-core.ko", "drivers/nvme/host/nvme.ko")
 # How big the root filesystem is. Alpine's mini root is 3 MB packed and 9
 # unpacked, and the rest is room to write in.
 ROOTFS_SIZE = "32M"
@@ -840,6 +844,12 @@ class Build:
         is handed at boot, the devicetree and the root filesystem, is
         Python's and build.py's business, not the kernel's.
 
+        The NVMe driver is the exception: `defconfig` builds it as
+        modules, not into the kernel. Only its two, `NVME_MODULES`, are
+        built, by name and after the Image, since modpost needs the
+        kernel's symbols; `make modules` would build hundreds that nothing
+        loads.
+
         💡 It is the one part fetched as a release tarball and not cloned
         at a tag, as OpenSBI and EDK2 are: the tarball is 150 MB where a
         clone of the kernel's tree, one commit deep, is many times that,
@@ -886,6 +896,12 @@ class Build:
         log = self.log_of("linux")
         logged(log, *make, "defconfig")
         logged(log, *make, f"-j{os.cpu_count() or 1}", "Image", after=True)
+        # Their own make, after the Image's: modpost needs the kernel's
+        # symbols, and one make for the Image and the modules together
+        # stops in modpost.
+        logged(
+            log, *make, f"-j{os.cpu_count() or 1}", *NVME_MODULES, after=True
+        )
         for made, kept in (
             ("arch/riscv/boot/Image", "linux.bin"),
             ("vmlinux", "linux.elf"),
