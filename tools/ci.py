@@ -130,9 +130,9 @@ class Job:
     tiers: tuple[Tier, ...]
     # The jobs whose output this one reads, which come before it in JOBS.
     needs: tuple[str, ...] = ()
-    # What it builds in, or writes to, that no other job may use while it
-    # runs here: a build tree, or the extension every tree puts in
-    # python/socpuppet.
+    # What no other job may use while it runs here: the build tree it
+    # builds in, the extension every tree puts in python/socpuppet, or the
+    # cores its tests run on (TESTS_ON_EVERY_CORE).
     uses: tuple[str, ...] = ()
     # Whether it runs in Docker.
     docker: bool = False
@@ -159,6 +159,12 @@ class Job:
         """Its steps, where it runs."""
         return self.steps if isinstance(self.steps, tuple) else self.steps(mode)
 
+
+# What a job uses that runs the tests on every core. Two at once would each
+# take twice as long on the wall, and a boot of Linux in the tests has a
+# timeout on the wall. A build beside them slows a boot too, but has not
+# yet slowed one past its timeout, so builds do not hold it.
+TESTS_ON_EVERY_CORE = "the tests on every core"
 
 # The Ubuntus the devcontainer jobs build in, in the devcontainer's image
 # (tools/devcontainer.py --ubuntu): the default, the Dockerfile's
@@ -401,7 +407,7 @@ JOBS = [
         "build the dev tree and run every test",
         tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
-        uses=("build/dev", "extension"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         steps=(
             *DEV_BUILD,
             Step(
@@ -417,7 +423,7 @@ JOBS = [
         "build the dev tree and run every test but the long ones",
         tiers=(Tier.QUICK,),
         needs=FIRMWARE,
-        uses=("build/dev", "extension"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         steps=(
             *DEV_BUILD,
             # The quick preset leaves out the tests marked long.
@@ -434,7 +440,7 @@ JOBS = [
         "build the dev tree and run the tests too long for every run",
         tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
-        uses=("build/dev", "extension"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         steps=(
             *DEV_BUILD,
             # -m picks out the tests marked on_demand, and
@@ -481,7 +487,7 @@ JOBS = [
             ),
             Step("twister", ("uv", "run", "firmware/twister.py", "--suites")),
         ),
-        uses=("build/dev", "extension", "build/twister"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE, "build/twister"),
         areas=("build",),
     ),
     Job(
@@ -498,7 +504,7 @@ JOBS = [
                 ),
             ),
         ),
-        uses=("build/dev", "extension"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         reconfigures_dev=True,
         areas=("build",),
     ),
@@ -513,7 +519,7 @@ JOBS = [
             ),
             Step("ctest", ("uv", "run", "ctest", "--preset", "asan")),
         ),
-        uses=("build/dev", "extension"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         reconfigures_dev=True,
         areas=("build",),
     ),
@@ -540,7 +546,12 @@ JOBS = [
         tiers=(Tier.NIGHTLY,),
         needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
         steps=qbox_steps(),
-        uses=("build/qbox-dev", "extension", "build/twister"),
+        uses=(
+            "build/qbox-dev",
+            "extension",
+            TESTS_ON_EVERY_CORE,
+            "build/twister",
+        ),
         areas=("build",),
     ),
     Job(
@@ -549,6 +560,7 @@ JOBS = [
         tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
         steps=wheel_steps,
+        uses=(TESTS_ON_EVERY_CORE,),
         fresh=(WHEELHOUSE,),
         made=(CCACHE,) if ON_LINUX else (),
         # cibuildwheel builds Linux's wheels in a manylinux container, and
@@ -565,7 +577,7 @@ JOBS = [
             # In the linux preset's tree, which the container keeps apart for
             # each Ubuntu, so that the host's own build/dev is left alone.
             steps=devcontainer_steps(ubuntu),
-            uses=(container_tree(ubuntu), "extension"),
+            uses=(container_tree(ubuntu), "extension", TESTS_ON_EVERY_CORE),
             docker=True,
         )
         for ubuntu in UBUNTUS
