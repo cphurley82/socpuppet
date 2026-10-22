@@ -114,7 +114,7 @@ The header says whose table follows it:
 
 After it, from the reserve's second page, the table: for each page of the drive, the NAND page that holds it, a little-endian 32-bit word, all ones for none. An erased page reads all ones, so a NAND fresh from the factory has no header and holds a drive of zeros.
 
-🧵 `socpuppet.ftl` is the same layout in Python. `ftl.nand_image(drive, chip)` is a factory's image of a drive: its pages that are not zeros in NAND pages from the end of the reserve, in order, and the table that says so, for `nand.load` to program before a boot ([ideal-nand.md](ideal-nand.md)). `ftl.drive_image(nand.contents, chip)` reads a drive back. `ftl.nand_blocks` is the NAND, reserve and all, that a drive of so many NAND blocks needs, and `ftl.layout` how many of a NAND's pages are the reserve and how many the drive. Both firmwares keep the reserve for it, and the board gives the NAND the room (`ftl.nand_blocks`), so a drive is the size it was described as. 🚧 Neither reads or saves the table yet: that comes with M24, and the contract tests then hold the copies to each other.
+🧵 `socpuppet.ftl` is the same layout in Python. `ftl.nand_image(drive, chip)` is a factory's image of a drive: its pages that are not zeros in NAND pages from the end of the reserve, in order, and the table that says so, for `nand.load` to program before a boot ([ideal-nand.md](ideal-nand.md)). `ftl.drive_image(nand.contents, chip)` reads a drive back. `ftl.nand_blocks` is the NAND, reserve and all, that a drive of so many NAND blocks needs, and `ftl.layout` how many of a NAND's pages are the reserve and how many the drive. Both firmwares keep the reserve for it, and the board gives the NAND the room (`ftl.nand_blocks`), so a drive is the size it was described as. Both read the table from the reserve when they start, if its header says it is this drive's, so a drive Python programmed at the factory reads back through NVMe as it was programmed: the contract test that holds the three copies of the layout, Zephyr's, the stand-in's and `socpuppet.ftl`, to each other. 🚧 Saving the table when the host shuts the drive down comes next, in Zephyr's `ftl_save`, which its own suite already tests.
 
 ### A command's data
 
@@ -124,7 +124,7 @@ After it, from the reserve's second page, the table: for each page of the drive,
 
 - **A CPU.** Nothing is executed. Each step of the script is one access on the SSD's bus.
 - **Time.** The firmware takes none. A real one takes most of the time a command takes.
-- **Remembering where things are.** ⚠️ The table is kept in Python, and not on the NAND or in the SSD's buffer. Real firmware writes it to the flash as well and finds it again at power-on. A controller reset, which is the host's doing, loses nothing. 🚧 A reset of the SSD's own CPU is not something the board can do yet.
+- **Saving where things are.** The table is kept in Python, and not in the SSD's buffer. It is read from the NAND's reserve at start, as Zephyr's is, but 🚧 not saved there until the host's shutdown comes. A controller reset, which is the host's doing, loses nothing. 🚧 A reset of the SSD's own CPU is not something the board can do yet.
 - **More than one thing at a time.** One command, one page of buffer.
 - **Garbage collection, wear levelling, bad blocks.** Everything a real FTL spends its life on.
 - **A write that fails half-way** has written the pages before the failure.

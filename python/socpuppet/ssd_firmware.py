@@ -215,7 +215,7 @@ class SsdFirmware:
             page_size=self._page_size,
         )
         self._pages = shared.drive_pages
-        self._next_free_nand_page = shared.reserve_pages
+        yield from self._load_the_table(shared.reserve_pages)
         limits = yield read32(self._frontend + nvme_frontend.LIMITS)
         self._io_queue_pairs = (
             limits & nvme_frontend.LIMITS_IO_QUEUE_PAIRS_MASK
@@ -230,6 +230,40 @@ class SsdFirmware:
             | nvme_frontend.INTERRUPT_ENABLE_DISABLED
             | nvme_frontend.INTERRUPT_ENABLE_COMMAND_WAITING,
         )
+
+    def _load_the_table(self, reserve_pages: int) -> Steps[None]:
+        """Take the table the reserve holds, or else start an empty one.
+
+        The reserve holds this drive's table if its header says so; a NAND
+        fresh from the factory, whose erased header says nothing, does not.
+        """
+        saved = bytearray()
+        for nand_page in range(
+            ftl.saved_pages(drive_pages=self._pages, page_size=self._page_size)
+        ):
+            if not (
+                yield from self._flash_page(
+                    flash_controller.COMMAND_READ_PAGE, nand_page
+                )
+            ):
+                raise RuntimeError(
+                    f"The NAND would not give the firmware page {nand_page} "
+                    "of the FTL's reserve, where its table is kept."
+                )
+            saved += yield read(self._page_buffer, self._page_size)
+        table = ftl.saved_table(
+            bytes(saved), drive_pages=self._pages, page_size=self._page_size
+        )
+        if table is None:
+            self._page_map = {}
+            self._next_free_nand_page = reserve_pages
+            return
+        self._page_map = {
+            page: where
+            for page, where in enumerate(table.where)
+            if where != ftl.NOWHERE
+        }
+        self._next_free_nand_page = table.next_free
 
     def _the_host_reset_the_controller(self) -> Steps[None]:
         # The queues are gone, and what is on the drive stays. The

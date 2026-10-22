@@ -15,10 +15,10 @@ the factory has no header, and holds a drive of zeros.
 
 This module is that layout in Python, so that Python can do what a factory
 does: program a drive's NAND with a filesystem before the first boot. And,
-after a run, read back what the host wrote. 🚧 The firmware's own copy of
-the layout, which reads the table when it starts and saves it when the host
-shuts the drive down, comes with M24, and the SSD's contract tests then hold
-the two to each other (docs/models/ssd-firmware.md).
+after a run, read back what the host wrote. Both of the SSD's firmwares
+read the table this way when they start, and the SSD's contract tests hold
+them and this module to each other (`tests/python/test_ssd_firmware.py`,
+docs/models/ssd-firmware.md).
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from socpuppet.regs import ftl_header as header
 _ENTRY = "I"
 _ENTRY_SIZE = struct.calcsize(_ENTRY)
 #: The entry of a page of the drive that no NAND page holds.
-_NOWHERE = 0xFFFF_FFFF
+NOWHERE = 0xFFFF_FFFF
 #: What an erased NAND cell holds.
 _ERASED = b"\xff"
 
@@ -109,7 +109,7 @@ def nand_image(drive: bytes, chip: IdealNand) -> bytes:
             "Describe a bigger drive."
         )
     data = bytearray()
-    table = [_NOWHERE] * pages
+    table = [NOWHERE] * pages
     for number in range(_whole(len(drive), page_size)):
         piece = drive[number * page_size : (number + 1) * page_size]
         if any(piece):
@@ -127,6 +127,42 @@ def nand_image(drive: bytes, chip: IdealNand) -> bytes:
     return bytes(image + data)
 
 
+class Table(NamedTuple):
+    """A table the reserve holds."""
+
+    #: For each page of the drive, the NAND page that holds it, or NOWHERE.
+    where: tuple[int, ...]
+    #: The next NAND page nobody has.
+    next_free: int
+
+
+def saved_pages(*, drive_pages: int, page_size: int) -> int:
+    """How many of the reserve's pages a saved table takes, header and all."""
+    return 1 + _whole(drive_pages * _ENTRY_SIZE, page_size)
+
+
+def saved_table(
+    reserve: bytes, *, drive_pages: int, page_size: int
+) -> Table | None:
+    """The table that `reserve`, the reserve's first pages, holds.
+
+    `reserve` is at least the `saved_pages` the header and the table take.
+    None if its header is not one for a drive of `drive_pages`, as on a
+    NAND fresh from the factory, whose erased header says nothing.
+    """
+    said = tuple(
+        struct.unpack_from("<I", reserve, offset)[0]
+        for offset in (header.MAGIC, header.VERSION, header.PAGES)
+    )
+    if said != (header.MAGIC_NUMBER, header.VERSION_FIRST, drive_pages):
+        return None
+    (next_free,) = struct.unpack_from("<I", reserve, header.NEXT_FREE)
+    return Table(
+        struct.unpack_from(f"<{drive_pages}{_ENTRY}", reserve, page_size),
+        next_free,
+    )
+
+
 def drive_image(nand: bytes, chip: IdealNand) -> bytes:
     """The drive that `nand`, every page of `chip`, holds, by its table.
 
@@ -136,18 +172,14 @@ def drive_image(nand: bytes, chip: IdealNand) -> bytes:
     """
     page_size = chip.page_size
     _, pages = _layout_of(chip)
-    said = tuple(
-        struct.unpack_from("<I", nand, offset)[0]
-        for offset in (header.MAGIC, header.VERSION, header.PAGES)
-    )
-    if said != (header.MAGIC_NUMBER, header.VERSION_FIRST, pages):
+    table = saved_table(nand, drive_pages=pages, page_size=page_size)
+    if table is None:
         return bytes(pages * page_size)
-    table = struct.unpack_from(f"<{pages}{_ENTRY}", nand, page_size)
     return b"".join(
         bytes(page_size)
-        if where == _NOWHERE
+        if where == NOWHERE
         else nand[where * page_size : (where + 1) * page_size]
-        for where in table
+        for where in table.where
     )
 
 
