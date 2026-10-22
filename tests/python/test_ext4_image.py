@@ -9,16 +9,28 @@ the images mkfs.ext4 makes, with whatever features it turns on.
 
 import pathlib
 
+import pytest
+
 from cast import ROOTFS_EXT4
 from ext4_image import file_in
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-#: The file of ours that `firmware/build.py` lays over Alpine's.
 INITTAB = REPO / "firmware" / "rootfs" / "etc" / "inittab"
 
 
+@pytest.fixture
+def inittab():
+    """The file of ours that `firmware/build.py` lays over Alpine's.
+
+    Not part of the package: in a checkout only.
+    """
+    if not INITTAB.is_file():
+        pytest.skip(f"There is no {INITTAB} here: it is not in the package.")
+    return INITTAB
+
+
 class TestWhenAFileIsReadOutOfTheRootFilesystem:
-    def test_it_is_the_file_that_went_into_it(self, firmware):
+    def test_it_is_the_file_that_went_into_it(self, firmware, inittab):
         filesystem = firmware(ROOTFS_EXT4).read_bytes()
 
-        assert file_in(filesystem, "/etc/inittab") == INITTAB.read_bytes()
+        assert file_in(filesystem, "/etc/inittab") == inittab.read_bytes()
