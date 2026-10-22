@@ -4,7 +4,7 @@
 a protective MBR in sector 0, so that an older tool sees the disk as in
 use, a header in sector 1 that says where the table of partitions is,
 the table, and a copy of header and table at the end of the disk. Each
-part is held to a CRC-32. `gpt_image` makes one with an EFI system
+part is held to a CRC-32. `socpuppet.gpt` makes one with an EFI system
 partition and a Linux root, so that UEFI can find the kernel on the one
 and the kernel its root on the other.
 """
@@ -18,7 +18,7 @@ import zlib
 
 import pytest
 
-import gpt_image
+from socpuppet import gpt
 
 SECTOR = 512
 SGDISK = shutil.which("sgdisk") or shutil.which("sgdisk", path="/usr/sbin")
@@ -29,10 +29,10 @@ EGGS = b"eggs" * 384
 
 @pytest.fixture
 def disk():
-    return gpt_image.make(
+    return gpt.make(
         [
-            gpt_image.Partition(gpt_image.EFI_SYSTEM, "spam", SPAM),
-            gpt_image.Partition(gpt_image.LINUX_FILESYSTEM, "eggs", EGGS),
+            gpt.Partition(gpt.EFI_SYSTEM, "spam", SPAM),
+            gpt.Partition(gpt.LINUX_FILESYSTEM, "eggs", EGGS),
         ]
     )
 
@@ -99,9 +99,9 @@ class TestWhenADiskIsMadeWithTwoPartitions:
                 )
             )
 
-        assert found[0][:2] == (gpt_image.EFI_SYSTEM, "spam")
+        assert found[0][:2] == (gpt.EFI_SYSTEM, "spam")
         assert found[0][2].rstrip(b"\0") == SPAM
-        assert found[1][:2] == (gpt_image.LINUX_FILESYSTEM, "eggs")
+        assert found[1][:2] == (gpt.LINUX_FILESYSTEM, "eggs")
         assert found[1][2].rstrip(b"\0") == EGGS
 
     def test_the_last_sector_is_a_backup_header_pointing_back_at_the_first(
