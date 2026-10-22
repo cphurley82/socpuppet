@@ -48,6 +48,9 @@ bool NvmeHostRegisters::Read(std::uint64_t offset, std::span<std::uint8_t> out,
   // nothing.
   registers.cap.bits.mqes = 0xFFFF;
   registers.cap.bits.to = says.ready_timeout;
+  // The one command set it takes is NVM's, which is the drive's reads and
+  // writes. UEFI's driver asks; Linux takes it for granted.
+  registers.cap.bits.css = SPDK_NVME_CAP_CSS_NVM;
   registers.cc.raw = configuration_;
   registers.csts.bits.rdy = says.ready ? 1 : 0;
   // Two bits, which the mask says to the compiler: the numbers fit.
