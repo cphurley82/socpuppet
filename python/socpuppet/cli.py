@@ -217,11 +217,17 @@ def _linux(cpu: HostCpu | None) -> None:
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
     # Said on standard error: standard output is the machine's console.
+    on_qbox = board.cpu.component.implementation == QboxCpu.implementation
     print(
         "🧦 Booting 🐧 Linux on the host's "
-        f"{board.cpu.component.implementation}. Its shell prompts in a "
-        "minute or two, after a quiet spell in the middle (in seconds on "
-        f"{QboxCpu.implementation}). Ctrl-] leaves.",
+        f"{board.cpu.component.implementation}. Its shell prompts "
+        + (
+            "in seconds."
+            if on_qbox
+            else "in a minute or two, after a quiet spell in the middle "
+            f"(in seconds on {QboxCpu.implementation})."
+        )
+        + " Ctrl-] leaves.",
         file=sys.stderr,
         flush=True,
     )
