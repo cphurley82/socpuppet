@@ -87,47 +87,49 @@ def _run(
 ) -> None:
     """Run `platform`, showing `screen` and typing at `keyboard`.
 
-    `until` is looked at whenever the terminal is, and `ready` too while
-    something is held.
+    The terminal is looked at each time the CPU sleeps, and every
+    `LOOK_EVERY` while it works: what is new is shown, `until` is asked,
+    and what was typed is typed at the keyboard.
     """
     shown = [0] * len(screen)
+    typist = _Typist(keyboard, ready)
     look_again = 0.0
-    held = b""
     while True:
-        looked = True
         ahead = platform.time_to_next_activity
-        if ahead is None or ahead > platform.quantum:
-            _show(screen, shown)
-            if until():
-                return
-            wait = (
-                LONGEST_WAIT
-                if ahead is None
-                else min(ahead / s(1), LONGEST_WAIT)
-            )
-            waited_from = time.monotonic()
-            typed = keys.within(wait)
-            waited = s(time.monotonic() - waited_from)
-            if ahead is not None and waited >= ahead:
-                platform.step()
-            elif waited:
-                platform.run(waited)
+        asleep = ahead is None or ahead > platform.quantum
+        if not asleep and time.monotonic() < look_again:
+            platform.step()
+            continue
+        _show(screen, shown)
+        if until():
+            return
+        if asleep:
+            typed = _wait_out(platform, ahead, keys)
         else:
-            typed = b""
-            looked = time.monotonic() >= look_again
-            if looked:
-                _show(screen, shown)
-                if until():
-                    return
-                typed = keys.within(0)
-                look_again = time.monotonic() + LOOK_EVERY
+            typed = keys.within(0)
+            look_again = time.monotonic() + LOOK_EVERY
             platform.step()
         if LEAVE in typed:
             return
-        held += typed
-        if held and looked and ready():
-            keyboard.write(held)
-            held = b""
+        typist.type(typed)
+
+
+def _wait_out(platform: Platform, ahead: int | None, keys: "_Keys") -> bytes:
+    """Wait on the wall for a sleeping CPU's next moment, `ahead` of now.
+
+    Or for `LONGEST_WAIT`, if that is sooner or nothing is ahead. A key
+    ends the wait. The platform's clock moves on as far as the wall's
+    did, and gives what was typed.
+    """
+    wait = LONGEST_WAIT if ahead is None else min(ahead / s(1), LONGEST_WAIT)
+    waited_from = time.monotonic()
+    typed = keys.within(wait)
+    waited = s(time.monotonic() - waited_from)
+    if ahead is not None and waited >= ahead:
+        platform.step()
+    elif waited:
+        platform.run(waited)
+    return typed
 
 
 def _show(screen: Sequence[PlacedFarEnd], shown: list[int]) -> None:
@@ -176,3 +178,21 @@ class _Keys:
         typed = os.read(self._stdin, 4096)
         self._ended = not typed
         return typed
+
+
+class _Typist:
+    """Types at `keyboard`, holding what comes before `ready()` is true."""
+
+    def __init__(
+        self, keyboard: PlacedFarEnd, ready: Callable[[], bool]
+    ) -> None:
+        self._keyboard = keyboard
+        self._ready = ready
+        self._held = b""
+
+    def type(self, typed: bytes) -> None:
+        """Type `typed`, after what is held, or hold it with the rest."""
+        self._held += typed
+        if self._held and self._ready():
+            self._keyboard.write(self._held)
+            self._held = b""
