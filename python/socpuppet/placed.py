@@ -102,7 +102,7 @@ class PlacedFarEnd(Placed):
         `output_since` gives the bytes as they are.
         """
         native = self._platform.native()
-        return native.far_end_output(self.path).decode(errors="replace")
+        return native.far_end_output(self.path, 0).decode(errors="replace")
 
     def output_since(self, since: int) -> bytes:
         """What the firmware has printed after its first `since` bytes.
@@ -111,7 +111,7 @@ class PlacedFarEnd(Placed):
         character. A terminal passes how many bytes it has shown already,
         and adds the length of what comes back.
         """
-        return self._platform.native().far_end_output(self.path)[since:]
+        return self._platform.native().far_end_output(self.path, since)
 
     def write(self, typed: str | bytes) -> None:
         """Type at it: the firmware receives `typed`.

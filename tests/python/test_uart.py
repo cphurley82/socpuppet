@@ -157,3 +157,15 @@ class TestWhenPythonReadsWhatIsNewOnTheUart:
         platform.run(sp.us(100))
 
         assert uart.output_since(6) == b"\xa9\n"
+
+    def test_from_past_the_end_it_gets_nothing(self):
+        # A terminal that asks before the firmware has printed as much as
+        # it expected gets nothing rather than an error.
+        platform, uart = a_cpu_running(ECHO)
+        uart.write(b"spam\n")  # five bytes
+        # Five bytes at six instructions each: a hundred microseconds is
+        # far more than they need.
+        platform.run(sp.us(100))
+        assert uart.output == "spam\n"  # something, but not six bytes
+
+        assert uart.output_since(6) == b""
