@@ -18,6 +18,9 @@ import pytest
 
 from processes import environment
 
+#: Where `termios.tcgetattr` keeps the local modes, such as ICANON.
+LOCAL_MODES = 3
+
 
 class Terminal:
     """A pseudo-terminal, and Python running `arguments` at the far end.
@@ -43,8 +46,16 @@ class Terminal:
         )
 
     def settings(self):
-        """The terminal's settings, as `termios` has them."""
-        return termios.tcgetattr(self.device)
+        """The terminal's settings, as `termios` has them.
+
+        ⚠️ Without PENDIN, a flag that macOS's terminal driver sets by
+        itself whenever a terminal goes back to taking whole lines, to say
+        that what was typed meanwhile is to be looked at again. It is the
+        driver's note to itself, not a setting.
+        """
+        settings = termios.tcgetattr(self.device)
+        settings[LOCAL_MODES] &= ~termios.PENDIN
+        return settings
 
     def exit_status(self):
         """How the process ended, once it has, within `patience`."""
