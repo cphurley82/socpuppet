@@ -279,7 +279,9 @@ class SsdFirmware:
         whole, the table programmed, and the header last, as Zephyr's
         `ftl_save` does: until the header is there, the reserve holds no
         table at all. If the NAND will not take it, the host is not told,
-        and gives up waiting in its own time, as with Zephyr's.
+        and the run ends with the reason, as a stand-in's does: left to
+        run, the shutdown it has not acknowledged would wake it again at
+        once, for ever, and Zephyr's stops for the same reason.
         """
         where = tuple(
             self._page_map.get(page, ftl.NOWHERE) for page in range(self._pages)
@@ -290,7 +292,11 @@ class SsdFirmware:
         )
         for block in range(self._reserve_pages // self._pages_per_block):
             if not (yield from self._erase_block(block)):
-                return
+                raise RuntimeError(
+                    f"The NAND would not erase block {block} of the FTL's "
+                    "reserve at the host's shutdown, so the drive will not "
+                    "find what was written to it."
+                )
         pages = len(saved) // self._page_size
         for nand_page in (*range(1, pages), 0):
             at = nand_page * self._page_size
@@ -300,7 +306,11 @@ class SsdFirmware:
                     flash_controller.COMMAND_PROGRAM_PAGE, nand_page
                 )
             ):
-                return
+                raise RuntimeError(
+                    f"The NAND would not take page {nand_page} of the FTL's "
+                    "table at the host's shutdown, so the drive will not find "
+                    "what was written to it."
+                )
         yield write32(
             self._frontend + nvme_frontend.STATUS,
             nvme_frontend.STATUS_SHUTDOWN,

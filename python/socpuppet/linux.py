@@ -21,6 +21,7 @@ loads before it mounts the root.
 import os
 import pathlib
 import re
+from collections.abc import Sequence
 from typing import Any, Literal, overload
 
 from socpuppet import devicetree, ftl, gpt, opensbi
@@ -177,9 +178,9 @@ def _with_the_root_on_the_drive(
         )
     )
     manager, ssd = (_found(firmware / name) for name in (MANAGER_ELF, SSD_ELF))
-    partitions = [gpt.Partition(gpt.LINUX_FILESYSTEM, "root", rootfs)]
-    blocks = gpt.size_of(partitions)
-    blocks += -blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
+    blocks, disk = disk_for_the_drive(
+        [gpt.Partition(gpt.LINUX_FILESYSTEM, "root", rootfs)]
+    )
     board = host(
         cpu=cpu,
         boot=from_rom,
@@ -211,13 +212,27 @@ def _with_the_root_on_the_drive(
     assert board.drive is not None  # it was described with one
     assert board.manager is not None
     nand = board.drive.ssd.nand
-    nand.load(
-        ftl.nand_image(gpt.make(partitions, sectors=blocks), nand.component)
-    )
+    nand.load(ftl.nand_image(disk, nand.component))
     board.platform.load_elf(manager, via=board.manager.cpu.socket)
     board.platform.load_elf(ssd, via=board.drive.ssd.cpu.socket)
     opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
     return board
+
+
+def disk_for_the_drive(
+    partitions: Sequence[gpt.Partition],
+) -> tuple[int, bytes]:
+    """A disk of `partitions` for the SSD: how many blocks, and its bytes.
+
+    The drive is whole NAND blocks, as `add_ssd` describes it, so the disk
+    is `gpt.size_of` the partitions rounded up to those, and as big as the
+    drive: the partition table's copy is then in the drive's last sectors,
+    where tools look for it. `host(drive_blocks=...)` takes the first, and
+    `ftl.nand_image` makes the NAND's image of the second.
+    """
+    blocks = gpt.size_of(partitions)
+    blocks += -blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
+    return blocks, gpt.make(partitions, sectors=blocks)
 
 
 def _read(image: pathlib.Path) -> bytes:

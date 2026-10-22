@@ -150,6 +150,11 @@ class TestWhenADiskIsReadBack:
     def test_a_disk_with_no_table_has_no_partitions(self):
         assert gpt.partitions(bytes(64 * SECTOR)) == []
 
+    def test_a_disk_too_short_for_a_header_has_no_partitions(self):
+        # A drive read back before anything was on it may be shorter
+        # than the two sectors a header needs.
+        assert gpt.partitions(bytes(SECTOR)) == []
+
 
 #: A disk far bigger than its partitions: 8 MiB.
 DRIVE_SECTORS = 8 * 2048
