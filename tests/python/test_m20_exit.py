@@ -34,7 +34,8 @@ from linux_shell import (
     type_and_wait_for_the_prompt,
 )
 from mt19937_64 import stream
-from opensbi_boots import in_the_flash, loaded_by_python, switched_off
+from opensbi_boots import in_the_flash, loaded_by_python
+from socpuppet.boards.host import switched_off
 from socpuppet.boards.virtio import Virtio
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot

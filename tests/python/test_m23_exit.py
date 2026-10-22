@@ -22,10 +22,9 @@ from opensbi_boots import (
     a_host_with_opensbi,
     in_the_flash,
     loaded_by_python,
-    switched_off,
 )
 from socpuppet import opensbi
-from socpuppet.boards.host import MODEL, RAM_BASE
+from socpuppet.boards.host import MODEL, RAM_BASE, switched_off
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. Each
 #: boot of OpenSBI takes seconds, so the tests are handed out first.

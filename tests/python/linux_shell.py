@@ -17,9 +17,8 @@ from opensbi_boots import a_host_with_opensbi
 from socpuppet import linux
 from socpuppet.boards.virtio import SECTOR, Virtio
 
-#: How a busybox shell that is logged in as root prompts on the host, by
-#: Alpine's /etc/profile: the host's name, the directory, and a hash.
-PROMPT = re.compile(r"socpuppet:\S+# $")
+#: The shell's prompt (`socpuppet.linux.PROMPT`) as the last thing it said.
+PROMPT = re.compile(linux.PROMPT.pattern + "$")
 #: The same through UEFI, whose disk has the root in its second partition.
 #: 🎓 The kernel's EFI stub is given no command line by the boot manager,
 #: and then leaves the devicetree's `bootargs` as they are.
@@ -89,11 +88,19 @@ def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
     debugger.
     """
-    for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
-        firmware(image)  # a missing image skips the test
     return linux.host_with_linux(
-        firmware(LINUX_BIN).parent, share=share, gdb_port=gdb_port
+        linux_images(firmware), share=share, gdb_port=gdb_port
     )
+
+
+def linux_images(firmware):
+    """The directory the `firmware` fixture finds the images to boot in.
+
+    A missing image skips the test.
+    """
+    for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
+        firmware(image)
+    return firmware(LINUX_BIN).parent
 
 
 def a_disk_as_a_servers(firmware):

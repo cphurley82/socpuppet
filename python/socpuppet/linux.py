@@ -8,12 +8,13 @@ console, and its first words, before that is up, are on the UART.
     board = linux.host_with_linux(pathlib.Path("build/firmware"))
     console = board.virtio.console
     board.platform.run_until(
-        lambda: "socpuppet:~# " in console.output, timeout=sp.ms(400_000)
+        lambda: linux.PROMPT.search(console.output), timeout=sp.ms(400_000)
     )
 """
 
 import os
 import pathlib
+import re
 
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
@@ -30,6 +31,9 @@ ROOTFS_EXT4 = "rootfs.ext4"
 #: messages go through OpenSBI's console until that is up, and its root
 #: filesystem is 🎭 the virtio disk, writable.
 BOOTARGS = "console=hvc0 earlycon=sbi root=/dev/vda rw"
+#: How a busybox shell that is logged in as root prompts on the host, by
+#: Alpine's /etc/profile: the host's name, the directory, and a hash.
+PROMPT = re.compile(r"socpuppet:\S+# ")
 
 
 def host_with_linux(
