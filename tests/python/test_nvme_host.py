@@ -264,6 +264,38 @@ class TestWhenTheControllerNeverBecomesReady:
         assert bus.waited == sp.ms(500)
 
 
+@pytest.mark.platform
+class TestWhenTheHostShutsTheDriveDown:
+    def test_it_returns_once_the_drive_says_the_shutdown_is_complete(self):
+        # 🐧 What Linux does before it switches the power off.
+        done = []
+
+        def script():
+            nvme = sp.NvmeHost(registers=NVME_BASE, memory=RAM_BASE)
+            yield from nvme.enable()
+            yield from nvme.shut_down()
+            done.append(True)
+
+        platform = host_with_nvme(script)
+
+        platform.run()
+
+        assert done == [True]
+
+
+class TestWhenTheDriveNeverSaysItsShutdownIsComplete:
+    def test_the_host_gives_up_after_five_seconds_as_linux_does(self):
+        # 🐧 A drive that says nothing of how long it takes to shut down is
+        # given five seconds by Linux (nvme_core.shutdown_timeout).
+        bus = FakeController()
+        nvme = sp.NvmeHost(registers=0, memory=0x1000)
+
+        with pytest.raises(sp.NvmeError, match=r"shut down.*5000 ms"):
+            play(nvme.shut_down(), bus)
+
+        assert bus.waited == sp.ms(5000)
+
+
 class TestWhenAnInterruptComesWithNoCompletionForTheCommand:
     def test_the_error_says_to_check_what_drives_the_interrupt_line(self):
         bus = FakeController(completes=False)
