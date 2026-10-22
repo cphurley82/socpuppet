@@ -367,6 +367,20 @@ TYPED_TEST_P(NvmeContract, NamespaceOneSaysHowManyBlocksItHolds) {
   EXPECT_EQ(The(name_space, &NvmeHost::Namespace::blocks), TypeParam::kBlocks);
 }
 
+// 🐧 Linux's driver takes a namespace with no capacity for one that is not
+// allocated, and leaves it out without a word.
+TYPED_TEST_P(NvmeContract, NamespaceOneCanHoldEveryOneOfItsBlocks) {
+  std::optional<NvmeHost::Namespace> name_space;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    name_space = host.IdentifyNamespace(1);
+  });
+
+  EXPECT_EQ(The(name_space, &NvmeHost::Namespace::capacity),
+            TypeParam::kBlocks);
+}
+
 TYPED_TEST_P(NvmeContract, NamespaceOneHas512ByteBlocks) {
   std::optional<NvmeHost::Namespace> name_space;
 
@@ -953,7 +967,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     AHostThatComesBackOneDeltaAfterSubmittingStillReadsReady,
     AnAcknowledgementOneDeltaAfterASubmissionLosesNoInterrupt,
     TheControllerSaysItHasOneNamespace, NamespaceOneSaysHowManyBlocksItHolds,
-    NamespaceOneHas512ByteBlocks,
+    NamespaceOneCanHoldEveryOneOfItsBlocks, NamespaceOneHas512ByteBlocks,
     TheListOfActiveNamespacesHoldsNamespaceOneAlone,
     WhenTheHostAsksForAnIoQueuePairItIsGrantedOne,
     AnIdentifyForSomethingItCannotDescribeIsAnInvalidField,

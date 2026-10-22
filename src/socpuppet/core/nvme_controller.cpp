@@ -204,7 +204,9 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
         return {.status = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT};
       }
       spdk_nvme_ns_data name_space{};
+      // Its size, and its capacity: every block of it can be written.
       name_space.nsze = drive_->Blocks();
+      name_space.ncap = drive_->Blocks();
       // One block format, which is therefore the one in use.
       name_space.lbaf[0].lbads = kBlockSizeShift;
       return SendToHost(command, BytesOf(name_space));
