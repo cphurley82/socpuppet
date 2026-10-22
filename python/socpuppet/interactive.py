@@ -23,7 +23,7 @@ import sys
 import termios
 import time
 import tty
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from socpuppet.placed import PlacedFarEnd
 from socpuppet.platform import Platform
@@ -45,6 +45,7 @@ def interact(
     *,
     screen: Sequence[PlacedFarEnd],
     keyboard: PlacedFarEnd,
+    until: Callable[[], bool] = lambda: False,
 ) -> None:
     """Run `platform` with this process's terminal at its consoles.
 
@@ -52,7 +53,11 @@ def interact(
     it comes, and what comes in on standard input is typed at `keyboard`.
     A terminal hands over each key as it is pressed, as a serial line
     does, and is put back as it was at the end. Ctrl-] (`LEAVE`) ends
-    the run.
+    the run, and so does `until()` coming true, once everything printed
+    has been shown. `until` is a condition, as `Platform.run_until`'s is,
+    but it is looked at only when the terminal is: each time the CPU
+    sleeps, and every `LOOK_EVERY` while it works. So the run may go a
+    little past the moment it came true.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
@@ -64,7 +69,7 @@ def interact(
     if settings is not None:
         tty.setraw(keys)
     try:
-        _run(platform, screen, keyboard)
+        _run(platform, screen, keyboard, until)
     finally:
         if settings is not None:
             termios.tcsetattr(keys, termios.TCSADRAIN, settings)
@@ -74,14 +79,20 @@ def _run(
     platform: Platform,
     screen: Sequence[PlacedFarEnd],
     keyboard: PlacedFarEnd,
+    until: Callable[[], bool],
 ) -> None:
-    """Run `platform`, showing `screen` and typing at `keyboard`."""
+    """Run `platform`, showing `screen` and typing at `keyboard`.
+
+    `until` is looked at whenever the terminal is.
+    """
     shown = [0] * len(screen)
     look_again = 0.0
     while True:
         ahead = platform.time_to_next_activity
         if ahead is None or ahead > platform.quantum:
             _show(screen, shown)
+            if until():
+                return
             wait = (
                 LONGEST_WAIT
                 if ahead is None
@@ -98,6 +109,8 @@ def _run(
             typed = b""
             if time.monotonic() >= look_again:
                 _show(screen, shown)
+                if until():
+                    return
                 typed = _keys(0)
                 look_again = time.monotonic() + LOOK_EVERY
             platform.step()
