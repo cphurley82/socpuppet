@@ -139,4 +139,12 @@ The pciem section: the header's licence, the BAR's memory, the virtual root's in
 
 ## Decisions
 
-🚧 For the maintainer.
+Made on 2026-10-22 by the maintainer, after the report, by the rules in [vision.md](../vision.md) (real over toy; borrow before building; a newcomer builds it for free on a laptop): **M31 is built as recommended.**
+
+- **`sp.PciemHost` is the spike's bridge, rebuilt test-first**, with every correction above: BAR0 cleared before the device starts; CAP, VS and CSTS copied in after every round and the rest left to pciem's shadow write; a vector on each rising line and again after a completion queue's head doorbell; the puppet's own IDs; one I/O queue, as pciem gives. The drive is found by its place on pciem's bus.
+- **The behavioral drive says a `CAP.TO` of at least 1**, held by the NVMe contract, so that the bridge shows the host what the drive says and needs no `--least-timeout`.
+- **The pump is Python's**: `socpuppet.interactive`'s loop waits on the far end's file descriptor as it waits on the keyboard, the board is Python's own `boards.ssd` with `PciemHost` where the scripted host goes, and M29's bridge waits on the same loop. The spike's C++ copy of the board goes with the spike.
+- **M31's exit test tries a QEMU guest on GitHub's runner first**, as pciem's own CI loads its module: a stock Ubuntu kernel, `mem=` in place of a reservation, the module and the drive's program in the guest, in the nightly tier. If that does not pan out, the test runs on demand, by hand on the A51, and the self-hosted runner is decided then.
+- **The header's licence is asked for on the release track**, with the other entries in [upstream.md](../upstream.md#pciem), as that page's rule has it. Until then the bridge is optional, from source and never in the wheel.
+
+What stays from the spike until M31 has rebuilt it: `spikes/pciem/`, its two tests and `exercise.sh`, and the five entries in [upstream.md](../upstream.md#pciem). [roadmap.md](../roadmap.md) records the decisions under M31, and [decisions.md](decisions.md) their reasons.
