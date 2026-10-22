@@ -11,9 +11,9 @@ import re
 import fat_image
 import gpt_image
 import socpuppet as sp
-from cast import FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4, UEFI_FD
+from cast import FW_JUMP_BIN, INITRAMFS_CPIO, LINUX_BIN, ROOTFS_EXT4, UEFI_FD
 from console import plain
-from opensbi_boots import a_host_with_opensbi
+from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet import linux
 from socpuppet.boards.virtio import SECTOR, Virtio
 
@@ -91,6 +91,29 @@ def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     return linux.host_with_linux(
         linux_images(firmware), share=share, gdb_port=gdb_port
     )
+
+
+def a_host_with_the_initramfs(firmware, *, drive_blocks=None):
+    """A host built with the kernel and the initramfs, its root on the
+    virtio disk.
+
+    🎭 The quick way: the initramfs sits in RAM beside the kernel, and its
+    `/init` loads the kernel's NVMe modules and mounts the root
+    `linux.BOOTARGS` names. `drive_blocks`, if any, is how big the host's
+    drive is.
+    """
+    rootfs = firmware(ROOTFS_EXT4).read_bytes()
+    board, layout = a_host_with_opensbi(
+        firmware,
+        LINUX_BIN,
+        virtio=Virtio(blocks=len(rootfs) // SECTOR),
+        bootargs=linux.BOOTARGS,
+        initrd=firmware(INITRAMFS_CPIO).read_bytes(),
+        drive_blocks=drive_blocks,
+    )
+    board.virtio.blk.load(rootfs)
+    loaded_by_python(board, layout, firmware)
+    return board
 
 
 def linux_images(firmware):
