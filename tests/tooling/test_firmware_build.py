@@ -130,6 +130,8 @@ elif name == "make" and "ARCH=riscv" in args:
         write(f"{built}/arch/riscv/boot/Image", "Image")
         elf(f"{built}/vmlinux")
         write(f"{built}/System.map", "ffffffff80000000 T _start\n")
+    for module in (a for a in args if a.endswith(".ko")):
+        write(f"{built}/{module}", "module")
 elif name == "make" and any(a.startswith("O=") for a in args):
     built = next(a[2:] for a in args if a.startswith("O="))
     for each in ("fw_jump", "payloads/test"):
@@ -641,9 +643,11 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
         if Path(c["args"][-1]).name.startswith("linux-")
     ]
     assert fetch["args"][-1].endswith("/v6.x/linux-6.18.57.tar.xz")
-    configure, build = [
+    makes = [
         c["args"] for c in firmware.calls("make") if "ARCH=riscv" in c["args"]
     ]
+    (configure,) = [m for m in makes if "defconfig" in m]
+    (build,) = [m for m in makes if "Image" in m]
     for args in (configure, build):
         assert f"LLVM={firmware.llvm}/bin/" in args
     assert "defconfig" in configure
@@ -651,6 +655,31 @@ def test_the_kernel_is_fetched_at_its_pin_checked_and_built_with_the_sdks_llvm(
     assert (firmware.out / "linux.bin").read_text() == "Image"
     assert (firmware.out / "linux.elf").exists()
     assert (firmware.out / "linux.map").read_text().endswith("T _start\n")
+
+
+def test_the_kernels_two_nvme_modules_are_built_after_its_image_the_same_way(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    makes = [
+        c["args"] for c in firmware.calls("make") if "ARCH=riscv" in c["args"]
+    ]
+    (configure,) = [m for m in makes if "defconfig" in m]
+    (build,) = [m for m in makes if "Image" in m]
+    (modules,) = [m for m in makes if any(a.endswith(".ko") for a in m)]
+    assert {a for a in modules if a.endswith(".ko")} == {
+        "drivers/nvme/host/nvme-core.ko",
+        "drivers/nvme/host/nvme.ko",
+    }
+    assert "Image" not in modules
+    assert makes.index(build) < makes.index(modules)
+    assert set(configure) - {"defconfig"} <= set(modules)
 
 
 def test_a_kernel_pinned_anew_is_fetched_and_built_from_its_own_source(
