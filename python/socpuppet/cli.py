@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from socpuppet import address_map, boot_image, interrupt_map, linux, run
 from socpuppet.address_map import MapEntry
 from socpuppet.boards.host import HOST_CPUS, HostCpu, switched_off
-from socpuppet.components import Dialect
+from socpuppet.components import Dialect, QboxCpu
 from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
@@ -203,8 +203,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
 def _linux(cpu: HostCpu | None) -> None:
     """Boot Linux on the host, with this terminal at its console.
 
-    What is typed waits for the shell's first prompt. It ends when Linux
-    switches the host off (`poweroff`), or at Ctrl-].
+    It says first, on standard error, which CPU it boots on and that
+    Ctrl-] leaves. What is typed waits for the shell's first prompt. It
+    ends when Linux switches the host off (`poweroff`), or at Ctrl-].
 
     `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names. An
     image, a tool such as dtc, or a CPU that this build has not ends the
@@ -214,6 +215,15 @@ def _linux(cpu: HostCpu | None) -> None:
         board = linux.host_with_linux(run.firmware_directory(), cpu=cpu)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
+    # Said on standard error: standard output is the machine's console.
+    print(
+        "🧦 Booting 🐧 Linux on the host's "
+        f"{board.cpu.component.implementation}. Its shell prompts in a "
+        "minute or two, after a quiet spell in the middle (in seconds on "
+        f"{QboxCpu.implementation}). Ctrl-] leaves.",
+        file=sys.stderr,
+        flush=True,
+    )
     assert board.virtio is not None  # the host was described with them
     console = board.virtio.console
     interact(
