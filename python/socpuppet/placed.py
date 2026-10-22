@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from socpuppet.components import Component, PortSpec, Router
+    from socpuppet.components import Component, IdealNand, PortSpec, Router
     from socpuppet.platform import Platform
 
 
@@ -177,6 +177,8 @@ class PlacedNand(Placed):
     a run, as a factory does before the chip is soldered on, and the hand
     that reads what the firmware left in it after one.
     """
+
+    component: IdealNand
 
     @property
     def contents(self) -> bytes:
