@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next.**
+Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next, and M29, `ssh` into that Linux from this machine, follows it.**
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -31,7 +31,8 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M25 | Virtio spike | M23, M28 | five stand-ins behind `virtio-mmio`, driven first by Python and then by Zephyr's and UEFI's own drivers; a report ([history/virtio-spike.md](history/virtio-spike.md)) | ✅ |
 | M20 | Linux boots | M23, M25 | a shell prompt on the virtio console, on both harts; Python types `uname -a` and reads the answer; every virtio device under Linux's driver; through UEFI from a server's disk, on demand (`test_m20_exit.py`, [linux.md](linux.md)) | ✅ |
 | M24 | A root filesystem on the drive | M8, M20 | Linux's own NVMe driver mounts its root on the Zephyr SSD across the link; a file written from Linux is read back by Python | 🚧 next |
-| M17 | Ethernet | M13, M20 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | |
+| M29 | A cable to this machine, and ssh | M20 | Linux boots with its network card bridged to this machine's network, with no root needed; `ssh` from this machine answers `uname -a`, on both harts; a file sent by `scp` is read back at the console | |
+| M17 | Ethernet | M13, M20, M29 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed; DMA to an unmapped page is a fault record and an interrupt; then the drive under Linux's IOMMU driver | |
 | M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC, TRNG | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the RTC and TRNG under Linux's drivers | |
@@ -47,7 +48,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 3. **The full bootchain.** The three images together, one stand-in swapped for the real thing per milestone. (M6 to M8)
 4. **The cast of a real SoC.** The interrupt architecture, the boot ROM, and Zephyr's own tests, with Zephyr still the firmware that boots. (M12 to M14, M21)
 5. **The road to Linux.** The hart and the board run the way Linux will run them, then OpenSBI, then UEFI, then the kernel. (M22 to M28, M20, M24)
-6. **Linux grows.** Ethernet, the IOMMU, the AI processor and the small parts, each under Linux's own driver. (M17, M15, M19, M18)
+6. **Linux grows.** A cable to this machine, Ethernet, the IOMMU, the AI processor and the small parts, each under Linux's own driver. (M29, M17, M15, M19, M18)
 7. **The rest of the cast, and fidelity.** What nothing on the road to Linux needs. (M16, M9, M10, M11)
 
 ## Dependencies
@@ -61,11 +62,11 @@ M0 ─┬─ M1 (ISS gate) ── M3 host ────────────�
 ```text
 M8 ─┬─ M12 (NPU gate)
     ├─ M13 AIA ─────────┬─ M21 twister ── M22 the hart ── M26 speed spike ── M27 QBox ── M23 OpenSBI ── M28 UEFI ── M25 virtio spike ── M20 Linux ─┬─ M24 rootfs on the drive ── M15 IOMMU ── M19 NPU
-    └─ M14 ROM, flash ──┘                                                                                                                          ├─ M17 Ethernet
+    └─ M14 ROM, flash ──┘                                                                                                                          ├─ M29 a cable to this machine ── M17 Ethernet
                                                                                                                                                    └─ M18 the small essentials
 ```
 
-The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the three branches are independent, and the suggested order is M24, M17, M15, M19, M18, then Phase 7 in any order. M9 could be pulled forward any time, and could have been since M4.
+The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the three branches are independent, and the suggested order is M24, M29, M17, M15, M19, M18, then Phase 7 in any order. M29 comes before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
 
 ## How a milestone is done
 
@@ -89,12 +90,24 @@ The drive has been a Zephyr host's since M3 and a Linux kernel's never. This mil
 
 Exit: Linux boots to a prompt with its root filesystem on the drive; a file written at the prompt is read back by Python, byte for byte, from the drive the Zephyr SSD firmware runs.
 
+### M29: a cable to this machine, and ssh
+
+🐧 `socpuppet linux` puts your terminal at Linux's console. This milestone plugs the host's network card into this machine's network, so that `ssh` reaches the same Linux the way it reaches a server: from a second terminal, from a script, or from an IDE. It needs no new hardware: 🎭 the virtio network card already answers Linux's `ping` under Linux's own driver, and M17's real card takes its place later behind the same far end.
+
+- **One far end for every network card**, `sp.EthernetCable`: frames out, frames in, and a capture Wireshark opens. The virtio card has it first, the real MAC inherits it in M17, and the bridge is written once.
+- **User-mode networking, with no root.** A TAP device wants root or a kernel extension, which a newcomer on a laptop cannot have (vision: *a newcomer builds it for free on a laptop*). The borrow is libslirp, the library behind QEMU's `-netdev user`: a TCP/IP stack that opens this machine's sockets for the guest's connections and forwards a port of this machine to the guest's port 22. No Python binding exists, so the ctypes glue is ours, behind a contract suite written first (ARP, DHCP, a TCP connection to a listener in the test), and 🩺 the doctor looks for the library as it does for dtc. passt is Linux-only and a daemon of its own; a TCP stack in Python would be building, not borrowing, and is the maintainer's decision, brought with the failing tests.
+- **The bridge is pumped where the terminal is looked at.** `interact` reads only the keyboard while the CPU sleeps, and `run_until` reads nothing; both come to look at the bridge's sockets and timers, each time the CPU sleeps and every short while as it works. The paced clock already keeps ssh's timeouts honest while the guest is idle. ⚠️ While the CPU works the guest's clock runs ahead of the wall, so its TCP timers fire early, and a test says whether that matters.
+- **An ssh server in the root**: dropbear, one binary, from Alpine's package pinned in `firmware/versions.toml` beside the mini root; a package is a tarball, so it is laid in at build time with no riscv64 code run. 🎓 The host key is made at first boot, ed25519 for speed, from randomness the kernel gathers from the virtio entropy device: a board with no entropy source hangs right here. busybox's `udhcpc` takes the address the bridge's DHCP server offers, and a key pair made at build time puts its public half in root's `authorized_keys`.
+- **The front door**: `socpuppet linux` forwards the port, and [linux.md](linux.md) says how to connect. ⚠️ A key exchange runs on an interpreted CPU: seconds to tens of seconds a connection on the interpreter, and QBox's hart for daily use.
+
+Exit: Linux boots on both harts with the bridge in place; `ssh -p 2222 root@localhost uname -a` from this machine answers; a file sent by `scp` is read back at the console.
+
 ### M17: Ethernet
 
-The first network card of real hardware's kind, in the place of 🎭 the virtio network card M20's Linux answered `ping` on. VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
+The first network card of real hardware's kind, in the place of 🎭 the virtio network card M20's Linux answered `ping` on and M29 reached by `ssh`. VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
 
 - **The borrowed MAC behind an adapter, held to a contract written first**, as the UART, the timer and the PLIC were.
-- 🧵 **Python is the far end of the cable**: `sp.EthernetCable` hands Python each frame sent and takes frames to deliver, and can write a capture Wireshark opens. 🚧 A bridge to the machine's own network is a tier for later, and with it `ssh` into the host's Linux from this machine, beside `socpuppet linux`'s console.
+- 🧵 **Python is the far end of the cable**: M29's `sp.EthernetCable`, which hands Python each frame sent, takes frames to deliver, writes the capture and bridges to this machine, takes this card's frames too, unchanged.
 - **The driver is ours**, in socpuppet's Zephyr module, since none exists for this MAC; Zephyr's Stellaris driver is the nearest in shape. 📮 The Linux driver is written here too, since this comes after M20, and both are offered upstream.
 - **Its interrupt is a line to the APLIC**, which is why this waits for M13. SCC's library of interfaces has the sockets the MAC uses and is not linked yet.
 
