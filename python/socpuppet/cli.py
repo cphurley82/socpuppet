@@ -174,10 +174,21 @@ def main(arguments: Sequence[str] | None = None) -> None:
         ),
     )
     _add_cpu(linux_command, speed=", and which boots Linux ten times as fast")
+    linux_command.add_argument(
+        "--root",
+        choices=typing.get_args(linux.Root.__value__),
+        default="virtio",
+        help=(
+            "where Linux's root filesystem is: virtio, the virtio disk, "
+            "or drive, the SSD across the die-to-die link, whose firmware "
+            "and the IO manager's are the ones firmware/build.py zephyr "
+            "builds (the default is %(default)s)"
+        ),
+    )
     options = parser.parse_args(arguments)
 
     if options.command == "linux":
-        _linux(options.cpu)
+        _linux(options.cpu, options.root)
     elif options.command == "run":
         run.run(
             options.image,
@@ -200,7 +211,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
 
 
-def _linux(cpu: HostCpu | None) -> None:
+def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
     """Boot Linux on the host, with this terminal at its console.
 
     It says first, on standard error, which CPU it boots on and that
@@ -208,12 +219,15 @@ def _linux(cpu: HostCpu | None) -> None:
     ends when Linux switches the host off (`poweroff`), or at Ctrl-], and
     says which.
 
-    `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names. An
+    `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names, and
+    `root` where the root filesystem is (`linux.host_with_linux`). An
     image, a tool such as dtc, or a CPU that this build has not ends the
     command with one line that says how to get it.
     """
     try:
-        board = linux.host_with_linux(run.firmware_directory(), cpu=cpu)
+        board = linux.host_with_linux(
+            run.firmware_directory(), cpu=cpu, root=root
+        )
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
     # Said on standard error: standard output is the machine's console.
