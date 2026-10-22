@@ -25,6 +25,8 @@ def a_host_with_opensbi(
     gdb_port=0,
     initrd=None,
     drive_blocks=None,
+    drive=None,
+    manager=None,
 ):
     """A host described for OpenSBI and built, and OpenSBI's layout for it.
 
@@ -34,7 +36,8 @@ def a_host_with_opensbi(
     line, if the devicetree is to carry one, and `initrd` an initramfs for
     it, if any. `ram` is how many bytes of RAM the host has. With a
     `gdb_port`, the CPU waits for a debugger on it. `drive_blocks`, if
-    any, is how big the host's drive is.
+    any, is how big the host's drive is, and `drive` and `manager` are
+    what `host()` adds the drive and the IO manager with.
     """
     board = host(
         boot=from_rom,
@@ -43,6 +46,8 @@ def a_host_with_opensbi(
         ram=ram,
         gdb_port=gdb_port,
         drive_blocks=drive_blocks,
+        drive=drive,
+        manager=manager,
     )
     span = None if initrd is None else opensbi.initrd_span(initrd, ram=RAM_BASE)
     layout = opensbi.lay_out(
@@ -50,7 +55,11 @@ def a_host_with_opensbi(
         firmware(payload).read_bytes(),
         devicetree.compile(
             board.platform.devicetree(
-                dialect="linux", model=MODEL, bootargs=bootargs, initrd=span
+                board.cpu.socket,
+                dialect="linux",
+                model=MODEL,
+                bootargs=bootargs,
+                initrd=span,
             )
         ),
         ram=RAM_BASE,

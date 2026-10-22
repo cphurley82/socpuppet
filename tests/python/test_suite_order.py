@@ -14,6 +14,7 @@ BOOTS = {
     "test_linux_nvme",
     "test_m20_exit",
     "test_m23_exit",
+    "test_m24_exit",
     "test_m28_exit",
 }
 
