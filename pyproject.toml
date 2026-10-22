@@ -54,6 +54,7 @@ dev = [
     "coverage>=7.10",
     "cpplint>=2.0.2",
     "dpkt>=1.9",
+    "ext4>=1.4",
     "gcovr>=8.6",
     "jsonschema>=4.26.0",
     "mypy>=1.18",
@@ -113,6 +114,7 @@ test-requires = [
     "pytest",
     "pytest-xdist",
     "dpkt>=1.9",
+    "ext4>=1.4",
     "pyfatfs>=1.1",
     "setuptools<81",
 ]
