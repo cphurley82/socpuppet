@@ -93,7 +93,6 @@ class TestWhenKeysComeBeforeTheReadyConditionIsTrue:
         assert returned_at(said) >= READY_AFTER
 
 
-@pytest.mark.long
 class TestWhenPipedInputHasEndedAndTheCpuSleeps:
     def test_the_run_waits_without_keeping_this_machine_busy(self, firmware):
         # The shell answers and sleeps, and the run goes on for IDLE
