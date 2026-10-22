@@ -298,6 +298,7 @@ jobs:
         with:
           path: |
             build/firmware/uefi.fd
+            build/firmware/uefi_shell.efi
           key: firmware-edk2-${{ hashFiles('cmake/patches/edk2-*', 'firmware/build.py', 'firmware/versions.toml') }}
       # EDK2's BaseTools are built with the runner's own gcc, and want
       # libuuid's header; and EDK2 compiles ACPI tables with iasl.
@@ -320,6 +321,7 @@ jobs:
           name: firmware-edk2
           path: |
             build/firmware/uefi.fd
+            build/firmware/uefi_shell.efi
           if-no-files-found: error
 
   firmware-linux:

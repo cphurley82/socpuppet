@@ -188,13 +188,11 @@ elif name == "gen_init_cpio":
     if status == 0:
         write(after("-o"), "\n".join(entries) + "\n")
 elif name == "build":
-    write(
-        os.path.join(
-            os.environ["WORKSPACE"],
-            "Build/RiscVVirtQemu/DEBUG_CLANGDWARF/FV/RISCV_VIRT_CODE.fd",
-        ),
-        "uefi",
+    built = os.path.join(
+        os.environ["WORKSPACE"], "Build/RiscVVirtQemu/DEBUG_CLANGDWARF"
     )
+    write(os.path.join(built, "FV/RISCV_VIRT_CODE.fd"), "uefi")
+    write(os.path.join(built, "RISCV64/Shell.efi"), "shell")
 if os.environ.get("SLOW_ON", "@") in [name, *args]:
     time.sleep(0.5)
 with open(os.environ["LOG"], "a") as log:
@@ -905,6 +903,17 @@ def test_edk2_is_built_with_its_submodules_and_its_fd_kept(firmware):
     (build,) = firmware.calls("build")
     assert "RISCV64" in build["args"]
     assert (firmware.out / "uefi.fd").read_text() == "uefi"
+
+
+def test_edk2s_shell_is_kept_as_a_program_a_disk_can_boot(firmware):
+    # 🎓 UEFI's shell, as a file: what a server's removable disk can boot,
+    # to run a startup.nsh that starts a kernel with what it is to be told.
+    firmware.sdk_release()
+
+    result = firmware.run("edk2")
+
+    assert result.returncode == 0, result.stdout
+    assert (firmware.out / "uefi_shell.efi").read_text() == "shell"
 
 
 def test_edk2_is_built_with_no_conf_an_earlier_build_left(firmware):
