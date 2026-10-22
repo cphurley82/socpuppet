@@ -8,16 +8,19 @@ host's UART, which prompts within milliseconds.
 """
 
 import os
+import resource
 import select
 import subprocess
 import sys
 import termios
 import time
+from typing import NamedTuple
 
 import pytest
 
 from cast import SHELL, SHELL_PROMPT, SHELL_VERSION
-from processes import environment
+from processes import environment, unmeasured
+from socpuppet.time import s
 
 
 @pytest.fixture
@@ -81,6 +84,20 @@ class TestWhenTheUntilConditionComesTrue:
         terminal.wait_for(SHELL_VERSION.encode())
 
 
+@pytest.mark.long
+class TestWhenPipedInputHasEndedAndTheCpuSleeps:
+    def test_the_run_waits_without_keeping_this_machine_busy(self, firmware):
+        # The shell answers and sleeps, and the run goes on for IDLE
+        # seconds of the CPU's clock.
+        run = piped(UNTIL_IDLE, firmware(SHELL), typed=b"kernel version\n")
+
+        # The CPU's clock keeps to the wall's while it sleeps.
+        assert run.wall >= IDLE
+        # Starting Python and building the platform take a fraction of a
+        # second; waiting by spinning would take all IDLE of them.
+        assert run.busy < IDLE / 2
+
+
 #: What the process runs: the host with Zephyr's shell, and `interact` at
 #: its UART, with `until` or without.
 INTERACTING = """
@@ -95,6 +112,14 @@ board.platform.load_elf(sys.argv[1])
 interact(board.platform, screen=[board.uart], keyboard=board.uart{until})
 """
 SHELL_ONLY = INTERACTING.format(until="")
+#: The same, until IDLE seconds of the CPU's clock have passed. Long
+#: enough that a wait that spins (a second of this machine's CPU each
+#: second) stands well clear of starting up (a fraction of one), and short
+#: enough for one long test.
+IDLE = 4
+UNTIL_IDLE = INTERACTING.format(
+    until=f", until=lambda: board.platform.time >= {s(IDLE)}"
+)
 #: The same, until the shell has answered `kernel version`.
 UNTIL_ANSWERED = INTERACTING.format(
     until=f", until=lambda: {SHELL_VERSION!r} in board.uart.output"
@@ -171,3 +196,37 @@ class Terminal:
         self.process.wait()
         os.close(self.controller)
         os.close(self.device)
+
+
+class Timed(NamedTuple):
+    """How long a process took on the wall, and of this machine's CPU."""
+
+    wall: float
+    busy: float
+
+
+def piped(script, image, typed):
+    """Run `script` with `typed` piped to it, and time it.
+
+    The process is left alone by coverage.py, which would add CPU time of
+    its own.
+    """
+    busy_before, wall_before = cpu_seconds_of_children(), time.monotonic()
+    ran = subprocess.run(
+        [sys.executable, "-c", script, str(image)],
+        input=typed,
+        capture_output=True,
+        env=unmeasured(environment()),
+        timeout=IDLE + PATIENCE,
+    )
+    assert ran.returncode == 0, ran.stderr.decode()
+    return Timed(
+        wall=time.monotonic() - wall_before,
+        busy=cpu_seconds_of_children() - busy_before,
+    )
+
+
+def cpu_seconds_of_children():
+    """The CPU time of the processes this one has started and waited for."""
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return usage.ru_utime + usage.ru_stime
