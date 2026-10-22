@@ -93,14 +93,17 @@ static bool the_nand_page_holds(uint32_t nand_page, uint8_t with)
 }
 
 /*
- * The table is emptied before each case, and the NAND is not: it keeps
- * what the cases before left in it, which an ideal NAND lets the next one
- * program over. So each case stores fillings of its own, which no other
- * case could have left where it looks.
+ * Each case starts with the NAND erased, as it comes from the factory, so
+ * that no table a case before it saved is found, and with the FTL started
+ * on it.
  */
-static void start_with_an_empty_table(void *fixture)
+static void start_with_an_erased_nand(void *fixture)
 {
+	uint64_t bytes;
+
 	ARG_UNUSED(fixture);
+	zassert_ok(flash_get_size(ssd_nand, &bytes));
+	zassert_ok(flash_erase(ssd_nand, 0, (size_t)bytes));
 
 	zassert_ok(ftl_start());
 	zassert_true(ftl_pages() > A_PAGE + 1);
@@ -179,9 +182,9 @@ ZTEST(ftl, test_a_page_stored_again_does_not_take_another_page_of_the_nand)
 	zassert_true(the_nand_page_holds(reserved_pages() + 1, 0x42));
 }
 
-ZTEST(ftl, test_after_starting_again_a_page_that_was_stored_loads_as_zeros)
+ZTEST(ftl, test_after_starting_again_without_a_save_a_stored_page_loads_as_zeros)
 {
-	/* The table is in the SSD's buffer and nowhere else, so it does not outlive a start. */
+	/* The table is in the SSD's buffer until it is saved. */
 	fill_the_page_buffer(0x51);
 	zassert_ok(ftl_store(A_PAGE));
 
@@ -191,4 +194,38 @@ ZTEST(ftl, test_after_starting_again_a_page_that_was_stored_loads_as_zeros)
 	zassert_true(the_page_buffer_is_all_zeros());
 }
 
-ZTEST_SUITE(ftl, NULL, NULL, start_with_an_empty_table, NULL, NULL);
+ZTEST(ftl, test_after_a_save_and_a_start_a_stored_page_loads_as_it_was_stored)
+{
+	fill_the_page_buffer(0x61);
+	zassert_ok(ftl_store(A_PAGE));
+	zassert_ok(ftl_save());
+
+	zassert_ok(ftl_start());
+	fill_the_page_buffer(0xEE);
+
+	zassert_ok(ftl_load(A_PAGE));
+	zassert_true(the_page_buffer_holds(0x61));
+}
+
+ZTEST(ftl, test_after_a_save_and_a_start_a_new_page_takes_a_nand_page_nobody_has)
+{
+	/*
+	 * The first page stored is in the first NAND page after the reserve.
+	 * After a save and a start, the next new one goes in the page after
+	 * it, and not over it.
+	 */
+	fill_the_page_buffer(0x71);
+	zassert_ok(ftl_store(A_PAGE));
+	zassert_ok(ftl_save());
+	zassert_ok(ftl_start());
+
+	fill_the_page_buffer(0x72);
+	zassert_ok(ftl_store(the_last_page()));
+
+	zassert_true(the_nand_page_holds(reserved_pages() + 1, 0x72));
+	fill_the_page_buffer(0xEE);
+	zassert_ok(ftl_load(A_PAGE));
+	zassert_true(the_page_buffer_holds(0x71));
+}
+
+ZTEST_SUITE(ftl, NULL, NULL, start_with_an_erased_nand, NULL, NULL);

@@ -57,13 +57,14 @@ def run_on_an_ssd(request, firmware):
     stand-in for the SSD's firmware, and once with the real thing, the
     Zephyr application in firmware/ssd on the SSD's own CPU. What a host
     sees has to be the same, and what the SSD keeps on its NAND. Returns
-    the SSD.
+    the SSD. With a `drive`, the SSD's NAND is programmed with it before
+    the run, as a factory does (`socpuppet.ftl.nand_image`).
     """
     image = (
         firmware(SSD_IMAGE) if request.param == "Zephyr for firmware" else None
     )
 
-    def run(script, blocks=BLOCKS):
+    def run(script, blocks=BLOCKS, drive=None):
         finished = []
 
         def to_its_end():
@@ -77,6 +78,8 @@ def run_on_an_ssd(request, firmware):
         )
         if image:
             platform.load_elf(image, via=ssd.cpu.socket)
+        if drive is not None:
+            ssd.nand.load(ftl.nand_image(drive, ssd.nand.component))
         # A script takes no simulated time at all, and the firmware a few
         # milliseconds to boot and less for a command. A second is far
         # more than either, and still ends a run that would never finish.
@@ -98,10 +101,11 @@ def some_data(blocks):
 def what_a_driver_does(run_on_an_ssd):
     """Runs `steps(nvme)` as the host, with the driver stand-in enabled.
 
-    The SSD has `blocks` blocks. Returns what the steps return.
+    The SSD has `blocks` blocks, and was programmed with `drive` at the
+    factory, if one is given. Returns what the steps return.
     """
 
-    def run(steps, blocks=BLOCKS):
+    def run(steps, blocks=BLOCKS, drive=None):
         returned = []
 
         def script():
@@ -109,7 +113,7 @@ def what_a_driver_does(run_on_an_ssd):
             yield from nvme.enable()
             returned.append((yield from steps(nvme)))
 
-        run_on_an_ssd(script, blocks=blocks)
+        run_on_an_ssd(script, blocks=blocks, drive=drive)
         (value,) = returned
         return value
 
@@ -181,6 +185,25 @@ def the_first_nand_page_after_the_reserve(nand):
     )
     first = shared.reserve_pages * chip.page_size
     return nand.contents[first : first + chip.page_size]
+
+
+@pytest.mark.platform
+class TestWhenTheSsdsNandWasProgrammedAtTheFactory:
+    def test_a_driver_reads_the_drive_it_was_programmed_with(
+        self, what_a_driver_does
+    ):
+        # 🎓 The firmware finds the table the factory put in the reserve,
+        # and the drive's pages where it says. A page of zeros is in no
+        # NAND page, and reads as zeros all the same.
+        data = some_data(32)
+        drive = data[: 16 * 512] + bytes(8 * 512) + data[24 * 512 :]
+
+        def steps(nvme):
+            return (
+                yield from nvme.read_blocks(first=0, count=len(drive) // 512)
+            )
+
+        assert what_a_driver_does(steps, drive=drive) == drive
 
 
 @pytest.mark.platform

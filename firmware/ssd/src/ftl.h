@@ -21,10 +21,9 @@
  *
  * The NAND's first blocks are a reserve, which no page of the drive goes
  * in: the drive is the NAND less the reserve, and its pages start after
- * it. It is where the table is to be kept (docs/models/ssd-firmware.md in
- * socpuppet). 🚧 For now the table is in the SSD's buffer and nowhere
- * else, so it does not outlive the firmware. A real FTL keeps it on the
- * NAND as well.
+ * it. The table is in the SSD's buffer while the firmware runs, and in the
+ * reserve while it does not: ftl_save() keeps it there, and ftl_start()
+ * finds it (docs/models/ssd-firmware.md in socpuppet).
  */
 
 #ifndef FIRMWARE_SSD_FTL_H_
@@ -33,7 +32,8 @@
 #include <stdint.h>
 
 /*
- * Asks the NAND what it is and makes an empty table. Returns 0. If the
+ * Asks the NAND what it is, and takes the table the reserve holds if it
+ * is this drive's, or else makes an empty one. Returns 0. If the
  * NAND cannot be used it says why on the console, with what to do about
  * it, and returns a negative errno. If it is the flash controller's driver
  * that did not start, the driver has said why, in the log.
@@ -58,5 +58,12 @@ int ftl_load(uint32_t page);
  * being written has to survive.
  */
 int ftl_store(uint32_t page);
+
+/*
+ * Keeps the table on the NAND, in the reserve, for the next ftl_start() to
+ * find: what the firmware does when the host shuts the drive down. Returns
+ * 0, or a negative errno.
+ */
+int ftl_save(void);
 
 #endif /* FIRMWARE_SSD_FTL_H_ */

@@ -6,7 +6,11 @@
 #include <string.h>
 
 #include <zephyr/drivers/flash.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/sys/util.h>
+
+#include <socpuppet/regs/ftl_header.h>
 
 #include "ssd.h"
 
@@ -26,7 +30,18 @@
 static uint32_t page_size;
 /* How many pages the drive has: the NAND less the reserve. */
 static uint32_t pages;
-/* For each page of the drive, the NAND page that holds it. */
+/* How many of the NAND's pages, at its start, are the reserve. */
+static uint32_t reserve;
+/*
+ * How many bytes the table takes: whole pages, as on the NAND, from the
+ * reserve's second page. The first is the header.
+ */
+static size_t table_bytes;
+/*
+ * For each page of the drive, the NAND page that holds it. The table is
+ * whole pages, as it is on the NAND: the entries past the drive's last
+ * page are NOWHERE.
+ */
 static uint32_t *where;
 /* The next NAND page nobody has. */
 static uint32_t next_free_nand_page;
@@ -57,6 +72,36 @@ uint32_t ftl_page_size(void)
 	return page_size;
 }
 
+/*
+ * The table the reserve holds, if its header says it is this drive's;
+ * else an empty one, as on a NAND fresh from the factory, whose erased
+ * header says nothing. If the NAND will not give up the reserve, says so.
+ */
+static int load_the_table(void)
+{
+	uint8_t *header = ssd_page_buffer();
+	int result = flash_read(ssd_nand, 0, header, page_size);
+
+	if (result == 0 && sys_get_le32(&header[FTL_HEADER_MAGIC]) == FTL_HEADER_MAGIC_NUMBER &&
+	    sys_get_le32(&header[FTL_HEADER_VERSION]) == FTL_HEADER_VERSION_FIRST &&
+	    sys_get_le32(&header[FTL_HEADER_PAGES]) == pages) {
+		next_free_nand_page = sys_get_le32(&header[FTL_HEADER_NEXT_FREE]);
+		result = flash_read(ssd_nand, page_size, where, table_bytes);
+	} else if (result == 0) {
+		for (size_t entry = 0; entry < table_bytes / ENTRY_SIZE; ++entry) {
+			where[entry] = NOWHERE;
+		}
+		next_free_nand_page = reserve;
+	}
+	if (result != 0) {
+		printk("The NAND would not give the FTL its reserve, where the table is kept "
+		       "(%d).\n",
+		       result);
+	}
+
+	return result;
+}
+
 int ftl_start(void)
 {
 	uint64_t bytes;
@@ -85,10 +130,9 @@ int ftl_start(void)
 	uint32_t pages_per_block = block.size / page_size;
 	uint32_t nand_blocks = bytes / block.size;
 	/* The drive is the NAND's pages after the reserve. */
-	uint32_t reserve =
-		reserved_blocks(nand_blocks, pages_per_block, page_size) * pages_per_block;
-
+	reserve = reserved_blocks(nand_blocks, pages_per_block, page_size) * pages_per_block;
 	pages = (nand_blocks * pages_per_block) - reserve;
+	table_bytes = ROUND_UP((size_t)pages * ENTRY_SIZE, page_size);
 
 	/*
 	 * The table has what is left of the buffer, and has to fit. On this
@@ -96,18 +140,39 @@ int ftl_start(void)
 	 * what there is. A board with a smaller buffer is what this is for.
 	 */
 	where = ssd_buffer_after_a_page(page_size, &room);
-	if (room / ENTRY_SIZE < pages) {
+	if (room < table_bytes) {
 		printk("A table for %u pages does not fit in what is left of the buffer, %u "
 		       "bytes. Describe a smaller drive, or a bigger buffer.\n",
 		       pages, (uint32_t)room);
 		return -ENOMEM;
 	}
-	for (uint32_t page = 0; page < pages; ++page) {
-		where[page] = NOWHERE;
-	}
-	next_free_nand_page = reserve;
 
-	return 0;
+	return load_the_table();
+}
+
+int ftl_save(void)
+{
+	/*
+	 * The reserve is erased whole, the table programmed, and the header
+	 * last: until the header is there, the reserve holds no table at all.
+	 */
+	int result = flash_erase(ssd_nand, 0, (size_t)reserve * page_size);
+
+	if (result == 0) {
+		result = flash_write(ssd_nand, page_size, where, table_bytes);
+	}
+	if (result == 0) {
+		uint8_t *header = ssd_page_buffer();
+
+		memset(header, 0xFF, page_size);
+		sys_put_le32(FTL_HEADER_MAGIC_NUMBER, &header[FTL_HEADER_MAGIC]);
+		sys_put_le32(FTL_HEADER_VERSION_FIRST, &header[FTL_HEADER_VERSION]);
+		sys_put_le32(pages, &header[FTL_HEADER_PAGES]);
+		sys_put_le32(next_free_nand_page, &header[FTL_HEADER_NEXT_FREE]);
+		result = flash_write(ssd_nand, 0, header, page_size);
+	}
+
+	return result;
 }
 
 int ftl_load(uint32_t page)
