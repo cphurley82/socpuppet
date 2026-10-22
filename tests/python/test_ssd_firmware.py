@@ -58,13 +58,14 @@ def run_on_an_ssd(request, firmware):
     Zephyr application in firmware/ssd on the SSD's own CPU. What a host
     sees has to be the same, and what the SSD keeps on its NAND. Returns
     the SSD. With a `drive`, the SSD's NAND is programmed with it before
-    the run, as a factory does (`socpuppet.ftl.nand_image`).
+    the run, as a factory does (`socpuppet.ftl.nand_image`); with `nand`,
+    a function of the chip, with the image it gives.
     """
     image = (
         firmware(SSD_IMAGE) if request.param == "Zephyr for firmware" else None
     )
 
-    def run(script, blocks=BLOCKS, drive=None):
+    def run(script, blocks=BLOCKS, drive=None, nand=None):
         finished = []
 
         def to_its_end():
@@ -78,8 +79,11 @@ def run_on_an_ssd(request, firmware):
         )
         if image:
             platform.load_elf(image, via=ssd.cpu.socket)
+        assert drive is None or nand is None, "One image for the NAND."
         if drive is not None:
             ssd.nand.load(ftl.nand_image(drive, ssd.nand.component))
+        if nand is not None:
+            ssd.nand.load(nand(ssd.nand.component))
         # A script takes no simulated time at all, and the firmware a few
         # milliseconds to boot and less for a command. A second is far
         # more than either, and still ends a run that would never finish.
@@ -102,10 +106,11 @@ def what_a_driver_does(run_on_an_ssd):
     """Runs `steps(nvme)` as the host, with the driver stand-in enabled.
 
     The SSD has `blocks` blocks, and was programmed with `drive` at the
-    factory, if one is given. Returns what the steps return.
+    factory, if one is given, or with the image `nand` gives for the chip.
+    Returns what the steps return.
     """
 
-    def run(steps, blocks=BLOCKS, drive=None):
+    def run(steps, blocks=BLOCKS, drive=None, nand=None):
         returned = []
 
         def script():
@@ -113,7 +118,7 @@ def what_a_driver_does(run_on_an_ssd):
             yield from nvme.enable()
             returned.append((yield from steps(nvme)))
 
-        run_on_an_ssd(script, blocks=blocks, drive=drive)
+        run_on_an_ssd(script, blocks=blocks, drive=drive, nand=nand)
         (value,) = returned
         return value
 
@@ -204,6 +209,68 @@ class TestWhenTheSsdsNandWasProgrammedAtTheFactory:
             )
 
         assert what_a_driver_does(steps, drive=drive) == drive
+
+
+@pytest.mark.platform
+class TestWhenTheNandHasThisDrivesHeaderAndATableThatCannotBeIts:
+    @pytest.mark.parametrize(
+        ("where_page_0", "next_free"),
+        [
+            pytest.param(
+                lambda shared: 0,
+                lambda shared: shared.reserve_pages + 1,
+                id="an entry in the reserve",
+            ),
+            pytest.param(
+                lambda shared: shared.reserve_pages + 1,
+                lambda shared: shared.reserve_pages + 1,
+                id="an entry at the next free page, which nobody has yet",
+            ),
+            pytest.param(
+                lambda shared: shared.reserve_pages,
+                lambda shared: shared.reserve_pages + shared.drive_pages + 1,
+                id="next free past the chip",
+            ),
+        ],
+    )
+    def test_a_driver_reads_a_drive_of_zeros(
+        self, what_a_driver_does, where_page_0, next_free
+    ):
+        # The pages given out so far are the reserve's end up to the next
+        # free one. A firmware that took such a table's word would read
+        # the header back as data, or an erased page, or the page of data.
+        def steps(nvme):
+            return (yield from nvme.read_blocks(first=0, count=8))
+
+        read = what_a_driver_does(
+            steps,
+            nand=lambda chip: a_nand_whose_table_cannot_be_its(
+                chip, where_page_0, next_free
+            ),
+        )
+
+        assert read == bytes(8 * 512)
+
+
+def a_nand_whose_table_cannot_be_its(chip, where_page_0, next_free):
+    """`chip`'s image with this drive's header and a table that is not its.
+
+    A page of data is in the first NAND page after the reserve. The table
+    says the drive's first page is in NAND page `where_page_0` and the next
+    free page is `next_free`, each a function of the chip's layout.
+    """
+    shared = ftl.layout(
+        chip.blocks,
+        pages_per_block=chip.pages_per_block,
+        page_size=chip.page_size,
+    )
+    where = (where_page_0(shared),) + (ftl.NOWHERE,) * (shared.drive_pages - 1)
+    reserve = ftl.saved_reserve(
+        ftl.Table(where, next_free(shared)), page_size=chip.page_size
+    )
+    return reserve.ljust(shared.reserve_pages * chip.page_size, b"\xff") + (
+        some_data(chip.page_size // 512)
+    )
 
 
 @pytest.mark.platform

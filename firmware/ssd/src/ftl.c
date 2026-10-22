@@ -3,6 +3,7 @@
 #include "ftl.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <zephyr/drivers/flash.h>
@@ -73,21 +74,46 @@ uint32_t ftl_page_size(void)
 }
 
 /*
- * The table the reserve holds, if its header says it is this drive's;
- * else an empty one, as on a NAND fresh from the factory, whose erased
- * header says nothing. If the NAND will not give up the reserve, says so.
+ * Whether every page the table gives out is one the NAND has given: the
+ * pages given out so far are the reserve's end up to the next free one,
+ * which is at most the NAND's end. socpuppet.ftl's saved_table judges the
+ * same way.
+ */
+static bool can_be_this_drives(void)
+{
+	if (next_free_nand_page > reserve + pages) {
+		return false;
+	}
+	for (uint32_t page = 0; page < pages; ++page) {
+		if (where[page] != NOWHERE &&
+		    (where[page] < reserve || where[page] >= next_free_nand_page)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/*
+ * The table the reserve holds, if its header says it is this drive's and
+ * the table can be; else an empty one, as on a NAND fresh from the
+ * factory, whose erased header says nothing. If the NAND will not give up
+ * the reserve, says so.
  */
 static int load_the_table(void)
 {
 	uint8_t *header = ssd_page_buffer();
 	int result = flash_read(ssd_nand, 0, header, page_size);
+	bool this_drives = false;
 
 	if (result == 0 && sys_get_le32(&header[FTL_HEADER_MAGIC]) == FTL_HEADER_MAGIC_NUMBER &&
 	    sys_get_le32(&header[FTL_HEADER_VERSION]) == FTL_HEADER_VERSION_FIRST &&
 	    sys_get_le32(&header[FTL_HEADER_PAGES]) == pages) {
 		next_free_nand_page = sys_get_le32(&header[FTL_HEADER_NEXT_FREE]);
 		result = flash_read(ssd_nand, page_size, where, table_bytes);
-	} else if (result == 0) {
+		this_drives = result == 0 && can_be_this_drives();
+	}
+	if (result == 0 && !this_drives) {
 		for (size_t entry = 0; entry < table_bytes / ENTRY_SIZE; ++entry) {
 			where[entry] = NOWHERE;
 		}
