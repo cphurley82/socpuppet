@@ -9,7 +9,6 @@ interrupts reach it as MSI-X messages to the IMSIC. The drive as the
 root is M24's exit test, `test_m24_exit.py`.
 """
 
-import itertools
 import re
 
 import pytest
@@ -18,6 +17,7 @@ from console import plain
 from devicetree_compiler import needs_dtc
 from linux_shell import (
     a_host_with_the_initramfs,
+    messages_taken,
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
@@ -88,17 +88,5 @@ class TestWhenLinuxsNvmeDriverFindsTheDrive:
         interrupts = type_and_wait_for_the_prompt(board, "cat /proc/interrupts")
 
         for queue in ("nvme0q0", "nvme0q1"):
+            assert re.search(rf"PCI-MSIX-.* {queue}\s*$", interrupts, re.M)
             assert messages_taken(interrupts, queue) > 0, interrupts
-
-
-def messages_taken(interrupts, queue):
-    """How many messages `queue`'s vector brought, on every CPU together.
-
-    `interrupts` is Linux's /proc/interrupts: a line for each interrupt,
-    its number, a count for each CPU, then what it is, its name last.
-    """
-    (line,) = [
-        each for each in interrupts.splitlines() if each.split()[-1:] == [queue]
-    ]
-    counts = itertools.takewhile(str.isdigit, line.split()[1:])
-    return sum(int(count) for count in counts)

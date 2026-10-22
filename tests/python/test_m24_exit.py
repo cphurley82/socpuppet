@@ -4,36 +4,33 @@
 die-to-die link, on M8's board: the IO manager trains the link and lets
 the host out of reset, and the host boots OpenSBI and a stock Linux,
 whose own NVMe driver, loaded by the initramfs, finds the drive behind
-the root complex.
+the root complex. The root filesystem is the drive's first partition,
+which Python programmed into the SSD's NAND as a factory would.
 """
+
+import re
 
 import pytest
 
 from console import plain
 from devicetree_compiler import needs_dtc
 from linux_shell import (
-    a_host_with_the_bootchain_and_the_initramfs,
+    a_host_with_its_root_on_the_drive,
+    messages_taken,
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
-from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot
 #: of Linux takes minutes on the interpreter, so the tests are handed out
 #: first.
 pytestmark = [needs_dtc, pytest.mark.long]
 
-#: How big the drive is, in blocks of 512 bytes: eight of the SSD's NAND
-#: blocks.
-DRIVE_BLOCKS = 8 * DRIVE_BLOCKS_PER_NAND_BLOCK
-
 
 @pytest.fixture
-def linux_on_the_bootchain(firmware):
-    """M8's board, booted to Linux's prompt, its root on the virtio disk."""
-    board = a_host_with_the_bootchain_and_the_initramfs(
-        firmware, drive_blocks=DRIVE_BLOCKS
-    )
+def linux_on_the_drive(firmware):
+    """M8's board, booted to Linux's prompt, its root on the drive."""
+    board = a_host_with_its_root_on_the_drive(firmware)
     prompted = run_to_the_prompt(board)
     assert prompted, (
         "Linux never prompted. OpenSBI's console:\n"
@@ -45,14 +42,26 @@ def linux_on_the_bootchain(firmware):
 
 
 @pytest.mark.platform
-class TestWhenLinuxMeetsTheZephyrSsdAcrossTheLink:
-    def test_the_drive_is_nvme0n1_of_the_blocks_it_was_described_with(
-        self, linux_on_the_bootchain
+class TestWhenLinuxBootsWithItsRootOnTheDrive:
+    def test_its_root_is_the_drives_first_partition_writable(
+        self, linux_on_the_drive
     ):
-        board = linux_on_the_bootchain
-
-        size = type_and_wait_for_the_prompt(
-            board, "cat /sys/block/nvme0n1/size"
+        mounts = type_and_wait_for_the_prompt(
+            linux_on_the_drive, "cat /proc/mounts"
         )
 
-        assert size.strip() == str(DRIVE_BLOCKS)
+        assert "/dev/nvme0n1p1 / ext4 rw," in mounts
+
+    def test_the_drives_admin_and_io_queues_take_msi_x_messages(
+        self, linux_on_the_drive
+    ):
+        # 🎓 Each NVMe queue's interrupt is named after it: nvme0q0 is the
+        # admin queue, nvme0q1 the first I/O queue, which the root's reads
+        # came through.
+        interrupts = type_and_wait_for_the_prompt(
+            linux_on_the_drive, "cat /proc/interrupts"
+        )
+
+        for queue in ("nvme0q0", "nvme0q1"):
+            assert re.search(rf"PCI-MSIX-.* {queue}\s*$", interrupts, re.M)
+            assert messages_taken(interrupts, queue) > 0, interrupts
