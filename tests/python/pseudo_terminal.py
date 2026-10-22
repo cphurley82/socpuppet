@@ -109,5 +109,6 @@ class Terminal:
     def close(self):
         self.process.kill()
         self.process.wait()
+        self.process.stderr.close()
         os.close(self.controller)
         os.close(self.device)
