@@ -8,6 +8,7 @@ the same tests. A console is something only the real one has.
 import pytest
 
 import socpuppet as sp
+from saved_tables import a_nand_whose_table_cannot_be_its
 from socpuppet import ftl
 from socpuppet.boards.cpu_kit import (
     PLIC_BASE,
@@ -29,21 +30,27 @@ from socpuppet.regs import flash_controller
 from ssd_zephyr_firmware import BANNER
 from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
 
+#: The banner for a drive of 512 blocks: 512 blocks of 512 bytes are 64
+#: NAND pages of 4 KiB.
+BANNER_OF_512_BLOCKS = f"{BANNER} 64 pages of 4096 bytes\r\n"
 # The drive's blocks are 512 bytes, and there are this many in a GiB.
 BLOCKS_PER_GIB = (1 << 30) // 512
 # The NAND's blocks, 256 KiB each, and there are this many in a GiB.
 NAND_BLOCKS_PER_GIB = BLOCKS_PER_GIB // DRIVE_BLOCKS_PER_NAND_BLOCK
 
 
-def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
+def console_of_an_ssd(firmware, *, blocks, until, and_then=0, nand=None):
     """Boots the firmware on an SSD of `blocks` blocks, with an idle host.
 
+    The NAND holds the image `nand` gives for the chip, if one is given.
     Runs until `until` is on the console and for `and_then` longer, and
     returns all that is there.
     """
     board = ssd(host=idle_host, blocks=blocks)
     board.platform.build()
     board.platform.load_elf(firmware(SSD_IMAGE), via=board.ssd.cpu.socket)
+    if nand is not None:
+        board.ssd.nand.load(nand(board.ssd.nand.component))
     console = board.ssd.cpu_kit.uart
     # The firmware starts by making an empty table of the drive's pages,
     # which takes it about half a microsecond of simulated time a page:
@@ -59,10 +66,33 @@ def console_of_an_ssd(firmware, *, blocks, until, and_then=0):
 @pytest.mark.platform
 class TestWhenTheSsdsFirmwareStarts:
     def test_it_says_what_drive_it_found(self, firmware):
-        # 512 blocks of 512 bytes are 64 NAND pages of 4 KiB.
-        banner = f"{BANNER} 64 pages of 4096 bytes\r\n"
+        banner = BANNER_OF_512_BLOCKS
 
         assert banner in console_of_an_ssd(firmware, blocks=512, until=banner)
+
+
+@pytest.mark.platform
+class TestWhenTheNandHasThisDrivesHeaderAndATableThatCannotBeIts:
+    def test_the_firmware_says_so_before_its_banner(self, firmware):
+        # The contract tests hold both firmwares to the drive such a table
+        # leaves; what only the real one has is what it says about it.
+        refusal = (
+            "The reserve's table cannot be this drive's, so the drive "
+            "starts empty.\r\n"
+        )
+
+        said = console_of_an_ssd(
+            firmware,
+            blocks=512,
+            until=BANNER_OF_512_BLOCKS,
+            nand=lambda chip: a_nand_whose_table_cannot_be_its(
+                chip,
+                where_page_0=lambda shared: ftl.NOWHERE,
+                next_free=lambda shared: 0,
+            ),
+        )
+
+        assert said.index(refusal) < said.index(BANNER_OF_512_BLOCKS)
 
 
 @pytest.mark.platform

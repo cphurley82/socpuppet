@@ -16,6 +16,7 @@ import pytest
 import raw_nvme
 import socpuppet as sp
 from raw_nvme import SUCCESS, RawNvmeHost
+from saved_tables import a_nand_whose_table_cannot_be_its, some_data
 from socpuppet import ftl
 from socpuppet.boards.drive import VECTORS
 from socpuppet.boards.ssd import scripted_firmware
@@ -92,13 +93,6 @@ def run_on_an_ssd(request, firmware):
         return ssd
 
     return run
-
-
-def some_data(blocks):
-    """Bytes for `blocks` blocks: no two neighbours the same."""
-    return bytes(
-        (index * 7 + index // 512) % 251 for index in range(blocks * 512)
-    )
 
 
 @pytest.fixture
@@ -278,27 +272,6 @@ class TestWhenTheNandHasThisDrivesHeaderAndATableThatCannotBeIts:
             the_first_nand_page_after_the_reserve(nand)[: len(written)]
             == written
         )
-
-
-def a_nand_whose_table_cannot_be_its(chip, where_page_0, next_free):
-    """`chip`'s image with this drive's header and a table that is not its.
-
-    A page of data is in the first NAND page after the reserve. The table
-    says the drive's first page is in NAND page `where_page_0` and the next
-    free page is `next_free`, each a function of the chip's layout.
-    """
-    shared = ftl.layout(
-        chip.blocks,
-        pages_per_block=chip.pages_per_block,
-        page_size=chip.page_size,
-    )
-    where = (where_page_0(shared),) + (ftl.NOWHERE,) * (shared.drive_pages - 1)
-    reserve = ftl.saved_reserve(
-        ftl.Table(where, next_free(shared)), page_size=chip.page_size
-    )
-    return reserve.ljust(shared.reserve_pages * chip.page_size, b"\xff") + (
-        some_data(chip.page_size // 512)
-    )
 
 
 @pytest.mark.platform
