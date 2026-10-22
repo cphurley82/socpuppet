@@ -63,7 +63,7 @@ from socpuppet.components import (
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.placed import Placed, PlacedRouter
+from socpuppet.placed import Placed, PlacedNand, PlacedRouter
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
 from socpuppet.time import ms
@@ -112,7 +112,7 @@ class Ssd(NamedTuple):
     frontend: Placed
     dma: Placed
     flash: Placed
-    nand: Placed
+    nand: PlacedNand
     buffer: Placed
     #: The one way up to the host's memory, which the frontend and the DMA
     #: engine share.

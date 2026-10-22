@@ -15,6 +15,7 @@ from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VENDOR_ID
 from socpuppet.boards.scripted_host import ECAM_BASE, idle_host
 from socpuppet.boards.ssd import (
     DMA_SOURCE,
+    DRIVE_BLOCKS_PER_NAND_BLOCK,
     FLASH_SOURCE,
     FRONTEND_SOURCE,
     scripted_firmware,
@@ -262,3 +263,41 @@ class TestWhenAHostScansThePcieBusTheSsdIsOn:
                 class_code=NVME_CLASS,
             )
         ]
+
+
+@pytest.fixture
+def nand():
+    """The NAND of a built SSD, the smallest there is, with no CPU to boot."""
+    board = ssd(
+        host=idle_host,
+        blocks=DRIVE_BLOCKS_PER_NAND_BLOCK,
+        firmware=scripted_firmware().script,
+    )
+    board.platform.build()
+    return board.ssd.nand
+
+
+@pytest.mark.platform
+class TestWhenPythonProgramsTheSsdsNand:
+    """🧵 As a NAND programmer does a chip before it is soldered on."""
+
+    def test_the_nand_holds_the_image_and_the_rest_of_it_is_erased(self, nand):
+        image = b"spam" * 2048
+
+        nand.load(image)
+
+        assert nand.contents == image + b"\xff" * (bytes_in(nand) - len(image))
+
+    def test_an_image_longer_than_the_nand_is_refused(self, nand):
+        with pytest.raises(ValueError, match="longer than the NAND"):
+            nand.load(bytes(bytes_in(nand) + 1))
+
+
+def bytes_in(nand):
+    """How many bytes a NAND chip holds, by how it was described."""
+    described = nand.component.parameters
+    return (
+        described["blocks"]
+        * described["pages_per_block"]
+        * described["page_size"]
+    )

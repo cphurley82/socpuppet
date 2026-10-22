@@ -45,6 +45,7 @@ It has one port, `socket`, and it is not memory: it has no addresses to read and
 - **Only what has been programmed takes memory**, so a chip can be far larger than the machine you run on.
 - **What it refuses**: a block it does not have, a page past the end of its block, data that is not exactly one page long, and an access that is not a command for a chip at all, which is what arrives if a chip is wired to a bus by mistake.
 - **A debugger cannot look inside.** `peek` gets no answer, because an address means nothing to it.
+- 🧵 **Python is the NAND programmer.** `nand.load(image)` programs an image over the pages in order, from the first, before a run, as a factory does a chip before it is soldered on; a page the image ends part way through is filled out with ones, and an image longer than the chip is refused with a `ValueError`. `nand.contents` is every page in order, the erased ones all ones, to read what firmware left after a run.
 
 ## What it leaves out
 

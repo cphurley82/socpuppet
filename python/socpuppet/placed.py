@@ -170,6 +170,33 @@ class PlacedBlock(Placed):
         self._platform.native().disk_load(self.path, image)
 
 
+class PlacedNand(Placed):
+    """🎭 A NAND flash chip at its place in a platform.
+
+    🧵 Python is the NAND programmer that puts an image in the chip before
+    a run, as a factory does before the chip is soldered on, and the hand
+    that reads what the firmware left in it after one.
+    """
+
+    @property
+    def contents(self) -> bytes:
+        """Every page of the chip, in order, an erased page all ones.
+
+        ⚠️ All of it, as one `bytes`: the chip keeps only the pages that
+        have been programmed, and this is every page.
+        """
+        return self._platform.native().nand_contents(self.path)
+
+    def load(self, image: bytes) -> None:
+        """Program `image` over the chip's pages in order, from the first.
+
+        A page the image ends part way through is filled out with ones, as
+        erased, and the pages after it are left as they were. An image
+        longer than the chip is refused with a `ValueError`.
+        """
+        self._platform.native().nand_load(self.path, image)
+
+
 class PlacedNet(Placed):
     """🎭 A virtio network device at its place in a platform.
 
