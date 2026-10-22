@@ -12,7 +12,7 @@ How to boot Linux on the host and type at its shell, yourself or from Python, sh
 uv run firmware/build.py linux
 ```
 
-This fetches Linux 6.18.57 from kernel.org and Alpine's mini root, checks both against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves four files in `build/firmware`:
+This fetches Linux 6.18.57 from kernel.org and Alpine's mini root, checks both against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves five files in `build/firmware`:
 
 | File | What it is |
 |---|---|
@@ -20,8 +20,11 @@ This fetches Linux 6.18.57 from kernel.org and Alpine's mini root, checks both a
 | `linux.elf` | The same kernel as `vmlinux`, with its symbols, for a debugger |
 | `linux.map` | `System.map`, every symbol's address |
 | `rootfs.ext4` | Alpine's mini root as an ext4 image, 32 MiB, with `firmware/rootfs/etc/inittab` over Alpine's |
+| `initramfs.cpio` | An initramfs, 2 MB: Alpine's busybox and musl, and the kernel's two NVMe modules, with `firmware/initramfs/init`, which loads them and mounts the root on the drive |
 
-The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. The kernel's own tree and build are in `build/firmware/<machine>`, with the toolchains: the tree in a folder named for its version, so a kernel pinned anew is fetched beside the old one, which can then be deleted (on a Mac, where the folder is a Docker volume, from `tools/devcontainer.py bash`). On a Mac the `linux` part builds in the devcontainer's image by itself, with that folder a Docker volume, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` is shaped as the guest's own tree: a file put there is in the root at the next build.
+The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. The kernel's own tree and build are in `build/firmware/<machine>`, with the toolchains: the tree in a folder named for its version, so a kernel pinned anew is fetched beside the old one, which can then be deleted (on a Mac, where the folder is a Docker volume, from `tools/devcontainer.py bash`). On a Mac the `linux` part builds in the devcontainer's image by itself, with that folder a Docker volume, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` and `firmware/initramfs` are shaped as the guest's own trees: a file put there is in the root, or the initramfs, at the next build.
+
+🎓 `defconfig` builds the NVMe driver as modules, `nvme-core.ko` and `nvme.ko`, not into the kernel, as a distro's kernel does. A module lives on a disk, so a kernel whose root is on an NVMe drive cannot load the driver from that drive. An **initramfs** is the way out: a small root filesystem that the kernel unpacks into memory and runs `/init` from before it has any disk. Ours loads the two modules, waits for the drive the command line's `root=` names, mounts it, and hands over to the init on it with `switch_root`. The kernel's own `usr/gen_init_cpio` packs it.
 
 ## At its shell yourself
 

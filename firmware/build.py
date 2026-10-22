@@ -17,7 +17,8 @@ The parts, each of which fetches or builds what it needs first:
                four applications of ours, for the boards they run on
   edk2         EDK2, which is UEFI, as uefi.fd
   linux        Linux, a stock defconfig kernel for the host, as linux.bin,
-               and a root filesystem for it, Alpine's, as rootfs.ext4
+               a root filesystem for it, Alpine's, as rootfs.ext4, and an
+               initramfs that loads its NVMe driver, as initramfs.cpio
 
 With no part named, every one is built, in that order. Everything goes in
 the output directory (build/firmware), and a second run reuses what is
@@ -27,9 +28,11 @@ of RAM; and <name>_<board>.opcodes.txt, how often each instruction appears
 in it. The boot ROM, fw_jump, test_payload and sbi_payload are each an .elf
 and a .bin, and EDK2 is uefi.fd, its flash device image. Linux is
 linux.bin, the flat Image that fw_jump jumps to, linux.elf, its vmlinux
-with the symbols, and linux.map, its System.map; and rootfs.ext4 is its
+with the symbols, and linux.map, its System.map; rootfs.ext4 is its
 root filesystem, Alpine's mini root with an inittab of ours in it
-(firmware/rootfs).
+(firmware/rootfs); and initramfs.cpio is what loads the kernel's NVMe
+modules and mounts a root on the drive, with an init of ours
+(firmware/initramfs).
 
 The Zephyr SDK has no toolchain for an Intel Mac. There the build runs in
 the devcontainer's image, which is Linux, by way of tools/devcontainer.py,
@@ -53,7 +56,7 @@ import tomllib
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 # Where the firmware is built, unless --out says otherwise.
@@ -188,9 +191,13 @@ PROGRAMS = {
 # What of ours goes into the root filesystem, laid over Alpine's files: a
 # tree shaped as the guest's, so firmware/rootfs/etc/inittab is /etc/inittab.
 ROOTFS_OVERLAY = REPOSITORY / "firmware" / "rootfs"
+# What of ours goes into the initramfs, beside busybox, musl and the NVMe
+# modules: a tree shaped as the guest's, so firmware/initramfs/init is /init.
+INITRAMFS_OVERLAY = REPOSITORY / "firmware" / "initramfs"
 # The stock kernel's NVMe driver, which defconfig builds as modules: make
-# targets, and where they land, in the kernel's build folder; in the order
-# they are loaded, since nvme needs nvme-core.
+# targets, and where they land, in the kernel's build folder. The
+# initramfs's init loads them by these names, nvme-core first, since nvme
+# needs it.
 NVME_MODULES = ("drivers/nvme/host/nvme-core.ko", "drivers/nvme/host/nvme.ko")
 # How big the root filesystem is. Alpine's mini root is 3 MB packed and 9
 # unpacked, and the rest is room to write in.
@@ -912,6 +919,7 @@ class Build:
         # linux.bin is loaded, and would mislead.
         say(f"  {(self.out / 'linux.bin').stat().st_size} bytes in linux.bin")
         self.root_filesystem()
+        self.initramfs()
 
     def root_filesystem(self) -> None:
         """Alpine's mini root filesystem, with our inittab, as an ext4 image.
@@ -927,6 +935,23 @@ class Build:
         needs no root privilege: the files come out owned by whoever ran
         the build, which the root shell in the guest does not mind.
         """
+        root = self.alpine()
+        say("Making the root filesystem")
+        shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
+        image = self.out / "rootfs.ext4"
+        with self.staging(image) as name:
+            made = Path(name) / image.name
+            logged(
+                self.log_of("rootfs"),
+                *("mkfs.ext4", "-q", "-F", "-d", str(root)),
+                *(str(made), ROOTFS_SIZE),
+            )
+            made.replace(image)
+        used = image.stat().st_blocks * 512
+        say(f"  {used} bytes used of the {ROOTFS_SIZE} in rootfs.ext4")
+
+    def alpine(self) -> Path:
+        """Alpine's mini root filesystem, unpacked: fetched if need be."""
         version = self.versions["alpine"]
         root = self.out / f"alpine-minirootfs-{version}"
         if not root.is_dir():
@@ -941,19 +966,74 @@ class Build:
                     sha256=self.pins["alpine"]["sha256"],
                 )
                 staging.rename(root)
-        say("Making the root filesystem")
-        shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
-        image = self.out / "rootfs.ext4"
+        return root
+
+    def initramfs(self) -> None:
+        """What loads the NVMe driver before the root is mounted, as a cpio.
+
+        🐧 An initramfs is a small root filesystem the kernel unpacks into
+        memory and runs `/init` from, before it has any disk: a distro's
+        kernel, with its disk drivers built as modules, boots this way.
+        Ours is Alpine's busybox and musl, the two NVMe modules at the path
+        a distro's kernel keeps them, and firmware/initramfs, whose `/init`
+        loads the modules, mounts the root the command line names and hands
+        over to the root's own init.
+
+        The archive is made by the kernel's own tool, `usr/gen_init_cpio`,
+        which its build makes, from a list of what goes in. It is not
+        compressed: unpacking costs the simulated CPU instructions, and
+        decompressing would cost more. The kernel's unpacker makes no
+        folder by itself, so each entry's folders are listed before it.
+        """
+        say("Making the initramfs")
+        built = self.built_in("linux")
+        release = (built / "include/config/kernel.release").read_text().strip()
+        alpine = self.alpine()
+        lines = []
+        folders = {PurePosixPath("/")}
+
+        def add(kind: str, name: str, rest: str) -> None:
+            """One entry, in gen_init_cpio's format, after its folders."""
+            for folder in reversed(PurePosixPath(name).parents):
+                if folder not in folders:
+                    folders.add(folder)
+                    lines.append(f"dir {folder} 0755 0 0")
+            lines.append(f"{kind} {name} {rest}")
+
+        def file(name: str, source: Path) -> None:
+            add(
+                "file",
+                name,
+                f"{source} {source.stat().st_mode & 0o777:04o} 0 0",
+            )
+
+        add("nod", "/dev/console", "0600 0 0 c 5 1")
+        file("/bin/busybox", alpine / "bin/busybox")
+        add("slink", "/bin/sh", "busybox 0777 0 0")
+        file("/lib/ld-musl-riscv64.so.1", alpine / "lib/ld-musl-riscv64.so.1")
+        add(
+            "slink",
+            "/lib/libc.musl-riscv64.so.1",
+            "ld-musl-riscv64.so.1 0777 0 0",
+        )
+        for module in NVME_MODULES:
+            file(f"/lib/modules/{release}/kernel/{module}", built / module)
+        for source in sorted(INITRAMFS_OVERLAY.rglob("*")):
+            if source.is_file():
+                name = source.relative_to(INITRAMFS_OVERLAY).as_posix()
+                file(f"/{name}", source)
+        listed = built / "initramfs.list"
+        listed.write_text("\n".join(lines) + "\n")
+        image = self.out / "initramfs.cpio"
         with self.staging(image) as name:
             made = Path(name) / image.name
             logged(
-                self.log_of("rootfs"),
-                *("mkfs.ext4", "-q", "-F", "-d", str(root)),
-                *(str(made), ROOTFS_SIZE),
+                self.log_of("initramfs"),
+                *(str(built / "usr" / "gen_init_cpio"), "-o", str(made)),
+                str(listed),
             )
             made.replace(image)
-        used = image.stat().st_blocks * 512
-        say(f"  {used} bytes used of the {ROOTFS_SIZE} in rootfs.ext4")
+        say(f"  {image.stat().st_size} bytes in initramfs.cpio")
 
     # Helpers.
 
