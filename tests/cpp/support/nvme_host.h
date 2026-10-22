@@ -50,6 +50,9 @@ class NvmeHost {
   // What a namespace says about itself.
   struct Namespace {
     std::uint64_t blocks = 0;
+    // How many of the blocks can be written: NCAP. A namespace of none is
+    // one not allocated, and a host leaves it alone.
+    std::uint64_t capacity = 0;
     std::uint32_t block_size = 0;
   };
 
@@ -381,7 +384,8 @@ class NvmeHost {
     // The page lists the block formats the namespace could have, 32 bits
     // each from byte 128, and says at byte 26 which one it has (FLBAS, low
     // four bits). A format gives the block size as a power of two, in its
-    // bits 23 to 16 (LBADS). NSZE, the size in blocks, is 64 bits at byte 0.
+    // bits 23 to 16 (LBADS). NSZE, the size in blocks, is 64 bits at byte 0,
+    // and NCAP, the capacity, the 64 bits after it.
     const std::size_t format = bytes[26] & 0xF;
     const auto block_size_shift = (socpuppet::LoadLittleEndian<std::uint32_t>(
                                        bytes.subspan(128 + (4 * format))) >>
@@ -389,6 +393,8 @@ class NvmeHost {
                                   0xFF;
     return Namespace{
         .blocks = socpuppet::LoadLittleEndian<std::uint64_t>(bytes),
+        .capacity =
+            socpuppet::LoadLittleEndian<std::uint64_t>(bytes.subspan(8)),
         .block_size = std::uint32_t{1} << block_size_shift};
   }
 

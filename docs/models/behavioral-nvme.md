@@ -68,7 +68,7 @@ A line is high while a completion queue on its vector holds a completion the hos
 - **Sharing a vector.** Each completion queue is expected to have a vector to itself.
 - **Some checks a real controller makes** on the host's good behaviour. The page size and entry sizes in `CC` are taken as read, and Flush does not look at the namespace number.
 - **Switching interrupts off.** A queue always interrupts: its interrupt-enable bit and the mask registers (`INTMS`, `INTMC`) are ignored.
-- **A name.** Identify says how many namespaces there are and how big, and nothing else: no model, no serial number, no version.
+- **A name.** Identify says how many namespaces there are, how big, and that every block can be written (its capacity, which Linux needs, or it leaves the namespace out), and nothing else: no model, no serial number, no version.
 - **DMA failures** are noticed only for a command's data pages. A submission queue, a completion queue or a PRP list at an address nothing answers is not.
 - ⚠️ A doorbell write the controller cannot make sense of (a queue that does not exist, a slot past the end of the queue) gets a bus error. A real controller accepts the write and reports the mistake later, as an asynchronous event.
 
