@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next, and M29, `ssh` into that Linux from this machine, follows it.**
+Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, is done too: the hart runs the way Linux runs it, OpenSBI and UEFI boot on both harts, and 🐧 a stock Linux kernel boots to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver, and its root filesystem on the real SSD, across the die-to-die link, with the SSD's own firmware ([linux.md](linux.md)). From here the real blocks take the rest of the stand-ins' places, one at a time. **M29, `ssh` into that Linux from this machine, is next.**
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -30,8 +30,8 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M28 | UEFI boots | M23 | the UEFI shell's prompt, with paging on and the timer ticking in supervisor mode, on both harts; Python types `ver` and `memmap` and resets it (`test_m28_exit.py`) | ✅ |
 | M25 | Virtio spike | M23, M28 | five stand-ins behind `virtio-mmio`, driven first by Python and then by Zephyr's and UEFI's own drivers; a report ([history/virtio-spike.md](history/virtio-spike.md)) | ✅ |
 | M20 | Linux boots | M23, M25 | a shell prompt on the virtio console, on both harts; Python types `uname -a` and reads the answer; every virtio device under Linux's driver; through UEFI from a server's disk, on demand (`test_m20_exit.py`, [linux.md](linux.md)) | ✅ |
-| M24 | A root filesystem on the drive | M8, M20 | Linux's own NVMe driver mounts its root on the Zephyr SSD across the link; a file written from Linux is read back by Python | 🚧 next |
-| M29 | A cable to this machine, and ssh | M20 | Linux boots with its network card bridged to this machine's network, with no root needed; `ssh` from this machine answers `uname -a`, on both harts; a file sent by `scp` is read back at the console | |
+| M24 | A root filesystem on the drive | M8, M20 | Linux's own NVMe driver mounts its root on the Zephyr SSD across the link; a file written from Linux is read back by Python, from the SSD's NAND; through UEFI's own NVMe driver, on demand (`test_m24_exit.py`, [linux.md](linux.md)) | ✅ |
+| M29 | A cable to this machine, and ssh | M20 | Linux boots with its network card bridged to this machine's network, with no root needed; `ssh` from this machine answers `uname -a`, on both harts; a file sent by `scp` is read back at the console | 🚧 next |
 | M17 | Ethernet | M13, M20, M29 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed; DMA to an unmapped page is a fault record and an interrupt; then the drive under Linux's IOMMU driver | |
 | M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | |
@@ -66,7 +66,7 @@ M8 ─┬─ M12 (NPU gate)
                                                                                                                                                    └─ M18 the small essentials
 ```
 
-The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the three branches are independent, and the suggested order is M24, M29, M17, M15, M19, M18, then Phase 7 in any order. M29 comes before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
+The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the three branches are independent, and the suggested order was M24, M29, M17, M15, M19, M18, then Phase 7 in any order; M24 is done. M29 comes before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
 
 ## How a milestone is done
 
@@ -78,17 +78,6 @@ The chain through Phase 5 is stricter than the table's "Needs" column, on purpos
 A milestone's steps are planned when it starts, one `/tdd` session each, and live in its commits. When it is done its row above gets a ✅, what it decided goes to [history/decisions.md](history/decisions.md), what it taught to [history/lessons.md](history/lessons.md), and anything it left for later joins the loose ends below.
 
 ## What is next
-
-### M24: a root filesystem on the drive
-
-The drive has been a Zephyr host's since M3 and a Linux kernel's never. This milestone mounts Linux's root filesystem on it, in the place of 🎭 the virtio disk M20 booted from, under Linux's own NVMe driver, across the link, with the SSD's own Zephyr firmware being the drive: M8's bootchain with Linux on the host.
-
-- **The root complex is a generic ECAM host to Linux** (`pci-host-ecam-generic`), with no driver of ours; M23 decided it and this milestone runs it.
-- **MSI-X as messages to the IMSIC**, which is how the drive's interrupts already travel: the root complex's node says `msi-parent`.
-- **A filesystem Python wrote** is loaded into the drive, and `root=/dev/nvme0n1p1` takes it from there. A file written from Linux's shell is read back by Python through the NVMe host stand-in, as M6 to M8 check the Zephyr host's writes.
-- **UEFI's own NVMe driver as a second opinion**, and a kernel on an EFI System Partition on the drive, the way a server really boots: a tier, on demand.
-
-Exit: Linux boots to a prompt with its root filesystem on the drive; a file written at the prompt is read back by Python, byte for byte, from the drive the Zephyr SSD firmware runs.
 
 ### M29: a cable to this machine, and ssh
 
@@ -191,12 +180,16 @@ Small things that are nobody's milestone. Each links to where its detail lives.
 - A second APLIC domain with delegation, the faithful step after the one domain Linux's driver takes ([models/aplic.md](models/aplic.md)).
 - Paging beyond Sv39, 2 MiB pages, ASIDs, `wfi` in user mode and the vector state: what no test has run on the hart yet ([models/dbt-rise-cpu.md](models/dbt-rise-cpu.md)).
 - The sideband packet's layout lives twice, in C++ and in `socpuppet.ucie`, kept in step only by a decode test; and the reserved gaps in register maps are named by hand in each block's tests.
-- Linux's console on the 16550, the first hardware block to take a virtio stand-in's place under Linux, before M24 and M17 take the disk's and the network card's ([linux.md](linux.md)).
+- Linux's console on the 16550, the next hardware block to take a virtio stand-in's place under Linux, after the drive took the disk's (M24) and before M17 takes the network card's ([linux.md](linux.md)).
 - A boot flash big enough for a kernel: it is 16 MiB with the manager's image at its end, and a `defconfig` kernel is 26 MiB, so from the flash Linux comes through UEFI from the disk; a bigger flash is the maintainer's decision.
 - A Debian root beside Alpine's mini root, for a reader who wants `apt`.
 - The virtio console's size feature (`F_SIZE`), so that `socpuppet linux` tells Linux the terminal's size and its changes; until then `vi` and `top` assume 80 by 24 ([linux.md](linux.md)).
 - An instruction trace on the DBT-RISE CPU, whose `enable_disass` goes to its own logger; QBox's is QEMU's, through the debugger ([models/qbox-cpu.md](models/qbox-cpu.md)).
 - A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today, for our own kernel.
+- Delete I/O Submission and Completion Queue on the drive: Linux sends both at every shutdown and reset, both firmwares answer Invalid Opcode, and Linux, which marks admin commands quiet, carries on and says nothing ([models/ssd-firmware.md](models/ssd-firmware.md)).
+- The drive's `VS` reads zero, so Linux takes NVMe 1.0's road; a version, with what a newer driver then sends (Identify's other CNS values, Get Log Page, asynchronous events), is the step after.
+- Power lost without a shutdown: the SSD's table is saved only when the host shuts the drive down, so a drive whose power just goes keeps the table it last saved. A table rebuilt from the pages, or saved as it goes, belongs with M10's power-loss scenarios.
+- The NVMe frontend's ztest (`zephyr_module/tests/drivers/nvme_frontend`) does not yet have its shield's host shut the drive down; the SSD's contract tests hold both firmwares to the shutdown.
 - The 9P messages `socpuppet.ninep` answers `EOPNOTSUPP`: `Tremove`, `Trename`, `Tlink`, locks and extended attributes ([models/virtio-9p.md](models/virtio-9p.md)).
 
 Known bugs with no milestone:

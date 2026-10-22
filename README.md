@@ -6,7 +6,7 @@
 
 🌙 Every push runs the quick tests on Linux and an Intel Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
 
-> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at ([booting Linux](docs/linux.md)). Next on stage, Linux's root filesystem on the SSD ([the roadmap](docs/roadmap.md)).
+> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). Next on stage, Ethernet ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
 
