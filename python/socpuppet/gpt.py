@@ -7,9 +7,11 @@ it, and so does Linux.
 
 `make` gives a whole disk with a GUID partition table and the partitions
 it is given, each starting on a mebibyte as partitioning tools put them,
-ready for a drive: `PlacedBlock.load` for 🎭 the virtio disk. The disk's
-GUIDs are fixed, so that two disks made of the same partitions are the
-same bytes.
+ready for a drive: `PlacedBlock.load` for 🎭 the virtio disk, or
+`socpuppet.ftl.nand_image` for the SSD. The disk's GUIDs are fixed, so
+that two disks made of the same partitions are the same bytes.
+`partitions` reads a disk's table back: a drive Python reads after a run,
+to see what was written to it.
 """
 
 from __future__ import annotations
@@ -42,11 +44,40 @@ DISK_GUID = uuid.uuid5(uuid.NAMESPACE_URL, "https://socpuppet/disk")
 
 
 class Partition(NamedTuple):
-    """A partition to be made: its type, its name, and what it holds."""
+    """A partition: its type, its name, and what it holds."""
 
     kind: uuid.UUID
     name: str
     data: bytes
+
+
+def size_of(partitions: Sequence[Partition]) -> int:
+    """How many sectors `make` gives `partitions` when it is not told.
+
+    The partitions, each from a mebibyte, then the table's copy and the
+    backup header after the last mebibyte they reach.
+    """
+    placed = _placed(partitions)
+    last = placed[-1][2] + 1 if placed else 0
+    return _to_a_mebibyte(max(last, ALIGNMENT)) + TABLE_SECTORS + 1
+
+
+def _placed(
+    partitions: Sequence[Partition],
+) -> list[tuple[Partition, int, int]]:
+    """Each partition, with its first and last sectors, each from a MiB."""
+    placed = []
+    lba = ALIGNMENT
+    for partition in partitions:
+        length = -(-len(partition.data) // SECTOR)
+        placed.append((partition, lba, lba + length - 1))
+        lba = _to_a_mebibyte(lba + length)
+    return placed
+
+
+def _to_a_mebibyte(lba: int) -> int:
+    """`lba`, or the first sector on a mebibyte after it."""
+    return -(-lba // ALIGNMENT) * ALIGNMENT
 
 
 def make(
@@ -62,16 +93,11 @@ def make(
     last sectors, where tools look for them. Raises ValueError if
     `sectors` cannot hold the partitions and the table's two copies.
     """
-    placed = []
-    lba = ALIGNMENT
-    for partition in partitions:
-        length = -(-len(partition.data) // SECTOR)
-        placed.append((partition, lba, lba + length - 1))
-        lba = -(-(lba + length) // ALIGNMENT) * ALIGNMENT
+    placed = _placed(partitions)
     # After the last partition: the table's copy, then the backup header.
     end = placed[-1][2] + 1 if placed else 2 + TABLE_SECTORS
     needed = end + TABLE_SECTORS + 1
-    total = lba + TABLE_SECTORS + 1 if sectors is None else sectors
+    total = size_of(partitions) if sectors is None else sectors
     if total < needed:
         raise ValueError(
             f"A disk of {total} sectors cannot hold these partitions and the "
@@ -131,3 +157,30 @@ def make(
         fields[3] = zlib.crc32(HEADER.pack(*fields))
         HEADER.pack_into(disk, at * SECTOR, *fields)
     return bytes(disk)
+
+
+def partitions(disk: bytes) -> list[Partition]:
+    """The partitions `disk`'s GUID partition table says it has, in order.
+
+    Each one's data is every sector the table gives it, so a partition
+    made of data that does not fill its last sector reads back with zeros
+    after it. A disk whose sector 1 is not a GPT header has none.
+    """
+    fields = HEADER.unpack_from(disk, SECTOR)
+    signature, entries_at, count = fields[0], fields[10], fields[11]
+    if signature != b"EFI PART":
+        return []
+    found = []
+    for index in range(count):
+        kind, _, first, last, _, name = ENTRY.unpack_from(
+            disk, entries_at * SECTOR + index * ENTRY.size
+        )
+        if kind != bytes(16):
+            found.append(
+                Partition(
+                    uuid.UUID(bytes_le=kind),
+                    name.decode("utf-16-le").rstrip("\0"),
+                    disk[first * SECTOR : (last + 1) * SECTOR],
+                )
+            )
+    return found

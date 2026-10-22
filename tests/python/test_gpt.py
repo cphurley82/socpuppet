@@ -134,6 +134,23 @@ class TestWhenADiskIsMadeWithTwoPartitions:
         assert "No problems found" in listed.stdout, listed.stdout
 
 
+class TestWhenADiskIsReadBack:
+    def test_its_partitions_are_what_it_was_made_with_in_whole_sectors(
+        self, disk
+    ):
+        found = gpt.partitions(disk)
+
+        assert [(each.kind, each.name) for each in found] == [
+            (gpt.EFI_SYSTEM, "spam"),
+            (gpt.LINUX_FILESYSTEM, "eggs"),
+        ]
+        assert found[0].data == SPAM.ljust(2 * SECTOR, b"\0")
+        assert found[1].data == EGGS
+
+    def test_a_disk_with_no_table_has_no_partitions(self):
+        assert gpt.partitions(bytes(64 * SECTOR)) == []
+
+
 #: A disk far bigger than its partitions: 8 MiB.
 DRIVE_SECTORS = 8 * 2048
 
