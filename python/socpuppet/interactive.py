@@ -164,8 +164,11 @@ class _Keys:
         return self
 
     def __exit__(self, *_: object) -> None:
+        # ⚠️ At once, not once the output has drained: on macOS a
+        # pseudo-terminal's output drains only as the far end reads it,
+        # which a script at the far end may not be doing.
         if self._settings is not None:
-            termios.tcsetattr(self._stdin, termios.TCSADRAIN, self._settings)
+            termios.tcsetattr(self._stdin, termios.TCSANOW, self._settings)
 
     def within(self, seconds: float) -> bytes:
         """What is typed within `seconds`, or nothing if nothing is."""
