@@ -70,8 +70,16 @@ bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
   // There is nothing to start up, so the controller is ready as soon as it
   // is enabled, and no longer once it is not. A host need not wait at all.
-  return registers_.Read(offset, out,
-                         {.ready_timeout = 0, .ready = registers_.Enabled()});
+  // Nor is there anything to keep when the power goes: everything is in
+  // RAM, and goes with it. So a shutdown is complete as soon as it is
+  // asked for.
+  return registers_.Read(
+      offset, out,
+      {.ready_timeout = 0,
+       .ready = registers_.Enabled(),
+       .shutdown = registers_.Enabled() && registers_.ShutdownAsked()
+                       ? NvmeHostRegisters::Shutdown::kComplete
+                       : NvmeHostRegisters::Shutdown::kNone});
 }
 
 bool NvmeController::WriteRegister(std::uint64_t offset,

@@ -163,6 +163,20 @@ class NvmeHost {
   // CSTS.RDY: whether the controller is ready to take commands.
   bool IsReady() { return (Read32(kStatus) & kReady) != 0; }
 
+  // 🐧 What Linux does before the power goes: sets CC.SHN to a normal
+  // shutdown and waits for CSTS.SHST to say it is complete, for five
+  // seconds at most, as Linux does for a drive that does not say. Returns
+  // whether it was.
+  bool ShutDown() {
+    Write32(kConfiguration, Read32(kConfiguration) | kNormalShutdown);
+    const sc_core::sc_time limit{5, sc_core::SC_SEC};
+    for (sc_core::sc_time waited = sc_core::SC_ZERO_TIME;
+         !ShutdownIsComplete() && waited < limit; waited += Pause()) {
+      bus_.WaitFor(Pause());
+    }
+    return ShutdownIsComplete();
+  }
+
   // The same, looked at by debug access: the way a debugger reads a
   // register, in no simulated time and with no side effects.
   bool IsReadyByDebugAccess() {
@@ -480,6 +494,10 @@ class NvmeHost {
   static constexpr std::uint32_t kCommandSizes = 6U << 16 | 4U << 20;
   static constexpr std::uint64_t kStatus = 0x1C;
   static constexpr std::uint32_t kReady = 1U << 0;
+  // CC.SHN, a normal shutdown, and CSTS.SHST, the shutdown complete.
+  static constexpr std::uint32_t kNormalShutdown = 1U << 14;
+  static constexpr std::uint32_t kShutdownStatus = 3U << 2;
+  static constexpr std::uint32_t kShutdownComplete = 2U << 2;
   static constexpr std::uint64_t kAdminQueueAttributes = 0x24;
   static constexpr std::uint64_t kAdminSubmissionQueue = 0x28;
   static constexpr std::uint64_t kAdminCompletionQueue = 0x30;
@@ -621,6 +639,10 @@ class NvmeHost {
          IsReady() != wanted && waited < limit; waited += Pause()) {
       bus_.WaitFor(Pause());
     }
+  }
+
+  bool ShutdownIsComplete() {
+    return (Read32(kStatus) & kShutdownStatus) == kShutdownComplete;
   }
 
   std::uint64_t Capabilities() {

@@ -196,6 +196,20 @@ TYPED_TEST_P(NvmeContract, WhenTheHostDisablesTheControllerItStopsBeingReady) {
   EXPECT_FALSE(ready);
 }
 
+// 🐧 Linux shuts a drive down before it switches the power off, and waits
+// for the drive to say it has kept what must outlive the power.
+TYPED_TEST_P(NvmeContract,
+             WhenTheHostShutsTheControllerDownItSaysWhenItIsDone) {
+  bool complete = false;
+
+  this->OnTheHost([&](NvmeHost& host) {
+    host.Enable();
+    complete = host.ShutDown();
+  });
+
+  EXPECT_TRUE(complete);
+}
+
 TYPED_TEST_P(NvmeContract,
              AnAdminCommandWithAnUnknownOpcodeCompletesAsAnInvalidOpcode) {
   std::uint16_t command_id = 0;
@@ -957,6 +971,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     WhenTheHostEnablesTheControllerItBecomesReady,
     AnEnabledControllerSaysReadyToADebugAccessToo,
     WhenTheHostDisablesTheControllerItStopsBeingReady,
+    WhenTheHostShutsTheControllerDownItSaysWhenItIsDone,
     AnAdminCommandWithAnUnknownOpcodeCompletesAsAnInvalidOpcode,
     WhenAnAdminCommandCompletesTheAdminLineRises,
     WhenTheHostAcknowledgesTheOnlyCompletionTheAdminLineFalls,

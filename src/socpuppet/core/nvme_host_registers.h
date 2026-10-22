@@ -23,6 +23,14 @@ namespace socpuppet {
 // The layout is SPDK's (nvme_spec.h), and only the source file includes it.
 class NvmeHostRegisters {
  public:
+  // How far a shutdown the host asked for has got (CSTS.SHST): none
+  // asked for, under way, or complete, by the specification's numbers.
+  enum class Shutdown : std::uint8_t {
+    kNone = 0,
+    kUnderWay = 1,
+    kComplete = 2
+  };
+
   // What a controller says for itself in the registers the host only
   // reads.
   struct Says {
@@ -31,6 +39,8 @@ class NvmeHostRegisters {
     std::uint8_t ready_timeout = 0;
     // CSTS.RDY: whether the controller is ready for commands.
     bool ready = false;
+    // CSTS.SHST: how far a shutdown the host asked for has got.
+    Shutdown shutdown = Shutdown::kNone;
   };
 
   // Reads from the controller registers. Returns false, and touches
@@ -58,6 +68,9 @@ class NvmeHostRegisters {
 
   // Whether the host has the controller enabled: CC.EN.
   bool Enabled() const;
+
+  // Whether the host has asked the controller to shut down: CC.SHN.
+  bool ShutdownAsked() const;
 
  private:
   // A write to the controller registers, and what it did to CC.EN.

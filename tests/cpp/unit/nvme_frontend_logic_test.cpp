@@ -31,6 +31,16 @@ enum HostRegister : std::uint64_t {
   kDoorbells = 0x1000,
 };
 
+// CC's enable bit and its shutdown notification (bits 15:14), and where in
+// CSTS the shutdown's status is (bits 3:2), with what it says: nothing yet,
+// under way, and complete.
+constexpr std::uint32_t kEnable = 1U;
+constexpr std::uint32_t kNormalShutdown = 1U << 14;
+constexpr std::uint32_t kShutdownStatusShift = 2;
+constexpr std::uint32_t kNoShutdown = 0;
+constexpr std::uint32_t kShutdownUnderWay = 1;
+constexpr std::uint32_t kShutdownComplete = 2;
+
 // Where the host of these tests keeps its admin queues, and the first pair
 // of I/O queues it asks for. Every queue has four entries.
 constexpr std::uint64_t kAdminSubmissionQueue = 0x1000;
@@ -140,6 +150,13 @@ struct Rig {
   void HostDisables() {
     HostWrite32(kCc, 0);
     tails = {};
+  }
+  // What a host does before it switches the power off: with the controller
+  // enabled still, it sets CC.SHN to 01, a normal shutdown.
+  void HostShutsDown() { HostWrite32(kCc, kEnable | kNormalShutdown); }
+  // How far the host sees the shutdown: CSTS.SHST.
+  std::uint32_t HostSeesShutdown() const {
+    return (HostRead32(kCsts) >> kShutdownStatusShift) & 0x3U;
   }
 
   // A register as the SSD's CPU reads it, and a write by the CPU.
@@ -310,6 +327,113 @@ TEST(WhenTheCpuAcknowledgesOneOfTwoThingsTheHostHasDone,
   rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
 
   EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_STATUS), NVME_FRONTEND_STATUS_ENABLED);
+}
+
+// 🐧 A host shuts the controller down before it switches the power off, and
+// waits until the controller says the shutdown is complete. What the drive
+// must keep, its firmware keeps first.
+TEST(WhenTheHostAsksAnNvmeFrontendToShutDown, ItsCpuIsToldSo) {
+  Rig rig;
+  rig.HostEnables();
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
+
+  rig.HostShutsDown();
+
+  EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_STATUS), NVME_FRONTEND_STATUS_SHUTDOWN);
+}
+
+TEST(WhenTheHostAsksAnNvmeFrontendToShutDown, TheHostSeesItUnderWay) {
+  Rig rig;
+  rig.HostEnables();
+
+  rig.HostShutsDown();
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kShutdownUnderWay);
+}
+
+TEST(WhenTheCpuAcknowledgesTheShutdown, TheHostSeesItComplete) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostShutsDown();
+
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_SHUTDOWN);
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kShutdownComplete);
+}
+
+TEST(WhenTheHostResetsAnNvmeFrontendItHadShutDown, TheHostSeesNoShutdown) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostShutsDown();
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_SHUTDOWN);
+
+  rig.HostDisables();
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kNoShutdown);
+}
+
+// A host writes CC again after the shutdown, to clear CC.EN, say: that is
+// not another shutdown.
+TEST(WhenTheHostWritesCcAgainAfterAShutdownIsComplete,
+     TheHostStillSeesItComplete) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostShutsDown();
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_SHUTDOWN);
+
+  rig.HostShutsDown();
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kShutdownComplete);
+}
+
+TEST(WhenTheHostAsksAnNvmeFrontendItHasNotEnabledToShutDown, ItsCpuIsNotTold) {
+  Rig rig;
+
+  rig.HostWrite32(kCc, kNormalShutdown);
+
+  EXPECT_FALSE(rig.CpuSees(NVME_FRONTEND_STATUS_SHUTDOWN));
+}
+
+TEST(WhenTheCpuAcknowledgesAShutdownNobodyAskedFor, TheHostSeesNone) {
+  Rig rig;
+  rig.HostEnables();
+
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_SHUTDOWN);
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kNoShutdown);
+}
+
+// The shutdown goes with the reset, as a waiting command does: the
+// firmware's word about it, coming late, is of a controller that is gone.
+TEST(WhenTheCpuAcknowledgesAShutdownAfterTheHostHasReset,
+     TheHostSeesNoShutdownOnTheControllerAfterIt) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostShutsDown();
+  rig.HostDisables();
+
+  rig.CpuWrite32(NVME_FRONTEND_STATUS,
+                 NVME_FRONTEND_STATUS_DISABLED | NVME_FRONTEND_STATUS_SHUTDOWN);
+  rig.HostEnables();
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kNoShutdown);
+}
+
+// As a host that reboots does: the shutdown before it was complete, and
+// the next one is the next one's to say.
+TEST(WhenTheHostAsksAnNvmeFrontendToShutDownAgainAfterAReset,
+     TheHostSeesItUnderWay) {
+  Rig rig;
+  rig.HostEnables();
+  rig.HostShutsDown();
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_SHUTDOWN);
+  rig.HostDisables();
+  rig.CpuWrite32(NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_DISABLED);
+  rig.HostEnables();
+
+  rig.HostShutsDown();
+
+  EXPECT_EQ(rig.HostSeesShutdown(), kShutdownUnderWay);
 }
 
 TEST(WhenTheHostSubmitsACommandToAnNvmeFrontend, ItsCpuFindsItWaiting) {
@@ -875,6 +999,18 @@ TEST(WhenTheHostEnablesAnNvmeFrontendAndTheCpuAskedToBeInterruptedForThat,
   EXPECT_FALSE(rig.frontend.CpuInterrupting());
 }
 
+TEST(
+    WhenTheHostAsksAnNvmeFrontendToShutDownAndTheCpuAskedToBeInterruptedForThat,
+    TheFrontendInterruptsItsCpu) {
+  Rig rig;
+  rig.CpuWrite32(NVME_FRONTEND_INTERRUPT_ENABLE, NVME_FRONTEND_STATUS_SHUTDOWN);
+  rig.HostEnables();
+
+  rig.HostShutsDown();
+
+  EXPECT_TRUE(rig.frontend.CpuInterrupting());
+}
+
 TEST(WhenSomethingHappensThatTheCpuDidNotAskToBeInterruptedFor,
      TheNvmeFrontendDoesNotInterruptItsCpu) {
   Rig rig;
@@ -896,7 +1032,8 @@ TEST(WhenTheCpuEnablesInterruptsAnNvmeFrontendDoesNotHave,
 
   EXPECT_EQ(rig.CpuRead32(NVME_FRONTEND_INTERRUPT_ENABLE),
             NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |
-                NVME_FRONTEND_STATUS_COMMAND_WAITING);
+                NVME_FRONTEND_STATUS_COMMAND_WAITING |
+                NVME_FRONTEND_STATUS_SHUTDOWN);
 }
 
 TEST(WhenTheCpuReadsBackARegisterItWroteInAnNvmeFrontend,

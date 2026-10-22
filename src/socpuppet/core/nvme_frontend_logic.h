@@ -73,6 +73,9 @@ class NvmeFrontendLogic {
   std::size_t vectors_;
   // Whether the firmware has said it is ready for the host's commands.
   bool ready_ = false;
+  // How far a shutdown the host asked for has got: under way until the
+  // firmware acknowledges it, and complete after.
+  NvmeHostRegisters::Shutdown shutdown_ = NvmeHostRegisters::Shutdown::kNone;
   // What the host has done that the CPU has not yet acknowledged.
   std::uint32_t events_ = 0;
   // Which bits of the status interrupt the CPU while they are set.

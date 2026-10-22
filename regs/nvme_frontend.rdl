@@ -50,6 +50,10 @@ addrmap nvme_frontend {
             sw = r;
             desc = "A command is waiting. Set for exactly as long as one is.";
         } COMMAND_WAITING[2:2] = 0;
+        field {
+            sw = rw; onwrite = woclr;
+            desc = "The host has asked the controller to shut down (`CC.SHN`), as it does before the power goes, and sees the shutdown under way (`CSTS.SHST`). Writing the one says the firmware has kept what must outlive the power: the host then sees the shutdown complete.";
+        } SHUTDOWN[3:3] = 0;
     } STATUS @ 0x04;
 
     reg {
@@ -57,6 +61,7 @@ addrmap nvme_frontend {
         field { sw = rw; } ENABLED[0:0] = 0;
         field { sw = rw; } DISABLED[1:1] = 0;
         field { sw = rw; } COMMAND_WAITING[2:2] = 0;
+        field { sw = rw; } SHUTDOWN[3:3] = 0;
     } INTERRUPT_ENABLE @ 0x08;
 
     reg {

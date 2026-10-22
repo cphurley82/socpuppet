@@ -25,12 +25,18 @@ STATUS_ENABLED = 1 << 0
 STATUS_DISABLED = 1 << 1
 #: A command is waiting. Set for exactly as long as one is.
 STATUS_COMMAND_WAITING = 1 << 2
+#: The host has asked the controller to shut down (`CC.SHN`), as it does
+#: before the power goes, and sees the shutdown under way (`CSTS.SHST`).
+#: Writing the one says the firmware has kept what must outlive the power: the
+#: host then sees the shutdown complete.
+STATUS_SHUTDOWN = 1 << 3
 
 #: Which bits of `STATUS` raise `cpu_irq` while they are set.
 INTERRUPT_ENABLE = 0x08
 INTERRUPT_ENABLE_ENABLED = 1 << 0
 INTERRUPT_ENABLE_DISABLED = 1 << 1
 INTERRUPT_ENABLE_COMMAND_WAITING = 1 << 2
+INTERRUPT_ENABLE_SHUTDOWN = 1 << 3
 
 #: What the frontend has, for the firmware to tell the host.
 LIMITS = 0x0C
