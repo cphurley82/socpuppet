@@ -51,15 +51,16 @@ step() {
 }
 
 # Has the driver reset the controller (it deletes the I/O queues, clears
-# CC.EN and sets it again) and waits for it to be live again.
-reset() {
+# CC.EN and sets it again) and waits for it to be live again. A script of
+# its own, for `step` runs it under timeout, which cannot run a function.
+# shellcheck disable=SC2016  # expanded by the sh that runs it
+reset_controller='
   echo 1 >"/sys/class/nvme/$1/reset_controller"
   for _ in $(seq 1200); do
-    [ "$(cat "/sys/class/nvme/$1/state")" = live ] && return 0
+    [ "$(cat "/sys/class/nvme/$1/state")" = live ] && exit 0
     sleep 0.1
   done
-  return 1
-}
+  exit 1'
 
 exercise() {
   drive=$1
@@ -107,7 +108,7 @@ exercise() {
   controller=${device#/dev/}
   controller=${controller%n1}
   function=$(basename "$(readlink -f "/sys/class/nvme/$controller/device")")
-  $ok && step "reset the controller" reset "$controller" || ok=false
+  $ok && step "reset the controller" sh -c "$reset_controller" reset "$controller" || ok=false
   $ok && step "mount after the reset" mount -o ro "$device" "$mnt" || ok=false
   $ok && step "the file survived it" sh -c "cmp '$mnt.file' '$mnt/eggs'" || ok=false
   $ok && step "umount" umount "$mnt" || ok=false
