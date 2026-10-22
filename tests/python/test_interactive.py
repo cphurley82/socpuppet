@@ -22,7 +22,14 @@ from processes import environment
 
 @pytest.fixture
 def terminal(firmware):
-    it = Terminal(firmware(SHELL))
+    it = Terminal(firmware(SHELL), SHELL_ONLY)
+    yield it
+    it.close()
+
+
+@pytest.fixture
+def terminal_until_answered(firmware):
+    it = Terminal(firmware(SHELL), UNTIL_ANSWERED)
     yield it
     it.close()
 
@@ -61,8 +68,21 @@ class TestWhenSomeonePressesCtrlRightBracket:
         assert terminal.settings() == terminal.settings_at_the_start
 
 
+class TestWhenTheUntilConditionComesTrue:
+    def test_interact_returns_having_shown_everything_printed(
+        self, terminal_until_answered
+    ):
+        terminal = terminal_until_answered
+        terminal.wait_for(SHELL_PROMPT.encode())
+
+        terminal.type(b"kernel version\r")
+
+        assert terminal.exit_status() == 0
+        terminal.wait_for(SHELL_VERSION.encode())
+
+
 #: What the process runs: the host with Zephyr's shell, and `interact` at
-#: its UART.
+#: its UART, with `until` or without.
 INTERACTING = """
 import sys
 
@@ -72,8 +92,13 @@ from socpuppet.interactive import interact
 board = host()
 board.platform.build()
 board.platform.load_elf(sys.argv[1])
-interact(board.platform, screen=[board.uart], keyboard=board.uart)
+interact(board.platform, screen=[board.uart], keyboard=board.uart{until})
 """
+SHELL_ONLY = INTERACTING.format(until="")
+#: The same, until the shell has answered `kernel version`.
+UNTIL_ANSWERED = INTERACTING.format(
+    until=f", until=lambda: {SHELL_VERSION!r} in board.uart.output"
+)
 #: Seconds on the wall to wait for the terminal to show something. The
 #: shell prompts within a second of starting here; CI's machines, under
 #: coverage and with every core busy, take several times as long, and the
@@ -82,9 +107,9 @@ PATIENCE = 10
 
 
 class Terminal:
-    """A pseudo-terminal, and `interact` in a process that uses it."""
+    """A pseudo-terminal, and `script` in a process that uses it."""
 
-    def __init__(self, image):
+    def __init__(self, image, script):
         self.screen = b""
         # Where the last text waited for ended: the next is looked for
         # after it.
@@ -92,7 +117,7 @@ class Terminal:
         self.controller, self.device = os.openpty()
         self.settings_at_the_start = self.settings()
         self.process = subprocess.Popen(
-            [sys.executable, "-c", INTERACTING, str(image)],
+            [sys.executable, "-c", script, str(image)],
             stdin=self.device,
             stdout=self.device,
             stderr=subprocess.PIPE,
@@ -117,22 +142,28 @@ class Terminal:
         os.write(self.controller, keys)
 
     def wait_for(self, text):
-        """Read until the screen shows `text` after what was waited for last."""
+        """Read until the screen shows `text` after what was waited for last.
+
+        What the process showed before it ended is read too.
+        """
         deadline = time.monotonic() + PATIENCE
         while text not in self.screen[self.seen :]:
-            if self.process.poll() is not None:
+            ended = self.process.poll() is not None
+            ready, _, _ = select.select(
+                [self.controller], [], [], 0 if ended else 0.1
+            )
+            if ready:
+                self.screen += os.read(self.controller, 4096)
+            elif ended:
                 pytest.fail(
                     f"The process ended before the terminal showed {text!r}:"
                     f"\n{self.process.stderr.read().decode()}"
                 )
-            if time.monotonic() > deadline:
+            elif time.monotonic() > deadline:
                 pytest.fail(
                     f"The terminal never showed {text!r}. It showed:\n"
                     f"{self.screen.decode(errors='replace')}"
                 )
-            ready, _, _ = select.select([self.controller], [], [], 0.1)
-            if ready:
-                self.screen += os.read(self.controller, 4096)
         self.seen = self.screen.index(text, self.seen) + len(text)
 
     def close(self):
