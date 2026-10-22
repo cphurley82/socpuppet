@@ -16,7 +16,9 @@ from console import plain
 from devicetree_compiler import needs_dtc
 from ext4_image import file_in
 from linux_shell import (
+    LONG_ENOUGH_THROUGH_UEFI,
     a_host_with_its_root_on_the_drive,
+    a_host_with_uefi_and_its_root_on_the_drive,
     messages_taken,
     run_to_the_prompt,
     switch_off_at_the_prompt,
@@ -113,6 +115,29 @@ class TestWhenLinuxWritesAFileAndSwitchesOff:
         said = plain(board.virtio.console.output[before:])
         assert switched, said[-3000:]
         assert not re.search(r"nvme\S*: .*shutdown", said, re.I), said
+
+
+@pytest.mark.on_demand("Linux booted the server's way, from the drive")
+@pytest.mark.platform
+class TestWhenUefiBootsTheKernelFromTheDrive:
+    def test_uefis_own_nvme_driver_finds_it_and_linux_mounts_its_root(
+        self, firmware
+    ):
+        # 🎓 The server's way: UEFI's own NVMe driver finds the drive, its
+        # boot manager the shell on the EFI system partition, and the
+        # shell's startup.nsh starts the kernel with its initramfs, which
+        # mounts the root from the drive's second partition.
+        board = a_host_with_uefi_and_its_root_on_the_drive(firmware)
+
+        prompted = run_to_the_prompt(board, within=LONG_ENOUGH_THROUGH_UEFI)
+        assert prompted, (
+            f"Linux never prompted. UEFI's console:\n"
+            f"{plain(board.uart.output)[-3000:]}\nThe virtio console:\n"
+            f"{plain(board.virtio.console.output)[-3000:]}"
+        )
+        mounts = type_and_wait_for_the_prompt(board, "cat /proc/mounts")
+
+        assert "/dev/nvme0n1p2 / ext4 rw," in mounts
 
 
 def root_filesystem_on(board):

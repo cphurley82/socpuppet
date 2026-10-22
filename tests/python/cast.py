@@ -46,6 +46,7 @@ __all__ = [
     "TEST_PAYLOAD",
     "TEST_PAYLOAD_BIN",
     "UEFI_FD",
+    "UEFI_SHELL",
     "boot",
 ]
 
@@ -75,6 +76,8 @@ SBI_PAYLOAD_BIN = "sbi_payload.bin"
 #: EDK2's RISC-V port (firmware/build.py): UEFI, as a flash device image
 #: built to run where `fw_jump` jumps.
 UEFI_FD = "uefi.fd"
+#: UEFI's shell as a program a disk can boot (firmware/build.py edk2).
+UEFI_SHELL = "uefi_shell.efi"
 #: 🐧 Linux (firmware/build.py): the kernel as the flat Image `fw_jump`
 #: jumps to, as vmlinux with its symbols, and as its System.map.
 LINUX_BIN = linux.LINUX_BIN
