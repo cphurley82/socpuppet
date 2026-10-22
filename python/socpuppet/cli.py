@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from socpuppet import address_map, boot_image, interrupt_map, linux, run
 from socpuppet.address_map import MapEntry
-from socpuppet.boards.host import HOST_CPUS, switched_off
+from socpuppet.boards.host import HOST_CPUS, HostCpu, switched_off
 from socpuppet.components import Dialect
 from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
@@ -150,16 +150,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "or else in build/firmware"
         ),
     )
-    runner.add_argument(
-        "--cpu",
-        choices=HOST_CPUS,
-        metavar="CPU",
-        help=(
-            "the host's CPU: dbt_rise_cpu, socpuppet's own, or qbox_cpu, "
-            "QEMU's, which only a build with QBox has. The default is the "
-            "one SOCPUPPET_CPU names, or else dbt_rise_cpu"
-        ),
-    )
+    _add_cpu(runner)
     runner.add_argument(
         "--until",
         type=int,
@@ -170,7 +161,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "default is %(default)s)"
         ),
     )
-    commands.add_parser(
+    linux_command = commands.add_parser(
         "linux",
         help="boot Linux on the host, with this terminal at its console",
         description=(
@@ -182,10 +173,11 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "leaves."
         ),
     )
+    _add_cpu(linux_command, speed=", and which boots Linux ten times as fast")
     options = parser.parse_args(arguments)
 
     if options.command == "linux":
-        _linux()
+        _linux(options.cpu)
     elif options.command == "run":
         run.run(
             options.image,
@@ -208,19 +200,20 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
 
 
-def _linux() -> None:
+def _linux(cpu: HostCpu | None) -> None:
     """Boot Linux on the host, with this terminal at its console.
 
     What is typed waits for the shell's first prompt. It ends when Linux
     switches the host off (`poweroff`), or at Ctrl-].
 
-    An image or a tool that is missing, such as dtc, ends the command with
-    one line that says how to get it.
+    `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names. An
+    image, a tool such as dtc, or a CPU that this build has not ends the
+    command with one line that says how to get it.
     """
     try:
-        board = linux.host_with_linux(run.firmware_directory())
-    except FileNotFoundError as missing:
-        sys.exit(str(missing))
+        board = linux.host_with_linux(run.firmware_directory(), cpu=cpu)
+    except (FileNotFoundError, ValueError) as refused:
+        sys.exit(str(refused))
     assert board.virtio is not None  # the host was described with them
     console = board.virtio.console
     interact(
@@ -229,6 +222,23 @@ def _linux() -> None:
         keyboard=console,
         until=lambda: switched_off(board),
         ready=lambda: linux.PROMPT.search(console.output) is not None,
+    )
+
+
+def _add_cpu(command: argparse.ArgumentParser, *, speed: str = "") -> None:
+    """Give a command the host's choice of CPU, as an option.
+
+    `speed` is what its help says of QBox's CPU's speed, if anything.
+    """
+    command.add_argument(
+        "--cpu",
+        choices=HOST_CPUS,
+        metavar="CPU",
+        help=(
+            "the host's CPU: dbt_rise_cpu, socpuppet's own, or qbox_cpu, "
+            f"QEMU's, which only a build with QBox has{speed}. The default "
+            "is the one SOCPUPPET_CPU names, or else dbt_rise_cpu"
+        ),
     )
 
 
