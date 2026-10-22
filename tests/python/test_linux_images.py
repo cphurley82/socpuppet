@@ -11,11 +11,16 @@ its devicetree in its own zeroed data.
 
 import struct
 
-from cast import LINUX_BIN
+from cast import INITRAMFS_CPIO, LINUX_BIN
 from socpuppet import opensbi
+from socpuppet.boards.host import RAM_SIZE
 
 #: What the header says it is, 48 bytes in (Documentation/arch/riscv/boot-image-header.rst).
 MAGIC = b"RISCV\0\0\0"
+#: How each entry of an uncompressed initramfs starts: the "new" cpio format
+#: with no checksums, the one the kernel unpacks
+#: (Documentation/driver-api/early-userspace/buffer-format.rst).
+NEWC = b"070701"
 
 
 def header(image):
@@ -43,3 +48,15 @@ class TestTheLinuxTheFirmwareBuildLeaves:
             f"past {opensbi.DEVICETREE_COPY_OFFSET:#x}: FW_JUMP_FDT_OFFSET "
             "in firmware/build.py and opensbi.DEVICETREE_COPY_OFFSET must move"
         )
+
+
+class TestTheInitramfsTheFirmwareBuildLeaves:
+    def test_it_is_an_uncompressed_cpio_the_kernel_unpacks(self, firmware):
+        assert firmware(INITRAMFS_CPIO).read_bytes()[: len(NEWC)] == NEWC
+
+    def test_it_ends_inside_the_hosts_ram(self, firmware):
+        initramfs = firmware(INITRAMFS_CPIO).read_bytes()
+
+        _, end = opensbi.initrd_span(initramfs, ram=0)
+
+        assert end <= RAM_SIZE

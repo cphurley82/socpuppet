@@ -24,9 +24,11 @@ from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: The kernel, as the flat Image `fw_jump` jumps to, and its root filesystem:
 #: Alpine's mini root as an ext4 image, which `firmware/build.py linux`
-#: builds beside it.
+#: builds beside it, with an initramfs that loads the kernel's NVMe modules
+#: and mounts a root on the drive.
 LINUX_BIN = "linux.bin"
 ROOTFS_EXT4 = "rootfs.ext4"
+INITRAMFS_CPIO = "initramfs.cpio"
 #: What the kernel is told: its console is 🎭 the virtio console, its early
 #: messages go through OpenSBI's console until that is up, and its root
 #: filesystem is 🎭 the virtio disk, writable.

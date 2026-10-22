@@ -43,6 +43,20 @@ class TestWhenTheDevicetreeIsForLinux:
             "\t};\n"
         ) in devicetree
 
+    def test_chosen_says_where_the_initramfs_is_in_two_cells_each(self):
+        # 🐧 Linux reads where the initramfs starts and ends from these two,
+        # a number of as many cells as the property has.
+        platform, _, _ = cpu_with_its_peripherals()
+
+        devicetree = platform.devicetree(
+            dialect="linux", initrd=(0x8240_0000, 0x1_0000_0010)
+        )
+
+        opened = devicetree.index("\tchosen {")
+        chosen = devicetree[opened : devicetree.index("\t};\n", opened)]
+        assert "\t\tlinux,initrd-start = <0x0 0x82400000>;\n" in chosen
+        assert "\t\tlinux,initrd-end = <0x1 0x10>;\n" in chosen
+
     def test_the_timer_is_an_aclint_mtimer(self):
         platform, _, _ = cpu_with_its_peripherals()
 
