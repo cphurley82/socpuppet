@@ -24,6 +24,7 @@ import termios
 import time
 import tty
 from collections.abc import Callable, Sequence
+from typing import Any, Self
 
 from socpuppet.placed import PlacedFarEnd
 from socpuppet.platform import Platform
@@ -67,15 +68,8 @@ def interact(
     that is a CPU asleep. That stretch is waited out on the wall, and a
     key ends the wait.
     """
-    stdin = sys.stdin.fileno()
-    settings = termios.tcgetattr(stdin) if os.isatty(stdin) else None
-    if settings is not None:
-        tty.setraw(stdin)
-    try:
-        _run(platform, screen, keyboard, until)
-    finally:
-        if settings is not None:
-            termios.tcsetattr(stdin, termios.TCSADRAIN, settings)
+    with _Keys() as keys:
+        _run(platform, screen, keyboard, until, keys)
 
 
 def _run(
@@ -83,13 +77,13 @@ def _run(
     screen: Sequence[PlacedFarEnd],
     keyboard: PlacedFarEnd,
     until: Callable[[], bool],
+    keys: "_Keys",
 ) -> None:
     """Run `platform`, showing `screen` and typing at `keyboard`.
 
     `until` is looked at whenever the terminal is.
     """
     shown = [0] * len(screen)
-    keys = _Keys()
     look_again = 0.0
     while True:
         ahead = platform.time_to_next_activity
@@ -134,7 +128,10 @@ def _show(screen: Sequence[PlacedFarEnd], shown: list[int]) -> None:
 
 
 class _Keys:
-    """What comes in on standard input, until it ends.
+    """Standard input, from the moment it is entered until it is left.
+
+    A terminal is in raw mode in between, handing over each key as it is
+    pressed, and is put back as it was when it is left.
 
     💡 Input that has ended, such as a pipe whose writer is done, is
     always ready to read and always reads nothing, so after it ends it is
@@ -142,16 +139,28 @@ class _Keys:
     """
 
     def __init__(self) -> None:
+        self._stdin = sys.stdin.fileno()
+        self._settings: list[Any] | None = None
         self._ended = False
+
+    def __enter__(self) -> Self:
+        if os.isatty(self._stdin):
+            self._settings = termios.tcgetattr(self._stdin)
+            tty.setraw(self._stdin)
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if self._settings is not None:
+            termios.tcsetattr(self._stdin, termios.TCSADRAIN, self._settings)
 
     def within(self, seconds: float) -> bytes:
         """What is typed within `seconds`, or nothing if nothing is."""
         if self._ended:
             time.sleep(seconds)
             return b""
-        ready, _, _ = select.select([sys.stdin], [], [], seconds)
+        ready, _, _ = select.select([self._stdin], [], [], seconds)
         if not ready:
             return b""
-        typed = os.read(sys.stdin.fileno(), 4096)
+        typed = os.read(self._stdin, 4096)
         self._ended = not typed
         return typed
