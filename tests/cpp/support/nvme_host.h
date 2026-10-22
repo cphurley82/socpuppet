@@ -138,6 +138,11 @@ class NvmeHost {
     return static_cast<std::uint32_t>(Capabilities() & 0xFFFF) + 1;
   }
 
+  // Whether the controller says it takes the NVM command set: CAP.CSS,
+  // bit 0, which is bit 37 of CAP. UEFI's driver will not use one that
+  // does not.
+  bool SaysItTakesNvmCommands() { return ((Capabilities() >> 37) & 1U) != 0; }
+
   // Tells the controller where the admin queues are, sets CC.EN, and waits
   // for the controller to say it is ready for as long as it says that may
   // take.

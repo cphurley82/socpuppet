@@ -162,6 +162,17 @@ TYPED_TEST_P(NvmeContract, AFreshControllerOffersIoQueuesOfAtLeast256Entries) {
   EXPECT_GE(largest_queue, 256U);
 }
 
+// UEFI's NVMe driver asks, and leaves a controller alone that does not say
+// so. Linux takes it for granted.
+TYPED_TEST_P(NvmeContract, AControllerSaysItTakesTheNvmCommandSet) {
+  bool takes_them = false;
+
+  this->OnTheHost(
+      [&](NvmeHost& host) { takes_them = host.SaysItTakesNvmCommands(); });
+
+  EXPECT_TRUE(takes_them);
+}
+
 TYPED_TEST_P(NvmeContract, WhenTheHostEnablesTheControllerItBecomesReady) {
   bool ready = false;
 
@@ -968,6 +979,7 @@ TYPED_TEST_P(NvmeContract,
 
 REGISTER_TYPED_TEST_SUITE_P(
     NvmeContract, AFreshControllerOffersIoQueuesOfAtLeast256Entries,
+    AControllerSaysItTakesTheNvmCommandSet,
     WhenTheHostEnablesTheControllerItBecomesReady,
     AnEnabledControllerSaysReadyToADebugAccessToo,
     WhenTheHostDisablesTheControllerItStopsBeingReady,
