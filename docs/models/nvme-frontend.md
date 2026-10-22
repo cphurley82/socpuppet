@@ -115,6 +115,23 @@ When the host clears `CC.EN` the frontend does its part at once: every queue is 
 - **Nothing in the window is the firmware's mistake.** The completion of a command the reset took away has nowhere to go, so it is dropped, and not refused.
 - **`READY` is only heard when it is true**: the host has the controller enabled, and no reset is waiting to be acknowledged. So firmware that finds both `DISABLED` and `ENABLED` set deals with the reset first, then says it is ready, and need not ask which came last. If the host has disabled the controller again by then, the frontend does not hear it.
 
+### A shutdown
+
+🎓 Before a host switches the power off it asks the drive to shut down, by setting `CC.SHN`, and waits for `CSTS.SHST` to say the shutdown is complete: whatever the drive keeps only in RAM, its flash translation layer's table among it, has to reach the flash first. 🐧 Linux waits five seconds for a drive that does not say how long it takes, and then says the drive was not ready and switches off all the same.
+
+```text
+ host: CC.SHN = 01 ──▶ frontend: SHUTDOWN set, CSTS.SHST = under way
+                                  │
+ firmware: keep the table on the NAND, write 1 to SHUTDOWN
+                                  │
+                                  ▼
+                       CSTS.SHST = complete ──▶ the host switches the power off
+```
+
+- **The acknowledgement is a promise**, as for a reset: writing a one to `SHUTDOWN` says the firmware has kept what must outlive the power. The SSD's firmware erases the reserve, programs the table and writes the header last ([ssd-firmware.md](ssd-firmware.md)).
+- **A reset ends a shutdown**, with any word about it the firmware has yet to give: an acknowledgement after a reset is of the controller that is gone.
+- 🎭 **The behavioral NVMe** has nothing to keep: everything is in RAM and goes with the power. Its shutdown is complete as soon as it is asked for.
+
 ## What it leaves out
 
 - **More than one command at a time.** A real frontend hands firmware many commands at once, and firmware works on them in whatever order suits the flash. Here they go one by one, which is easy to follow and would be slow. 🚧 Nothing takes time yet, so nothing notices.
