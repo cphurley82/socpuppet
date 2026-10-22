@@ -1,6 +1,7 @@
 #ifndef SPIKES_PCIEM_PCIEM_BRIDGE_H_
 #define SPIKES_PCIEM_PCIEM_BRIDGE_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -87,6 +88,8 @@ class PciemBridge : public sc_core::sc_module {
   // Prints each controller register write (not the doorbells) and each
   // refusal, as it is made.
   void LogRegisterWrites(bool log) { log_ = log; }
+  // Prints each command fetched and each completion posted.
+  void LogCommands(bool log) { log_commands_ = log; }
 
  private:
   // Where the doorbells start, and the stride between them: DSTRD is 0.
@@ -130,6 +133,8 @@ class PciemBridge : public sc_core::sc_module {
     std::vector<std::uint8_t> bytes(write.size);
     for (std::size_t i = 0; i < bytes.size(); ++i) {
       bytes[i] = static_cast<std::uint8_t>(write.data >> (8 * i));
+      if (write.offset + i < written_.size())
+        written_[write.offset + i] = bytes[i];
     }
     tlm::tlm_generic_payload transaction;
     transaction.set_command(tlm::TLM_WRITE_COMMAND);
@@ -161,6 +166,9 @@ class PciemBridge : public sc_core::sc_module {
       ++counts_.dma_transfers;
       counts_.dma_bytes += transaction.get_data_length();
       transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+      if (log_commands_ && OnTheAdminQueues(transaction)) {
+        LogCommand(transaction);
+      }
     } catch (const std::exception& refused) {
       ++counts_.dma_failures;
       std::fputs(std::format("dma {} 0x{:x} length {} FAILED: {}\n",
@@ -170,6 +178,52 @@ class PciemBridge : public sc_core::sc_module {
                      .c_str(),
                  stdout);
       transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+    }
+  }
+
+  // Whether a transfer is to or from the admin queues, where the host said
+  // they are: AQA, ASQ and ACQ, as it last wrote them.
+  bool OnTheAdminQueues(const tlm::tlm_generic_payload& transaction) const {
+    const auto at = [this](std::size_t offset, std::size_t size) {
+      std::uint64_t value = 0;
+      for (std::size_t i = 0; i < size; ++i) {
+        value |= std::uint64_t{written_[offset + i]} << (8 * i);
+      }
+      return value;
+    };
+    const std::uint64_t sizes = at(0x24, 4);
+    const std::uint64_t address = transaction.get_address();
+    const bool command = !transaction.is_write();
+    const std::uint64_t base = at(command ? 0x28 : 0x30, 8);
+    const std::uint64_t entries = ((command ? sizes : sizes >> 16) & 0xFFF) + 1;
+    return address >= base && address < base + entries * (command ? 64U : 16U);
+  }
+
+  // A command is 64 bytes and a completion 16, and nothing else the
+  // drives move is either size, so the DMA says what the host asked and
+  // what it was told: opcode, command identifier, namespace and dword 10;
+  // and for a completion, its command identifier and status.
+  void LogCommand(const tlm::tlm_generic_payload& transaction) const {
+    const std::uint8_t* data = transaction.get_data_ptr();
+    const auto word = [data](std::size_t at) {
+      return socpuppet::LoadLittleEndian<std::uint32_t>(
+          std::span<const std::uint8_t>(data + at, 4));
+    };
+    if (!transaction.is_write() && transaction.get_data_length() == 64) {
+      std::fputs(
+          std::format("command opcode 0x{:02x} cid {} nsid {} cdw10 "
+                      "0x{:x} cdw11 0x{:x}\n",
+                      data[0], word(0) >> 16, word(4), word(40), word(44))
+              .c_str(),
+          stdout);
+    } else if (transaction.is_write() && transaction.get_data_length() == 16) {
+      const std::uint32_t status = word(12) >> 17;
+      std::fputs(std::format("completion cid {} dw0 0x{:x} status "
+                             "sct {} sc 0x{:02x}\n",
+                             word(12) & 0xFFFF, word(0), (status >> 8) & 7,
+                             status & 0xFF)
+                     .c_str(),
+                 stdout);
     }
   }
 
@@ -186,6 +240,9 @@ class PciemBridge : public sc_core::sc_module {
   sc_core::sc_event arrived_;
   BridgeCounts counts_;
   bool log_ = false;
+  bool log_commands_ = false;
+  // The controller registers as the host last wrote them.
+  std::array<std::uint8_t, 0x40> written_{};
 };
 
 // Adds the bridge to a registry as `implementation`, talking to `host`.

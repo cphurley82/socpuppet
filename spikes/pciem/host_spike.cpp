@@ -168,8 +168,11 @@ int main(int argc, char** argv) {
   std::optional<spike::PciemDevice> device;
   if (!options->dry_run) {
     device.emplace(spike::PciemDevice::Shape{
-        .vendor = 0x1b36,  // QEMU's NVMe, as a placeholder
-        .device = 0x0010,
+        // The puppet's own, as boards/drive.py has them. Not QEMU's
+        // (1b36:0010): Linux knows that one and works around it, with
+        // one I/O queue and its own command identifiers.
+        .vendor = 0x5350,
+        .device = 0xC0DE,
         .bar0_size = 0x2000,
         .vectors = static_cast<std::uint16_t>(options->vectors)});
   }
@@ -195,6 +198,7 @@ int main(int argc, char** argv) {
   if (options->drive == "zephyr") spike::LoadFirmware(platform, *options);
   auto& bridge = platform.ModuleAt<spike::PciemBridge>("pciem");
   bridge.LogRegisterWrites(options->log);
+  bridge.LogCommands(options->log);
 
   // A drive with firmware boots first, so that it is ready before the
   // host's driver asks.

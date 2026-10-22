@@ -50,6 +50,17 @@ step() {
   fi
 }
 
+# Has the driver reset the controller (it deletes the I/O queues, clears
+# CC.EN and sets it again) and waits for it to be live again.
+reset() {
+  echo 1 >"/sys/class/nvme/$1/reset_controller"
+  for _ in $(seq 1200); do
+    [ "$(cat "/sys/class/nvme/$1/state")" = live ] && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
 exercise() {
   drive=$1
   echo "🧦 $drive"
@@ -61,7 +72,7 @@ exercise() {
   since_boot=$(date '+%Y-%m-%d %H:%M:%S')
   # The log is root's until the end, when it is handed back.
   # shellcheck disable=SC2086,SC2024
-  sudo -u "$user" "$host" "$drive" $extra >"$logs/$drive.log" 2>&1 &
+  sudo -u "$user" "$host" "$drive" --log $extra >"$logs/$drive.log" 2>&1 &
   pid=$!
   start=$(now)
   device=""
@@ -93,6 +104,15 @@ exercise() {
   $ok && step "the file came back" sh -c "cmp '$mnt.file' '$mnt/eggs' && grep -q spam '$mnt/spam'" || ok=false
   $ok && step "umount again" umount "$mnt" || ok=false
   $ok && step "e2fsck -fn" e2fsck -fn "$device" || ok=false
+  controller=${device#/dev/}
+  controller=${controller%n1}
+  function=$(basename "$(readlink -f "/sys/class/nvme/$controller/device")")
+  $ok && step "reset the controller" reset "$controller" || ok=false
+  $ok && step "mount after the reset" mount -o ro "$device" "$mnt" || ok=false
+  $ok && step "the file survived it" sh -c "cmp '$mnt.file' '$mnt/eggs'" || ok=false
+  $ok && step "umount" umount "$mnt" || ok=false
+  # Unbinding shuts the controller down (CC.SHN) and deletes its queues.
+  $ok && step "unbind the driver" sh -c "echo $function >/sys/bus/pci/drivers/nvme/unbind" || ok=false
   mountpoint -q "$mnt" && umount "$mnt"
   rm -rf "$mnt" "$mnt.file" "$pattern" "$pattern.back"
 
