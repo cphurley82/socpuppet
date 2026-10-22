@@ -64,9 +64,8 @@ def interact(
     What is typed before `ready()` is true is held, and typed when it
     comes true, as a person would wait for a prompt. `ready` is looked at
     as `until` is, while something is held, and once true it is to stay
-    true. Input that ends, such
-    as a pipe whose writer is done, leaves the run going, and then only
-    `until` can end it.
+    true. Input that ends, such as a pipe whose writer is done, leaves the
+    run going, and then only `until` can end it.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
@@ -91,6 +90,9 @@ def _run(
     `LOOK_EVERY` while it works: what is new is shown, `until` is asked,
     and what was typed is typed at the keyboard.
     """
+    # What was printed before goes first: the consoles' bytes bypass the
+    # text layer.
+    sys.stdout.flush()
     shown = [0] * len(screen)
     typist = _Typist(keyboard, ready)
     look_again = 0.0
@@ -184,18 +186,27 @@ class _Keys:
 
 
 class _Typist:
-    """Types at `keyboard`, holding what comes before `ready()` is true."""
+    """Types at `keyboard`, holding what comes before `ready()` is true.
+
+    `ready()` is asked only while something is held and until it is true,
+    since once true it stays true: asking may cost a look through
+    everything a console has printed.
+    """
 
     def __init__(
         self, keyboard: PlacedFarEnd, ready: Callable[[], bool]
     ) -> None:
         self._keyboard = keyboard
         self._ready = ready
+        self._been_ready = False
         self._held = b""
 
     def type(self, typed: bytes) -> None:
         """Type `typed`, after what is held, or hold it with the rest."""
         self._held += typed
-        if self._held and self._ready():
+        if not self._held:
+            return
+        self._been_ready = self._been_ready or self._ready()
+        if self._been_ready:
             self._keyboard.write(self._held)
             self._held = b""
