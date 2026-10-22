@@ -205,7 +205,8 @@ def _linux(cpu: HostCpu | None) -> None:
 
     It says first, on standard error, which CPU it boots on and that
     Ctrl-] leaves. What is typed waits for the shell's first prompt. It
-    ends when Linux switches the host off (`poweroff`), or at Ctrl-].
+    ends when Linux switches the host off (`poweroff`), or at Ctrl-], and
+    says which.
 
     `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names. An
     image, a tool such as dtc, or a CPU that this build has not ends the
@@ -232,6 +233,13 @@ def _linux(cpu: HostCpu | None) -> None:
         keyboard=console,
         until=lambda: switched_off(board),
         ready=lambda: linux.PROMPT.search(console.output) is not None,
+    )
+    # On a line of its own: the cursor may be at the end of Linux's prompt.
+    print(
+        "\n🐧 Linux switched the host off."
+        if switched_off(board)
+        else "\n🧦 Left. The simulation ends with the command.",
+        file=sys.stderr,
     )
 
 

@@ -85,9 +85,28 @@ class TestWhenItStarts:
 
 
 @needs_dtc
+class TestWhenSomeoneLeaves:
+    def test_it_says_so_on_a_line_of_its_own(self, tmp_path):
+        put_images_that_boot_nothing(tmp_path)
+
+        ran = run_socpuppet(
+            "linux",
+            input="\x1d",
+            check=False,
+            timeout=STOPS_WITHIN,
+            SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
+        )
+
+        # The line before it may be the end of Linux's prompt, on stdout.
+        *_, before, last = ran.stderr.splitlines()
+        assert before == ""
+        assert "Left" in last
+
+
+@needs_dtc
 @pytest.mark.long
 class TestWhenItIsGivenCommandsThroughAPipe:
-    def test_linux_answers_them_and_poweroff_ends_it(self, firmware):
+    def test_linux_answers_them_and_poweroff_ends_it_saying_why(self, firmware):
         ran = run_socpuppet(
             "linux",
             input="uname -a\npoweroff\n",
@@ -98,6 +117,7 @@ class TestWhenItIsGivenCommandsThroughAPipe:
         # 🐧 `uname -a` answers with the kernel's name and the host's,
         # which firmware/rootfs/etc/inittab sets.
         assert "Linux socpuppet" in ran.stdout
+        assert "switched the host off" in ran.stderr.splitlines()[-1]
 
 
 @pytest.fixture
