@@ -7,6 +7,7 @@ and reads what the process showed.
 """
 
 import os
+import re
 import select
 import subprocess
 import sys
@@ -58,13 +59,20 @@ class Terminal:
     def type(self, keys):
         os.write(self.controller, keys)
 
-    def wait_for(self, text):
+    def wait_for(self, text, within=None):
         """Read until the screen shows `text` after what was waited for last.
 
-        What the process showed before it ended is read too.
+        `text` is bytes, or a pattern of them (`re.compile(rb"...")`). It is
+        waited for `within` seconds, if given, or else the terminal's
+        `patience`. What the process showed before it ended is read too.
         """
-        deadline = time.monotonic() + self.patience
-        while text not in self.screen[self.seen :]:
+        pattern = (
+            re.compile(re.escape(text)) if isinstance(text, bytes) else text
+        )
+        deadline = time.monotonic() + (
+            self.patience if within is None else within
+        )
+        while not (found := pattern.search(self.screen, self.seen)):
             ended = self.process.poll() is not None
             ready, _, _ = select.select(
                 [self.controller], [], [], 0 if ended else 0.1
@@ -81,7 +89,7 @@ class Terminal:
                     f"The terminal never showed {text!r}. It showed:\n"
                     f"{self.shown()}"
                 )
-        self.seen = self.screen.index(text, self.seen) + len(text)
+        self.seen = found.end()
 
     def shown(self):
         """Everything the screen has shown, as text."""
