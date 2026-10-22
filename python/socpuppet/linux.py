@@ -19,7 +19,7 @@ import re
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.drive import BehavioralDrive
-from socpuppet.boards.host import MODEL, RAM_BASE, Host, host
+from socpuppet.boards.host import MODEL, RAM_BASE, Host, HostCpu, host
 from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: The kernel, as the flat Image `fw_jump` jumps to, and its root filesystem:
@@ -39,24 +39,28 @@ PROMPT = re.compile(r"socpuppet:\S+# ")
 def host_with_linux(
     firmware: pathlib.Path,
     *,
+    cpu: HostCpu | None = None,
     share: str | os.PathLike[str] | None = None,
     gdb_port: int = 0,
 ) -> Host[BehavioralDrive]:
     """A host built with Linux in place, from the images in `firmware`.
 
     `firmware` is the directory `firmware/build.py` left OpenSBI and Linux
-    in. `share` is a directory of this machine for Linux to mount
-    (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
-    debugger.
+    in. `cpu` is the host's CPU, as `host()` takes it, so that with none
+    it is the one SOCPUPPET_CPU names. `share` is a directory of this
+    machine for Linux to mount (`mount -t 9p`), if any. With a
+    `gdb_port`, the CPU waits for a debugger.
 
     A missing image is a FileNotFoundError that says how to build it,
-    before anything is described.
+    before anything is described. A CPU that this build has not, or that
+    the host cannot have, is a ValueError that says so.
     """
     fw_jump, kernel, rootfs = (
         _read(firmware / name)
         for name in (opensbi.FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4)
     )
     board = host(
+        cpu=cpu,
         boot=from_rom,
         sbi=True,
         virtio=Virtio(blocks=len(rootfs) // SECTOR, share=share),

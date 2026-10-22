@@ -10,7 +10,7 @@ from devicetree_compiler import needs_dtc
 from linux_shell import linux_images
 from processes import run_socpuppet
 from pseudo_terminal import Terminal
-from socpuppet import linux
+from socpuppet import _core, linux
 
 
 class TestWhenAnImageIsNotBuilt:
@@ -29,6 +29,42 @@ class TestWhenAnImageIsNotBuilt:
         assert "\n" not in said
         assert str(tmp_path / FW_JUMP_BIN) in said
         assert "uv run firmware/build.py opensbi linux" in said
+
+
+@needs_dtc
+@pytest.mark.skipif(_core.has_qbox, reason="this build has QBox's CPU")
+class TestWhenItIsAskedForQboxsCpuInABuildWithoutIt:
+    def test_it_fails_in_one_line_that_says_how_to_build_one(self, tmp_path):
+        # Images that are there, if no Linux: the CPU is refused first.
+        for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
+            (tmp_path / image).write_bytes(b"spam")
+
+        ran = run_socpuppet(
+            "linux",
+            "--cpu",
+            "qbox_cpu",
+            check=False,
+            SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
+        )
+
+        assert ran.returncode != 0
+        [line] = ran.stderr.strip().splitlines()
+        assert "tools/build_qbox.py" in line
+
+    def test_socpuppet_cpu_asks_for_it_as_the_option_does(self, tmp_path):
+        for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
+            (tmp_path / image).write_bytes(b"spam")
+
+        ran = run_socpuppet(
+            "linux",
+            check=False,
+            SOCPUPPET_CPU="qbox_cpu",
+            SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
+        )
+
+        assert ran.returncode != 0
+        [line] = ran.stderr.strip().splitlines()
+        assert "tools/build_qbox.py" in line
 
 
 @needs_dtc
