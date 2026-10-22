@@ -256,6 +256,14 @@ def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
             assert "build/firmware/initramfs.cpio" in paths, file
 
 
+def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
+    for file, jobs in WORKFLOW_FILES.items():
+        kept = paths_kept_by(jobs["firmware-edk2"])
+        assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
+        for paths in kept.values():
+            assert "build/firmware/uefi_shell.efi" in paths, file
+
+
 def test_a_change_to_what_the_initramfs_is_made_of_is_a_new_linux_cache():
     for file, jobs in WORKFLOW_FILES.items():
         (key,) = keys_of_what_it_builds(jobs["firmware-linux"])

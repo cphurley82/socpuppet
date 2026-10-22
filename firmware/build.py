@@ -15,7 +15,8 @@ The parts, each of which fetches or builds what it needs first:
   opensbi      OpenSBI for the host, as fw_jump, with its test_payload
   zephyr       Zephyr's images: four samples and two of its tests, and
                four applications of ours, for the boards they run on
-  edk2         EDK2, which is UEFI, as uefi.fd
+  edk2         EDK2, which is UEFI, as uefi.fd, and its shell as a program
+               a disk can boot, uefi_shell.efi
   linux        Linux, a stock defconfig kernel for the host, as linux.bin,
                a root filesystem for it, Alpine's, as rootfs.ext4, and an
                initramfs that loads its NVMe driver, as initramfs.cpio
@@ -828,16 +829,15 @@ class Build:
                 "CLANGDWARF_BIN": f"{self.llvm_dir}/bin/",
             },
         )
-        fd = (
-            workspace
-            / "Build"
-            / "RiscVVirtQemu"
-            / f"{target}_{toolchain}"
-            / "FV"
-            / "RISCV_VIRT_CODE.fd"
-        )
-        shutil.copy(fd, self.out / "uefi.fd")
+        built = workspace / "Build" / "RiscVVirtQemu" / f"{target}_{toolchain}"
+        shutil.copy(built / "FV" / "RISCV_VIRT_CODE.fd", self.out / "uefi.fd")
         say(f"  {(self.out / 'uefi.fd').stat().st_size} bytes in uefi.fd")
+        # 🎓 UEFI's shell is in uefi.fd, and a file of it too: what a disk
+        # can boot, as a server's removable disk does, to run a startup.nsh
+        # that starts a kernel with what it is to be told.
+        shutil.copy(
+            built / "RISCV64" / "Shell.efi", self.out / "uefi_shell.efi"
+        )
 
     # Linux.
 
