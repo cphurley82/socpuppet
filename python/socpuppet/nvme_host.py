@@ -45,6 +45,13 @@ _ENABLE = 1 << 0
 _ENTRY_SIZES = 6 << 16 | 4 << 20
 _STATUS = 0x1C
 _READY = 1 << 0
+# CC.SHN, a normal shutdown, and CSTS.SHST, which says when it is complete.
+_NORMAL_SHUTDOWN = 1 << 14
+_SHUTDOWN_STATUS = 3 << 2
+_SHUTDOWN_COMPLETE = 2 << 2
+# How long a host waits for a shutdown to be complete: as long as Linux
+# waits for a drive that does not say (nvme_core.shutdown_timeout).
+_SHUTDOWN_TIMEOUT = ms(5000)
 # CSTS.CFS: the controller has hit an error it cannot recover from.
 _FATAL = 1 << 1
 _ADMIN_QUEUE_SIZES = 0x24
@@ -240,6 +247,33 @@ class NvmeHost:
         yield write32(self._registers + _CONFIGURATION, _ENTRY_SIZES | _ENABLE)
         yield from self._wait_until_ready_is(True)
         yield from self._create_io_queues()
+
+    def shut_down(self) -> Steps[None]:
+        """Ask the drive to shut down, and wait until it says it has.
+
+        🐧 What a host does before it switches the power off: it sets
+        CC.SHN to a normal shutdown, and the drive keeps what must outlive
+        the power before it says, in CSTS.SHST, that it is done. A drive
+        that has not said so in five seconds, as long as Linux waits, is an
+        NvmeError.
+        """
+        configuration = yield read32(self._registers + _CONFIGURATION)
+        yield write32(
+            self._registers + _CONFIGURATION, configuration | _NORMAL_SHUTDOWN
+        )
+        waited = 0
+        while True:
+            status = yield read32(self._registers + _STATUS)
+            if status & _SHUTDOWN_STATUS == _SHUTDOWN_COMPLETE:
+                return
+            if waited >= _SHUTDOWN_TIMEOUT:
+                raise NvmeError(
+                    "The drive did not say it had shut down (CSTS.SHST) "
+                    f"within {_SHUTDOWN_TIMEOUT // ms(1)} ms, as long as Linux "
+                    "waits. Does its firmware acknowledge a shutdown?"
+                )
+            yield wait(ms(1))
+            waited += ms(1)
 
     def identify_namespace(self) -> Steps[NvmeNamespace]:
         """Ask the drive how big it is, with an Identify command."""

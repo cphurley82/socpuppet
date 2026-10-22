@@ -45,6 +45,7 @@ platform.connect(nvme.irq0, cpu.irq)
 - **`memory_size`** is how big that area is. Give it, and the driver says so when a transfer needs more. Leave it out, and the driver takes pages for as long as it is asked to, past the end of whatever you meant it to have.
 - **`enable()`** asks the controller how long its queues may be and how far apart its doorbells are, resets it, tells it where the admin queues are, enables it, and creates one pair of I/O queues. Calling it again starts over, and what is on the drive stays.
 - **`identify_namespace()`** asks the drive how many blocks it has and how big they are.
+- **`shut_down()`** asks the drive to shut down, as a host does before it switches the power off (`CC.SHN`), and waits until it says it has (`CSTS.SHST`): what the drive must keep, it keeps first. 🐧 It waits five seconds at most, as long as Linux does, and then raises `sp.NvmeError`.
 - **`read_blocks()` and `write_blocks()`** move whole blocks, up to 513 pages of memory (a little over 2 MiB) in one command. The driver spreads the data over pages that need not be next to each other and tells the controller where each one is.
 - **`interrupt=`** is how the driver waits for the controller's interrupt. Left out, it waits with `sp.wait_irq()`, which is right when the controller's first interrupt line is wired to the master that runs the script, as above. Behind PCIe the interrupt arrives as a message, and the thing to pass is `sp.MsiHost(...).wait` (see the [PCIe host](pcie-host.md)).
 - **Errors.** A command the controller fails raises `sp.NvmeError` with the status's name. So does a controller that does not become ready in the time it says it needs, one that reports a fatal error, and one that takes shorter queues than the driver was told to make. Like any exception in a script, it comes out of `platform.run()`.
@@ -55,7 +56,7 @@ platform.connect(nvme.irq0, cpu.irq)
 - **A vector per queue.** Every queue interrupts on vector 0, and the driver waits for one interrupt at a time.
 - **Doing two things at once.** One command at a time: it sends one and waits for it. A real driver keeps many in flight and matches completions to commands by their identifiers.
 - **Patience with a silent controller.** A command that never completes is never given up on: the script is still waiting when the run ends.
-- **Most of what a driver has to get right**: more than one I/O queue or namespace, queues longer than a page, a timeout per command, retries, shutdown.
+- **Most of what a driver has to get right**: more than one I/O queue or namespace, queues longer than a page, a timeout per command, retries, deleting the queues before a shutdown.
 
 ## Under the hood
 
