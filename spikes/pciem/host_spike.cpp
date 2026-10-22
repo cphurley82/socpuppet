@@ -86,13 +86,25 @@ double Seconds(Clock::duration duration) {
 
 // Copies the read-only registers from the function into BAR0's memory.
 // Returns CSTS.
+// CAP.TO, the longest the host should wait for CSTS.RDY, in 500 ms
+// units, is CAP's fourth byte. Linux waits (TO + 1) / 2 whole seconds, so
+// a TO of 0 is no wait at all: it reads CSTS once after setting CC.EN,
+// sleeps a millisecond or two, and gives up. A device played from user
+// space cannot be ready that fast, so `least_timeout` raises it.
+constexpr std::size_t kTimeoutByte = 3;
+
 std::uint32_t Refresh(socpuppet::Platform& platform,
-                      std::span<std::uint8_t> bar0) {
+                      std::span<std::uint8_t> bar0,
+                      std::uint8_t least_timeout) {
   std::uint32_t csts = 0;
   for (const Register& r : kReadOnly) {
     std::array<std::byte, 8> value{};
     if (!platform.DebugRead("pciem.bar0", r.offset, {value.data(), r.size})) {
       continue;
+    }
+    if (r.offset == 0) {
+      auto& timeout = reinterpret_cast<std::uint8_t&>(value[kTimeoutByte]);
+      timeout = std::max(timeout, least_timeout);
     }
     std::memcpy(bar0.data() + r.offset, value.data(), r.size);
     if (r.offset == kCsts) std::memcpy(&csts, value.data(), sizeof csts);
@@ -114,6 +126,8 @@ std::optional<spike::Options> Parse(int argc, char** argv) {
     const bool has_value = i + 1 < argc;
     if (arg == "--log") {
       options.log = true;
+    } else if (arg == "--least-timeout" && has_value) {
+      options.least_timeout = static_cast<std::uint8_t>(std::stoul(argv[++i]));
     } else if (arg == "--dry-run") {
       options.dry_run = true;
     } else if (arg == "--blocks" && has_value) {
@@ -145,7 +159,7 @@ int main(int argc, char** argv) {
     std::fprintf(stderr,
                  "usage: %s <behavioral|stand-in|zephyr> [--blocks N] "
                  "[--vectors N] [--board FILE] [--elf FILE] [--log] "
-                 "[--dry-run]\n",
+                 "[--least-timeout N] [--dry-run]\n",
                  argv[0]);
     return 2;
   }
@@ -195,7 +209,8 @@ int main(int argc, char** argv) {
                 platform.ModuleAt<socpuppet::Ns16550>("uart").Output().c_str());
   }
   if (options->dry_run) return 0;
-  std::uint32_t csts = Refresh(platform, device->Bar0());
+  std::uint32_t csts =
+      Refresh(platform, device->Bar0(), options->least_timeout);
   std::signal(SIGINT, Stop);
   std::signal(SIGTERM, Stop);
   device->Start();
@@ -233,7 +248,7 @@ int main(int argc, char** argv) {
       running += Clock::now() - before;
 
       const std::uint32_t was = csts;
-      csts = Refresh(platform, device->Bar0());
+      csts = Refresh(platform, device->Bar0(), options->least_timeout);
       if ((was & 1) != (csts & 1)) {
         const Clock::time_point now = Clock::now();
         std::printf("[%9.3f] CSTS.RDY %u", Seconds(now - start), csts & 1);

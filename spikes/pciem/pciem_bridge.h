@@ -109,6 +109,9 @@ class PciemBridge : public sc_core::sc_module {
       // high, so there is no new edge: send the vector again once the host
       // has said how far it got, as a device with pending bits would.
       if (acknowledged) {
+        // The drive lowers its line in answer to the doorbell, and a
+        // signal changes a delta cycle after it is written.
+        wait(sc_core::SC_ZERO_TIME);
         for (std::size_t vector = 0; vector < irq.size(); ++vector) {
           if (!irq[vector].read()) continue;
           host_.InjectIrq(static_cast<unsigned>(vector));

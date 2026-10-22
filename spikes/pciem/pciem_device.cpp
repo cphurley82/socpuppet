@@ -10,6 +10,7 @@
 
 #include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <span>
 #include <system_error>
 #include <vector>
@@ -118,6 +119,11 @@ PciemDevice::PciemDevice(const Shape& shape) : bar0_size_(shape.bar0_size) {
                    instance_fd_, 0);
   if (bar == MAP_FAILED) Refused("mmap BAR0");
   bar0_ = static_cast<std::uint8_t*>(bar);
+  // The memory pciem set aside at boot holds whatever was there before,
+  // and the host reads every register it has not been given. Linux 7.0
+  // reads the controller memory buffer's (CMBLOC, CMBSZ) and trips over
+  // garbage there, so a register no one wrote reads as zero.
+  std::memset(bar0_, 0, bar0_size_);
   ring_ = mmap(nullptr, sizeof(pciem_shared_ring), PROT_READ | PROT_WRITE,
                MAP_SHARED, fd_, 0);
   if (ring_ == MAP_FAILED) {

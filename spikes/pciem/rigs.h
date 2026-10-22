@@ -30,6 +30,8 @@ struct Options {
   bool log = false;
   // Builds and boots the drive, and stops before it would go on the bus.
   bool dry_run = false;
+  // The least CAP.TO the host is shown, in 500 ms units (host_spike.cpp).
+  std::uint8_t least_timeout = 0;
 };
 
 // Where a drive's three connections are, once it is in the platform, and
