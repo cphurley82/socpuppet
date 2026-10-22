@@ -24,6 +24,14 @@ std::span<std::uint8_t> BytesOf(Structure& structure) {
   return {reinterpret_cast<std::uint8_t*>(&structure), sizeof structure};
 }
 
+// A shutdown's status is the number the specification gives it.
+static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kNone) ==
+              SPDK_NVME_SHST_NORMAL);
+static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kUnderWay) ==
+              SPDK_NVME_SHST_OCCURRING);
+static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kComplete) ==
+              SPDK_NVME_SHST_COMPLETE);
+
 bool Fits(std::uint64_t offset, std::size_t length) {
   return offset <= kControllerRegistersSize &&
          length <= kControllerRegistersSize - offset;
@@ -42,6 +50,8 @@ bool NvmeHostRegisters::Read(std::uint64_t offset, std::span<std::uint8_t> out,
   registers.cap.bits.to = says.ready_timeout;
   registers.cc.raw = configuration_;
   registers.csts.bits.rdy = says.ready ? 1 : 0;
+  // Two bits, which the mask says to the compiler: the numbers fit.
+  registers.csts.bits.shst = static_cast<std::uint8_t>(says.shutdown) & 0x3U;
   registers.aqa.raw = admin_queue_sizes_;
   registers.asq = admin_submission_queue_;
   registers.acq = admin_completion_queue_;
@@ -77,6 +87,12 @@ bool NvmeHostRegisters::Enabled() const {
   spdk_nvme_cc_register configuration{};
   configuration.raw = configuration_;
   return configuration.bits.en != 0;
+}
+
+bool NvmeHostRegisters::ShutdownAsked() const {
+  spdk_nvme_cc_register configuration{};
+  configuration.raw = configuration_;
+  return configuration.bits.shn != 0;
 }
 
 std::optional<NvmeHostRegisters::Enable>

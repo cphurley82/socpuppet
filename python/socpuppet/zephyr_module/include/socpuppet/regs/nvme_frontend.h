@@ -33,12 +33,20 @@
 #define NVME_FRONTEND_STATUS_DISABLED        (1U << 1)
 /* A command is waiting. Set for exactly as long as one is. */
 #define NVME_FRONTEND_STATUS_COMMAND_WAITING (1U << 2)
+/*
+ * The host has asked the controller to shut down (`CC.SHN`), as it does
+ * before the power goes, and sees the shutdown under way (`CSTS.SHST`).
+ * Writing the one says the firmware has kept what must outlive the power: the
+ * host then sees the shutdown complete.
+ */
+#define NVME_FRONTEND_STATUS_SHUTDOWN        (1U << 3)
 
 /* Which bits of `STATUS` raise `cpu_irq` while they are set. */
 #define NVME_FRONTEND_INTERRUPT_ENABLE                 0x08U
 #define NVME_FRONTEND_INTERRUPT_ENABLE_ENABLED         (1U << 0)
 #define NVME_FRONTEND_INTERRUPT_ENABLE_DISABLED        (1U << 1)
 #define NVME_FRONTEND_INTERRUPT_ENABLE_COMMAND_WAITING (1U << 2)
+#define NVME_FRONTEND_INTERRUPT_ENABLE_SHUTDOWN        (1U << 3)
 
 /* What the frontend has, for the firmware to tell the host. */
 #define NVME_FRONTEND_LIMITS                      0x0CU

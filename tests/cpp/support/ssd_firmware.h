@@ -239,6 +239,9 @@ class SsdFirmware : public sc_core::sc_module {
       if ((status & NVME_FRONTEND_STATUS_COMMAND_WAITING) != 0) {
         DealWithTheCommand();
       }
+      if ((status & NVME_FRONTEND_STATUS_SHUTDOWN) != 0) {
+        TheHostShutTheControllerDown();
+      }
       // What was just done may have lowered the line, which shows a delta
       // cycle later.
       wait(sc_core::SC_ZERO_TIME);
@@ -262,7 +265,8 @@ class SsdFirmware : public sc_core::sc_module {
     submission_queues_.assign(io_queue_pairs_ + 1, false);
     Write32(map_.frontend + NVME_FRONTEND_INTERRUPT_ENABLE,
             NVME_FRONTEND_STATUS_ENABLED | NVME_FRONTEND_STATUS_DISABLED |
-                NVME_FRONTEND_STATUS_COMMAND_WAITING);
+                NVME_FRONTEND_STATUS_COMMAND_WAITING |
+                NVME_FRONTEND_STATUS_SHUTDOWN);
   }
 
   // A controller reset: the queues are gone, and what is on the drive
@@ -281,6 +285,14 @@ class SsdFirmware : public sc_core::sc_module {
   void TheHostEnabledTheController() {
     Write32(map_.frontend + NVME_FRONTEND_STATUS, NVME_FRONTEND_STATUS_ENABLED);
     Write32(map_.frontend + NVME_FRONTEND_CONTROL, NVME_FRONTEND_CONTROL_READY);
+  }
+
+  // The power is about to go. Its table is kept where this firmware keeps
+  // it, which the power does not reach, so there is nothing to do but say
+  // so.
+  void TheHostShutTheControllerDown() {
+    Write32(map_.frontend + NVME_FRONTEND_STATUS,
+            NVME_FRONTEND_STATUS_SHUTDOWN);
   }
 
   void DealWithTheCommand() {

@@ -30,7 +30,8 @@ static_assert(NVME_FRONTEND_COMMAND_SIZE == NvmeQueues::kCommandBytes);
 constexpr std::uint32_t kCanInterrupt =
     NVME_FRONTEND_INTERRUPT_ENABLE_ENABLED |
     NVME_FRONTEND_INTERRUPT_ENABLE_DISABLED |
-    NVME_FRONTEND_INTERRUPT_ENABLE_COMMAND_WAITING;
+    NVME_FRONTEND_INTERRUPT_ENABLE_COMMAND_WAITING |
+    NVME_FRONTEND_INTERRUPT_ENABLE_SHUTDOWN;
 
 // What of the completion status register is kept: the status code, and
 // which list of codes it is from. The frontend passes those on and keeps
@@ -51,14 +52,24 @@ NvmeFrontendLogic::NvmeFrontendLogic(MemoryPort& host_memory,
 bool NvmeFrontendLogic::ReadHostRegister(std::uint64_t offset,
                                          std::span<std::uint8_t> out) const {
   return host_registers_.Read(
-      offset, out, {.ready_timeout = kReadyTimeout, .ready = ready_});
+      offset, out,
+      {.ready_timeout = kReadyTimeout, .ready = ready_, .shutdown = shutdown_});
 }
 
 bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
                                           std::span<const std::uint8_t> in) {
+  const bool shutdown_was_asked = host_registers_.ShutdownAsked();
   const std::optional<NvmeHostRegisters::Enable> enable =
       host_registers_.Write(offset, in, queues_);
   if (!enable) return false;
+  // What a host does before the power goes, Linux among them. The firmware is
+  // told, and the host sees the shutdown under way until the firmware has kept
+  // what must outlive the power, and acknowledged.
+  if (host_registers_.ShutdownAsked() && !shutdown_was_asked &&
+      host_registers_.Enabled()) {
+    shutdown_ = NvmeHostRegisters::Shutdown::kUnderWay;
+    events_ |= NVME_FRONTEND_STATUS_SHUTDOWN;
+  }
   if (*enable == NvmeHostRegisters::Enable::kSet) {
     events_ |= NVME_FRONTEND_STATUS_ENABLED;
   }
@@ -72,6 +83,11 @@ bool NvmeFrontendLogic::WriteHostRegister(std::uint64_t offset,
     command_.reset();
     posting_ = false;
     ready_ = false;
+    // A shutdown goes with it too, and so does the firmware's word that
+    // there is one: an acknowledgement of it would be of the controller
+    // that is gone.
+    shutdown_ = NvmeHostRegisters::Shutdown::kNone;
+    events_ &= ~NVME_FRONTEND_STATUS_SHUTDOWN;
     events_ |= NVME_FRONTEND_STATUS_DISABLED;
   }
   return true;
@@ -166,6 +182,10 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
   const auto value = LoadLittleEndian<std::uint32_t>(in);
   switch (offset) {
     case NVME_FRONTEND_STATUS:
+      // The firmware's word that it has kept what must outlive the power.
+      if ((value & events_ & NVME_FRONTEND_STATUS_SHUTDOWN) != 0) {
+        shutdown_ = NvmeHostRegisters::Shutdown::kComplete;
+      }
       events_ &= ~value;
       break;
     case NVME_FRONTEND_INTERRUPT_ENABLE:
