@@ -10,7 +10,7 @@ import pytest
 
 from devicetree_compiler import needs_dtc
 from linux_shell import linux_images
-from processes import run_socpuppet
+from processes import ended_or_killed, run_socpuppet, start_socpuppet
 from pseudo_terminal import Terminal
 from socpuppet import linux
 
@@ -30,6 +30,28 @@ class TestWhenItIsGivenCommandsThroughAPipe:
         # which firmware/rootfs/etc/inittab sets.
         assert "Linux socpuppet" in ran.stdout
         assert "switched the host off" in ran.stderr.splitlines()[-1]
+
+
+class TestWhenTheReaderOfItsPipedOutputHasGone:
+    def test_it_ends_quietly_saying_so(self, firmware):
+        # 🎓 `socpuppet linux | head -1`: head leaves with its line while
+        # the boot is still scrolling by.
+        with ended_or_killed(
+            start_socpuppet(
+                "linux", SOCPUPPET_FIRMWARE_DIR=str(linux_images(firmware))
+            )
+        ) as run:
+            run.stdout.readline()
+            run.stdout.close()
+
+            ended = run.wait(timeout=BOOTS_WITHIN)
+
+            said = run.stderr.read()
+            assert ended == 0, said
+            # The interpreter's own last flush of standard output, had it
+            # failed, would have been said after this line.
+            assert "reader has gone" in said.splitlines()[-1]
+            assert "Traceback" not in said
 
 
 @pytest.fixture

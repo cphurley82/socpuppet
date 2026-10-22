@@ -4,6 +4,7 @@ A test needs one when what it checks belongs to a whole process: what gets
 imported, how a signal is taken, what a command prints.
 """
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -82,15 +83,28 @@ def run_socpuppet(
     return result
 
 
-def start_socpuppet(*arguments):
+def start_socpuppet(*arguments, **extra_environment):
     """Start the socpuppet command line, with its output piped back."""
     return subprocess.Popen(
         [sys.executable, "-m", "socpuppet", *arguments],
-        env=environment(),
+        env=environment(**extra_environment),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+
+
+@contextlib.contextmanager
+def ended_or_killed(process):
+    """Give `process`; kill it when the `with` ends, if it still runs.
+
+    A run that did not end is a test that failed, not one that hangs.
+    """
+    try:
+        yield process
+    finally:
+        process.kill()
+        process.wait()
 
 
 def run_file(path, **extra_environment):
