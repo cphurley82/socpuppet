@@ -164,8 +164,11 @@ def partitions(disk: bytes) -> list[Partition]:
 
     Each one's data is every sector the table gives it, so a partition
     made of data that does not fill its last sector reads back with zeros
-    after it. A disk whose sector 1 is not a GPT header has none.
+    after it. A disk whose sector 1 is not a GPT header has none, and so
+    has one too short to have a sector 1.
     """
+    if len(disk) < 2 * SECTOR:
+        return []
     fields = HEADER.unpack_from(disk, SECTOR)
     signature, entries_at, count = fields[0], fields[10], fields[11]
     if signature != b"EFI PART":

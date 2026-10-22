@@ -26,7 +26,7 @@ from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet import ftl, gpt, linux
 from socpuppet.boards.host import switched_off
 from socpuppet.boards.manager import add_manager
-from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
+from socpuppet.boards.ssd import add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: The shell's prompt (`socpuppet.linux.PROMPT`) as the last thing it said.
@@ -254,14 +254,14 @@ def a_host_with_uefi_and_its_root_on_the_drive(firmware):
         },
         sectors=ESP_SECTORS,
     )
-    partitions = [
-        gpt.Partition(gpt.EFI_SYSTEM, "EFI system", esp),
-        gpt.Partition(
-            gpt.LINUX_FILESYSTEM, "root", firmware(ROOTFS_EXT4).read_bytes()
-        ),
-    ]
-    blocks = gpt.size_of(partitions)
-    blocks += -blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
+    blocks, disk = linux.disk_for_the_drive(
+        [
+            gpt.Partition(gpt.EFI_SYSTEM, "EFI system", esp),
+            gpt.Partition(
+                gpt.LINUX_FILESYSTEM, "root", firmware(ROOTFS_EXT4).read_bytes()
+            ),
+        ]
+    )
     board, layout = a_host_with_opensbi(
         firmware,
         UEFI_FD,
@@ -272,9 +272,7 @@ def a_host_with_uefi_and_its_root_on_the_drive(firmware):
         manager=add_manager,
     )
     nand = board.drive.ssd.nand
-    nand.load(
-        ftl.nand_image(gpt.make(partitions, sectors=blocks), nand.component)
-    )
+    nand.load(ftl.nand_image(disk, nand.component))
     for image, cpu in (
         (MANAGER, board.manager.cpu),
         (SSD, board.drive.ssd.cpu),

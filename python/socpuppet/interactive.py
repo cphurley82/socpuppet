@@ -162,7 +162,11 @@ class _Keys:
     def __enter__(self) -> Self:
         if os.isatty(self._stdin):
             self._settings = termios.tcgetattr(self._stdin)
-            tty.setraw(self._stdin)
+            # ⚠️ At once, keeping what was typed already: `setraw`'s own
+            # default, TCSAFLUSH, throws away the keys pressed while the
+            # platform was being built, which are meant to wait for the
+            # prompt.
+            tty.setraw(self._stdin, termios.TCSANOW)
         return self
 
     def __exit__(self, *_: object) -> None:

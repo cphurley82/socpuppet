@@ -86,16 +86,19 @@ int main(void)
 		 * The power is about to go: the table goes to the NAND, where
 		 * the next start finds it, and then the host is told the
 		 * shutdown is complete. If the NAND would not take it, the
-		 * host is not told, and gives up waiting in its own time.
+		 * host is not told, and gives up waiting in its own time; and
+		 * the firmware stops, as it does with no NAND, since the
+		 * shutdown it has not acknowledged would wake it again at once,
+		 * for ever.
 		 */
 		if ((happened & NVME_FRONTEND_STATUS_SHUTDOWN) != 0) {
-			if (ftl_save() == 0) {
-				nvme_frontend_acknowledge(ssd_frontend,
-							  NVME_FRONTEND_STATUS_SHUTDOWN);
-			} else {
+			if (ftl_save() != 0) {
 				printk("The table would not go to the NAND, so the drive "
-				       "will not find what was written to it.\n");
+				       "will not find what was written to it. The SSD's "
+				       "firmware stops.\n");
+				return 0;
 			}
+			nvme_frontend_acknowledge(ssd_frontend, NVME_FRONTEND_STATUS_SHUTDOWN);
 		}
 	}
 
