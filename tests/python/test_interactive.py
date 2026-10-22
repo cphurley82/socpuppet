@@ -7,6 +7,7 @@ the test holds the other end of. The firmware is Zephyr's shell on the
 host's UART, which prompts within milliseconds.
 """
 
+import contextlib
 import resource
 import subprocess
 import sys
@@ -16,7 +17,7 @@ from typing import NamedTuple
 import pytest
 
 from cast import SHELL, SHELL_PROMPT, SHELL_VERSION
-from processes import environment, unmeasured
+from processes import ended_or_killed, environment, unmeasured
 from pseudo_terminal import Terminal
 from socpuppet.time import s
 
@@ -93,6 +94,24 @@ class TestWhenKeysComeBeforeTheReadyConditionIsTrue:
         assert returned_at(said) >= READY_AFTER
 
 
+class TestWhenTheReaderOfPipedOutputHasGone:
+    def test_the_run_ends_and_interact_raises_the_broken_pipe(self, firmware):
+        # 🎓 `socpuppet linux | head -1`: head leaves with its line, and
+        # the next thing the console prints has nowhere to go.
+        with started(READER_GONE, firmware(SHELL)) as run:
+            run.stdout.readline()
+            run.stdout.close()
+            # Something to print after the reader has gone, which is the
+            # only way out: the script has no `until`.
+            type_at(run, b"kernel version\n")
+
+            ended = run.wait(timeout=PATIENCE)
+
+            said = run.stderr.read().decode()
+            assert ended == 0, said
+            assert "the reader has gone" in said
+
+
 class TestWhenPipedInputHasEndedAndTheCpuSleeps:
     def test_the_run_waits_without_keeping_this_machine_busy(self, firmware):
         # The shell answers and sleeps, and the run goes on for IDLE
@@ -143,6 +162,25 @@ HELD_UNTIL_READY = INTERACTING.format(
     ),
     after='print(f"returned at {board.platform.time}", file=sys.stderr)',
 )
+#: The same, with no `until`, saying on standard error if the reader of
+#: its output has gone, and ending there: the interpreter's own last flush
+#: of standard output would otherwise fail the same way.
+READER_GONE = """
+import os
+import sys
+
+from socpuppet.boards.host import host
+from socpuppet.interactive import interact
+
+board = host()
+board.platform.build()
+board.platform.load_elf(sys.argv[1])
+try:
+    interact(board.platform, screen=[board.uart], keyboard=board.uart)
+except BrokenPipeError:
+    print("the reader has gone", file=sys.stderr)
+    os._exit(0)
+"""
 #: Seconds on the wall to wait for the terminal to show something. The
 #: shell prompts within a second of starting here; CI's machines, under
 #: coverage and with every core busy, take several times as long, and the
@@ -176,6 +214,33 @@ def piped(script, image, typed):
         wall=time.monotonic() - wall_before,
         busy=cpu_seconds_of_children() - busy_before,
     )
+
+
+def started(script, image):
+    """Start `script` with its input and output piped, and give the process.
+
+    It is killed when the `with` ends, if it is still running.
+    """
+    return ended_or_killed(
+        subprocess.Popen(
+            [sys.executable, "-c", script, str(image)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment(),
+        )
+    )
+
+
+def type_at(run, typed):
+    """Type `typed` at `run`'s piped standard input, and end the input.
+
+    A run that has already ended, as the test may want it to, has nothing
+    to type at: that is no failure.
+    """
+    with contextlib.suppress(BrokenPipeError):
+        run.stdin.write(typed)
+        run.stdin.close()
 
 
 def cpu_seconds_of_children():

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import pathlib
 import runpy
 import sys
@@ -216,7 +217,8 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
 
     It says first, on standard error, which CPU it boots on and that
     Ctrl-] leaves. What is typed waits for the shell's first prompt. It
-    ends when Linux switches the host off (`poweroff`), or at Ctrl-], and
+    ends when Linux switches the host off (`poweroff`), at Ctrl-], or when
+    the reader of its output has gone (`socpuppet linux | head -1`), and
     says which.
 
     `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names, and
@@ -247,20 +249,33 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
     )
     assert board.virtio is not None  # the host was described with them
     console = board.virtio.console
-    interact(
-        board.platform,
-        screen=[board.uart, console],
-        keyboard=console,
-        until=lambda: switched_off(board),
-        ready=lambda: linux.PROMPT.search(console.output) is not None,
-    )
+    try:
+        interact(
+            board.platform,
+            screen=[board.uart, console],
+            keyboard=console,
+            until=lambda: switched_off(board),
+            ready=lambda: linux.PROMPT.search(console.output) is not None,
+        )
+    except BrokenPipeError:
+        # `socpuppet linux | head -1`: the reader has its line and has
+        # gone, which is its choice, not a failure. ⚠️ The interpreter
+        # flushes standard output once more as it ends, and would fail
+        # the same way: so from here it goes nowhere. 💡 Python's own
+        # recipe for this (`signal`, "Note on SIGPIPE").
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        ended = (
+            "🧦 The console's reader has gone. The simulation ends with "
+            "the command."
+        )
+    else:
+        ended = (
+            "🐧 Linux switched the host off."
+            if switched_off(board)
+            else "🧦 Left. The simulation ends with the command."
+        )
     # On a line of its own: the cursor may be at the end of Linux's prompt.
-    print(
-        "\n🐧 Linux switched the host off."
-        if switched_off(board)
-        else "\n🧦 Left. The simulation ends with the command.",
-        file=sys.stderr,
-    )
+    print(f"\n{ended}", file=sys.stderr)
 
 
 def _add_cpu(command: argparse.ArgumentParser, *, speed: str = "") -> None:

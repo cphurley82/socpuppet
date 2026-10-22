@@ -65,7 +65,9 @@ def interact(
     comes true, as a person would wait for a prompt. `ready` is looked at
     as `until` is, while something is held, and once true it is to stay
     true. Input that ends, such as a pipe whose writer is done, leaves the
-    run going, and then only `until` can end it.
+    run going, and then only `until` can end it. Output that ends, such as
+    a pipe whose reader has gone, ends the run: the `BrokenPipeError` is
+    raised on, once the terminal is put back, for the caller to say so.
 
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
