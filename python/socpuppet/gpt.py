@@ -49,20 +49,35 @@ class Partition(NamedTuple):
     data: bytes
 
 
-def make(partitions: Sequence[Partition]) -> bytes:
+def make(
+    partitions: Sequence[Partition], *, sectors: int | None = None
+) -> bytes:
     """A disk with a GUID partition table and `partitions`, in order.
 
     Each partition is as big as its data, rounded up to a sector, and
     starts on a mebibyte; the disk ends with the table's copy and a
-    backup header after the last.
+    backup header. The disk is `sectors` big, or without it big enough,
+    to the next mebibyte. 💡 Give the drive's size when the disk is for a
+    drive: the table's copy and the backup header belong in the drive's
+    last sectors, where tools look for them. Raises ValueError if
+    `sectors` cannot hold the partitions and the table's two copies.
     """
     placed = []
     lba = ALIGNMENT
     for partition in partitions:
-        sectors = -(-len(partition.data) // SECTOR)
-        placed.append((partition, lba, lba + sectors - 1))
-        lba = -(-(lba + sectors) // ALIGNMENT) * ALIGNMENT
-    total = lba + TABLE_SECTORS + 1
+        length = -(-len(partition.data) // SECTOR)
+        placed.append((partition, lba, lba + length - 1))
+        lba = -(-(lba + length) // ALIGNMENT) * ALIGNMENT
+    # After the last partition: the table's copy, then the backup header.
+    end = placed[-1][2] + 1 if placed else 2 + TABLE_SECTORS
+    needed = end + TABLE_SECTORS + 1
+    total = lba + TABLE_SECTORS + 1 if sectors is None else sectors
+    if total < needed:
+        raise ValueError(
+            f"A disk of {total} sectors cannot hold these partitions and the "
+            f"partition table's two copies, which need {needed}. Give it at "
+            "least that many sectors, or smaller partitions."
+        )
     disk = bytearray(total * SECTOR)
 
     disk[446:462] = struct.pack(

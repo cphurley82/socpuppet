@@ -132,3 +132,62 @@ class TestWhenADiskIsMadeWithTwoPartitions:
         assert re.search(r"^\s+1\s.*EF00\s+spam$", listed.stdout, re.M)
         assert re.search(r"^\s+2\s.*8300\s+eggs$", listed.stdout, re.M)
         assert "No problems found" in listed.stdout, listed.stdout
+
+
+#: A disk far bigger than its partitions: 8 MiB.
+DRIVE_SECTORS = 8 * 2048
+
+
+@pytest.fixture
+def disk_of_a_drive():
+    """The two partitions on a disk as big as `DRIVE_SECTORS`."""
+    return gpt.make(
+        [
+            gpt.Partition(gpt.EFI_SYSTEM, "spam", SPAM),
+            gpt.Partition(gpt.LINUX_FILESYSTEM, "eggs", EGGS),
+        ],
+        sectors=DRIVE_SECTORS,
+    )
+
+
+class TestWhenADiskIsMadeAsBigAsADrive:
+    """🎓 A partition table's copy is at the disk's end, so a disk image
+    for a drive is as big as the drive, or the copy is not where the
+    drive's end is, and a tool that looks there finds none."""
+
+    def test_it_is_that_many_sectors(self, disk_of_a_drive):
+        assert len(disk_of_a_drive) == DRIVE_SECTORS * SECTOR
+
+    def test_its_backup_header_is_in_the_drives_last_sector(
+        self, disk_of_a_drive
+    ):
+        last = DRIVE_SECTORS - 1
+
+        assert header_at(disk_of_a_drive, 1)["backup"] == last
+        assert header_at(disk_of_a_drive, last)["signature"] == b"EFI PART"
+
+    def test_a_disk_too_small_for_its_partitions_is_refused(self):
+        # Smaller than a partition table and its copy alone.
+        with pytest.raises(ValueError, match=r"64 sectors.*need"):
+            gpt.make(
+                [gpt.Partition(gpt.LINUX_FILESYSTEM, "eggs", EGGS)],
+                sectors=64,
+            )
+
+    @pytest.mark.skipif(SGDISK is None, reason="sgdisk is not installed")
+    def test_sgdisk_lists_its_partitions_and_finds_no_problems(
+        self, disk_of_a_drive, tmp_path
+    ):
+        # ⚠️ Listed, as above, so that it is the disk's own table sgdisk
+        # read and not one it made in memory.
+        image = tmp_path / "disk.img"
+        image.write_bytes(disk_of_a_drive)
+
+        verified = subprocess.run(
+            [SGDISK, "--print", "--verify", str(image)],
+            capture_output=True,
+            text=True,
+        )
+
+        assert re.search(r"^\s+2\s.*8300\s+eggs$", verified.stdout, re.M)
+        assert "No problems found" in verified.stdout, verified.stdout
