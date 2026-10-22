@@ -19,13 +19,14 @@ from cast import (
     ROOTFS_EXT4,
     SSD,
     UEFI_FD,
+    UEFI_SHELL,
 )
 from console import plain
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
-from socpuppet import gpt, linux
+from socpuppet import ftl, gpt, linux
 from socpuppet.boards.host import switched_off
 from socpuppet.boards.manager import add_manager
-from socpuppet.boards.ssd import add_ssd
+from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: The shell's prompt (`socpuppet.linux.PROMPT`) as the last thing it said.
@@ -220,6 +221,66 @@ def a_host_with_uefi_and_linux(firmware, boot):
     )
     board.virtio.blk.load(disk)
     boot(board, layout, firmware)
+    return board
+
+
+#: What UEFI's shell runs from the drive's EFI system partition: the kernel,
+#: by its EFI stub, told where its initramfs is on the same partition, and
+#: its command line, root in the drive's second partition. 🎓 A kernel a
+#: program starts takes its command line from what the program says, in
+#: place of the devicetree's `bootargs`.
+STARTUP_NSH = (
+    "FS0:\r\n"
+    "\\linux.efi initrd=\\initramfs.cpio console=hvc0 earlycon=sbi "
+    "root=/dev/nvme0n1p2 rw\r\n"
+)
+
+
+def a_host_with_uefi_and_its_root_on_the_drive(firmware):
+    """M8's board, UEFI starting the kernel from the drive, as a server's.
+
+    The drive is cut up as a server's: an EFI system partition with UEFI's
+    shell where the boot manager looks on a disk with no boot entry of its
+    own, a `startup.nsh` for the shell to run, the kernel and the
+    initramfs; and the root filesystem in the second partition.
+    🎭 OpenSBI and UEFI are loaded the quick way.
+    """
+    esp = fat_image.make(
+        {
+            BOOT_PROGRAM: firmware(UEFI_SHELL).read_bytes(),
+            "EFI/BOOT/startup.nsh": STARTUP_NSH.encode(),
+            "linux.efi": firmware(LINUX_BIN).read_bytes(),
+            "initramfs.cpio": firmware(INITRAMFS_CPIO).read_bytes(),
+        },
+        sectors=ESP_SECTORS,
+    )
+    partitions = [
+        gpt.Partition(gpt.EFI_SYSTEM, "EFI system", esp),
+        gpt.Partition(
+            gpt.LINUX_FILESYSTEM, "root", firmware(ROOTFS_EXT4).read_bytes()
+        ),
+    ]
+    blocks = gpt.size_of(partitions)
+    blocks += -blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
+    board, layout = a_host_with_opensbi(
+        firmware,
+        UEFI_FD,
+        virtio=Virtio(),
+        ram=RAM_THROUGH_UEFI,
+        drive_blocks=blocks,
+        drive=add_ssd,
+        manager=add_manager,
+    )
+    nand = board.drive.ssd.nand
+    nand.load(
+        ftl.nand_image(gpt.make(partitions, sectors=blocks), nand.component)
+    )
+    for image, cpu in (
+        (MANAGER, board.manager.cpu),
+        (SSD, board.drive.ssd.cpu),
+    ):
+        board.platform.load_elf(firmware(image), via=cpu.socket)
+    loaded_by_python(board, layout, firmware)
     return board
 
 
