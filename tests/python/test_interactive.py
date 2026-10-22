@@ -84,6 +84,15 @@ class TestWhenTheUntilConditionComesTrue:
         terminal.wait_for(SHELL_VERSION.encode())
 
 
+class TestWhenKeysComeBeforeTheReadyConditionIsTrue:
+    def test_they_are_held_until_it_is(self, firmware):
+        said = standard_error(
+            HELD_UNTIL_READY, firmware(SHELL), typed=b"kernel version\n"
+        )
+
+        assert returned_at(said) >= READY_AFTER
+
+
 @pytest.mark.long
 class TestWhenPipedInputHasEndedAndTheCpuSleeps:
     def test_the_run_waits_without_keeping_this_machine_busy(self, firmware):
@@ -99,7 +108,7 @@ class TestWhenPipedInputHasEndedAndTheCpuSleeps:
 
 
 #: What the process runs: the host with Zephyr's shell, and `interact` at
-#: its UART, with `until` or without.
+#: its UART, with `options` or without, and `after` it, if anything.
 INTERACTING = """
 import sys
 
@@ -109,20 +118,31 @@ from socpuppet.interactive import interact
 board = host()
 board.platform.build()
 board.platform.load_elf(sys.argv[1])
-interact(board.platform, screen=[board.uart], keyboard=board.uart{until})
+interact(board.platform, screen=[board.uart], keyboard=board.uart{options})
+{after}
 """
-SHELL_ONLY = INTERACTING.format(until="")
+SHELL_ONLY = INTERACTING.format(options="", after="")
 #: The same, until IDLE seconds of the CPU's clock have passed. Long
 #: enough that a wait that spins (a second of this machine's CPU each
 #: second) stands well clear of starting up (a fraction of one), and short
 #: enough for one long test.
 IDLE = 4
 UNTIL_IDLE = INTERACTING.format(
-    until=f", until=lambda: board.platform.time >= {s(IDLE)}"
+    options=f", until=lambda: board.platform.time >= {s(IDLE)}", after=""
 )
 #: The same, until the shell has answered `kernel version`.
-UNTIL_ANSWERED = INTERACTING.format(
-    until=f", until=lambda: {SHELL_VERSION!r} in board.uart.output"
+ANSWERED = f"lambda: {SHELL_VERSION!r} in board.uart.output"
+UNTIL_ANSWERED = INTERACTING.format(options=f", until={ANSWERED}", after="")
+#: The same, with keys held until a second of the CPU's clock has passed,
+#: saying when it returned, in picoseconds. It returns once the shell has
+#: answered, so the shell had not answered before then.
+READY_AFTER = s(1)
+HELD_UNTIL_READY = INTERACTING.format(
+    options=(
+        f", until={ANSWERED}"
+        f", ready=lambda: board.platform.time >= {READY_AFTER}"
+    ),
+    after='print(f"returned at {board.platform.time}", file=sys.stderr)',
 )
 #: Seconds on the wall to wait for the terminal to show something. The
 #: shell prompts within a second of starting here; CI's machines, under
@@ -230,3 +250,24 @@ def cpu_seconds_of_children():
     """The CPU time of the processes this one has started and waited for."""
     usage = resource.getrusage(resource.RUSAGE_CHILDREN)
     return usage.ru_utime + usage.ru_stime
+
+
+def standard_error(script, image, typed):
+    """Run `script` with `typed` piped to it; give what it wrote to stderr."""
+    ran = subprocess.run(
+        [sys.executable, "-c", script, str(image)],
+        input=typed,
+        capture_output=True,
+        env=environment(),
+        timeout=PATIENCE,
+    )
+    assert ran.returncode == 0, ran.stderr.decode()
+    return ran.stderr.decode()
+
+
+def returned_at(said):
+    """When `interact` returned, by the line HELD_UNTIL_READY prints."""
+    (line,) = (
+        each for each in said.splitlines() if each.startswith("returned at ")
+    )
+    return int(line.removeprefix("returned at "))
