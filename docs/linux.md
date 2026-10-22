@@ -116,6 +116,22 @@ mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt
 
 🎓 Linux speaks 9P2000.L to it, the dialect of Plan 9's file protocol that Linux's client speaks, and 🧵 Python serves it with `socpuppet.ninep`. ⚠️ Linux may change anything in the directory, and nothing outside it.
 
+## Its root on the drive
+
+The real drive can take 🎭 the virtio disk's place: the SSD with its own Zephyr firmware, across the die-to-die link, on the board with all three firmwares ([boards.md](boards.md)). Linux finds it with its own NVMe driver, behind the root complex, which it reads as a generic ECAM host (`pci-host-ecam-generic`), and the drive's interrupts reach it as MSI-X messages to the IMSIC.
+
+```sh
+PYTHONPATH=python uv run python -m socpuppet linux --root drive
+```
+
+From Python it is `linux.host_with_linux(firmware, root="drive")`, and `tests/python/test_m24_exit.py` is its test. It needs the IO manager's and the SSD's firmware too, which `uv run firmware/build.py zephyr` builds.
+
+- **The disk is cut up as a server's**: a GUID partition table, `socpuppet.gpt`, with Alpine's root filesystem as its first partition, as big as the drive. `root=/dev/nvme0n1p1` on the command line.
+- 🧵 **Python is the factory.** A drive's blocks are not in its NAND as they are on the disk: the SSD's flash translation layer keeps a table of which NAND page holds each, and the table on the NAND itself ([ssd-firmware.md](models/ssd-firmware.md)). `socpuppet.ftl` lays the disk out that way and `nand.load` programs it, as a factory programs a drive before it ships.
+- **The initramfs loads the driver.** `defconfig` builds NVMe as modules, so the kernel is given the initramfs (above), whose `/init` loads `nvme-core.ko` and `nvme.ko`, waits for `nvme0n1p1`, and mounts it.
+- **It boots in about as long as the virtio root does**: the prompt in 77 s on the wall on the interpreter, with the IO manager's and the SSD's CPUs asleep while they wait.
+- The virtio devices stay, for the console and a shared directory; their disk is blank, and Linux sees it as `/dev/vda` beside the drive.
+
 ## The server's way, through UEFI
 
 A server does not jump straight to its kernel: its UEFI firmware finds the kernel on a disk and starts it. The kernel's `Image` is a UEFI program too, by the EFI stub built into it, so the same file serves both ways.

@@ -2,7 +2,7 @@
 
 import pytest
 
-from cast import FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4
+from cast import FW_JUMP_BIN, INITRAMFS_CPIO, LINUX_BIN, MANAGER, ROOTFS_EXT4
 from devicetree_compiler import needs_dtc
 from processes import run_socpuppet
 from socpuppet import _core
@@ -23,6 +23,30 @@ class TestWhenAnImageIsNotBuilt:
         assert "\n" not in said
         assert str(tmp_path / FW_JUMP_BIN) in said
         assert "uv run firmware/build.py opensbi linux" in said
+
+
+class TestWhenTheRootIsAskedForOnTheDrive:
+    def test_an_image_it_needs_is_named_in_one_line_with_how_to_build_it(
+        self, tmp_path
+    ):
+        # 🐧 The drive is the SSD, on a host whose IO manager and SSD run
+        # their own firmware, which another part of the build makes.
+        for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4, INITRAMFS_CPIO):
+            (tmp_path / image).write_bytes(b"spam")
+
+        ran = run_socpuppet(
+            "linux",
+            "--root",
+            "drive",
+            check=False,
+            SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
+        )
+
+        assert ran.returncode != 0
+        said = ran.stderr.strip()
+        assert "\n" not in said
+        assert str(tmp_path / MANAGER) in said
+        assert "uv run firmware/build.py zephyr" in said
 
 
 @needs_dtc
