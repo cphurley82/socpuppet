@@ -7,12 +7,9 @@ the test holds the other end of. The firmware is Zephyr's shell on the
 host's UART, which prompts within milliseconds.
 """
 
-import os
 import resource
-import select
 import subprocess
 import sys
-import termios
 import time
 from typing import NamedTuple
 
@@ -20,19 +17,22 @@ import pytest
 
 from cast import SHELL, SHELL_PROMPT, SHELL_VERSION
 from processes import environment, unmeasured
+from pseudo_terminal import Terminal
 from socpuppet.time import s
 
 
 @pytest.fixture
 def terminal(firmware):
-    it = Terminal(firmware(SHELL), SHELL_ONLY)
+    it = Terminal(["-c", SHELL_ONLY, str(firmware(SHELL))], patience=PATIENCE)
     yield it
     it.close()
 
 
 @pytest.fixture
 def terminal_until_answered(firmware):
-    it = Terminal(firmware(SHELL), UNTIL_ANSWERED)
+    it = Terminal(
+        ["-c", UNTIL_ANSWERED, str(firmware(SHELL))], patience=PATIENCE
+    )
     yield it
     it.close()
 
@@ -149,73 +149,6 @@ HELD_UNTIL_READY = INTERACTING.format(
 #: coverage and with every core busy, take several times as long, and the
 #: margin costs nothing when the text comes.
 PATIENCE = 10
-
-
-class Terminal:
-    """A pseudo-terminal, and `script` in a process that uses it."""
-
-    def __init__(self, image, script):
-        self.screen = b""
-        # Where the last text waited for ended: the next is looked for
-        # after it.
-        self.seen = 0
-        self.controller, self.device = os.openpty()
-        self.settings_at_the_start = self.settings()
-        self.process = subprocess.Popen(
-            [sys.executable, "-c", script, str(image)],
-            stdin=self.device,
-            stdout=self.device,
-            stderr=subprocess.PIPE,
-            env=environment(),
-        )
-
-    def settings(self):
-        """The terminal's settings, as `termios` has them."""
-        return termios.tcgetattr(self.device)
-
-    def exit_status(self):
-        """How the process ended, once it has, within `PATIENCE`."""
-        try:
-            return self.process.wait(timeout=PATIENCE)
-        except subprocess.TimeoutExpired:
-            pytest.fail(
-                f"The process was still running {PATIENCE} s later. The "
-                f"terminal showed:\n{self.screen.decode(errors='replace')}"
-            )
-
-    def type(self, keys):
-        os.write(self.controller, keys)
-
-    def wait_for(self, text):
-        """Read until the screen shows `text` after what was waited for last.
-
-        What the process showed before it ended is read too.
-        """
-        deadline = time.monotonic() + PATIENCE
-        while text not in self.screen[self.seen :]:
-            ended = self.process.poll() is not None
-            ready, _, _ = select.select(
-                [self.controller], [], [], 0 if ended else 0.1
-            )
-            if ready:
-                self.screen += os.read(self.controller, 4096)
-            elif ended:
-                pytest.fail(
-                    f"The process ended before the terminal showed {text!r}:"
-                    f"\n{self.process.stderr.read().decode()}"
-                )
-            elif time.monotonic() > deadline:
-                pytest.fail(
-                    f"The terminal never showed {text!r}. It showed:\n"
-                    f"{self.screen.decode(errors='replace')}"
-                )
-        self.seen = self.screen.index(text, self.seen) + len(text)
-
-    def close(self):
-        self.process.kill()
-        self.process.wait()
-        os.close(self.controller)
-        os.close(self.device)
 
 
 class Timed(NamedTuple):
