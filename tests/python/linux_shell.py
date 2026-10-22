@@ -11,10 +11,20 @@ import re
 import fat_image
 import gpt_image
 import socpuppet as sp
-from cast import FW_JUMP_BIN, INITRAMFS_CPIO, LINUX_BIN, ROOTFS_EXT4, UEFI_FD
+from cast import (
+    FW_JUMP_BIN,
+    INITRAMFS_CPIO,
+    LINUX_BIN,
+    MANAGER,
+    ROOTFS_EXT4,
+    SSD,
+    UEFI_FD,
+)
 from console import plain
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet import linux
+from socpuppet.boards.manager import add_manager
+from socpuppet.boards.ssd import add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
 
 #: The shell's prompt (`socpuppet.linux.PROMPT`) as the last thing it said.
@@ -93,14 +103,17 @@ def a_host_with_linux(firmware, *, share=None, gdb_port=0):
     )
 
 
-def a_host_with_the_initramfs(firmware, *, drive_blocks=None):
+def a_host_with_the_initramfs(
+    firmware, *, drive_blocks=None, drive=None, manager=None
+):
     """A host built with the kernel and the initramfs, its root on the
     virtio disk.
 
     🎭 The quick way: the initramfs sits in RAM beside the kernel, and its
     `/init` loads the kernel's NVMe modules and mounts the root
     `linux.BOOTARGS` names. `drive_blocks`, if any, is how big the host's
-    drive is.
+    drive is, and `drive` and `manager` are what `host()` adds the drive
+    and the IO manager with.
     """
     rootfs = firmware(ROOTFS_EXT4).read_bytes()
     board, layout = a_host_with_opensbi(
@@ -110,9 +123,29 @@ def a_host_with_the_initramfs(firmware, *, drive_blocks=None):
         bootargs=linux.BOOTARGS,
         initrd=firmware(INITRAMFS_CPIO).read_bytes(),
         drive_blocks=drive_blocks,
+        drive=drive,
+        manager=manager,
     )
     board.virtio.blk.load(rootfs)
     loaded_by_python(board, layout, firmware)
+    return board
+
+
+def a_host_with_the_bootchain_and_the_initramfs(firmware, *, drive_blocks):
+    """M8's board with Linux on the host, booted as `a_host_with_the_initramfs`.
+
+    The IO manager and the SSD each run their own Zephyr firmware, loaded
+    straight into their RAM; the manager trains the die-to-die link and
+    lets the host out of reset. `drive_blocks` is how big the SSD is.
+    """
+    board = a_host_with_the_initramfs(
+        firmware, drive_blocks=drive_blocks, drive=add_ssd, manager=add_manager
+    )
+    for image, cpu in (
+        (MANAGER, board.manager.cpu),
+        (SSD, board.drive.ssd.cpu),
+    ):
+        board.platform.load_elf(firmware(image), via=cpu.socket)
     return board
 
 
