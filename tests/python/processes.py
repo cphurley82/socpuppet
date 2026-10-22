@@ -60,17 +60,22 @@ def start_python(code, *, measured=True):
     )
 
 
-def run_socpuppet(*arguments, check=True, **extra_environment):
+def run_socpuppet(
+    *arguments, check=True, input=None, timeout=None, **extra_environment
+):
     """Run the socpuppet command line, and return the finished process.
 
-    Unless `check` is false, a command that fails fails the test, with
-    what it wrote to its standard error.
+    `input` is piped to it, if any, and it is stopped after `timeout`
+    seconds, if given. Unless `check` is false, a command that fails fails
+    the test, with what it wrote to its standard error.
     """
     result = subprocess.run(
         [sys.executable, "-m", "socpuppet", *arguments],
         env=environment(**extra_environment),
         capture_output=True,
         text=True,
+        input=input,
+        timeout=timeout,
     )
     if check:
         assert result.returncode == 0, result.stderr

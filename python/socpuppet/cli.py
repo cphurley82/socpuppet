@@ -11,7 +11,7 @@ from collections.abc import Sequence
 
 from socpuppet import address_map, boot_image, interrupt_map, linux, run
 from socpuppet.address_map import MapEntry
-from socpuppet.boards.host import HOST_CPUS
+from socpuppet.boards.host import HOST_CPUS, switched_off
 from socpuppet.components import Dialect
 from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
@@ -211,6 +211,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
 def _linux() -> None:
     """Boot Linux on the host, with this terminal at its console.
 
+    What is typed waits for the shell's first prompt. It ends when Linux
+    switches the host off (`poweroff`), or at Ctrl-].
+
     An image or a tool that is missing, such as dtc, ends the command with
     one line that says how to get it.
     """
@@ -219,10 +222,13 @@ def _linux() -> None:
     except FileNotFoundError as missing:
         sys.exit(str(missing))
     assert board.virtio is not None  # the host was described with them
+    console = board.virtio.console
     interact(
         board.platform,
-        screen=[board.uart, board.virtio.console],
-        keyboard=board.virtio.console,
+        screen=[board.uart, console],
+        keyboard=console,
+        until=lambda: switched_off(board),
+        ready=lambda: linux.PROMPT.search(console.output) is not None,
     )
 
 

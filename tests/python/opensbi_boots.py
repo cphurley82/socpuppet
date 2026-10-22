@@ -12,9 +12,7 @@ UEFI tests boot EDK2.
 from cast import FW_JUMP_BIN, ROM_FOR_A_64_BIT_CPU
 from socpuppet import devicetree, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
-from socpuppet.boards.cpu_kit import SYSCON_BASE
 from socpuppet.boards.host import MODEL, RAM_BASE, RAM_SIZE, host
-from socpuppet.regs import system_controller
 
 
 def a_host_with_opensbi(
@@ -44,17 +42,6 @@ def a_host_with_opensbi(
     )
     board.platform.build()
     return board, layout
-
-
-def switched_off(board):
-    """Whether the host's CPU has been switched off, by its system controller.
-
-    OpenSBI's test payload asks to be, and so does a kernel's `poweroff`.
-    """
-    power_off = SYSCON_BASE + system_controller.POWER_OFF
-    return board.platform.peek32(power_off, via=board.cpu.socket) == (
-        system_controller.POWER_OFF_OFF
-    )
 
 
 def loaded_by_python(board, layout, firmware):

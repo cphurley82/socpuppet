@@ -90,6 +90,7 @@ from socpuppet.boards.cpu_kit import (
     COMPUTE_DIE,
     HOST_IMAGE_OFFSET,
     PLIC_BASE,
+    SYSCON_BASE,
     TIMER_BASE,
     TIMER_HZ,
     add_system_controller,
@@ -118,6 +119,7 @@ from socpuppet.components import (
 )
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
+from socpuppet.regs import system_controller
 from socpuppet.time import ms
 
 #: Which of its two CPUs the host has: socpuppet's own, or QEMU's.
@@ -640,6 +642,17 @@ def _drive[Drive: PcieDrive](
         platform, root_complex, blocks=blocks, group=platform.group("ssd")
     )
     return HostDrive(ssd, root_complex)
+
+
+def switched_off(board: Host[Any]) -> bool:
+    """Whether the host's CPU has been switched off, by its system controller.
+
+    OpenSBI's test payload asks to be, and so does a kernel's `poweroff`.
+    """
+    power_off = SYSCON_BASE + system_controller.POWER_OFF
+    return board.platform.peek32(power_off, via=board.cpu.socket) == (
+        system_controller.POWER_OFF_OFF
+    )
 
 
 def drive_overlay(board: Host[Any] | None = None) -> str:
