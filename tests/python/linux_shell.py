@@ -23,6 +23,7 @@ from cast import (
 from console import plain
 from opensbi_boots import a_host_with_opensbi, loaded_by_python
 from socpuppet import gpt, linux
+from socpuppet.boards.host import switched_off
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
@@ -87,6 +88,15 @@ def type_and_wait_for_the_prompt(board, command):
     assert prompted, f"The shell did not prompt again after {command!r}"
     answer = plain(console.output[said_before:]).partition("\n")[2]
     return answer[: PROMPT.search(answer).start()]
+
+
+def switch_off_at_the_prompt(board):
+    """Type `poweroff`, and run until the system controller switches the CPU
+    off, or for `SWITCHES_OFF_WITHIN`. Gives whether it did."""
+    board.virtio.console.write("poweroff\n")
+    return board.platform.run_until(
+        lambda: switched_off(board), timeout=SWITCHES_OFF_WITHIN
+    )
 
 
 def a_host_with_linux(firmware, *, share=None, gdb_port=0):
