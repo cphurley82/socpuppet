@@ -519,6 +519,36 @@ def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
         assert after["start"] >= before["end"]
 
 
+# The jobs that run the tests on every core, Linux's boots among them. Two
+# at once would each take twice as long on the wall, and a boot's timeout
+# is on the wall.
+ON_EVERY_CORE = [
+    "test",
+    "test-quick",
+    "on-demand",
+    "coverage",
+    "sanitizers",
+    "twister",
+    "qbox",
+    "wheel",
+    *(job.name for job in JOBS if job.name.startswith("devcontainer-")),
+]
+
+
+@pytest.mark.parametrize(
+    ("first", "second"), list(itertools.combinations(ON_EVERY_CORE, 2))
+)
+def test_two_at_a_time_never_runs_two_jobs_that_test_on_every_core_together(
+    ci, first, second
+):
+    result, _ = ci("-j", "2", first, second, makes=ONE_WHEEL, SLOW="0.5")
+
+    assert result.returncode == 0, result.stdout
+    commands = sorted(ci.commands(), key=lambda command: command["start"])
+    for before, after in itertools.pairwise(commands):
+        assert after["start"] >= before["end"]
+
+
 def test_one_at_a_time_runs_the_jobs_in_the_tables_order(ci):
     names = ["coverage", "firmware-rom", "lint"]
 
