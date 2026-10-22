@@ -85,6 +85,37 @@ The reset comes first, on purpose. If the host has reset the controller and enab
 - **A write of part of a page** has to keep the rest, so the firmware reads the page into the buffer, has the DMA engine lay the host's blocks over it, and programs it again. It does that once for each page of the drive a command touches, however many pieces the host's memory cuts the data into.
 - **A page that is written again is programmed where it is.** ⚠️ Only the [ideal NAND](ideal-nand.md) allows that. A real chip has to be given a fresh page, the table changed, and the old page left as rubbish until its whole block can be erased. That is where garbage collection begins, and where this FTL stops.
 
+### The table on the NAND
+
+🎓 A table in RAM is gone when the power is, so a real FTL keeps it on the flash too, and finds it there when it starts. This one's place for it is a **reserve**: the NAND's first blocks, which no page of the drive goes in, so that the drive is the NAND less its reserve. The reserve is the fewest whole blocks that hold a header page and a 32-bit entry for each of the NAND's pages: one block of 64 pages of 4 KiB, on a NAND of up to 1008 blocks.
+
+```text
+ the NAND, page by page
+ ┌────────┬──────────────────────┬──────────────────────────────────────┐
+ │ header │ the table            │ the drive's pages, in the order they │
+ │        │ (an entry a page of  │ were first written                   │
+ │        │  the drive)          │                                      │
+ └────────┴──────────────────────┴──────────────────────────────────────┘
+  └─────────── the reserve ──────┘
+```
+
+The header says whose table follows it:
+
+<!-- regs:ftl_header start -->
+
+| Offset | Name | Access | What it is |
+| --- | --- | --- | --- |
+| `0x00` | `MAGIC` | read | What says this is the FTL's header at all. A NAND never programmed reads all ones here, and holds a drive of zeros. 1280591443 `NUMBER`: The four bytes `SFTL`, which as a little-endian number is 0x4C544653. |
+| `0x04` | `VERSION` | read | Which layout the table that follows is in. 1 `FIRST`: The header, then the table from the reserve's second page: for each page of the drive, the NAND page that holds it, a 32-bit word, all ones for none. |
+| `0x08` | `PAGES` | read | How many pages the drive has, and so how many entries the table: a table for a drive of another size is not this one's. |
+| `0x0C` | `NEXT_FREE` | read | The next NAND page nobody has: where the next page of the drive that no NAND page holds yet is written. |
+
+<!-- regs:ftl_header end -->
+
+After it, from the reserve's second page, the table: for each page of the drive, the NAND page that holds it, a little-endian 32-bit word, all ones for none. An erased page reads all ones, so a NAND fresh from the factory has no header and holds a drive of zeros.
+
+🧵 `socpuppet.ftl` is the same layout in Python. `ftl.nand_image(drive, chip)` is a factory's image of a drive: its pages that are not zeros in NAND pages from the end of the reserve, in order, and the table that says so, for `nand.load` to program before a boot ([ideal-nand.md](ideal-nand.md)). `ftl.drive_image(nand.contents, chip)` reads a drive back. `ftl.nand_blocks` is the NAND a drive of so many NAND blocks needs besides its reserve. 🚧 The firmware does not read or save the table yet: that comes with M24, and the contract tests then hold the two copies to each other.
+
 ### A command's data
 
 🎓 NVMe says where a command's data is in the host's memory page by page (PRPs, physical region pages). The first pointer may start anywhere in a page. If the rest fits in one more page the second pointer is that page, and otherwise it points to a list of them. The firmware works out the list, fetching it through the DMA engine when there is one, and then asks for one copy per piece. `_data_of` is that, in one function.
