@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell Python types at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next.**
+Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, has the hart run the way Linux runs it, OpenSBI and UEFI booting on both harts, and 🐧 a stock Linux kernel on them to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver ([linux.md](linux.md)). From here the real blocks take the stand-ins' places, one at a time. **M24, Linux's root filesystem on the SSD, is next.**
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -94,7 +94,7 @@ Exit: Linux boots to a prompt with its root filesystem on the drive; a file writ
 The first network card of real hardware's kind, in the place of 🎭 the virtio network card M20's Linux answered `ping` on. VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
 
 - **The borrowed MAC behind an adapter, held to a contract written first**, as the UART, the timer and the PLIC were.
-- 🧵 **Python is the far end of the cable**: `sp.EthernetCable` hands Python each frame sent and takes frames to deliver, and can write a capture Wireshark opens. 🚧 A bridge to the machine's own network is a tier for later.
+- 🧵 **Python is the far end of the cable**: `sp.EthernetCable` hands Python each frame sent and takes frames to deliver, and can write a capture Wireshark opens. 🚧 A bridge to the machine's own network is a tier for later, and with it `ssh` into the host's Linux from this machine, beside `socpuppet linux`'s console.
 - **The driver is ours**, in socpuppet's Zephyr module, since none exists for this MAC; Zephyr's Stellaris driver is the nearest in shape. 📮 The Linux driver is written here too, since this comes after M20, and both are offered upstream.
 - **Its interrupt is a line to the APLIC**, which is why this waits for M13. SCC's library of interfaces has the sockets the MAC uses and is not linked yet.
 
@@ -181,6 +181,7 @@ Small things that are nobody's milestone. Each links to where its detail lives.
 - Linux's console on the 16550, the first hardware block to take a virtio stand-in's place under Linux, before M24 and M17 take the disk's and the network card's ([linux.md](linux.md)).
 - A boot flash big enough for a kernel: it is 16 MiB with the manager's image at its end, and a `defconfig` kernel is 26 MiB, so from the flash Linux comes through UEFI from the disk; a bigger flash is the maintainer's decision.
 - A Debian root beside Alpine's mini root, for a reader who wants `apt`.
+- The virtio console's size feature (`F_SIZE`), so that `socpuppet linux` tells Linux the terminal's size and its changes; until then `vi` and `top` assume 80 by 24 ([linux.md](linux.md)).
 - An instruction trace on the DBT-RISE CPU, whose `enable_disass` goes to its own logger; QBox's is QEMU's, through the debugger ([models/qbox-cpu.md](models/qbox-cpu.md)).
 - A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today, for our own kernel.
 - The 9P messages `socpuppet.ninep` answers `EOPNOTSUPP`: `Tremove`, `Trename`, `Tlink`, locks and extended attributes ([models/virtio-9p.md](models/virtio-9p.md)).

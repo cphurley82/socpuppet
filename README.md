@@ -6,7 +6,7 @@
 
 🌙 Every push runs the quick tests on Linux and an Intel Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
 
-> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell Python types at ([booting Linux](docs/linux.md)). Next on stage, Linux's root filesystem on the SSD ([the roadmap](docs/roadmap.md)).
+> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at ([booting Linux](docs/linux.md)). Next on stage, Linux's root filesystem on the SSD ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
 
@@ -137,6 +137,12 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 ```
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
+
+🐧 To boot Linux and type at its shell yourself, build the firmware first (`uv run firmware/build.py`, which takes a while the first time), then:
+
+```sh
+PYTHONPATH=python uv run python -m socpuppet linux
+```
 
 - 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
 - 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
