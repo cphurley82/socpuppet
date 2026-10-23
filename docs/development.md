@@ -159,6 +159,11 @@ uv run ctest --preset pciem              # everything, with the ring's test, whi
 - **What needs pciem loaded** is marked `needs_pciem` (`tests/python/pciem_area.py`), which skips unless 🩺 the doctor's `pciem` area is well and the build has pciem: the contract suite, the `socpuppet drive` tests, and M31's exit test, which is also `long`. The rest, the component's own C++ tests among them, run with a fake device and no root.
 - ⚠️ **Root.** The host's commands in those tests run with `sudo -n`, so they run as root or where sudo asks no password, and the doctor says which ([setup.md](setup.md#6-pciem-optional) has both). pciem itself needs root to load, and memory set aside at boot.
 - ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree: build `pciem` again after `dev`, before the tests that need it.
+- 💡 **No reboot: a guest.** `tools/pciem_guest.py` boots this machine's own kernel in QEMU, with this machine's `/` as the guest's root over 9p, loads pciem there in memory the guest's kernel is told it does not have, and runs a command as root in the checkout, ending with its exit status. CI's nightly `pciem-guest` job runs the tests that need pciem that way on GitHub's runner, and `uv run python tools/ci.py pciem-guest` runs it here. 🩺 The doctor's `guest` area says what it needs: QEMU, a static busybox, zstd, the kernel readable by you (`sudo chmod a+r /boot/vmlinuz-$(uname -r)`), its headers, and `/dev/kvm` open to you, since on QEMU's own translation the guest is too slow for Linux's patience.
+
+```sh
+uv run tools/pciem_guest.py -- env SOCPUPPET_REQUIRE_PCIEM=1 .venv/bin/python -m pytest tests/python/test_pciem_contract.py
+```
 
 ## Spikes
 
@@ -174,8 +179,6 @@ uv run ctest --preset spike            # only the tests labelled `spike`
 ```
 
 The speed spike ([spikes/speed](../spikes/speed/README.md), report in [speed-spike.md](history/speed-spike.md)) is behind the same option and stays, unlike the others, so that every later change to the core can be timed against its results. `uv run ctest --preset speed` runs its three loops one at a time, verbosely, and `spikes/speed/run.sh` does one machine's whole column into `spikes/speed/results/`.
-
-The real-host spike ([spikes/pciem](../spikes/pciem/README.md), report in [real-host-spike.md](history/real-host-spike.md)) puts the puppet's drive on this machine's own PCIe bus through pciem, a kernel module, and is Linux-only. It is built only where `spikes/pciem/fetch.sh` has put pciem in `build/pciem` (or `-DPCIEM_DIR` says where), and its two tests need nothing more; running the drive needs the module loaded, which needs root and a reboot, and the README has the recipe. M31 keeps it until it has rebuilt the bridge.
 
 The earlier spikes have gone, each when the milestone it served had rebuilt what it found test-first, and each report names the last commit that held its code. [history/README.md](history/README.md) lists them, with the question each answered.
 

@@ -83,6 +83,15 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **pciem's header needs C++23 and SystemC refuses it.** `pciem_api.h` uses C11's `<stdatomic.h>`, which C++ has only from C++23, and SystemC is built for C++20 and stamps its standard into the link. One source file, with no SystemC in it, says everything to `/dev/pciem`.
 - ⚠️ **Find the drive by where it is, not by its name.** On a machine with NVMe drives of its own the puppet's is not `nvme0n1`; anything that formats it looks for it under pciem's bus first.
 
+### Building it, and running it in CI (M31)
+
+- **pciem watches only the kernel's own mapping of a BAR.** Root's `mmap` of `/sys/bus/pci/devices/<address>/resource0` reads what the host reads, but a write made through it never reaches pciem's ring, so a test that writes the drive's registers from Python sees nothing arrive. The contract watches the writes of Linux's own `nvme` driver instead.
+- **A cleared memory is tested on a dirty one.** pciem's pool hands a device the memory the last device left, and on a fresh boot that memory may already read zero, so the test that BAR0 starts at zero first puts on the bus a drive that fills its registers with ones.
+- ⚠️ **Let Linux go before the platform ends.** A drive whose simulation has stopped answers nothing, and Linux's driver waits 30 s for each command it is owed before it gives up. The tests unbind the driver while the platform is still pumped, and `socpuppet drive` waits for Linux to let go.
+- **The runner can be its own guest.** Booting the runner's kernel with the runner's `/` as the guest's root, over 9p, needs no image built and no path changed: the checkout, its build and its venv are where they were. The guest is root, but `sudo` there cannot read `/etc/sudoers`, since QEMU serves the guest's files as the user who ran it, so the tests skip `sudo` when they are root already.
+- **A guest without KVM is too slow for a real host's patience.** On TCG the Zephyr SSD formatted in more than the 30 s Linux gives a command, and on KVM the three suites took 142 s in the guest against 86 s on the machine itself. ⚠️ A `setfacl` on `/dev/kvm` did not last the afternoon here; the `kvm` group does, and CI's job writes a udev rule.
+- **A test that skips in CI has passed.** A guest missing pciem would skip every test that needs it and go green, so the job asks for pciem (`SOCPUPPET_REQUIRE_PCIEM=1`), and a test holds the job's list of modules to every module that uses `needs_pciem`.
+
 ## Boot ROM, flash, watchdog, system controller
 
 - [models/rom.md](../models/rom.md), [spi-flash.md](../models/spi-flash.md), [watchdog.md](../models/watchdog.md), [system-controller.md](../models/system-controller.md) and [boot-image.md](../models/boot-image.md) say what each does and leaves out; `firmware/rom/README.md` is the ROM's program.

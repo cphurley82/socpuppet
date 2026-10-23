@@ -24,7 +24,6 @@ import sys
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-# spikes/pciem/fetch.sh pins the same commit, until the spike goes.
 PCIEM_COMMIT = "f80bbb7101e180f3ed8cff3a2136e52a101f336c"  # 2026-09-30
 
 # What pciem's build stops without: each program, and the Ubuntu package
