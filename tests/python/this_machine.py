@@ -2,10 +2,12 @@
 
 The drive's program needs no root. What the host does to the drive does:
 reading its registers through /sys, and formatting and mounting it. Each
-of those is run with `sudo -n`, which the doctor's `pciem` area checks
-asks no password (pciem_area.py).
+of those is run as root: as it is, when the tests are, and otherwise with
+`sudo -n`, which the doctor's `pciem` area checks asks no password
+(pciem_area.py).
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -60,9 +62,16 @@ def scribble_on(function: str, data: bytes) -> None:
 
 def as_root(*argv: str) -> bytes:
     """Run `argv` as root, asking no password; returns what it printed."""
-    return subprocess.run(
-        ["sudo", "-n", *argv], capture_output=True, check=True
-    ).stdout
+    return subprocess.run(rooted(*argv), capture_output=True, check=True).stdout
+
+
+def rooted(*argv: str) -> list[str]:
+    """`argv`, to be run as root: as it is, if this is root already.
+
+    In a guest of tools/pciem_guest.py the tests are root, and sudo cannot
+    read its own rules, which are this machine's, shared over 9p.
+    """
+    return list(argv) if os.geteuid() == 0 else ["sudo", "-n", *argv]
 
 
 def block_device(function: str) -> str | None:
@@ -149,7 +158,7 @@ def as_root_while_pumping(board, *argv: str, given: bytes = b"") -> bytes:
     """
     with tempfile.TemporaryFile() as output:
         command = subprocess.Popen(
-            ["sudo", "-n", *argv],
+            rooted(*argv),
             stdin=subprocess.PIPE,
             stdout=output,
             stderr=subprocess.PIPE,

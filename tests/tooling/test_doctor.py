@@ -45,6 +45,8 @@ def load_doctor():
 
 DOCTOR_MODULE = load_doctor()
 AREAS = DOCTOR_MODULE.AREAS
+# The kernel the fake machine runs, unless a test says otherwise.
+RELEASE = "7.0.0-38-generic"
 # What QBox's build needs, as tools/build_qbox.py lists it for the doctor.
 QBOX = DOCTOR_MODULE.BUILD_QBOX
 
@@ -56,6 +58,7 @@ PROGRAMS = (
     *(name for name, _, _ in QBOX.PROGRAMS),
     "pkgutil",
     "sudo",
+    *(name for name, _ in DOCTOR_MODULE.PCIEM_GUEST.PROGRAMS),
 )
 
 # The package of python.org's CPython that cibuildwheel looks for on a Mac,
@@ -78,9 +81,11 @@ def doctor(tmp_path):
 
     run returns the finished process. run.without(program) takes a program
     off the path, and run.lines() are the commands the fakes were given.
-    The files the doctor looks at, in /proc, /sys and /dev, are a Linux's
-    with pciem loaded, unless a test changes them with run.runs_kernel,
-    run.unload_pciem, run.lock_pciems_device or run.is_not_linux.
+    The files the doctor looks at, in /proc, /sys, /dev, /boot and /lib,
+    are a Linux's running RELEASE with pciem loaded, KVM, and the kernel
+    and its headers, unless a test changes them with run.runs_kernel,
+    run.unload_pciem, run.lock_pciems_device, run.is_not_linux,
+    run.hides_the_kernel, run.locks_kvm or run.lacks_kernel_headers.
     """
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
@@ -93,10 +98,16 @@ def doctor(tmp_path):
     log = tmp_path / "log"
     machine = tmp_path / "machine"
     (machine / "proc/sys/kernel").mkdir(parents=True)
-    (machine / "proc/sys/kernel/osrelease").write_text("7.0.0-38-generic\n")
+    (machine / "proc/sys/kernel/osrelease").write_text(f"{RELEASE}\n")
     (machine / "sys/module/pciem").mkdir(parents=True)
     (machine / "dev").mkdir()
     (machine / "dev/pciem").write_text("")
+    (machine / "dev/kvm").write_text("")
+    (machine / "boot").mkdir()
+    (machine / f"boot/vmlinuz-{RELEASE}").write_text("")
+    headers = machine / f"lib/modules/{RELEASE}/build"
+    headers.mkdir(parents=True)
+    (headers / "Makefile").write_text("")
 
     def run(*args, **env):
         return subprocess.run(
@@ -128,12 +139,27 @@ def doctor(tmp_path):
         (machine / "dev/pciem").chmod(0o444)
 
     def is_not_linux():
-        # A Mac: no /proc and no /sys, and a /dev with no pciem in it.
-        shutil.rmtree(machine / "proc")
-        shutil.rmtree(machine / "sys")
+        # A Mac: no /proc, /sys, /boot or /lib, and a /dev with no pciem
+        # or KVM in it.
+        for directory in ("proc", "sys", "boot", "lib"):
+            shutil.rmtree(machine / directory)
         (machine / "dev/pciem").unlink()
+        (machine / "dev/kvm").unlink()
+
+    def hides_the_kernel():
+        # Unreadable, as Ubuntu's is to all but root.
+        (machine / f"boot/vmlinuz-{RELEASE}").chmod(0)
+
+    def locks_kvm():
+        (machine / "dev/kvm").chmod(0)
+
+    def lacks_kernel_headers():
+        shutil.rmtree(machine / f"lib/modules/{RELEASE}/build")
 
     run.without = without
+    run.hides_the_kernel = hides_the_kernel
+    run.locks_kvm = locks_kvm
+    run.lacks_kernel_headers = lacks_kernel_headers
     run.lines = lines
     run.runs_kernel = runs_kernel
     run.unload_pciem = unload_pciem
@@ -357,7 +383,7 @@ def test_a_kernel_older_than_6_6_makes_pciem_warn_and_says_why(doctor):
     )
 
 
-@pytest.mark.parametrize("release", ["6.6.0", "7.0.0-38-generic"])
+@pytest.mark.parametrize("release", ["6.6.0", RELEASE])
 def test_a_kernel_of_6_6_or_later_is_well_for_pciem(doctor, release):
     doctor.runs_kernel(release)
 
@@ -401,6 +427,83 @@ def test_where_sudo_asks_for_a_password_pciem_says_to_let_you_run_as_root_withou
 
     assert problems(result.stdout)[PCIEM] == "sudo asks for a password"
     assert "without a password" in result.stdout
+
+
+GUEST = "a QEMU guest, for a real host on CI"
+
+
+@pytest.mark.parametrize(
+    ("program", "package"),
+    [
+        ("qemu-system-x86_64", "qemu-system-x86"),
+        ("busybox", "busybox-static"),
+        ("zstd", "zstd"),
+    ],
+)
+def test_without_a_program_of_the_guests_it_warns_without_failing_and_names_its_package(
+    doctor, program, package
+):
+    doctor.without(program)
+
+    result = doctor("guest")
+
+    assert result.returncode == 0, result.stdout
+    assert problems(result.stdout)[GUEST] == f"{program} is not installed"
+    assert f"{APT} {package}" in result.stdout
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any file")
+def test_where_the_running_kernel_cannot_be_read_the_guest_says_to_let_it_be(
+    doctor,
+):
+    doctor.hides_the_kernel()
+
+    result = doctor("guest")
+
+    assert problems(result.stdout)[GUEST].endswith(
+        f"boot/vmlinuz-{RELEASE} cannot be read"
+    )
+    assert "sudo chmod a+r /boot/vmlinuz-$(uname -r)" in result.stdout
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write any file")
+def test_where_kvm_cannot_be_opened_the_guest_says_how_to_give_it_to_you(
+    doctor,
+):
+    doctor.locks_kvm()
+
+    result = doctor("guest")
+
+    assert problems(result.stdout)[GUEST].endswith(
+        "dev/kvm cannot be opened for writing"
+    )
+    assert "sudo setfacl -m u:$USER:rw /dev/kvm" in result.stdout
+
+
+def test_without_the_running_kernels_headers_the_guest_names_their_package(
+    doctor,
+):
+    doctor.lacks_kernel_headers()
+
+    result = doctor("guest")
+
+    assert problems(result.stdout)[GUEST] == (
+        f"there are no headers for the kernel, {RELEASE}"
+    )
+    assert f"{APT} linux-headers-$(uname -r)" in result.stdout
+
+
+def test_on_a_machine_that_is_not_linux_the_guest_says_so_and_nothing_else(
+    doctor,
+):
+    doctor.is_not_linux()
+
+    result = doctor("guest")
+
+    assert result.returncode == 0, result.stdout
+    assert problems(result.stdout)[GUEST] == (
+        "this machine is not Linux, and the guest is its own kernel's"
+    )
 
 
 def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(

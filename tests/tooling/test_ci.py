@@ -6,6 +6,7 @@ fake writes the command it was given to a log, so the tests can say what
 the runner ran, and in what order, without building anything.
 """
 
+import ast
 import contextlib
 import importlib.util
 import itertools
@@ -291,6 +292,50 @@ def test_run_test_requires_the_firmware_of_ctest_and_not_of_the_build(ci):
         "uv run cmake --build --preset dev": False,
         "uv run ctest --preset dev": True,
     }
+
+
+def test_run_pciem_guest_builds_pciem_and_its_tree_then_runs_a_real_hosts_tests_in_the_guest(
+    ci,
+):
+    ci("run", "pciem-guest")
+
+    *builds, guest = (command["command"] for command in ci.commands())
+    assert builds == [
+        "uv run tools/build_pciem.py",
+        "uv run cmake --preset pciem",
+        "uv run cmake --build --preset pciem",
+    ]
+    assert guest.startswith("uv run tools/pciem_guest.py -- ")
+
+
+def test_in_the_guest_pciem_and_the_firmware_are_required_not_skipped_without(
+    ci,
+):
+    ci("run", "pciem-guest")
+
+    guest = ci.commands()[-1]["command"].split()
+    assert "SOCPUPPET_REQUIRE_PCIEM=1" in guest
+    assert "SOCPUPPET_REQUIRE_FIRMWARE=1" in guest
+
+
+def test_the_guest_runs_every_test_module_that_needs_pciem(ci):
+    ci("run", "pciem-guest")
+
+    guest = ci.commands()[-1]["command"].split()
+    assert {word for word in guest if word.startswith("tests/")} == {
+        f"tests/python/{module.name}"
+        for module in (REPO / "tests" / "python").glob("test_*.py")
+        if imports_needs_pciem(module)
+    }
+
+
+def imports_needs_pciem(module: Path) -> bool:
+    """Whether `module` imports `needs_pciem`, and so has tests that do."""
+    return any(
+        isinstance(statement, ast.ImportFrom)
+        and any(name.name == "needs_pciem" for name in statement.names)
+        for statement in ast.parse(module.read_text()).body
+    )
 
 
 def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_the_firmware(
