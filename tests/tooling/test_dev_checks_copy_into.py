@@ -53,3 +53,17 @@ def test_a_build_that_relinks_nothing_still_leaves_its_copy_and_not_the_other_tr
     spam.build("all")
 
     assert (copies / MODULE).read_bytes() == spam.built(MODULE).read_bytes()
+
+
+def test_building_only_the_coverage_target_leaves_its_copy_and_not_the_other_trees(
+    spam_and_eggs, copies
+):
+    # The coverage target runs the tests, and they import the copy, so the
+    # copy must be of the module built to be measured.
+    spam, eggs = spam_and_eggs
+    spam.configure("SOCPUPPET_COVERAGE=ON")
+    eggs.build("all")
+
+    spam.build("coverage")
+
+    assert (copies / MODULE).read_bytes() == spam.built(MODULE).read_bytes()
