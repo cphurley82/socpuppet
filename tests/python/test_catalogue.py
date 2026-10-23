@@ -58,6 +58,13 @@ EXAMPLES = [
     sp.Ns16550(),
     sp.NvmeFrontend(vectors=3),
     PassThroughLinkEndpoint(),
+    sp.PciemHost(
+        vendor_id=0x5350,
+        device_id=0xC0DE,
+        class_code=0x010802,
+        function_size=0x2000,
+        vectors=3,
+    ),
     sp.PcieEndpoint(
         vendor_id=0x5350,
         device_id=0xC0DE,
@@ -107,6 +114,21 @@ class TestAComponentsParameters:
             yield sp.wait(sp.ns(1))
 
         assert sp.ScriptedBusMaster(script).parameters == {}
+
+
+def skip_unless_it_can_be_made_here(example):
+    """Skip the test of a component this build or this machine cannot make.
+
+    A qbox_cpu is made only by a build with QBox. A pciem_host is never
+    made here: making one puts a device on this machine's own bus, which
+    its NVMe driver would bind (tests/python/test_pciem_contract.py).
+    """
+    from socpuppet import _core
+
+    if example.implementation == "qbox_cpu" and not _core.has_qbox:
+        pytest.skip("this build has no QBox, and refuses a qbox_cpu")
+    if example.implementation == "pciem_host":
+        pytest.skip("a pciem_host puts a device on this machine's own bus")
 
 
 class TestAPcieEndpointWithANumberOfVectorsMsixCannotHave:
@@ -169,8 +191,7 @@ class TestTheCatalogue:
     ):
         from socpuppet import _core
 
-        if example.implementation == "qbox_cpu" and not _core.has_qbox:
-            pytest.skip("this build has no QBox, and refuses a qbox_cpu")
+        skip_unless_it_can_be_made_here(example)
         native = _core.Platform(color_log=False)
         # As a platform does: what the component is told outright, and what
         # it works out from where it is. Here every port is at address 0.

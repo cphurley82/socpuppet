@@ -168,6 +168,9 @@ PYBIND11_MODULE(_core, m) {
   // Whether this build has QBox's CPU. Every build has the name
   // "qbox_cpu", and one without QBox refuses it.
   m.attr("has_qbox") = SOCPUPPET_HAS_QBOX != 0;
+  // Whether this build has pciem, for a real host. Every build has the
+  // name "pciem_host", and one without pciem refuses it.
+  m.attr("has_pciem") = SOCPUPPET_HAS_PCIEM != 0;
 
   py::class_<NativePlatform>(m, "Platform")
       .def(py::init<bool>(), py::arg("color_log"))
