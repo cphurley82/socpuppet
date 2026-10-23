@@ -7,10 +7,12 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <systemc>
 #include <tlm>
 
 #include "socpuppet/core/pciem_device.h"
@@ -19,6 +21,7 @@
 #include "socpuppet/platform/registry.h"
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/fake_pciem_device.h"
+#include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/test_components.h"
 
 namespace socpuppet {
@@ -82,12 +85,19 @@ struct DriveOnAFakeMachine {
   Platform platform;
 };
 
-// A function of the test's own, a bus master that runs `body`, on this
+// A function of the test's own, a bus master that runs `function`, on this
 // machine as stood in by a FakePciem. The host's `bar0` goes to a memory,
-// as the function's registers.
+// as the function's registers, and the function's interrupt line for
+// kDrivenVector is driven by `line`.
 struct FunctionOnAFakeMachine {
-  explicit FunctionOnAFakeMachine(const std::function<void(BusDriver&)>& body)
-      : platform{WithTheFunction(machine, body)} {
+  // The vector whose line `line` drives: not the first, so that sending it
+  // is not sending the one there would be anyway.
+  static constexpr unsigned kDrivenVector = 1;
+
+  explicit FunctionOnAFakeMachine(
+      const std::function<void(BusDriver&)>& function,
+      const Drive& line = [](LineDriver&) {})
+      : platform{WithTheFunction(machine, function, line)} {
     platform.Add("host", "pciem_host",
                  {{"vendor_id", kVendorId},
                   {"device_id", kDeviceId},
@@ -96,15 +106,19 @@ struct FunctionOnAFakeMachine {
                   {"vectors", 2}});
     platform.Add("registers", "memory", {{"size", kFunctionSize}});
     platform.Add("function", "function_driver");
+    platform.Add("line", "line_driver");
     platform.Bind("host.bar0", "registers.socket");
     platform.Bind("function.socket", "host.dma");
+    platform.Bind("line.line", "host.irq" + std::to_string(kDrivenVector));
     platform.Elaborate();
   }
 
-  static Registry WithTheFunction(FakePciem& machine,
-                                  const std::function<void(BusDriver&)>& body) {
+  static Registry WithTheFunction(
+      FakePciem& machine, const std::function<void(BusDriver&)>& function,
+      const Drive& line) {
     Registry registry = DriveOnAFakeMachine::WithTheFake(machine);
-    AddBusDriver(registry, "function_driver", body);
+    AddBusDriver(registry, "function_driver", function);
+    AddLineDriver(registry, "line_driver", line);
     return registry;
   }
 
@@ -194,6 +208,18 @@ TEST(WhenTheDeviceRefusesATransfer, TheFunctionGetsAnErrorResponse) {
   rig.platform.Run();
 
   EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
+}
+
+// A function with nothing to do of its own.
+void Idle(BusDriver&) {}
+
+TEST(WhenAnInterruptLineRises, ThatVectorIsSentToTheHost) {
+  FunctionOnAFakeMachine rig(Idle, [](LineDriver& line) { line.Set(true); });
+
+  rig.platform.Run();
+
+  EXPECT_THAT(rig.machine.sent,
+              ElementsAre(FunctionOnAFakeMachine::kDrivenVector));
 }
 
 }  // namespace

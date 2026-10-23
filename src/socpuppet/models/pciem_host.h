@@ -38,11 +38,12 @@ struct PciemCounts {
 //
 //   this machine's Linux ══ pciem ══ PciemHost ── bar0 ──▶ the function
 //                                              ◀── dma ─── its DMA
-//                                              ◀── irq ─── its lines   🚧
+//                                              ◀── irq ─── its lines
 //
-// `bar0` carries the host's register writes in, and `dma` the function's
-// accesses to the host's memory out. The host's reads do not
-// come through here at all: they read pciem's copy of BAR0.
+// `bar0` carries the host's register writes in, `dma` the function's
+// accesses to the host's memory out, and a line of `irq` that rises sends
+// the host that vector. The host's reads do not come through here at all:
+// they read pciem's copy of BAR0.
 class PciemHost : public sc_core::sc_module {
  public:
   tlm_utils::simple_initiator_socket<PciemHost> bar0{"bar0"};
@@ -54,6 +55,9 @@ class PciemHost : public sc_core::sc_module {
       : sc_module(name), irq("irq", vectors), device_(std::move(device)) {
     dma.register_b_transport(this, &PciemHost::DmaTransport);
     SC_THREAD(Deliver);
+    SC_METHOD(SendRisingLines);
+    for (sc_core::sc_in<bool>& line : irq) sensitive << line.pos();
+    dont_initialize();
   }
 
   // An interrupt line that nothing is connected to is tied low.
@@ -103,6 +107,14 @@ class PciemHost : public sc_core::sc_module {
       transaction.set_response_status(tlm::TLM_OK_RESPONSE);
     } catch (const std::system_error&) {
       transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+    }
+  }
+
+  // A line that rises sends its vector.
+  void SendRisingLines() {
+    for (std::size_t vector = 0; vector < irq.size(); ++vector) {
+      if (irq[vector].posedge())
+        device_->InjectIrq(static_cast<unsigned>(vector));
     }
   }
 
