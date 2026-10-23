@@ -45,6 +45,13 @@ class PciemDevice {
  public:
   virtual ~PciemDevice() = default;
 
+  // Puts the device on the bus: the host enumerates it, and its driver
+  // binds. What the driver reads first should be in BAR0 before this.
+  virtual void Start() = 0;
+
+  // A descriptor that is readable when pciem has posted something.
+  virtual int EventFd() const = 0;
+
   // Takes the host's writes that pciem has posted since the last drain,
   // in the order they were made, and clears pciem's word that something
   // was posted until more is. Whatever else pciem posts (the host's

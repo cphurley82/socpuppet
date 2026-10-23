@@ -70,6 +70,14 @@ class PciemHost : public sc_core::sc_module {
     TieLowIfUnconnected(irq, tied_low_);
   }
 
+  // Puts the function on this machine's bus, where the host's driver
+  // finds it. Refresh first, so that what the driver reads first is there.
+  void Start() { device_->Start(); }
+
+  // A descriptor that is readable when the host has made writes, which
+  // Service takes.
+  int EventFd() const { return device_->EventFd(); }
+
   // Takes the writes pciem has posted, to be made on `bar0` in order once
   // the simulation runs. Called from outside it, between runs, whenever
   // pciem may have posted writes; with none posted it does nothing.

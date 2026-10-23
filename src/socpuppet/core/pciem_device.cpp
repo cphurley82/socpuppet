@@ -157,6 +157,12 @@ class DevPciem : public PciemDevice {
         bar0_(instance_, shape.function_size, "mmap BAR0"),
         ring_(pciem_, sizeof(pciem_shared_ring), "mmap the ring") {}
 
+  void Start() override {
+    if (ioctl(pciem_.Fd(), PCIEM_IOCTL_START, 0) < 0) Refused("START");
+  }
+
+  int EventFd() const override { return events_.Fd(); }
+
   std::vector<HostWrite> Drain() override {
     std::uint64_t count = 0;
     // Nothing to read is fine: the count is cleared either way.
