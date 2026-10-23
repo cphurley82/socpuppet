@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import NamedTuple
 
-from socpuppet.boards import host as real_host
+from socpuppet.boards import host as host_board
 from socpuppet.components import (
     Memory,
     MsiReceiver,
@@ -42,24 +42,24 @@ from socpuppet.pcie_host import PcieHost
 from socpuppet.placed import Placed, PlacedRouter
 from socpuppet.platform import Group, Platform
 
-# ---- Where things are: where the real host board has them, by that
-# ---- board's own numbers, so that a script written for one host finds
-# ---- its way around the other. This host has one bus where that one has
-# ---- two dies, so what is in the real host's window onto its IO die is
-# ---- here at the address the real host's CPU finds it at.
+# ---- Where things are: where the host board has them, by that board's
+# ---- own numbers, so that a script written for one host finds its way
+# ---- around the other. This host has one bus where that one has two
+# ---- dies, so what is in the host board's window onto its IO die is here
+# ---- at the address the host board's CPU finds it at.
 #: The host's memory: 1 MiB, which is room for an NVMe driver's queues and
-#: a few hundred pages of data. The real host has more.
-RAM_BASE = real_host.RAM_BASE
+#: a few hundred pages of data. The host board has more.
+RAM_BASE = host_board.RAM_BASE
 RAM_SIZE = 1024 * 1024
 #: The register that takes the drive's interrupt messages. It is where
-#: the real host has the page its interrupt controller takes them at.
-MSI_BASE = real_host.IMSIC_BASE
+#: the host board has the page its interrupt controller takes them at.
+MSI_BASE = host_board.IMSIC_BASE
 #: The root complex's two windows: configuration space, and the memory
 #: window a device's registers are placed in.
-ECAM_BASE = real_host.IO_BASE + real_host.ECAM_OFFSET
-ECAM_SIZE = real_host.ECAM_SIZE
-PCIE_WINDOW_BASE = real_host.IO_BASE + real_host.PCIE_WINDOW_OFFSET
-PCIE_WINDOW_SIZE = real_host.PCIE_WINDOW_SIZE
+ECAM_BASE = host_board.IO_BASE + host_board.ECAM_OFFSET
+ECAM_SIZE = host_board.ECAM_SIZE
+PCIE_WINDOW_BASE = host_board.IO_BASE + host_board.PCIE_WINDOW_OFFSET
+PCIE_WINDOW_SIZE = host_board.PCIE_WINDOW_SIZE
 
 
 class ScriptedHost(NamedTuple):

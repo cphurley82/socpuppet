@@ -62,12 +62,22 @@ def add_behavioral_drive(
     # The PCIe link, one direction each.
     platform.connect(root_complex.to_device, endpoint.from_host)
     platform.connect(endpoint.to_host, root_complex.from_device)
-    # The function behind the endpoint: its registers, its DMA and one
-    # interrupt line per vector.
-    platform.connect(endpoint.bar0, nvme.bar0)
-    platform.connect(nvme.dma, endpoint.dma)
+    connect_the_function(platform, nvme, endpoint)
+    return BehavioralDrive(nvme, endpoint)
+
+
+def connect_the_function(
+    platform: Platform, nvme: Placed, front: Placed
+) -> None:
+    """Connect the drive to what is in front of it.
+
+    That is a PCIe endpoint, or this machine as its host
+    (`socpuppet.boards.real_host`). The drive's registers, its DMA and one
+    interrupt line per vector.
+    """
+    platform.connect(front.bar0, nvme.bar0)
+    platform.connect(nvme.dma, front.dma)
     for vector in range(VECTORS):
         platform.connect(
-            getattr(nvme, f"irq{vector}"), getattr(endpoint, f"irq{vector}")
+            getattr(nvme, f"irq{vector}"), getattr(front, f"irq{vector}")
         )
-    return BehavioralDrive(nvme, endpoint)
