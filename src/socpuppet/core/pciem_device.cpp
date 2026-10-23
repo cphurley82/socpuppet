@@ -9,6 +9,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -155,7 +156,14 @@ class DevPciem : public PciemDevice {
         pciem_(CreateDevice(shape, events_.Fd())),
         instance_(ioctl(pciem_.Fd(), PCIEM_IOCTL_REGISTER), "REGISTER"),
         bar0_(instance_, shape.function_size, "mmap BAR0"),
-        ring_(pciem_, sizeof(pciem_shared_ring), "mmap the ring") {}
+        ring_(pciem_, sizeof(pciem_shared_ring), "mmap the ring") {
+    // 📮 pciem gives BAR0 memory as it finds it: what an earlier device
+    // left there, or what was there before boot. The host reads every
+    // register, the ones nobody writes too, so they start at zero
+    // (docs/upstream.md, "A BAR's memory is not cleared before the host
+    // reads it").
+    std::ranges::fill(bar0_.Bytes(), std::uint8_t{0});
+  }
 
   void Start() override {
     if (ioctl(pciem_.Fd(), PCIEM_IOCTL_START, 0) < 0) Refused("START");

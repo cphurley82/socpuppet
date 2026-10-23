@@ -30,7 +30,7 @@ from socpuppet.boards.drive import (
     connect_the_function,
 )
 from socpuppet.components import BehavioralNvme, PciemHost
-from socpuppet.placed import Placed
+from socpuppet.placed import Placed, PlacedPciemHost
 from socpuppet.platform import Group, Platform
 
 #: A class code no driver of Linux's claims, for a drive that is to be
@@ -59,7 +59,7 @@ def add_real_host(
     *,
     function_size: int,
     group: Group | None = None,
-) -> Placed:
+) -> PlacedPciemHost:
     """Describe this machine as the host of a drive's function.
 
     The drive says the puppet's own IDs, as it does behind a PCIe
@@ -85,7 +85,7 @@ class BehavioralDriveBoard(NamedTuple):
 
     platform: Platform
     nvme: Placed
-    host: Placed
+    host: PlacedPciemHost
 
 
 def behavioral_drive(

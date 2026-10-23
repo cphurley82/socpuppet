@@ -199,6 +199,40 @@ class PlacedNand(Placed):
         self._platform.native().nand_load(self.path, image)
 
 
+class PlacedPciemHost(Placed):
+    """🐧 This machine as a drive's host, at its place in a platform.
+
+    🧵 It is a far end the platform is pumped with (`socpuppet.pump`):
+    the host's register writes come in on its descriptor, and at each
+    look it refreshes the registers the host reads.
+
+        board.platform.build()
+        board.host.start()
+        pump(board.platform, far_ends=[board.host], until=...)
+    """
+
+    def start(self) -> None:
+        """Put the drive on this machine's bus, where Linux finds it.
+
+        The registers the host reads first are refreshed before. ⚠️ The
+        host's driver binds at once, and from then on the platform has to
+        be pumped, or the driver waits on a drive that does not answer.
+        """
+        self._platform.native().pciem_host_start(self.path)
+
+    def fileno(self) -> int:
+        """The descriptor that is readable when the host has made writes."""
+        return self._platform.native().pciem_host_event_fd(self.path)
+
+    def service(self) -> None:
+        """Take the writes the host has made, to be made on the drive."""
+        self._platform.native().pciem_host_service(self.path)
+
+    def refresh(self) -> None:
+        """Copy the registers the drive says into what the host reads."""
+        self._platform.native().pciem_host_refresh(self.path)
+
+
 class PlacedNet(Placed):
     """🎭 A virtio network device at its place in a platform.
 
