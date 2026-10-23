@@ -17,6 +17,7 @@
 #include <tlm_utils/simple_initiator_socket.h>
 #include <tlm_utils/simple_target_socket.h>
 
+#include "socpuppet/core/nvme_host_registers.h"
 #include "socpuppet/core/pciem_device.h"
 #include "socpuppet/core/pciem_host_logic.h"
 #include "socpuppet/models/tie_low.h"
@@ -39,6 +40,9 @@ struct PciemCounts {
 //   this machine's Linux ══ pciem ══ PciemHost ── bar0 ──▶ the function
 //                                              ◀── dma ─── its DMA
 //                                              ◀── irq ─── its lines
+//
+// 🎓 It knows one thing of NVMe, the function behind it: which of the
+// host's writes acknowledge completions (SendHighLinesAgain).
 //
 // `bar0` carries the host's register writes in, `dma` the function's
 // accesses to the host's memory out, and a line of `irq` that rises sends
@@ -81,10 +85,33 @@ class PciemHost : public sc_core::sc_module {
   void Deliver() {
     for (;;) {
       wait(arrived_);
+      bool acknowledged = false;
       while (!pending_.empty()) {
+        acknowledged |= NvmeHostRegisters::IsCompletionHeadDoorbell(
+            pending_.front().offset);
         Make(pending_.front());
         pending_.pop_front();
       }
+      if (acknowledged) SendHighLinesAgain();
+    }
+  }
+
+  // 🎓 The function's lines are levels, and the host is sent a vector only
+  // when one rises. A completion queue's head doorbell lowers its line and
+  // raises it again if completions are still waiting, but only if no other
+  // queue on the same vector holds the line high through it. Under pciem
+  // that is the usual case: the host has one interrupt, so the admin queue
+  // and the I/O queue share vector 0. NVMe asks a controller to send a new
+  // message once a head doorbell leaves entries in a queue, so once the
+  // host has said how far it got, a vector whose line is still high is
+  // sent again.
+  void SendHighLinesAgain() {
+    // The function writes its line in the delta of the doorbell's write,
+    // as InterruptLines does, and a signal changes a delta cycle after it
+    // is written.
+    wait(sc_core::SC_ZERO_TIME);
+    for (std::size_t vector = 0; vector < irq.size(); ++vector) {
+      if (irq[vector].read()) device_->InjectIrq(static_cast<unsigned>(vector));
     }
   }
 

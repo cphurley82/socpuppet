@@ -33,6 +33,7 @@ using ::testing::ElementsAre;
 // The registers the host writes, as the NVMe specification gives them.
 constexpr std::uint64_t kAqa = 0x24;
 constexpr std::uint64_t kAdminTailDoorbell = 0x1000;
+constexpr std::uint64_t kAdminHeadDoorbell = 0x1004;
 
 // Who the drive says it is: the puppet's own IDs, and NVMe's class code.
 constexpr std::uint16_t kVendorId = 0x5350;
@@ -121,6 +122,8 @@ struct FunctionOnAFakeMachine {
     AddLineDriver(registry, "line_driver", line);
     return registry;
   }
+
+  PciemHost& Host() { return platform.ModuleAt<PciemHost>("host"); }
 
   // Puts `bytes` in the host's memory at `address`.
   void PutInHostMemory(std::uint64_t address,
@@ -216,6 +219,41 @@ void Idle(BusDriver&) {}
 TEST(WhenAnInterruptLineRises, ThatVectorIsSentToTheHost) {
   FunctionOnAFakeMachine rig(Idle, [](LineDriver& line) { line.Set(true); });
 
+  rig.platform.Run();
+
+  EXPECT_THAT(rig.machine.sent,
+              ElementsAre(FunctionOnAFakeMachine::kDrivenVector));
+}
+
+// The host acknowledging the first completion on the admin queue.
+constexpr std::array<HostWrite, 1> kAcknowledgeAnAdminCompletion{
+    {{.offset = kAdminHeadDoorbell, .size = 4, .data = 1}}};
+
+// A function's line stays high while completions wait to be read, and
+// the host is sent a vector only when it rises.
+TEST(WhenTheHostAcknowledgesCompletionsWhileTheLineStaysHigh,
+     TheVectorIsSentAgain) {
+  FunctionOnAFakeMachine rig(Idle, [](LineDriver& line) { line.Set(true); });
+  rig.platform.Run();
+
+  rig.Host().Take(kAcknowledgeAnAdminCompletion);
+  rig.platform.Run();
+
+  EXPECT_THAT(rig.machine.sent,
+              ElementsAre(FunctionOnAFakeMachine::kDrivenVector,
+                          FunctionOnAFakeMachine::kDrivenVector));
+}
+
+TEST(WhenTheHostAcknowledgesCompletionsOnceTheLineHasFallen,
+     TheVectorIsNotSentAgain) {
+  FunctionOnAFakeMachine rig(Idle, [](LineDriver& line) {
+    line.Set(true);
+    line.WaitFor(sc_core::sc_time(1, sc_core::SC_US));
+    line.Set(false);
+  });
+  rig.platform.Run();
+
+  rig.Host().Take(kAcknowledgeAnAdminCompletion);
   rig.platform.Run();
 
   EXPECT_THAT(rig.machine.sent,
