@@ -29,6 +29,10 @@
 #include "socpuppet/models/pass_through_link.h"
 #include "socpuppet/models/pcie_endpoint.h"
 #include "socpuppet/models/pcie_root_complex.h"
+#if SOCPUPPET_HAS_PCIEM
+#include "socpuppet/core/pciem_device.h"
+#include "socpuppet/models/pciem_host.h"
+#endif
 #include "socpuppet/models/plic.h"
 #if SOCPUPPET_HAS_QBOX
 #include "socpuppet/models/qbox_cpu.h"
@@ -184,12 +188,16 @@ Registry BuiltinComponents() {
   // pciem is GPL-2.0-only, so a real host is built only by whoever asks
   // for it (tools/build_pciem.py). The name is here either way, so that a
   // build without it says how to get one.
+#if SOCPUPPET_HAS_PCIEM
+  AddPciemHost(registry, "pciem_host", OpenPciemDevice);
+#else
   registry.Add("pciem_host", [](const char*, Parameters&) -> Instance {
     throw std::invalid_argument(
         "This build of socpuppet has no pciem_host. Build pciem's module "
         "with tools/build_pciem.py, then socpuppet with `cmake --preset "
         "pciem`, which sets SOCPUPPET_PCIEM_DIR to where the tool puts it.");
   });
+#endif
   registry.Add("dma_engine", [](const char* name, Parameters&) {
     auto module = std::make_unique<DmaEngine>(name);
     std::vector<Port> ports{TargetPort("cpu", module->cpu),

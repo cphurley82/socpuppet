@@ -54,6 +54,15 @@
       "cacheVariables": {
         "SOCPUPPET_QBOX_DIR": "${sourceDir}/build/qbox/install"
       }
+    },
+    {
+      "name": "pciem",
+      "displayName": "Development build with a real host, from tools/build_pciem.py",
+      "inherits": "dev",
+      "binaryDir": "${sourceDir}/build/pciem-dev",
+      "cacheVariables": {
+        "SOCPUPPET_PCIEM_DIR": "${sourceDir}/build/pciem"
+      }
     }
   ],
   "buildPresets": [
@@ -62,7 +71,8 @@
     { "name": "asan", "configurePreset": "asan" },
     { "name": "spike", "configurePreset": "spike" },
     { "name": "linux", "configurePreset": "linux" },
-    { "name": "qbox", "configurePreset": "qbox" }
+    { "name": "qbox", "configurePreset": "qbox" },
+    { "name": "pciem", "configurePreset": "pciem" }
   ],
   "testPresets": [
     {
@@ -100,6 +110,12 @@
       "configurePreset": "qbox",
       "output": { "outputOnFailure": true },
       "environment": { "SOCPUPPET_CPU": "qbox_cpu" },
+      "execution": { "jobs": 8 }
+    },
+    {
+      "name": "pciem",
+      "configurePreset": "pciem",
+      "output": { "outputOnFailure": true },
       "execution": { "jobs": 8 }
     },
     {

@@ -61,6 +61,25 @@ else()
   set(SOCPUPPET_HAS_QBOX FALSE)
 endif()
 
+# --- pciem, for a real host ---------------------------------------------------
+# 🐧 pciem is a Linux kernel module that lets a program be a PCIe device on
+# this machine's own bus. It is GPL-2.0-only, so tools/build_pciem.py checks
+# it out and builds it from source, and only its header is used here, by
+# one source file (src/socpuppet/core/pciem_device.cpp) and its test.
+set(SOCPUPPET_PCIEM_DIR "" CACHE PATH
+  "A checkout of pciem made by tools/build_pciem.py, to build the pciem_host with")
+if(SOCPUPPET_PCIEM_DIR)
+  if(NOT EXISTS ${SOCPUPPET_PCIEM_DIR}/include/pciem_api.h)
+    message(FATAL_ERROR "SOCPUPPET_PCIEM_DIR is \"${SOCPUPPET_PCIEM_DIR}\", "
+      "and there is no pciem checkout there. Make one with "
+      "tools/build_pciem.py, which puts it in build/pciem.")
+  endif()
+  set(SOCPUPPET_HAS_PCIEM TRUE)
+  message(STATUS "socpuppet: pciem from ${SOCPUPPET_PCIEM_DIR}")
+else()
+  set(SOCPUPPET_HAS_PCIEM FALSE)
+endif()
+
 if(SOCPUPPET_BUILD_TESTS)
   set(INSTALL_GTEST OFF)
   FetchContent_Declare(googletest

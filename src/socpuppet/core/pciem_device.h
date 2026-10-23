@@ -2,6 +2,7 @@
 #define SOCPUPPET_CORE_PCIEM_DEVICE_H_
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -15,6 +16,9 @@
 // boot. A host write to BAR0 lands in that memory (pciem's shadow write)
 // and is posted on a ring for us. A host read never reaches us: it reads
 // the memory, so what the host should read has to be put there first.
+
+// pciem's ring of what it has posted (include/pciem_api.h), by its name.
+struct pciem_shared_ring;  // NOLINT(readability-identifier-naming)
 
 namespace socpuppet {
 
@@ -63,6 +67,18 @@ class PciemDevice {
   // (docs/upstream.md).
   virtual void InjectIrq(unsigned vector) = 0;
 };
+
+// pciem_device.cpp, in a build with pciem only: the one file that includes
+// pciem's header, which is GPL-2.0-only and needs C++23.
+
+// Takes the writes posted on a pciem ring, in the order they were posted,
+// and frees their slots for the kernel. Separate from the device, so that
+// it can be tried on a ring in ordinary memory.
+std::vector<HostWrite> DrainRing(pciem_shared_ring& ring);
+
+// Creates a device on this machine's bus, in `shape`, and registers it.
+// Throws std::system_error, naming the step, if /dev/pciem refuses one.
+std::unique_ptr<PciemDevice> OpenPciemDevice(const PciemShape& shape);
 
 }  // namespace socpuppet
 
