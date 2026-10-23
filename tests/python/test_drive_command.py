@@ -19,10 +19,7 @@ from socpuppet import _core
 from socpuppet.boards.real_host import PCI_DEVICES, puppet_function, unbind
 from socpuppet.linux import SSD_ELF
 from ssd_zephyr_firmware import IMAGE as SSD_IMAGE
-from this_machine import (
-    PATIENCE,
-    block_device,
-)
+from this_machine import PATIENCE, block_device, rooted
 
 
 class TestWhenTheSsdsFirmwareIsNotBuilt:
@@ -195,7 +192,7 @@ def unbind_by_hand(function):
     """Unbind Linux's driver from the drive, as root does it by hand. The
     command pumps the drive meanwhile."""
     subprocess.run(
-        ["sudo", "-n", "tee", str(unbind(function))],
+        rooted("tee", str(unbind(function))),
         input=function.encode(),
         capture_output=True,
         check=True,

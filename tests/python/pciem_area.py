@@ -6,10 +6,13 @@ area is wanting: on a machine that is not Linux, without pciem loaded,
 without sudo that asks no password for the host's commands, or with a
 build of socpuppet that has no pciem_host. The last of those is what
 keeps the tests from formatting a drive on a machine whose owner did not
-set it up for that.
+set it up for that. Where pciem must be there, as in CI's guest
+(tools/pciem_guest.py), SOCPUPPET_REQUIRE_PCIEM=1 fails the run instead,
+saying why.
 """
 
 import importlib.util
+import os
 from pathlib import Path
 
 import pytest
@@ -35,6 +38,7 @@ def what_pciem_lacks() -> str | None:
 
 
 _LACKS = what_pciem_lacks()
-needs_pciem = pytest.mark.skipif(
-    _LACKS is not None, reason=f"🩺 tools/doctor.py pciem: {_LACKS}"
-)
+_WHY = f"🩺 tools/doctor.py pciem: {_LACKS}"
+if _LACKS is not None and os.environ.get("SOCPUPPET_REQUIRE_PCIEM"):
+    pytest.fail(f"{_WHY}, and SOCPUPPET_REQUIRE_PCIEM says it must not")
+needs_pciem = pytest.mark.skipif(_LACKS is not None, reason=_WHY)

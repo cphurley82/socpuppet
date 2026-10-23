@@ -321,6 +321,32 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
     )
 
 
+# 🐧 The tests of a real host, which need pciem loaded, run as root in a
+# QEMU guest of this machine's own kernel, with this machine's root as its
+# own (tools/pciem_guest.py), since the machine cannot load pciem itself.
+# The guest is given only PATH and HOME, so what the tests need besides is
+# said on its command line. pciem and the firmware must be there: a skip
+# would pass for a test that ran. The guest has no network, so the venv's
+# Python runs pytest, where `uv run` might look for packages.
+REQUIRE_PCIEM = {**REQUIRE_FIRMWARE, "SOCPUPPET_REQUIRE_PCIEM": "1"}
+PCIEM_GUEST = (
+    Step("build_pciem", ("uv", "run", "tools/build_pciem.py")),
+    Step("configure", ("uv", "run", "cmake", "--preset", "pciem")),
+    Step("build", ("uv", "run", "cmake", "--build", "--preset", "pciem")),
+    Step(
+        "tests",
+        (
+            *("uv", "run", "tools/pciem_guest.py", "--", "env"),
+            *(f"{name}={value}" for name, value in REQUIRE_PCIEM.items()),
+            *(".venv/bin/python", "-m", "pytest", "-p", "no:cacheprovider"),
+            "tests/python/test_pciem_contract.py",
+            "tests/python/test_m31_exit.py",
+            "tests/python/test_drive_command.py",
+        ),
+    ),
+)
+
+
 # The jobs that build the firmware, every image of which the tests boot.
 FIRMWARE = (
     "firmware-rom",
@@ -553,6 +579,15 @@ JOBS = [
             "build/twister",
         ),
         areas=("build",),
+    ),
+    Job(
+        "pciem-guest",
+        "a real host's tests, in a guest of the machine's own with pciem",
+        tiers=(Tier.NIGHTLY,),
+        needs=("firmware-zephyr",),
+        steps=PCIEM_GUEST,
+        uses=("build/pciem", "build/pciem-dev", "extension"),
+        areas=("build", "network", "guest"),
     ),
     Job(
         "wheel",

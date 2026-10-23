@@ -217,6 +217,7 @@ def load(path: str) -> ModuleType:
 # The scripts whose lists of what they need are the ones checked here.
 BUILD_QBOX = load("tools/build_qbox.py")
 FIRMWARE_BUILD = load("firmware/build.py")
+PCIEM_GUEST = load("tools/pciem_guest.py")
 
 
 def needs_of(part: str, host: str) -> tuple[Need, ...]:
@@ -258,11 +259,18 @@ def running_linux() -> str | None:
     return release.read_text().strip() if release.exists() else None
 
 
-def not_linux() -> str | None:
-    """What is wrong with this machine for pciem's being Linux's, if so."""
-    if running_linux() is not None:
-        return None
-    return "this machine is not Linux, and pciem is Linux's"
+def not_linux(why: str) -> Callable[[], str | None]:
+    """What is wrong with this machine, if it is not Linux.
+
+    `why` is why it should be.
+    """
+
+    def problem() -> str | None:
+        if running_linux() is not None:
+            return None
+        return f"this machine is not Linux, and {why}"
+
+    return problem
 
 
 def on_linux(problem: Callable[[], str | None]) -> Callable[[], str | None]:
@@ -330,7 +338,11 @@ def sudo_asks() -> str | None:
 # tests, a Linux pointed at a machine of their own with no /proc).
 NOT_HERE = Fix("nothing here: a real host is a Linux machine's")
 PCIEM = (
-    Need("Linux", not_linux, {"Linux": NOT_HERE, "Darwin": NOT_HERE}),
+    Need(
+        "Linux",
+        not_linux("pciem is Linux's"),
+        {"Linux": NOT_HERE, "Darwin": NOT_HERE},
+    ),
     Need(
         "kernel 6.6",
         on_linux(old_kernel),
@@ -365,6 +377,71 @@ PCIEM = (
                 "without a password, as docs/setup.md says"
             )
         },
+    ),
+)
+
+
+def kernel_unreadable() -> str | None:
+    """What is wrong with QEMU's booting the running kernel, if anything."""
+    kernel = ROOT / "boot" / f"vmlinuz-{running_linux()}"
+    if os.access(kernel, os.R_OK):
+        return None
+    return f"{kernel} cannot be read"
+
+
+def kvm_unwritable() -> str | None:
+    """What is wrong with QEMU's running the guest on KVM, if anything."""
+    device = ROOT / "dev/kvm"
+    if os.access(device, os.W_OK):
+        return None
+    return f"{device} cannot be opened for writing"
+
+
+def no_headers() -> str | None:
+    """What is wrong with building a module for the running kernel."""
+    release = running_linux() or ""
+    if (ROOT / "lib/modules" / release / "build/Makefile").exists():
+        return None
+    return f"there are no headers for the kernel, {release}"
+
+
+# What tools/pciem_guest.py needs of this machine, to boot its kernel with
+# pciem in a guest: what CI's runner, which cannot load pciem itself, runs
+# a real host's tests in. And the kernel's headers, which the guest has no
+# use for, but tools/build_pciem.py builds pciem's module for it with.
+GUEST = (
+    Need(
+        "Linux",
+        not_linux("the guest is its own kernel's"),
+        {"Linux": NOT_HERE, "Darwin": NOT_HERE},
+    ),
+    *(
+        Need(name, on_linux(installed(name)), {"Linux": Fix(apt, APT)})
+        for name, apt in PCIEM_GUEST.PROGRAMS
+    ),
+    Need(
+        "the running kernel",
+        on_linux(kernel_unreadable),
+        {
+            "Linux": Fix(
+                "let QEMU read it: sudo chmod a+r /boot/vmlinuz-$(uname -r)"
+            )
+        },
+    ),
+    Need(
+        "/dev/kvm",
+        on_linux(kvm_unwritable),
+        {
+            "Linux": Fix(
+                "QEMU runs the guest on KVM: give it to your user until the "
+                "next boot with sudo setfacl -m u:$USER:rw /dev/kvm"
+            )
+        },
+    ),
+    Need(
+        "the kernel's headers",
+        on_linux(no_headers),
+        {"Linux": Fix("linux-headers-$(uname -r)", APT)},
     ),
 )
 
@@ -440,6 +517,9 @@ AREAS = (
     # 🐧 This machine's own Linux as the host of the puppet's SSD, which few
     # need, and only a Linux machine can be.
     Area("pciem", "pciem, for a real host", PCIEM, optional=True),
+    # Where pciem cannot be loaded, as on CI's runners, the same tests run
+    # in a guest of the machine's own, which few need.
+    Area("guest", "a QEMU guest, for a real host on CI", GUEST, optional=True),
 )
 
 
