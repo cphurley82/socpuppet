@@ -41,8 +41,9 @@ struct PciemCounts {
 //                                              ◀── dma ─── its DMA
 //                                              ◀── irq ─── its lines
 //
-// 🎓 It knows one thing of NVMe, the function behind it: which of the
-// host's writes acknowledge completions (SendHighLinesAgain).
+// 🎓 It knows two things of NVMe, the function behind it: which of the
+// host's writes acknowledge completions (SendHighLinesAgain), and which
+// registers the function says for itself (Refresh).
 //
 // `bar0` carries the host's register writes in, `dma` the function's
 // accesses to the host's memory out, and a line of `irq` that rises sends
@@ -74,6 +75,20 @@ class PciemHost : public sc_core::sc_module {
   void Take(std::span<const HostWrite> writes) {
     pending_.insert(pending_.end(), writes.begin(), writes.end());
     arrived_.notify(sc_core::SC_ZERO_TIME);
+  }
+
+  // Refreshes pciem's copy of BAR0, which the host reads, with the
+  // registers the function says (CAP, VS and CSTS) as they are now. The
+  // rest the host reads back as it wrote them, from pciem's copy of its
+  // writes. Called from outside the simulation, between runs: the reads
+  // are debug accesses, which take no time.
+  void Refresh() {
+    const std::span<std::uint8_t> copy = device_->Bar0();
+    for (const NvmeHostRegisters::Register& says :
+         NvmeHostRegisters::RegistersTheControllerSays()) {
+      DebugTransport(bar0, tlm::TLM_READ_COMMAND, says.offset,
+                     copy.subspan(says.offset, says.size));
+    }
   }
 
   const PciemCounts& Counts() const { return counts_; }

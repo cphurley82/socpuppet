@@ -9,6 +9,7 @@
 #include <span>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,7 +31,11 @@ namespace {
 
 using ::testing::ElementsAre;
 
-// The registers the host writes, as the NVMe specification gives them.
+// The drive's registers, as the NVMe specification gives them.
+constexpr std::uint64_t kCap = 0x00;
+constexpr std::uint64_t kVs = 0x08;
+constexpr std::uint64_t kCc = 0x14;
+constexpr std::uint64_t kCsts = 0x1C;
 constexpr std::uint64_t kAqa = 0x24;
 constexpr std::uint64_t kAdminTailDoorbell = 0x1000;
 constexpr std::uint64_t kAdminHeadDoorbell = 0x1004;
@@ -41,6 +46,10 @@ constexpr std::uint16_t kDeviceId = 0xC0DE;
 constexpr std::uint32_t kNvmeClass = 0x01'0802;
 // How many bytes its register block takes.
 constexpr std::uint64_t kFunctionSize = 0x2000;
+
+// A byte no register of the drive says, so that a copy of one that says 0
+// shows.
+constexpr std::uint8_t kNoise = 0xA5;
 
 // 🎭 This machine, stood in by a FakePciem, as the host of a behavioral
 // NVMe drive with two interrupt vectors, through a PciemHost.
@@ -63,8 +72,7 @@ struct DriveOnAFakeMachine {
   static Registry WithTheFake(FakePciem& machine) {
     Registry registry = BuiltinComponents();
     AddPciemHost(registry, "pciem_host", [&machine](const PciemShape& shape) {
-      machine.opened_as = shape;
-      return std::make_unique<FakePciemDevice>(machine);
+      return std::make_unique<FakePciemDevice>(machine, shape);
     });
     return registry;
   }
@@ -75,11 +83,28 @@ struct DriveOnAFakeMachine {
   // was given.
   void LetTheHostMakeItsWrites() { platform.TimeToNextActivity(); }
 
-  // The bytes of the drive's register at `offset`, as a debugger sees them.
-  std::array<std::byte, 4> DriveRegister(std::uint64_t offset) {
-    std::array<std::byte, 4> bytes{};
-    platform.DebugRead("host.bar0", offset, bytes);
+  // The `size` bytes of the drive's registers at `offset`, as a debugger
+  // sees them.
+  std::vector<std::uint8_t> DriveRegister(std::uint64_t offset,
+                                          std::size_t size = 4) {
+    std::vector<std::uint8_t> bytes(size);
+    platform.DebugRead("host.bar0", offset,
+                       std::as_writable_bytes(std::span{bytes}));
     return bytes;
+  }
+
+  // Fills pciem's copy of BAR0 with kNoise, as the memory pciem sets aside
+  // may hold.
+  void FillWhatTheHostReadsWithNoise() {
+    std::ranges::fill(machine.bar0, kNoise);
+  }
+
+  // The `size` bytes at `offset` of pciem's copy of BAR0, which is what
+  // the host reads.
+  std::vector<std::uint8_t> WhatTheHostReads(std::uint64_t offset,
+                                             std::size_t size = 4) {
+    const auto at = machine.bar0.begin() + static_cast<std::ptrdiff_t>(offset);
+    return {at, at + static_cast<std::ptrdiff_t>(size)};
   }
 
   FakePciem machine;
@@ -161,9 +186,7 @@ TEST(WhenTheHostsWritesAreTaken, TheyAreMadeOnTheFunctionsRegistersInOrder) {
   rig.Host().Take(writes);
   rig.LetTheHostMakeItsWrites();
 
-  EXPECT_THAT(rig.DriveRegister(kAqa),
-              ElementsAre(std::byte{0x03}, std::byte{0}, std::byte{0x03},
-                          std::byte{0}));
+  EXPECT_THAT(rig.DriveRegister(kAqa), ElementsAre(0x03, 0, 0x03, 0));
 }
 
 TEST(WhenTheFunctionRefusesAWrite, ItIsCountedAsRefused) {
@@ -258,6 +281,36 @@ TEST(WhenTheHostAcknowledgesCompletionsOnceTheLineHasFallen,
 
   EXPECT_THAT(rig.machine.sent,
               ElementsAre(FunctionOnAFakeMachine::kDrivenVector));
+}
+
+// The host setting CC.EN, which enables the drive.
+constexpr std::array<HostWrite, 1> kEnable{
+    {{.offset = kCc, .size = 4, .data = 1}}};
+
+TEST(WhenTheHostIsRefreshed, CapVsAndCstsAreCopiedInAsTheFunctionSaysThem) {
+  DriveOnAFakeMachine rig;
+  rig.FillWhatTheHostReadsWithNoise();
+  // So that CSTS says something other than it did at the start.
+  rig.Host().Take(kEnable);
+  rig.LetTheHostMakeItsWrites();
+
+  rig.Host().Refresh();
+
+  EXPECT_EQ(rig.WhatTheHostReads(kCap, 8), rig.DriveRegister(kCap, 8));
+  EXPECT_EQ(rig.WhatTheHostReads(kVs), rig.DriveRegister(kVs));
+  EXPECT_EQ(rig.WhatTheHostReads(kCsts), rig.DriveRegister(kCsts));
+}
+
+// pciem keeps the host's writes in its copy of BAR0, which is what the host
+// reads back.
+TEST(WhenTheHostIsRefreshed, TheRegistersTheHostWritesAreNotCopiedIn) {
+  DriveOnAFakeMachine rig;
+  rig.FillWhatTheHostReadsWithNoise();
+
+  rig.Host().Refresh();
+
+  EXPECT_THAT(rig.WhatTheHostReads(kAqa),
+              ElementsAre(kNoise, kNoise, kNoise, kNoise));
 }
 
 }  // namespace

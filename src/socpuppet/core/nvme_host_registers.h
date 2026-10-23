@@ -43,6 +43,16 @@ class NvmeHostRegisters {
     Shutdown shutdown = Shutdown::kNone;
   };
 
+  // A register: where it is, and how many bytes it takes.
+  struct Register {
+    std::uint64_t offset = 0;
+    std::size_t size = 0;
+  };
+
+  // The registers the host only reads, whose values a controller says:
+  // CAP, VS and CSTS.
+  static std::span<const Register> RegistersTheControllerSays();
+
   // Reads from the controller registers. Returns false, and touches
   // nothing, if the read is not all inside them.
   bool Read(std::uint64_t offset, std::span<std::uint8_t> out,

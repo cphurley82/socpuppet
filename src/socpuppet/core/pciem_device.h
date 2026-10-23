@@ -40,6 +40,9 @@ class PciemDevice {
  public:
   virtual ~PciemDevice() = default;
 
+  // pciem's copy of BAR0, which is what the host reads.
+  virtual std::span<std::uint8_t> Bar0() = 0;
+
   // Copies between the host's memory at `address`, an address the host
   // gave the device, and `data`: into the host's memory if `to_host`, out
   // of it if not. Throws std::system_error if the host's side refuses.
