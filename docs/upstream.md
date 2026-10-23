@@ -1529,17 +1529,17 @@ Two more things read in the same file and not acted on:
 
 ## pciem
 
-[cakehonolulu/pciem](https://github.com/cakehonolulu/pciem), pinned at `f80bbb71` ("Merge pull request #50 from 00xc/kernel/dma/cleanup", 2026-09-30) in `spikes/pciem/fetch.sh`. A Linux kernel module that lets a program be a PCIe device on the machine's own bus; the real-host spike puts the puppet's SSD there ([history/real-host-spike.md](history/real-host-spike.md)). Not part of the wheel: the module is GPLv2 and is built from source, as QBox is. Its README says the kernel components are GPLv2 and the examples dual MIT/GPLv2.
+[cakehonolulu/pciem](https://github.com/cakehonolulu/pciem), pinned at `f80bbb71` ("Merge pull request #50 from 00xc/kernel/dma/cleanup", 2026-09-30) in `tools/build_pciem.py`. A Linux kernel module that lets a program be a PCIe device on the machine's own bus; `sp.PciemHost` puts the puppet's SSD there ([models/pciem-host.md](models/pciem-host.md)), as the real-host spike found it could ([history/real-host-spike.md](history/real-host-spike.md)). Not part of the wheel: the module is GPLv2 and is built from source, as QBox is. Its README says the kernel components are GPLv2 and the examples dual MIT/GPLv2.
 
 ### The header a program must include is GPL-2.0-only
 
 - **Where**: `include/pciem_api.h`, line 1: `SPDX-License-Identifier: GPL-2.0-only`.
 - **What is wrong**: it is the interface between the module and every program that talks to `/dev/pciem` (its structures, its ioctl numbers and the ring), so every such program includes it, and under a plain GPL-2.0-only it is not clear that one under another licence may. Linux's own user-API headers carry `WITH Linux-syscall-note`, which says a program using the kernel's interface is not a derived work of it. pciem's examples, which include the header, are dual MIT/GPLv2 themselves.
 - **How to see it**: `head -1 include/pciem_api.h`, and `grep -r SPDX examples` beside it.
-- **What we do**: the bridge is optional, from source and never in the wheel, and only the spike's `pciem_device.cpp` includes the header.
+- **What we do**: `sp.PciemHost` is optional, from source and never in the wheel, and only `src/socpuppet/core/pciem_device.cpp` includes the header, in a library of its own (`socpuppet_pciem_device`).
 - **Upstream fix**: `GPL-2.0-only WITH Linux-syscall-note` on the header, as Linux's `include/uapi` has, or the examples' `GPL-2.0 OR MIT`.
 - **Kind**: licence.
-- **When it lands**: the bridge could go in the wheel; whether it should is the maintainer's decision.
+- **When it lands**: `sp.PciemHost` could go in the wheel; whether it should is the maintainer's decision.
 
 ### A BAR's memory is not cleared before the host reads it
 
@@ -1556,17 +1556,17 @@ Two more things read in the same file and not acted on:
 - **Where**: `kernel/framework/pciem.c` line 797, `dev_set_msi_domain(&bridge->dev, pciem_virtual_root_nomsi_domain)`, and `pciem_trigger_msi`, which falls back to `dev->irq` when MSI-X is not enabled.
 - **What is wrong**: a device on the virtual root advertises its MSI-X capability, but the driver cannot enable it, so it gets one legacy interrupt (INTx). Every vector injected goes to that one line, and Linux's NVMe driver makes as many I/O queues as it has interrupts: one, whatever the device offers.
 - **How to see it**: a device with 9 MSI-X vectors, whose firmware answers 8 queues to Set Features: `/proc/interrupts` has only `nvme2q1`, and the kernel says `1/0/0 default/read/poll queues`.
-- **What we do**: nothing; the spike's drives work with one queue.
+- **What we do**: nothing; the drives work with one queue, and the tests do not depend on more.
 - **Upstream fix**: an MSI domain for the virtual root, whose messages pciem delivers to the vectors' interrupts as it does INTx's.
 - **Kind**: missing feature.
-- **When it lands**: M31's tests can use a queue a CPU.
+- **When it lands**: a test can use a queue a CPU.
 
 ### A full ring drops the host's writes
 
 - **Where**: `kernel/framework/userspace.c` line 392, `Shared ring buffer full, dropping event for userspace`.
 - **What is wrong**: the ring has 256 slots, and a write that finds it full is lost, with a warning in the kernel's log and nothing for the program. A lost doorbell is a command that never runs, and the host times it out 30 s later.
 - **How to see it**: not seen. The most the spike found waiting was 16 writes; a program slower to drain than the host is to write would see it.
-- **What we do**: drain the ring at every round of the pump, and before the simulation runs.
+- **What we do**: `sp.PciemHost` drains the ring whenever pciem says on its eventfd that it has posted, at the pump's next look (`python/socpuppet/pump.py`).
 - **Upstream fix**: hold the writing CPU until there is room, or count the lost writes where the program can read them.
 - **Kind**: limitation.
 - **When it lands**: nothing to delete; M31 could check the count.

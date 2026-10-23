@@ -361,8 +361,8 @@ PCIEM = (
         on_linux(sudo_asks),
         {
             "Linux": Fix(
-                "let your user run commands as root without a password, "
-                "as docs/setup.md says"
+                "run the tests as root, or let sudo run commands as root "
+                "without a password, as docs/setup.md says"
             )
         },
     ),

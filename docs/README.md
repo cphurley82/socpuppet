@@ -22,7 +22,7 @@ Start with the [README](../README.md): it runs a whole chip's boot in a dozen li
 
 ## 🔧 Working on socpuppet
 
-- [Setting up a machine](setup.md): from a bare install to every test passing, QBox included.
+- [Setting up a machine](setup.md): from a bare install to every test passing, QBox and pciem included.
 - [Building and testing](development.md): the everyday loop, the tests, coverage, sanitizers, CI's jobs, the firmware, the package.
 - [Style, and the tools that hold us to it](style.md).
 - [What we owe upstream](upstream.md): every fix we carry for the projects we borrow from, ready to send.
