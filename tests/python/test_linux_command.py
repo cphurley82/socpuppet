@@ -137,14 +137,14 @@ def run_without_a_terminal(*arguments, **extra_environment):
 
 
 def put_images_that_boot_nothing(directory):
-    """Put the three images in `directory`, each a sector long.
+    """Put the three images in `directory`.
 
     Enough for the command to describe the host and build it, and for
-    nothing to boot: the kernel and the root are spam, and where OpenSBI
-    would be is a program that sleeps. ⚠️ With spam there, QBox's CPU
-    traps on every fetch, at an address nothing answers, and never yields
-    the simulation (docs/models/qbox-cpu.md).
+    nothing to boot: the kernel and the root are a sector of spam, and
+    where OpenSBI would be is a program that sleeps. ⚠️ With spam there,
+    QBox's CPU traps on every fetch, at an address nothing answers, and
+    never yields the simulation (docs/models/qbox-cpu.md).
     """
-    (directory / FW_JUMP_BIN).write_bytes(sleeps().ljust(SECTOR, b"\0"))
+    (directory / FW_JUMP_BIN).write_bytes(sleeps())
     for image in (LINUX_BIN, ROOTFS_EXT4):
         (directory / image).write_bytes(b"spam" * (SECTOR // len(b"spam")))
