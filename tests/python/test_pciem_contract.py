@@ -6,7 +6,9 @@ these tests hold it to what PciemHost relies on. They run only where the
 doctor's `pciem` area is well (pciem_area.py), and each puts the 🎭
 behavioral drive on the bus: one that says it is a device no driver
 claims, for what the host sees with no driver in the way, and one that
-says it is an NVMe drive, which Linux's own `nvme` driver binds.
+says it is an NVMe drive, which Linux's own `nvme` driver binds. One
+drive pciem refuses, which takes no root: it runs wherever /dev/pciem
+opens.
 """
 
 import subprocess
@@ -14,14 +16,19 @@ import sys
 
 import pytest
 
-from pciem_area import needs_pciem
+import socpuppet as sp
+from pciem_area import needs_dev_pciem, needs_pciem
 from processes import environment
+from socpuppet.boards.drive import VECTORS, connect_the_function
 from socpuppet.boards.real_host import (
     UNCLAIMED_CLASS,
     RealHost,
+    add_real_host,
     behavioral_drive,
     puppet_function,
+    this_machine,
 )
+from socpuppet.components import BehavioralNvme
 from this_machine import (
     block_device,
     block_size,
@@ -32,7 +39,7 @@ from this_machine import (
     write_block,
 )
 
-pytestmark = [needs_pciem, pytest.mark.platform]
+pytestmark = pytest.mark.platform
 
 # The drive's registers, where the NVMe specification has them, and how
 # many bytes each takes.
@@ -104,6 +111,7 @@ def unclaimed_drive_on_the_bus():
     return board
 
 
+@needs_pciem
 class TestWhenTheDriveIsOnThisMachinesBus:
     def test_the_host_reads_the_capabilities_the_drive_says(
         self, unclaimed_drive
@@ -116,6 +124,7 @@ class TestWhenTheDriveIsOnThisMachinesBus:
         assert seen == board.platform.peek(offset, size, via=board.host.bar0)
 
 
+@needs_pciem
 class TestWhenTheDriveIsGivenMemoryADriveBeforeItLeftFullOfOnes:
     def test_a_register_nobody_wrote_reads_as_zero(
         self, unclaimed_drive_after_a_scribbler
@@ -130,6 +139,7 @@ class TestWhenTheDriveIsGivenMemoryADriveBeforeItLeftFullOfOnes:
         )
 
 
+@needs_pciem
 class TestWhenLinuxsOwnDriverBindsTheDrive:
     def test_the_registers_it_wrote_are_on_the_drive_as_it_wrote_them(
         self, nvme_drive
@@ -161,3 +171,29 @@ def shutdown_state(board) -> int:
     """How far the drive says a shutdown has got: CSTS.SHST."""
     status = board.platform.peek(CSTS, 4, via=board.host.bar0)
     return int.from_bytes(status, "little") & SHST
+
+
+#: A size no BAR can have: PCI sizes a BAR in powers of two, and pciem
+#: refuses any other.
+NOT_A_POWER_OF_TWO = 0x3000
+
+
+@needs_dev_pciem
+class TestWhenPciemRefusesADrive:
+    def test_building_the_platform_raises_oserror_naming_what_was_refused(
+        self,
+    ):
+        platform = drive_whose_function_takes(NOT_A_POWER_OF_TWO)
+
+        with pytest.raises(OSError, match="ADD_BAR 0"):
+            platform.build()
+
+
+def drive_whose_function_takes(size: int) -> sp.Platform:
+    """The behavioral drive with this machine as its host, its function
+    `size` bytes: what behavioral_drive() describes, but for the size."""
+    platform = sp.Platform()
+    nvme = platform.add("nvme", BehavioralNvme(blocks=64, vectors=VECTORS))
+    host = add_real_host(platform, this_machine, function_size=size)
+    connect_the_function(platform, nvme, host)
+    return platform
