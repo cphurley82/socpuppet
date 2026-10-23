@@ -148,6 +148,12 @@ def load_order(modules: Path, wanted: tuple[str, ...]) -> list[str]:
         needs[module] = needed.split()
     order: list[str] = []
     for module in wanted:
+        if module not in needs:
+            raise Failed(
+                f"{modules / 'modules.dep'} does not list {module}, which "
+                "the guest loads to mount its root: it is built into this "
+                "kernel, or compressed otherwise than with zstd."
+            )
         for each in [*reversed(needs[module]), module]:
             if each not in order:
                 order.append(each)
