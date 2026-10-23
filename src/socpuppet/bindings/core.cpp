@@ -23,6 +23,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/ideal_nand.h"
+#include "socpuppet/models/pciem_host.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/virtio_9p.h"
 #include "socpuppet/models/virtio_blk.h"
@@ -244,6 +245,26 @@ PYBIND11_MODULE(_core, m) {
                  self.platform.ModuleAt<socpuppet::VirtioBlk>(path).Contents();
              return py::bytes(reinterpret_cast<const char*>(bytes.data()),
                               bytes.size());
+           })
+      // The pciem host at `path`: put its function on this machine's bus,
+      // the descriptor it says the host has made writes on, take those
+      // writes, and refresh what the host reads.
+      .def("pciem_host_start",
+           [](NativePlatform& self, const std::string& path) {
+             self.platform.ModuleAt<socpuppet::PciemHost>(path).Start();
+           })
+      .def(
+          "pciem_host_event_fd",
+          [](NativePlatform& self, const std::string& path) {
+            return self.platform.ModuleAt<socpuppet::PciemHost>(path).EventFd();
+          })
+      .def("pciem_host_service",
+           [](NativePlatform& self, const std::string& path) {
+             self.platform.ModuleAt<socpuppet::PciemHost>(path).Service();
+           })
+      .def("pciem_host_refresh",
+           [](NativePlatform& self, const std::string& path) {
+             self.platform.ModuleAt<socpuppet::PciemHost>(path).Refresh();
            })
       // Programs an image into the NAND chip at `path`, from its first page
       // on. Too long an image is refused (ValueError).

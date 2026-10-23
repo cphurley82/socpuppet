@@ -65,7 +65,7 @@ from socpuppet.components import (
     Script,
     ScriptedBusMaster,
 )
-from socpuppet.placed import Placed, PlacedNand, PlacedRouter
+from socpuppet.placed import Placed, PlacedNand, PlacedPciemHost, PlacedRouter
 from socpuppet.platform import Group, Platform
 from socpuppet.ssd_firmware import SsdFirmware
 from socpuppet.time import ms
@@ -336,7 +336,7 @@ def add_ssd_on_this_machine(
     firmware: Script | None = None,
     gdb_port: int = 0,
     boot: Boot | None = None,
-) -> tuple[Ssd, Placed]:
+) -> tuple[Ssd, PlacedPciemHost]:
     """🐧 Describe an SSD with this machine as its host.
 
     It is `add_ssd_function` with this machine's own Linux in front of it,
@@ -389,7 +389,7 @@ class RealHostSsdBoard(NamedTuple):
     platform: Platform
     ssd: Ssd
     #: The `sp.PciemHost` that puts the SSD on this machine's own bus.
-    host: Placed
+    host: PlacedPciemHost
 
 
 @overload

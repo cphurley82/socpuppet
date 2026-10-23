@@ -45,6 +45,7 @@ from socpuppet.placed import (
     PlacedConsole,
     PlacedNand,
     PlacedNet,
+    PlacedPciemHost,
     PlacedRouter,
     PlacedUart,
 )
@@ -1899,6 +1900,10 @@ class PciemHost(PcieFunctionFront):
     """
 
     implementation = "pciem_host"
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedPciemHost:
+        return PlacedPciemHost(platform, path, self)
 
     @property
     def port_specs(self) -> tuple[PortSpec, ...]:

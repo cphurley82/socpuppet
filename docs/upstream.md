@@ -1544,12 +1544,12 @@ Two more things read in the same file and not acted on:
 ### A BAR's memory is not cleared before the host reads it
 
 - **Where**: `kernel/framework/pciem.c`, around line 993, where a BAR's physical memory is prepared from the reserved region, and `pool.c`, which carves it.
-- **What is wrong**: the region is RAM that the kernel set aside at boot, and it holds whatever was there before. The host reads every register in a BAR, the ones the program never wrote included, so a device that sets only the registers it means gets garbage in the rest. Linux 7.0's NVMe driver reads the controller memory buffer's registers (CMBLOC, CMBSZ at `0x38` and `0x3C`) before it enables the controller.
-- **How to see it**: run `examples/nvme/nvme_card`, which writes only CAP and VS, on a machine whose region was used before boot. The kernel's log has `UBSAN: shift-out-of-bounds in drivers/nvme/host/pci.c:2451:14` in `nvme_map_cmb`, and then `failed to register the CMB`.
-- **What we do**: the bridge zeroes BAR0 through its own mapping before `PCIEM_IOCTL_START` (`spikes/pciem/pciem_device.cpp`).
+- **What is wrong**: the region is RAM that the kernel set aside at boot, and it holds whatever was there before: a device's registers from an earlier run, since the pool gives each device the first memory that is free, or, at first, what was there before boot. The host reads every register in a BAR, the ones the program never wrote included, so a device that sets only the registers it means gets garbage in the rest. Linux 7.0's NVMe driver reads the controller memory buffer's registers (CMBLOC, CMBSZ at `0x38` and `0x3C`) before it enables the controller.
+- **How to see it**: run `examples/nvme/nvme_card`, which writes only CAP and VS, on a machine whose region was used before boot. The kernel's log has `UBSAN: shift-out-of-bounds in drivers/nvme/host/pci.c:2451:14` in `nvme_map_cmb`, and then `failed to register the CMB`. Or, without the fix below, `tests/python/test_pciem_contract.py`'s `TestWhenTheDriveIsGivenMemoryADriveBeforeItLeftFullOfOnes`: a drive fills its registers with ones through `/sys` and goes, and the next reads ones where it said nothing.
+- **What we do**: `sp.PciemHost`'s device zeroes BAR0 through its own mapping before `PCIEM_IOCTL_START` (`src/socpuppet/core/pciem_device.cpp`).
 - **Upstream fix**: clear each BAR's memory when it is carved from the pool, or when the device is registered.
 - **Kind**: bug.
-- **When it lands**: the bridge's `memset` can go.
+- **When it lands**: the device's clearing of BAR0 can go.
 
 ### The virtual root has no MSI domain, so a device gets one interrupt
 

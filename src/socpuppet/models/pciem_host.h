@@ -71,8 +71,12 @@ class PciemHost : public sc_core::sc_module {
   }
 
   // Puts the function on this machine's bus, where the host's driver
-  // finds it. Refresh first, so that what the driver reads first is there.
-  void Start() { device_->Start(); }
+  // finds it, refreshed first, so that what the driver reads first is
+  // there. Called from outside the simulation, as Refresh is.
+  void Start() {
+    Refresh();
+    device_->Start();
+  }
 
   // A descriptor that is readable when the host has made writes, which
   // Service takes.

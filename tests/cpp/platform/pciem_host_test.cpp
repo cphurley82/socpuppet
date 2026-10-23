@@ -326,6 +326,16 @@ TEST(WhenTheHostIsStarted, TheDeviceIsPutOnTheBus) {
   EXPECT_TRUE(rig.machine.started);
 }
 
+TEST(WhenTheHostIsStarted, WhatTheHostsDriverReadsFirstIsAlreadyThere) {
+  DriveOnAFakeMachine rig;
+  rig.FillWhatTheHostReadsWithNoise();
+
+  rig.Host().Start();
+
+  const auto cap = std::span(rig.machine.started_with).subspan(kCap, 8);
+  EXPECT_EQ(std::vector(cap.begin(), cap.end()), rig.DriveRegister(kCap, 8));
+}
+
 TEST(WhenTheHostIsAskedWhatToWaitOn, ItIsTheDevicesEventFd) {
   DriveOnAFakeMachine rig;
   rig.machine.event_fd = 42;

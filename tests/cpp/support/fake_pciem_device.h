@@ -18,8 +18,10 @@
 struct FakePciem {
   // The shape the host's device was opened in.
   socpuppet::PciemShape opened_as;
-  // Whether the device has been put on the bus.
+  // Whether the device has been put on the bus, and what pciem's copy of
+  // BAR0 held then: what the host's driver reads first.
   bool started = false;
+  std::vector<std::uint8_t> started_with;
   // The descriptor the device says it has posted something on.
   int event_fd = -1;
   // The host's writes that pciem has posted and the device not yet
@@ -61,7 +63,10 @@ class FakePciemDevice : public socpuppet::PciemDevice {
     }
   }
 
-  void Start() override { machine_.started = true; }
+  void Start() override {
+    machine_.started = true;
+    machine_.started_with = machine_.bar0;
+  }
 
   int EventFd() const override { return machine_.event_fd; }
 
