@@ -203,7 +203,14 @@ DOCKER = (
 
 
 def load(path: str) -> ModuleType:
-    """A script of the repository's, from its top, as a module."""
+    """A script of the repository's, from its top, as a module.
+
+    A script of tools/ imports its siblings (tools/needs.py) as a script
+    run from there can, so the directory is put on the path first.
+    """
+    tools = str(REPOSITORY / "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
     spec = importlib.util.spec_from_file_location(
         Path(path).stem, REPOSITORY / path
     )

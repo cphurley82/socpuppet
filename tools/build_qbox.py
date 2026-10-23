@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 from typing import IO
 
+from needs import Failed, not_installed
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 PATCHES = REPOSITORY / "cmake" / "patches"
 QBOX_COMMIT = "4d63017c88a147839d49028d0c60666d691460cc"  # 2026-09-24
@@ -50,10 +52,6 @@ LIBRARIES = (
     ("sdl2", "libsdl2-dev", "sdl2"),
     ("slirp", "libslirp-dev", "libslirp"),
 )
-
-
-class Failed(Exception):
-    """What stopped the build, and what to do about it."""
 
 
 def main() -> int:
@@ -165,7 +163,7 @@ def configure(source: Path, tree: Path, install: Path) -> None:
 
 def check_what_it_needs() -> None:
     """Stop, naming what to install, if a program or library is missing."""
-    missing = [p for p in PROGRAMS if not shutil.which(p[0])]
+    missing = not_installed(PROGRAMS)
     if shutil.which("pkg-config"):
         missing += [
             library
@@ -173,14 +171,10 @@ def check_what_it_needs() -> None:
             if subprocess.run(["pkg-config", "--exists", library[0]]).returncode
         ]
     if missing:
-        names, packages, formulas = (
-            list(each) for each in zip(*missing, strict=True)
-        )
-        raise Failed(
-            f"QBox cannot be built without {' '.join(names)}.\n"
-            f"On Ubuntu: sudo apt install {' '.join(packages)}\n"
-            f"On a Mac: brew install {' '.join(formulas)}\n"
-            "docs/setup.md lists every package QBox needs."
+        raise Failed.without(
+            "QBox cannot be built",
+            missing,
+            see="docs/setup.md lists every package QBox needs.",
         )
 
 
