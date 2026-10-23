@@ -116,13 +116,15 @@ class TestWhenPipedInputHasEndedAndTheCpuSleeps:
     def test_the_run_waits_without_keeping_this_machine_busy(self, firmware):
         # The shell answers and sleeps, and the run goes on for IDLE
         # seconds of the CPU's clock.
+        start_up = piped(UNTIL_STARTED, firmware(SHELL), typed=b"")
         run = piped(UNTIL_IDLE, firmware(SHELL), typed=b"kernel version\n")
 
         # The CPU's clock keeps to the wall's while it sleeps.
         assert run.wall >= IDLE
-        # Starting Python and building the platform take a fraction of a
-        # second; waiting by spinning would take all IDLE of them.
-        assert run.busy < IDLE / 2
+        # What starting Python and building the platform cost depends on
+        # the build, seconds under coverage's -O0, so it is taken off;
+        # waiting by spinning would cost all IDLE seconds.
+        assert run.busy - start_up.busy < IDLE / 2
 
 
 #: What the process runs: the host with Zephyr's shell, and `interact` at
@@ -142,12 +144,15 @@ interact(board.platform, screen=[board.uart], keyboard=board.uart{options})
 SHELL_ONLY = INTERACTING.format(options="", after="")
 #: The same, until IDLE seconds of the CPU's clock have passed. Long
 #: enough that a wait that spins (a second of this machine's CPU each
-#: second) stands well clear of starting up (a fraction of one), and short
-#: enough for one long test.
+#: second) stands well clear of how much starting up costs from one run
+#: to the next, and short enough for one long test.
 IDLE = 4
 UNTIL_IDLE = INTERACTING.format(
     options=f", until=lambda: board.platform.time >= {s(IDLE)}", after=""
 )
+#: The same, ending at its first look at the terminal: what starting up
+#: costs, and no more.
+UNTIL_STARTED = INTERACTING.format(options=", until=lambda: True", after="")
 #: The same, until the shell has answered `kernel version`.
 ANSWERED = f"lambda: {SHELL_VERSION!r} in board.uart.output"
 UNTIL_ANSWERED = INTERACTING.format(options=f", until={ANSWERED}", after="")
