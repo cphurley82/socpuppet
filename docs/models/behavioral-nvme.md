@@ -45,7 +45,7 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 | `irq0`, `irq1`, ... | One interrupt line per vector. The admin queue uses `irq0`, and the host names a vector for each I/O queue when it creates it. A line may be left unconnected. |
 
 - **The drive** is `blocks` blocks of 512 bytes, kept in RAM, all zeros until written. Only what has been written takes memory, so a drive can be far larger than the machine you run on. It has one namespace, number 1. 🎓 A namespace is NVMe's word for a drive's worth of blocks, and a controller can have several.
-- **Enable and reset.** Setting `CC.EN` makes it ready at once. Clearing it resets the controller: every queue is gone, and what is on the drive stays.
+- **Enable and reset.** Setting `CC.EN` makes it ready at once. `CAP.TO` still asks the host to wait up to half a second, the least it can ask for, because Linux reads 0 as no wait at all: a real host, reaching the drive across a bridge, reads `CSTS` before ready has had time to arrive, and gives up. Clearing it resets the controller: every queue is gone, and what is on the drive stays.
 - **Admin commands**: Identify (the controller, a namespace, the list of namespaces), Set Features for the number of queues, and the two commands that create an I/O queue pair. Up to 8 pairs.
 - **I/O commands**: Read, Write and Flush.
 - **Data pages.** A command says where its data is page by page (🎓 PRPs, physical region pages), and the pages need not be next to each other. Transfers of any length are followed through, lists and all.

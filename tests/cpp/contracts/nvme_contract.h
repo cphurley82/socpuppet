@@ -173,6 +173,20 @@ TYPED_TEST_P(NvmeContract, AControllerSaysItTakesTheNvmCommandSet) {
   EXPECT_TRUE(takes_them);
 }
 
+// Linux reads a CAP.TO of 0 as no time at all, and gives up on a
+// controller that is not ready the moment it is enabled. 🎓 Under a real
+// host the simulated clock keeps to the wall's, so that moment never comes
+// soon enough: a controller has to ask for some time, and 500 ms is the
+// least it can ask for.
+TYPED_TEST_P(NvmeContract,
+             AControllerAsksTheHostToWaitAtLeastHalfASecondForReady) {
+  sc_core::sc_time timeout;
+
+  this->OnTheHost([&](NvmeHost& host) { timeout = host.ReadyTimeout(); });
+
+  EXPECT_GE(timeout, sc_core::sc_time(500, sc_core::SC_MS));
+}
+
 TYPED_TEST_P(NvmeContract, WhenTheHostEnablesTheControllerItBecomesReady) {
   bool ready = false;
 
@@ -980,6 +994,7 @@ TYPED_TEST_P(NvmeContract,
 REGISTER_TYPED_TEST_SUITE_P(
     NvmeContract, AFreshControllerOffersIoQueuesOfAtLeast256Entries,
     AControllerSaysItTakesTheNvmCommandSet,
+    AControllerAsksTheHostToWaitAtLeastHalfASecondForReady,
     WhenTheHostEnablesTheControllerItBecomesReady,
     AnEnabledControllerSaysReadyToADebugAccessToo,
     WhenTheHostDisablesTheControllerItStopsBeingReady,
