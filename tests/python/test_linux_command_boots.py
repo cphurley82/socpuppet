@@ -116,5 +116,5 @@ STOPS_WITHIN = 30
 #: Seconds on the wall for the command to boot Linux and run a command or
 #: two. Alone, the prompt comes in 75 to 100 s on the interpreter here;
 #: three boots at once, beside the other long tests, have taken 230 s, and
-#: CI's machines are slower still.
-BOOTS_WITHIN = 600
+#: four at once on CI's Intel Macs have gone past 600.
+BOOTS_WITHIN = 900
