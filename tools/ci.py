@@ -586,7 +586,14 @@ JOBS = [
         tiers=(Tier.NIGHTLY,),
         needs=("firmware-zephyr",),
         steps=PCIEM_GUEST,
-        uses=("build/pciem", "build/pciem-dev", "extension"),
+        # The guest is given every core, and its tests are timed on the
+        # wall: Linux waits for the drive only so long.
+        uses=(
+            "build/pciem",
+            "build/pciem-dev",
+            "extension",
+            TESTS_ON_EVERY_CORE,
+        ),
         areas=("build", "network", "guest"),
     ),
     Job(

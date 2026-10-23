@@ -575,6 +575,7 @@ ON_EVERY_CORE = [
     "sanitizers",
     "twister",
     "qbox",
+    "pciem-guest",
     "wheel",
     *(job.name for job in JOBS if job.name.startswith("devcontainer-")),
 ]
