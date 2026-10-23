@@ -1873,6 +1873,43 @@ class PcieEndpoint(Component):
         )
 
 
+class PciemHost(Component):
+    """🐧 This machine's own Linux, as the host of a PCIe function.
+
+    It stands where a `PcieEndpoint`, its link and a root complex would,
+    and hands the function to this machine through pciem, a Linux kernel
+    module that lets a program be a PCIe device: the host's driver finds
+    the function on its own bus and uses it as it would a card in a slot.
+    The host's register writes reach the function out of `bar0`, the
+    function's DMA comes in on `dma` and goes on to the host's memory, and
+    a rising `irq` line sends the host that vector.
+
+    Its parameters are a `PcieEndpoint`'s: who the device says it is
+    (`vendor_id`, `device_id`, `class_code`), how many bytes the function's
+    register block takes, and how many interrupt lines it has. Only a build
+    of socpuppet with pciem has it (tools/build_pciem.py), because pciem is
+    GPL-2.0-only and is never in the wheel, and it runs only on a machine
+    whose Linux has pciem loaded (docs/setup.md).
+    """
+
+    implementation = "pciem_host"
+
+    vendor_id: int
+    device_id: int
+    class_code: int
+    function_size: int
+    vectors: int
+
+    @property
+    def port_specs(self) -> tuple[PortSpec, ...]:
+        """The function's three kinds of port, one line per vector."""
+        return (
+            initiator("bar0"),
+            target("dma"),
+            *(wire_in(f"irq{vector}") for vector in range(self.vectors)),
+        )
+
+
 class PcieRootComplex(Component):
     """Where a host's bus meets a PCIe link.
 

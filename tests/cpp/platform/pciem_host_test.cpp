@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,7 +30,10 @@ namespace socpuppet {
 
 namespace {
 
+using ::testing::AllOf;
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::testing::ThrowsMessage;
 
 // The drive's registers, as the NVMe specification gives them.
 constexpr std::uint64_t kCap = 0x00;
@@ -56,7 +60,7 @@ constexpr std::uint8_t kNoise = 0xA5;
 struct DriveOnAFakeMachine {
   DriveOnAFakeMachine() : platform{WithTheFake(machine)} {
     platform.Add("nvme", "behavioral_nvme", {{"blocks", 64}, {"vectors", 2}});
-    platform.Add("host", "pciem_host",
+    platform.Add("host", "pciem_host_on_a_fake",
                  {{"vendor_id", kVendorId},
                   {"device_id", kDeviceId},
                   {"class_code", kNvmeClass},
@@ -71,9 +75,10 @@ struct DriveOnAFakeMachine {
 
   static Registry WithTheFake(FakePciem& machine) {
     Registry registry = BuiltinComponents();
-    AddPciemHost(registry, "pciem_host", [&machine](const PciemShape& shape) {
-      return std::make_unique<FakePciemDevice>(machine, shape);
-    });
+    AddPciemHost(registry, "pciem_host_on_a_fake",
+                 [&machine](const PciemShape& shape) {
+                   return std::make_unique<FakePciemDevice>(machine, shape);
+                 });
     return registry;
   }
 
@@ -124,7 +129,7 @@ struct FunctionOnAFakeMachine {
       const std::function<void(BusDriver&)>& function,
       const Drive& line = [](LineDriver&) {})
       : platform{WithTheFunction(machine, function, line)} {
-    platform.Add("host", "pciem_host",
+    platform.Add("host", "pciem_host_on_a_fake",
                  {{"vendor_id", kVendorId},
                   {"device_id", kDeviceId},
                   {"class_code", kNvmeClass},
@@ -312,6 +317,27 @@ TEST(WhenTheHostIsRefreshed, TheRegistersTheHostWritesAreNotCopiedIn) {
   EXPECT_THAT(rig.WhatTheHostReads(kAqa),
               ElementsAre(kNoise, kNoise, kNoise, kNoise));
 }
+
+#if !SOCPUPPET_HAS_PCIEM
+
+TEST(WhenTheBuildHasNoPciem, APciemHostIsRefusedAndTheErrorSaysHowToBuildOne) {
+  Platform platform{BuiltinComponents()};
+
+  EXPECT_THAT(
+      [&] {
+        platform.Add("host", "pciem_host",
+                     {{"vendor_id", kVendorId},
+                      {"device_id", kDeviceId},
+                      {"class_code", kNvmeClass},
+                      {"function_size", kFunctionSize},
+                      {"vectors", 2}});
+      },
+      ThrowsMessage<std::invalid_argument>(
+          AllOf(HasSubstr("tools/build_pciem.py"),
+                HasSubstr("SOCPUPPET_PCIEM_DIR"))));
+}
+
+#endif
 
 }  // namespace
 

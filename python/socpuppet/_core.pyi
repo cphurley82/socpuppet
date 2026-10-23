@@ -11,6 +11,7 @@ from socpuppet.components import Script
 def implementations() -> list[str]: ...
 
 has_qbox: bool
+has_pciem: bool
 
 def global_quantum_in_picoseconds() -> int: ...
 
