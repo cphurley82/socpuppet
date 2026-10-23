@@ -20,4 +20,4 @@ The story of how the platform was built, for anyone who wants it. What is on sta
 | [virtio-spike.md](virtio-spike.md) | M25 | 2026-10-16 to 17 | What does it take to boot Linux on virtio's cast? | The virtio road to Linux first, on the host as it is |
 | [real-host-spike.md](real-host-spike.md) | M30 | 2026-10-22 | Can this machine's own Linux mount the puppet's SSD, through pciem? | Yes, all three drives; build M31 as planned, with corrections |
 
-Three spikes still have code in the tree, behind the `spike` CMake preset: `spikes/npu`, which M19 keeps until it has rebuilt what the decision kept, `spikes/pciem`, which M31 keeps until it has rebuilt the bridge, and `spikes/speed`, which stays so that every later change to the core can be timed against its results ([development.md](../development.md#spikes)).
+Two spikes still have code in the tree, behind the `spike` CMake preset: `spikes/npu`, which M19 keeps until it has rebuilt what the decision kept, and `spikes/speed`, which stays so that every later change to the core can be timed against its results ([development.md](../development.md#spikes)).

@@ -180,6 +180,8 @@ sudo insmod build/pciem/kernel/pciem.ko pciem_phys_region=0x10000000:0x4000000
 
 `sudo rm /etc/default/grub.d/pciem.cfg && sudo update-grub` and a reboot take it out again. ⚠️ Secure Boot refuses a module nobody has signed; switch it off, or sign the module yourself.
 
+💡 To try it without the reboot, a QEMU guest of this machine's own runs the tests with pciem loaded, as CI does every night ([development.md](development.md#pciem-a-real-host)).
+
 💡 pciem makes `/dev/pciem` open to every user, so the drive's program needs no root. If `ls -l /dev/pciem` says otherwise on your machine, a udev rule gives it back: `echo 'KERNEL=="pciem", MODE="0666"' | sudo tee /etc/udev/rules.d/70-pciem.rules`, then load the module again.
 
 What the host does to the drive does need root: binding and unbinding Linux's driver, reading the drive's registers through `/sys`, `mkfs.ext4` and `mount`. The tests run each of those with `sudo -n`, which never asks, so they run where the user is root or sudo asks no password. The simplest is to run them as root:
