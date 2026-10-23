@@ -29,10 +29,11 @@ name: Nightly
 # whatever the machine.
 
 on:
-  # 09:23 UTC, the small hours in California. Off the hour, when GitHub's
-  # schedules are busiest.
+  # 05:23 UTC, the evening in California: GitHub has started the scheduled
+  # runs hours late, and the run is to be done by morning. Off the hour,
+  # when GitHub's schedules are busiest.
   schedule:
-    - cron: "23 9 * * *"
+    - cron: "23 5 * * *"
   # And by hand: `gh workflow run nightly.yml`, with `--ref BRANCH` for a
   # branch's whole suite before it merges.
   workflow_dispatch:
