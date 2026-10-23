@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -54,6 +55,7 @@ PROGRAMS = (
     *("flex", "bison", "bc", "mkfs.ext4"),
     *(name for name, _, _ in QBOX.PROGRAMS),
     "pkgutil",
+    "sudo",
 )
 
 # The package of python.org's CPython that cibuildwheel looks for on a Mac,
@@ -76,6 +78,9 @@ def doctor(tmp_path):
 
     run returns the finished process. run.without(program) takes a program
     off the path, and run.lines() are the commands the fakes were given.
+    The files the doctor looks at, in /proc, /sys and /dev, are a Linux's
+    with pciem loaded, unless a test changes them with run.runs_kernel,
+    run.unload_pciem, run.lock_pciems_device or run.is_not_linux.
     """
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
@@ -86,10 +91,16 @@ def doctor(tmp_path):
         )
         path.chmod(0o755)
     log = tmp_path / "log"
+    machine = tmp_path / "machine"
+    (machine / "proc/sys/kernel").mkdir(parents=True)
+    (machine / "proc/sys/kernel/osrelease").write_text("7.0.0-38-generic\n")
+    (machine / "sys/module/pciem").mkdir(parents=True)
+    (machine / "dev").mkdir()
+    (machine / "dev/pciem").write_text("")
 
     def run(*args, **env):
         return subprocess.run(
-            [sys.executable, str(DOCTOR), *args],
+            [sys.executable, str(DOCTOR), "--root", str(machine), *args],
             env={
                 **os.environ,
                 "PATH": str(bin_directory),
@@ -106,8 +117,28 @@ def doctor(tmp_path):
     def lines():
         return log.read_text().splitlines() if log.exists() else []
 
+    def runs_kernel(release):
+        (machine / "proc/sys/kernel/osrelease").write_text(release + "\n")
+
+    def unload_pciem():
+        (machine / "sys/module/pciem").rmdir()
+        (machine / "dev/pciem").unlink()
+
+    def lock_pciems_device():
+        (machine / "dev/pciem").chmod(0o444)
+
+    def is_not_linux():
+        # A Mac: no /proc and no /sys, and a /dev with no pciem in it.
+        shutil.rmtree(machine / "proc")
+        shutil.rmtree(machine / "sys")
+        (machine / "dev/pciem").unlink()
+
     run.without = without
     run.lines = lines
+    run.runs_kernel = runs_kernel
+    run.unload_pciem = unload_pciem
+    run.lock_pciems_device = lock_pciems_device
+    run.is_not_linux = is_not_linux
     return run
 
 
@@ -278,6 +309,17 @@ def test_other_than_on_a_mac_pythons_cpython_is_not_looked_for(doctor):
     assert marks(result.stdout) == {"the wheel's build": "✅"}
 
 
+def problems(output):
+    """What each area's line of the output says is wrong, by its title."""
+    found = {}
+    for line in output.splitlines():
+        _, _, rest = line.partition(" ")
+        for area in AREAS:
+            if rest.startswith(f"{area.title}: "):
+                found[area.title] = rest.removeprefix(f"{area.title}: ")
+    return found
+
+
 def marks(output):
     """The mark each area's line of the output opens with, by its title."""
     found = {}
@@ -287,6 +329,78 @@ def marks(output):
             if rest.strip().startswith(area.title):
                 found[area.title] = mark
     return found
+
+
+PCIEM = "pciem, for a real host"
+
+
+def test_without_pciems_module_loaded_pciem_warns_without_failing_and_says_how_to_load_it(
+    doctor,
+):
+    doctor.unload_pciem()
+
+    result = doctor("pciem")
+
+    assert result.returncode == 0, result.stdout
+    assert problems(result.stdout)[PCIEM] == "pciem's module is not loaded"
+    assert "tools/build_pciem.py" in result.stdout
+    assert "docs/setup.md" in result.stdout
+
+
+def test_a_kernel_older_than_6_6_makes_pciem_warn_and_says_why(doctor):
+    doctor.runs_kernel("6.5.9")
+
+    result = doctor("pciem")
+
+    assert problems(result.stdout)[PCIEM] == (
+        "the kernel is 6.5.9, and pciem needs 6.6 or later"
+    )
+
+
+@pytest.mark.parametrize("release", ["6.6.0", "7.0.0-38-generic"])
+def test_a_kernel_of_6_6_or_later_is_well_for_pciem(doctor, release):
+    doctor.runs_kernel(release)
+
+    result = doctor("pciem")
+
+    assert marks(result.stdout)[PCIEM] == "✅"
+
+
+def test_on_a_machine_that_is_not_linux_pciem_says_so_and_nothing_else(
+    doctor,
+):
+    doctor.is_not_linux()
+
+    result = doctor("pciem", FAIL_ON="sudo")
+
+    assert result.returncode == 0, result.stdout
+    assert problems(result.stdout)[PCIEM] == (
+        "this machine is not Linux, and pciem is Linux's"
+    )
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write any file")
+def test_where_pciems_device_cannot_be_written_pciem_says_to_give_it_to_you(
+    doctor,
+):
+    doctor.lock_pciems_device()
+
+    result = doctor("pciem")
+
+    assert problems(result.stdout)[PCIEM].endswith(
+        "dev/pciem cannot be opened for writing"
+    )
+    assert "udev" in result.stdout
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root needs no sudo")
+def test_where_sudo_asks_for_a_password_pciem_says_to_let_you_run_as_root_without_one(
+    doctor,
+):
+    result = doctor("pciem", FAIL_ON="sudo")
+
+    assert problems(result.stdout)[PCIEM] == "sudo asks for a password"
+    assert "without a password" in result.stdout
 
 
 def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(

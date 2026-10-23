@@ -15,7 +15,9 @@ import argparse
 import concurrent.futures
 import importlib.util
 import json
+import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +28,9 @@ from pathlib import Path
 from types import ModuleType
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+# The root of the files the pciem area looks at, /proc, /sys and /dev:
+# this machine's, unless the tests give it another (--root).
+ROOT = Path("/")
 
 # How a package is installed on Ubuntu and on a Mac.
 APT = "sudo apt-get install -y"
@@ -247,6 +252,123 @@ def firmware_needs(host: str) -> tuple[Need, ...]:
     )
 
 
+def running_linux() -> str | None:
+    """The running Linux kernel's release, or None if this is not Linux."""
+    release = ROOT / "proc/sys/kernel/osrelease"
+    return release.read_text().strip() if release.exists() else None
+
+
+def not_linux() -> str | None:
+    """What is wrong with this machine for pciem's being Linux's, if so."""
+    if running_linux() is not None:
+        return None
+    return "this machine is not Linux, and pciem is Linux's"
+
+
+def on_linux(problem: Callable[[], str | None]) -> Callable[[], str | None]:
+    """A need of Linux's: `problem`, on Linux.
+
+    On a machine that is not Linux it is no problem: that machine has one
+    need of its own, which says so.
+    """
+
+    def linux_only() -> str | None:
+        return None if running_linux() is None else problem()
+
+    return linux_only
+
+
+def old_kernel() -> str | None:
+    """What is wrong with the running kernel for pciem, if anything."""
+    release = running_linux() or ""
+    version = re.match(r"(\d+)\.(\d+)", release)
+    if version and (int(version[1]), int(version[2])) >= (6, 6):
+        return None
+    return f"the kernel is {release}, and pciem needs 6.6 or later"
+
+
+def pciem_unloaded() -> str | None:
+    """What is wrong with pciem's module, if anything."""
+    if (ROOT / "sys/module/pciem").is_dir():
+        return None
+    return "pciem's module is not loaded"
+
+
+def pciem_unwritable() -> str | None:
+    """What is wrong with pciem's device, if anything.
+
+    Without pciem's module there is no device, which is the module's need.
+    """
+    device = ROOT / "dev/pciem"
+    if not device.exists() or os.access(device, os.W_OK):
+        return None
+    return f"{device} cannot be opened for writing"
+
+
+def sudo_asks() -> str | None:
+    """What is wrong with running the host's commands as root, if anything.
+
+    🐧 A real host's tests format, mount and unmount the drive with this
+    machine's own mkfs.ext4 and mount, which are root's, and let the
+    driver go of it through /sys. Without sudo there is no asking, and
+    sudo is a need of its own. `-k`, so that a password typed a moment ago
+    does not pass for none.
+    """
+    if os.geteuid() == 0 or not shutil.which("sudo"):
+        return None
+    asked = subprocess.run(
+        ["sudo", "-n", "-k", "true"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return None if asked.returncode == 0 else "sudo asks for a password"
+
+
+# What a real host needs of this machine: pciem, ready to use. The fixes
+# are Linux's, since only on Linux is any of it a problem, but the first:
+# a machine that is not Linux is told so on whatever it runs (and in the
+# tests, a Linux pointed at a machine of their own with no /proc).
+NOT_HERE = Fix("nothing here: a real host is a Linux machine's")
+PCIEM = (
+    Need("Linux", not_linux, {"Linux": NOT_HERE, "Darwin": NOT_HERE}),
+    Need(
+        "kernel 6.6",
+        on_linux(old_kernel),
+        {"Linux": Fix("upgrade to a kernel of 6.6 or later")},
+    ),
+    Need(
+        "pciem.ko",
+        on_linux(pciem_unloaded),
+        {
+            "Linux": Fix(
+                "build it with uv run tools/build_pciem.py, then set memory "
+                "aside and load it as docs/setup.md says"
+            )
+        },
+    ),
+    Need(
+        "/dev/pciem",
+        on_linux(pciem_unwritable),
+        {
+            "Linux": Fix(
+                "give it to your user with a udev rule, as docs/setup.md says"
+            )
+        },
+    ),
+    Need("sudo", on_linux(installed("sudo")), {"Linux": Fix("sudo", APT)}),
+    Need(
+        "sudo without a password",
+        on_linux(sudo_asks),
+        {
+            "Linux": Fix(
+                "let your user run commands as root without a password, "
+                "as docs/setup.md says"
+            )
+        },
+    ),
+)
+
+
 AREAS = (
     Area(
         "build",
@@ -315,6 +437,9 @@ AREAS = (
     # The wheels of Linux are built in a container, and the devcontainer's
     # image is tested in one.
     Area("docker", "Docker", DOCKER, optional=True),
+    # 🐧 This machine's own Linux as the host of the puppet's SSD, which few
+    # need, and only a Linux machine can be.
+    Area("pciem", "pciem, for a real host", PCIEM, optional=True),
 )
 
 
@@ -352,6 +477,8 @@ def main() -> int:
     An area that is not optional and has a problem fails the check.
     """
     args = parse(sys.argv[1:])
+    global ROOT
+    ROOT = args.root
     areas = [
         area for area in AREAS if not args.areas or area.name in args.areas
     ]
@@ -383,6 +510,10 @@ def parse(arguments: list[str]) -> argparse.Namespace:
         "--json",
         action="store_true",
         help="say it as JSON, for a program to read",
+    )
+    # For the tests: the root of a machine of their own making.
+    parser.add_argument(
+        "--root", type=Path, default=ROOT, help=argparse.SUPPRESS
     )
     return parser.parse_args(arguments)
 
