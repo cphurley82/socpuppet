@@ -34,6 +34,8 @@ target_sources(socpuppet_core INTERFACE
     core/nand_array.h
     core/nand_geometry.h
     core/nand_port.h
+    core/pciem_device.h
+    core/pciem_host_logic.h
     core/script.h
     core/system_controller_logic.h
     core/time.h
