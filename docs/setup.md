@@ -1,6 +1,6 @@
 # Setting up a machine for development
 
-This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want it) has QBox built and ready. It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 24-core Intel machine (a Core Ultra 9 285K).
+This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want them) has QBox and pciem built and ready. It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 24-core Intel machine (a Core Ultra 9 285K).
 
 🧦 Once it is done, [Building and testing](development.md) is the everyday page.
 
@@ -16,11 +16,13 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   firmware/build.py ─▶  the Zephyr SDK, Zephyr, Zephyr's Python,    (build/firmware)
                        OpenSBI, EDK2
   tools/build_qbox.py ▶ QBox and its QEMU                          (build/qbox)
+  tools/build_pciem.py ▶ pciem's kernel module, if you want         (build/pciem)
+                       this machine's Linux as the SSD's host
   Docker Desktop  ──▶  the devcontainer's image: the firmware      (Docker's own disk)
                        on an Intel Mac, and QBox for Linux, if wanted
 ```
 
-💡 Only the first row needs root. Everything else lives in your home directory or in the checkout, so deleting `build/` takes the machine back to where it started.
+💡 Only the first row needs root, and pciem's module when it is loaded (step 6). Everything else lives in your home directory or in the checkout, so deleting `build/` takes the machine back to where it started.
 
 💡 **clang-format and clang-tidy come from uv, not from apt or Homebrew.** `pyproject.toml` pins them as Python wheels (`uv sync` installs them), so that every machine and CI format and check the code with exactly the same versions. A clang-format of another version formats some lines differently, and the lint check would fail on code that looks right to you. You do not need a system clang at all: the build uses GCC on Linux and Apple clang on a Mac.
 
@@ -151,7 +153,62 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 
 💡 What these build is socpuppet and QBox for Linux, run in a container on the Mac. The tool builds the image the first time and keeps QBox's two trees on Docker volumes named for the image's Ubuntu (`socpuppet-qbox-ubuntu-26.04` and `socpuppet-qbox-dev-ubuntu-26.04`), because a compiler reading the Mac's files through Docker is ten times slower. In the container the volumes sit where `build/qbox` and `build/qbox-dev` are, in front of whatever the Mac has there, so a native build and this one do not disturb each other. `docker volume rm socpuppet-qbox-ubuntu-26.04 socpuppet-qbox-dev-ubuntu-26.04` is how to start this one again. The Linux extension it builds sits in `python/socpuppet/` beside the Mac's, under a name of its own, so neither build disturbs the other. [development.md](development.md#qbox-the-second-hart) says more.
 
-## 6. Before your first push
+## 6. pciem (optional)
+
+🐧 [pciem](https://github.com/cakehonolulu/pciem) is a Linux kernel module that lets a program be a PCIe device on this machine's own bus. With it, this machine's Linux is the host of the puppet's SSD: its own `nvme` driver binds the drive, `lsblk` lists it, and `mkfs.ext4` and `mount` use it, while the drive runs in the simulation ([models/pciem-host.md](models/pciem-host.md)). It is Linux's alone, for a kernel of 6.6 or later.
+
+⚠️ pciem is GPL-2.0-only. Like QBox, it is built from source beside socpuppet and never goes into the wheel.
+
+Building it needs the running kernel's headers and no root:
+
+```sh
+sudo apt install linux-headers-$(uname -r)
+uv run tools/build_pciem.py           # pciem at its pin, its module into build/pciem/kernel/pciem.ko
+uv run cmake --preset pciem           # socpuppet with sp.PciemHost, in build/pciem-dev
+uv run cmake --build --preset pciem
+```
+
+Loading it needs root, and memory the kernel leaves alone, which needs a reboot. On x86, set aside 64 MiB at 256 MiB, inside the RAM below 1 GiB (`/sys/firmware/memmap` says where yours is), in a file of its own so that it is easy to take out. The three backslashes become one in `grub.cfg`, which GRUB turns into the `$` the kernel wants:
+
+```sh
+echo 'GRUB_CMDLINE_LINUX_DEFAULT="$GRUB_CMDLINE_LINUX_DEFAULT memmap=64M\\\$0x10000000"' | sudo tee /etc/default/grub.d/pciem.cfg
+sudo update-grub
+sudo reboot
+# and after it, and after every reboot
+sudo insmod build/pciem/kernel/pciem.ko pciem_phys_region=0x10000000:0x4000000
+```
+
+`sudo rm /etc/default/grub.d/pciem.cfg && sudo update-grub` and a reboot take it out again. ⚠️ Secure Boot refuses a module nobody has signed; switch it off, or sign the module yourself.
+
+💡 pciem makes `/dev/pciem` open to every user, so the drive's program needs no root. If `ls -l /dev/pciem` says otherwise on your machine, a udev rule gives it back: `echo 'KERNEL=="pciem", MODE="0666"' | sudo tee /etc/udev/rules.d/70-pciem.rules`, then load the module again.
+
+What the host does to the drive does need root: binding and unbinding Linux's driver, reading the drive's registers through `/sys`, `mkfs.ext4` and `mount`. The tests run each of those with `sudo -n`, which never asks, so they run where the user is root or sudo asks no password. The simplest is to run them as root:
+
+```sh
+sudo PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider \
+    tests/python/test_pciem_contract.py tests/python/test_m31_exit.py tests/python/test_drive_command.py -v -rs
+```
+
+💡 sudo leaves `uv` behind, so the venv's Python runs pytest itself, and the two settings keep root from leaving files of its own in the checkout. ⚠️ A line in `/etc/sudoers.d/` that lets your user run anything as root without a password works too, and lets every program you run do the same; keep it to a machine that is only for this.
+
+Check it with the doctor, which says what is missing and how to fix it:
+
+```sh
+uv run python tools/doctor.py pciem
+```
+
+✅ You should see each of pciem's needs met. Without them the tests that need pciem are skipped, each saying why, so a machine without pciem passes everything else.
+
+⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, as with QBox: build `pciem` again after building `dev`, before the tests that need it.
+
+Then put a drive on the bus yourself, and look at it from a second terminal:
+
+```sh
+PYTHONPATH=python uv run python -m socpuppet drive    # the SSD with its Zephyr firmware; --firmware behavioral for the stand-in
+lsblk                                                  # a new 64 MiB NVMe drive
+```
+
+## 7. Before your first push
 
 CI runs two checks that `ctest` does not, on Linux on every push and on a Mac every night. Run them once now to be sure the toolchain is complete:
 

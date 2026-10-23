@@ -144,6 +144,8 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 PYTHONPATH=python uv run python -m socpuppet linux
 ```
 
+🐧 Or the other way round: with pciem, a Linux kernel module, `socpuppet drive` puts the puppet's SSD on this machine's own PCIe bus, and this machine's Linux formats and mounts it ([setup.md](docs/setup.md#6-pciem-optional)).
+
 - 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
 - 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained and a page for every model.

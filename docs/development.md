@@ -144,6 +144,22 @@ uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=q
 - ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.py` applies a patch once. Delete `build/qbox` and run it again.
 - **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU, or in the devcontainer's image with `tools/devcontainer.py` in front of each, which builds for Linux with GCC as CI does. [setup.md](setup.md#5-qbox-optional) has both, and why the container keeps QBox's trees on Docker volumes.
 
+## pciem, a real host
+
+🐧 `sp.PciemHost` puts a drive on this machine's own PCIe bus, through pciem, a Linux kernel module ([models/pciem-host.md](models/pciem-host.md)). pciem is GPL-2.0-only, so, like QBox, it is built from source and has a tree of its own:
+
+```sh
+uv run tools/build_pciem.py              # pciem at its pin, only its module, into build/pciem
+uv run cmake --preset pciem              # build/pciem-dev, with SOCPUPPET_PCIEM_DIR=build/pciem
+uv run cmake --build --preset pciem
+uv run ctest --preset pciem              # everything, with the ring's test, which includes pciem's header
+```
+
+- **`SOCPUPPET_PCIEM_DIR`** names a pciem checkout, on Linux. With it, socpuppet builds `socpuppet_pciem_device`, the one library that includes pciem's header (GPL-2.0-only, and C++23, which SystemC will not link with), and `pciem_host` in the registry opens `/dev/pciem`. Without it the name is still there and says how to build one, and `socpuppet._core.has_pciem` is false.
+- **What needs pciem loaded** is marked `needs_pciem` (`tests/python/pciem_area.py`), which skips unless 🩺 the doctor's `pciem` area is well and the build has pciem: the contract suite, the `socpuppet drive` tests, and M31's exit test, which is also `long`. The rest, the component's own C++ tests among them, run with a fake device and no root.
+- ⚠️ **Root.** The host's commands in those tests run with `sudo -n`, so they run as root or where sudo asks no password, and the doctor says which ([setup.md](setup.md#6-pciem-optional) has both). pciem itself needs root to load, and memory set aside at boot.
+- ⚠️ The extension in `python/socpuppet/` is the last tree's to be built, as for any second tree: build `pciem` again after `dev`, before the tests that need it.
+
 ## Spikes
 
 Sometimes the honest way to answer a design question is to try it. Code written for that lives under `spikes/`, and it is deliberately held to different rules from the rest of the tree: it is not written test-first, nothing in `src/`, `python/` or `tests/` may depend on it, and it is deleted once the question is answered. It is still linted.

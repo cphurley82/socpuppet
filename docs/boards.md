@@ -254,6 +254,35 @@ ms     who   said
 - 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=scripted_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
 - `tests/python/test_m6_exit.py` is a complete example.
 
+## The SSD under this machine's Linux
+
+🐧 The SSD's host can be the machine the simulation runs on. `ssd(host=this_machine)` puts [`sp.PciemHost`](models/pciem-host.md) where the scripted host goes, and it puts the drive on this machine's own PCIe bus through pciem, a Linux kernel module: Linux's own `nvme` driver binds it, `lsblk` lists it, and `mkfs.ext4` and `mount` use it, while the SSD's firmware runs in the simulation. It takes a build with pciem, on a Linux machine with pciem loaded ([setup.md](setup.md#6-pciem-optional)).
+
+```sh
+PYTHONPATH=python uv run python -m socpuppet drive              # the SSD with its Zephyr firmware, 64 MiB
+PYTHONPATH=python uv run python -m socpuppet drive --firmware behavioral --blocks 2048
+```
+
+It says where the drive is under `/sys/bus/pci/devices`, and runs until Ctrl-C. From Python:
+
+```python
+from socpuppet.boards.real_host import this_machine
+from socpuppet.boards.ssd import ssd
+from socpuppet.pump import pump
+
+board = ssd(host=this_machine, blocks=131072)
+board.platform.build()
+board.platform.load_elf("build/ssd/zephyr/zephyr.elf", via=board.ssd.cpu.socket)
+board.host.start()
+pump(board.platform, far_ends=[board.host], until=lambda: done)
+```
+
+- 🧵 **Pump it.** From `start()` on, Linux is talking to the drive, and the drive answers only while its platform runs. `socpuppet.pump.pump` runs it on the wall's time and keeps up with what Linux writes.
+- ⚠️ **Find it by where it is.** The puppet's drive is the one under pciem's bus, `socpuppet.boards.real_host.puppet_function()`. On a machine with NVMe drives of its own it is not `nvme0n1`.
+- ⚠️ **Let Linux go before the platform ends**: unbind its driver while the platform still runs, or each command Linux was owed costs half a minute as the program ends ([pciem-host.md](models/pciem-host.md#what-it-does)). Unbinding shuts the drive down, which has the firmware save its table, so what was written can be read back out of the NAND.
+- 🎭 `socpuppet.boards.real_host.behavioral_drive(blocks=)` is the stand-in drive in front of this machine's Linux, with no CPU.
+- `tests/python/test_m31_exit.py` is a complete example: Linux formats and mounts the SSD, writes a file, and Python reads it back from the NAND.
+
 ## The host across the link
 
 The host's two dies have 🎭 a stand-in between them by default, a link that is always up and passes everything straight through. The real one, [`sp.D2dLink`](models/d2d-link.md), carries nothing until it has been trained, and its end on the compute die holds the host's CPU in reset. So a host with the real link needs someone to train it: the IO die's manager. Hand `host` the function that describes one, and the link is the real one:
