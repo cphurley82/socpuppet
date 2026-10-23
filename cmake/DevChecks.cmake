@@ -1,9 +1,11 @@
-# Checks applied to our own code while it is built.
+# What a development build of our own code needs: the checks applied to it
+# while it is built, and a copy of a module kept where it is imported from.
 #
 # Include this before defining targets, then name the targets that are ours:
 #
 #   socpuppet_dev_checks(<program or module>...)
 #   socpuppet_check_headers(<header-only library>...)
+#   socpuppet_copy_into(<target> <directory>)
 #
 # Three options decide what that does. All are off unless asked for, so
 # someone who only wants to build socpuppet never meets them.
@@ -228,6 +230,22 @@ function(socpuppet_dev_checks)
         _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE)
     endif()
   endforeach()
+endfunction()
+
+# Keeps a copy of what `target` builds in `directory`, refreshed by every
+# build of this tree, where a target simply emitted there (its
+# LIBRARY_OUTPUT_DIRECTORY) is written only when it relinks. A custom target
+# with no output is never up to date, so the copy is looked at on every
+# build, and copy_if_different makes a build that changed nothing cost a
+# compare.
+function(socpuppet_copy_into target directory)
+  add_custom_target(${target}_copy ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${directory}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:${target}> ${directory}/
+    DEPENDS ${target}
+    COMMENT "${target}, copied into ${directory}"
+    VERBATIM)
 endfunction()
 
 # Has `check_headers` cover the header-only libraries named. Their headers

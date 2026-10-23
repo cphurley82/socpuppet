@@ -377,8 +377,9 @@ if(SKBUILD)
   # Building a wheel: the extension goes inside the installed package.
   install(TARGETS _core LIBRARY DESTINATION socpuppet)
 else()
-  # Development: emit the extension next to the Python sources so the package
-  # is importable straight from the source tree.
-  set_target_properties(_core PROPERTIES
-    LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/python/socpuppet)
+  # Development: a copy of the extension next to the Python sources, so the
+  # package is importable straight from the source tree. The dev and qbox
+  # trees share that one place, and the last tree built must be the one
+  # imported, even when it had nothing to relink.
+  socpuppet_copy_into(_core ${PROJECT_SOURCE_DIR}/python/socpuppet)
 endif()
