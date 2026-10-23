@@ -45,6 +45,13 @@ class PciemDevice {
   // of it if not. Throws std::system_error if the host's side refuses.
   virtual void Dma(std::uint64_t address, std::span<std::uint8_t> data,
                    bool to_host) = 0;
+
+  // Sends the host interrupt vector `vector`. Throws std::system_error if
+  // pciem refuses. 🎓 pciem sends it as that vector's MSI-X message once
+  // the host's driver has enabled MSI-X. On pciem's virtual bus it cannot,
+  // so every vector reaches the host as the device's one legacy interrupt
+  // (docs/upstream.md).
+  virtual void InjectIrq(unsigned vector) = 0;
 };
 
 }  // namespace socpuppet

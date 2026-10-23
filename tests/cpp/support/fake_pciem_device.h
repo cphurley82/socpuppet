@@ -22,6 +22,8 @@ struct FakePciem {
   // Whether the device refuses the function's DMA, as pciem does an
   // address the host never gave it.
   bool refuses_dma = false;
+  // The interrupt vectors sent to the host, in the order they were sent.
+  std::vector<unsigned> sent;
 };
 
 // A PciemDevice that works on a FakePciem, for a test to hand a PciemHost.
@@ -43,6 +45,8 @@ class FakePciemDevice : public socpuppet::PciemDevice {
       std::copy_n(there, data.size(), data.begin());
     }
   }
+
+  void InjectIrq(unsigned vector) override { machine_.sent.push_back(vector); }
 
  private:
   FakePciem& machine_;
