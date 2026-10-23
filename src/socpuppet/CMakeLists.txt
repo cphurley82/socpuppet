@@ -315,6 +315,7 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_endpoint.h
     models/pcie_link.h
     models/pcie_root_complex.h
+    models/pciem_host.h
     models/rom.h
     models/scripted_bus_master.h
     models/socket_memory.h
