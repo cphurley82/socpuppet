@@ -16,6 +16,7 @@ add_executable(unit_tests
   unit/nvme_controller_test.cpp
   unit/nvme_frontend_logic_test.cpp
   unit/pcie_endpoint_registers_test.cpp
+  unit/pciem_host_logic_test.cpp
   unit/prp_test.cpp
   unit/qbox_fates_test.cpp
   unit/script_test.cpp
