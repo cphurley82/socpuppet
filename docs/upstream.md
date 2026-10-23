@@ -1497,11 +1497,11 @@ Two more things read in the same file and not acted on:
 
 - **Where**: QEMU's `accel/tcg/cpu-exec.c` under `icount`, as QBox runs it in `COROUTINE` mode (`qemu-components/common/include/cpu.h`): the deadline timer that ends a quantum fires on QEMU's instruction count.
 - **What is wrong**: an instruction fetch from an address nothing answers raises an access fault, the trap goes to `mtvec`, and when that is an address nothing answers either, the next fetch faults too. No instruction is ever executed, so the count never moves, the quantum never ends, and the coroutine never comes back to SystemC: the simulation sits in QEMU's loop for good, with the platform's log full of `target address not found`. The DBT-RISE CPU charges a trap as it does an instruction, and time moves on.
-- **How to see it**: `host(cpu="qbox_cpu")` with nothing loaded into RAM, run for any time: it does not return. `tests/python/test_gdb.py`'s host tests, and `tests/python/test_linux_command.py`'s images that boot nothing, load a program that sleeps for exactly this reason.
-- **What we do**: nothing in the adapter; the tests load a program. 🚧 A limit on faults in a row, or a charge for a trap, would be the fix.
-- **Upstream fix**: charge an exception that takes a trap as an instruction under `icount`, or have QBox's deadline fire on wall time as well.
+- **How to see it**: `tests/python/test_cpu.py`'s `TestWhenTheCpuOfABoardFindsNothingToRunWhereItStarts` under `ctest --preset qbox`, without the patch: `host()` with nothing loaded into RAM, run for ten microseconds, does not return.
+- **What we do**: `cmake/patches/libqemu-icount-trap-charge.patch` charges a taken trap as one instruction, in `cpu_handle_exception` after `do_interrupt`, out of the same budget the executed blocks drain. So a CPU that only traps still reaches its deadline, and QEMU's clock, which is that budget spent, moves on while it does, as DBT-RISE's does. `tests/python/test_gdb.py`'s host tests and `tests/python/test_linux_command.py`'s images that boot nothing load a program that sleeps all the same, so that they say nothing about this.
+- **Upstream fix**: the same.
 - **Kind**: bug.
-- **When it lands**: nothing to undo.
+- **When it lands**: delete the patch file.
 
 ## QEMU
 

@@ -1,0 +1,25 @@
+diff --git a/accel/tcg/cpu-exec.c b/accel/tcg/cpu-exec.c
+index ad94f96b2..ecb58de92 100644
+--- a/accel/tcg/cpu-exec.c
++++ b/accel/tcg/cpu-exec.c
+@@ -729,6 +729,20 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
+         bql_unlock();
+         cpu->exception_index = -1;
+ 
++        /*
++         * Under icount, a taken trap costs an instruction. Only executed
++         * TBs drain the budget, so a CPU that traps on every fetch (its
++         * vector where nothing answers either) would otherwise execute
++         * nothing, never reach the deadline, and never leave this loop.
++         */
++        if (icount_enabled()) {
++            if (cpu->neg.icount_decr.u16.low > 0) {
++                cpu->neg.icount_decr.u16.low--;
++            } else if (cpu->icount_extra > 0) {
++                cpu->icount_extra--;
++            }
++        }
++
+         if (unlikely(cpu->singlestep_enabled)) {
+             /*
+              * After processing the exception, ensure an EXCP_DEBUG is

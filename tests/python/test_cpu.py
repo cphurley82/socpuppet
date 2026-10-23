@@ -204,3 +204,22 @@ class TestWhenTheCpuOfABoardReadsItsTimeRegister:
         # connected timer has counted well past that by the time the
         # program looks.
         assert platform.peek32(start + 0x200, via=cpu.socket) > 0
+
+
+@pytest.mark.platform
+class TestWhenTheCpuOfABoardFindsNothingToRunWhereItStarts:
+    @pytest.mark.parametrize(
+        "the_cpu_of", [the_hosts_cpu, the_ssds_cpu, the_io_managers_cpu]
+    )
+    def test_the_run_still_ends_when_its_time_is_up(self, the_cpu_of):
+        platform, _ = the_cpu_of()
+        platform.build()
+
+        # 🎓 Nothing is loaded, so the CPU fetches zeros, which are no
+        # instruction, and traps to mtvec, zero too, where nothing answers:
+        # a trap on every fetch, for ever. Each costs the CPU time as an
+        # instruction does, so the clock moves on and the run ends: any
+        # length shows that, and ten microseconds is a few dozen traps.
+        platform.run(sp.us(10))
+
+        assert platform.time >= sp.us(10)
