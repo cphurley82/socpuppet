@@ -70,17 +70,14 @@ class PciemHost : public sc_core::sc_module {
     TieLowIfUnconnected(irq, tied_low_);
   }
 
-  // Hands the host's writes over, to be made on `bar0` in order once the
-  // simulation runs. Called from outside it, between runs.
-  void Take(std::span<const HostWrite> writes) {
-    pending_.insert(pending_.end(), writes.begin(), writes.end());
+  // Takes the writes pciem has posted, to be made on `bar0` in order once
+  // the simulation runs. Called from outside it, between runs, whenever
+  // pciem may have posted writes; with none posted it does nothing.
+  void Service() {
+    const std::vector<HostWrite> posted = device_->Drain();
+    pending_.insert(pending_.end(), posted.begin(), posted.end());
     arrived_.notify(sc_core::SC_ZERO_TIME);
   }
-
-  // Takes the writes pciem has posted, to be made as Take makes them.
-  // Called from outside the simulation, between runs, whenever pciem may
-  // have posted writes; with none posted it does nothing.
-  void Service() { Take(device_->Drain()); }
 
   // Refreshes pciem's copy of BAR0, which the host reads, with the
   // registers the function says (CAP, VS and CSTS) as they are now. The
