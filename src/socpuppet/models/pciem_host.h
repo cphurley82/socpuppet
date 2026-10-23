@@ -8,6 +8,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -18,6 +19,7 @@
 
 #include "socpuppet/core/pciem_device.h"
 #include "socpuppet/core/pciem_host_logic.h"
+#include "socpuppet/models/tie_low.h"
 #include "socpuppet/platform/port.h"
 #include "socpuppet/platform/registry.h"
 #include "socpuppet/platform/transport.h"
@@ -35,10 +37,11 @@ struct PciemCounts {
 // the puppet's root complex would, and hands everything to the real host:
 //
 //   this machine's Linux ══ pciem ══ PciemHost ── bar0 ──▶ the function
-//                                              ◀── dma ─── its DMA     🚧
+//                                              ◀── dma ─── its DMA
 //                                              ◀── irq ─── its lines   🚧
 //
-// `bar0` carries the host's register writes in. The host's reads do not
+// `bar0` carries the host's register writes in, and `dma` the function's
+// accesses to the host's memory out. The host's reads do not
 // come through here at all: they read pciem's copy of BAR0.
 class PciemHost : public sc_core::sc_module {
  public:
@@ -49,7 +52,13 @@ class PciemHost : public sc_core::sc_module {
   PciemHost(const sc_core::sc_module_name& name, std::size_t vectors,
             std::unique_ptr<PciemDevice> device)
       : sc_module(name), irq("irq", vectors), device_(std::move(device)) {
+    dma.register_b_transport(this, &PciemHost::DmaTransport);
     SC_THREAD(Deliver);
+  }
+
+  // An interrupt line that nothing is connected to is tied low.
+  void before_end_of_elaboration() override {
+    TieLowIfUnconnected(irq, tied_low_);
   }
 
   // Hands the host's writes over, to be made on `bar0` in order once the
@@ -85,10 +94,23 @@ class PciemHost : public sc_core::sc_module {
     }
   }
 
+  // The function's DMA, to or from the host's memory.
+  void DmaTransport(tlm::tlm_generic_payload& transaction, sc_core::sc_time&) {
+    try {
+      device_->Dma(transaction.get_address(),
+                   {transaction.get_data_ptr(), transaction.get_data_length()},
+                   transaction.is_write());
+      transaction.set_response_status(tlm::TLM_OK_RESPONSE);
+    } catch (const std::system_error&) {
+      transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+    }
+  }
+
   std::unique_ptr<PciemDevice> device_;
   std::deque<HostWrite> pending_;
   sc_core::sc_event arrived_;
   PciemCounts counts_;
+  sc_core::sc_signal<bool> tied_low_{"tied_low"};
 };
 
 // Opens the device a PciemHost is given, in the shape its parameters say.
