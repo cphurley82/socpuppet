@@ -434,10 +434,19 @@ def ssd(
     `platform.load_elf(file, via=board.ssd.cpu.socket)`. With a `gdb_port`
     the CPU waits for a debugger on that TCP port. 🎭 Or `firmware` is a
     script that stands in for the SSD's firmware. With `trace`, everything
-    the drive sends up to a scripted host is recorded in `platform.trace`.
+    the drive sends up to a scripted host is recorded in `platform.trace`;
+    with this machine as the host there is no scripted host to record, and
+    `trace` is refused.
     """
     platform = Platform()
     if isinstance(host, RealHost):
+        if trace:
+            raise ValueError(
+                "trace=True was asked for, which records what the drive "
+                "sends up to a scripted host. With this machine as the host "
+                "there is no scripted host, and its trace is not offered. "
+                "Leave out `trace`, or give `host` a script."
+            )
         drive, real_host = add_ssd_on_this_machine(
             platform,
             host,
