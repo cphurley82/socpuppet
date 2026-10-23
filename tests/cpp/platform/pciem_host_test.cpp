@@ -1,20 +1,25 @@
 #include "socpuppet/models/pciem_host.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <tlm>
 
 #include "socpuppet/core/pciem_device.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/platform/platform.h"
 #include "socpuppet/platform/registry.h"
+#include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/fake_pciem_device.h"
+#include "tests/cpp/support/test_components.h"
 
 namespace socpuppet {
 
@@ -77,6 +82,48 @@ struct DriveOnAFakeMachine {
   Platform platform;
 };
 
+// A function of the test's own, a bus master that runs `body`, on this
+// machine as stood in by a FakePciem. The host's `bar0` goes to a memory,
+// as the function's registers.
+struct FunctionOnAFakeMachine {
+  explicit FunctionOnAFakeMachine(const std::function<void(BusDriver&)>& body)
+      : platform{WithTheFunction(machine, body)} {
+    platform.Add("host", "pciem_host",
+                 {{"vendor_id", kVendorId},
+                  {"device_id", kDeviceId},
+                  {"class_code", kNvmeClass},
+                  {"function_size", kFunctionSize},
+                  {"vectors", 2}});
+    platform.Add("registers", "memory", {{"size", kFunctionSize}});
+    platform.Add("function", "function_driver");
+    platform.Bind("host.bar0", "registers.socket");
+    platform.Bind("function.socket", "host.dma");
+    platform.Elaborate();
+  }
+
+  static Registry WithTheFunction(FakePciem& machine,
+                                  const std::function<void(BusDriver&)>& body) {
+    Registry registry = DriveOnAFakeMachine::WithTheFake(machine);
+    AddBusDriver(registry, "function_driver", body);
+    return registry;
+  }
+
+  // Puts `bytes` in the host's memory at `address`.
+  void PutInHostMemory(std::uint64_t address,
+                       std::span<const std::uint8_t> bytes) {
+    std::ranges::copy(
+        bytes, machine.memory.begin() + static_cast<std::ptrdiff_t>(address));
+  }
+  // The `size` bytes of the host's memory at `address`.
+  std::span<const std::uint8_t> HostMemory(std::uint64_t address,
+                                           std::size_t size) {
+    return std::span(machine.memory).subspan(address, size);
+  }
+
+  FakePciem machine;
+  Platform platform;
+};
+
 TEST(WhenAPciemHostIsMade, ItsDeviceIsOpenedInTheShapeItsParametersSay) {
   DriveOnAFakeMachine rig;
 
@@ -113,6 +160,40 @@ TEST(WhenTheFunctionRefusesAWrite, ItIsCountedAsRefused) {
   rig.LetTheHostMakeItsWrites();
 
   EXPECT_EQ(rig.Host().Counts().refused_writes, 1U);
+}
+
+TEST(WhenTheFunctionReadsTheHostsMemory, TheBytesComeFromTheDevice) {
+  std::array<std::uint8_t, 4> read{};
+  FunctionOnAFakeMachine rig(
+      [&](BusDriver& function) { function.Read(0x100, read); });
+  rig.PutInHostMemory(0x100, std::array<std::uint8_t, 4>{1, 2, 3, 4});
+
+  rig.platform.Run();
+
+  EXPECT_THAT(read, ElementsAre(1, 2, 3, 4));
+}
+
+TEST(WhenTheFunctionWritesTheHostsMemory, TheBytesGoToTheDevice) {
+  FunctionOnAFakeMachine rig([](BusDriver& function) {
+    function.Write(0x100, std::array<std::uint8_t, 4>{1, 2, 3, 4});
+  });
+
+  rig.platform.Run();
+
+  EXPECT_THAT(rig.HostMemory(0x100, 4), ElementsAre(1, 2, 3, 4));
+}
+
+TEST(WhenTheDeviceRefusesATransfer, TheFunctionGetsAnErrorResponse) {
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  FunctionOnAFakeMachine rig([&](BusDriver& function) {
+    std::array<std::uint8_t, 4> read{};
+    response = function.Read(0x100, read);
+  });
+  rig.machine.refuses_dma = true;
+
+  rig.platform.Run();
+
+  EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
 }
 
 }  // namespace

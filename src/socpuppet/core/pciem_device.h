@@ -2,6 +2,7 @@
 #define SOCPUPPET_CORE_PCIEM_DEVICE_H_
 
 #include <cstdint>
+#include <span>
 
 #include "socpuppet/core/pcie_endpoint_registers.h"
 
@@ -38,6 +39,12 @@ struct PciemShape {
 class PciemDevice {
  public:
   virtual ~PciemDevice() = default;
+
+  // Copies between the host's memory at `address`, an address the host
+  // gave the device, and `data`: into the host's memory if `to_host`, out
+  // of it if not. Throws std::system_error if the host's side refuses.
+  virtual void Dma(std::uint64_t address, std::span<std::uint8_t> data,
+                   bool to_host) = 0;
 };
 
 }  // namespace socpuppet
