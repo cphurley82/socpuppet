@@ -20,6 +20,7 @@ Linux has pciem loaded (docs/setup.md, and `tools/doctor.py pciem`).
 
 from __future__ import annotations
 
+import pathlib
 from typing import NamedTuple
 
 from socpuppet.boards.drive import (
@@ -33,6 +34,10 @@ from socpuppet.components import BehavioralNvme, PciemHost
 from socpuppet.placed import Placed, PlacedPciemHost
 from socpuppet.platform import Group, Platform
 
+#: Where Linux lists each device on its PCI buses.
+PCI_DEVICES = pathlib.Path("/sys/bus/pci/devices")
+#: The IDs the puppet's drive says: its vendor, and which device it is.
+PUPPET = (VENDOR_ID, DEVICE_ID)
 #: A class code no driver of Linux's claims, for a drive that is to be
 #: found on the bus and left alone: 0xFF is "a device that fits no class".
 UNCLAIMED_CLASS = 0xFF_00_00
@@ -103,3 +108,44 @@ def behavioral_drive(
     )
     connect_the_function(platform, nvme, real_host)
     return BehavioralDriveBoard(platform, nvme, real_host)
+
+
+def puppet_function() -> str | None:
+    """The PCI address of the puppet's drive on pciem's bus, if it is on it.
+
+    Found by where it is, never by a name a driver gave it: on pciem's own
+    bus, with the puppet's IDs. There is one at most: another means a
+    drive from before is still there, and which is which cannot be told.
+    """
+    found = [
+        device.name
+        for device in sorted(PCI_DEVICES.iterdir())
+        if "pciem" in str(device.resolve()) and _ids_of(device) == PUPPET
+    ]
+    if len(found) > 1:
+        raise RuntimeError(
+            f"There are two puppet drives on pciem's bus, {found}: one from "
+            "before is still there."
+        )
+    return found[0] if found else None
+
+
+def held(function: str) -> bool:
+    """Whether a driver of this machine's holds the device at `function`."""
+    return unbind(function).parent.exists()
+
+
+def unbind(function: str) -> pathlib.Path:
+    """Where root writes `function` to have the driver that holds it go.
+
+    By hand, that is `echo <function> | sudo tee <this>`.
+    """
+    return PCI_DEVICES / function / "driver" / "unbind"
+
+
+def _ids_of(device: pathlib.Path) -> tuple[int, int]:
+    """Who made `device`, and which device it is, as it says."""
+    return (
+        int((device / "vendor").read_text(), 16),
+        int((device / "device").read_text(), 16),
+    )
