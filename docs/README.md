@@ -9,6 +9,7 @@ Start with the [README](../README.md): it runs a whole chip's boot in a dozen li
 ## 🎓 Learning how a chip boots, or building a first virtual platform
 
 - [How socpuppet is put together](architecture.md): the parts, the words used for them (TLM, DMI, the quantum), and why they are shaped the way they are. Its list of models links to a page for each block, which says what real hardware it stands for and what it leaves out.
+- [A PCIe device and its hosts](pcie.md): how a device is modelled, how PCIe lands on SystemC and Python pulls its strings, with the host played in the simulation or by 🐧 this machine's own Linux through pciem, and a command to run each.
 - [Why socpuppet exists](vision.md): who it is for, the aims, and how choices get made.
 - [The address map](address-map.md): what answers at which address, on each board, generated from the boards themselves.
 - [How it got here](history/README.md): the decisions and their reasons, the lessons, and the spike reports.

@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The part of a PCIe device that the bus sees. A device's real work is done by a *function* behind it: here an NVMe controller, which knows nothing about PCIe. The endpoint is the wrapping that makes the function findable and placeable, and that carries its DMA and its interrupts to the host. On a real chip it is usually a block of licensed IP between the PCIe pins and the device's own logic.
+The part of a PCIe device that the bus sees. A device's real work is done by a *function* behind it: here an NVMe controller, which knows nothing about PCIe. The endpoint is the wrapping that makes the function findable and placeable, and that carries its DMA and its interrupts to the host. On a real chip it is usually a block of licensed IP between the PCIe pins and the device's own logic. [pcie.md](../pcie.md) has the whole path, from the host's bus to the function and back.
 
 ## What it does
 

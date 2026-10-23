@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The host's end of PCI Express. 🎓 PCIe is how a computer talks to its plug-in devices: graphics cards, network cards, and NVMe drives. A device is not at a fixed address. The host finds it, asks what it is, and gives its registers a place in memory. The root complex is the piece of the host that makes this possible: a bridge between the host's ordinary memory-mapped bus and the PCIe link to the device.
+The host's end of PCI Express. 🎓 PCIe is how a computer talks to its plug-in devices: graphics cards, network cards, and NVMe drives. A device is not at a fixed address. The host finds it, asks what it is, and gives its registers a place in memory. The root complex is the piece of the host that makes this possible: a bridge between the host's ordinary memory-mapped bus and the PCIe link to the device. [pcie.md](../pcie.md) has the whole path, from here to the function and back.
 
 ## What it does
 
