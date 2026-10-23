@@ -66,6 +66,10 @@ class NvmeHostRegisters {
                               std::span<const std::uint8_t> in,
                               NvmeQueues& queues);
 
+  // Whether a write to `offset` is to a completion queue's head doorbell,
+  // by which the host acknowledges completions.
+  static bool IsCompletionHeadDoorbell(std::uint64_t offset);
+
   // Whether the host has the controller enabled: CC.EN.
   bool Enabled() const;
 
