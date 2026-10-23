@@ -177,13 +177,12 @@ TEST(WhenAPciemHostIsMade, ItsDeviceIsOpenedInTheShapeItsParametersSay) {
   EXPECT_EQ(shape.vectors, 2U);
 }
 
-TEST(WhenTheHostsWritesAreTaken, TheyAreMadeOnTheFunctionsRegistersInOrder) {
+TEST(WhenTheHostIsServiced, TheWritesPciemPostedAreMadeOnTheFunctionInOrder) {
   DriveOnAFakeMachine rig;
-  const std::array<HostWrite, 2> writes{
-      {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
-       {.offset = kAqa, .size = 4, .data = 0x0003'0003}}};
+  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
+                        {.offset = kAqa, .size = 4, .data = 0x0003'0003}};
 
-  rig.Host().Take(writes);
+  rig.Host().Service();
   rig.LetTheHostMakeItsWrites();
 
   EXPECT_THAT(rig.DriveRegister(kAqa), ElementsAre(0x03, 0, 0x03, 0));
@@ -192,11 +191,10 @@ TEST(WhenTheHostsWritesAreTaken, TheyAreMadeOnTheFunctionsRegistersInOrder) {
 TEST(WhenTheFunctionRefusesAWrite, ItIsCountedAsRefused) {
   DriveOnAFakeMachine rig;
   // A doorbell, which a drive that is not enabled has no queue for.
-  const std::array<HostWrite, 2> writes{
-      {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
-       {.offset = kAdminTailDoorbell, .size = 4, .data = 1}}};
+  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
+                        {.offset = kAdminTailDoorbell, .size = 4, .data = 1}};
 
-  rig.Host().Take(writes);
+  rig.Host().Service();
   rig.LetTheHostMakeItsWrites();
 
   EXPECT_EQ(rig.Host().Counts().refused_writes, 1U);
@@ -249,8 +247,8 @@ TEST(WhenAnInterruptLineRises, ThatVectorIsSentToTheHost) {
 }
 
 // The host acknowledging the first completion on the admin queue.
-constexpr std::array<HostWrite, 1> kAcknowledgeAnAdminCompletion{
-    {{.offset = kAdminHeadDoorbell, .size = 4, .data = 1}}};
+constexpr HostWrite kAcknowledgeAnAdminCompletion{
+    .offset = kAdminHeadDoorbell, .size = 4, .data = 1};
 
 // A function's line stays high while completions wait to be read, and
 // the host is sent a vector only when it rises.
@@ -259,7 +257,8 @@ TEST(WhenTheHostAcknowledgesCompletionsWhileTheLineStaysHigh,
   FunctionOnAFakeMachine rig(Idle, [](LineDriver& line) { line.Set(true); });
   rig.platform.Run();
 
-  rig.Host().Take(kAcknowledgeAnAdminCompletion);
+  rig.machine.posted = {kAcknowledgeAnAdminCompletion};
+  rig.Host().Service();
   rig.platform.Run();
 
   EXPECT_THAT(rig.machine.sent,
@@ -276,7 +275,8 @@ TEST(WhenTheHostAcknowledgesCompletionsOnceTheLineHasFallen,
   });
   rig.platform.Run();
 
-  rig.Host().Take(kAcknowledgeAnAdminCompletion);
+  rig.machine.posted = {kAcknowledgeAnAdminCompletion};
+  rig.Host().Service();
   rig.platform.Run();
 
   EXPECT_THAT(rig.machine.sent,
@@ -284,14 +284,14 @@ TEST(WhenTheHostAcknowledgesCompletionsOnceTheLineHasFallen,
 }
 
 // The host setting CC.EN, which enables the drive.
-constexpr std::array<HostWrite, 1> kEnable{
-    {{.offset = kCc, .size = 4, .data = 1}}};
+constexpr HostWrite kEnable{.offset = kCc, .size = 4, .data = 1};
 
 TEST(WhenTheHostIsRefreshed, CapVsAndCstsAreCopiedInAsTheFunctionSaysThem) {
   DriveOnAFakeMachine rig;
   rig.FillWhatTheHostReadsWithNoise();
   // So that CSTS says something other than it did at the start.
-  rig.Host().Take(kEnable);
+  rig.machine.posted = {kEnable};
+  rig.Host().Service();
   rig.LetTheHostMakeItsWrites();
 
   rig.Host().Refresh();
@@ -311,16 +311,6 @@ TEST(WhenTheHostIsRefreshed, TheRegistersTheHostWritesAreNotCopiedIn) {
 
   EXPECT_THAT(rig.WhatTheHostReads(kAqa),
               ElementsAre(kNoise, kNoise, kNoise, kNoise));
-}
-
-TEST(WhenTheHostIsServiced, TheWritesPciemPostedAreMadeOnTheFunction) {
-  DriveOnAFakeMachine rig;
-  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x0003'0003}};
-
-  rig.Host().Service();
-  rig.LetTheHostMakeItsWrites();
-
-  EXPECT_THAT(rig.DriveRegister(kAqa), ElementsAre(0x03, 0, 0x03, 0));
 }
 
 }  // namespace
