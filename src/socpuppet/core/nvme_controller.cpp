@@ -24,6 +24,12 @@ constexpr std::uint32_t kTheNamespace = 1;
 constexpr std::uint32_t kBlockSizeShift = 9;
 static_assert(std::size_t{1} << kBlockSizeShift == BlockStore::kBlockSize);
 
+// How long the host is told to wait for the controller to become ready, in
+// units of 500 ms: the least a host can be told. 🎓 Linux reads 0 as no
+// wait at all, and a real host reaches the model across a bridge, so it
+// reads CSTS before the enable has had its answer.
+constexpr std::uint8_t kReadyTimeout = 1;
+
 // The bytes of one of SPDK's structures, which are laid out exactly as the
 // specification says they are in a register block or in the host's memory.
 // (That takes a little-endian machine to build on, as SPDK's structures do.)
@@ -69,13 +75,12 @@ NvmeController::NvmeController(MemoryPort& host_memory,
 bool NvmeController::ReadRegister(std::uint64_t offset,
                                   std::span<std::uint8_t> out) const {
   // There is nothing to start up, so the controller is ready as soon as it
-  // is enabled, and no longer once it is not. A host need not wait at all.
-  // Nor is there anything to keep when the power goes: everything is in
-  // RAM, and goes with it. So a shutdown is complete as soon as it is
-  // asked for.
+  // is enabled, and no longer once it is not. Nor is there anything to
+  // keep when the power goes: everything is in RAM, and goes with it. So a
+  // shutdown is complete as soon as it is asked for.
   return registers_.Read(
       offset, out,
-      {.ready_timeout = 0,
+      {.ready_timeout = kReadyTimeout,
        .ready = registers_.Enabled(),
        .shutdown = registers_.Enabled() && registers_.ShutdownAsked()
                        ? NvmeHostRegisters::Shutdown::kComplete

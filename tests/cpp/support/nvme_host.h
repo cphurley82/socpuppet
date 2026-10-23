@@ -143,6 +143,13 @@ class NvmeHost {
   // does not.
   bool SaysItTakesNvmCommands() { return ((Capabilities() >> 37) & 1U) != 0; }
 
+  // How long the controller says it may take to become ready, or to stop
+  // being ready: CAP.TO, which counts in 500 ms.
+  sc_core::sc_time ReadyTimeout() {
+    return static_cast<double>((Capabilities() >> 24) & 0xFF) *
+           sc_core::sc_time{500, sc_core::SC_MS};
+  }
+
   // Tells the controller where the admin queues are, sets CC.EN, and waits
   // for the controller to say it is ready for as long as it says that may
   // take.
@@ -635,11 +642,9 @@ class NvmeHost {
   }
 
   // Waits until CSTS.RDY has the given value, or until the controller's
-  // own limit for that has passed (CAP.TO, which counts in 500 ms).
+  // own limit for that has passed.
   void WaitUntilReadyIs(bool wanted) {
-    const sc_core::sc_time limit =
-        static_cast<double>((Capabilities() >> 24) & 0xFF) *
-        sc_core::sc_time{500, sc_core::SC_MS};
+    const sc_core::sc_time limit = ReadyTimeout();
     for (sc_core::sc_time waited = sc_core::SC_ZERO_TIME;
          IsReady() != wanted && waited < limit; waited += Pause()) {
       bus_.WaitFor(Pause());
