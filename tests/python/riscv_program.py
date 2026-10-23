@@ -25,9 +25,14 @@ BACK_ONE = 0xFFDFF06F
 SPIN = 0x0000006F
 
 
+def machine_code(words):
+    """The program whose instructions are `words`, as a CPU loads it."""
+    return b"".join(word.to_bytes(4, "little") for word in words)
+
+
 def sleeps():
     """A program that sleeps for good, waking only to sleep again."""
-    return b"".join(word.to_bytes(4, "little") for word in (WFI, BACK_ONE))
+    return machine_code((WFI, BACK_ONE))
 
 
 def lui(rd, upper20):
@@ -79,10 +84,8 @@ def stores_its_arguments(*, xlen):
         auipc(T0),
         store(A0, T0, ARGUMENTS_AT, xlen=xlen),
         store(A1, T0, ARGUMENTS_AT + size, xlen=xlen),
-        WFI,
-        BACK_ONE,
     ]
-    return b"".join(word.to_bytes(4, "little") for word in program)
+    return machine_code(program) + sleeps()
 
 
 def says(text, *, uart, then=WFI):
@@ -100,7 +103,7 @@ def says(text, *, uart, then=WFI):
     for byte in text.encode("ascii"):
         program += [li(T1, byte), sb(T1, T0)]
     program += [then, BACK_ONE]
-    return b"".join(word.to_bytes(4, "little") for word in program)
+    return machine_code(program)
 
 
 def a_program_that_says(text, directory, *, then=WFI):
