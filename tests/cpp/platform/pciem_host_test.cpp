@@ -318,6 +318,21 @@ TEST(WhenTheHostIsRefreshed, TheRegistersTheHostWritesAreNotCopiedIn) {
               ElementsAre(kNoise, kNoise, kNoise, kNoise));
 }
 
+TEST(WhenTheHostIsStarted, TheDeviceIsPutOnTheBus) {
+  DriveOnAFakeMachine rig;
+
+  rig.Host().Start();
+
+  EXPECT_TRUE(rig.machine.started);
+}
+
+TEST(WhenTheHostIsAskedWhatToWaitOn, ItIsTheDevicesEventFd) {
+  DriveOnAFakeMachine rig;
+  rig.machine.event_fd = 42;
+
+  EXPECT_EQ(rig.Host().EventFd(), 42);
+}
+
 #if !SOCPUPPET_HAS_PCIEM
 
 TEST(WhenTheBuildHasNoPciem, APciemHostIsRefusedAndTheErrorSaysHowToBuildOne) {
