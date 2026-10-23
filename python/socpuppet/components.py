@@ -1830,22 +1830,17 @@ class PassThroughLink:
         return (("peer_initiator", "peer_target"),)
 
 
-class PcieEndpoint(Component):
-    """What stands between a PCIe link and a function that knows no PCIe.
+class PcieFunctionFront(Component):
+    """What stands in front of a PCIe function, as the host sees it.
 
-    The function, such as `BehavioralNvme`, has a register block, a DMA
-    port and interrupt lines. The endpoint puts PCIe around them: it says
-    what the device is, lets the host place the register block in its
-    address map, and passes the function's DMA up the link.
-
+    `PcieEndpoint` and `PciemHost` both put a function, such as
+    `BehavioralNvme`, before a host, and say the same of it.
     `vendor_id` and `device_id` say who made the device and which device it
     is, and `class_code` what kind of device it is, as three bytes: class,
     subclass and programming interface (0x010802 for an NVMe drive).
     `function_size` is how many bytes the function's register block takes,
     and `vectors` how many interrupt lines it has.
     """
-
-    implementation = "pcie_endpoint"
 
     vendor_id: int
     device_id: int
@@ -1856,10 +1851,23 @@ class PcieEndpoint(Component):
     def __post_init__(self) -> None:
         if not 1 <= self.vectors <= 2048:
             raise ValueError(
-                f"A PCIe endpoint has 1 to 2048 interrupt vectors, which is "
+                f"A PCIe function has 1 to 2048 interrupt vectors, which is "
                 f"what an MSI-X table can hold, and {self.vectors} were "
                 "asked for."
             )
+
+
+class PcieEndpoint(PcieFunctionFront):
+    """What stands between a PCIe link and a function that knows no PCIe.
+
+    The function, such as `BehavioralNvme`, has a register block, a DMA
+    port and interrupt lines. The endpoint puts PCIe around them: it says
+    what the device is, lets the host place the register block in its
+    address map, and passes the function's DMA up the link. Its parameters
+    are `PcieFunctionFront`'s.
+    """
+
+    implementation = "pcie_endpoint"
 
     @property
     def port_specs(self) -> tuple[PortSpec, ...]:
@@ -1873,7 +1881,7 @@ class PcieEndpoint(Component):
         )
 
 
-class PciemHost(Component):
+class PciemHost(PcieFunctionFront):
     """🐧 This machine's own Linux, as the host of a PCIe function.
 
     It stands where a `PcieEndpoint`, its link and a root complex would,
@@ -1884,21 +1892,13 @@ class PciemHost(Component):
     function's DMA comes in on `dma` and goes on to the host's memory, and
     a rising `irq` line sends the host that vector.
 
-    Its parameters are a `PcieEndpoint`'s: who the device says it is
-    (`vendor_id`, `device_id`, `class_code`), how many bytes the function's
-    register block takes, and how many interrupt lines it has. Only a build
-    of socpuppet with pciem has it (tools/build_pciem.py), because pciem is
-    GPL-2.0-only and is never in the wheel, and it runs only on a machine
-    whose Linux has pciem loaded (docs/setup.md).
+    Its parameters are `PcieFunctionFront`'s, as a `PcieEndpoint`'s are.
+    Only a build of socpuppet with pciem has it (tools/build_pciem.py),
+    because pciem is GPL-2.0-only and is never in the wheel, and it runs
+    only on a machine whose Linux has pciem loaded (docs/setup.md).
     """
 
     implementation = "pciem_host"
-
-    vendor_id: int
-    device_id: int
-    class_code: int
-    function_size: int
-    vectors: int
 
     @property
     def port_specs(self) -> tuple[PortSpec, ...]:
