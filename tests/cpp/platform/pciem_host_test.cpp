@@ -313,6 +313,16 @@ TEST(WhenTheHostIsRefreshed, TheRegistersTheHostWritesAreNotCopiedIn) {
               ElementsAre(kNoise, kNoise, kNoise, kNoise));
 }
 
+TEST(WhenTheHostIsServiced, TheWritesPciemPostedAreMadeOnTheFunction) {
+  DriveOnAFakeMachine rig;
+  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x0003'0003}};
+
+  rig.Host().Service();
+  rig.LetTheHostMakeItsWrites();
+
+  EXPECT_THAT(rig.DriveRegister(kAqa), ElementsAre(0x03, 0, 0x03, 0));
+}
+
 }  // namespace
 
 }  // namespace socpuppet

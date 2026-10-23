@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <span>
+#include <vector>
 
 #include "socpuppet/core/pcie_endpoint_registers.h"
 
@@ -39,6 +40,12 @@ struct PciemShape {
 class PciemDevice {
  public:
   virtual ~PciemDevice() = default;
+
+  // Takes the host's writes that pciem has posted since the last drain,
+  // in the order they were made, and clears pciem's word that something
+  // was posted until more is. Whatever else pciem posts (the host's
+  // accesses to configuration space, say) is dropped: pciem plays that.
+  virtual std::vector<HostWrite> Drain() = 0;
 
   // pciem's copy of BAR0, which is what the host reads.
   virtual std::span<std::uint8_t> Bar0() = 0;

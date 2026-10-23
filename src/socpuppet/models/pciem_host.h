@@ -77,6 +77,11 @@ class PciemHost : public sc_core::sc_module {
     arrived_.notify(sc_core::SC_ZERO_TIME);
   }
 
+  // Takes the writes pciem has posted, to be made as Take makes them.
+  // Called from outside the simulation, between runs, whenever pciem may
+  // have posted writes; with none posted it does nothing.
+  void Service() { Take(device_->Drain()); }
+
   // Refreshes pciem's copy of BAR0, which the host reads, with the
   // registers the function says (CAP, VS and CSTS) as they are now. The
   // rest the host reads back as it wrote them, from pciem's copy of its

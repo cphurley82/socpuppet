@@ -7,6 +7,7 @@
 #include <memory>
 #include <span>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "socpuppet/core/pciem_device.h"
@@ -17,6 +18,9 @@
 struct FakePciem {
   // The shape the host's device was opened in.
   socpuppet::PciemShape opened_as;
+  // The host's writes that pciem has posted and the device not yet
+  // drained.
+  std::vector<socpuppet::HostWrite> posted;
   // pciem's copy of BAR0, which is what the host reads, as big as the
   // shape the device was opened in says.
   std::vector<std::uint8_t> bar0;
@@ -51,6 +55,10 @@ class FakePciemDevice : public socpuppet::PciemDevice {
     } else {
       std::copy_n(there, data.size(), data.begin());
     }
+  }
+
+  std::vector<socpuppet::HostWrite> Drain() override {
+    return std::exchange(machine_.posted, {});
   }
 
   std::span<std::uint8_t> Bar0() override { return machine_.bar0; }
