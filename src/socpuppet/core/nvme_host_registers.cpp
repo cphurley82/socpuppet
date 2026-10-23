@@ -1,6 +1,7 @@
 #include "socpuppet/core/nvme_host_registers.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -31,6 +32,15 @@ static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kUnderWay) ==
               SPDK_NVME_SHST_OCCURRING);
 static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kComplete) ==
               SPDK_NVME_SHST_COMPLETE);
+
+// CAP, VS and CSTS, where SPDK's layout has them.
+constexpr std::array<NvmeHostRegisters::Register, 3>
+    kRegistersTheControllerSays{{{.offset = offsetof(spdk_nvme_registers, cap),
+                                  .size = sizeof(spdk_nvme_registers::cap)},
+                                 {.offset = offsetof(spdk_nvme_registers, vs),
+                                  .size = sizeof(spdk_nvme_registers::vs)},
+                                 {.offset = offsetof(spdk_nvme_registers, csts),
+                                  .size = sizeof(spdk_nvme_registers::csts)}}};
 
 bool Fits(std::uint64_t offset, std::size_t length) {
   return offset <= kControllerRegistersSize &&
@@ -84,6 +94,11 @@ std::optional<NvmeHostRegisters::Enable> NvmeHostRegisters::Write(
   if (enable == Enable::kSet) CreateAdminQueues(queues);
   if (enable == Enable::kCleared) queues.RemoveAll();
   return enable;
+}
+
+std::span<const NvmeHostRegisters::Register>
+NvmeHostRegisters::RegistersTheControllerSays() {
+  return kRegistersTheControllerSays;
 }
 
 bool NvmeHostRegisters::IsCompletionHeadDoorbell(std::uint64_t offset) {

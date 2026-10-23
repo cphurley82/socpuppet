@@ -17,6 +17,9 @@
 struct FakePciem {
   // The shape the host's device was opened in.
   socpuppet::PciemShape opened_as;
+  // pciem's copy of BAR0, which is what the host reads, as big as the
+  // shape the device was opened in says.
+  std::vector<std::uint8_t> bar0;
   // The host's memory, from address 0, as the function's DMA reaches it.
   std::vector<std::uint8_t> memory = std::vector<std::uint8_t>(0x1000);
   // Whether the device refuses the function's DMA, as pciem does an
@@ -29,7 +32,11 @@ struct FakePciem {
 // A PciemDevice that works on a FakePciem, for a test to hand a PciemHost.
 class FakePciemDevice : public socpuppet::PciemDevice {
  public:
-  explicit FakePciemDevice(FakePciem& machine) : machine_(machine) {}
+  FakePciemDevice(FakePciem& machine, const socpuppet::PciemShape& shape)
+      : machine_(machine) {
+    machine_.opened_as = shape;
+    machine_.bar0.assign(shape.function_size, 0);
+  }
 
   void Dma(std::uint64_t address, std::span<std::uint8_t> data,
            bool to_host) override {
@@ -45,6 +52,8 @@ class FakePciemDevice : public socpuppet::PciemDevice {
       std::copy_n(there, data.size(), data.begin());
     }
   }
+
+  std::span<std::uint8_t> Bar0() override { return machine_.bar0; }
 
   void InjectIrq(unsigned vector) override { machine_.sent.push_back(vector); }
 
