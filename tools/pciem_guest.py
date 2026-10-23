@@ -30,6 +30,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from needs import Failed, not_installed
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 # What the guest needs of this machine: each program, and the Ubuntu
@@ -64,10 +66,6 @@ PASSED_ON = ("PATH", "HOME")
 
 # How the guest says how the command went, alone on a line of its console.
 RESULT = re.compile(r"^RESULT: (\d+)$")
-
-
-class Failed(Exception):
-    """What stopped the guest, and what to do about it."""
 
 
 def main() -> int:
@@ -133,13 +131,8 @@ def programs() -> Path:
 
     Stops, naming the packages to install, if a program is missing.
     """
-    missing = [p for p in PROGRAMS if not shutil.which(p[0])]
-    if missing:
-        names, packages = (list(each) for each in zip(*missing, strict=True))
-        raise Failed(
-            f"The guest cannot be run without {' '.join(names)}.\n"
-            f"On Ubuntu: sudo apt install {' '.join(packages)}"
-        )
+    if missing := not_installed(PROGRAMS):
+        raise Failed.without("The guest cannot be run", missing)
     return Path(shutil.which("busybox") or "")
 
 

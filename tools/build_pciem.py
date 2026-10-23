@@ -18,10 +18,11 @@ nothing.
 """
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from needs import Failed, not_installed
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PCIEM_COMMIT = "f80bbb7101e180f3ed8cff3a2136e52a101f336c"  # 2026-09-30
@@ -29,10 +30,6 @@ PCIEM_COMMIT = "f80bbb7101e180f3ed8cff3a2136e52a101f336c"  # 2026-09-30
 # What pciem's build stops without: each program, and the Ubuntu package
 # it comes in.
 PROGRAMS = (("git", "git"), ("make", "make"))
-
-
-class Failed(Exception):
-    """What stopped the build, and what to do about it."""
 
 
 def main() -> int:
@@ -122,13 +119,8 @@ def running_linux() -> str:
 
 def check_programs() -> None:
     """Stop, naming the packages to install, if a program is missing."""
-    missing = [p for p in PROGRAMS if not shutil.which(p[0])]
-    if missing:
-        names, packages = (list(each) for each in zip(*missing, strict=True))
-        raise Failed(
-            f"pciem cannot be built without {' '.join(names)}.\n"
-            f"On Ubuntu: sudo apt install {' '.join(packages)}"
-        )
+    if missing := not_installed(PROGRAMS):
+        raise Failed.without("pciem cannot be built", missing)
 
 
 def kernel_tree(kernel: Path | None, release: str) -> Path:
