@@ -86,6 +86,13 @@ std::optional<NvmeHostRegisters::Enable> NvmeHostRegisters::Write(
   return enable;
 }
 
+bool NvmeHostRegisters::IsCompletionHeadDoorbell(std::uint64_t offset) {
+  // The doorbells are 32 bits each, in pairs: a submission queue's tail,
+  // then its completion queue's head.
+  return offset >= kControllerRegistersSize &&
+         ((offset - kControllerRegistersSize) / sizeof(std::uint32_t)) % 2 == 1;
+}
+
 bool NvmeHostRegisters::Enabled() const {
   spdk_nvme_cc_register configuration{};
   configuration.raw = configuration_;
