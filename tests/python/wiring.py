@@ -13,3 +13,9 @@ def what_drives(platform, sink):
         for each in json.loads(platform.to_json())["connections"]
         if each["sink"] == sink.path
     ]
+
+
+def implementations_in(platform):
+    """The implementations of every component the platform describes."""
+    components = json.loads(platform.to_json())["components"]
+    return {each["implementation"] for each in components.values()}

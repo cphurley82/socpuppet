@@ -38,7 +38,7 @@ To use an SSD from a Python host, with nothing else to build:
 from __future__ import annotations
 
 import sys
-from typing import NamedTuple
+from typing import NamedTuple, overload
 
 from socpuppet import ftl
 from socpuppet.boards.boot import Boot
@@ -48,6 +48,7 @@ from socpuppet.boards.cpu_kit import (
     add_cpu_kit,
 )
 from socpuppet.boards.drive import DEVICE_ID, NVME_CLASS, VECTORS, VENDOR_ID
+from socpuppet.boards.real_host import RealHost, add_real_host
 from socpuppet.boards.scripted_host import (
     ScriptedHost,
     add_scripted_host,
@@ -322,16 +323,56 @@ def add_ssd(
     # The PCIe link, one direction each.
     platform.connect(root_complex.to_device, endpoint.from_host)
     platform.connect(endpoint.to_host, root_complex.from_device)
-    # The function behind the endpoint: its registers, its way to the
-    # host's memory, and one interrupt line per vector.
-    platform.connect(endpoint.bar0, ssd.frontend.bar0)
-    ssd.uplink.map(endpoint.dma, base=0, size=UPLINK_REACH)
+    _connect_the_function(platform, ssd, endpoint)
+    return ssd._replace(endpoint=endpoint)
+
+
+def add_ssd_on_this_machine(
+    platform: Platform,
+    real_host: RealHost,
+    *,
+    blocks: int,
+    group: Group | None = None,
+    firmware: Script | None = None,
+    gdb_port: int = 0,
+    boot: Boot | None = None,
+) -> tuple[Ssd, Placed]:
+    """🐧 Describe an SSD with this machine as its host.
+
+    It is `add_ssd_function` with this machine's own Linux in front of it,
+    through an `sp.PciemHost` at the top of the platform, `host`, where
+    `add_ssd` puts a PCIe endpoint: the SSD is on this machine's own bus.
+    Returns the SSD and its host.
+    """
+    ssd = add_ssd_function(
+        platform,
+        blocks=blocks,
+        group=group,
+        firmware=firmware,
+        gdb_port=gdb_port,
+        boot=boot,
+    )
+    host = add_real_host(
+        platform, real_host, function_size=NvmeFrontend.BAR0_SIZE
+    )
+    _connect_the_function(platform, ssd, host)
+    return ssd, host
+
+
+def _connect_the_function(platform: Platform, ssd: Ssd, front: Placed) -> None:
+    """Connect the SSD's function to what is in front of it.
+
+    That is a PCIe endpoint, or this machine as its host. The function's
+    registers, its way to the host's memory, and one interrupt line per
+    vector.
+    """
+    platform.connect(front.bar0, ssd.frontend.bar0)
+    ssd.uplink.map(front.dma, base=0, size=UPLINK_REACH)
     for vector in range(VECTORS):
         platform.connect(
             getattr(ssd.frontend, f"irq{vector}"),
-            getattr(endpoint, f"irq{vector}"),
+            getattr(front, f"irq{vector}"),
         )
-    return ssd._replace(endpoint=endpoint)
 
 
 class SsdBoard(NamedTuple):
@@ -342,6 +383,16 @@ class SsdBoard(NamedTuple):
     host: ScriptedHost
 
 
+class RealHostSsdBoard(NamedTuple):
+    """🐧 The SSD with this machine as its host, and their parts."""
+
+    platform: Platform
+    ssd: Ssd
+    #: The `sp.PciemHost` that puts the SSD on this machine's own bus.
+    host: Placed
+
+
+@overload
 def ssd(
     *,
     host: Script,
@@ -350,21 +401,53 @@ def ssd(
     gdb_port: int = 0,
     boot: Boot | None = None,
     trace: bool = False,
-) -> SsdBoard:
-    """Describe the SSD, with a 🎭 scripted host on its PCIe link.
+) -> SsdBoard: ...
+@overload
+def ssd(
+    *,
+    host: RealHost,
+    blocks: int = 4096,
+    firmware: Script | None = None,
+    gdb_port: int = 0,
+    boot: Boot | None = None,
+) -> RealHostSsdBoard: ...
+def ssd(
+    *,
+    host: Script | RealHost,
+    blocks: int = 4096,
+    firmware: Script | None = None,
+    gdb_port: int = 0,
+    boot: Boot | None = None,
+    trace: bool = False,
+) -> SsdBoard | RealHostSsdBoard:
+    """Describe the SSD and its host: 🎭 a scripted one, or 🐧 this machine.
 
     Nothing is simulated until `platform.build()`. `host` is the script
-    that plays the host: it starts with `bring_up_the_drive()` (see
-    `socpuppet.boards.scripted_host`). `blocks` is how many 512-byte
-    blocks the drive holds.
+    that plays the host on the SSD's PCIe link: it starts with
+    `bring_up_the_drive()` (see `socpuppet.boards.scripted_host`). Or it
+    is this machine (`socpuppet.boards.real_host.this_machine`): its own
+    Linux is the host, and the SSD is on its own bus, with no PCIe link or
+    endpoint in the simulation. `blocks` is how many 512-byte blocks the
+    drive holds.
 
     The SSD has its own CPU, and firmware is loaded into it with
     `platform.load_elf(file, via=board.ssd.cpu.socket)`. With a `gdb_port`
     the CPU waits for a debugger on that TCP port. 🎭 Or `firmware` is a
     script that stands in for the SSD's firmware. With `trace`, everything
-    the drive sends up to the host is recorded in `platform.trace`.
+    the drive sends up to a scripted host is recorded in `platform.trace`.
     """
     platform = Platform()
+    if isinstance(host, RealHost):
+        drive, real_host = add_ssd_on_this_machine(
+            platform,
+            host,
+            blocks=blocks,
+            group=platform.group("ssd"),
+            firmware=firmware,
+            gdb_port=gdb_port,
+            boot=boot,
+        )
+        return RealHostSsdBoard(platform, drive, real_host)
     scripted_host = add_scripted_host(
         platform, host, group=platform.group("host"), trace=trace
     )
