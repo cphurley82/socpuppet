@@ -156,6 +156,20 @@ if(SOCPUPPET_HAS_QBOX)
   socpuppet_dev_checks(socpuppet_qbox_cpu)
 endif()
 
+# The calls to /dev/pciem, for a real host, in a build with pciem only.
+# pciem's header is GPL-2.0-only and needs C++23 for its <stdatomic.h>, and
+# SystemC refuses to link with code built to another standard than its own,
+# so the one source file that includes it is a library of its own, with no
+# SystemC. Its test includes the header too (tests/cpp/CMakeLists.txt).
+if(SOCPUPPET_HAS_PCIEM)
+  add_library(socpuppet_pciem_device STATIC core/pciem_device.cpp)
+  target_link_libraries(socpuppet_pciem_device PUBLIC socpuppet_core)
+  target_include_directories(socpuppet_pciem_device SYSTEM PRIVATE
+    ${SOCPUPPET_PCIEM_DIR})
+  set_target_properties(socpuppet_pciem_device PROPERTIES CXX_STANDARD 23)
+  socpuppet_dev_checks(socpuppet_pciem_device)
+endif()
+
 # The UART: VPV-Peripherals' PULPino UART.
 add_library(socpuppet_ns16550 STATIC models/ns16550.cpp)
 target_sources(socpuppet_ns16550 PUBLIC
@@ -350,6 +364,10 @@ socpuppet_dev_checks(socpuppet_builtin_components)
 target_compile_definitions(socpuppet_builtin_components PUBLIC
   SOCPUPPET_HAS_QBOX=$<BOOL:${SOCPUPPET_HAS_QBOX}>
   SOCPUPPET_HAS_PCIEM=$<BOOL:${SOCPUPPET_HAS_PCIEM}>)
+if(SOCPUPPET_HAS_PCIEM)
+  target_link_libraries(socpuppet_builtin_components PRIVATE
+    socpuppet_pciem_device)
+endif()
 
 socpuppet_check_headers(
   socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller

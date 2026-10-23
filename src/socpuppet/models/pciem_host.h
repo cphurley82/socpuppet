@@ -157,8 +157,9 @@ class PciemHost : public sc_core::sc_module {
   // A line that rises sends its vector.
   void SendRisingLines() {
     for (std::size_t vector = 0; vector < irq.size(); ++vector) {
-      if (irq[vector].posedge())
+      if (irq[vector].posedge()) {
         device_->InjectIrq(static_cast<unsigned>(vector));
+      }
     }
   }
 

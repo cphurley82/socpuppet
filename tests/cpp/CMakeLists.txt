@@ -90,3 +90,17 @@ socpuppet_dev_checks(kernel_tests)
 target_compile_definitions(kernel_tests PRIVATE
   SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
 gtest_discover_tests(kernel_tests PROPERTIES LABELS cpp)
+
+# The ring pciem posts the host's writes on, in a build with pciem only.
+# Its test includes pciem's header, which needs C++23, and SystemC refuses
+# to link with that, so it is a program of its own with no kernel.
+if(SOCPUPPET_HAS_PCIEM)
+  add_executable(pciem_ring_tests unit/pciem_ring_test.cpp)
+  target_link_libraries(pciem_ring_tests PRIVATE
+    socpuppet_pciem_device GTest::gmock_main)
+  target_include_directories(pciem_ring_tests SYSTEM PRIVATE
+    ${SOCPUPPET_PCIEM_DIR})
+  set_target_properties(pciem_ring_tests PROPERTIES CXX_STANDARD 23)
+  socpuppet_dev_checks(pciem_ring_tests)
+  gtest_discover_tests(pciem_ring_tests PROPERTIES LABELS cpp)
+endif()
