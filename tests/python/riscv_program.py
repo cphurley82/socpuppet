@@ -25,6 +25,11 @@ BACK_ONE = 0xFFDFF06F
 SPIN = 0x0000006F
 
 
+def sleeps():
+    """A program that sleeps for good, waking only to sleep again."""
+    return b"".join(word.to_bytes(4, "little") for word in (WFI, BACK_ONE))
+
+
 def lui(rd, upper20):
     """rd = upper20 << 12."""
     return (upper20 << 12) | (rd << 7) | 0x37

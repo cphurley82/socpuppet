@@ -5,6 +5,7 @@ import pytest
 from cast import FW_JUMP_BIN, INITRAMFS_CPIO, LINUX_BIN, MANAGER, ROOTFS_EXT4
 from devicetree_compiler import needs_dtc
 from processes import run_socpuppet
+from riscv_program import sleeps
 from socpuppet import _core
 from socpuppet.boards.virtio import SECTOR
 
@@ -136,10 +137,14 @@ def run_without_a_terminal(*arguments, **extra_environment):
 
 
 def put_images_that_boot_nothing(directory):
-    """Put the three images in `directory`, each a sector of spam.
+    """Put the three images in `directory`, each a sector long.
 
     Enough for the command to describe the host and build it, and for
-    nothing to boot.
+    nothing to boot: the kernel and the root are spam, and where OpenSBI
+    would be is a program that sleeps. ⚠️ With spam there, QBox's CPU
+    traps on every fetch, at an address nothing answers, and never yields
+    the simulation (docs/models/qbox-cpu.md).
     """
-    for image in (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4):
+    (directory / FW_JUMP_BIN).write_bytes(sleeps().ljust(SECTOR, b"\0"))
+    for image in (LINUX_BIN, ROOTFS_EXT4):
         (directory / image).write_bytes(b"spam" * (SECTOR // len(b"spam")))
