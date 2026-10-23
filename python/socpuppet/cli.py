@@ -7,6 +7,7 @@ import pathlib
 import runpy
 import signal
 import sys
+import threading
 import traceback
 import typing
 from collections.abc import Sequence
@@ -324,23 +325,26 @@ def _drive(firmware: drive.Firmware, blocks: int) -> None:
     Ctrl-C ends it. A Ctrl-C while a driver of Linux's still holds the
     drive says how to let it go, and the command ends once Linux has; a
     second pulls the drive out anyway. A firmware image or a pciem that
-    this build has not ends the command with one line that says how to get
-    it.
+    this build has not, a /dev/pciem that refuses, or a drive from before
+    still on the bus ends the command with one line that says what to do.
     """
     try:
         board = drive.on_this_machine(
             run.firmware_directory(), firmware=firmware, blocks=blocks
         )
-    except (FileNotFoundError, ValueError) as refused:
+    except (OSError, ValueError) as refused:
         sys.exit(str(refused))
-    interrupted: list[bool] = []
+    try:
+        function = real_host.puppet_function()
+    except RuntimeError as two_drives:
+        sys.exit(str(two_drives))
+    assert function is not None  # it was put on the bus as it started
+    interrupted = threading.Event()
 
     def interrupt(*_: object) -> None:
-        interrupted.append(True)
+        interrupted.set()
 
     signal.signal(signal.SIGINT, interrupt)
-    function = real_host.puppet_function()
-    assert function is not None  # it was put on the bus as it started
     which = (
         "SSD, with its Zephyr firmware,"
         if firmware == "zephyr"
@@ -353,7 +357,7 @@ def _drive(firmware: drive.Firmware, blocks: int) -> None:
         file=sys.stderr,
         flush=True,
     )
-    pump(board.platform, far_ends=[board.host], until=lambda: bool(interrupted))
+    pump(board.platform, far_ends=[board.host], until=interrupted.is_set)
     if real_host.held(function):
         print(
             "\n🐧 Linux still holds the drive. Unmount what is mounted from "
@@ -368,7 +372,7 @@ def _drive(firmware: drive.Firmware, blocks: int) -> None:
         pump(
             board.platform,
             far_ends=[board.host],
-            until=lambda: bool(interrupted) or not real_host.held(function),
+            until=lambda: interrupted.is_set() or not real_host.held(function),
         )
     let_go = not real_host.held(function)
     print(
