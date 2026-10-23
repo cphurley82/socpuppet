@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -138,6 +139,10 @@ PYBIND11_MODULE(_core, m) {
       py::object type =
           py::module_::import("socpuppet.errors").attr("BusError");
       PyErr_SetString(type.ptr(), refusal.what());
+    } catch (const std::system_error& refused) {
+      // This machine refusing a call, such as /dev/pciem's: an OSError,
+      // as Python says it, not the RuntimeError pybind11 would make of it.
+      PyErr_SetString(PyExc_OSError, refused.what());
     }
   });
 

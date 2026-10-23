@@ -332,12 +332,15 @@ def sudo_asks() -> str | None:
     return None if asked.returncode == 0 else "sudo asks for a password"
 
 
-# What a real host needs of this machine: pciem, ready to use. The fixes
-# are Linux's, since only on Linux is any of it a problem, but the first:
-# a machine that is not Linux is told so on whatever it runs (and in the
-# tests, a Linux pointed at a machine of their own with no /proc).
+# What a real host needs of this machine, in two parts: what opening
+# /dev/pciem takes, which a test of what pciem refuses needs and no more
+# (tests/python/pciem_area.py), and then what running the host's commands
+# as root takes. The fixes are Linux's, since only on Linux is any of it a
+# problem, but the first: a machine that is not Linux is told so on
+# whatever it runs (and in the tests, a Linux pointed at a machine of
+# their own with no /proc).
 NOT_HERE = Fix("nothing here: a real host is a Linux machine's")
-PCIEM = (
+PCIEM_DEVICE = (
     Need(
         "Linux",
         not_linux("pciem is Linux's"),
@@ -367,6 +370,9 @@ PCIEM = (
             )
         },
     ),
+)
+PCIEM = (
+    *PCIEM_DEVICE,
     Need("sudo", on_linux(installed("sudo")), {"Linux": Fix("sudo", APT)}),
     Need(
         "sudo without a password",
