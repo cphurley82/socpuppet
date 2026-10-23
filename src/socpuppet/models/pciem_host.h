@@ -113,7 +113,9 @@ class PciemHost : public sc_core::sc_module {
   // transaction needs a process to be made from.
   void Deliver() {
     for (;;) {
-      wait(arrived_);
+      // Writes may have arrived while this was busy with the last, whose
+      // notification found nobody waiting: look before waiting.
+      while (pending_.empty()) wait(arrived_);
       bool acknowledged = false;
       while (!pending_.empty()) {
         acknowledged |= NvmeHostRegisters::IsCompletionHeadDoorbell(
