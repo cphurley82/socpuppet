@@ -70,6 +70,7 @@ add_executable(kernel_tests
   platform/ns16550_test.cpp
   platform/nvme_frontend_test.cpp
   platform/pcie_test.cpp
+  platform/pciem_host_test.cpp
   platform/qbox_cpu_test.cpp
   platform/router_test.cpp
   platform/scripted_master_test.cpp

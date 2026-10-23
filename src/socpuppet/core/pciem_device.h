@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "socpuppet/core/pcie_endpoint_registers.h"
+
 // 🐧 A PCIe device on this machine's own bus, played by this program
 // through pciem's /dev/pciem (https://github.com/cakehonolulu/pciem).
 //
@@ -20,6 +22,22 @@ struct HostWrite {
   std::uint64_t offset = 0;
   std::uint32_t size = 0;  // bytes: 1, 2, 4 or 8
   std::uint64_t data = 0;  // only the low `size` bytes mean anything
+};
+
+// What the device is on the bus: who it says it is, which the host's
+// driver is picked by, how many bytes its register block takes (BAR0), and
+// how many interrupt vectors it has.
+struct PciemShape {
+  PcieEndpointRegisters::Identity identity;
+  std::uint64_t function_size = 0;
+  std::uint16_t vectors = 0;
+};
+
+// What a PciemHost needs of the device: /dev/pciem in a run, a fake in the
+// tests.
+class PciemDevice {
+ public:
+  virtual ~PciemDevice() = default;
 };
 
 }  // namespace socpuppet
