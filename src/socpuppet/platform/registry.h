@@ -37,6 +37,10 @@ struct Within {
 inline constexpr Within kFitsIn16Bits{.most = 0xFFFF};
 inline constexpr Within kFitsIn24Bits{.most = 0xFF'FFFF};
 inline constexpr Within kFitsIn32Bits{.most = 0xFFFF'FFFF};
+// How many interrupt vectors a PCIe function may have, and so how many
+// anything that takes its interrupt messages may. MSI-X, the capability
+// that tells the host about them, has room for 2048.
+inline constexpr Within kInterruptVectors{.least = 1, .most = 2048};
 
 // What a factory reads its parameters from. It knows which implementation
 // is asking, so that an error can say, and it notes each name asked for,

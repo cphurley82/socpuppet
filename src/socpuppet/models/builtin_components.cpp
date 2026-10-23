@@ -89,11 +89,6 @@ std::vector<Port> HartPorts(Hart& hart) {
           WireSinkPort("reset", hart.reset)};
 }
 
-// How many interrupt vectors a PCIe function may have, and so how many
-// anything that takes its interrupt messages may. MSI-X, the capability
-// that tells the host about them, has room for 2048.
-constexpr Within kInterruptVectors{.least = 1, .most = 2048};
-
 // The highest interrupt identity an IMSIC's files may have. The AIA
 // specification starts at 63 and stops at 2047.
 constexpr Within kInterruptIdentities{.least = 63, .most = 2047};
@@ -123,18 +118,6 @@ constexpr Within kNandCount{.least = 1, .most = 0xFFFF'FFFF};
 // A flash holds a byte at the least, and at the most what the borrowed
 // chip has: 256 MiB.
 constexpr Within kFlashSize{.least = 1, .most = 0x1000'0000};
-
-// Adds a port for each of a component's numbered lines: `prefix` and a
-// number, counting up from `first`. `make_port` turns a name and a line
-// into the port.
-void AddNumberedPorts(std::vector<Port>& ports, const std::string& prefix,
-                      std::size_t first, auto& lines, auto make_port) {
-  ports.reserve(ports.size() + lines.size());
-  for (std::size_t index = 0; index < lines.size(); ++index) {
-    ports.push_back(
-        make_port(prefix + std::to_string(first + index), lines[index]));
-  }
-}
 
 }  // namespace
 

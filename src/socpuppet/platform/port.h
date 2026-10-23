@@ -1,9 +1,11 @@
 #ifndef SOCPUPPET_PLATFORM_PORT_H_
 #define SOCPUPPET_PLATFORM_PORT_H_
 
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <systemc>
 #include <tlm>
@@ -86,6 +88,19 @@ inline Port WireSourcePort(std::string name, sc_core::sc_out<bool>& out,
 // A wire input may be left unconnected; the component then sees it as low.
 inline Port WireSinkPort(std::string name, sc_core::sc_in<bool>& in) {
   return {.name = std::move(name), .connector = &in, .required = false};
+}
+
+// Adds a port for each of a component's numbered lines: `prefix` and a
+// number, counting up from `first`. `make_port` turns a name and a line
+// into the port.
+inline void AddNumberedPorts(std::vector<Port>& ports,
+                             const std::string& prefix, std::size_t first,
+                             auto& lines, auto make_port) {
+  ports.reserve(ports.size() + lines.size());
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    ports.push_back(
+        make_port(prefix + std::to_string(first + index), lines[index]));
+  }
 }
 
 }  // namespace socpuppet
