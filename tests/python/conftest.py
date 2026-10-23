@@ -3,6 +3,8 @@ import pathlib
 
 import pytest
 
+from socpuppet import _core
+
 pytest_plugins = ["pytester", "socpuppet.pytest_plugin"]
 
 
@@ -62,6 +64,7 @@ def zephyr_tree(pytestconfig):
 
 
 def pytest_configure(config):
+    _stop_if_qbox_cpu_is_asked_for_and_not_in_this_build()
     config.addinivalue_line(
         "markers",
         "not_on_qbox(reason): a test of the host that QBox's CPU does not "
@@ -81,6 +84,25 @@ def pytest_configure(config):
         "first, so that none of them starts last, and are left out of the "
         "run when SOCPUPPET_SKIP_LONG is 1, as the quick test preset sets it.",
     )
+
+
+def _stop_if_qbox_cpu_is_asked_for_and_not_in_this_build():
+    """Stop before any test when SOCPUPPET_CPU asks for QBox's CPU and this build has none.
+
+    QBox's is the one CPU a build can lack (docs/development.md). One line,
+    not a failure of every test that builds a host: the extension
+    in python/socpuppet/ is a copy the last tree built left there
+    (docs/development.md), so a run on QBox's CPU after a build of the dev
+    tree would fail each of them the same way.
+    """
+    if os.environ.get("SOCPUPPET_CPU") == "qbox_cpu" and not _core.has_qbox:
+        pytest.exit(
+            "SOCPUPPET_CPU is qbox_cpu, but this build of socpuppet has no "
+            "qbox_cpu: the extension in python/socpuppet/ is the dev tree's. "
+            "Build the qbox tree, `uv run cmake --build --preset qbox`, which "
+            "leaves its own there.",
+            returncode=pytest.ExitCode.USAGE_ERROR,
+        )
 
 
 def pytest_collection_modifyitems(config, items):

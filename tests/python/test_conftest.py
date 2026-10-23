@@ -4,8 +4,9 @@
 `only_on_qbox` when it is not. A `platform` test runs in a process of its
 own (`socpuppet.pytest_plugin`), and one that is skipped needs none.
 `long` marks a test that takes seconds or more, which SOCPUPPET_SKIP_LONG
-leaves out of the run. These tests run a scratch pytest session with the
-conftest.py in it.
+leaves out of the run. And SOCPUPPET_CPU set to qbox_cpu on a build without
+QBox's CPU stops the session before any test, with how to build one. These
+tests run a scratch pytest session with the conftest.py in it.
 """
 
 import textwrap
@@ -14,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import socpuppet
+from socpuppet import _core
 
 CONFTEST = Path(__file__).with_name("conftest.py")
 
@@ -28,6 +30,7 @@ def session(pytester, monkeypatch):
     return pytester
 
 
+@pytest.mark.skipif(not _core.has_qbox, reason="this build has no qbox_cpu")
 class TestAPlatformTestMarkedNotOnQbox:
     def test_on_qbox_is_skipped_for_its_reason_with_no_process_of_its_own(
         self, session, monkeypatch
@@ -54,6 +57,22 @@ class TestAPlatformTestMarkedOnlyOnQbox:
         result.assert_outcomes(skipped=1)
         result.stdout.fnmatch_lines(["*: not on QBox: spam"])
         assert imports.read_text() == "imported\n"
+
+
+@pytest.mark.skipif(_core.has_qbox, reason="this build has qbox_cpu")
+class TestASessionAskedForQboxsCpuOnABuildWithoutIt:
+    def test_stops_before_any_test_in_one_line_that_says_how_to_build_one(
+        self, session, monkeypatch
+    ):
+        monkeypatch.setenv("SOCPUPPET_CPU", "qbox_cpu")
+        two_tests_that_would_pass(session)
+
+        result = session.runpytest_subprocess()
+
+        assert result.ret == pytest.ExitCode.USAGE_ERROR
+        assert "passed" not in result.stdout.str()
+        [line] = [line for line in result.stderr.lines if "qbox_cpu" in line]
+        assert "cmake --build --preset qbox" in line
 
 
 class TestATestMarkedLong:
@@ -93,6 +112,10 @@ def a_long_test_and_another(session):
             """
         )
     )
+
+
+#: The same two: either would pass, were the session to run them.
+two_tests_that_would_pass = a_long_test_and_another
 
 
 def a_platform_test_marked(session, marker):
