@@ -19,7 +19,7 @@ import pytest
 from ext4_image import file_in
 from pciem_area import needs_pciem
 from socpuppet import ftl
-from socpuppet.boards.real_host import this_machine
+from socpuppet.boards.real_host import puppet_function, this_machine
 from socpuppet.boards.ssd import ssd
 from socpuppet.time import ms
 from ssd_zephyr_firmware import BANNER
@@ -29,7 +29,6 @@ from this_machine import (
     block_device,
     let_go,
     pumped_until,
-    puppet_function,
 )
 
 pytestmark = [needs_pciem, pytest.mark.long, pytest.mark.platform]

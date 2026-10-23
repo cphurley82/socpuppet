@@ -5,18 +5,21 @@ import json
 import os
 import pathlib
 import runpy
+import signal
 import sys
 import traceback
 import typing
 from collections.abc import Sequence
 
-from socpuppet import address_map, boot_image, interrupt_map, linux, run
+from socpuppet import address_map, boot_image, drive, interrupt_map, linux, run
 from socpuppet.address_map import MapEntry
+from socpuppet.boards import real_host
 from socpuppet.boards.host import HOST_CPUS, HostCpu, switched_off
 from socpuppet.components import Dialect, QboxCpu
 from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
 from socpuppet.platform import Platform
+from socpuppet.pump import pump
 from socpuppet.time import ms
 
 
@@ -186,10 +189,46 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "builds (the default is %(default)s)"
         ),
     )
+    drive_command = commands.add_parser(
+        "drive",
+        help="put the puppet's drive on this machine's own PCIe bus",
+        description=(
+            "Put the puppet's drive on this machine's own PCIe bus, "
+            "through pciem, where this machine's Linux finds it as it "
+            "would a card in a slot: its nvme driver binds it, and lsblk "
+            "lists it. It takes a build of socpuppet with pciem, on a "
+            "machine whose Linux has pciem loaded (docs/setup.md, and "
+            "`tools/doctor.py pciem`). The SSD's firmware is the one "
+            "firmware/build.py zephyr builds, looked for in "
+            "SOCPUPPET_FIRMWARE_DIR or else in build/firmware. Ctrl-C ends "
+            "it, once Linux has let go of the drive."
+        ),
+    )
+    drive_command.add_argument(
+        "--firmware",
+        choices=typing.get_args(drive.Firmware.__value__),
+        default="zephyr",
+        help=(
+            "which drive it is: zephyr, the SSD with its own firmware, or "
+            "behavioral, the stand-in, which has no CPU or firmware (the "
+            "default is %(default)s)"
+        ),
+    )
+    drive_command.add_argument(
+        "--blocks",
+        type=int,
+        default=drive.BLOCKS,
+        help=(
+            "how many 512-byte blocks the drive holds (the default is "
+            "%(default)s, 64 MiB)"
+        ),
+    )
     options = parser.parse_args(arguments)
 
     if options.command == "linux":
         _linux(options.cpu, options.root)
+    elif options.command == "drive":
+        _drive(options.firmware, options.blocks)
     elif options.command == "run":
         run.run(
             options.image,
@@ -276,6 +315,70 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
         )
     # On a line of its own: the cursor may be at the end of Linux's prompt.
     print(f"\n{ended}", file=sys.stderr)
+
+
+def _drive(firmware: drive.Firmware, blocks: int) -> None:
+    """Put the puppet's drive on this machine's bus, until Ctrl-C.
+
+    It says on standard error where on the bus the drive is, and that
+    Ctrl-C ends it. A Ctrl-C while a driver of Linux's still holds the
+    drive says how to let it go, and the command ends once Linux has; a
+    second pulls the drive out anyway. A firmware image or a pciem that
+    this build has not ends the command with one line that says how to get
+    it.
+    """
+    try:
+        board = drive.on_this_machine(
+            run.firmware_directory(), firmware=firmware, blocks=blocks
+        )
+    except (FileNotFoundError, ValueError) as refused:
+        sys.exit(str(refused))
+    interrupted: list[bool] = []
+
+    def interrupt(*_: object) -> None:
+        interrupted.append(True)
+
+    signal.signal(signal.SIGINT, interrupt)
+    function = real_host.puppet_function()
+    assert function is not None  # it was put on the bus as it started
+    which = (
+        "SSD, with its Zephyr firmware,"
+        if firmware == "zephyr"
+        else "🎭 behavioral drive"
+    )
+    print(
+        f"🧦 The puppet's {which} is on this machine's PCIe bus, at "
+        f"{real_host.PCI_DEVICES / function}. 🐧 lsblk lists it once "
+        "Linux's nvme driver has bound it. Ctrl-C ends it.",
+        file=sys.stderr,
+        flush=True,
+    )
+    pump(board.platform, far_ends=[board.host], until=lambda: bool(interrupted))
+    if real_host.held(function):
+        print(
+            "\n🐧 Linux still holds the drive. Unmount what is mounted from "
+            f"it, then let it go with `echo {function} | sudo tee "
+            f"{real_host.unbind(function)}`, and the command ends. Ctrl-C "
+            "again pulls the drive out anyway, as a card is pulled from its "
+            "slot.",
+            file=sys.stderr,
+            flush=True,
+        )
+        interrupted.clear()
+        pump(
+            board.platform,
+            far_ends=[board.host],
+            until=lambda: bool(interrupted) or not real_host.held(function),
+        )
+    let_go = not real_host.held(function)
+    print(
+        "🐧 Linux has let go of the drive. The simulation ends with the "
+        "command."
+        if let_go
+        else "🧦 Pulled out. Linux gives up on the drive in its own time, "
+        "seconds for each command it was owed.",
+        file=sys.stderr,
+    )
 
 
 def _add_cpu(command: argparse.ArgumentParser, *, speed: str = "") -> None:

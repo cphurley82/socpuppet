@@ -20,13 +20,13 @@ from socpuppet.boards.real_host import (
     UNCLAIMED_CLASS,
     RealHost,
     behavioral_drive,
+    puppet_function,
 )
 from this_machine import (
     block_device,
     block_size,
     let_go,
     pumped_until,
-    puppet_function,
     read_block,
     what_the_host_reads,
     write_block,
@@ -56,7 +56,8 @@ SHUTDOWN_COMPLETE = 2 << 2
 SCRIBBLER = """
 from socpuppet.boards.real_host import UNCLAIMED_CLASS, RealHost, behavioral_drive
 from socpuppet.components import BehavioralNvme
-from this_machine import puppet_function, scribble_on
+from socpuppet.boards.real_host import puppet_function
+from this_machine import scribble_on
 
 board = behavioral_drive(blocks=64, host=RealHost(class_code=UNCLAIMED_CLASS))
 board.platform.build()

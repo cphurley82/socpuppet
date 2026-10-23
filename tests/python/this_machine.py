@@ -12,44 +12,18 @@ import tempfile
 import time
 from pathlib import Path
 
-from socpuppet.boards.drive import DEVICE_ID, VENDOR_ID
+from socpuppet.boards.real_host import (
+    PCI_DEVICES,
+    held,
+    puppet_function,
+    unbind,
+)
 from socpuppet.pump import pump
 
-PCI_DEVICES = Path("/sys/bus/pci/devices")
-#: The IDs the puppet's drive says: its vendor, and which device it is.
-PUPPET = (VENDOR_ID, DEVICE_ID)
 #: How long, on the wall, a test waits for this machine's Linux, so that
 #: what never comes fails the test and does not hang it. Linux waits for a
 #: drive's commands for 30 s, and gets each answer in well under one.
 PATIENCE = 30.0
-
-
-def puppet_function() -> str | None:
-    """The PCI address of the puppet's drive on pciem's bus, if it is on it.
-
-    Found by where it is, never by a name a driver gave it: on pciem's own
-    bus, with the puppet's IDs. There is one at most, or a drive from
-    before is still there, and the test would not know which is its own.
-    """
-    found = [
-        device.name
-        for device in sorted(PCI_DEVICES.iterdir())
-        if "pciem" in str(device.resolve()) and ids_of(device) == PUPPET
-    ]
-    if len(found) > 1:
-        raise AssertionError(
-            f"two puppet drives on pciem's bus, {found}: one from before is"
-            " still there"
-        )
-    return found[0] if found else None
-
-
-def ids_of(device: Path) -> tuple[int, int]:
-    """Who made `device`, and which device it is, as it says."""
-    return (
-        int((device / "vendor").read_text(), 16),
-        int((device / "device").read_text(), 16),
-    )
 
 
 def what_the_host_reads(function: str, offset: int, size: int) -> bytes:
@@ -160,10 +134,9 @@ def let_go(board) -> None:
     waiting for the driver: half a minute, for each command it was owed.
     """
     function = puppet_function()
-    driver = PCI_DEVICES / function / "driver"
-    if driver.exists():
+    if held(function):
         as_root_while_pumping(
-            board, "tee", str(driver / "unbind"), given=function.encode()
+            board, "tee", str(unbind(function)), given=function.encode()
         )
 
 

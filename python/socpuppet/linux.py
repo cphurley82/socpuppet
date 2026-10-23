@@ -177,7 +177,7 @@ def _with_the_root_on_the_drive(
             INITRAMFS_CPIO,
         )
     )
-    manager, ssd = (_found(firmware / name) for name in (MANAGER_ELF, SSD_ELF))
+    manager, ssd = (built(firmware / name) for name in (MANAGER_ELF, SSD_ELF))
     blocks, disk = disk_for_the_drive(
         [gpt.Partition(gpt.LINUX_FILESYSTEM, "root", rootfs)]
     )
@@ -237,11 +237,14 @@ def disk_for_the_drive(
 
 def _read(image: pathlib.Path) -> bytes:
     """The bytes of `image`, or why there are none and how to build it."""
-    return _found(image).read_bytes()
+    return built(image).read_bytes()
 
 
-def _found(image: pathlib.Path) -> pathlib.Path:
-    """`image`, if it is there, or why it is not and how to build it."""
+def built(image: pathlib.Path) -> pathlib.Path:
+    """`image`, if `firmware/build.py` has built it.
+
+    Or else a FileNotFoundError that says how to build it.
+    """
     if not image.exists():
         raise FileNotFoundError(
             f"There is no {image}. Build it with `uv run firmware/build.py "
