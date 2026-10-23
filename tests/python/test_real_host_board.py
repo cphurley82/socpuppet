@@ -82,6 +82,10 @@ class TestTheSsdWithThisMachineAsItsHost:
         (source,) = what_drives(board.platform, board.host.dma)
         assert source.startswith(board.ssd.uplink.path + ".")
 
+    def test_refuses_a_trace_since_there_is_no_scripted_host_to_record(self):
+        with pytest.raises(ValueError, match=r"trace.*scripted host"):
+            ssd(host=this_machine, trace=True)  # type: ignore[call-overload]
+
 
 class TestTheBehavioralDriveWithThisMachineAsItsHost:
     def test_its_dma_goes_straight_to_the_host(self):
