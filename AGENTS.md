@@ -53,7 +53,7 @@ Add to it when something new keeps coming up.
 | 🧭 | the vision: why, for whom, and how choices get made |
 | 🌱 | the first rung: a reader who knows a little Python and nothing of chips |
 | 🐧 | Linux |
-| 🔌 | a cable to this machine's network: libslirp, `socpuppet.slirp` |
+| 🔌 | a cable to this machine's network: `sp.EthernetCable`, and libslirp behind it (`socpuppet.slirp`) |
 
 ## Workflow
 

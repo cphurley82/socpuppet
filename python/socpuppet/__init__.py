@@ -41,6 +41,7 @@ from socpuppet.errors import (
     SlirpUnavailable,
     VirtioError,
 )
+from socpuppet.ethernet_cable import EthernetCable
 from socpuppet.io_manager import IoManager
 from socpuppet.msi_host import MsiHost
 from socpuppet.nvme_host import NvmeHost, NvmeNamespace
@@ -82,6 +83,7 @@ __all__ = [
     "D2dLink",
     "DbtRiseCpu",
     "DmaEngine",
+    "EthernetCable",
     "ExpectationFailed",
     "FlashController",
     "IdealNand",

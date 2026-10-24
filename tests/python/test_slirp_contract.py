@@ -19,11 +19,15 @@ import pytest
 import ethernet
 import socpuppet as sp
 from cable_area import needs_cable
+from sockets import a_free_port
 from socpuppet import slirp
-from this_machine import PATIENCE
 
 #: The guest's MAC: that of the 🎭 virtio network device.
 GUEST_MAC = ethernet.mac("02:00:5e:00:53:01")
+#: How long, on the wall, a test waits for what it waits for, so that
+#: something that never comes fails the test and does not hang it. A frame
+#: through slirp and this machine's loopback takes well under a second.
+PATIENCE = 5.0
 
 
 @needs_cable
@@ -58,6 +62,37 @@ class TestWhenTheGuestAsksForAnAddress:
             stack.input(ethernet.dhcp_discover(GUEST_MAC))
 
         assert ethernet.dhcp_offers(sent) == [ethernet.ipv4("10.0.2.15")]
+
+
+@needs_cable
+class TestWhenSendingAFrameToTheGuestFailsInInput:
+    def test_it_is_raised_from_the_input_that_sent_the_frame(self):
+        def send(frame: bytes) -> None:
+            raise BrokenPipeError("the guest's end has gone")
+
+        with (
+            slirp.Slirp(send=send) as stack,
+            pytest.raises(BrokenPipeError, match="the guest's end has gone"),
+        ):
+            stack.input(ethernet.dhcp_discover(GUEST_MAC))
+
+
+@needs_cable
+class TestWhenSendingAFrameToTheGuestFailsInAPoll:
+    def test_it_is_raised_from_the_poll_that_sent_the_frame(self):
+        def send(frame: bytes) -> None:
+            raise BrokenPipeError("the guest's end has gone")
+
+        port = a_free_port()
+        with slirp.Slirp(send=send) as stack:
+            stack.forward(port, 22)
+            with (
+                socket.create_connection(("127.0.0.1", port)),
+                pytest.raises(BrokenPipeError, match="the guest's end"),
+            ):
+                # What slirp sends first for the connection: a SYN, or an
+                # ARP request to find the guest.
+                polled_until(stack, lambda: False)
 
 
 @needs_cable
@@ -189,13 +224,6 @@ class Guest:
 
     def _segments_to(self, port: int) -> list[dpkt.tcp.TCP]:
         return ethernet.tcp_segments(self._sent, port=port)
-
-
-def a_free_port() -> int:
-    """A TCP port of this machine's that nothing listens on, just now."""
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
 
 
 def polled_until(stack: slirp.Slirp, condition) -> bool:

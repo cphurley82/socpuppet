@@ -46,6 +46,7 @@ class Slirp:
     def __init__(self, *, send: Callable[[bytes], None]) -> None:
         self._library = _load()
         self._send = send
+        self._failure: BaseException | None = None
         # ⚠️ Kept for as long as slirp is: slirp keeps the pointer to the
         # callbacks, and calls them.
         self._callbacks = _Callbacks(
@@ -77,6 +78,7 @@ class Slirp:
     def input(self, frame: bytes) -> None:
         """Take `frame`, an Ethernet frame the guest sent."""
         self._library.slirp_input(self._slirp, frame, len(frame))
+        self._raise_what_send_raised()
 
     def forward(self, port: int, guest_port: int) -> None:
         """Forward TCP `port` of this machine's to `guest_port` of the guest's.
@@ -133,6 +135,7 @@ class Slirp:
             self._slirp, 0, _GetRevents(lambda at, _: happened[at]), None
         )
         self._wait_again()
+        self._raise_what_send_raised()
 
     def close(self) -> None:
         """Close its sockets, and everything else of slirp's.
@@ -172,8 +175,20 @@ class Slirp:
         self._within = milliseconds.value / 1000
 
     def _send_packet(self, frame: int, length: int, _: int) -> int:
-        self._send(ctypes.string_at(frame, length))
+        # ⚠️ An exception cannot be raised through slirp's C, and ctypes
+        # would print it and carry on: it is kept, to be raised once slirp
+        # has returned, and slirp is told the frame went.
+        try:
+            self._send(ctypes.string_at(frame, length))
+        except BaseException as failure:
+            self._failure = self._failure or failure
         return length
+
+    def _raise_what_send_raised(self) -> None:
+        """Raise what `send` raised while slirp was running, if anything."""
+        failure, self._failure = self._failure, None
+        if failure is not None:
+            raise failure
 
 
 def version() -> str:
