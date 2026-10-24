@@ -931,15 +931,18 @@ class Build:
         the mini root does not carry. Ours is laid over it: a shell on the
         console, and no login.
 
-        The image is made by mkfs.ext4 from the unpacked tree, which
-        needs no root privilege: the files come out owned by whoever ran
-        the build, which the root shell in the guest does not mind.
+        The image is made by mkfs.ext4 from a tree laid out afresh for
+        each build, which needs no root privilege: the files come out owned
+        by whoever ran the build, which the root shell in the guest does
+        not mind. Alpine's unpacked tree is left as Alpine made it.
         """
-        root = self.alpine()
+        alpine = self.alpine()
         say("Making the root filesystem")
-        shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
         image = self.out / "rootfs.ext4"
         with self.staging(image) as name:
+            root = Path(name) / "root"
+            shutil.copytree(alpine, root, symlinks=True)
+            shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
             made = Path(name) / image.name
             logged(
                 self.log_of("rootfs"),

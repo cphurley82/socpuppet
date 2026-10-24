@@ -757,6 +757,22 @@ def test_the_root_filesystem_is_alpines_minirootfs_with_our_inittab_in_ext4(
     assert files["sbin/init"].link == "/bin/busybox"
 
 
+def test_the_root_filesystem_leaves_alpines_unpacked_tree_as_alpine_made_it(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    (alpines,) = firmware.out.glob("alpine-minirootfs-*")
+    assert (alpines / "etc/inittab").read_text() == (
+        "::sysinit:/sbin/openrc sysinit\n"
+    )
+
+
 def test_the_initramfs_is_made_by_the_kernels_own_tool_with_busybox_musl_nvme(
     firmware,
 ):
