@@ -51,6 +51,8 @@ class Fix:
 
 # Apple's command line tools, which have the compiler, git and make.
 XCODE = Fix("xcode-select --install")
+# For what comes with macOS itself.
+MACOS_HAS_IT = Fix("nothing to install: macOS comes with it")
 
 
 @dataclass(frozen=True)
@@ -533,6 +535,19 @@ AREAS = (
     # Where pciem cannot be loaded, as on CI's runners, the same tests run
     # in a guest of the machine's own, which few need.
     Area("guest", "a QEMU guest, for a real host on CI", GUEST, optional=True),
+    # 🐧 libslirp plugs the puppet's network card into this machine's
+    # network (socpuppet.slirp), and ssh and scp reach Linux over it.
+    # Without them Linux boots with its card unplugged.
+    Area(
+        "cable",
+        "a cable to this machine's network, and ssh to Linux",
+        (
+            library("slirp", "libslirp-dev", "libslirp"),
+            program("ssh", "openssh-client", MACOS_HAS_IT),
+            program("scp", "openssh-client", MACOS_HAS_IT),
+        ),
+        optional=True,
+    ),
 )
 
 

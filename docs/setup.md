@@ -32,7 +32,8 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
 
 ```sh
 sudo apt-get update && sudo apt-get install -y \
-  build-essential git curl xz-utils zlib1g-dev device-tree-compiler uuid-dev acpica-tools flex bison bc e2fsprogs gdb
+  build-essential git curl xz-utils zlib1g-dev device-tree-compiler uuid-dev acpica-tools flex bison bc e2fsprogs gdb \
+  libslirp-dev openssh-client
 ```
 
 | Package | Why |
@@ -44,6 +45,7 @@ sudo apt-get update && sudo apt-get install -y \
 | `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.py` |
 | `flex`, `bison`, `bc`, `e2fsprogs` | what the Linux kernel's build generates its parsers and does its arithmetic with, and `mkfs.ext4`, which makes the kernel's root filesystem, all for `firmware/build.py` |
 | `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
+| `libslirp-dev`, `openssh-client` | 🐧 libslirp, QEMU's user-mode network, which plugs Linux's network card into this machine's network with no root, and `ssh` and `scp` to reach Linux over it. Optional: without them Linux boots with its card unplugged, and the tests that need them skip. The doctor's `cable` area checks for them |
 
 For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
 
@@ -59,7 +61,7 @@ sudo apt-get install -y \
 
 ```sh
 xcode-select --install       # Apple clang, git, make
-brew install dtc acpica
+brew install dtc acpica libslirp
 ```
 
 ⚠️ To build a Mac's wheel with `tools/ci.py`, which is optional, install python.org's CPython of the version in `.python-version` (the `.pkg` from [python.org/downloads/macos](https://www.python.org/downloads/macos/)): `cibuildwheel` builds with it, and outside of CI it will not install it for you, since it is a system-wide install that asks for your password. The doctor's `wheel` area checks for it, and `tools/ci.py` skips the wheel job, and says why, where it is missing.

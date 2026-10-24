@@ -59,6 +59,7 @@ PROGRAMS = (
     "pkgutil",
     "sudo",
     *(name for name, _ in DOCTOR_MODULE.PCIEM_GUEST.PROGRAMS),
+    *("ssh", "scp"),
 )
 
 # The package of python.org's CPython that cibuildwheel looks for on a Mac,
@@ -535,6 +536,26 @@ def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(
         if line.strip().startswith(installer)
     )
     assert set(install.removeprefix(installer).split()) == wanted
+
+
+CABLE = "a cable to this machine's network, and ssh to Linux"
+
+
+def test_without_libslirp_or_scp_the_cable_warns_without_failing_and_names_their_packages(
+    doctor,
+):
+    doctor.without("scp")
+
+    result = doctor("cable", FAIL_ON="slirp")
+
+    assert result.returncode == 0, result.stdout
+    assert problems(result.stdout)[CABLE] == (
+        "pkg-config cannot find slirp; scp is not installed"
+    )
+    if platform.system() == "Linux":
+        assert f"{APT} libslirp-dev openssh-client" in result.stdout
+    else:
+        assert "brew install libslirp" in result.stdout
 
 
 def test_a_site_that_cannot_be_reached_fails_the_network_saying_why(doctor):
