@@ -830,6 +830,20 @@ def test_a_package_alpine_no_longer_has_stops_the_build_saying_to_pin_its_newest
     assert not (firmware.out / "rootfs.ext4").exists()
 
 
+def test_the_root_filesystem_has_root_with_no_password_and_the_rest_as_alpines(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release(shadow="root:*::0:::::\nbin:!::0:::::\n")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    files = inside(firmware.out / "rootfs.ext4")
+    assert files["etc/shadow"].data == b"root:::0:::::\nbin:!::0:::::\n"
+
+
 def test_the_root_filesystem_leaves_alpines_unpacked_tree_as_alpine_made_it(
     firmware,
 ):
@@ -1288,11 +1302,13 @@ class Firmware:
         package_version=None,
         corrupt_package=None,
         missing_package=None,
+        shadow="root:*::0:::::\n",
     ):
         """Put Alpine's mini root filesystem where curl looks, and pin it.
 
-        As Alpine's own: busybox, the links to it, and an inittab and a
-        profile that ours replaces or keeps. The version is the
+        As Alpine's own: busybox, the links to it, an inittab and a
+        profile that ours replaces or keeps, and `shadow`, the passwords,
+        root's locked as Alpine's is unless another is given. The version is the
         repository's pin unless one is given. With `corrupt`, the checksum
         pinned is not the tarball's. And the packages for ssh, each pinned
         at `package_version` or the repository's own, as Alpine's are: a
@@ -1313,6 +1329,7 @@ class Firmware:
                 "./sbin/init": Link("/bin/busybox"),
                 "./etc/inittab": "::sysinit:/sbin/openrc sysinit\n",
                 "./etc/profile": "PS1=spam\n",
+                "./etc/shadow": shadow,
             },
             self.fake,
             compression="gz",

@@ -350,6 +350,26 @@ def read_versions(path: Path) -> dict[str, str]:
     return {name: pin["version"] for name, pin in read_pins(path).items()}
 
 
+def clear_roots_password(shadow: Path) -> None:
+    """Give root no password in `shadow`, a tree's /etc/shadow.
+
+    🐧 Alpine's root has a password field of "*", which no password
+    matches, so root cannot log in by one. An empty field lets root in with
+    nothing typed, which dropbear allows with `-B` (firmware/rootfs/etc/
+    inittab). Only this machine can try: the cable forwards its port from
+    127.0.0.1 alone. The rest of the file is left as it was.
+    """
+    lines = shadow.read_text().splitlines(keepends=True)
+    shadow.write_text(
+        "".join(
+            "root::" + line.split(":", 2)[2]
+            if line.startswith("root:")
+            else line
+            for line in lines
+        )
+    )
+
+
 def alpine_release(version: str) -> str:
     """The release of Alpine a version of it is of: 3.24 for 3.24.2."""
     return ".".join(version.split(".")[:2])
@@ -969,7 +989,9 @@ class Build:
         musl, made for containers, and so with no device nodes in it (the
         kernel makes /dev itself) and an inittab that starts OpenRC, which
         the mini root does not carry. Ours is laid over it: a shell on the
-        console, and no login.
+        console, and no login. Alpine's packages for ssh go in too, and
+        root has no password, so that ssh from this machine logs in as
+        the console does, with nothing to type.
 
         The image is made by mkfs.ext4 from a tree laid out afresh for
         each build, which needs no root privilege: the files come out owned
@@ -991,6 +1013,7 @@ class Build:
                     dirs_exist_ok=True,
                 )
             shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
+            clear_roots_password(root / "etc" / "shadow")
             made = Path(name) / image.name
             logged(
                 self.log_of("rootfs"),
