@@ -103,6 +103,9 @@ class _Terminal:
     def fileno(self) -> int | None:
         return None if self._ended else self._stdin
 
+    def due_in(self) -> None:
+        return None
+
     def service(self) -> None:
         typed = os.read(self._stdin, 4096)
         self._ended = not typed

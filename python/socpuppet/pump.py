@@ -11,8 +11,9 @@ something by its file descriptor becoming readable:
 
 💡 While the CPU works, the simulation runs as fast as it can. While it
 sleeps, the simulated clock keeps to the wall's: a sleep of two seconds
-takes two, and a far end that has something ends the wait. 🎓 QEMU does
-the same with `-icount sleep=on`.
+takes two, and a far end that has something ends the wait, or is due
+to: a far end may have a timer of its own, such as a network's
+retransmission. 🎓 QEMU does the same with `-icount sleep=on`.
 """
 
 import select
@@ -46,6 +47,15 @@ class PumpedFarEnd(Protocol):
         """
         ...
 
+    def due_in(self) -> float | None:
+        """Seconds from now, on the wall, until it has something to do.
+
+        Something of its own that no descriptor will say, such as a timer
+        of its own running out, or 0 once that is overdue. It is refreshed
+        by then. None when it has nothing due.
+        """
+        ...
+
     def service(self) -> None:
         """Take what has arrived into the platform.
 
@@ -59,8 +69,10 @@ class PumpedFarEnd(Protocol):
     def refresh(self) -> None:
         """Bring the outside up to date with the platform, at a look.
 
-        Put out what the outside reads of the platform as it is now, and
-        hand the platform anything that was held back until now.
+        Put out what the outside reads of the platform as it is now, hand
+        the platform anything that was held back until now, and do what
+        has come due (`due_in`). After this, `due_in` says when the next
+        thing is, or None.
         """
         ...
 
@@ -81,7 +93,7 @@ def pump(
     🎓 A CPU that works is never more than a quantum ahead of the rest of
     the platform (`Platform.quantum`), so a next moment further off than
     that is a CPU asleep. That stretch is waited out on the wall, and a
-    far end that has something ends the wait.
+    far end that has something, or is due to, ends the wait.
     """
     look_again = 0.0
     while True:
@@ -109,12 +121,16 @@ def _wait_out(
 ) -> list[PumpedFarEnd]:
     """Wait on the wall for a sleeping CPU's next moment, `ahead` of now.
 
-    Or for `LONGEST_WAIT`, if that is sooner or nothing is ahead. A far end
-    whose descriptor becomes readable ends the wait. The platform's clock
-    moves on as far as the wall's did. Returns the far ends that are
-    readable.
+    Or for `LONGEST_WAIT`, or until a far end is due, if either is sooner
+    or nothing is ahead. A far end whose descriptor becomes readable ends
+    the wait. The platform's clock moves on as far as the wall's did.
+    Returns the far ends that are readable.
     """
-    wait = LONGEST_WAIT if ahead is None else min(ahead / s(1), LONGEST_WAIT)
+    waits = [LONGEST_WAIT]
+    if ahead is not None:
+        waits.append(ahead / s(1))
+    waits += [due for each in far_ends if (due := each.due_in()) is not None]
+    wait = min(waits)
     waited_from = time.monotonic()
     ready = _readable(far_ends, wait)
     waited = s(time.monotonic() - waited_from)

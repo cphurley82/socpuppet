@@ -283,7 +283,7 @@ def script():
 
 ### Running, pumping and watching
 
-`platform.run()` runs until nothing is left to do, which ends the scripted show. With a real host there is always more, so [`socpuppet.pump.pump`](models/pciem-host.md#what-it-does) runs it with the host as a *far end*: anything with a file descriptor to wait on and `service()` and `refresh()` to call.
+`platform.run()` runs until nothing is left to do, which ends the scripted show. With a real host there is always more, so [`socpuppet.pump.pump`](models/pciem-host.md#what-it-does) runs it with the host as a *far end*: anything with a file descriptor to wait on, `service()` and `refresh()` to call, and `due_in()` to say when it has a timer of its own to keep.
 
 ```python
 from socpuppet.boards.real_host import this_machine

@@ -224,6 +224,10 @@ class PlacedPciemHost(Placed):
         """The descriptor that is readable when the host has made writes."""
         return self._platform.native().pciem_host_event_fd(self.path)
 
+    def due_in(self) -> None:
+        """Nothing: everything the host does comes in on the descriptor."""
+        return None
+
     def service(self) -> None:
         """Take the writes the host has made, to be made on the drive."""
         self._platform.native().pciem_host_service(self.path)

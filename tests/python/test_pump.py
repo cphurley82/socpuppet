@@ -5,7 +5,9 @@ when it has something by its file descriptor becoming readable. The pump
 waits on the far ends' descriptors while the platform sleeps, looks at
 them while it works, services each one that is readable, and refreshes
 each, at each look, with what the platform has done. Here the far end is
-a pipe, which a timer writes to while the platform runs.
+a pipe, which a timer writes to while the platform runs. A far end may
+also be due: it has something to do at a moment on the wall, such as a
+timer of its own, and the pump looks at it by then.
 """
 
 import os
@@ -17,7 +19,7 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.ops import wait
-from socpuppet.pump import LOOK_EVERY, pump
+from socpuppet.pump import LONGEST_WAIT, LOOK_EVERY, PumpedFarEnd, pump
 from socpuppet.time import ns, s, us
 
 pytestmark = pytest.mark.platform
@@ -49,6 +51,9 @@ class Pipe:
     def fileno(self) -> int | None:
         return self._read
 
+    def due_in(self) -> float | None:
+        return None
+
     def service(self) -> None:
         os.read(self._read, 4096)
         self.events.append("service")
@@ -71,6 +76,39 @@ class Pipe:
     def _write_a_byte(self) -> None:
         self.written_at = time.monotonic()
         os.write(self._write, b"x")
+
+
+#: How far ahead of now, in seconds on the wall, an alarm is due: much
+#: sooner than the longest the pump waits for a sleeping CPU.
+DUE_IN = LONGEST_WAIT / 20
+
+
+class Alarm:
+    """A far end with no descriptor, due `seconds` after it is made.
+
+    `rang_at` is when it was first refreshed once due, on the wall.
+    """
+
+    def __init__(self, seconds: float) -> None:
+        self.set_at = time.monotonic()
+        self._rings_at = self.set_at + seconds
+        self.rang_at: float | None = None
+
+    def fileno(self) -> int | None:
+        return None
+
+    def due_in(self) -> float | None:
+        if self.rang_at is not None:
+            return None
+        return max(0.0, self._rings_at - time.monotonic())
+
+    def service(self) -> None:
+        raise AssertionError("an alarm has no descriptor to be readable")
+
+    def refresh(self) -> None:
+        now = time.monotonic()
+        if self.rang_at is None and now >= self._rings_at:
+            self.rang_at = now
 
 
 @pytest.fixture
@@ -112,6 +150,15 @@ class TestWhenAFarEndHasBeenServiced:
         )
 
 
+class TestWhenAFarEndIsDueWhileTheCpuSleeps:
+    def test_it_is_refreshed_by_then(self):
+        platform = a_platform_whose_cpu(sleeps)
+        alarm = Alarm(DUE_IN)
+
+        assert pumped_until(platform, alarm, lambda: alarm.rang_at is not None)
+        assert alarm.rang_at - alarm.set_at < DUE_IN + SLACK
+
+
 class TestWhenThereIsNoFarEnd:
     def test_a_sleeping_cpu_is_waited_for_on_the_wall(self):
         platform = a_platform_whose_cpu(sleeps)
@@ -144,15 +191,17 @@ def works():
         yield wait(ns(1))
 
 
-def pumped_until(platform: sp.Platform, pipe: Pipe, condition) -> bool:
-    """Pump `platform` with `pipe` until `condition`, or PATIENCE runs out.
+def pumped_until(
+    platform: sp.Platform, far_end: PumpedFarEnd, condition
+) -> bool:
+    """Pump `platform` with `far_end` until `condition`, or PATIENCE runs out.
 
     Returns whether `condition` came true.
     """
     started = time.monotonic()
     pump(
         platform,
-        far_ends=[pipe],
+        far_ends=[far_end],
         until=lambda: condition() or time.monotonic() - started > PATIENCE,
     )
     return condition()
