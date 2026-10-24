@@ -55,6 +55,11 @@ XCODE = Fix("xcode-select --install")
 MACOS_HAS_IT = Fix("nothing to install: macOS comes with it")
 
 
+def anywhere(fix: Fix) -> dict[str, Fix]:
+    """A fix that is the same whatever system the doctor runs on."""
+    return {"Linux": fix, "Darwin": fix}
+
+
 @dataclass(frozen=True)
 class Need:
     """One thing an area needs, and what to do when it is missing."""
@@ -130,7 +135,7 @@ def site(url: str) -> Need:
         return f"{host} cannot be reached: {tried.stderr.strip()}"
 
     fix = Fix("check the connection, and HTTPS_PROXY if there is a proxy")
-    return Need(host, problem, {"Linux": fix, "Darwin": fix})
+    return Need(host, problem, anywhere(fix))
 
 
 def python_org_package(version: str) -> str:
@@ -345,53 +350,52 @@ def sudo_asks() -> str | None:
 # /dev/pciem takes, which a test of what pciem refuses needs and no more
 # (tests/python/pciem_area.py), and then what running the host's commands
 # as root takes. The fixes are Linux's, since only on Linux is any of it a
-# problem, but the first: a machine that is not Linux is told so on
-# whatever it runs (and in the tests, a Linux pointed at a machine of
-# their own with no /proc).
+# problem, but the first: a machine that is not Linux is told so. Each is
+# said on whatever the doctor runs on, for the machine it looks at may not
+# be that one: in the tests, a Mac or a Linux is pointed at a machine of
+# their own, which is a Linux unless a test takes its /proc away.
 NOT_HERE = Fix("nothing here: a real host is a Linux machine's")
 PCIEM_DEVICE = (
     Need(
         "Linux",
         not_linux("pciem is Linux's"),
-        {"Linux": NOT_HERE, "Darwin": NOT_HERE},
+        anywhere(NOT_HERE),
     ),
     Need(
         "kernel 6.6",
         on_linux(old_kernel),
-        {"Linux": Fix("upgrade to a kernel of 6.6 or later")},
+        anywhere(Fix("upgrade to a kernel of 6.6 or later")),
     ),
     Need(
         "pciem.ko",
         on_linux(pciem_unloaded),
-        {
-            "Linux": Fix(
+        anywhere(
+            Fix(
                 "build it with uv run tools/build_pciem.py, then set memory "
                 "aside and load it as docs/setup.md says"
             )
-        },
+        ),
     ),
     Need(
         "/dev/pciem",
         on_linux(pciem_unwritable),
-        {
-            "Linux": Fix(
-                "give it to your user with a udev rule, as docs/setup.md says"
-            )
-        },
+        anywhere(
+            Fix("give it to your user with a udev rule, as docs/setup.md says")
+        ),
     ),
 )
 PCIEM = (
     *PCIEM_DEVICE,
-    Need("sudo", on_linux(installed("sudo")), {"Linux": Fix("sudo", APT)}),
+    Need("sudo", on_linux(installed("sudo")), anywhere(Fix("sudo", APT))),
     Need(
         "sudo without a password",
         on_linux(sudo_asks),
-        {
-            "Linux": Fix(
+        anywhere(
+            Fix(
                 "run the tests as root, or let sudo run commands as root "
                 "without a password, as docs/setup.md says"
             )
-        },
+        ),
     ),
 )
 
@@ -428,35 +432,33 @@ GUEST = (
     Need(
         "Linux",
         not_linux("the guest is its own kernel's"),
-        {"Linux": NOT_HERE, "Darwin": NOT_HERE},
+        anywhere(NOT_HERE),
     ),
     *(
-        Need(name, on_linux(installed(name)), {"Linux": Fix(apt, APT)})
+        Need(name, on_linux(installed(name)), anywhere(Fix(apt, APT)))
         for name, apt in PCIEM_GUEST.PROGRAMS
     ),
     Need(
         "the running kernel",
         on_linux(kernel_unreadable),
-        {
-            "Linux": Fix(
-                "let QEMU read it: sudo chmod a+r /boot/vmlinuz-$(uname -r)"
-            )
-        },
+        anywhere(
+            Fix("let QEMU read it: sudo chmod a+r /boot/vmlinuz-$(uname -r)")
+        ),
     ),
     Need(
         "/dev/kvm",
         on_linux(kvm_unwritable),
-        {
-            "Linux": Fix(
+        anywhere(
+            Fix(
                 "QEMU runs the guest on KVM: give it to your user until the "
                 "next boot with sudo setfacl -m u:$USER:rw /dev/kvm"
             )
-        },
+        ),
     ),
     Need(
         "the kernel's headers",
         on_linux(no_headers),
-        {"Linux": Fix("linux-headers-$(uname -r)", APT)},
+        anywhere(Fix("linux-headers-$(uname -r)", APT)),
     ),
 )
 
