@@ -3,11 +3,29 @@
 # shell on a serial console. Each line is <tty>::<when>:<what>.
 ::sysinit:/bin/mount -t proc proc /proc
 ::sysinit:/bin/mount -t sysfs sysfs /sys
+# Pseudo-terminals, which a shell over ssh runs on.
+::sysinit:/bin/mkdir -p /dev/pts
+::sysinit:/bin/mount -t devpts devpts /dev/pts
 ::sysinit:/bin/hostname socpuppet
+# The network card, up from the start, for DHCP to ask on: Alpine has
+# ifupdown bring it up, which the mini root does not carry.
+::sysinit:/sbin/ip link set eth0 up
 # A shell, and no login, on hvc0, the virtio console: Linux's console on the
 # host, by the decision of 2026-10-18 (docs/history/decisions.md), and where
 # the exit test of M20 waits for the prompt. The leading - makes it a login
 # shell, which reads /etc/profile.
 hvc0::respawn:-/bin/sh
+# 🔌 An address by DHCP, where a cable to this machine's network is plugged
+# in (sp.EthernetCable): udhcpc asks twice, a second apart, before the
+# shell starts, and without an answer keeps asking in the background (-b).
+# ⚠️ Before the shell, since udhcpc clears the card's addresses as it
+# starts, and one typed at the shell would go. What it says goes nowhere:
+# on the console it would come among what is typed there.
+::sysinit:/sbin/udhcpc -i eth0 -b -t 2 -T 1 >/dev/null 2>&1
+# The SSH server: dropbear, which makes its host key at the first
+# connection (-R) and lets root in with no password (-B), as the console
+# does: firmware/build.py clears root's (clear_roots_password). Only this
+# machine reaches it, through the cable's port forwarded from 127.0.0.1.
+::once:/usr/sbin/dropbear -R -B
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/bin/umount -a -r
