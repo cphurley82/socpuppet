@@ -31,3 +31,25 @@ sha256 = "5bd9acdc82ec5efc3790ae840e5aaa40dfde7efff261cf6dde902dc570acf98c"
 [alpine]
 version = "3.24.2"
 sha256 = "57132e6e4f3a4ba9ffdf24e485513ce507e45471e7fd565aeed91c055cd63f7b"
+
+# Alpine's packages for ssh to the guest (ROOT_PACKAGES in
+# firmware/build.py says why each), from the same release's main
+# repository. Alpine publishes no SHA-256 of a package's file, so each
+# checksum here is of the file as it was fetched when pinned. ⚠️ The
+# repository keeps only the newest build of each: when Alpine rebuilds
+# one, pin the new one.
+[dropbear]
+version = "2026.91-r0"
+sha256 = "4ffad64d39126c0680a842e7a0c66ee9bf0c7c243e26fbcb55e5fcefdfce4aa1"
+
+[utmps-libs]
+version = "0.1.3.3-r0"
+sha256 = "7f3f65c0cda9e88663410891a86f8c1285543f4eed90d10bd7634bdc94182df6"
+
+[skalibs-libs]
+version = "2.15.0.0-r0"
+sha256 = "e6bbb5dc9913c27e499601bb89c4528b7c604a5fd3d3afc64884ff6776201439"
+
+[openssh-sftp-server]
+version = "10.3_p1-r1"
+sha256 = "e89ef2177cf7787a360d27a7178ffebe32b96a8080337d69ce754dc0332c83ad"

@@ -200,6 +200,22 @@ INITRAMFS_OVERLAY = REPOSITORY / "firmware" / "initramfs"
 # initramfs's init loads them by these names, nvme-core first, since nvme
 # needs it.
 NVME_MODULES = ("drivers/nvme/host/nvme-core.ko", "drivers/nvme/host/nvme.ko")
+# Alpine's packages that go into the root filesystem, each pinned in
+# versions.toml: dropbear, the SSH server, and the two libraries it needs
+# that the mini root has not, and OpenSSH's SFTP server, which OpenSSH's
+# scp speaks to and dropbear runs (/usr/lib/ssh/sftp-server).
+ROOT_PACKAGES = (
+    "dropbear",
+    "utmps-libs",
+    "skalibs-libs",
+    "openssh-sftp-server",
+)
+# What an Alpine package says of itself, beside its files: its signature,
+# its description and any scripts, each at its top and named with a dot
+# first, which are not files of the guest's.
+PACKAGE_METADATA = (".",)
+# Where Alpine's releases and packages are.
+ALPINE = "https://dl-cdn.alpinelinux.org/alpine"
 # How big the root filesystem is. Alpine's mini root is 3 MB packed and 9
 # unpacked, and the rest is room to write in.
 ROOTFS_SIZE = "32M"
@@ -334,6 +350,11 @@ def read_versions(path: Path) -> dict[str, str]:
     return {name: pin["version"] for name, pin in read_pins(path).items()}
 
 
+def alpine_release(version: str) -> str:
+    """The release of Alpine a version of it is of: 3.24 for 3.24.2."""
+    return ".".join(version.split(".")[:2])
+
+
 def sdk_host() -> str:
     """The name the Zephyr SDK gives this kind of machine."""
     system = {"Linux": "linux", "Darwin": "macos"}.get(platform.system(), "")
@@ -447,8 +468,19 @@ class Build:
                 f"{release}/{name}", into, sha256=checksum_of(sums, name)
             )
 
-    def fetch(self, url: str, into: Path, *, sha256: str) -> None:
-        """Download one tarball, check it against `sha256`, and unpack it."""
+    def fetch(
+        self,
+        url: str,
+        into: Path,
+        *,
+        sha256: str,
+        leaving_out: tuple[str, ...] = (),
+    ) -> None:
+        """Download one tarball, check it against `sha256`, and unpack it.
+
+        What is named with one of `leaving_out` at its start is not
+        unpacked.
+        """
         name = url.rsplit("/", 1)[-1]
         with tempfile.TemporaryDirectory(
             prefix=".download-", dir=self.out
@@ -468,7 +500,15 @@ class Build:
             into.mkdir(parents=True, exist_ok=True)
             try:
                 with tarfile.open(downloaded) as archive:
-                    archive.extractall(into, filter="tar")
+                    archive.extractall(
+                        into,
+                        members=[
+                            member
+                            for member in archive
+                            if not member.name.startswith(leaving_out)
+                        ],
+                        filter="tar",
+                    )
             except (tarfile.TarError, EOFError, OSError) as error:
                 raise Failed(f"{name} could not be unpacked: {error}") from None
 
@@ -937,11 +977,19 @@ class Build:
         not mind. Alpine's unpacked tree is left as Alpine made it.
         """
         alpine = self.alpine()
+        packages = [self.package(name) for name in ROOT_PACKAGES]
         say("Making the root filesystem")
         image = self.out / "rootfs.ext4"
         with self.staging(image) as name:
             root = Path(name) / "root"
             shutil.copytree(alpine, root, symlinks=True)
+            for package in packages:
+                shutil.copytree(
+                    package,
+                    root,
+                    symlinks=True,
+                    dirs_exist_ok=True,
+                )
             shutil.copytree(ROOTFS_OVERLAY, root, dirs_exist_ok=True)
             made = Path(name) / image.name
             logged(
@@ -956,20 +1004,60 @@ class Build:
     def alpine(self) -> Path:
         """Alpine's mini root filesystem, unpacked: fetched if need be."""
         version = self.versions["alpine"]
-        root = self.out / f"alpine-minirootfs-{version}"
-        if not root.is_dir():
-            say(f"Fetching Alpine {version}")
-            with self.staging(root) as name:
-                staging = Path(name) / root.name
-                self.fetch(
-                    "https://dl-cdn.alpinelinux.org/alpine/"
-                    f"v{'.'.join(version.split('.')[:2])}/releases/riscv64/"
-                    f"alpine-minirootfs-{version}-riscv64.tar.gz",
-                    staging,
-                    sha256=self.pins["alpine"]["sha256"],
-                )
-                staging.rename(root)
-        return root
+        return self.unpacked(
+            self.out / f"alpine-minirootfs-{version}",
+            f"{ALPINE}/v{alpine_release(version)}/releases/riscv64/"
+            f"alpine-minirootfs-{version}-riscv64.tar.gz",
+            sha256=self.pins["alpine"]["sha256"],
+        )
+
+    def package(self, name: str) -> Path:
+        """One of Alpine's packages for riscv64, unpacked: fetched if need be.
+
+        It is fetched from the main repository of the mini root's release.
+
+        🐧 An Alpine package is a gzipped tar of its files, after its
+        signature and what it says of itself, which are left out. ⚠️ A
+        release's main repository keeps only the newest build of each
+        package, so a pin goes stale when Alpine rebuilds one.
+        """
+        version = self.versions[name]
+        release = alpine_release(self.versions["alpine"])
+        try:
+            return self.unpacked(
+                self.out / f"alpine-{name}-{version}",
+                f"{ALPINE}/v{release}/main/riscv64/{name}-{version}.apk",
+                sha256=self.pins[name]["sha256"],
+                leaving_out=PACKAGE_METADATA,
+            )
+        except Failed as failed:
+            raise Failed(
+                f"{failed}\n💡 Alpine's v{release}/main keeps only the newest "
+                f"build of each package. If {name} {version} is no longer "
+                f"there, pin the one that is in firmware/versions.toml, with "
+                "its file's SHA-256."
+            ) from None
+
+    def unpacked(
+        self,
+        tree: Path,
+        url: str,
+        *,
+        sha256: str,
+        leaving_out: tuple[str, ...] = (),
+    ) -> Path:
+        """`tree`, unpacked from the tarball at `url`: fetched if need be.
+
+        It is unpacked beside where it goes and moved there whole, so that
+        a fetch that fails leaves nothing behind.
+        """
+        if not tree.is_dir():
+            say(f"Fetching {url.rsplit('/', 1)[-1]}")
+            with self.staging(tree) as name:
+                staging = Path(name) / tree.name
+                self.fetch(url, staging, sha256=sha256, leaving_out=leaving_out)
+                staging.rename(tree)
+        return tree
 
     def initramfs(self) -> None:
         """What loads the NVMe driver before the root is mounted, as a cpio.

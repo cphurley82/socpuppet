@@ -757,6 +757,79 @@ def test_the_root_filesystem_is_alpines_minirootfs_with_our_inittab_in_ext4(
     assert files["sbin/init"].link == "/bin/busybox"
 
 
+#: What ssh to the guest needs of Alpine's packages: dropbear, the libraries
+#: it needs that the mini root has not, and OpenSSH's SFTP server, which
+#: OpenSSH's scp speaks to.
+SSH_PACKAGES = ("dropbear", "utmps-libs", "skalibs-libs", "openssh-sftp-server")
+
+
+def test_the_root_filesystem_has_alpines_packages_for_ssh_fetched_at_their_pins(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release(version="3.23.4", package_version="1.0-r0")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    fetched = [c["args"][-1] for c in firmware.calls("curl")]
+    for package in SSH_PACKAGES:
+        assert (
+            "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/riscv64/"
+            f"{package}-1.0-r0.apk"
+        ) in fetched
+    files = inside(firmware.out / "rootfs.ext4")
+    for package in SSH_PACKAGES:
+        assert files[f"usr/lib/{package}"].data == b"spam\n"
+
+
+def test_the_root_filesystem_leaves_out_what_a_package_says_of_itself(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release()
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 0, result.stdout
+    files = inside(firmware.out / "rootfs.ext4")
+    assert [n for n in files if n.startswith((".PKGINFO", ".SIGN."))] == []
+
+
+def test_a_package_whose_checksum_is_wrong_stops_the_build_making_no_image(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release(corrupt_package="dropbear")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 1
+    (complaint,) = [
+        line for line in result.stdout.splitlines() if "'s SHA-256 is " in line
+    ]
+    assert "dropbear-" in complaint
+    assert not (firmware.out / "rootfs.ext4").exists()
+
+
+def test_a_package_alpine_no_longer_has_stops_the_build_saying_to_pin_its_newest(
+    firmware,
+):
+    firmware.sdk_release()
+    firmware.linux_release()
+    firmware.alpine_release(missing_package="dropbear")
+
+    result = firmware.run("linux")
+
+    assert result.returncode == 1
+    assert "keeps only the newest build of each package" in result.stdout
+    assert "dropbear" in result.stdout
+    assert not (firmware.out / "rootfs.ext4").exists()
+
+
 def test_the_root_filesystem_leaves_alpines_unpacked_tree_as_alpine_made_it(
     firmware,
 ):
@@ -1208,15 +1281,28 @@ class Firmware:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.pin("linux", version, "0" * 64 if corrupt else digest)
 
-    def alpine_release(self, corrupt=False):
+    def alpine_release(
+        self,
+        version=None,
+        corrupt=False,
+        package_version=None,
+        corrupt_package=None,
+        missing_package=None,
+    ):
         """Put Alpine's mini root filesystem where curl looks, and pin it.
 
         As Alpine's own: busybox, the links to it, and an inittab and a
-        profile that ours replaces or keeps. With `corrupt`, the checksum
-        pinned is not the tarball's.
+        profile that ours replaces or keeps. The version is the
+        repository's pin unless one is given. With `corrupt`, the checksum
+        pinned is not the tarball's. And the packages for ssh, each pinned
+        at `package_version` or the repository's own, as Alpine's are: a
+        signature, what the package says of itself, and its one file,
+        usr/lib/<its name>. With `corrupt_package`, the checksum pinned of
+        that one is not its file's, and `missing_package` is pinned and
+        not there, as one Alpine has since rebuilt.
         """
         self.downloads.mkdir(exist_ok=True)
-        version = self.versions["alpine"]
+        version = version or self.versions["alpine"]
         path = self.downloads / f"alpine-minirootfs-{version}-riscv64.tar.gz"
         tarball(
             path,
@@ -1233,6 +1319,28 @@ class Firmware:
         )
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         self.pin("alpine", version, "0" * 64 if corrupt else digest)
+        pins = BUILD.read_pins(VERSIONS)
+        for package in SSH_PACKAGES:
+            version = package_version or pins[package]["version"]
+            path = self.downloads / f"{package}-{version}.apk"
+            tarball(
+                path,
+                {
+                    ".SIGN.RSA.spam@example.org.rsa.pub": "signature\n",
+                    ".PKGINFO": f"pkgname = {package}\n",
+                    f"usr/lib/{package}": "spam\n",
+                },
+                self.fake,
+                compression="gz",
+            )
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            self.pin(
+                package,
+                version,
+                "0" * 64 if package == corrupt_package else digest,
+            )
+            if package == missing_package:
+                path.unlink()
 
     def pin(self, name, version, sha256=None):
         """Write one entry of the copy of versions.toml the script reads."""

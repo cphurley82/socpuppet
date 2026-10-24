@@ -11,7 +11,8 @@ its devicetree in its own zeroed data.
 
 import struct
 
-from cast import INITRAMFS_CPIO, LINUX_BIN
+from cast import INITRAMFS_CPIO, LINUX_BIN, ROOTFS_EXT4
+from ext4_image import file_in
 from socpuppet import opensbi
 from socpuppet.boards.host import RAM_SIZE
 
@@ -60,3 +61,23 @@ class TestTheInitramfsTheFirmwareBuildLeaves:
         _, end = opensbi.initrd_span(initramfs, ram=0)
 
         assert end <= RAM_SIZE
+
+
+#: How an ELF file starts: what the kernel runs, and what it loads.
+ELF = b"\x7fELF"
+#: What an ELF header says its machine is, 18 bytes in, for RISC-V
+#: (`EM_RISCV`).
+RISCV = 0xF3
+
+
+class TestTheRootFilesystemTheFirmwareBuildLeaves:
+    def test_it_has_dropbear_and_the_sftp_server_alpine_built_for_riscv(
+        self, firmware
+    ):
+        # 🐧 dropbear answers ssh, and runs OpenSSH's SFTP server for scp.
+        filesystem = firmware(ROOTFS_EXT4).read_bytes()
+
+        for program in ("/usr/sbin/dropbear", "/usr/lib/ssh/sftp-server"):
+            binary = file_in(filesystem, program)
+            assert binary[: len(ELF)] == ELF, program
+            assert struct.unpack_from("<H", binary, 18)[0] == RISCV, program
