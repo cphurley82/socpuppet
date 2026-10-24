@@ -32,6 +32,9 @@ RAM_SIZE = 0x10_0000
 NET_BASE = 0x1000_1000
 #: The card's MAC.
 CARD_MAC = 0x0200_5E00_5301
+#: How long the firmware takes to start its driver and send a frame, at
+#: most: a few hundred accesses of a nanosecond or so each.
+SENDS_WITHIN = sp.ms(1)
 #: How long, on the wall, a test waits for what it waits for, so that
 #: something that never comes fails the test and does not hang it.
 PATIENCE = 10.0
@@ -83,6 +86,23 @@ class TestWhenTheCableCapturesWhatGoesOverIt:
             )
 
         assert frames_in(capture) == [asked, *heard]
+
+
+class TestWhenTheCableIsPluggedInAfterTheFirmwareSent:
+    def test_what_it_sent_before_goes_nowhere(self, tmp_path):
+        heard = []
+        platform, net = a_host_whose_firmware_sends(
+            ethernet.dhcp_discover(CARD_MAC.to_bytes(6)), heard
+        )
+        assert platform.run_until(lambda: net.received, timeout=SENDS_WITHIN), (
+            "the firmware sent nothing"
+        )
+        capture = tmp_path / "cable.pcap"
+
+        with sp.EthernetCable(net, capture=capture) as cable:
+            one_look(platform, cable)
+
+        assert frames_in(capture) == []
 
 
 class TestWhenAPortToForwardOverTheCableIsTaken:
@@ -146,6 +166,12 @@ def frames_in(capture: Path) -> list[bytes]:
     """The frames in the pcap file at `capture`, in order, read by dpkt."""
     with capture.open("rb") as file:
         return [frame for _, frame in dpkt.pcap.Reader(file)]
+
+
+def one_look(platform, cable) -> None:
+    """Pump `platform` with `cable` for one look: the pump refreshes each
+    far end before it asks whether to stop."""
+    pump(platform, far_ends=[cable], until=lambda: True)
 
 
 def pumped_until(platform, cable, condition) -> bool:

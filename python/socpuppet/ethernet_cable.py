@@ -46,17 +46,19 @@ class NetworkCard(Protocol):
 class EthernetCable:
     """🔌 A cable from `card` to this machine's network, through libslirp.
 
-    Each port of this machine's in `forward` is forwarded to the port of
-    the firmware's it maps to: a program here that connects to 127.0.0.1
-    at the one is connected to the firmware at the other. Close the cable,
-    or use it as a context manager, to close slirp's sockets. With
-    `capture`, a path, every frame both ways is written there as pcap.
-    🎓 Each frame is stamped with this machine's clock when the cable
-    handles it (the firmware's at a `refresh`, slirp's as it sends), not
-    with simulated time: the gaps between frames are the pump's, not the
-    firmware's.
+    It may be plugged in at any time: what the firmware sent before goes
+    nowhere. Each port of this machine's in `forward` is forwarded to the
+    port of the firmware's it maps to: a program here that connects to
+    127.0.0.1 at the one is connected to the firmware at the other. Close
+    the cable, or use it as a context manager, to close slirp's sockets.
     `socpuppet.errors.SlirpUnavailable` is raised where libslirp is not
     installed.
+
+    With `capture`, a path, every frame both ways is written there as
+    pcap. 🎓 Each frame is stamped with this machine's clock when the
+    cable handles it (the firmware's at a `refresh`, slirp's as it sends),
+    not with simulated time: the gaps between frames are the pump's, not
+    the firmware's.
     """
 
     def __init__(
@@ -67,7 +69,9 @@ class EthernetCable:
         capture: str | os.PathLike[str] | None = None,
     ) -> None:
         self._card = card
-        self._taken = 0
+        # From what the firmware sends next: what came before is not
+        # handed to slirp in one burst at the first look.
+        self._taken = len(card.received_since(0))
         self._capture: _Pcap | None = None
         self._slirp = Slirp(send=self._send)
         try:
