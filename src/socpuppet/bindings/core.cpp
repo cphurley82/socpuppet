@@ -298,18 +298,23 @@ PYBIND11_MODULE(_core, m) {
              self.platform.ModuleAt<socpuppet::VirtioNet>(path).Send(
                  {bytes.begin(), bytes.end()});
            })
-      // Every frame the driver of the network device at `path` has sent.
-      .def("net_received",
-           [](NativePlatform& self, const std::string& path) {
-             py::list frames;
-             for (const auto& frame :
-                  self.platform.ModuleAt<socpuppet::VirtioNet>(path)
-                      .Received()) {
-               frames.append(py::bytes(
-                   reinterpret_cast<const char*>(frame.data()), frame.size()));
-             }
-             return frames;
-           })
+      // The frames the driver of the network device at `path` has sent
+      // after its first `since` frames, in order. Only those are copied, so
+      // a reader that keeps up pays for what is new, not for everything
+      // sent so far.
+      .def(
+          "net_received",
+          [](NativePlatform& self, const std::string& path, std::size_t since) {
+            const auto& sent =
+                self.platform.ModuleAt<socpuppet::VirtioNet>(path).Received();
+            py::list frames;
+            for (std::size_t at = since; at < sent.size(); ++at) {
+              frames.append(
+                  py::bytes(reinterpret_cast<const char*>(sent[at].data()),
+                            sent[at].size()));
+            }
+            return frames;
+          })
       // How many frames the network device at `path` dropped for want of
       // room.
       .def(

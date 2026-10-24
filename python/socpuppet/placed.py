@@ -251,7 +251,15 @@ class PlacedNet(Placed):
         Each is without the virtio header in front of it, so it starts with
         its Ethernet header.
         """
-        return self._platform.native().net_received(self.path)
+        return self.received_since(0)
+
+    def received_since(self, since: int) -> list[bytes]:
+        """The frames the firmware has sent after its first `since` frames.
+
+        A far end that keeps up with the wire passes how many frames it has
+        taken already, and adds how many come back.
+        """
+        return self._platform.native().net_received(self.path, since)
 
     def send(self, frame: bytes) -> None:
         """Send `frame`, an Ethernet frame, to the firmware.

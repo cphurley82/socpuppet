@@ -18,11 +18,12 @@ platform.build()
 platform.run(sp.ms(100))
 for frame in net.received:   # every Ethernet frame the firmware sent
     ...
+net.received_since(3)        # only those after its first three
 net.send(frame)              # an Ethernet frame to the firmware
 print(net.dropped)           # frames that were longer than the buffer for them
 ```
 
-- **Sends.** A chain on the transmit queue, less its header, is a frame on the wire, in `received`. It may be one buffer, as Zephyr sends, or a header and a frame, as EDK2 does.
+- **Sends.** A chain on the transmit queue, less its header, is a frame on the wire, in `received`. A far end that keeps up with the wire asks `received_since` for the frames after those it has taken, and only those are copied. It may be one buffer, as Zephyr sends, or a header and a frame, as EDK2 does.
 - **Receives.** A frame Python sends waits until a buffer is held out, and goes in a delta cycle later, after a header whose `num_buffers` is 1. A buffer in two descriptors, as EDK2 gives them, takes the header in the first and the frame in the second.
 - **Drops a frame longer than the buffer for it,** and counts it in `dropped`, as a card drops what it has no room for. The buffer waits for the next frame.
 - **Offers `F_MAC`** and has its address in its configuration: EDK2's driver will not bind without it, and Linux's takes its address from there.

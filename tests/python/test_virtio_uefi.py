@@ -150,10 +150,10 @@ def a_neighbour_answering(net):
 
     def answer():
         nonlocal heard
-        frames = net.received
-        for answer in NEIGHBOUR.answers(frames[heard:]):
+        frames = net.received_since(heard)
+        for answer in NEIGHBOUR.answers(frames):
             net.send(answer)
-        heard = len(frames)
+        heard += len(frames)
 
     return answer
 

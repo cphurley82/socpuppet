@@ -122,6 +122,23 @@ class TestWhenTheHostSendsAFrame:
 
 
 @pytest.mark.platform
+class TestWhenPythonAsksForTheFramesSentAfterTheFirstOne:
+    def test_it_is_given_only_the_later_ones_in_order(self):
+        def script():
+            net = sp.VirtioNetHost(registers=DEVICE_BASE, memory=RAM_BASE)
+            yield from net.start()
+            yield from net.send_frame(b"spam frame")
+            yield from net.send_frame(b"eggs frame")
+            yield from net.send_frame(b"spam and eggs frame")
+
+        platform, net = host_with(script, sp.VirtioNet())
+
+        platform.run()
+
+        assert net.received_since(1) == [b"eggs frame", b"spam and eggs frame"]
+
+
+@pytest.mark.platform
 class TestWhenPythonSendsAFrameWhileTheHostWaitsForOne:
     def test_the_host_receives_it(self):
         received = []
