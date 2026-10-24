@@ -13,7 +13,9 @@ the 🎭 virtio network device, on a scripted host.
 
 import socket
 import time
+from pathlib import Path
 
+import dpkt
 import pytest
 
 import ethernet
@@ -65,6 +67,22 @@ class TestWhenAProgramHereConnectsToAPortForwardedOverTheCable:
                 cable,
                 lambda: ethernet.tcp_segments(heard, port=22),
             )
+
+
+class TestWhenTheCableCapturesWhatGoesOverIt:
+    def test_the_capture_holds_the_frames_both_ways_in_order(self, tmp_path):
+        heard = []
+        asked = ethernet.dhcp_discover(CARD_MAC.to_bytes(6))
+        platform, net = a_host_whose_firmware_sends(asked, heard)
+
+        capture = tmp_path / "cable.pcap"
+
+        with sp.EthernetCable(net, capture=capture) as cable:
+            assert pumped_until(
+                platform, cable, lambda: ethernet.dhcp_offers(heard)
+            )
+
+        assert frames_in(capture) == [asked, *heard]
 
 
 class TestWhenAPortToForwardOverTheCableIsTaken:
@@ -122,6 +140,12 @@ def a_host_whose_firmware_sends(frame: bytes, heard: list[bytes]):
     platform.connect(net.irq, cpu.irq)
     platform.build()
     return platform, net
+
+
+def frames_in(capture: Path) -> list[bytes]:
+    """The frames in the pcap file at `capture`, in order, read by dpkt."""
+    with capture.open("rb") as file:
+        return [frame for _, frame in dpkt.pcap.Reader(file)]
 
 
 def pumped_until(platform, cable, condition) -> bool:
