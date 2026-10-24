@@ -17,11 +17,18 @@ from socpuppet.address_map import MapEntry
 from socpuppet.boards import real_host
 from socpuppet.boards.host import HOST_CPUS, HostCpu, switched_off
 from socpuppet.components import Dialect, QboxCpu
+from socpuppet.errors import SlirpUnavailable
+from socpuppet.ethernet_cable import EthernetCable
 from socpuppet.interactive import interact
 from socpuppet.interrupt_map import InterruptEntry
+from socpuppet.placed import PlacedNet
 from socpuppet.platform import Platform
 from socpuppet.pump import pump
 from socpuppet.time import ms
+
+#: The port of this machine's that `socpuppet linux` forwards to Linux's
+#: ssh, by default: 22 is this machine's own, and 2222 is the usual next.
+SSH_PORT = 2222
 
 
 def main(arguments: Sequence[str] | None = None) -> None:
@@ -190,6 +197,17 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "builds (the default is %(default)s)"
         ),
     )
+    linux_command.add_argument(
+        "--ssh-port",
+        type=int,
+        default=SSH_PORT,
+        metavar="PORT",
+        help=(
+            "the port of this machine's that reaches Linux's ssh, through "
+            "a cable to this machine's network (libslirp), or 0 to leave "
+            "the cable out (the default is %(default)s)"
+        ),
+    )
     drive_command = commands.add_parser(
         "drive",
         help="put the puppet's drive on this machine's own PCIe bus",
@@ -227,7 +245,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     options = parser.parse_args(arguments)
 
     if options.command == "linux":
-        _linux(options.cpu, options.root)
+        _linux(options.cpu, options.root, options.ssh_port)
     elif options.command == "drive":
         _drive(options.firmware, options.blocks)
     elif options.command == "run":
@@ -252,14 +270,17 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
 
 
-def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
+def _linux(cpu: HostCpu | None, root: linux.Root, ssh_port: int) -> None:
     """Boot Linux on the host, with this terminal at its console.
 
     It says first, on standard error, which CPU it boots on and that
-    Ctrl-] leaves. What is typed waits for the shell's first prompt. It
-    ends when Linux switches the host off (`poweroff`), at Ctrl-], or when
-    the reader of its output has gone (`socpuppet linux | head -1`), and
-    says which.
+    Ctrl-] leaves. Then, in one line, how to reach Linux by ssh, through
+    a cable that forwards `ssh_port` of this machine's to Linux's 22, or
+    why ssh is off. With an `ssh_port` of 0 there is no cable, and
+    nothing is said of ssh. What is typed waits for the shell's first
+    prompt. It ends when Linux switches the host off (`poweroff`), at
+    Ctrl-], or when the reader of its output has gone (`socpuppet linux
+    | head -1`), and says which.
 
     `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names, and
     `root` where the root filesystem is (`linux.host_with_linux`). An
@@ -288,6 +309,7 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
         flush=True,
     )
     assert board.virtio is not None  # the host was described with them
+    cables = _cables(board.virtio.net, ssh_port)
     console = board.virtio.console
     try:
         interact(
@@ -296,6 +318,7 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
             keyboard=console,
             until=lambda: switched_off(board),
             ready=lambda: linux.PROMPT.search(console.output) is not None,
+            far_ends=cables,
         )
     except BrokenPipeError:
         # `socpuppet linux | head -1`: the reader has its line and has
@@ -314,8 +337,43 @@ def _linux(cpu: HostCpu | None, root: linux.Root) -> None:
             if switched_off(board)
             else "🧦 Left. The simulation ends with the command."
         )
+    finally:
+        for cable in cables:
+            cable.close()
     # On a line of its own: the cursor may be at the end of Linux's prompt.
     print(f"\n{ended}", file=sys.stderr)
+
+
+def _cables(card: PlacedNet, port: int) -> list[EthernetCable]:
+    """🔌 A cable from `card` to this machine's network, if any.
+
+    The cable forwards `port` of this machine's to Linux's ssh, and there
+    is none for a `port` of 0. It says on standard error how to reach
+    Linux by ssh, or why ssh is off, such as libslirp missing or `port`
+    taken, and then there is no cable. Linux boots either way.
+    """
+    if port == 0:
+        return []
+    try:
+        cable = EthernetCable(card, forward={port: 22})
+    except (SlirpUnavailable, OSError) as refused:
+        print(
+            f"🔌 ssh is off: {refused}"
+            + (
+                " --ssh-port picks another, and 0 leaves the cable out."
+                if isinstance(refused, OSError)
+                else ""
+            ),
+            file=sys.stderr,
+        )
+        return []
+    print(
+        f"🔌 ssh -p {port} root@localhost reaches Linux's shell once it "
+        "prompts, with no password. Its host key is new at each boot.",
+        file=sys.stderr,
+        flush=True,
+    )
+    return [cable]
 
 
 def _drive(firmware: drive.Firmware, blocks: int) -> None:

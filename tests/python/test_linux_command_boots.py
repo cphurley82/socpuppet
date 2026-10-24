@@ -4,14 +4,18 @@ Each test boots Linux once, which takes most of a minute or more.
 """
 
 import re
+import subprocess
 import time
 
 import pytest
 
+import ssh_to_linux
+from cable_area import needs_cable
 from devicetree_compiler import needs_dtc
 from linux_shell import linux_images
 from processes import ended_or_killed, run_socpuppet, start_socpuppet
 from pseudo_terminal import Terminal
+from sockets import a_free_port
 from socpuppet import linux
 
 pytestmark = [needs_dtc, pytest.mark.long]
@@ -109,7 +113,58 @@ class TestWhenSomeoneRunsItAtATerminal:
         assert time.monotonic() - typed_at >= 2
 
 
+@pytest.fixture
+def linux_at_this_terminal_with_ssh(firmware):
+    """`socpuppet linux` at a pseudo-terminal, with a port for ssh.
+
+    Gives the terminal and the port.
+    """
+    port = a_free_port()
+    terminal = Terminal(
+        ["-m", "socpuppet", "linux", "--ssh-port", str(port)],
+        patience=BOOTS_WITHIN,
+        SOCPUPPET_FIRMWARE_DIR=str(linux_images(firmware)),
+    )
+    yield terminal, port
+    terminal.close()
+
+
+@needs_cable
+class TestWhenSomeoneSshesToLinuxWhileItRunsAtATerminal:
+    def test_linux_answers_from_its_shell(
+        self, linux_at_this_terminal_with_ssh
+    ):
+        terminal, port = linux_at_this_terminal_with_ssh
+        terminal.wait_for(PROMPT)
+
+        answer = ssh_answer(port, "uname -a")
+
+        assert answer.startswith("Linux ")
+
+
+def ssh_answer(port: int, command: str) -> str:
+    """What `command` prints, run on Linux by this machine's ssh at `port`.
+
+    dropbear may not be up yet at the prompt, so a try that fails is made
+    again, until ANSWERS_WITHIN.
+    """
+    started = time.monotonic()
+    while True:
+        ran = subprocess.run(
+            ssh_to_linux.ssh(port, command),
+            capture_output=True,
+            text=True,
+            timeout=ANSWERS_WITHIN,
+        )
+        if ran.returncode == 0 or time.monotonic() - started > ANSWERS_WITHIN:
+            assert ran.returncode == 0, ran.stderr
+            return ran.stdout
+
+
 PROMPT = re.compile(linux.PROMPT.pattern.encode())
+#: Seconds on the wall for ssh to answer, once Linux has prompted: dropbear
+#: makes its host key at the first connection, on the simulated CPU.
+ANSWERS_WITHIN = 300
 #: Seconds on the wall for Ctrl-C to bring the prompt back: far less than
 #: the `sleep 100` it has to stop.
 STOPS_WITHIN = 30

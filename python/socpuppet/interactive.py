@@ -28,7 +28,7 @@ from typing import Any, Self
 
 from socpuppet.placed import PlacedFarEnd
 from socpuppet.platform import Platform
-from socpuppet.pump import pump
+from socpuppet.pump import PumpedFarEnd, pump
 
 #: The key that leaves: Ctrl-], as telnet and `virsh console` have it.
 #: 💡 Not QEMU's Ctrl-A, which a shell's line editing takes for Home.
@@ -42,6 +42,7 @@ def interact(
     keyboard: PlacedFarEnd,
     until: Callable[[], bool] = lambda: False,
     ready: Callable[[], bool] = lambda: True,
+    far_ends: Sequence[PumpedFarEnd] = (),
 ) -> None:
     """Run `platform` with this process's terminal at its consoles.
 
@@ -62,6 +63,9 @@ def interact(
     run going, and then only `until` can end it. Output that ends, such as
     a pipe whose reader has gone, ends the run: the `BrokenPipeError` is
     raised on, once the terminal is put back, for the caller to say so.
+
+    `far_ends` are others the platform is pumped with beside the terminal,
+    such as a cable to this machine's network (`sp.EthernetCable`).
     """
     # What was printed before goes first: the consoles' bytes bypass the
     # text layer.
@@ -70,7 +74,7 @@ def interact(
     with _RawMode():
         pump(
             platform,
-            far_ends=[terminal],
+            far_ends=[terminal, *far_ends],
             until=lambda: terminal.left or until(),
         )
 

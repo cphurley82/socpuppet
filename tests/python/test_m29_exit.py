@@ -22,6 +22,7 @@ from typing import NamedTuple
 import pytest
 
 import socpuppet as sp
+import ssh_to_linux
 from cable_area import needs_cable
 from console import plain
 from devicetree_compiler import needs_dtc
@@ -45,16 +46,6 @@ pytestmark = [needs_cable, needs_dtc, pytest.mark.long, pytest.mark.platform]
 SSH_PATIENCE = 300.0
 #: The file scp sends: as many bytes as take TCP through many windows.
 FILE_SIZE = 256 * 1024
-#: How this machine's ssh is told to reach Linux. No configuration of this
-#: machine's own (-F /dev/null), and no host key to check or keep: Linux's
-#: is made afresh on each boot.
-SSH_OPTIONS = (
-    *("-F", "/dev/null"),
-    *("-o", "StrictHostKeyChecking=no"),
-    *("-o", "UserKnownHostsFile=/dev/null"),
-    *("-o", "LogLevel=ERROR"),
-    *("-o", "BatchMode=yes"),
-)
 
 
 class Plugged(NamedTuple):
@@ -115,27 +106,12 @@ class TestWhenThisMachinesScpSendsAFileToLinux:
 
 def ssh(linux: Plugged, command: str) -> str:
     """What `command` prints, run as root on `linux` by this machine's ssh."""
-    printed = while_pumping(
-        linux,
-        "ssh",
-        *SSH_OPTIONS,
-        *("-p", str(linux.port)),
-        "root@localhost",
-        command,
-    )
-    return printed.decode()
+    return while_pumping(linux, *ssh_to_linux.ssh(linux.port, command)).decode()
 
 
 def scp(linux: Plugged, sent: Path, to: str) -> None:
     """Send `sent`, a file of this machine's, to `to` on `linux` by scp."""
-    while_pumping(
-        linux,
-        "scp",
-        *SSH_OPTIONS,
-        *("-P", str(linux.port)),
-        str(sent),
-        f"root@localhost:{to}",
-    )
+    while_pumping(linux, *ssh_to_linux.scp(linux.port, sent, to))
 
 
 def while_pumping(linux: Plugged, *argv: str) -> bytes:
