@@ -291,6 +291,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [CPU (QBox)](models/qbox-cpu.md), QEMU's, in a build with QBox
 - [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)
+- 🔌 [Ethernet cable](models/ethernet-cable.md), a network card plugged into this machine's network through libslirp, which is no model but a far end
 - [Flash controller](models/flash-controller.md)
 - [Interrupt controller (APLIC)](models/aplic.md)
 - [Interrupt controller (IMSIC)](models/imsic.md)

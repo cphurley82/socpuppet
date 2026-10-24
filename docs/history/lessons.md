@@ -137,6 +137,15 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **Each device meets the protocol its driver has.** Linux's `defconfig` mounts a share over 9p and not virtiofs; a second device over the same directory cost a page of C++, and the first mount passed the first time on both harts; a mount by the wrong tag, tried by hand, failed as it should (`9pnet_virtio: no channels available`). The server's review then found what the mount had not: a renamed file's fid left at its old path, a link out of the share that could not be removed, and a `chmod` through such a link that reached the file outside. A 9P server, unlike a FUSE one, must never follow the last link of a path.
 - **A stand-in switches the CPU off before the kernel's last word arrives.** `poweroff` writes the system controller's register through the kernel's `syscon-poweroff` driver and the CPU stops at once, so "reboot: Power down" never reaches the virtio console's queue; the register is the fact a test can read.
 
+### ssh over a cable (M29)
+
+- **Alpine's mini root brings no network card up.** Alpine has ifupdown do it, which the mini root does not carry, and udhcpc does not either: it asked on a card that was down and nothing left the wire. The capture said so in one boot: slirp's ARP requests, and not one frame from Linux. A cable's capture is the first thing to read when a network is silent.
+- **A DHCP client clears the card as it starts.** udhcpc's `deconfig` flushes the card's addresses, so one started beside the shell took the address M20's test typed there, on the interpreter and not on a quicker run. Start it before the shell.
+- **A boot that is pumped is a boot on the wall's clock.** While the CPU sleeps the pump waits it out on the wall, and Linux's boot is mostly sleep on QBox's hart: 8 minutes pumped, against seconds with `run_until`. Pump from the moment something outside is needed, not before.
+- **The guest's TCP timers running early did not matter.** While the CPU works the guest's clock runs ahead of the wall, so its retransmissions come early by the wall's; a 256 KiB `scp` went through on both harts, so a test answered the roadmap's ⚠️.
+- **A ctypes callback cannot raise.** An exception in one is printed and swallowed, and C carries on, so the glue keeps it and raises it once the call into libslirp returns.
+- **`ctypes.CDLL(None)` is this program itself**, so a library looked for and not found must be skipped before it is opened, not after.
+
 ### The root on the drive (M24)
 
 - **A namespace with a capacity of zero is one Linux leaves out without a word.** 🎭 The behavioral NVMe gave its size and not its capacity (`NCAP`), and the drive never became `nvme0n1`: the driver was bound, the admin queue took four messages, and nothing was said. The kernel's scan code had the reason in a minute; the Zephyr SSD firmware filled both all along. A field a driver reads is a contract item, whoever filled it first.

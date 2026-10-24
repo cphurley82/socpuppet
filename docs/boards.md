@@ -44,7 +44,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 | 0 | [Entropy source](models/virtio-rng.md) | `0x1000_1000` | `virtio,device4`, `chosen` as `zephyr,entropy` | its `seed` |
 | 1 | [Console](models/virtio-console.md) | `0x1000_2000` | `virtio,console` | `output`, `write()` |
 | 2 | [Disk](models/virtio-blk.md) | `0x1000_3000` | none: Zephyr has no virtio disk driver | `load()`, `contents` |
-| 3 | [Network card](models/virtio-net.md) | `0x1000_4000` | `virtio,net`, with `local-mac-address` | `send()`, `received`, `dropped` |
+| 3 | [Network card](models/virtio-net.md) | `0x1000_4000` | `virtio,net`, with `local-mac-address` | `send()`, `received`, `received_since()`, `dropped`; 🔌 [`sp.EthernetCable`](models/ethernet-cable.md) plugs it into this machine's network |
 | 4 | [Shared directory](models/virtio-fs.md) | `0x1000_5000` | the transport itself, by the alias `virtiofs0` | a directory of this machine |
 | 5 | [Shared directory, for Linux](models/virtio-9p.md) | `0x1000_6000` | none: Zephyr has no 9P client | the same directory |
 

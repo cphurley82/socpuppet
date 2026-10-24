@@ -1231,6 +1231,44 @@ Two more things read in the same file and not acted on:
 - **Kind**: build.
 - **When it lands**: the pin, the Dependabot ignore and the silenced warnings go.
 
+## libslirp
+
+[libslirp](https://gitlab.freedesktop.org/slirp/libslirp), the system's own, 4.9.1 where it was written (Ubuntu 24.04 has 4.7.0). QEMU's user-mode network as a library; `sp.EthernetCable` plugs a network card into this machine's network with it ([models/ethernet-cable.md](models/ethernet-cable.md)), through ctypes glue of ours, `python/socpuppet/slirp.py`, held to `tests/python/test_slirp_contract.py`.
+
+### The call that replaces `slirp_pollfds_fill` is newer than Ubuntu's
+
+- **Where**: `src/libslirp.h`: `slirp_pollfds_fill` is marked deprecated, for `slirp_pollfds_fill_socket`, which 4.9.0 added (its CHANGELOG, for sockets on 64-bit Windows).
+- **What is wrong**: nothing, but the new call is not in the libslirp of Ubuntu 24.04 or 22.04, so a program for every distribution calls the deprecated one.
+- **How to see it**: `nm -D /usr/lib/x86_64-linux-gnu/libslirp.so.0 | grep pollfds_fill` on Ubuntu 24.04, whose libslirp is 4.7.0, lists the old call alone.
+- **What we do**: `Slirp` calls `slirp_pollfds_fill`, which every libslirp has.
+- **Upstream fix**: none to send; keep the old call while distributions carry versions before 4.8.
+- **Kind**: portability.
+- **When it lands**: when the oldest Ubuntu socpuppet supports has 4.9, the glue can call `slirp_pollfds_fill_socket`, with configuration version 6.
+
+### There is no Python binding
+
+- **Where**: the project ships a C library and its header alone.
+- **What is wrong**: a missing feature, not a fault: a program in Python spells the structures out itself, and a field misplaced is a crash in C rather than an error.
+- **How to see it**: the project's tree is C, its tests and its build, with no binding among its files or named in its README.
+- **What we do**: `python/socpuppet/slirp.py` declares `SlirpConfig` (as far as version 1) and `SlirpCb` with ctypes, once, and the contract suite holds them to the library.
+- **Upstream fix**: none asked for: a binding is a project of its own.
+- **Kind**: missing feature.
+- **When it lands**: the glue could use it.
+
+## Alpine
+
+[Alpine Linux](https://alpinelinux.org) 3.24, its mini root filesystem and four packages from its main repository (`firmware/versions.toml`), laid into the root filesystem by `firmware/build.py` ([linux.md](linux.md)).
+
+### A package's file has no published SHA-256, and is not kept once rebuilt
+
+- **Where**: `https://dl-cdn.alpinelinux.org/alpine/v3.24/main/riscv64/`: each package's index entry (`APKINDEX`) holds a SHA-1 of the package's control section, not a digest of the file, and the repository keeps only the newest build of each package.
+- **What is wrong**: a build that pins a package can check it only against a digest it took itself, and the pin stops downloading when Alpine rebuilds the package, say for a security fix: a fresh checkout's build then fails at the fetch.
+- **How to see it**: `tar -xzOf APKINDEX.tar.gz APKINDEX | grep -A2 '^P:dropbear$'` shows `C:Q1…`, the control section's SHA-1; and a package's earlier `-rN` is gone from the directory once `-rN+1` is there.
+- **What we do**: each pin carries a SHA-256 of the file as it was fetched when pinned, and a fetch that fails says Alpine keeps only the newest build and to pin the one that is there (`Build.package` in `firmware/build.py`).
+- **Upstream fix**: none to send: the mini root's release is the only file Alpine keeps for good.
+- **Kind**: limitation.
+- **When it lands**: never; a pin is bumped when Alpine rebuilds a package.
+
 ## OpenSBI
 
 [riscv-software-src/opensbi](https://github.com/riscv-software-src/opensbi), pinned at `v1.9` in `firmware/versions.toml` and built by `firmware/build.py`, which applies `cmake/patches/opensbi-*.patch` to it. It is the machine-mode firmware the host boots Linux's way with (M23).

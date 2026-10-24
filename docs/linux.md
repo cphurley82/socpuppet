@@ -2,7 +2,7 @@
 
 How to boot Linux on the host and type at its shell, yourself or from Python, share a directory with it, and find out why when it does not boot.
 
-🧦 The kernel is a stock one: Linux's own `defconfig` for RISC-V, with nothing of socpuppet's in it. It runs in supervisor mode on [OpenSBI](boards.md#booting-opensbi), which the host boots the way a server does, and it finds its hardware in the devicetree the host writes. Its root filesystem is [Alpine's](https://alpinelinux.org) mini root, a real distribution's busybox and musl, with one file of ours laid over it.
+🧦 The kernel is a stock one: Linux's own `defconfig` for RISC-V, with nothing of socpuppet's in it. It runs in supervisor mode on [OpenSBI](boards.md#booting-opensbi), which the host boots the way a server does, and it finds its hardware in the devicetree the host writes. Its root filesystem is [Alpine's](https://alpinelinux.org) mini root, a real distribution's busybox and musl, with Alpine's SSH server added and one file of ours laid over it.
 
 🎭 Every device Linux talks to is a [virtio stand-in](boards.md#with-the-virtio-slots), a simplified model of the kind a virtual machine offers, which every Linux has drivers for: its console is the virtio console, its root is the virtio disk. The real blocks take the stand-ins' places one at a time, after this ([roadmap.md](roadmap.md)).
 
@@ -12,14 +12,14 @@ How to boot Linux on the host and type at its shell, yourself or from Python, sh
 uv run firmware/build.py linux
 ```
 
-This fetches Linux 6.18.57 from kernel.org and Alpine's mini root, checks both against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves five files in `build/firmware`:
+This fetches Linux 6.18.57 from kernel.org, and Alpine's mini root and four of its packages (dropbear, the two libraries it needs, and OpenSSH's SFTP server, for `scp`), checks each against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves five files in `build/firmware`:
 
 | File | What it is |
 |---|---|
 | `linux.bin` | The kernel as the flat `Image` that OpenSBI's `fw_jump` jumps to, 26 MiB |
 | `linux.elf` | The same kernel as `vmlinux`, with its symbols, for a debugger |
 | `linux.map` | `System.map`, every symbol's address |
-| `rootfs.ext4` | Alpine's mini root as an ext4 image, 32 MiB, with `firmware/rootfs/etc/inittab` over Alpine's |
+| `rootfs.ext4` | Alpine's mini root as an ext4 image, 32 MiB, with its packages for ssh, root's password cleared, and `firmware/rootfs/etc/inittab` over Alpine's |
 | `initramfs.cpio` | An initramfs, 2 MB: Alpine's busybox and musl, and the kernel's two NVMe modules, with `firmware/initramfs/init`, which loads them and mounts the root on the drive |
 
 The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. The kernel's own tree and build are in `build/firmware/<machine>`, with the toolchains: the tree in a folder named for its version, so a kernel pinned anew is fetched beside the old one, which can then be deleted (on a Mac, where the folder is a Docker volume, from `tools/devcontainer.py bash`). On a Mac the `linux` part builds in the devcontainer's image by itself, with that folder a Docker volume, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` and `firmware/initramfs` are shaped as the guest's own trees: a file put there is in the root, or the initramfs, at the next build.
@@ -36,6 +36,7 @@ PYTHONPATH=python uv run python -m socpuppet linux
 
 ```text
 🧦 Booting 🐧 Linux on the host's dbt_rise_cpu. Its shell prompts in a minute or two, after a quiet spell in the middle (in seconds on qbox_cpu). Ctrl-] leaves.
+🔌 ssh -p 2222 root@localhost reaches Linux's shell once it prompts, with no password. Its host key is new at each boot.
 
 OpenSBI v1.9
    ____                    _____ ____ _____
@@ -59,6 +60,23 @@ socpuppet:~#
 - **Standard output is the machine's console and nothing else**; socpuppet's own lines go to standard error. So it can be scripted: `printf 'uname -a\npoweroff\n' | socpuppet linux` prints the boot and the answer, and ends when Linux switches the host off.
 - ⚠️ **Linux does not know your terminal's size**: 🎭 the virtio console is a stand-in without the size feature, so full-screen programs such as `vi` and `top` assume 80 columns by 24 lines, as on a real serial console. `stty rows 40 cols 120` at the prompt tells it otherwise.
 - 🧵 **From Python** it is `socpuppet.interactive.interact`, which puts this process's terminal at any console of any platform: Zephyr's shell on the UART too.
+
+## Over ssh
+
+🔌 `socpuppet linux` plugs the host's network card into this machine's network with an [Ethernet cable](models/ethernet-cable.md), through libslirp, QEMU's user-mode network, which needs no root. Linux takes an address by DHCP as it boots, and dropbear, the SSH server Alpine packages, answers on its port 22, which the cable forwards from this machine's 2222. So once the shell has prompted, a second terminal reaches the same Linux the way it reaches a server:
+
+```sh
+ssh -p 2222 root@localhost uname -a
+scp -P 2222 spam.txt root@localhost:/root/
+ssh -p 2222 root@localhost          # a shell of its own, beside the console
+```
+
+- **No password, and no key.** Root has none, as at the console, and only this machine can try: the port is listened on at 127.0.0.1 alone. ⚠️ So anyone who can log in to this machine can be root on the simulated Linux while it runs.
+- ⚠️ **Its host key is new at each boot**, made by dropbear at the first connection, so ssh warns that it has changed. `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` tells it not to keep or check one, as the tests do.
+- **A key exchange runs on the simulated CPU**: seconds on the interpreter, and less on QBox's hart. The first connection also makes the host key.
+- **Another port**: `--ssh-port 2223`, as for a second Linux at once; `--ssh-port 0` leaves the cable out. Without libslirp, or with the port taken, Linux boots anyway, and a line says why ssh is off. 🩺 `uv run python tools/doctor.py cable` says what this machine lacks.
+- 💡 **Linux reaches out too**: the cable is a router onto this machine's network, so `wget` or `nc` from Linux's shell reaches what this machine reaches, and names resolve through this machine's own resolver. ping goes as far as the gateway, 10.0.2.2.
+- 🧵 **From Python**, `sp.EthernetCable(board.virtio.net, forward={port: 22})` is a far end to pump the platform with (`socpuppet.pump.pump`, or `interact`'s `far_ends`), and `capture="cable.pcap"` writes what goes over it for Wireshark.
 
 ## From Python
 
