@@ -23,3 +23,7 @@ class PcieError(RuntimeError):
 
 class VirtioError(RuntimeError):
     """A virtio device did not do what its driver expected of it."""
+
+
+class SlirpUnavailable(RuntimeError):
+    """libslirp, which plugs a card into this machine's network, is missing."""

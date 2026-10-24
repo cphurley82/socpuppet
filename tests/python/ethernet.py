@@ -91,6 +91,56 @@ def udp(*, source: Station, destination: Station, payload: bytes) -> bytes:
     )
 
 
+def tcp(
+    *,
+    source: Station,
+    destination: Station,
+    flags: int,
+    seq: int,
+    ack: int = 0,
+    payload: bytes = b"",
+) -> bytes:
+    """A TCP segment with `payload`, in an IPv4 packet, in a frame.
+
+    `flags` are dpkt's, such as `dpkt.tcp.TH_SYN | dpkt.tcp.TH_ACK`.
+    """
+    (source_mac, source_address, source_port) = source
+    (destination_mac, destination_address, destination_port) = destination
+    segment = dpkt.tcp.TCP(
+        sport=source_port,
+        dport=destination_port,
+        seq=seq,
+        ack=ack,
+        flags=flags,
+        data=payload,
+    )
+    packet = dpkt.ip.IP(
+        src=source_address,
+        dst=destination_address,
+        p=dpkt.ip.IP_PROTO_TCP,
+        data=segment,
+    )
+    return bytes(
+        dpkt.ethernet.Ethernet(
+            dst=destination_mac,
+            src=source_mac,
+            type=dpkt.ethernet.ETH_TYPE_IP,
+            data=packet,
+        )
+    )
+
+
+def tcp_segments(frames: Iterable[bytes], *, port: int) -> list[dpkt.tcp.TCP]:
+    """The TCP segments among `frames` sent to `port`, in order."""
+    segments = []
+    for frame in frames:
+        packet = dpkt.ethernet.Ethernet(frame).data
+        segment = packet.data if isinstance(packet, dpkt.ip.IP) else None
+        if isinstance(segment, dpkt.tcp.TCP) and segment.dport == port:
+            segments.append(segment)
+    return segments
+
+
 def echo_request(
     *, source: Station, destination: Station, payload: bytes
 ) -> bytes:
@@ -141,6 +191,33 @@ def udp_payloads(frames: Iterable[bytes], *, port: int) -> list[bytes]:
         if isinstance(datagram, dpkt.udp.UDP) and datagram.dport == port:
             payloads.append(bytes(datagram.data))
     return payloads
+
+
+def dhcp_discover(sender: bytes) -> bytes:
+    """A broadcast from `sender`, a MAC, asking any DHCP server for an
+    address."""
+    request = dpkt.dhcp.DHCP(
+        op=dpkt.dhcp.DHCP_OP_REQUEST,
+        chaddr=sender + bytes(10),
+        opts=((dpkt.dhcp.DHCP_OPT_MSGTYPE, bytes([dpkt.dhcp.DHCPDISCOVER])),),
+    )
+    return udp(
+        source=(sender, ipv4("0.0.0.0"), 68),
+        destination=(BROADCAST, ipv4("255.255.255.255"), 67),
+        payload=bytes(request),
+    )
+
+
+def dhcp_offers(frames: Iterable[bytes]) -> list[bytes]:
+    """The addresses offered by the DHCP offers among `frames`."""
+    offers = []
+    for payload in udp_payloads(frames, port=68):
+        answer = dpkt.dhcp.DHCP(payload)
+        if (dpkt.dhcp.DHCP_OPT_MSGTYPE, bytes([dpkt.dhcp.DHCPOFFER])) in list(
+            answer.opts
+        ):
+            offers.append(answer.yiaddr.to_bytes(4, "big"))
+    return offers
 
 
 class Neighbour:

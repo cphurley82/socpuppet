@@ -38,6 +38,7 @@ from socpuppet.errors import (
     ExpectationFailed,
     NvmeError,
     PcieError,
+    SlirpUnavailable,
     VirtioError,
 )
 from socpuppet.io_manager import IoManager
@@ -108,6 +109,7 @@ __all__ = [
     "Rom",
     "Router",
     "ScriptedBusMaster",
+    "SlirpUnavailable",
     "SpiFlash",
     "SsdFirmware",
     "Steps",
