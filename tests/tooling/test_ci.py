@@ -280,6 +280,20 @@ def test_run_test_configures_builds_and_tests_the_dev_tree_in_that_order(ci):
     ]
 
 
+def test_run_test_requires_the_cable_of_ctest_and_not_of_the_build(ci):
+    ci("run", "test")
+
+    required = {
+        command["command"]: "SOCPUPPET_REQUIRE_CABLE" in command["env"]
+        for command in ci.commands()
+    }
+    assert required == {
+        "uv run cmake --preset dev": False,
+        "uv run cmake --build --preset dev": False,
+        "uv run ctest --preset dev": True,
+    }
+
+
 def test_run_test_requires_the_firmware_of_ctest_and_not_of_the_build(ci):
     ci("run", "test")
 
@@ -1038,7 +1052,7 @@ def test_qbox_build_builds_qbox(ci):
 @pytest.mark.skipif(
     RUNNER_MODULE.INTEL_MAC, reason="an Intel Mac stops qbox before twister"
 )
-def test_qbox_off_an_intel_mac_tests_the_qbox_tree_needing_the_firmware_then_runs_the_suites_on_qboxs_cpu(
+def test_qbox_off_an_intel_mac_tests_the_qbox_tree_needing_the_firmware_and_cable_then_runs_the_suites_on_qboxs_cpu(
     ci,
 ):
     ci("run", "qbox")
@@ -1047,7 +1061,13 @@ def test_qbox_off_an_intel_mac_tests_the_qbox_tree_needing_the_firmware_then_run
     assert commands == [
         ("uv run cmake --preset qbox", {}),
         ("uv run cmake --build --preset qbox", {}),
-        ("uv run ctest --preset qbox", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
+        (
+            "uv run ctest --preset qbox",
+            {
+                "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+                "SOCPUPPET_REQUIRE_CABLE": "1",
+            },
+        ),
         (
             "uv run firmware/twister.py --suites -p socpuppet_host",
             {"SOCPUPPET_CPU": "qbox_cpu"},

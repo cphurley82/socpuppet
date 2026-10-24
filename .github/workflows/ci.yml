@@ -378,10 +378,10 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install system packages
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - name: Install the devicetree compiler
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev
+      - name: Install the devicetree compiler and libslirp
         if: runner.os == 'macOS'
-        run: brew install dtc
+        run: brew install dtc libslirp
       - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
         uses: actions/cache@v6
@@ -429,7 +429,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev
       - uses: astral-sh/setup-uv@v7
       - name: Cache fetched dependencies
         uses: actions/cache@v6
