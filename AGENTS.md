@@ -61,6 +61,8 @@ Changes are test-first, with the skills in `.claude/skills/`: `/tdd [specificati
 
 Work goes on a branch, never straight onto `main`: a branch for each milestone or change, named for it (`m29-cable`), cut from `main` unless the maintainer says otherwise, committed to and pushed as it goes, and merged by a pull request when the maintainer says so. Check the branch at the start of a session, and carry on with the one the work is on.
 
+The history stays linear and tidy: a branch is rebased onto `main` and lands by fast-forward, with no merge commits, and each commit is one change that builds and passes on its own, with a message that says what it does and why. Tidy a branch's commits (squash a fixup into the commit it fixes, reword a vague message) before it lands, never after: `main` is not rewritten once pushed.
+
 ## Borrow before building
 
 Using existing open source matters as much as teaching. Before writing a model, a parser or a tool, look for an open one, starting with the projects already in the build and their siblings.
