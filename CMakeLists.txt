@@ -31,6 +31,7 @@ if(SOCPUPPET_SANITIZE)
     "Run `cmake --preset dev` to go back.")
 endif()
 
+add_subdirectory(src/vpvper)
 add_subdirectory(src/socpuppet)
 
 if(SOCPUPPET_BUILD_TESTS)
