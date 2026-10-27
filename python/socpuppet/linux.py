@@ -27,7 +27,15 @@ from typing import Any, Literal, overload
 from socpuppet import devicetree, ftl, gpt, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.drive import BehavioralDrive
-from socpuppet.boards.host import MODEL, RAM_BASE, Host, HostCpu, host
+from socpuppet.boards.host import (
+    MODEL,
+    RAM_BASE,
+    AddDrive,
+    AddManager,
+    Host,
+    HostCpu,
+    host,
+)
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, Ssd, add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
@@ -77,6 +85,7 @@ def host_with_linux(
     share: str | os.PathLike[str] | None = None,
     gdb_port: int = 0,
     root: Literal["virtio"] = "virtio",
+    trace: bool = False,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host_with_linux(
@@ -86,6 +95,9 @@ def host_with_linux(
     share: str | os.PathLike[str] | None = None,
     gdb_port: int = 0,
     root: Literal["drive"],
+    trace: bool = False,
+    drive: AddDrive[Ssd] = add_ssd,
+    manager: AddManager = add_manager,
 ) -> Host[Ssd]: ...
 def host_with_linux(
     firmware: pathlib.Path,
@@ -94,6 +106,9 @@ def host_with_linux(
     share: str | os.PathLike[str] | None = None,
     gdb_port: int = 0,
     root: Root = "virtio",
+    trace: bool = False,
+    drive: AddDrive[Ssd] = add_ssd,
+    manager: AddManager = add_manager,
 ) -> Host[Any]:
     """A host built with Linux in place, from the images in `firmware`.
 
@@ -102,18 +117,35 @@ def host_with_linux(
     it is the one SOCPUPPET_CPU names. `share` is a directory of this
     machine for Linux to mount (`mount -t 9p`), if any. With a
     `gdb_port`, the CPU waits for a debugger. `root` is where the root
-    filesystem is: 🎭 the virtio disk, or the drive, on M8's board.
+    filesystem is: 🎭 the virtio disk, or the drive, on M8's board. With
+    `trace=True`, everything that crosses the link between the dies is
+    recorded in `platform.trace`, as `host(trace=True)` records it.
+
+    With the root on the drive, `drive` and `manager` are the functions
+    `host()` describes the SSD and the IO manager with: `add_ssd` and
+    `add_manager`, each a CPU running its own firmware, unless told
+    otherwise. 🎭 With a script in a CPU's place
+    (`functools.partial(add_ssd, firmware=scripted_firmware().script)`,
+    `functools.partial(add_manager, script=scripted_manager().script)`)
+    that CPU's image is neither needed nor loaded.
 
     A missing image is a FileNotFoundError that says how to build it,
-    before anything is described. A CPU that this build has not, or that
+    before the simulator is built, so the process can still build another
+    platform. A CPU that this build has not, or that
     the host cannot have, is a ValueError that says so.
     """
     if root == "drive":
         return _with_the_root_on_the_drive(
-            firmware, cpu=cpu, share=share, gdb_port=gdb_port
+            firmware,
+            cpu=cpu,
+            share=share,
+            gdb_port=gdb_port,
+            trace=trace,
+            drive=drive,
+            manager=manager,
         )
     return _with_the_root_on_virtio(
-        firmware, cpu=cpu, share=share, gdb_port=gdb_port
+        firmware, cpu=cpu, share=share, gdb_port=gdb_port, trace=trace
     )
 
 
@@ -123,6 +155,7 @@ def _with_the_root_on_virtio(
     cpu: HostCpu | None,
     share: str | os.PathLike[str] | None,
     gdb_port: int,
+    trace: bool,
 ) -> Host[BehavioralDrive]:
     """The host alone, with Linux's root on 🎭 the virtio disk."""
     fw_jump, kernel, rootfs = (
@@ -135,6 +168,7 @@ def _with_the_root_on_virtio(
         sbi=True,
         virtio=Virtio(blocks=len(rootfs) // SECTOR, share=share),
         gdb_port=gdb_port,
+        trace=trace,
     )
     layout = opensbi.lay_out(
         fw_jump,
@@ -162,11 +196,16 @@ def _with_the_root_on_the_drive(
     cpu: HostCpu | None,
     share: str | os.PathLike[str] | None,
     gdb_port: int,
+    trace: bool,
+    drive: AddDrive[Ssd],
+    manager: AddManager,
 ) -> Host[Ssd]:
     """M8's board, with Linux on the host and its root on the SSD.
 
     The disk is a GUID partition table with the root filesystem as its
-    first partition, as big as the drive: whole NAND blocks.
+    first partition, as big as the drive: whole NAND blocks. The manager's
+    image and the SSD's are loaded into the CPUs `manager` and `drive`
+    describe, and 🎭 a script in a CPU's place gets none.
     """
     fw_jump, kernel, rootfs, initramfs = (
         _read(firmware / name)
@@ -177,7 +216,6 @@ def _with_the_root_on_the_drive(
             INITRAMFS_CPIO,
         )
     )
-    manager, ssd = (built(firmware / name) for name in (MANAGER_ELF, SSD_ELF))
     blocks, disk = disk_for_the_drive(
         [gpt.Partition(gpt.LINUX_FILESYSTEM, "root", rootfs)]
     )
@@ -186,12 +224,13 @@ def _with_the_root_on_the_drive(
         boot=from_rom,
         sbi=True,
         drive_blocks=blocks,
-        drive=add_ssd,
-        manager=add_manager,
+        drive=drive,
+        manager=manager,
         # The virtio devices stay for the console and the share. Their
         # disk is blank, and Linux sees it as /dev/vda beside the drive.
         virtio=Virtio(share=share),
         gdb_port=gdb_port,
+        trace=trace,
     )
     layout = opensbi.lay_out(
         fw_jump,
@@ -208,13 +247,21 @@ def _with_the_root_on_the_drive(
         ram=RAM_BASE,
         initrd=initramfs,
     )
-    board.platform.build()
     assert board.drive is not None  # it was described with one
     assert board.manager is not None
+    # Each image is looked for before anything is built, so that a missing
+    # one is refused while the process can still build another platform.
+    # 🎭 A script in a CPU's place needs none.
+    images = []
+    if board.manager.cpu_kit is not None:
+        images.append((built(firmware / MANAGER_ELF), board.manager.cpu.socket))
+    if board.drive.ssd.cpu_kit is not None:
+        images.append((built(firmware / SSD_ELF), board.drive.ssd.cpu.socket))
+    board.platform.build()
     nand = board.drive.ssd.nand
     nand.load(ftl.nand_image(disk, nand.component))
-    board.platform.load_elf(manager, via=board.manager.cpu.socket)
-    board.platform.load_elf(ssd, via=board.drive.ssd.cpu.socket)
+    for image, via in images:
+        board.platform.load_elf(image, via=via)
     opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
     return board
 

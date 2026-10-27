@@ -1,7 +1,11 @@
 """🐧 Linux on the host the quick way, as the package boots it."""
 
+import functools
+
 import pytest
 
+import link_trace
+import socpuppet as sp
 from cast import (
     FW_JUMP_BIN,
     INITRAMFS_CPIO,
@@ -11,6 +15,9 @@ from cast import (
     SSD,
 )
 from socpuppet import ftl, gpt, linux
+from socpuppet.boards.host import UART_OFFSET
+from socpuppet.boards.manager import add_manager, scripted_manager
+from socpuppet.boards.ssd import add_ssd, scripted_firmware
 
 IMAGES = (FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4)
 #: With its root on the drive, Linux boots with the initramfs, on a host
@@ -87,3 +94,91 @@ class TestWhenTheRootIsOnTheDrive:
         self, a_host_with_its_root_on_the_drive
     ):
         assert a_host_with_its_root_on_the_drive.manager is not None
+
+
+@pytest.mark.platform
+class TestWhenTheSsdHasAScriptForItsFirmware:
+    def test_it_has_no_cpu_and_needs_no_image(self, firmware, tmp_path):
+        images = images_but(firmware, SSD, tmp_path)
+        a_scripted_ssd = functools.partial(
+            add_ssd, firmware=scripted_firmware().script
+        )
+
+        board = linux.host_with_linux(
+            images, root="drive", drive=a_scripted_ssd
+        )
+
+        assert board.drive.ssd.cpu_kit is None
+
+
+@pytest.mark.platform
+class TestWhenTheManagerIsAScript:
+    def test_it_has_no_cpu_and_needs_no_image(self, firmware, tmp_path):
+        images = images_but(firmware, MANAGER, tmp_path)
+        a_scripted_manager = functools.partial(
+            add_manager, script=scripted_manager().script
+        )
+
+        board = linux.host_with_linux(
+            images, root="drive", manager=a_scripted_manager
+        )
+
+        assert board.manager.cpu_kit is None
+
+
+def images_but(firmware, left_out, directory):
+    """`directory` with every image for the root on the drive but `left_out`.
+
+    Links to the images the build left, so nothing is copied.
+    """
+    for image in set(ON_THE_DRIVE) - {left_out}:
+        (directory / image).symlink_to(firmware(image))
+    return directory
+
+
+#: How long OpenSBI may take to say its first word on the UART, which is
+#: on the other die: it says it at about 300 ms of the CPU's time.
+SPEAKS_WITHIN = sp.ms(2000)
+
+
+@pytest.fixture
+def linux_images(firmware):
+    """The directory of every image Linux on the virtio disk needs.
+
+    A missing image skips the test.
+    """
+    for image in IMAGES:
+        firmware(image)
+    return firmware(LINUX_BIN).parent
+
+
+@pytest.mark.platform
+class TestWhenTheLinkIsTraced:
+    def test_what_crosses_the_link_is_recorded(self, linux_images):
+        board = linux.host_with_linux(linux_images, trace=True)
+
+        run_until_opensbi_speaks(board)
+
+        # ⚠️ An address in the trace is the IO die's own, where the UART is.
+        assert any(
+            each.command == "write" and each.address == UART_OFFSET
+            for each in link_trace.sent_to_the_io_die(board)
+        )
+
+
+@pytest.mark.platform
+class TestWhenTheLinkIsNotTraced:
+    def test_nothing_is_recorded(self, linux_images):
+        board = linux.host_with_linux(linux_images)
+
+        run_until_opensbi_speaks(board)
+
+        assert not board.platform.trace
+
+
+def run_until_opensbi_speaks(board):
+    """Run until OpenSBI's first word has crossed the link to the UART."""
+    spoke = board.platform.run_until(
+        lambda: bool(board.uart.output), timeout=SPEAKS_WITHIN
+    )
+    assert spoke, "OpenSBI said nothing on the UART"

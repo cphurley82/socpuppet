@@ -113,6 +113,7 @@ Run it with `PYTHONPATH=python uv run python linux_hello.py` from the checkout, 
 - **The prompt comes at 208 s of the CPU's time on QBox's hart**, 6 s on the wall, **and at 171 s on the interpreter**, 75 to 100 s on the wall: the two harts count time a little differently. 64 MiB of RAM is enough.
 - 🧵 **Type at it** with `console.write`, and Enter is `"\n"`. `poweroff` switches the host off through the system controller, which the kernel's `syscon-poweroff` driver writes; `socpuppet.boards.host.switched_off(board)` says whether it has.
 - **Both harts boot it**, with no change to either. `tests/python/test_m20_exit.py` is the exit test, and `tests/python/linux_shell.py` has the helpers it uses, `a_host_with_linux` and `type_and_wait_for_the_prompt`.
+- 🎭 **Choose the cast.** `host_with_linux(firmware, root="drive", drive=functools.partial(add_ssd, firmware=scripted_firmware().script), manager=functools.partial(add_manager, script=scripted_manager().script))` puts a Python script in the SSD's CPU's place, or the manager's, as [boards.md](boards.md#the-whole-cast-three-firmwares) does for Zephyr; a CPU that is a script needs no image. `trace=True` records everything that crosses the link between the dies in `platform.trace`.
 
 ## The virtio cast under Linux
 
