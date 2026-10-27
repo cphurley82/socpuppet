@@ -35,9 +35,14 @@ iommu::iommu(sc_core::sc_module_name nm)
         }
         return true;
     });
-    // the command queue is on while it is enabled; software clears the errors it reports by writing them
+    // the command queue is on while it is enabled, and empty when it is enabled: enabling a queue sets its head and
+    // tail to 0; software clears the errors it reports by writing them
     regs->cqcsr.set_write_cb([this](scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time&) -> bool {
         iommu_regs::cqcsr_t const written{data};
+        if(written.cqen && !regs->r_cqcsr.cqen) {
+            regs->r_cqh = 0;
+            regs->r_cqt = 0;
+        }
         regs->r_cqcsr.cqen = static_cast<uint32_t>(written.cqen);
         regs->r_cqcsr.cie = static_cast<uint32_t>(written.cie);
         regs->r_cqcsr.cqon = static_cast<uint32_t>(written.cqen);
@@ -52,15 +57,21 @@ iommu::iommu(sc_core::sc_module_name nm)
     });
     // the head is the IOMMU's to move
     regs->cqh.set_write_cb([](scc::sc_register<uint32_t>&, uint32_t const&, sc_core::sc_time&) { return true; });
-    // software puts commands in the queue and then moves the tail past them, which sets the IOMMU running them
+    // software puts commands in the queue and then moves the tail past them, which sets the IOMMU running them; the
+    // tail is an index into the queue, and only as wide as the queue
     regs->cqt.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t const& data, sc_core::sc_time&) -> bool {
-        reg.put(data);
+        reg.put(wrap(data, regs->r_cqb.log2sz_1));
         commands_written.notify(sc_core::SC_ZERO_TIME);
         return true;
     });
-    // the fault queue is on while it is enabled; software clears the errors it reports by writing them
+    // the fault queue is on while it is enabled, and empty when it is enabled, as the command queue is; software
+    // clears the errors it reports by writing them
     regs->fqcsr.set_write_cb([this](scc::sc_register<uint32_t>&, uint32_t const& data, sc_core::sc_time&) -> bool {
         iommu_regs::fqcsr_t const written{data};
+        if(written.fqen && !regs->r_fqcsr.fqen) {
+            regs->r_fqh = 0;
+            regs->r_fqt = 0;
+        }
         regs->r_fqcsr.fqen = static_cast<uint32_t>(written.fqen);
         regs->r_fqcsr.fie = static_cast<uint32_t>(written.fie);
         regs->r_fqcsr.fqon = static_cast<uint32_t>(written.fqen);
@@ -189,7 +200,9 @@ void iommu::record(iommu_fault_cause cause, iommu_transaction_type type, uint32_
 
 uint64_t iommu::slot(uint64_t ppn, uint32_t index, size_t size) { return (ppn << 12) + uint64_t(index) * size; }
 
-uint32_t iommu::after(uint32_t index, uint64_t log2sz_1) { return (index + 1) & ((uint32_t(2) << log2sz_1) - 1); }
+uint32_t iommu::wrap(uint32_t index, uint64_t log2sz_1) { return index & ((uint32_t(2) << log2sz_1) - 1); }
+
+uint32_t iommu::after(uint32_t index, uint64_t log2sz_1) { return wrap(index + 1, log2sz_1); }
 
 void iommu::to_le(uint8_t* bytes, uint64_t value, size_t length) {
     for(size_t i = 0; i < length; ++i)

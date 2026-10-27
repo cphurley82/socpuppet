@@ -517,6 +517,74 @@ TYPED_TEST_P(IommuContract, ACommandQueueIsOnWhileItIsEnabled) {
   EXPECT_EQ(disabled & this->kOn, 0U);
 }
 
+// Changing cqen from 0 to 1 sets cqh and cqt to 0, the specification says,
+// and a driver that turns a queue on again counts on it: Linux writes the
+// tail and cannot write the head.
+TYPED_TEST_P(IommuContract, EnablingTheCommandQueueEmptiesIt) {
+  this->PlantCommands({this->kInvalidatePageTables, this->kFence});
+  std::uint32_t head = 0;
+  std::uint32_t tail = 0;
+  this->Run(
+      [&](BusDriver& firmware) {
+        this->StartTheCommandQueue(firmware);
+        firmware.Write32(this->kCqt, 2);
+        this->HeadOnceAt(firmware, 2);
+        firmware.Write32(this->kCqcsr, 0);
+        this->WhenNotBusy(firmware, this->kCqcsr);
+        firmware.Write32(this->kCqcsr, this->kEnable);
+        this->WhenNotBusy(firmware, this->kCqcsr);
+        head = firmware.Read32(this->kCqh);
+        tail = firmware.Read32(this->kCqt);
+      },
+      [](BusDriver&) {});
+
+  EXPECT_EQ(head, 0U);
+  EXPECT_EQ(tail, 0U);
+}
+
+// The same for the fault queue, where it is the tail that is the IOMMU's.
+TYPED_TEST_P(IommuContract, EnablingTheFaultQueueEmptiesIt) {
+  this->PlantAPageThatIsNotValid();
+  std::uint32_t head = 0;
+  std::uint32_t tail = 0;
+  this->Run(
+      [&](BusDriver& firmware) {
+        this->StartTheFaultQueue(firmware);
+        this->UseTheDirectory(firmware);
+        this->WaitForTheDevice(firmware);
+        firmware.Write32(this->kFqh, 1);
+        firmware.Write32(this->kFqcsr, 0);
+        this->WhenNotBusy(firmware, this->kFqcsr);
+        firmware.Write32(this->kFqcsr, this->kEnable);
+        this->WhenNotBusy(firmware, this->kFqcsr);
+        head = firmware.Read32(this->kFqh);
+        tail = firmware.Read32(this->kFqt);
+      },
+      [&](BusDriver& device) {
+        this->DeviceWrite(device, this->kIova, 0x1234);
+      });
+
+  EXPECT_EQ(head, 0U);
+  EXPECT_EQ(tail, 0U);
+}
+
+// cqt is an index into the queue, and the bits above the queue's size are
+// not writable: a tail past the end is the entry it wraps to, so the head
+// can always reach it.
+TYPED_TEST_P(IommuContract, TheCommandQueuesTailIsOnlyAsWideAsTheQueue) {
+  constexpr std::uint32_t kEntries = 1U << (TestFixture::kQueueLog2 + 1);
+  std::uint32_t tail = 0;
+  this->Run(
+      [&](BusDriver& firmware) {
+        this->StartTheCommandQueue(firmware);
+        firmware.Write32(this->kCqt, kEntries + 1);
+        tail = firmware.Read32(this->kCqt);
+      },
+      [](BusDriver&) {});
+
+  EXPECT_EQ(tail, 1U);
+}
+
 TYPED_TEST_P(IommuContract, ACommandQueueThatIsOnRunsItsCommandsToTheTail) {
   this->PlantCommands({this->kInvalidatePageTables,
                        this->kInvalidateTheDirectory, this->kFence});
@@ -871,6 +939,8 @@ REGISTER_TYPED_TEST_SUITE_P(
     ADirectoryModeTheSpecReservesDoesNotReadBack, AWriteToDdtpCannotMakeItBusy,
     ItsCapabilitiesAreVersion1WithSv39WiredInterruptsAndBaseFormatContexts,
     ACommandQueueOfTheSizeItCanHoldReadsBack, ACommandQueueIsOnWhileItIsEnabled,
+    EnablingTheCommandQueueEmptiesIt, EnablingTheFaultQueueEmptiesIt,
+    TheCommandQueuesTailIsOnlyAsWideAsTheQueue,
     ACommandQueueThatIsOnRunsItsCommandsToTheTail,
     AFenceThatAsksToBeSeenWritesItsDataWhereItSays,
     ACommandItDoesNotHaveStopsTheQueueAtIt,

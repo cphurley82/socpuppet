@@ -74,7 +74,8 @@ protected:
     void record(iommu_fault_cause cause, iommu_transaction_type type, uint32_t device_id, uint64_t iova, sc_core::sc_time& delay);
     // where entry index of a queue of entries of size bytes, at the page ppn, is
     static uint64_t slot(uint64_t ppn, uint32_t index, size_t size);
-    // the index after index in a queue of 2^(log2sz_1 + 1) entries
+    // index as an index into a queue of 2^(log2sz_1 + 1) entries, and the index after it
+    static uint32_t wrap(uint32_t index, uint64_t log2sz_1);
     static uint32_t after(uint32_t index, uint64_t log2sz_1);
     // writes the low length bytes of value at bytes, least significant first
     static void to_le(uint8_t* bytes, uint64_t value, size_t length);
