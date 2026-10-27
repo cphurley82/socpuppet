@@ -569,16 +569,26 @@ def test_a_library_that_cannot_be_loaded_is_a_problem_naming_it():
     assert problem() == "libspam cannot be loaded"
 
 
+# 🎓 Where the C library is, which every program on the machine is linked
+# with. A Linux with neither ldconfig nor gcc on the path, as a slim
+# container, does not say.
+LIBC = ctypes.util.find_library("c")
+needs_libc_by_name = pytest.mark.skipif(
+    LIBC is None, reason="this machine does not say where its C library is"
+)
+
+
+@needs_libc_by_name
 def test_a_library_every_machine_has_can_be_loaded():
-    # 🎓 The C library, which every program on the machine is linked with.
     problem = DOCTOR_MODULE.loadable("c")
 
     assert problem() is None
 
 
+@needs_libc_by_name
 def test_a_library_found_only_elsewhere_can_be_loaded():
     # 🎓 The C library again, under a name the machine does not know it by.
-    problem = DOCTOR_MODULE.loadable("spam", ctypes.util.find_library("c"))
+    problem = DOCTOR_MODULE.loadable("spam", LIBC)
 
     assert problem() is None
 
