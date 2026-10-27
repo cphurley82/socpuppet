@@ -83,3 +83,16 @@ add_test(NAME example_boot_from_flash
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(example_boot_from_flash
                      PROPERTIES SKIP_RETURN_CODE 77)
+
+# These boot Linux, which takes minutes on the interpreter, so they carry
+# the label `long`, as the pytest marker of that name means the same: the
+# quick and qbox test presets leave them out, and the nightly run of the
+# dev preset runs them (tools/ci.py, the `test` job).
+foreach(example linux_hello linux_on_the_drive linux_cable)
+  add_test(NAME example_${example}
+    COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
+            ${SOCPUPPET_TEST_PYTHON} examples/${example}.py
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+  set_tests_properties(example_${example}
+                       PROPERTIES SKIP_RETURN_CODE 77 LABELS long)
+endforeach()

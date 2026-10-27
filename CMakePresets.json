@@ -84,7 +84,8 @@
     {
       "name": "quick",
       "inherits": "dev",
-      "environment": { "SOCPUPPET_SKIP_LONG": "1" }
+      "environment": { "SOCPUPPET_SKIP_LONG": "1" },
+      "filter": { "exclude": { "label": "long" } }
     },
     {
       "name": "asan",
@@ -110,6 +111,7 @@
       "configurePreset": "qbox",
       "output": { "outputOnFailure": true },
       "environment": { "SOCPUPPET_CPU": "qbox_cpu" },
+      "filter": { "exclude": { "label": "long" } },
       "execution": { "jobs": 8 }
     },
     {

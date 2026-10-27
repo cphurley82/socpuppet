@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# socpuppet: the capture examples/linux_cable.py leaves behind
+*.pcap

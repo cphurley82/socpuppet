@@ -22,6 +22,9 @@ COULD_NOT_RUN = 77
         "full_bootchain.py",
         "shell_from_python.py",
         "boot_from_flash.py",
+        "linux_hello.py",
+        "linux_on_the_drive.py",
+        "linux_cable.py",
     ]
 )
 def example(request, pytestconfig):
