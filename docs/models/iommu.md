@@ -30,7 +30,7 @@ platform.connect(iommu.irq, aplic.source24)
 | | |
 |---|---|
 | **Devices' accesses in** (`target`) | Each marked with who sent it. One that is not is refused, with no fault record, since there is no device to name in one. |
-| **Out to memory** (`initiator`) | What was translated, at its new address; and the IOMMU's own reads of its tables and its writes of records and fences. |
+| **Out to memory** (`initiator`) | What was translated, at its new address, a page at a time: a transfer that crosses a page goes where each page's entry says, and stops at a page that is refused, the pages before it done. 🎓 A real IOMMU never sees more than a page at once, since a PCIe request stops at 4 KiB. And the IOMMU's own reads of its tables and its writes of records and fences. |
 | **Registers on the bus** (`socket`) | Where firmware sets it up. A page. |
 | **Interrupt** (`irq`) | High while a queue that may interrupt has something for software. |
 

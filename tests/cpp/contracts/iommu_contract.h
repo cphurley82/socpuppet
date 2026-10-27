@@ -8,6 +8,7 @@
 #include <functional>
 #include <initializer_list>
 #include <optional>
+#include <span>
 
 #include <gtest/gtest.h>
 #include <systemc>
@@ -100,6 +101,7 @@ class IommuContract : public ::testing::Test {
   // entry; and what a page a device may read and write has set besides, as
   // Linux sets them: R, W, U, A and D.
   static constexpr std::uint64_t kV = 1;
+  static constexpr std::uint64_t kNotValid = 0;
   static constexpr std::uint64_t kReadWrite =
       kV | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 6) | (1U << 7);
 
@@ -135,6 +137,12 @@ class IommuContract : public ::testing::Test {
   // level of the page tables, and the page the tests map it to.
   static constexpr std::uint64_t kIova = 0x2A'C1E3'3234;
   static constexpr std::uint64_t kPage = 0x7'5000;
+  // The last word of kIova's page, the page after it, and a page for that
+  // one that is not the page after kPage, so that a transfer that crosses
+  // cannot land right by luck.
+  static constexpr std::uint64_t kEndOfThePage = kIova | 0xFFC;
+  static constexpr std::uint64_t kNextIova = (kIova | 0xFFF) + 1;
+  static constexpr std::uint64_t kNextPage = 0x7'9000;
 
   // Puts in kDevice's page tables a 4 KiB page at `page` for the address
   // `iova`, with `flags`.
@@ -150,7 +158,6 @@ class IommuContract : public ::testing::Test {
   // Puts in memory kDevice's context, and an entry for kIova's page that is
   // not valid, so that any access to it is a page fault.
   void PlantAPageThatIsNotValid() {
-    constexpr std::uint64_t kNotValid = 0;
     PlantTheDevicesContext();
     PlantPage(kIova, kPage, kNotValid);
   }
@@ -345,6 +352,20 @@ class IommuContract : public ::testing::Test {
                                               std::uint64_t address,
                                               std::uint32_t value) {
     std::array data = socpuppet::LittleEndianBytes(value);
+    return DeviceWriteBytes(device, address, data);
+  }
+
+  // A device's 64-bit write, marked the same way.
+  static tlm::tlm_response_status DeviceWrite64(BusDriver& device,
+                                                std::uint64_t address,
+                                                std::uint64_t value) {
+    std::array data = socpuppet::LittleEndianBytes(value);
+    return DeviceWriteBytes(device, address, data);
+  }
+
+  // A device's write of `data`, however long, marked the same way.
+  static tlm::tlm_response_status DeviceWriteBytes(
+      BusDriver& device, std::uint64_t address, std::span<std::uint8_t> data) {
     tlm::tlm_generic_payload transaction;
     socpuppet::SetUpAccess(transaction, tlm::TLM_WRITE_COMMAND, address, data);
     const socpuppet::AsFromRequester from_the_device{transaction, kDevice};
@@ -402,6 +423,52 @@ TYPED_TEST_P(IommuContract,
 
   EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
   EXPECT_EQ(this->InMemory(this->kPage + (this->kIova & 0xFFF)), 0x1234U);
+}
+
+// A transfer that crosses a page is translated a page at a time, as a real
+// IOMMU sees it: a PCIe request stops at 4 KiB, so each page goes where its
+// own entry says, not where the first page's entry plus an offset would.
+TYPED_TEST_P(IommuContract, AWriteThatCrossesAPageLandsWhereEachPageIsMapped) {
+  this->PlantTheDevicesContext();
+  this->PlantPage(this->kIova, this->kPage, this->kReadWrite);
+  this->PlantPage(this->kNextIova, this->kNextPage, this->kReadWrite);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  this->Run(this->UseTheDirectory, [&](BusDriver& device) {
+    response =
+        this->DeviceWrite64(device, this->kEndOfThePage, 0x5678'0000'1234);
+  });
+
+  EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFF)),
+            0x1234U);
+  EXPECT_EQ(this->InMemory(this->kNextPage), 0x5678U);
+}
+
+// And one that crosses into a page it may not use stops at that page, the
+// pages before it done, as the requests before a refused one are: the
+// fault record, a write page fault (cause 15) of an untranslated write
+// (type 3), is for the page that was refused.
+TYPED_TEST_P(IommuContract,
+             AWriteThatCrossesIntoAPageThatIsNotValidStopsThere) {
+  this->PlantTheDevicesContext();
+  this->PlantPage(this->kIova, this->kPage, this->kReadWrite);
+  this->PlantPage(this->kNextIova, this->kNextPage, this->kNotValid);
+  tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
+  this->Run(
+      [&](BusDriver& firmware) {
+        this->StartTheFaultQueue(firmware);
+        this->UseTheDirectory(firmware);
+      },
+      [&](BusDriver& device) {
+        response =
+            this->DeviceWrite64(device, this->kEndOfThePage, 0x5678'0000'1234);
+      });
+
+  EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFF)),
+            0x1234U);
+  EXPECT_EQ(this->InMemory(this->kNextPage), 0U);
+  EXPECT_EQ(this->RecordAt(0), this->Record(15, 3, this->kNextIova));
 }
 
 // There is no device directory entry to look an access up by if it does
@@ -935,6 +1002,8 @@ TYPED_TEST_P(IommuContract, ItsInterruptsAreWiredWhateverIsWrittenToFctl) {
 REGISTER_TYPED_TEST_SUITE_P(
     IommuContract, OutOfResetADevicesWriteIsRefusedAndLandsNowhere,
     ADevicesWriteLandsWhereItsPageTablesMapTheAddressItWroteTo,
+    AWriteThatCrossesAPageLandsWhereEachPageIsMapped,
+    AWriteThatCrossesIntoAPageThatIsNotValidStopsThere,
     AnAccessThatDoesNotSayWhoSentItIsRefused,
     ADirectoryModeTheSpecReservesDoesNotReadBack, AWriteToDdtpCannotMakeItBusy,
     ItsCapabilitiesAreVersion1WithSv39WiredInterruptsAndBaseFormatContexts,
