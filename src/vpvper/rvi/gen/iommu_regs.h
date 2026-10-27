@@ -33,6 +33,12 @@ public:
     BF_FIELD(pas, 32, 6)
     END_BF_DECL() r_capabilities;
 
+    BEGIN_BF_DECL(fctl_t, uint32_t)
+    BF_FIELD(be, 0, 1)
+    BF_FIELD(wsi, 1, 1)
+    BF_FIELD(gxl, 2, 1)
+    END_BF_DECL() r_fctl;
+
     BEGIN_BF_DECL(ddtp_t, uint64_t)
     BF_FIELD(iommu_mode, 0, 4)
     BF_FIELD(busy, 4, 1)
@@ -95,6 +101,7 @@ public:
     // register declarations
     //////////////////////////////////////////////////////////////////////////////
     scc::sc_register<capabilities_t> capabilities;
+    scc::sc_register<fctl_t> fctl;
     scc::sc_register<ddtp_t> ddtp;
     scc::sc_register<cqb_t> cqb;
     scc::sc_register<uint32_t> cqh;
@@ -119,6 +126,7 @@ public:
 inline iommu_regs::iommu_regs(sc_core::sc_module_name nm)
 : sc_core::sc_module(nm)
 , NAMED(capabilities, r_capabilities, 0x3810000210UL, *this)
+, NAMED(fctl, r_fctl, 0x2, *this)
 , NAMED(ddtp, r_ddtp, 0, *this)
 , NAMED(cqb, r_cqb, 0, *this)
 , NAMED(cqh, r_cqh, 0, *this)
@@ -133,6 +141,7 @@ inline iommu_regs::iommu_regs(sc_core::sc_module_name nm)
 
 template <unsigned BUSWIDTH> inline void iommu_regs::registerResources(scc::tlm_target<BUSWIDTH>& target) {
     target.addResource(capabilities, 0x0UL);
+    target.addResource(fctl, 0x8UL);
     target.addResource(ddtp, 0x10UL);
     target.addResource(cqb, 0x18UL);
     target.addResource(cqh, 0x20UL);

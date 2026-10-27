@@ -21,6 +21,8 @@ iommu::iommu(sc_core::sc_module_name nm)
     regs->registerResources(*this);
     // what this IOMMU is, which its reset value says (iommu.rdl), and nothing writes
     regs->capabilities.set_write_cb([](scc::sc_register<uint64_t>&, uint64_t const&, sc_core::sc_time&) { return true; });
+    // and so is fctl: the interrupts are wired, and the tables in memory little-endian
+    regs->fctl.set_write_cb([](scc::sc_register<uint32_t>&, uint32_t const&, sc_core::sc_time&) { return true; });
     // the modes are Off, Bare and directories of one to three levels; the specification reserves the rest, and a
     // write of one leaves ddtp as it was
     regs->ddtp.set_write_cb([this](scc::sc_register<uint64_t>&, uint64_t const& data, sc_core::sc_time&) -> bool {

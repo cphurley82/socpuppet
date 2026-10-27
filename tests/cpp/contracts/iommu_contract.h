@@ -43,6 +43,7 @@ class IommuContract : public ::testing::Test {
 
   // The registers the tests use, by their offsets.
   static constexpr std::uint64_t kCapabilities = 0x00;
+  static constexpr std::uint64_t kFctl = 0x08;
   static constexpr std::uint64_t kDdtp = 0x10;
   static constexpr std::uint64_t kCqb = 0x18;
   static constexpr std::uint64_t kCqh = 0x20;
@@ -846,6 +847,23 @@ TYPED_TEST_P(IommuContract, ADebuggerCannotWriteItsRegisters) {
   EXPECT_EQ(tail, 0U);
 }
 
+// fctl's WSI, bit 1, says the IOMMU interrupts by wire. An IOMMU that has
+// wires alone has it set, and Linux reads it before it asks for wires.
+TYPED_TEST_P(IommuContract, ItsInterruptsAreWiredWhateverIsWrittenToFctl) {
+  constexpr std::uint32_t kWiredInterrupts = 1U << 1;
+  tlm::tlm_response_status written = tlm::TLM_INCOMPLETE_RESPONSE;
+  std::uint32_t fctl = 0;
+  this->Run(
+      [&](BusDriver& firmware) {
+        written = firmware.Write32(this->kFctl, 0);
+        fctl = firmware.Read32(this->kFctl);
+      },
+      [](BusDriver&) {});
+
+  EXPECT_EQ(written, tlm::TLM_OK_RESPONSE);
+  EXPECT_TRUE(fctl & kWiredInterrupts);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     IommuContract, OutOfResetADevicesWriteIsRefusedAndLandsNowhere,
     ADevicesWriteLandsWhereItsPageTablesMapTheAddressItWroteTo,
@@ -866,6 +884,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     ACommandQueueNothingAnswersForStopsAtAMemoryFault,
     AFaultRecordNothingTakesIsAMemoryFault,
     EnablingAnInterruptThatIsPendingRaisesTheLine, ADebuggerReadsItsRegisters,
-    ADebuggerCannotWriteItsRegisters);
+    ADebuggerCannotWriteItsRegisters,
+    ItsInterruptsAreWiredWhateverIsWrittenToFctl);
 
 #endif  // TESTS_CPP_CONTRACTS_IOMMU_CONTRACT_H_
