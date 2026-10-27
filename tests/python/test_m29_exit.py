@@ -119,10 +119,12 @@ def while_pumping(linux: Plugged, *argv: str) -> bytes:
 
     ⚠️ Linux answers only while its platform runs. Its address or dropbear
     may not be there yet when the first try comes, so a try that fails is
-    made again, until SSH_PATIENCE. Returns what the command printed.
+    made again, until SSH_PATIENCE. Returns what the command printed, or
+    raises TimeoutError saying what the tries and the console said.
     """
     started = time.monotonic()
-    failed: list[bytes] = []
+    tries_failed = 0
+    last_failure = b""
     while True:
         command = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -133,27 +135,43 @@ def while_pumping(linux: Plugged, *argv: str) -> bytes:
         ):
             command.kill()
             _, errors = command.communicate()
-            said = [f"{argv[0]} took over {SSH_PATIENCE} s."]
-            if failed:
-                said.append(
-                    f"Of {len(failed)} tries before that failed, the last "
-                    f"said:\n{failed[-1].decode(errors='replace')}"
-                )
-            said.append(
-                f"The try still going said:\n{errors.decode(errors='replace')}"
+            raise TimeoutError(
+                gave_up(linux, argv, tries_failed, last_failure, errors)
             )
-            said.append(
-                f"The console:\n{plain(linux.board.virtio.console.output)}"
-            )
-            raise TimeoutError("\n".join(said))
         output, errors = command.communicate()
         if command.returncode == 0:
             return output
-        failed.append(errors)
+        tries_failed += 1
+        last_failure = errors
         if time.monotonic() - started > SSH_PATIENCE:
-            raise subprocess.CalledProcessError(
-                command.returncode, argv, output, errors
-            )
+            raise TimeoutError(gave_up(linux, argv, tries_failed, last_failure))
+
+
+def gave_up(
+    linux: Plugged,
+    argv: tuple[str, ...],
+    tries_failed: int,
+    last_failure: bytes,
+    still_going: bytes | None = None,
+) -> str:
+    """Why `argv` was given up on, for whoever reads the failure.
+
+    What the last of the `tries_failed` tries that failed said, what the
+    try `still_going` when patience ran out said, if one was, and what
+    Linux said on the console.
+    """
+    said = [f"{argv[0]} took over {SSH_PATIENCE} s."]
+    if tries_failed:
+        said.append(
+            f"Of {tries_failed} tries that failed, the last said:\n"
+            f"{last_failure.decode(errors='replace')}"
+        )
+    if still_going is not None:
+        said.append(
+            f"The try still going said:\n{still_going.decode(errors='replace')}"
+        )
+    said.append(f"The console:\n{plain(linux.board.virtio.console.output)}")
+    return "\n".join(said)
 
 
 def pumped_until(linux: Plugged, condition, patience: float) -> bool:
