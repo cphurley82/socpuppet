@@ -33,7 +33,7 @@ class TestWhenItIsGivenCommandsThroughAPipe:
         # 🐧 `uname -a` answers with the kernel's name and the host's,
         # which firmware/rootfs/etc/inittab sets.
         assert "Linux socpuppet" in ran.stdout
-        assert "switched the host off" in ran.stderr.splitlines()[-1]
+        assert "switched the host off" in ran.stderr
 
 
 class TestWhenTheReaderOfItsPipedOutputHasGone:
@@ -52,9 +52,12 @@ class TestWhenTheReaderOfItsPipedOutputHasGone:
 
             said = run.stderr.read()
             assert ended == 0, said
-            # The interpreter's own last flush of standard output, had it
-            # failed, would have been said after this line.
-            assert "reader has gone" in said.splitlines()[-1]
+            assert "reader has gone" in said
+            # 🎓 The interpreter's own last flush of standard output, had it
+            # failed, would have said so by this error's name. ⚠️ Not by
+            # the order of the lines: QBox's CPU says its warnings from a
+            # thread of its own, after socpuppet's last line or not.
+            assert "BrokenPipeError" not in said
             assert "Traceback" not in said
 
 
