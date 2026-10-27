@@ -284,39 +284,45 @@ static size_t index_at(uintptr_t iova, int level)
 	return (iova >> (12 + 9 * level)) % ENTRIES;
 }
 
-/* The entry of the table at `level` that `iova` goes through, with every table
- * above it made if it is not there, and a leaf above `level` split into the
- * level below. NULL if the pool ran out.
+/* Finds the entry of the table at `level` that `iova` goes through, into
+ * `*entry`, with a leaf above `level` split into the level below. With
+ * `make`, every table above it is made if it is not there; without, a table
+ * that is not there is -ENOENT. -ENOMEM if the pool ran out.
  */
-static uint64_t *entry_at(const struct device *dev, uint64_t *root, uintptr_t iova, int level)
+static int entry_at(const struct device *dev, uint64_t *root, uintptr_t iova, int level, bool make,
+		    uint64_t **entry)
 {
 	uint64_t *table = root;
 
 	for (int at = LEVELS - 1; at > level; at--) {
-		uint64_t *entry = &table[index_at(iova, at)];
+		uint64_t *above = &table[index_at(iova, at)];
 
-		if (!(*entry & IOPTE_V) || (*entry & IOPTE_LEAF)) {
+		if (!(*above & IOPTE_V) && !make) {
+			return -ENOENT;
+		}
+		if (!(*above & IOPTE_V) || (*above & IOPTE_LEAF)) {
 			uint64_t *below = new_table(dev);
 
 			if (below == NULL) {
-				return NULL;
+				return -ENOMEM;
 			}
-			if (*entry & IOPTE_V) {
+			if (*above & IOPTE_V) {
 				/* A leaf that maps more than is asked for becomes a table
 				 * of leaves that map the same, a level down.
 				 */
 				uint64_t step = 1ULL << (12 + 9 * (at - 1));
 
 				for (size_t i = 0; i < ENTRIES; i++) {
-					below[i] = *entry + ((i * step) >> 2);
+					below[i] = *above + ((i * step) >> 2);
 				}
 			}
 			barrier_dmem_fence_full();
-			*entry = ppn_field((uintptr_t)below) | IOPTE_V;
+			*above = ppn_field((uintptr_t)below) | IOPTE_V;
 		}
-		table = page_of(*entry);
+		table = page_of(*above);
 	}
-	return &table[index_at(iova, level)];
+	*entry = &table[index_at(iova, level)];
+	return 0;
 }
 
 /* What a leaf allows, from `access`. */
@@ -357,11 +363,12 @@ int riscv_iommu_map(const struct device *iommu, uint32_t device_id, uintptr_t io
 		/* 2 MiB at a time where both addresses and what is left allow. */
 		bool mega =
 			((iova + done) | (pa + done)) % MEGAPAGE == 0 && size - done >= MEGAPAGE;
-		uint64_t *entry =
-			entry_at(iommu, data->roots[device_id], iova + done, mega ? 1 : 0);
+		uint64_t *entry;
+		int ret = entry_at(iommu, data->roots[device_id], iova + done, mega ? 1 : 0, true,
+				   &entry);
 
-		if (entry == NULL) {
-			return -ENOMEM;
+		if (ret != 0) {
+			return ret;
 		}
 		*entry = ppn_field(pa + done) | leaf_flags(access);
 		done += mega ? MEGAPAGE : PAGE;
@@ -385,10 +392,15 @@ int riscv_iommu_unmap(const struct device *iommu, uint32_t device_id, uintptr_t 
 		return -EINVAL;
 	}
 	for (size_t done = 0; done < size; done += PAGE) {
-		uint64_t *entry = entry_at(iommu, data->roots[device_id], iova + done, 0);
+		uint64_t *entry;
+		int ret = entry_at(iommu, data->roots[device_id], iova + done, 0, false, &entry);
 
-		if (entry == NULL) {
-			return -ENOMEM;
+		/* A page no table leads to is not mapped, and needs no table made. */
+		if (ret == -ENOENT) {
+			continue;
+		}
+		if (ret != 0) {
+			return ret;
 		}
 		*entry = 0;
 	}
