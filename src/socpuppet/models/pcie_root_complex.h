@@ -60,6 +60,13 @@ class PcieRootComplex : public sc_core::sc_module {
   static std::uint64_t FunctionOf(const tlm::tlm_generic_payload& transaction) {
     return transaction.get_address() / kFunctionConfigurationSize;
   }
+
+  // The window is laid out by bus, device and function in the order a
+  // requester ID packs them, so a function's place in it, which is 0 for
+  // the one function there is, is who it is on the link.
+  static std::uint16_t RequesterIdOfFunction(std::uint64_t function) {
+    return static_cast<std::uint16_t>(function);
+  }
   static std::uint64_t OffsetOf(const tlm::tlm_generic_payload& transaction) {
     return transaction.get_address() % kFunctionConfigurationSize;
   }
@@ -81,7 +88,9 @@ class PcieRootComplex : public sc_core::sc_module {
       AnswerForAnEmptySlot(transaction);
       return;
     }
-    AsConfigurationAccess access{transaction, OffsetOf(transaction)};
+    AsConfigurationAccess access{
+        transaction, OffsetOf(transaction),
+        RequesterIdOfFunction(FunctionOf(transaction))};
     to_device->b_transport(transaction, delay);
   }
 
@@ -92,7 +101,9 @@ class PcieRootComplex : public sc_core::sc_module {
       AnswerForAnEmptySlot(transaction);
       return transaction.get_data_length();
     }
-    AsConfigurationAccess access{transaction, OffsetOf(transaction)};
+    AsConfigurationAccess access{
+        transaction, OffsetOf(transaction),
+        RequesterIdOfFunction(FunctionOf(transaction))};
     return to_device->transport_dbg(transaction);
   }
 
