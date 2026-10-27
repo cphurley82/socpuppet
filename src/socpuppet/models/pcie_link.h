@@ -27,20 +27,31 @@ namespace socpuppet {
 // A packet a function sends up the link also says who sent it, and that
 // rides along too, as PcieRequesterId below.
 struct PcieConfigurationAccess : tlm::tlm_extension<PcieConfigurationAccess> {
+  explicit PcieConfigurationAccess(std::uint16_t function) : to(function) {}
   tlm::tlm_extension_base* clone() const override {
     return new PcieConfigurationAccess(*this);
   }
-  void copy_from(const tlm::tlm_extension_base&) override {}
+  void copy_from(const tlm::tlm_extension_base& other) override {
+    to = static_cast<const PcieConfigurationAccess&>(other).to;
+  }
+
+  // Which function the access is for: its bus, device and function
+  // numbers, packed as a requester ID is.
+  std::uint16_t to;
 };
 
 // Makes a transaction a configuration access to the register at `offset`
-// for as long as this is alive: send it down a link meanwhile. The
-// transaction is the caller's again afterwards, with its own address back.
+// of the function `to`, by its bus, device and function numbers packed as a
+// requester ID is, for as long as this is alive: send it down a link
+// meanwhile. The transaction is the caller's again afterwards, with its own
+// address back.
 class AsConfigurationAccess {
  public:
   AsConfigurationAccess(tlm::tlm_generic_payload& transaction,
-                        std::uint64_t offset)
-      : transaction_(transaction), at_the_register_(transaction, offset) {
+                        std::uint64_t offset, std::uint16_t to)
+      : transaction_(transaction),
+        at_the_register_(transaction, offset),
+        marker_(to) {
     transaction_.set_extension(&marker_);
   }
   ~AsConfigurationAccess() { transaction_.clear_extension(&marker_); }
@@ -53,12 +64,19 @@ class AsConfigurationAccess {
   PcieConfigurationAccess marker_;
 };
 
+// What makes a transaction that came down a link a configuration access,
+// or null for a memory access.
+inline const PcieConfigurationAccess* ConfigurationAccessOf(
+    const tlm::tlm_generic_payload& transaction) {
+  const PcieConfigurationAccess* marker = nullptr;
+  transaction.get_extension(marker);
+  return marker;
+}
+
 // Whether a transaction that came down a link is a configuration access.
 // Anything else is a memory access.
 inline bool IsConfigurationAccess(const tlm::tlm_generic_payload& transaction) {
-  const PcieConfigurationAccess* marker = nullptr;
-  transaction.get_extension(marker);
-  return marker != nullptr;
+  return ConfigurationAccessOf(transaction) != nullptr;
 }
 
 // Which function sent a transaction up a link: its requester ID, which is

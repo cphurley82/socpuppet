@@ -209,9 +209,11 @@ class PcieHost {
     return {.response = bus_.Write32(address, value), .value = value};
   }
 
+  // The command register's offset in configuration space.
+  static constexpr std::uint64_t kCommand = 0x04;
+
  private:
   // Offsets in configuration space.
-  static constexpr std::uint64_t kCommand = 0x04;
   // The bit of the status register that says the function has a list of
   // capabilities.
   static constexpr std::uint16_t kHasCapabilities = 1U << 4;

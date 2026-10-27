@@ -67,10 +67,15 @@ class PcieEndpoint : public sc_core::sc_module {
                 sc_core::sc_time& delay) {
     const std::span data{transaction.get_data_ptr(),
                          transaction.get_data_length()};
-    if (IsConfigurationAccess(transaction)) {
+    if (const PcieConfigurationAccess* access =
+            ConfigurationAccessOf(transaction)) {
       if (transaction.is_read()) {
         registers_.ReadConfiguration(transaction.get_address(), data);
       } else {
+        // A function learns its bus and device numbers from the
+        // configuration writes addressed to it, as PCIe's do; this one is a
+        // single function, so it takes its function number from them too.
+        requester_id_ = access->to;
         registers_.WriteConfiguration(transaction.get_address(), data);
         SendWhatCanNowBeSent();
       }
@@ -202,7 +207,9 @@ class PcieEndpoint : public sc_core::sc_module {
 
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
   PcieEndpointRegisters registers_;
-  // Who the function is on the link: bus 0, device 0, function 0.
+  // Who the function is on the link, as of the host's last configuration
+  // write (a debugger's do not count): bus 0, device 0, function 0 until
+  // the first.
   std::uint16_t requester_id_ = 0;
   // Messages waiting to go up the link, oldest first.
   std::deque<PcieEndpointRegisters::Message> outbox_;

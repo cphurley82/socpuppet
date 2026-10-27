@@ -14,8 +14,11 @@
 #include <systemc>
 #include <tlm>
 
+#include "socpuppet/core/little_endian.h"
 #include "socpuppet/models/builtin_components.h"
+#include "socpuppet/models/pcie_link.h"
 #include "socpuppet/platform/platform.h"
+#include "socpuppet/platform/transport.h"
 #include "tests/cpp/support/bus_driver.h"
 #include "tests/cpp/support/line_driver.h"
 #include "tests/cpp/support/pcie_host.h"
@@ -238,6 +241,69 @@ std::vector<std::pair<std::uint64_t, std::vector<std::uint8_t>>> Received(
     received.emplace_back(access.address, access.written);
   }
   return received;
+}
+
+// An endpoint on its own, with a test's hands at the far end of its link
+// where a root complex would be.
+//
+//   link.host ══ device.endpoint ─▶ device.registers
+//   link.up   ◀══      ▲
+//                      └────────── device.function
+//
+// `link.host` sends what a root complex sends down the link, and `link.up`
+// writes down whatever comes up it.
+struct AnEndpointOnItsOwn {
+  struct Actors {
+    std::function<void(BusDriver&)> link = [](BusDriver&) {};
+    std::function<void(BusDriver&)> function = [](BusDriver&) {};
+  };
+
+  explicit AnEndpointOnItsOwn(const Actors& actors)
+      : platform{WithActors(actors, up)} {
+    platform.Add("link.host", "link_driver");
+    platform.Add("link.up", "recorder");
+    platform.Add("device.endpoint", "pcie_endpoint",
+                 {{"vendor_id", HostWithAnEndpoint::kVendorId},
+                  {"device_id", HostWithAnEndpoint::kDeviceId},
+                  {"class_code", HostWithAnEndpoint::kClassCode},
+                  {"function_size", HostWithAnEndpoint::kFunctionSize},
+                  {"vectors", HostWithAnEndpoint::kVectors}});
+    platform.Add("device.registers", "memory",
+                 {{"size", HostWithAnEndpoint::kFunctionSize}});
+    platform.Add("device.function", "function_driver");
+    platform.Bind("link.host.socket", "device.endpoint.from_host");
+    platform.Bind("device.endpoint.to_host", "link.up.socket");
+    platform.Bind("device.endpoint.bar0", "device.registers.socket");
+    platform.Bind("device.function.socket", "device.endpoint.dma");
+    platform.Elaborate();
+  }
+
+  static Registry WithActors(const Actors& actors,
+                             std::vector<RecordedAccess>& up) {
+    Registry registry = BuiltinComponents();
+    AddBusDriver(registry, "link_driver", actors.link);
+    AddBusDriver(registry, "function_driver", actors.function);
+    AddRecordingTarget(registry, "recorder", up);
+    return registry;
+  }
+
+  // Everything that came up the link. Declared before the platform, which
+  // holds a reference to it.
+  std::vector<RecordedAccess> up;
+  Platform platform;
+};
+
+// A configuration write as a root complex sends it down the link: to the
+// register at `offset` of the function whose bus, device and function
+// numbers are `to`, as a requester ID packs them.
+void ConfigurationWrite(BusDriver& link, std::uint16_t to, std::uint64_t offset,
+                        std::uint32_t value) {
+  std::array data = LittleEndianBytes(value);
+  tlm::tlm_generic_payload transaction;
+  SetUpAccess(transaction, tlm::TLM_WRITE_COMMAND, 0, data);
+  const AsConfigurationAccess access{transaction, offset, to};
+  sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
+  link.socket->b_transport(transaction, delay);
 }
 
 }  // namespace
@@ -655,6 +721,31 @@ TEST(WhenTheDeviceBecomesABusMaster, AVectorThatRoseBeforeIsSent) {
   fixture.platform.Run();
 
   EXPECT_EQ(Received(fixture.messages), Messages(1));
+}
+
+TEST(WhenTheEndpointIsSentAConfigurationWriteForBus2Device3Function1,
+     ItsDmaIsMarkedAsFrom0x0219) {
+  // Bus 2 << 8 | device 3 << 3 | function 1.
+  constexpr std::uint16_t kBus2Device3Function1 = 0x0219;
+  // Anywhere will do: everything that comes up the link is written down.
+  constexpr std::uint64_t kAnywhere = 0x0;
+  AnEndpointOnItsOwn fixture{
+      {.link =
+           [](BusDriver& link) {
+             ConfigurationWrite(link, kBus2Device3Function1, PcieHost::kCommand,
+                                PcieHost::kBusMastering);
+           },
+       .function =
+           [](BusDriver& function) {
+             function.WaitFor(DmaStartsAt());
+             function.Write32(kAnywhere, 0x1234);
+           }}};
+
+  fixture.platform.Run();
+
+  EXPECT_THAT(fixture.up, ::testing::ElementsAre(::testing::Field(
+                              &RecordedAccess::requester_id,
+                              ::testing::Optional(kBus2Device3Function1))));
 }
 
 }  // namespace socpuppet
