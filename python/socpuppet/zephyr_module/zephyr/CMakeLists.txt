@@ -5,6 +5,10 @@ zephyr_sources_ifdef(CONFIG_SOCPUPPET_PCIE
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_MAP_WITHOUT_MMU
   ${CMAKE_CURRENT_LIST_DIR}/../drivers/pcie/map_without_mmu.c)
 
+# The driver for a RISC-V IOMMU, which Zephyr has no subsystem for.
+zephyr_sources_ifdef(CONFIG_SOCPUPPET_RISCV_IOMMU
+  ${CMAKE_CURRENT_LIST_DIR}/../drivers/iommu/riscv_iommu.c)
+
 # The drivers for the three devices of a socpuppet SSD, for its firmware.
 zephyr_include_directories(${CMAKE_CURRENT_LIST_DIR}/../include)
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_NVME_FRONTEND

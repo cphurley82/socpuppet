@@ -32,6 +32,10 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 
+#if DT_INST_NODE_HAS_PROP(0, iommus)
+#include <socpuppet/drivers/riscv_iommu.h>
+#endif
+
 struct socpuppet_pcie_data {
 	/* How much of the memory window has been given to devices. */
 	size_t allocated;
@@ -153,11 +157,56 @@ static bool socpuppet_pcie_enable_memory_decoding(pcie_bdf_t bdf, pcie_id_t id, 
 	return true;
 }
 
+#if DT_INST_NODE_HAS_PROP(0, iommus)
+
+BUILD_ASSERT(IS_ENABLED(CONFIG_SOCPUPPET_RISCV_IOMMU),
+	     "The root complex's devices are behind an IOMMU (its node's iommus), whose driver "
+	     "is off: enable CONFIG_SOCPUPPET_RISCV_IOMMU.");
+
+/*
+ * A device behind an IOMMU may reach nothing until the IOMMU lets it. The
+ * node's `iommus` lists the IOMMU and each requester ID it will see, and
+ * each is attached before the scan, which is what makes a device a bus
+ * master.
+ */
+struct socpuppet_pcie_behind {
+	const struct device *iommu;
+	uint32_t requester_id;
+};
+
+#define BEHIND(node_id, prop, idx)                                                                 \
+	{DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),                                     \
+	 DT_PHA_BY_IDX(node_id, prop, idx, id)},
+
+static const struct socpuppet_pcie_behind behind[] = {DT_INST_FOREACH_PROP_ELEM(0, iommus, BEHIND)};
+
+static int socpuppet_pcie_attach_to_the_iommu(void)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(behind); i++) {
+		int ret = riscv_iommu_attach(behind[i].iommu, behind[i].requester_id);
+
+		if (ret != 0) {
+			return ret;
+		}
+	}
+	return 0;
+}
+
+#endif /* DT_INST_NODE_HAS_PROP(0, iommus) */
+
 static int socpuppet_pcie_init(const struct device *dev)
 {
 	const struct pcie_scan_opt every_function = {
 		.cb = socpuppet_pcie_enable_memory_decoding,
 	};
+
+#if DT_INST_NODE_HAS_PROP(0, iommus)
+	int ret = socpuppet_pcie_attach_to_the_iommu();
+
+	if (ret != 0) {
+		return ret;
+	}
+#endif
 
 	pcie_generic_ctrl_enumerate(dev, PCIE_BDF(0, 0, 0));
 	pcie_scan(&every_function);

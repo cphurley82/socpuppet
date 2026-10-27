@@ -79,9 +79,9 @@ class Image:
     """One Zephyr image: an application, for a board, with a shield.
 
     The application is a directory of Zephyr's, or one of this
-    repository's if it starts with "firmware/", and the image is named
-    after the last part of it. A shield is Zephyr's word for hardware
-    plugged into a board.
+    repository's if it starts with "firmware/" or is in socpuppet's Zephyr
+    module, and the image is named after the last part of it. A shield is
+    Zephyr's word for hardware plugged into a board.
     """
 
     application: str
@@ -117,6 +117,31 @@ IMAGES = [
         "tests/drivers/disk/disk_access",
         "socpuppet_host",
         "socpuppet_host_drive",
+    ),
+    # The same test with the drive behind the host's IOMMU: let through
+    # untranslated, as Linux has it, and then through page tables that map
+    # the RAM and the IMSIC to themselves, so that every access the drive
+    # makes is walked. `socpuppet_host_iommu` is the IOMMU.
+    Image(
+        "tests/drivers/disk/disk_access",
+        "socpuppet_host",
+        "socpuppet_host_drive;socpuppet_host_iommu",
+        name="disk_access_iommu",
+    ),
+    Image(
+        "tests/drivers/disk/disk_access",
+        "socpuppet_host",
+        "socpuppet_host_drive;socpuppet_host_iommu",
+        name="disk_access_iommu_paged",
+        options=("CONFIG_SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE=y",),
+    ),
+    # socpuppet's test of its driver for the IOMMU, which takes a page away
+    # from the drive and reads the fault, for M15's exit test to run.
+    Image(
+        "python/socpuppet/zephyr_module/tests/drivers/riscv_iommu",
+        "socpuppet_host",
+        "socpuppet_host_drive;socpuppet_host_iommu",
+        name="riscv_iommu_test",
     ),
     # Zephyr's test of its entropy API, which here drives its virtio
     # entropy driver against 🎭 the host's virtio entropy device.
@@ -743,8 +768,11 @@ class Build:
         name = f"{called}_{image.board}"
         shield = f" with {image.shield}" if image.shield else ""
         say(f"Building {called} for {image.board}{shield}")
-        if image.application.startswith("firmware/"):
-            source = REPOSITORY / image.application
+        ours = REPOSITORY / image.application
+        if image.application.startswith("firmware/") or ours.is_relative_to(
+            MODULE
+        ):
+            source = ours
         else:
             source = self.zephyr_dir / image.application
         build = self.built_in(name)

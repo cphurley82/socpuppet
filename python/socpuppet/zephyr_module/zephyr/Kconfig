@@ -92,3 +92,55 @@ config SOCPUPPET_IMSIC_IRQ
 	# With an APLIC, a source's handler is put behind one of this
 	# module's when the source is enabled, which is while the image runs.
 	select DYNAMIC_INTERRUPTS if RISCV_APLIC
+
+# A RISC-V IOMMU, which Zephyr has no subsystem for. Built whenever the
+# devicetree has one.
+config SOCPUPPET_RISCV_IOMMU
+	bool "RISC-V IOMMU"
+	default y
+	depends on DT_HAS_RISCV_IOMMU_ENABLED
+	help
+	  A RISC-V IOMMU, the subset socpuppet's has: a device directory,
+	  Sv39 page tables, the command and fault queues and a wired
+	  interrupt. The driver's functions are in
+	  <socpuppet/drivers/riscv_iommu.h>.
+
+if SOCPUPPET_RISCV_IOMMU
+
+# After the interrupt controllers, whose line it uses, and with the same
+# number as them: devices of one priority start in the order the
+# devicetree has them depend on each other, and the IOMMU's node names
+# its APLIC. A bus whose devices are behind it, which starts later,
+# attaches them.
+config SOCPUPPET_RISCV_IOMMU_INIT_PRIORITY
+	int "RISC-V IOMMU initialization priority"
+	default KERNEL_INIT_PRIORITY_DEFAULT
+
+config SOCPUPPET_RISCV_IOMMU_PAGES
+	int "Pages for the IOMMU's page tables"
+	default 8
+	help
+	  The driver keeps page tables in a pool of 4 KiB pages set aside
+	  when the image is built, which only grows. Mapping a device's RAM
+	  and its interrupt controller's page to themselves takes four.
+
+choice SOCPUPPET_RISCV_IOMMU_BOOT_POLICY
+	prompt "How a device behind the IOMMU is let through when its bus attaches it"
+	default SOCPUPPET_RISCV_IOMMU_PASS_THROUGH
+
+config SOCPUPPET_RISCV_IOMMU_PASS_THROUGH
+	bool "Untranslated"
+	help
+	  The device's context lets its accesses through as they are, as
+	  Linux has it under the DMA API on RISC-V.
+
+config SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE
+	bool "Through page tables that map the RAM and the IMSICs to themselves"
+	help
+	  The device's accesses go through page tables of its own, in which
+	  every page of the RAM and of each IMSIC is mapped to itself: what
+	  the device does is unchanged, and every access is walked.
+
+endchoice
+
+endif # SOCPUPPET_RISCV_IOMMU
