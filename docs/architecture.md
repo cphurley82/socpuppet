@@ -271,6 +271,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | interrupt controller | `InterruptControllerContract` | `Plic` |
 | message controller | `MessageControllerContract` | `Imsic` |
 | APLIC | `AplicContract` | `Aplic` |
+| IOMMU | `IommuContract` | `Iommu`, socpuppet's own, written for VPV-Peripherals |
 | watchdog | `WatchdogContract` | `Watchdog` |
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
@@ -296,6 +297,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Interrupt controller (APLIC)](models/aplic.md)
 - [Interrupt controller (IMSIC)](models/imsic.md)
 - [Interrupt controller (PLIC)](models/plic.md)
+- [IOMMU](models/iommu.md)
 - [Machine timer](models/machine-timer.md)
 - [Memory](models/memory.md)
 - [NVMe frontend](models/nvme-frontend.md)
@@ -346,4 +348,4 @@ All of it is built from source as static libraries and linked into the one Pytho
 
 To run firmware of your own, see [boot-your-firmware.md](boot-your-firmware.md).
 
-🚧 Not built yet: the rest of a real SoC's cast (an IOMMU, memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, the scenarios that put the whole platform through faults and resets, and Linux on the host. See [roadmap.md](roadmap.md).
+🚧 Not built yet: the rest of a real SoC's cast (memory that two SoCs on a board share, Ethernet and an AI processor), then a NAND that wears out and has to be tidied, and the scenarios that put the whole platform through faults and resets. See [roadmap.md](roadmap.md).

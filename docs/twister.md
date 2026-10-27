@@ -133,12 +133,14 @@ Two more lines of the list are directories of this repository, and every suite u
 | `nvme_frontend` | `socpuppet_ssd`, with a host | 6 | The ready handshake, a command read whole and from which queue, a completion posted, a queue created |
 | `socpuppet_pcie` | `socpuppet_host`, with a drive | 7 | The scan finds the drive, where its registers are placed, and its interrupts as messages |
 | `imsic_irq` | `socpuppet_host` | 9 | `irq_enable` reaches the IMSIC, and the APLIC of the right die |
+| `riscv_iommu` | `socpuppet_host`, with a drive behind an IOMMU | 2 | A sector read through the drive's page tables lands; one into a page taken away from the drive fails, and the fault record names the drive and the page |
 
 🎭 **"With a host" and "with a drive" are shields.** A driver's hardware often does nothing until something on the other side of it speaks, and under twister there is one board and one image. So the suite is built with a shield (`extra_args: SHIELD=...` in its `testcase.yaml`), twister passes the shield on, and `socpuppet run` puts a stand-in there:
 
 | Shield | Board | What `socpuppet run` puts beside the board |
 |---|---|---|
 | `socpuppet_host_drive` | `socpuppet_host` | 🎭 A drive on the PCIe link, which answers as an NVMe drive does |
+| `socpuppet_host_iommu` | `socpuppet_host`, after `socpuppet_host_drive` | An [IOMMU](models/iommu.md) in front of the drive |
 | `socpuppet_ssd_host` | `socpuppet_ssd` | 🎭 A host in front of the SSD that says a host's first words to a drive: it finds it and lets it reach the host's memory, enables it, waits to be told it is ready, asks for a pair of I/O queues and how big the drive is, and writes one block |
 
 ⚠️ The SSD's host waits one second of simulated time to be told the drive is ready, and ends the run if it never is, in one line that says so. A suite built with that shield says so in time, as `nvme_frontend`'s does, or is done by then, as `dma_engine`'s is.

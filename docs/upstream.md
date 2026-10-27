@@ -897,6 +897,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: build.
 - **When it lands**: use the project's own targets.
 
+### 📮 An IOMMU, which VPV-Peripherals has not
+
+- **Where**: `rvi/`, beside the APLIC and the PLIC: socpuppet's `src/vpvper/rvi/`, which is laid out as VPV's tree is, so each file is at the path it would have there: `iommu.h`, `iommu.cpp`, `iommu_walker.h`, `iommu.rdl` and `gen/iommu_regs.h`.
+- **What is missing**: 🎓 an IOMMU, the RISC-V IOMMU specification's, which every RISC-V server SoC has and which Linux's `riscv-iommu` driver drives. socpuppet wrote one for M15, in MINRES's style, to be offered here ([models/iommu.md](models/iommu.md)): a device directory of one to three levels, a first stage of Sv39, the command and fault queues and a wired interrupt.
+- **How to see it**: `IommuContract` in `tests/cpp/contracts/iommu_contract.h`, the walker's unit tests in `tests/cpp/unit/iommu_walker_test.cpp`, Linux 6.18 bringing it up in `tests/python/test_m15_exit.py`.
+- **What we do**: build it from `src/vpvper/`, behind an adapter of ours, as if it were borrowed.
+- **Upstream fix**: offer the files. ⚠️ `gen/iommu_regs.h` is written by hand in the shape `peakrdl_mnrs` makes, which is MINRES's own generator and not available here, and `tests/tooling/test_vpvper_registers.py` holds it to `iommu.rdl`; it leaves out the semicolon after each `BEGIN_BF_DECL` and `BF_FIELD`, whose expansions have their own, which Clang warns of with `-Wextra-semi`. Regenerate it with their generator, and keep the semicolons if that is their way. A device ID comes in as an extension of the IOMMU's own, `iommu_device_id`, which whoever is in front of the IOMMU sets; socpuppet's adapter sets it from a PCIe requester ID.
+- **Kind**: missing feature.
+- **When it lands**: build the borrowed copy, and drop `src/vpvper/`.
+
 ## Zephyr
 
 [zephyrproject-rtos/zephyr](https://github.com/zephyrproject-rtos/zephyr), release `v4.4.2`. `firmware/build.py` builds a clean clone, and applies to it the one patch below (`cmake/patches/zephyr-*.patch`, as it applies OpenSBI's and EDK2's). Everything else here is worked around in socpuppet's Zephyr module, `python/socpuppet/zephyr_module`, or in the model the driver meets. 🎓 The first five come from the same place. Zephyr's PCIe and NVMe code grew up on PCs, where firmware has set the bus up before Zephyr starts, and on Arm boards with one particular interrupt controller. A RISC-V board with neither is new ground. The two after them are about the flash API, which the SSD's firmware uses for its NAND, and which was written with a microcontroller's own flash in mind. The last are about RISC-V's Advanced Interrupt Architecture, whose two drivers are new in this release and have no board in Zephyr's tree that uses them. The two after those were found by running Zephyr's own tests with twister, its test runner: one in a driver, one in twister's documentation. The last three are about virtio, whose drivers are newer still, found the first time one was built for a RISC-V board and run on a hart that is not QEMU's.

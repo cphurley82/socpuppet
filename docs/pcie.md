@@ -180,7 +180,7 @@ A real link carries packets, and a packet says which of the device's address spa
 - **A memory access**: an ordinary transaction at an address on the host's bus. Down, the host reaching the device's registers; up, the device's DMA or an interrupt message.
 - **A configuration access**: the same transaction carrying a TLM *extension*, `PcieConfigurationAccess`, for as long as it is on the link. Its address is an offset into configuration space.
 
-Whatever the device sends up, DMA and interrupt messages alike, carries a second extension, `PcieRequesterId`: the device's *requester ID*, its bus, device and function numbers packed as `bus << 8 | device << 3 | function`, which an IOMMU looks the device up by (🚧 M15, [roadmap.md](roadmap.md)). The endpoint learns it as a real function does, from the configuration writes addressed to it: a configuration access says which function it is for, and the root complex takes that from where the access fell in the ECAM window, whose layout is the same packing. No packets, lanes, training or errors.
+Whatever the device sends up, DMA and interrupt messages alike, carries a second extension, `PcieRequesterId`: the device's *requester ID*, its bus, device and function numbers packed as `bus << 8 | device << 3 | function`, which an [IOMMU](models/iommu.md) looks the device up by. The endpoint learns it as a real function does, from the configuration writes addressed to it: a configuration access says which function it is for, and the root complex takes that from where the access fell in the ECAM window, whose layout is the same packing. No packets, lanes, training or errors.
 
 ### The root complex: two windows down, one way up
 
@@ -468,7 +468,7 @@ uv run tools/pciem_guest.py -- env SOCPUPPET_REQUIRE_PCIEM=1 .venv/bin/python -m
 - **A tree**: one device, function 0 of device 0 on bus 0; no bridges or switches.
 - **More than one BAR**, I/O ports, an expansion ROM, or a capability other than MSI-X ([pcie-endpoint.md](models/pcie-endpoint.md#what-it-leaves-out)).
 - **Interrupts other than MSI-X**: no interrupt pin, no plain MSI.
-- **Confinement**: every access up the link says which device sent it, but nothing checks it until the IOMMU (🚧 [roadmap.md](roadmap.md)).
+- **Confinement, unless asked**: every access up the link says which device sent it, and nothing checks it but an [IOMMU](models/iommu.md) in the way, which the host has with `host(iommu=True)`.
 - **DMI across the link**, by design, so every access to the device is visible.
 - **Under pciem**: one interrupt and so one I/O queue, no endpoint of ours, two clocks held together by the pump, and a GPL-2.0-only header that keeps it out of the wheel ([pciem-host.md](models/pciem-host.md#what-it-leaves-out), [upstream.md](upstream.md#pciem)).
 - ⚠️ All of it is modelled from public sources, Zephyr's PCIe headers and SPDK's NVMe header among them, because the specifications are not free to read, and claims no conformance.

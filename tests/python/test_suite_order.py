@@ -12,6 +12,7 @@ import pytest
 BOOTS = {
     "test_linux_command_boots",
     "test_linux_nvme",
+    "test_m15_exit",
     "test_m20_exit",
     "test_m23_exit",
     "test_m24_exit",
