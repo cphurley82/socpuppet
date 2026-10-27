@@ -235,6 +235,17 @@ target_link_libraries(socpuppet_aplic
   PRIVATE vpv_aplic)
 socpuppet_dev_checks(socpuppet_aplic)
 
+# The IOMMU: ours, written for VPV-Peripherals (src/vpvper), with an
+# adapter as the borrowed models have.
+add_library(socpuppet_iommu STATIC models/iommu.cpp)
+target_sources(socpuppet_iommu PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/iommu.h)
+target_link_libraries(socpuppet_iommu
+  PUBLIC SystemC::systemc
+  PRIVATE vpv_iommu)
+socpuppet_dev_checks(socpuppet_iommu)
+
 # The watchdog: the one in VPV-Peripherals' model of SiFive's always-on
 # block, built apart from ours as the timer's model is.
 add_library(vpv_aon STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/aon.cpp)

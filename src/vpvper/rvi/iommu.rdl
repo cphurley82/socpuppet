@@ -1,0 +1,23 @@
+addrmap iommu_block {
+    name = "RISC-V IOMMU";
+    regfile iommu {
+        reg {
+            name = "capabilities";
+            desc = "Capabilities: version 1.0, Sv39, base-format device contexts, wired interrupts, 56-bit physical addresses";
+            regwidth = 64;
+            field { sw = r; } version[7:0] = 0x10;
+            field { sw = r; } sv39[9:9] = 1;
+            field { sw = r; } msi_flat[22:22] = 0;
+            field { sw = r; } igs[29:28] = 1;
+            field { sw = r; } pas[37:32] = 56;
+        } capabilities @0x0;
+        reg {
+            name = "ddtp";
+            desc = "Device Directory Table Pointer";
+            regwidth = 64;
+            field {} iommu_mode[3:0] = 0;
+            field { sw = r; } busy[4:4] = 0;
+            field {} ppn[53:10] = 0;
+        } ddtp @0x10;
+    } iommu_regs @0x0;
+};

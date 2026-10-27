@@ -125,6 +125,19 @@ concept AplicSlot =
       { aplic.msi } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
     };
 
+// An IOMMU: what stands between devices and memory. It is built from a
+// name. Its registers are reached through one TLM target socket, `socket`;
+// devices' accesses come in at `target` and go out at `initiator`, with the
+// IOMMU's own reads and writes of memory; `irq` is its interrupt.
+template <typename T>
+concept IommuSlot =
+    std::constructible_from<T, sc_core::sc_module_name> && requires(T iommu) {
+      { iommu.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { iommu.target } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { iommu.initiator } -> std::convertible_to<tlm::tlm_initiator_socket<>&>;
+      { iommu.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
+    };
+
 // A watchdog timer: built from a name, with its registers reached through
 // one TLM target socket. It has two outputs. `irq` is its interrupt, for an
 // interrupt controller's input, and `bite` is the line that rises when
