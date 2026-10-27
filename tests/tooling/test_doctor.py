@@ -5,6 +5,7 @@ looks for. Each fake writes the command it was given to a log, and the
 tests take a program away, or make one fail, to give the machine a problem.
 """
 
+import ctypes.util
 import importlib.util
 import json
 import os
@@ -541,21 +542,63 @@ def test_a_missing_qbox_package_warns_without_failing_and_names_them_all(
 CABLE = "a cable to this machine's network, and ssh to Linux"
 
 
-def test_without_libslirp_or_scp_the_cable_warns_without_failing_and_names_their_packages(
+def test_without_scp_the_cable_warns_without_failing_and_names_its_package(
     doctor,
 ):
     doctor.without("scp")
 
-    result = doctor("cable", FAIL_ON="slirp")
+    result = doctor("cable")
 
     assert result.returncode == 0, result.stdout
-    assert problems(result.stdout)[CABLE] == (
-        "pkg-config cannot find slirp; scp is not installed"
-    )
+    assert marks(result.stdout)[CABLE] == "⚠️"
+    assert "scp is not installed" in problems(result.stdout)[CABLE]
     if platform.system() == "Linux":
-        assert f"{APT} libslirp-dev openssh-client" in result.stdout
+        install = next(
+            line.strip()
+            for line in result.stdout.splitlines()
+            if line.strip().startswith(APT)
+        )
+        assert "openssh-client" in install.removeprefix(APT).split()
     else:
-        assert "brew install libslirp" in result.stdout
+        assert DOCTOR_MODULE.MACOS_HAS_IT.what in result.stdout
+
+
+def test_a_library_that_cannot_be_loaded_is_a_problem_naming_it():
+    problem = DOCTOR_MODULE.loadable("spam", "/nowhere/libspam.so")
+
+    assert problem() == "libspam cannot be loaded"
+
+
+def test_a_library_every_machine_has_can_be_loaded():
+    # 🎓 The C library, which every program on the machine is linked with.
+    problem = DOCTOR_MODULE.loadable("c")
+
+    assert problem() is None
+
+
+def test_a_library_found_only_elsewhere_can_be_loaded():
+    # 🎓 The C library again, under a name the machine does not know it by.
+    problem = DOCTOR_MODULE.loadable("spam", ctypes.util.find_library("c"))
+
+    assert problem() is None
+
+
+def test_the_cable_takes_no_notice_of_pkg_config_failing_to_find_slirp(
+    doctor,
+):
+    # 🎓 Ubuntu's slirp.pc wants glib's headers, which libslirp-dev does not
+    # bring and socpuppet.slirp, loading the library itself, has no use for.
+    as_it_is = doctor("cable")
+
+    with_pkg_config_failing = doctor("cable", FAIL_ON="slirp")
+
+    assert (
+        marks(with_pkg_config_failing.stdout)[CABLE]
+        == (marks(as_it_is.stdout)[CABLE])
+    )
+    assert problems(with_pkg_config_failing.stdout).get(CABLE) == (
+        problems(as_it_is.stdout).get(CABLE)
+    )
 
 
 def test_a_site_that_cannot_be_reached_fails_the_network_saying_why(doctor):

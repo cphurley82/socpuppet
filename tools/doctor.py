@@ -13,6 +13,8 @@ says why each is needed.
 
 import argparse
 import concurrent.futures
+import ctypes
+import ctypes.util
 import importlib.util
 import json
 import os
@@ -106,6 +108,7 @@ def program(name: str, apt: str, mac: Fix) -> Need:
 def library(name: str, apt: str, brew: str) -> Need:
     """A library pkg-config finds: its Ubuntu package and Homebrew formula.
 
+    For a library to build against, whose headers pkg-config knows.
     Without pkg-config there is no asking, and pkg-config is a need of its
     own.
     """
@@ -119,6 +122,27 @@ def library(name: str, apt: str, brew: str) -> Need:
     return Need(
         name, problem, {"Linux": Fix(apt, APT), "Darwin": Fix(brew, BREW)}
     )
+
+
+def loadable(name: str, *elsewhere: str) -> Callable[[], str | None]:
+    """What is wrong with loading a library through ctypes, if anything.
+
+    For a library loaded as a program runs, not built against, where
+    pkg-config's answer is beside the point: Ubuntu's slirp.pc wants glib's
+    headers, which a library loaded with ctypes has no use for. It is
+    looked for where this machine says it is, then at `elsewhere`.
+    """
+
+    def problem() -> str | None:
+        for path in filter(None, (ctypes.util.find_library(name), *elsewhere)):
+            try:
+                ctypes.CDLL(path)
+            except OSError:
+                continue
+            return None
+        return f"lib{name} cannot be loaded"
+
+    return problem
 
 
 def site(url: str) -> Need:
@@ -542,7 +566,17 @@ AREAS = (
         "cable",
         "a cable to this machine's network, and ssh to Linux",
         (
-            library("slirp", "libslirp-dev", "libslirp"),
+            # Looked for where socpuppet.slirp.places() looks, which the
+            # doctor cannot import before socpuppet is built: Homebrew's
+            # is not where an Apple silicon Mac looks for libraries.
+            Need(
+                "libslirp",
+                loadable("slirp", "/opt/homebrew/lib/libslirp.0.dylib"),
+                {
+                    "Linux": Fix("libslirp-dev", APT),
+                    "Darwin": Fix("libslirp", BREW),
+                },
+            ),
             program("ssh", "openssh-client", MACOS_HAS_IT),
             program("scp", "openssh-client", MACOS_HAS_IT),
         ),
