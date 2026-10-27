@@ -4,6 +4,7 @@ What building socpuppet taught, by topic: the gotchas a contributor wants to kno
 
 ## Borrowed models and their contracts
 
+- **Check the drivers before choosing the model.** A borrowed model that no operating system drives is not more real than a stand-in that both do: M17's MAC would have needed a Zephyr driver and a Linux driver of ours, where LiteEth, a model of ours, has both upstream ([decisions.md](decisions.md), 2026-10-27).
 - **A borrowed model is trusted as far as it has been run.** The CPU had run Zephyr in machine mode and nothing else, and all fifteen faults M22 found were in what Zephyr never does: paging, user mode, the supervisor's registers, floating-point state. Any of four would have stopped Linux at its first instruction, its first SBI call or its first lock across an interrupt. Run a borrowed block the way the next firmware will before that firmware is on it.
 - **A contract suite written first finds real bugs in every borrowed model it is pointed at**, and did: four patches of 99 lines for three VPV peripherals, with no model given up ([architecture.md](../architecture.md#borrowed-models)).
 - **A borrowed block that is all registers and no behaviour is a patch, not a model of ours.** Write the contract first, then the patch, and mutate the patch until every line fails a test. A patch drafted before its contract "passed whole the first time" and was wanting in three ways: the test review, the design review and the mutation each found what the others could not.
