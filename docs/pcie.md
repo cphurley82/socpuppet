@@ -1,6 +1,51 @@
 # A PCIe device and its hosts
 
-How socpuppet models a PCIe device: what a device is to its host, how that lands on SystemC, how 🧵 Python describes and drives it, and the two ways to give the device a host, one played inside the simulation and one that is this machine's own Linux, through pciem. Each ends in a command to run. The pages under [`models/`](architecture.md#the-models) take one block each; this page follows the path between them.
+socpuppet simulates a PCIe device, an NVMe SSD, and gives it a host: a Python script, Zephyr or 🐧 Linux on a simulated CPU beside it, or this machine's own Linux through pciem. This page is first what that lets you do, then how it works down to the SystemC calls, with a command to run at each step. The pages under [`models/`](architecture.md#the-models) take one block each.
+
+## What it can do
+
+- 🎭 **The device is the subject, not the host.** The SSD under test is simulated, with real Zephyr firmware on a RISC-V core or a stand-in (a simplified model), and the host is whatever you swap in; the device cannot tell.
+- 🧵 **Three hosts, no driver of ours.** A Python script enumerates, places and drives the drive in under a second on every push, and Zephyr's and Linux's own PCIe and NVMe drivers do the same on a simulated CPU, deterministically.
+- 🐧 **This machine mounts it.** Through pciem, a Linux kernel module, the simulated SSD appears on this computer's own PCIe bus: `lsblk` lists it, `mkfs.ext4` and `mount` work, and Python reads the file back out of the simulated NAND.
+- 🔧 **Every access visible, every path tested.** Nothing crosses the link unseen, so the tracer shows each register write, DMA and interrupt message; one contract suite holds both NVMe functions to the same behaviour; open tools only, no licence server.
+
+**In the simulation**, every part is a SystemC model on one clock:
+
+```mermaid
+flowchart LR
+    h["the host<br/>host CPU: Zephyr or 🐧 Linux, stock drivers<br/>(or 🎭 a Python script)"]
+    rc["the root complex<br/>PcieRootComplex"]
+    l["the link<br/>two TLM sockets, down and up"]
+    ep["the endpoint<br/>PcieEndpoint: configuration space,<br/>BAR0, the MSI-X table, the three ports"]
+    fn["the function<br/>NVMe: Zephyr firmware on a RISC-V CPU<br/>(or 🎭 a stand-in)"]
+    h <--> rc <--> l <--> ep <--> fn
+    classDef pcie fill:#fed7aa,stroke:#c2410c,color:#000
+    class rc,l,ep pcie
+```
+
+**Through pciem**, the same five parts in the same order, but the host and the root complex are this machine's own, there is no link, and the endpoint is in two halves, one in the kernel and one in the simulation:
+
+```mermaid
+flowchart LR
+    h["the host<br/>🐧 this machine's Linux: its PCI core, its nvme driver<br/>lsblk · mkfs.ext4 · mount"]
+    rc["the root complex<br/>this machine's own, nothing modelled"]
+    l["the link<br/>none: pciem is in the kernel"]
+    subgraph ep["the endpoint, in two halves"]
+        direction LR
+        regs["configuration space, BARs, MSI-X table<br/>pciem, a kernel module"]
+        ph["the three ports<br/>PciemHost, in the SystemC kernel"]
+        regs <-- "/dev/pciem" --> ph
+    end
+    fn["the function<br/>the same block"]
+    h <--> rc <--> l <--> regs
+    ph <--> fn
+    classDef pcie fill:#fed7aa,stroke:#c2410c,color:#000
+    classDef machine fill:#f1f5f9,stroke:#475569,color:#000
+    class ph pcie
+    class h,rc,l,regs machine
+```
+
+Both pictures have the same five parts in the same order. The function is the same block in both, and so are its tests; what changes is which of the other four are simulated and who plays them. The rest of this page is that path, from the host's write to the function's register and back.
 
 ## To its host, a device is three things
 
@@ -33,45 +78,72 @@ Two functions play the drive, both with the three ports. 🎭 [The behavioral NV
 
 ## Two ways to give it a host
 
+The same five parts as the two pictures at the top, in the same order, with the detail.
+
+**In the simulation**:
+
 ```mermaid
 flowchart LR
-    subgraph sim["In the simulation: one SystemC kernel"]
+    subgraph host["the host"]
         direction LR
-        cpu["host CPU: Zephyr or Linux<br/>(or 🎭 a Python script)"]
+        cpu["host CPU: Zephyr or 🐧 Linux<br/>(or 🎭 a Python script)"]
         bus["router"]
         ram["memory"]
         msi["IMSIC<br/>(or 🎭 an MSI receiver)"]
-        rc["PCIe root complex<br/>ecam · mmio · dma"]
-        ep["PCIe endpoint<br/>configuration space, BAR0, MSI-X table"]
-        fn1["the function"]
         cpu --> bus
         bus --> ram
         bus --> msi
-        bus --> rc
-        rc == "the link, down" ==> ep
-        ep == "the link, up: DMA and messages" ==> rc
-        rc -- "dma" --> bus
         msi -. "irq" .-> cpu
-        ep -- "bar0" --> fn1
-        fn1 -- "dma" --> ep
-        fn1 -. "irq" .-> ep
     end
-    subgraph real["🐧 This machine: Linux, through pciem"]
-        direction LR
-        linux["this machine's Linux<br/>its PCI core, its nvme driver"]
-        pciem["pciem, a kernel module<br/>configuration space, BARs, MSI-X table"]
-        ph["PciemHost<br/>in the SystemC kernel"]
-        fn2["the function"]
-        linux === pciem
-        pciem == "/dev/pciem: a ring of writes,<br/>DMA and interrupt ioctls" ==> ph
-        ph -- "bar0" --> fn2
-        fn2 -- "dma" --> ph
-        fn2 -. "irq" .-> ph
+    subgraph rcg["the root complex"]
+        rc["PcieRootComplex<br/>ecam · mmio · dma"]
     end
-
-    classDef standin fill:#fde68a,stroke:#b45309,color:#000
+    subgraph epg["the endpoint"]
+        ep["PcieEndpoint<br/>configuration space, BAR0,<br/>the MSI-X table"]
+    end
+    subgraph fng["the function"]
+        fn["bar0 · dma · irq0, irq1"]
+    end
+    bus --> rc
+    rc -- "dma" --> bus
+    rc == "the link, down: configuration and register accesses" ==> ep
+    ep == "the link, up: DMA and interrupt messages" ==> rc
+    ep -- "bar0" --> fn
+    fn -- "dma" --> ep
+    fn -. "irq" .-> ep
     classDef pcie fill:#fed7aa,stroke:#c2410c,color:#000
-    class rc,ep,pciem,ph pcie
+    class rc,ep pcie
+```
+
+**Through pciem**:
+
+```mermaid
+flowchart LR
+    subgraph host["the host"]
+        linux["🐧 this machine's Linux<br/>its PCI core and nvme driver,<br/>its memory and its interrupts"]
+    end
+    subgraph rcg["the root complex"]
+        rc["this machine's own<br/>nothing modelled"]
+    end
+    subgraph epg["the endpoint, in two halves"]
+        direction LR
+        pciem["pciem, a kernel module<br/>configuration space, the BARs,<br/>the MSI-X table"]
+        ph["PciemHost<br/>in the SystemC kernel"]
+        pciem == "/dev/pciem, down: a ring of the host's writes" ==> ph
+        ph == "/dev/pciem, up: DMA and interrupt ioctls" ==> pciem
+    end
+    subgraph fng["the function"]
+        fn["bar0 · dma · irq0, irq1"]
+    end
+    linux --> rc
+    rc -- "no link: writes land in pciem's copy of BAR0" --> pciem
+    ph -- "bar0" --> fn
+    fn -- "dma" --> ph
+    fn -. "irq" .-> ph
+    classDef pcie fill:#fed7aa,stroke:#c2410c,color:#000
+    classDef machine fill:#f1f5f9,stroke:#475569,color:#000
+    class ph pcie
+    class linux,rc,pciem machine
 ```
 
 **In the simulation**, the host's bus meets a [PCIe root complex](models/pcie-root-complex.md), the host's end of PCIe: two windows in the address map, one for configuration space and one for the device's registers, and a link down. At the other end a [PCIe endpoint](models/pcie-endpoint.md) wraps the function: it is the configuration space, the BAR and the MSI-X table, and it carries the function's DMA and interrupts up the link. Three hosts have stood here, and none changed the device:
@@ -82,12 +154,15 @@ flowchart LR
 | The host CPU, Zephyr | Zephyr's own PCIe and NVMe drivers, with socpuppet's root complex driver | the [IMSIC](models/imsic.md), the interrupt controller RISC-V servers use | `examples/host_and_ssd_hello.py`, [boards.md](boards.md#with-a-drive) |
 | The host CPU, 🐧 Linux | a stock kernel: `pci-host-ecam-generic` finds the root complex, `nvme` the drive | the IMSIC, by the devicetree's `msi-parent` | `tests/python/test_linux_nvme.py`, [linux.md](linux.md#its-root-on-the-drive) |
 
-**Through pciem**, the host is the Linux you are running on. [pciem](https://github.com/cakehonolulu/pciem) is a kernel module that lets a program be a PCIe device on the machine's own bus: its kernel side plays configuration space, the BARs and the MSI-X table, and hands the program the rest. [`sp.PciemHost`](models/pciem-host.md) is the program's side, inside the SystemC kernel, with the function's three ports on its other face. Endpoint, link, root complex and host CPU are gone, because Linux's are the real ones. The function cannot tell: `PcieEndpoint` and `PciemHost` are both a `PcieFunctionFront` in Python, with the same five parameters, and `connect_the_function` in `python/socpuppet/boards/drive.py` wires either to the function port for port.
+**Through pciem**, the host is the Linux you are running on. [pciem](https://github.com/cakehonolulu/pciem) is a kernel module that lets a program be a PCIe device on the machine's own bus: its kernel side plays configuration space, the BARs and the MSI-X table, and hands the program the rest. [`sp.PciemHost`](models/pciem-host.md) is the program's side, inside the SystemC kernel, with the function's three ports on its other face. Root complex, link and host CPU are gone, because this machine's are the real ones; the endpoint is in two halves, its registers in pciem and its three ports in `PciemHost`. The function cannot tell: `PcieEndpoint` and `PciemHost` are both a `PcieFunctionFront` in Python, with the same five parameters, and `connect_the_function` in `python/socpuppet/boards/drive.py` wires either to the function port for port.
 
 | | In the simulation | Through pciem |
 |---|---|---|
-| Who plays the host | a script, or firmware on the simulated CPU | this machine's Linux, with nothing played |
-| What is modelled | root complex, link, endpoint | the program's side of pciem |
+| The host | a script, or Zephyr or Linux on the simulated CPU, with simulated memory and the IMSIC | this machine's Linux, with nothing played: its PCI core, its nvme driver, its memory and its interrupts |
+| The root complex | `PcieRootComplex`, ours | this machine's own, nothing modelled |
+| The link | two TLM sockets, down and up | none: pciem is in the kernel, and the host's writes land in its copy of BAR0 |
+| The endpoint | `PcieEndpoint`, ours: configuration space, BAR0, the MSI-X table and the three ports | in two halves: pciem's kernel side plays configuration space, the BARs and the MSI-X table, and `PciemHost`, ours, has the three ports, with `/dev/pciem` between them |
+| The function | the same block, on its three ports | the same block, on its three ports |
 | Time | one simulated clock for host and device | the host on the wall's clock, the device on the simulation's, kept together by the pump |
 | Needs | a `dev` build; firmware for the Zephyr and Linux hosts | a build with pciem, on Linux, the module loaded, root for the host's commands |
 | Proves | the device against a driver, deterministically, on every push | the device against a real OS's driver: `mkfs`, `mount`, a file written |
