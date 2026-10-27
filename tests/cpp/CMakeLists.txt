@@ -9,6 +9,7 @@ add_executable(unit_tests
   unit/elf_image_test.cpp
   unit/flash_controller_logic_test.cpp
   unit/interrupt_file_test.cpp
+  unit/iommu_walker_test.cpp
   unit/link_channel_test.cpp
   unit/little_endian_test.cpp
   unit/memory_store_test.cpp
@@ -35,7 +36,7 @@ add_executable(unit_tests
   unit/virtqueue_test.cpp)
 # The tests write their own ELF images, with the library that reads them.
 target_link_libraries(unit_tests PRIVATE
-  socpuppet_core elfio::elfio GTest::gmock_main)
+  socpuppet_core socpuppet_vpvper elfio::elfio GTest::gmock_main)
 # As for the kernel tests below: "tests/cpp/support/elf_file.h".
 target_include_directories(unit_tests PRIVATE ${PROJECT_SOURCE_DIR})
 socpuppet_dev_checks(unit_tests)
