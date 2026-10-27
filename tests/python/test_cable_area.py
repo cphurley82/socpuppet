@@ -1,4 +1,4 @@
-"""🩺 needs_cable, where the cable is required, as it is in CI's nightly runs."""
+"""🔌 needs_cable, where the cable is required, as it is in CI's nightly runs."""
 
 import os
 from pathlib import Path

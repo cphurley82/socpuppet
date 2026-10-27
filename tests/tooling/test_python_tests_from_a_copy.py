@@ -13,7 +13,31 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
+from socpuppet import SlirpUnavailable, slirp
+
 REPO = Path(__file__).resolve().parents[2]
+
+
+def libslirp_loads_here() -> bool:
+    """Whether this machine has a libslirp the package can load."""
+    try:
+        slirp.version()
+    except SlirpUnavailable:
+        return False
+    return True
+
+
+LIBSLIRP_LOADS_HERE = libslirp_loads_here()
+SSH_AND_SCP_ARE_HERE = all(shutil.which(program) for program in ("ssh", "scp"))
+needs_libslirp = pytest.mark.skipif(
+    not LIBSLIRP_LOADS_HERE, reason="this machine lacks libslirp"
+)
+needs_the_cable = pytest.mark.skipif(
+    not (LIBSLIRP_LOADS_HERE and SSH_AND_SCP_ARE_HERE),
+    reason="this machine lacks libslirp, ssh or scp",
+)
 
 
 class TestWhenTheExt4TestRunsFromACopyOfTestsPythonAlone:
@@ -28,15 +52,29 @@ class TestWhenTheExt4TestRunsFromACopyOfTestsPythonAlone:
 
 
 class TestWhenTheCablesTestsRunFromACopyOfTestsPythonAlone:
-    def test_they_skip_saying_this_is_no_checkout(self, tmp_path):
+    """They ask the package what the cable lacks, not the checkout's doctor."""
+
+    @needs_the_cable
+    def test_they_run_and_pass_where_this_machine_has_the_cable(self, tmp_path):
         shutil.copytree(REPO / "tests" / "python", tmp_path / "tests")
 
         run = run_pytest(tmp_path, "tests/test_ethernet_cable.py")
 
         assert run.passed, run.output
+        assert run.skip_reasons == []
+
+    @needs_libslirp
+    def test_where_ssh_is_not_on_the_path_they_skip_saying_so(self, tmp_path):
+        shutil.copytree(REPO / "tests" / "python", tmp_path / "tests")
+
+        run = run_pytest(
+            tmp_path, "tests/test_ethernet_cable.py", without_ssh=True
+        )
+
+        assert run.passed, run.output
         assert run.skip_reasons
         for reason in run.skip_reasons:
-            assert "this is no checkout" in reason
+            assert "ssh is not installed" in reason
 
 
 @dataclass
@@ -54,18 +92,22 @@ class Run:
         ]
 
 
-def run_pytest(directory, test):
+def run_pytest(directory, test, without_ssh=False):
     """Run one file of tests from `directory`, as the wheel's run would.
 
     The package is the source tree's, found as the wheel's would be,
     without the checkout's pyproject.toml to point pytest at it. None of
     CI's SOCPUPPET_REQUIRE_* variables is set, as cibuildwheel passes none.
+    `without_ssh` runs it with a PATH that holds no programs at all, as a
+    machine with no ssh would.
     """
     env = {
         name: value
         for name, value in os.environ.items()
         if not name.startswith("SOCPUPPET_REQUIRE_")
     }
+    if without_ssh:
+        env["PATH"] = str(directory)
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-rs", test],
         cwd=directory,
