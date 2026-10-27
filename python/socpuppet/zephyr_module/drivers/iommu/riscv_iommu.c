@@ -220,7 +220,9 @@ static void queue_command(const struct device *dev, uint64_t first, uint64_t sec
 }
 
 /* Has the IOMMU run what is queued, after a fence, and waits until it has:
- * the commands before the fence are done once the IOMMU is past it.
+ * the commands before the fence are done once the IOMMU is past it. Returns
+ * 0; -EIO if the IOMMU stopped the queue at a command it does not have or
+ * could not read, which it says in CQCSR; or -ETIMEDOUT.
  */
 static int send_commands(const struct device *dev)
 {
@@ -230,7 +232,16 @@ static int send_commands(const struct device *dev)
 	/* What the commands say has to be in memory before the IOMMU reads it. */
 	barrier_dmem_fence_full();
 	write32(dev, CQT, data->command_tail);
-	return wait_for(dev, CQH, UINT32_MAX, data->command_tail);
+	for (int polls = 0; polls < POLLS; polls++) {
+		if (read32(dev, CQH) == data->command_tail) {
+			return 0;
+		}
+		if ((read32(dev, CQCSR) & QUEUE_ERRORS) != 0) {
+			return -EIO;
+		}
+		k_busy_wait(POLL_US);
+	}
+	return -ETIMEDOUT;
 }
 
 /* The device context of `device_id`, in the directory's one table. */
