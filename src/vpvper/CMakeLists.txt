@@ -7,3 +7,14 @@ target_sources(socpuppet_vpvper INTERFACE
   FILE_SET HEADERS BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} FILES
     rvi/iommu_walker.h)
 socpuppet_check_headers(socpuppet_vpvper)
+
+# The RISC-V IOMMU, whose adapter is socpuppet_iommu. clang-tidy holds it to
+# the .clang-tidy beside it, whose checks are about bugs and not names.
+add_library(vpv_iommu STATIC rvi/iommu.cpp)
+target_sources(vpv_iommu PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} FILES
+    rvi/iommu.h
+    rvi/gen/iommu_regs.h)
+target_link_libraries(vpv_iommu
+  PUBLIC socpuppet_vpvper scc::components SystemC::systemc)
+socpuppet_dev_checks(vpv_iommu)

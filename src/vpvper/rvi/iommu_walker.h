@@ -97,7 +97,7 @@ public:
         uint64_t context[device_context_words] = {};
         uint64_t const at = table + ddi(request.device_id, 0) * device_context_size;
         for(unsigned word = 0; word < device_context_words; ++word)
-            if(!load(at + word * 8, context[word]))
+            if(!load(at + uint64_t(word) * 8, context[word]))
                 return {0, iommu_fault_cause::ddt_load_fault};
         uint64_t const tc = context[0], iohgatp = context[1], fsc = context[3];
         if(!(tc & tc_v))

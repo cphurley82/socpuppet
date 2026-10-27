@@ -1,0 +1,8 @@
+# The C++ in here is written for VPV-Peripherals, in MINRES's style, to be
+# offered upstream, so the checks of the rest of the repository, which are
+# Google's names and our idioms, do not apply. These are about bugs alone,
+# less two that are MINRES's idioms: header guards such as _APLIC_H_, and
+# the semicolon after each of SCC's bit-field macros.
+InheritParentConfig: false
+Checks: '-*,bugprone-*,-bugprone-easily-swappable-parameters,-bugprone-reserved-identifier,-clang-diagnostic-extra-semi'
+WarningsAsErrors: '*'

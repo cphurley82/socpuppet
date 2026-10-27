@@ -51,6 +51,7 @@ add_executable(kernel_tests
   contracts/aplic_test.cpp
   contracts/bus_master_test.cpp
   contracts/interrupt_controller_test.cpp
+  contracts/iommu_test.cpp
   contracts/link_test.cpp
   contracts/machine_timer_test.cpp
   contracts/memory_test.cpp
@@ -82,7 +83,8 @@ add_executable(kernel_tests
   platform/virtio_net_test.cpp
   platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE
-  socpuppet_builtin_components socpuppet_models scc::components GTest::gmock)
+  socpuppet_builtin_components socpuppet_models socpuppet_iommu scc::components
+  GTest::gmock)
 # The tests' own headers are included by their path from the top of the
 # repository: "tests/cpp/support/bus_driver.h".
 target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR})
