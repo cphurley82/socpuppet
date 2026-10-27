@@ -151,12 +151,16 @@ class TestWhenAFarEndHasBeenServiced:
 
 
 class TestWhenAFarEndIsDueWhileTheCpuSleeps:
-    def test_it_is_refreshed_by_then(self):
+    def test_it_is_refreshed_before_the_longest_wait_is_up(self):
         platform = a_platform_whose_cpu(sleeps)
         alarm = Alarm(DUE_IN)
 
         assert pumped_until(platform, alarm, lambda: alarm.rang_at is not None)
-        assert alarm.rang_at - alarm.set_at < DUE_IN + SLACK
+        # 💡 A pump that took no notice of it would look again only once
+        # the longest wait was up, the CPU sleeping for longer. Half of it
+        # is room for a busy Mac of CI's, which has taken 0.18 s over a
+        # wait of 0.05.
+        assert alarm.rang_at - alarm.set_at < LONGEST_WAIT / 2
 
 
 class TestWhenThereIsNoFarEnd:
