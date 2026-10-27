@@ -649,6 +649,17 @@ def test_on_a_system_the_doctor_has_no_fix_for_a_missing_need_points_at_the_setu
     assert "docs/setup.md" in fix
 
 
+def test_on_a_system_the_doctor_has_no_fix_for_a_need_with_one_fix_for_every_system_says_it():
+    spam = DOCTOR_MODULE.Need(
+        "spam", lambda: "spam is missing", DOCTOR_MODULE.Fix("eggs")
+    )
+    area = DOCTOR_MODULE.Area("spam", "spam", (spam,))
+
+    (report,) = DOCTOR_MODULE.examine([area], system="Windows")
+
+    assert report.fix == ["eggs"]
+
+
 def test_as_json_each_area_says_its_problems_and_how_to_fix_them(doctor):
     doctor.without("dtc")
     doctor.without("docker")

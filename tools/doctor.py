@@ -59,11 +59,6 @@ ELSEWHERE = Fix(
 )
 
 
-def anywhere(fix: Fix) -> dict[str, Fix]:
-    """A fix that is the same whatever system the doctor runs on."""
-    return {"Linux": fix, "Darwin": fix}
-
-
 @dataclass(frozen=True)
 class Need:
     """One thing an area needs, and what to do when it is missing."""
@@ -71,9 +66,16 @@ class Need:
     name: str
     # What is wrong, or None if nothing is.
     problem: Callable[[], str | None]
-    # What to do about it, by platform.system()'s name. A system it has no
-    # fix for is told ELSEWHERE.
-    fix: Mapping[str, Fix]
+    # What to do about it: the same on every system, or by
+    # platform.system()'s name, and then a system missing from it is told
+    # ELSEWHERE.
+    fix: Fix | Mapping[str, Fix]
+
+    def fix_on(self, system: str) -> Fix:
+        """What to do about it on `system`."""
+        if isinstance(self.fix, Fix):
+            return self.fix
+        return self.fix.get(system, ELSEWHERE)
 
 
 @dataclass(frozen=True)
@@ -140,7 +142,7 @@ def site(url: str) -> Need:
         return f"{host} cannot be reached: {tried.stderr.strip()}"
 
     fix = Fix("check the connection, and HTTPS_PROXY if there is a proxy")
-    return Need(host, problem, anywhere(fix))
+    return Need(host, problem, fix)
 
 
 def python_org_package(version: str) -> str:
@@ -356,50 +358,45 @@ def sudo_asks() -> str | None:
 # (tests/python/pciem_area.py), and then what running the host's commands
 # as root takes. The fixes are Linux's, since only on Linux is any of it a
 # problem, but the first: a machine that is not Linux is told so. Each is
-# said on whatever the doctor runs on, for the machine it looks at may not
-# be that one: in the tests, a Mac or a Linux is pointed at a machine of
-# their own, which is a Linux unless a test takes its /proc away.
+# one Fix, Linux's, whatever platform.system() says: on_linux keeps each
+# from being a problem unless the machine at ROOT is a Linux, and in the
+# tests ROOT is a Linux of their own, even on a Mac, unless a test takes
+# its /proc away.
 NOT_HERE = Fix("nothing here: a real host is a Linux machine's")
 PCIEM_DEVICE = (
     Need(
         "Linux",
         not_linux("pciem is Linux's"),
-        anywhere(NOT_HERE),
+        NOT_HERE,
     ),
     Need(
         "kernel 6.6",
         on_linux(old_kernel),
-        anywhere(Fix("upgrade to a kernel of 6.6 or later")),
+        Fix("upgrade to a kernel of 6.6 or later"),
     ),
     Need(
         "pciem.ko",
         on_linux(pciem_unloaded),
-        anywhere(
-            Fix(
-                "build it with uv run tools/build_pciem.py, then set memory "
-                "aside and load it as docs/setup.md says"
-            )
+        Fix(
+            "build it with uv run tools/build_pciem.py, then set memory "
+            "aside and load it as docs/setup.md says"
         ),
     ),
     Need(
         "/dev/pciem",
         on_linux(pciem_unwritable),
-        anywhere(
-            Fix("give it to your user with a udev rule, as docs/setup.md says")
-        ),
+        Fix("give it to your user with a udev rule, as docs/setup.md says"),
     ),
 )
 PCIEM = (
     *PCIEM_DEVICE,
-    Need("sudo", on_linux(installed("sudo")), anywhere(Fix("sudo", APT))),
+    Need("sudo", on_linux(installed("sudo")), Fix("sudo", APT)),
     Need(
         "sudo without a password",
         on_linux(sudo_asks),
-        anywhere(
-            Fix(
-                "run the tests as root, or let sudo run commands as root "
-                "without a password, as docs/setup.md says"
-            )
+        Fix(
+            "run the tests as root, or let sudo run commands as root "
+            "without a password, as docs/setup.md says"
         ),
     ),
 )
@@ -437,33 +434,29 @@ GUEST = (
     Need(
         "Linux",
         not_linux("the guest is its own kernel's"),
-        anywhere(NOT_HERE),
+        NOT_HERE,
     ),
     *(
-        Need(name, on_linux(installed(name)), anywhere(Fix(apt, APT)))
+        Need(name, on_linux(installed(name)), Fix(apt, APT))
         for name, apt in PCIEM_GUEST.PROGRAMS
     ),
     Need(
         "the running kernel",
         on_linux(kernel_unreadable),
-        anywhere(
-            Fix("let QEMU read it: sudo chmod a+r /boot/vmlinuz-$(uname -r)")
-        ),
+        Fix("let QEMU read it: sudo chmod a+r /boot/vmlinuz-$(uname -r)"),
     ),
     Need(
         "/dev/kvm",
         on_linux(kvm_unwritable),
-        anywhere(
-            Fix(
-                "QEMU runs the guest on KVM: give it to your user until the "
-                "next boot with sudo setfacl -m u:$USER:rw /dev/kvm"
-            )
+        Fix(
+            "QEMU runs the guest on KVM: give it to your user until the "
+            "next boot with sudo setfacl -m u:$USER:rw /dev/kvm"
         ),
     ),
     Need(
         "the kernel's headers",
         on_linux(no_headers),
-        anywhere(Fix("linux-headers-$(uname -r)", APT)),
+        Fix("linux-headers-$(uname -r)", APT),
     ),
 )
 
@@ -655,9 +648,7 @@ def examine(areas: list[Area], system: str = platform.system()) -> list[Report]:
                 Report(
                     area,
                     [problem for _, problem in wrong],
-                    installs(
-                        need.fix.get(system, ELSEWHERE) for need, _ in wrong
-                    ),
+                    installs(need.fix_on(system) for need, _ in wrong),
                 )
             )
         return reports
