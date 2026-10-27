@@ -12,6 +12,7 @@
  * does, and fails a command whose data the host does not take.
  */
 
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -103,6 +104,13 @@ ZTEST(riscv_iommu, test_a_read_into_a_page_the_drive_may_not_write_fails_and_is_
 	zassert_equal(fault.iova, (uintptr_t)buffer, "address %llx",
 		      (unsigned long long)fault.iova);
 	zassert_true(the_buffer_is_all(UNREAD));
+}
+
+ZTEST(riscv_iommu, test_a_page_that_allows_nothing_is_refused)
+{
+	zassert_equal(
+		riscv_iommu_map(iommu, DRIVE, (uintptr_t)buffer, (uintptr_t)buffer, PAGE_SIZE, 0),
+		-EINVAL);
 }
 
 ZTEST_SUITE(riscv_iommu, NULL, start_the_disk, fill_the_buffer, give_the_page_back, NULL);
