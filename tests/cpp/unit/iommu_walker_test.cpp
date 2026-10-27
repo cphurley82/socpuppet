@@ -108,7 +108,8 @@ constexpr std::uint32_t DeviceId(std::uint32_t ddi2, std::uint32_t ddi1,
 
 // A read by some device of some address, for the tests where neither
 // matters.
-constexpr iommu_request kSomeRead{.device_id = 0x21, .iova = 0x8000'1234};
+constexpr iommu_request kSomeRead{
+    .device_id = 0x21, .iova = 0x8000'1234, .is_write = false};
 
 // The same read, by `device_id`.
 constexpr iommu_request SomeReadBy(std::uint32_t device_id) {
@@ -116,6 +117,68 @@ constexpr iommu_request SomeReadBy(std::uint32_t device_id) {
   read.device_id = device_id;
   return read;
 }
+
+// Sv39's page-table entries: the page they name in bits 53:10, and what
+// they allow in the bits below.
+constexpr std::uint64_t kR = 1U << 1;  // read
+constexpr std::uint64_t kW = 1U << 2;  // write
+constexpr std::uint64_t kX = 1U << 3;  // execute
+constexpr std::uint64_t kU = 1U << 4;  // by user mode, which a device is
+constexpr std::uint64_t kA = 1U << 6;  // accessed
+constexpr std::uint64_t kD = 1U << 7;  // dirty
+std::uint64_t Pte(std::uint64_t page, std::uint64_t flags) {
+  return ((page >> 12) << 10) | flags;
+}
+// A page a device may read and write, already accessed and dirty, as
+// Linux's IOMMU driver makes one.
+constexpr std::uint64_t kReadWrite = kV | kR | kW | kU | kA | kD;
+
+// Puts `entry` at the index `vpn` of a page table at `table`.
+void PutPte(Memory& memory, std::uint64_t table, std::uint64_t vpn,
+            std::uint64_t entry) {
+  memory.Put(table + (vpn * 8), entry);
+}
+
+// Where the tests put a device's page tables, from the root down.
+constexpr std::uint64_t kLevel2 = 0x8040'0000;
+constexpr std::uint64_t kLevel1 = 0x8050'0000;
+constexpr std::uint64_t kLevel0 = 0x8060'0000;
+
+// An address's index into each level of an Sv39 table, and its offset into
+// the page. Each index is different, and none is 0, so a walker that
+// indexes a level wrongly finds nothing there.
+constexpr std::uint64_t kVpn2 = 0x002;
+constexpr std::uint64_t kVpn1 = 0x0C5;
+constexpr std::uint64_t kVpn0 = 0x1E3;
+constexpr std::uint64_t kOffset = 0x234;
+constexpr std::uint64_t kIova =
+    (kVpn2 << 30) | (kVpn1 << 21) | (kVpn0 << 12) | kOffset;
+
+// A one-level directory at kRoot, and a device with a context in it whose
+// first stage is Sv39, with its root table at kLevel2; and a read by it of
+// kIova. PutTranslatedDevice puts the context where kOneLevel finds it.
+constexpr iommu_device_directory kOneLevel{.mode = iommu_ddt_mode::one_level,
+                                           .root = kRoot};
+constexpr std::uint32_t kTranslatedDevice = kDdi0;
+constexpr iommu_request kTranslatedRead{
+    .device_id = kTranslatedDevice, .iova = kIova, .is_write = false};
+// And a write.
+constexpr iommu_request kTranslatedWrite{
+    .device_id = kTranslatedDevice, .iova = kIova, .is_write = true};
+void PutTranslatedDevice(Memory& memory) {
+  PutDeviceContext(memory, kRoot, kTranslatedDevice,
+                   {.tc = kV, .fsc = Fsc(FirstStage::kSv39, kLevel2)});
+}
+
+// Puts the tables down to kLevel0 for kIova, and `leaf` as its entry there.
+void PutPage(Memory& memory, std::uint64_t leaf) {
+  PutPte(memory, kLevel2, kVpn2, Pte(kLevel1, kV));
+  PutPte(memory, kLevel1, kVpn1, Pte(kLevel0, kV));
+  PutPte(memory, kLevel0, kVpn0, leaf);
+}
+
+// Where the tests map kIova to, in the tests where it does not matter.
+constexpr std::uint64_t kSomePage = 0x9ABC'D000;
 
 }  // namespace
 
@@ -295,6 +358,268 @@ TEST(WhenADevicesContextAsksForAnSv48FirstStage,
 
   EXPECT_THAT(translation.fault,
               Optional(iommu_fault_cause::ddt_misconfigured));
+}
+
+TEST(WhenAnSv39TableMapsAPageForADevice,
+     ItsRequestGoesToThatPageAtTheSameOffset) {
+  constexpr std::uint64_t kPage = 0x9ABC'D000;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kPage, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_EQ(translation.fault, std::nullopt);
+  EXPECT_EQ(translation.pa, kPage + kOffset);
+}
+
+TEST(WhenAnSv39TableMapsA2MibPageForADevice,
+     ItsRequestGoesToThatPageAtTheSameOffset) {
+  // A leaf one level up maps 2 MiB, and the address's last index is part of
+  // its offset into it.
+  constexpr std::uint64_t kPage = 0x9AC0'0000;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPte(memory, kLevel2, kVpn2, Pte(kLevel1, kV));
+  PutPte(memory, kLevel1, kVpn1, Pte(kPage, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_EQ(translation.fault, std::nullopt);
+  EXPECT_EQ(translation.pa, kPage + (kVpn0 << 12) + kOffset);
+}
+
+TEST(WhenAnSv39TableMapsA1GibPageForADevice,
+     ItsRequestGoesToThatPageAtTheSameOffset) {
+  // A leaf at the root maps 1 GiB, and the address's last two indexes are
+  // part of its offset into it.
+  constexpr std::uint64_t kPage = 0xC000'0000;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPte(memory, kLevel2, kVpn2, Pte(kPage, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_EQ(translation.fault, std::nullopt);
+  EXPECT_EQ(translation.pa, kPage + (kVpn1 << 21) + (kVpn0 << 12) + kOffset);
+}
+
+TEST(WhenTheEntryForAPageIsNotValid, AReadOfItIsRefusedAsAReadPageFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kV));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAPageMayOnlyBeRead, AWriteToItIsRefusedAsAWritePageFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kW));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedWrite);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::write_page_fault));
+}
+
+TEST(WhenTheEntryForAPageIsNotValid, AWriteToItIsRefusedAsAWritePageFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kV));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedWrite);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::write_page_fault));
+}
+
+TEST(WhenAPageMayOnlyBeExecuted, AReadOfItIsRefusedAsAReadPageFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kV | kX | kU | kA));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAPageIsForSupervisorModeOnly,
+     ADevicesReadOfItIsRefusedAsAReadPageFault) {
+  // A request that carries no process ID is a user-mode access.
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kU));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAPageHasNotBeenAccessed, AReadOfItIsRefusedAsAReadPageFault) {
+  // This IOMMU does not set A itself; the driver must have.
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kA));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAPageIsNotDirty, AWriteToItIsRefusedAsAWritePageFault) {
+  // This IOMMU does not set D itself either.
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kD));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedWrite);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::write_page_fault));
+}
+
+TEST(WhenAPageMayBeWrittenButNotRead, AWriteToItIsRefusedAsAWritePageFault) {
+  // W without R is an encoding Sv39 reserves.
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite & ~kR));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedWrite);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::write_page_fault));
+}
+
+TEST(WhenA2MibPageIsNotAlignedTo2Mib, AReadOfItIsRefusedAsAReadPageFault) {
+  // 4 KiB past a 2 MiB boundary.
+  constexpr std::uint64_t kMisaligned = 0x9AC0'1000;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPte(memory, kLevel2, kVpn2, Pte(kLevel1, kV));
+  PutPte(memory, kLevel1, kVpn1, Pte(kMisaligned, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAnAddressIsNotOneSv39CanMap, AReadOfItIsRefusedAsAReadPageFault) {
+  // Sv39 maps 39 bits: bits 63:39 must all be copies of bit 38.
+  constexpr std::uint64_t kBeyondSv39 = kIova | (std::uint64_t{1} << 39);
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation = walker.translate(
+      kOneLevel,
+      {.device_id = kTranslatedDevice, .iova = kBeyondSv39, .is_write = false});
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenNothingAnswersWhereAPageTableEntryShouldBe,
+     AReadIsRefusedAsAReadAccessFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  // The root's entry points at a table that is not there.
+  PutPte(memory, kLevel2, kVpn2, Pte(kLevel1, kV));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault,
+              Optional(iommu_fault_cause::read_access_fault));
+}
+
+TEST(WhenNothingAnswersWhereAPageTableEntryShouldBe,
+     AWriteIsRefusedAsAWriteAccessFault) {
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPte(memory, kLevel2, kVpn2, Pte(kLevel1, kV));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedWrite);
+
+  EXPECT_THAT(translation.fault,
+              Optional(iommu_fault_cause::write_access_fault));
+}
+
+TEST(WhenTheLastLevelOfATablePointsAtAnotherTable,
+     AReadIsRefusedAsAReadPageFault) {
+  // There is no level below the last: its entries must be pages.
+  constexpr std::uint64_t kNoSuchLevel = 0x8070'0000;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kNoSuchLevel, kV));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAPageTableEntryHasAReservedBitSet, AReadIsRefusedAsAReadPageFault) {
+  // Bits 63:54 are for extensions (memory types, contiguous pages) that
+  // this IOMMU does not have; bit 62 would be Svpbmt's.
+  constexpr std::uint64_t kReserved = std::uint64_t{1} << 62;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPage(memory, Pte(kSomePage, kReadWrite) | kReserved);
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation =
+      walker.translate(kOneLevel, kTranslatedRead);
+
+  EXPECT_THAT(translation.fault, Optional(iommu_fault_cause::read_page_fault));
+}
+
+TEST(WhenAnSv39TableMapsAPageInTheUpperHalf,
+     ItsRequestGoesToThatPageAtTheSameOffset) {
+  // Bit 38 set, and so bits 63:39 as well: index 0x100 of the root, the
+  // first of its entries for the upper half.
+  constexpr std::uint64_t kUpperHalfOfTheRoot = 0x100;
+  constexpr std::uint64_t kUpperIova =
+      (~std::uint64_t{0} << 38) | (kVpn1 << 21) | (kVpn0 << 12) | kOffset;
+  Memory memory;
+  PutTranslatedDevice(memory);
+  PutPte(memory, kLevel2, kUpperHalfOfTheRoot, Pte(kLevel1, kV));
+  PutPte(memory, kLevel1, kVpn1, Pte(kLevel0, kV));
+  PutPte(memory, kLevel0, kVpn0, Pte(kSomePage, kReadWrite));
+  const iommu_walker walker{memory.Loader()};
+
+  const iommu_translation translation = walker.translate(
+      kOneLevel,
+      {.device_id = kTranslatedDevice, .iova = kUpperIova, .is_write = false});
+
+  EXPECT_EQ(translation.fault, std::nullopt);
+  EXPECT_EQ(translation.pa, kSomePage + kOffset);
 }
 
 }  // namespace vpvper::rvi
