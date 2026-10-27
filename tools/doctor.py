@@ -660,8 +660,10 @@ def parse(arguments: list[str]) -> argparse.Namespace:
     return parser.parse_args(arguments)
 
 
-def examine(areas: list[Area], system: str = platform.system()) -> list[Report]:
+def examine(areas: list[Area], system: str) -> list[Report]:
     """How each area is, in the order given, with the fixes of `system`.
+
+    `system` is platform.system()'s name for the machine the fixes are for.
 
     The needs are looked at side by side, since some wait on a program, and
     a site that does not answer waits for seconds.
