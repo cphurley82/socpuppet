@@ -80,6 +80,7 @@ struct Iommu::Model {
 Iommu::Iommu(const sc_core::sc_module_name& name)
     : sc_module(name), model_(std::make_unique<Model>(*this)) {
   socket.register_b_transport(this, &Iommu::Configure);
+  socket.register_transport_dbg(this, &Iommu::Look);
   target.register_b_transport(this, &Iommu::Translate);
 }
 
@@ -88,6 +89,14 @@ Iommu::~Iommu() = default;
 void Iommu::Configure(tlm::tlm_generic_payload& transaction,
                       sc_core::sc_time& delay) {
   model_->registers.Access(transaction, delay);
+}
+
+// A debugger reads a register as firmware would, which has no side effects
+// here: nothing happens on a read. A write would be firmware's, with all it
+// sets going, so a debugger may not make one.
+unsigned Iommu::Look(tlm::tlm_generic_payload& transaction) {
+  if (!transaction.is_read()) return 0;
+  return model_->registers.DebugAccess(transaction);
 }
 
 void Iommu::Translate(tlm::tlm_generic_payload& transaction,
