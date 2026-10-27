@@ -19,5 +19,78 @@ addrmap iommu_block {
             field { sw = r; } busy[4:4] = 0;
             field {} ppn[53:10] = 0;
         } ddtp @0x10;
+        reg {
+            name = "cqb";
+            desc = "Command-queue base";
+            regwidth = 64;
+            field {} log2sz_1[4:0] = 0;
+            field {} ppn[53:10] = 0;
+        } cqb @0x18;
+        reg {
+            name = "cqh";
+            desc = "Command-queue head: the next command the IOMMU runs";
+            field { sw = r; } index[31:0] = 0;
+        } cqh @0x20;
+        reg {
+            name = "cqt";
+            desc = "Command-queue tail: where software puts the next command";
+            field {} index[31:0] = 0;
+        } cqt @0x24;
+        reg {
+            name = "fqb";
+            desc = "Fault-queue base";
+            regwidth = 64;
+            field {} log2sz_1[4:0] = 0;
+            field {} ppn[53:10] = 0;
+        } fqb @0x28;
+        reg {
+            name = "fqh";
+            desc = "Fault-queue head: the next record software reads";
+            field {} index[31:0] = 0;
+        } fqh @0x30;
+        reg {
+            name = "fqt";
+            desc = "Fault-queue tail: where the IOMMU writes the next record";
+            field { sw = r; } index[31:0] = 0;
+        } fqt @0x34;
+        reg {
+            name = "cqcsr";
+            desc = "Command-queue control and status";
+            field {} cqen[0:0] = 0;
+            field {} cie[1:1] = 0;
+            field { onwrite = woclr; } cqmf[8:8] = 0;
+            field { onwrite = woclr; } cmd_to[9:9] = 0;
+            field { onwrite = woclr; } cmd_ill[10:10] = 0;
+            field { onwrite = woclr; } fence_w_ip[11:11] = 0;
+            field { sw = r; } cqon[16:16] = 0;
+            field { sw = r; } busy[17:17] = 0;
+        } cqcsr @0x48;
+        reg {
+            name = "fqcsr";
+            desc = "Fault-queue control and status";
+            field {} fqen[0:0] = 0;
+            field {} fie[1:1] = 0;
+            field { onwrite = woclr; } fqmf[8:8] = 0;
+            field { onwrite = woclr; } fqof[9:9] = 0;
+            field { sw = r; } fqon[16:16] = 0;
+            field { sw = r; } busy[17:17] = 0;
+        } fqcsr @0x4C;
+        reg {
+            name = "ipsr";
+            desc = "Interrupt pending status";
+            field { onwrite = woclr; } cip[0:0] = 0;
+            field { onwrite = woclr; } fip[1:1] = 0;
+            field { onwrite = woclr; } pmip[2:2] = 0;
+            field { onwrite = woclr; } pip[3:3] = 0;
+        } ipsr @0x54;
+        reg {
+            name = "icvec";
+            desc = "Interrupt cause to vector: with one line, every cause is on vector 0";
+            regwidth = 64;
+            field { sw = r; } civ[3:0] = 0;
+            field { sw = r; } fiv[7:4] = 0;
+            field { sw = r; } pmiv[11:8] = 0;
+            field { sw = r; } piv[15:12] = 0;
+        } icvec @0x2F8;
     } iommu_regs @0x0;
 };
