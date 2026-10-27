@@ -433,7 +433,7 @@ JOBS = [
     ),
     Job(
         "test",
-        "build the dev tree and run every test",
+        "build the dev tree and run every test but the examples on QBox",
         tiers=(Tier.NIGHTLY,),
         needs=FIRMWARE,
         uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
@@ -571,7 +571,7 @@ JOBS = [
     ),
     Job(
         "qbox",
-        "build and test with QBox's CPU as the second hart, then twister on it",
+        "test with QBox's CPU, Linux's console examples on it, then twister",
         tiers=(Tier.NIGHTLY,),
         needs=("fetch-sdk", "fetch-zephyr", *FIRMWARE, "qbox-build"),
         steps=qbox_steps(),

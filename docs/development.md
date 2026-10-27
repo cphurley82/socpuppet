@@ -36,7 +36,7 @@ PYTHONPATH=python uv run python examples/m0_passthrough.py
 | `tests/cpp/platform/` | composed platforms | one process per test |
 | `tests/python/` | the Python API | `@pytest.mark.platform` tests get a process each |
 | `tests/tooling/` | the lint runner and the build-time checks | each makes a throwaway repository or CMake project |
-| `examples/` | documentation that runs: the shows the README and the 🧪 [labs](labs/README.md) point at | each as a ctest of its own, `example_<name>`, counted as skipped where its firmware is not built; the ones that boot Linux carry the label `long`, which the `quick` and `qbox` test presets leave out, so they run in the nightly `test` job alone |
+| `examples/` | documentation that runs: the shows the README and the 🧪 [labs](labs/README.md) point at | each as a ctest of its own, `example_<name>`, counted as skipped where its firmware is not built; the ones that boot Linux at the console carry the label `qbox` and run on QBox's hart alone, where a boot takes seconds: the `dev` and `quick` test presets leave them out, and the `qbox` test preset runs them, in the nightly `qbox` job; the one with a cable carries `long`, like the pytest marker, and runs on the interpreter in the nightly `test` job, since QBox's hart under the pump is a [loose end](roadmap.md#loose-ends) |
 | `python/socpuppet/zephyr_module/tests/`, `firmware/**/testcase.yaml` | ztest suites and applications that run inside Zephyr, on a board | by twister, with `firmware/twister.py`. Not part of `ctest` |
 | Zephyr's own `tests/` and `samples/` | the board-compliance run: Zephyr's suites on every board | by twister, with `uv run firmware/twister.py --suites`, and in CI's `twister` job |
 

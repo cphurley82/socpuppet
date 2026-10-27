@@ -2,6 +2,10 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-10-26
+
+- **The examples that boot Linux at the console, `linux_hello` and `linux_on_the_drive`, run under ctest on QBox's hart alone**, with the label `qbox`: the `dev` and `quick` test presets leave them out, and the `qbox` test preset, which picks that hart, runs them in the nightly `qbox` job. A boot takes seconds there and minutes on the interpreter, and the interpreter's boots are already covered by the `long` tests of `test_linux.py` and the exit tests. `linux_cable` stays on the interpreter, with the label `long`, in the nightly `test` job: on QBox's hart under the pump, dropbear closes every ssh at the key exchange (the loose end in [roadmap.md](../roadmap.md#loose-ends)), as `ctest --preset qbox` on an Intel Mac showed. ↔ Reverses how all three were first added, on the interpreter in the nightly `test` job, the same day.
+
 ## 2026-10-24
 
 - **M29 is done: `ssh` from this machine reaches the simulated Linux**, over 🔌 `sp.EthernetCable` ([models/ethernet-cable.md](../models/ethernet-cable.md)): Linux takes an address by DHCP, dropbear answers, and this machine's `ssh` runs `uname -a` there and its `scp` sends 256 KiB that `sha256sum` at the console reads back, on the interpreter (4 min) and on QBox's hart (45 s) (`test_m29_exit.py`). `socpuppet linux` plugs a cable in, with ssh at port 2222 ([linux.md](../linux.md#over-ssh)). M17 is next.

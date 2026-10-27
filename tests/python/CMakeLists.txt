@@ -84,15 +84,24 @@ add_test(NAME example_boot_from_flash
 set_tests_properties(example_boot_from_flash
                      PROPERTIES SKIP_RETURN_CODE 77)
 
-# These boot Linux, which takes minutes on the interpreter, so they carry
-# the label `long`, as the pytest marker of that name means the same: the
-# quick and qbox test presets leave them out, and the nightly run of the
-# dev preset runs them (tools/ci.py, the `test` job).
+# These boot Linux: minutes on the interpreter, seconds on QBox's hart. So
+# the two that stay at the console carry the label `qbox` and run on that
+# hart alone: the dev and quick test presets leave them out, and the qbox
+# test preset, which sets SOCPUPPET_CPU=qbox_cpu, runs them (tools/ci.py,
+# the `qbox` job). The one with a cable carries `long`, as the pytest marker
+# of that name means the same, and runs on the interpreter in the nightly
+# run of the dev preset (the `test` job): under the pump, QBox's hart runs
+# ahead of the clock and dropbear closes every ssh at the key exchange
+# (docs/roadmap.md, the loose ends).
+set(label_linux_hello qbox)
+set(label_linux_on_the_drive qbox)
+set(label_linux_cable long)
 foreach(example linux_hello linux_on_the_drive linux_cable)
   add_test(NAME example_${example}
     COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
             ${SOCPUPPET_TEST_PYTHON} examples/${example}.py
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   set_tests_properties(example_${example}
-                       PROPERTIES SKIP_RETURN_CODE 77 LABELS long)
+                       PROPERTIES SKIP_RETURN_CODE 77
+                                  LABELS ${label_${example}})
 endforeach()
