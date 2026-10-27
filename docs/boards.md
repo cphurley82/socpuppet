@@ -35,6 +35,21 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 💡 A PCIe device interrupts with a message, and the board's interrupt controller is one that is sent messages, so the drive's interrupts go to it as they are: identities 32 and 33, written to `0x2400_0000`. [The IMSIC's page](models/imsic.md) has the rest.
 
+### Behind an IOMMU
+
+The host can have an [IOMMU](models/iommu.md) in front of its drive, which confines the drive to the memory firmware gave it: `host(drive_blocks=4096, iommu=True)`, and the shield `socpuppet_host_iommu` after `socpuppet_host_drive`.
+
+| What | Where | Zephyr driver |
+|---|---|---|
+| IOMMU | `0x100E_0000`, a page; its line at the IO die's APLIC, source 24 | `riscv,iommu`, from socpuppet's module |
+
+```sh
+west build -b socpuppet_host --shield "socpuppet_host_drive;socpuppet_host_iommu" my_app -- \
+    -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
+```
+
+The module's driver sets the IOMMU up and, before Zephyr scans the bus, lets the drive through untranslated. With `CONFIG_SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE=y` it gives the drive page tables instead, which map the RAM and each IMSIC's page to themselves, and your application can take pages away and give them back, and read what the drive did wrong, through `<socpuppet/drivers/riscv_iommu.h>`. `tests/python/test_m15_exit.py` runs Zephyr's disk test both ways, unchanged, and the driver's own test, which takes a page away from the drive.
+
 ## With the virtio slots
 
 🎭 The host can have six virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, served twice, to Zephyr and EDK2 by the file system device and to Linux by the 9P transport, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
