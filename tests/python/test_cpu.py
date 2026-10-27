@@ -197,8 +197,9 @@ class TestWhenTheCpuOfABoardReadsItsTimeRegister:
         platform.build()
         platform.poke(start, READ_TIME_AFTER_A_LOOP_THEN_SLEEP, via=cpu.socket)
 
-        # 8,200 instructions take 820 us.
-        platform.run(sp.ms(1))
+        # 8,200 instructions take 820 us on the interpreter, and a little
+        # over a millisecond on QBox's hart, which counts 128 ns each.
+        platform.run(sp.ms(2))
 
         # Unconnected, `time` reads zero. The loop is there so that a
         # connected timer has counted well past that by the time the
