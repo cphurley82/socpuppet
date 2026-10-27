@@ -1956,6 +1956,9 @@ class PcieRootComplex(Component):
     """
 
     implementation = "pcie_root_complex"
+    #: The requester ID of the one device the link has room for: bus 0,
+    #: device 0, function 0. It is the device's ID at an IOMMU too.
+    REQUESTER_ID = 0
     port_specs = (
         target("ecam"),
         target("mmio"),
@@ -2039,11 +2042,10 @@ class PcieRootComplex(Component):
         # requester ID, its bus, device and function numbers. Linux maps a
         # range of requester IDs to the IOMMU's device IDs: all 65536 of
         # them, to the same numbers. socpuppet's binding for Zephyr names
-        # each ID the IOMMU will see in a list, and the one device on the
-        # link is bus 0, device 0, function 0.
+        # each ID the IOMMU will see in a list, and there is one device.
         if dialect == "linux":
             return (f"iommu-map = <0x0 &{iommu} 0x0 0x10000>;",)
-        return (f"iommus = <&{iommu} 0x0>;",)
+        return (f"iommus = <&{iommu} {self.REQUESTER_ID:#x}>;",)
 
 
 class Iommu(Component):

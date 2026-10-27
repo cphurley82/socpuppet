@@ -1,0 +1,9 @@
+# The host with a drive on its PCIe link, and an IOMMU in front of the
+# drive: the shields socpuppet_host_drive and socpuppet_host_iommu, which
+# `socpuppet run` gives it.
+tests:
+  socpuppet.drivers.riscv_iommu:
+    harness: ztest
+    extra_args: SHIELD="socpuppet_host_drive;socpuppet_host_iommu"
+    platform_allow:
+      - socpuppet_host
