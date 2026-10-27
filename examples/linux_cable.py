@@ -153,18 +153,20 @@ def frames_in(capture):
 
 
 if __name__ == "__main__":
-    if lacks := what_the_cable_lacks():
-        if os.environ.get("SOCPUPPET_REQUIRE_CABLE"):
-            sys.exit(lacks)
-        print(lacks)
-        # ctest's code for "could not be run here", which is not a failure.
-        sys.exit(77)
+    # The firmware is looked for first, as every example that boots some
+    # does, so that where it is missing this one says so the same way.
     try:
         board = linux.host_with_linux(IMAGES)
     except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(str(missing))
         print(missing)
+        # ctest's code for "could not be run here", which is not a failure.
+        sys.exit(77)
+    if lacks := what_the_cable_lacks():
+        if os.environ.get("SOCPUPPET_REQUIRE_CABLE"):
+            sys.exit(lacks)
+        print(lacks)
         sys.exit(77)
     console = board.virtio.console
     cpu = board.cpu.component.implementation

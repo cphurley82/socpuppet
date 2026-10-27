@@ -101,9 +101,12 @@ if __name__ == "__main__":
     )
 
     # 🧵 Type at the shell and read the answer, as a test does.
-    for command in ("uname -a", "cat /proc/cpuinfo"):
-        print(f"\n🧵 {command}")
-        print(linux.ask(board, command), end="")
+    try:
+        for command in ("uname -a", "cat /proc/cpuinfo"):
+            print(f"\n🧵 {command}")
+            print(linux.ask(board, command), end="")
+    except TimeoutError as quiet:
+        sys.exit(f"\n❌ {quiet}")
 
     console.write("poweroff\n")
     off = board.platform.run_until(

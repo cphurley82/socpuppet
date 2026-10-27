@@ -152,9 +152,12 @@ if __name__ == "__main__":
         f"{wall:.0f} s on the wall."
     )
 
-    for command in ("cat /proc/partitions", "dmesg | grep -i nvme"):
-        print(f"\n🧵 {command}")
-        print(linux.ask(board, command), end="")
+    try:
+        for command in ("cat /proc/partitions", "dmesg | grep -i nvme"):
+            print(f"\n🧵 {command}")
+            print(linux.ask(board, command), end="")
+    except TimeoutError as quiet:
+        sys.exit(f"\n❌ {quiet}")
 
     console.write("poweroff\n")
     if not platform.run_until(
