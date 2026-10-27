@@ -629,6 +629,41 @@ def test_an_unknown_area_is_refused_and_the_usage_names_every_area(doctor):
         assert area.name in result.stderr
 
 
+# Every kind of machine the firmware is built on: the Zephyr SDK's, and an
+# Intel Mac, which builds it in Docker.
+FIRMWARE_HOSTS = (*BUILD.SDK_HOSTS, "macos-x86_64")
+
+
+def every_need():
+    """The needs of every area, as each kind of machine has them.
+
+    The firmware's areas are made for the machine the doctor runs on, so
+    those of the other kinds are made here.
+    """
+    for area in AREAS:
+        yield from area.needs
+    for host in FIRMWARE_HOSTS:
+        yield from DOCTOR_MODULE.firmware_needs(host)
+        # The parts with an area of their own, for their programs.
+        for part in BUILD.PROGRAMS:
+            yield from DOCTOR_MODULE.needs_of(part, host)
+
+
+@pytest.mark.parametrize("system", ["Linux", "Darwin"])
+def test_every_need_of_every_area_has_a_fix_of_its_own_on_linux_and_on_a_mac(
+    system,
+):
+    # 💡 A need with Linux's fix and no Mac's fails here on any machine, not
+    # only on a Mac's nightly run.
+    told_elsewhere = [
+        need.name
+        for need in every_need()
+        if need.fix_on(system) is DOCTOR_MODULE.ELSEWHERE
+    ]
+
+    assert told_elsewhere == []
+
+
 def test_on_a_system_the_doctor_has_no_fix_for_a_missing_need_points_at_the_setup_guide():
     # 🎓 "Windows" is what platform.system() says there.
     spam = DOCTOR_MODULE.Need(
