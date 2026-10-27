@@ -27,6 +27,18 @@ class TestWhenTheExt4TestRunsFromACopyOfTestsPythonAlone:
         assert "firmware/rootfs/etc/inittab" in reason
 
 
+class TestWhenTheCablesTestsRunFromACopyOfTestsPythonAlone:
+    def test_they_skip_saying_this_is_no_checkout(self, tmp_path):
+        shutil.copytree(REPO / "tests" / "python", tmp_path / "tests")
+
+        run = run_pytest(tmp_path, "tests/test_ethernet_cable.py")
+
+        assert run.passed, run.output
+        assert run.skip_reasons
+        for reason in run.skip_reasons:
+            assert "this is no checkout" in reason
+
+
 @dataclass
 class Run:
     """How a run of pytest went: whether it passed, and what it said."""
@@ -43,15 +55,21 @@ class Run:
 
 
 def run_pytest(directory, test):
-    """Run one file of tests from `directory`, with the source tree's package.
+    """Run one file of tests from `directory`, as the wheel's run would.
 
-    The package is found as the wheel's would be, without the checkout's
-    pyproject.toml to point pytest at it.
+    The package is the source tree's, found as the wheel's would be,
+    without the checkout's pyproject.toml to point pytest at it. None of
+    CI's SOCPUPPET_REQUIRE_* variables is set, as cibuildwheel passes none.
     """
+    env = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith("SOCPUPPET_REQUIRE_")
+    }
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "-rs", test],
         cwd=directory,
-        env={**os.environ, "PYTHONPATH": str(REPO / "python")},
+        env={**env, "PYTHONPATH": str(REPO / "python")},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         encoding="utf-8",

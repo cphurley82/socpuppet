@@ -18,6 +18,8 @@ DOCTOR = Path(__file__).resolve().parents[2] / "tools" / "doctor.py"
 
 def what_the_cable_lacks() -> str | None:
     """What this machine lacks for the cable and ssh, if anything."""
+    if not DOCTOR.exists():
+        return "the doctor is a checkout's, and this is no checkout"
     spec = importlib.util.spec_from_file_location("doctor", DOCTOR)
     doctor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(doctor)
