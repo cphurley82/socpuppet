@@ -53,9 +53,6 @@ LONG_ENOUGH = sp.ms(400_000)
 #: manager finding the kernel on the disk before it tries the network: 9 s
 #: on the wall, and two minutes on the interpreter.
 LONG_ENOUGH_THROUGH_UEFI = sp.ms(600_000)
-#: How long a command typed at the prompt may take to prompt again: `uname`
-#: answers in under a second of the CPU's time.
-ANSWERS_WITHIN = sp.ms(10_000)
 #: How long `poweroff` may take to reach the system controller: busybox
 #: stops every process and unmounts the disk first, a second or two of the
 #: CPU's time.
@@ -77,18 +74,10 @@ def type_and_wait_for_the_prompt(board, command):
     """Type `command` and Enter at the shell, and run until it prompts again.
 
     Gives what the shell said in between, as plain text, without the
-    command's own echo before it or the prompt after it.
+    command's own echo before it or the prompt after it: `linux.ask`, which
+    is a TimeoutError when the shell does not prompt again.
     """
-    console = board.virtio.console
-    said_before = len(console.output)
-    console.write(command + "\n")
-    prompted = board.platform.run_until(
-        lambda: PROMPT.search(plain(console.output[said_before:])),
-        timeout=ANSWERS_WITHIN,
-    )
-    assert prompted, f"The shell did not prompt again after {command!r}"
-    answer = plain(console.output[said_before:]).partition("\n")[2]
-    return answer[: PROMPT.search(answer).start()]
+    return linux.ask(board, command)
 
 
 def switch_off_at_the_prompt(board):

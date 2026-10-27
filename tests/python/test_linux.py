@@ -5,6 +5,7 @@ import functools
 import pytest
 
 import link_trace
+import linux_shell
 import socpuppet as sp
 from cast import (
     FW_JUMP_BIN,
@@ -147,9 +148,7 @@ def linux_images(firmware):
 
     A missing image skips the test.
     """
-    for image in IMAGES:
-        firmware(image)
-    return firmware(LINUX_BIN).parent
+    return linux_shell.linux_images(firmware)
 
 
 @pytest.mark.platform

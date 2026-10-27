@@ -64,6 +64,9 @@ BOOTARGS_ON_THE_DRIVE = f"{_CONSOLE} root=/dev/nvme0n1p1 rw"
 #: How a busybox shell that is logged in as root prompts on the host, by
 #: Alpine's /etc/profile: the host's name, the directory, and a hash.
 PROMPT = re.compile(r"socpuppet:\S+# ")
+#: The prompt as the last thing the shell said, which is when it is ready
+#: for the next command: a command's own output may quote the prompt.
+_PROMPTED = re.compile(PROMPT.pattern + "$")
 #: An escape sequence as the shell dresses what it prints with, to move and
 #: colour a terminal: ESC, `[`, numbers and semicolons, and a letter.
 _ESCAPE_SEQUENCE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -322,7 +325,9 @@ def ask(board: Host[Any], command: str, *, within: int = ANSWERS_WITHIN) -> str:
     said_before = len(console.output)
     console.write(command + "\n")
     prompted = board.platform.run_until(
-        lambda: PROMPT.search(_plain(console.output[said_before:])) is not None,
+        lambda: (
+            _PROMPTED.search(_plain(console.output[said_before:])) is not None
+        ),
         timeout=within,
     )
     if not prompted:
@@ -331,7 +336,7 @@ def ask(board: Host[Any], command: str, *, within: int = ANSWERS_WITHIN) -> str:
             + _plain(console.output[said_before:])
         )
     answer = _plain(console.output[said_before:]).partition("\n")[2]
-    prompt = PROMPT.search(answer)
+    prompt = _PROMPTED.search(answer)
     assert prompt is not None  # it was found above
     return answer[: prompt.start()]
 
