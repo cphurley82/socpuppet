@@ -450,6 +450,8 @@ int riscv_iommu_take_fault(const struct device *iommu, struct riscv_iommu_fault 
 	}
 	const uint64_t *record = records[data->fault_head];
 
+	/* The record is in memory before the tail says so, and is read after. */
+	barrier_dmem_fence_full();
 	fault->cause = record[0] & RECORD_CAUSE;
 	fault->device_id = record[0] >> RECORD_DID_SHIFT;
 	fault->iova = record[2];
