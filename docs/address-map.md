@@ -114,6 +114,28 @@ The interrupt lines of the board with no drive:
 
 A drive adds no line. Its interrupts are messages: identities 32 and 33, one for each of its two vectors, written to `compute.imsic.machine` at `0x2400_0000`. ⚠️ So they are in no table here, which only has wires, and 32 and 33 are all that firmware knows them by. They are in the shield's devicetree, as `socpuppet,msi-identities`.
 
+With an [IOMMU](models/iommu.md) in front of the drive (`host(drive_blocks=..., iommu=True)`), its registers answer on the IO die, the page after the boot flash's controller:
+
+<!-- address-map:host-iommu start -->
+
+| Address | Size | What answers | Its model | Through |
+| --- | --- | --- | --- | --- |
+| `0x100E_0000` | 4 KiB | `io.iommu.socket` | [IOMMU](models/iommu.md) | `compute.bus` from `0x1000_0000` |
+
+<!-- address-map:host-iommu end -->
+
+and it has a line to the IO die's APLIC, the number after the virtio slots':
+
+<!-- interrupts:host-iommu start -->
+
+| Controller | Number | Line |
+| --- | --- | --- |
+| `io.aplic` | 24 | `io.iommu.irq` |
+
+<!-- interrupts:host-iommu end -->
+
+Everything the drive sends up, its DMA and its interrupt messages alike, goes through it on the way to the link, translated by the drive's page tables. Zephyr's images that use it are built with the shield `socpuppet_host_iommu` as well as `socpuppet_host_drive`.
+
 🎭 With its virtio slots (`host(virtio=Virtio())`, [boards/virtio.py](../python/socpuppet/boards/virtio.py)), five stand-ins answer on the IO die, a page apart from `0x1000_1000` as QEMU's `virt` has its own, each a [virtio-mmio](models/virtio-mmio.md) register block of 512 bytes:
 
 <!-- address-map:host-virtio start -->

@@ -118,6 +118,11 @@ class DeviceNode(NamedTuple):
     #: with messages on behalf of other devices. The node then names what
     #: takes them, as `msi-parent`.
     messages: str | None = None
+    #: The port the device's own accesses leave by, its DMA and its
+    #: messages, if they may go through an IOMMU on their way. If one is
+    #: connected there, the node says so as its component's
+    #: `iommu_properties` have it.
+    accesses: str | None = None
     #: What the node's label has after the component's, for a component
     #: with more than one node: `_s` makes `imsic` `imsic_s`.
     suffix: str = ""
@@ -371,6 +376,26 @@ class Component(ABC):
         the node of that page.
         """
         return False
+
+    def translates(self, port: str) -> bool:
+        """Whether accesses arriving at `port` are a device's, to translate.
+
+        True of an IOMMU's way in. A device whose node has `accesses`, and
+        whose accesses arrive here, names this component's node in its own,
+        as `iommu_properties` says.
+        """
+        return False
+
+    def iommu_properties(
+        self, iommu: str, *, dialect: Dialect
+    ) -> tuple[str, ...]:
+        """How this device's node says its accesses go through an IOMMU.
+
+        `iommu` is the label of the IOMMU's node, and `dialect` whose
+        bindings the properties are in. Asked of a component whose node has
+        `accesses`, when an IOMMU is connected there.
+        """
+        return ()
 
     def routes(self, port: str) -> Iterable[tuple[str, int, int | None]]:
         """Where an access arriving at `port` can go next.
@@ -2003,7 +2028,86 @@ class PcieRootComplex(Component):
             # A PCIe device's interrupt is a message, which comes out of
             # `dma` with the device's other writes.
             messages="dma",
+            accesses="dma",
         )
+
+    @override
+    def iommu_properties(
+        self, iommu: str, *, dialect: Dialect
+    ) -> tuple[str, ...]:
+        # A device behind the root complex is known to the IOMMU by its
+        # requester ID, its bus, device and function numbers. Linux maps a
+        # range of requester IDs to the IOMMU's device IDs: all 65536 of
+        # them, to the same numbers. socpuppet's binding for Zephyr names
+        # each ID the IOMMU will see in a list, and the one device on the
+        # link is bus 0, device 0, function 0.
+        if dialect == "linux":
+            return (f"iommu-map = <0x0 &{iommu} 0x0 0x10000>;",)
+        return (f"iommus = <&{iommu} 0x0>;",)
+
+
+class Iommu(Component):
+    """A RISC-V IOMMU: it confines each device to the memory it was given.
+
+    🎓 An IOMMU (input-output memory management unit) is to a device what
+    the MMU is to a program. Every address a device uses goes through page
+    tables the operating system owns, and an access that is not mapped is
+    refused and reported. This one follows the RISC-V IOMMU specification:
+    a device context says which page tables a device's addresses go
+    through, found in a device directory by the device's ID, and two rings
+    in memory carry commands in and fault records out.
+
+    Put it between a device and memory: what the device sends comes in at
+    `target`, and what was translated goes out at `initiator`, with the
+    IOMMU's own reads of its tables and writes of its records. A device's
+    ID is its PCIe requester ID, which a PCIe endpoint marks its accesses
+    with. Firmware reaches its registers at `socket`. `irq` is its
+    interrupt, a line for an interrupt controller's source.
+
+    It has what drivers use: a directory of one to three levels, one stage
+    of translation through Sv39 page tables, the two queues and a wired
+    interrupt. The model is socpuppet's own, written for VPV-Peripherals.
+    """
+
+    implementation = "iommu"
+    port_specs = (
+        target("socket"),
+        target("target"),
+        initiator("initiator"),
+        wire_out("irq", required=False),
+    )
+    #: Its registers, a page.
+    mapped_size = 0x1000
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        return DeviceNode(
+            "iommu",
+            ((reached["socket"].address, self.mapped_size),),
+            (
+                'compatible = "riscv,iommu";',
+                # A device is named to it by one number, its device ID.
+                "#iommu-cells = <1>;",
+            ),
+            # Zephyr's Kconfig sees the short form only.
+            short_interrupts=True,
+        )
+
+    @override
+    def translates(self, port: str) -> bool:
+        return port == "target"
+
+    @override
+    def routes(self, port: str) -> Iterable[tuple[str, int, int | None]]:
+        # What comes in is translated, and goes out at an address only the
+        # device's page tables say. A walk of the address map, which is how
+        # the devicetree finds where a device's interrupt messages go,
+        # takes that address to be the same: ⚠️ firmware that puts a
+        # device's messages through page tables has to map the page they
+        # go to at its own address.
+        return (("initiator", 0, None),) if port == "target" else ()
 
 
 class Aplic(Component):

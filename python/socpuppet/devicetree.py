@@ -316,6 +316,15 @@ def _node(
         )
         if page is not None:
             lines += [f"{indent}\tmsi-parent = <&{labels[page]}>;"]
+    if node.accesses is not None:
+        iommu = _iommu_of(getattr(placed, node.accesses), connections)
+        if iommu is not None:
+            lines += [
+                f"{indent}\t{each}"
+                for each in placed.component.iommu_properties(
+                    label(iommu.path), dialect=dialect
+                )
+            ]
     for child in node.children:
         lines += _node(
             placed, child, connections, addresses, dialect, labels, depth + 1
@@ -354,6 +363,19 @@ def _refuse_one_number_for_two_lines(
                 "number could not tell them apart. Connect one of them to "
                 "a source of another number."
             )
+
+
+def _iommu_of(
+    sender: Port, connections: Collection[Connection]
+) -> Placed | None:
+    """The IOMMU that what leaves `sender` comes into, if one is there."""
+    for each in connections:
+        sink = each.sink
+        if each.source.path == sender.path and sink.placed.component.translates(
+            sink.name
+        ):
+            return sink.placed
+    return None
 
 
 def _message_taker(

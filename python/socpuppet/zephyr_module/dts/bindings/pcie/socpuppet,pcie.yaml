@@ -37,3 +37,11 @@ properties:
       The identities the board sets aside at the IMSIC for the device's
       vectors, in the order of the vectors. The driver programs each into
       the device, which then sends it.
+
+  iommus:
+    type: phandle-array
+    description: |
+      The IOMMU the devices on the link are behind (riscv,iommu), and the
+      device ID it knows each by, its requester ID: one entry for each. It
+      is what has the IOMMU's driver start before this one, which asks it
+      for each ID before it scans the link.

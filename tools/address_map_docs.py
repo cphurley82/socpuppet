@@ -60,6 +60,8 @@ def tables():
     host_board = host.platform
     # How big the drive is changes nothing in a map.
     with_a_drive = host.host(drive_blocks=1).platform
+    # The IOMMU, which goes in front of a drive.
+    with_an_iommu = host.host(drive_blocks=1, iommu=True).platform
     # 🎭 The virtio slots, which the host has only when asked.
     with_virtio = host.host(virtio=Virtio()).platform
     # The SSD comes in whole NAND blocks, and one is the least.
@@ -85,6 +87,9 @@ def tables():
         "address-map:host-drive": address_table(
             only_in(with_a_drive.address_map(), host_board.address_map())
         ),
+        "address-map:host-iommu": address_table(
+            only_in(with_an_iommu.address_map(), with_a_drive.address_map())
+        ),
         "address-map:host-virtio": address_table(
             only_in(with_virtio.address_map(), host_board.address_map())
         ),
@@ -108,6 +113,9 @@ def tables():
         ),
         "interrupts:host": interrupt_table(host_board.interrupt_map()),
         "interrupts:host-ssd": interrupt_table(with_the_ssd.interrupt_map()),
+        "interrupts:host-iommu": interrupt_table(
+            only_in(with_an_iommu.interrupt_map(), with_a_drive.interrupt_map())
+        ),
         "interrupts:host-virtio": interrupt_table(
             only_in(with_virtio.interrupt_map(), host_board.interrupt_map())
         ),

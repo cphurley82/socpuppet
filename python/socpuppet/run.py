@@ -51,9 +51,20 @@ class _Board(NamedTuple):
 def _host(
     shields: Sequence[str], how: boot.Boot | None, cpu: HostCpu | None = None
 ) -> _Stage:
-    """The host, with 🎭 the stand-in drive if its shield is on."""
+    """The host, with 🎭 the drive and an IOMMU if their shields are on."""
+    drive = "socpuppet_host_drive" in shields
+    iommu = "socpuppet_host_iommu" in shields
+    if iommu and not drive:
+        sys.exit(
+            "The shield socpuppet_host_iommu puts the drive behind an IOMMU, "
+            "and the drive is the shield socpuppet_host_drive. Put both on: "
+            "--shield socpuppet_host_drive --shield socpuppet_host_iommu."
+        )
     it = host(
-        cpu=cpu, boot=how, drive_blocks=_DRIVE_BLOCKS if shields else None
+        cpu=cpu,
+        boot=how,
+        drive_blocks=_DRIVE_BLOCKS if drive else None,
+        iommu=iommu,
     )
     return _Stage(it.platform, it.cpu, it.uart, it.syscon)
 
@@ -117,7 +128,9 @@ def _on_a_kit(platform: Platform, cpu: Placed, kit: CpuKit | None) -> _Stage:
 
 #: The boards an image can be run on, by the names Zephyr has for them.
 BOARDS = {
-    "socpuppet_host": _Board(("socpuppet_host_drive",), _host, HOST_CPUS),
+    "socpuppet_host": _Board(
+        ("socpuppet_host_drive", "socpuppet_host_iommu"), _host, HOST_CPUS
+    ),
     "socpuppet_ssd": _Board(("socpuppet_ssd_host",), _ssd),
     "socpuppet_iomgr": _Board((), _iomgr),
 }

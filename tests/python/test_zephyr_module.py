@@ -268,10 +268,16 @@ def compatibles_the_drivers_are_for():
     return found
 
 
+#: The vendors of the module's bindings that Zephyr's own list of prefixes
+#: has: the RISC-V IOMMU's binding is the module's, and its vendor is the
+#: one the specification gives it.
+ZEPHYRS_OWN_VENDORS = {"riscv"}
+
+
 def vendors_zephyr_is_told_of():
-    """The vendors the module gives Zephyr a prefix for."""
+    """The vendors the module gives Zephyr a prefix for, and Zephyr's own."""
     prefixes = ZEPHYR_MODULE / "dts/bindings/vendor-prefixes.txt"
-    return {
+    return ZEPHYRS_OWN_VENDORS | {
         line.split()[0]
         for line in prefixes.read_text().splitlines()
         if line and not line.startswith("#")

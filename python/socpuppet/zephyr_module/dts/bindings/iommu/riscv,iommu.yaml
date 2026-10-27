@@ -1,0 +1,24 @@
+description: |
+  A RISC-V IOMMU, as the RISC-V IOMMU specification describes one: what
+  stands between devices and memory. A device is named to it by one cell,
+  the device ID it knows the device by, which for a PCIe device is its
+  requester ID. socpuppet's has wired interrupts alone.
+
+compatible: "riscv,iommu"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  "#iommu-cells":
+    type: int
+    required: true
+    const: 1
+
+iommu-cells:
+  - id

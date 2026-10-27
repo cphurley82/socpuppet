@@ -24,6 +24,8 @@ from socpuppet.boards.host import (
     IMSIC_SUPERVISOR_BASE,
     IO_BASE,
     IO_SIZE,
+    IOMMU_OFFSET,
+    IOMMU_SOURCE,
     RAM_BASE,
     UART_SOURCE,
     VIRTIO_FIRST_SOURCE,
@@ -31,6 +33,7 @@ from socpuppet.boards.host import (
     WATCHDOG_SOURCE,
     drive_overlay,
     host,
+    iommu_overlay,
     virtio_overlay,
 )
 from socpuppet.boards.manager import add_manager, scripted_manager
@@ -39,6 +42,7 @@ from socpuppet.boards.virtio import VIRTIO_SLOT_STRIDE, Virtio
 from socpuppet.components import (
     Aplic,
     Imsic,
+    Iommu,
     MachineTimer,
     SystemController,
     Watchdog,
@@ -451,9 +455,157 @@ class TestTheZephyrShieldForTheHostsDrive:
         assert dtc_errors(board + drive_overlay(), tmp_path) == ""
 
 
+class TestTheZephyrShieldForTheHostsIommu:
+    def test_its_overlay_is_what_the_host_description_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_iommu/socpuppet_host_iommu.overlay"
+        )
+
+        # When this fails, the docstring of `iommu_overlay` has the command
+        # that writes the file again.
+        assert checked_in.read_text() == iommu_overlay()
+
+    def test_its_overlay_has_every_device_the_iommu_adds_to_the_host(self):
+        added = labels(
+            host(drive_blocks=64, iommu=True).platform.devicetree()
+        ) - labels(host(drive_blocks=64).platform.devicetree())
+
+        assert added
+        assert added <= labels(iommu_overlay())
+
+    def test_its_overlay_adds_to_the_root_complex_what_the_host_has_there(
+        self,
+    ):
+        # The root complex is the drive's shield's, which this one adds to.
+        root_complex = node_of(
+            "io_rc", host(drive_blocks=64, iommu=True).platform.devicetree()
+        )
+
+        added = fragment_of("io_rc", iommu_overlay())
+        assert added
+        assert all(line in root_complex for line in added)
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_the_board_with_both_overlays(
+        self, tmp_path
+    ):
+        board = (
+            ZEPHYR_MODULE / "boards/socpuppet/socpuppet_host/socpuppet_host.dts"
+        ).read_text()
+
+        assert (
+            dtc_errors(board + drive_overlay() + iommu_overlay(), tmp_path)
+            == ""
+        )
+
+
+def message_taker_of(board, dialect):
+    """The label of the node the root complex's `msi-parent` points at."""
+    node = node_of("io_rc", board.platform.devicetree(dialect=dialect))
+    match = re.search(r"msi-parent = <&(\w+)>;", node)
+    assert match, f"no msi-parent in {node}"
+    return match.group(1)
+
+
+def fragment_of(label, overlay):
+    """The lines an overlay adds to the node labelled `label`, by `&label`."""
+    match = re.search(
+        rf"^&{label} \{{\n(.*?)^\}};", overlay, re.MULTILINE | re.DOTALL
+    )
+    assert match, f"the overlay adds nothing to &{label}"
+    return [
+        line.strip() for line in match.group(1).splitlines() if line.strip()
+    ]
+
+
 def labels(devicetree):
     """The labels of the nodes in devicetree source: `io_uart` and so on."""
     return set(re.findall(r"^\s*(\w+): ", devicetree, re.MULTILINE))
+
+
+class TestTheHostWithAnIommu:
+    def test_is_refused_without_a_drive_to_put_behind_it(self):
+        with pytest.raises(ValueError, match="drive_blocks"):
+            host(iommu=True)
+
+    def test_has_its_registers_on_the_io_die_in_the_cpus_address_map(self):
+        [iommu] = [
+            each
+            for each in host(drive_blocks=64, iommu=True).platform.address_map()
+            if each.implementation == Iommu.implementation
+        ]
+
+        assert (iommu.address, iommu.size, iommu.group) == (
+            IO_BASE + IOMMU_OFFSET,
+            Iommu.mapped_size,
+            "io",
+        )
+
+    @pytest.mark.platform
+    def test_its_cpu_reads_the_iommus_capabilities_across_the_link(self):
+        board = host(drive_blocks=64, iommu=True)
+        board.platform.build()
+
+        # The register is 64 bits, and a look at it takes all of them.
+        capabilities = board.platform.peek(
+            IO_BASE + IOMMU_OFFSET, 8, via=board.cpu.socket
+        )
+
+        # The low byte is the version of the specification: 1.0.
+        assert capabilities[0] == 0x10
+
+    def test_has_a_devicetree_node_drivers_know_as_a_riscv_iommu(self):
+        iommu = node_of(
+            "io_iommu", host(drive_blocks=64, iommu=True).platform.devicetree()
+        )
+
+        assert 'compatible = "riscv,iommu";' in iommu
+        # Each device is named to it by one cell: its ID.
+        assert "#iommu-cells = <1>;" in iommu
+
+    def test_its_devicetree_node_has_its_interrupt_at_the_io_dies_aplic(self):
+        iommu = node_of(
+            "io_iommu", host(drive_blocks=64, iommu=True).platform.devicetree()
+        )
+
+        assert "interrupt-parent = <&io_aplic>;" in iommu
+        assert f"interrupts = <{IOMMU_SOURCE} " in iommu
+
+    def test_tells_zephyr_the_drive_is_behind_it_by_its_requester_id(self):
+        tree = host(drive_blocks=64, iommu=True).platform.devicetree()
+
+        # The one device on the link is bus 0, device 0, function 0.
+        assert "iommus = <&io_iommu 0x0>;" in node_of("io_rc", tree)
+
+    def test_tells_linux_every_requester_id_on_the_link_is_its_device_id(self):
+        tree = host(drive_blocks=64, iommu=True).platform.devicetree(
+            dialect="linux"
+        )
+
+        # Requester IDs from 0, 65536 of them, are the IOMMU's device IDs
+        # from 0: the IDs are the same on both sides.
+        assert "iommu-map = <0x0 &io_iommu 0x0 0x10000>;" in node_of(
+            "io_rc", tree
+        )
+
+    @needs_dtc
+    def test_the_devicetree_compiler_accepts_its_devicetree_for_linux(
+        self, tmp_path
+    ):
+        devicetree = host(
+            drive_blocks=64, iommu=True, sbi=True
+        ).platform.devicetree(dialect="linux")
+
+        assert dtc_errors(devicetree, tmp_path) == ""
+
+    @pytest.mark.parametrize("dialect", ["zephyr", "linux"])
+    def test_leaves_the_drives_messages_going_where_they_went_without_it(
+        self, dialect
+    ):
+        assert message_taker_of(
+            host(drive_blocks=64, iommu=True), dialect
+        ) == message_taker_of(host(drive_blocks=64), dialect)
 
 
 class TestTheHostWithADrive:
