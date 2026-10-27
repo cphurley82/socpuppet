@@ -8,6 +8,7 @@ SOCPUPPET_REQUIRE_CABLE=1 fails the run instead, saying why.
 
 import importlib.util
 import os
+import platform
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,7 @@ def what_the_cable_lacks() -> str | None:
     doctor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(doctor)
     (area,) = [area for area in doctor.AREAS if area.name == "cable"]
-    (report,) = doctor.examine([area])
+    (report,) = doctor.examine([area], platform.system())
     return "; ".join(report.problems) or None
 
 

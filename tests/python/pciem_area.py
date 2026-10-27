@@ -15,6 +15,7 @@ SOCPUPPET_REQUIRE_PCIEM=1 fails the run instead, saying why.
 import dataclasses
 import importlib.util
 import os
+import platform
 from pathlib import Path
 
 import pytest
@@ -39,7 +40,9 @@ def what_pciem_lacks(*, as_root: bool = True) -> str | None:
     spec.loader.exec_module(doctor)
     (area,) = [area for area in doctor.AREAS if area.name == "pciem"]
     needs = doctor.PCIEM if as_root else doctor.PCIEM_DEVICE
-    (report,) = doctor.examine([dataclasses.replace(area, needs=needs)])
+    (report,) = doctor.examine(
+        [dataclasses.replace(area, needs=needs)], platform.system()
+    )
     return "; ".join(report.problems) or None
 
 

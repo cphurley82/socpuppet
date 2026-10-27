@@ -53,6 +53,10 @@ class Fix:
 XCODE = Fix("xcode-select --install")
 # For what comes with macOS itself.
 MACOS_HAS_IT = Fix("nothing to install: macOS comes with it")
+# For a system the doctor has no fix of, such as Windows.
+ELSEWHERE = Fix(
+    "nothing the doctor knows of here: docs/setup.md sets up Linux or a Mac"
+)
 
 
 def anywhere(fix: Fix) -> dict[str, Fix]:
@@ -67,7 +71,8 @@ class Need:
     name: str
     # What is wrong, or None if nothing is.
     problem: Callable[[], str | None]
-    # What to do about it, by platform.system()'s name.
+    # What to do about it, by platform.system()'s name. A system it has no
+    # fix for is told ELSEWHERE.
     fix: Mapping[str, Fix]
 
 
@@ -592,7 +597,7 @@ def main() -> int:
     areas = [
         area for area in AREAS if not args.areas or area.name in args.areas
     ]
-    reports = examine(areas)
+    reports = examine(areas, platform.system())
     if args.json:
         print(json.dumps({"areas": [each.as_json() for each in reports]}))
     else:
@@ -628,13 +633,12 @@ def parse(arguments: list[str]) -> argparse.Namespace:
     return parser.parse_args(arguments)
 
 
-def examine(areas: list[Area]) -> list[Report]:
-    """How each area is, in the order given.
+def examine(areas: list[Area], system: str = platform.system()) -> list[Report]:
+    """How each area is, in the order given, with the fixes of `system`.
 
     The needs are looked at side by side, since some wait on a program, and
     a site that does not answer waits for seconds.
     """
-    system = platform.system()
     with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
         looked = [
             [(need, pool.submit(need.problem)) for need in area.needs]
@@ -651,7 +655,9 @@ def examine(areas: list[Area]) -> list[Report]:
                 Report(
                     area,
                     [problem for _, problem in wrong],
-                    installs(need.fix[system] for need, _ in wrong),
+                    installs(
+                        need.fix.get(system, ELSEWHERE) for need, _ in wrong
+                    ),
                 )
             )
         return reports

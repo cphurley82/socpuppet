@@ -629,6 +629,26 @@ def test_an_unknown_area_is_refused_and_the_usage_names_every_area(doctor):
         assert area.name in result.stderr
 
 
+def test_on_a_system_the_doctor_has_no_fix_for_a_missing_need_points_at_the_setup_guide():
+    # 🎓 "Windows" is what platform.system() says there.
+    spam = DOCTOR_MODULE.Need(
+        "spam",
+        lambda: "spam is missing",
+        {
+            "Linux": DOCTOR_MODULE.Fix("eggs"),
+            "Darwin": DOCTOR_MODULE.Fix("eggs"),
+        },
+    )
+    area = DOCTOR_MODULE.Area("spam", "spam", (spam,))
+
+    (report,) = DOCTOR_MODULE.examine([area], system="Windows")
+
+    fix = "\n".join(report.fix)
+    assert "Linux" in fix
+    assert "Mac" in fix
+    assert "docs/setup.md" in fix
+
+
 def test_as_json_each_area_says_its_problems_and_how_to_fix_them(doctor):
     doctor.without("dtc")
     doctor.without("docker")
