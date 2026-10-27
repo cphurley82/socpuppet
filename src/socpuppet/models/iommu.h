@@ -40,6 +40,7 @@ class Iommu : public sc_core::sc_module {
 
   void Configure(tlm::tlm_generic_payload& transaction,
                  sc_core::sc_time& delay);
+  unsigned Look(tlm::tlm_generic_payload& transaction);
   void Translate(tlm::tlm_generic_payload& transaction,
                  sc_core::sc_time& delay);
 

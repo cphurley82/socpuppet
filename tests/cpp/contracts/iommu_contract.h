@@ -813,6 +813,39 @@ TYPED_TEST_P(IommuContract, EnablingAnInterruptThatIsPendingRaisesTheLine) {
   EXPECT_TRUE(after);
 }
 
+// What a debugger, or Python's peek, does: reads a register by debug
+// transport, in no simulated time.
+TYPED_TEST_P(IommuContract, ADebuggerReadsItsRegisters) {
+  std::array<std::uint8_t, 8> bytes{};
+  unsigned read = 0;
+  this->Run(
+      [&](BusDriver& firmware) {
+        read = firmware.DebugRead(this->kCapabilities, bytes);
+      },
+      [](BusDriver&) {});
+
+  EXPECT_EQ(read, bytes.size());
+  // VERSION, bits 7:0, is 1.0.
+  EXPECT_EQ(bytes[0], 0x10U);
+}
+
+// A write is firmware's, with all it sets going, which a debugger's look
+// must not: one that wrote the command queue's tail would run commands.
+TYPED_TEST_P(IommuContract, ADebuggerCannotWriteItsRegisters) {
+  const std::array<std::uint8_t, 4> one{1, 0, 0, 0};
+  unsigned written = 1;
+  std::uint32_t tail = 1;
+  this->Run(
+      [&](BusDriver& firmware) {
+        written = firmware.DebugWrite(this->kCqt, one);
+        tail = firmware.Read32(this->kCqt);
+      },
+      [](BusDriver&) {});
+
+  EXPECT_EQ(written, 0U);
+  EXPECT_EQ(tail, 0U);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     IommuContract, OutOfResetADevicesWriteIsRefusedAndLandsNowhere,
     ADevicesWriteLandsWhereItsPageTablesMapTheAddressItWroteTo,
@@ -832,6 +865,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     ClearingAnIllegalCommandLetsTheQueueCarryOn,
     ACommandQueueNothingAnswersForStopsAtAMemoryFault,
     AFaultRecordNothingTakesIsAMemoryFault,
-    EnablingAnInterruptThatIsPendingRaisesTheLine);
+    EnablingAnInterruptThatIsPendingRaisesTheLine, ADebuggerReadsItsRegisters,
+    ADebuggerCannotWriteItsRegisters);
 
 #endif  // TESTS_CPP_CONTRACTS_IOMMU_CONTRACT_H_
