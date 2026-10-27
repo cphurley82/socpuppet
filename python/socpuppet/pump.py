@@ -30,6 +30,14 @@ LOOK_EVERY = 0.01
 #: The longest a sleeping CPU is waited for in one go, in seconds on the
 #: wall. Firmware with nothing to do may set its timer days ahead.
 LONGEST_WAIT = 1.0
+#: How many quanta ahead of the clock a CPU that works may be. 🎓 A CPU
+#: runs ahead of the clock by up to a quantum before it lets the clock
+#: catch up (`Platform.quantum`), and QBox's hart ends a quantum at the
+#: end of a translation block, a few instructions past it: so one that is
+#: a little past a quantum ahead is working, not asleep. Two is a wide
+#: margin, and all it costs is that a sleep shorter than two quanta is run
+#: through rather than waited for on the wall.
+WORKING_WITHIN_QUANTA = 2
 
 
 class PumpedFarEnd(Protocol):
@@ -90,15 +98,18 @@ def pump(
     looked at each time the CPU sleeps, and every `LOOK_EVERY` while it
     works. So the run may go a little past the moment `until` came true.
 
-    🎓 A CPU that works is never more than a quantum ahead of the rest of
-    the platform (`Platform.quantum`), so a next moment further off than
-    that is a CPU asleep. That stretch is waited out on the wall, and a
-    far end that has something, or is due to, ends the wait.
+    🎓 A CPU that works is never more than `WORKING_WITHIN_QUANTA` ahead
+    of the rest of the platform (`Platform.quantum`), so a next moment
+    further off than that is a CPU asleep. That stretch is waited out on
+    the wall, and a far end that has something, or is due to, ends the
+    wait.
     """
     look_again = 0.0
     while True:
         ahead = platform.time_to_next_activity
-        asleep = ahead is None or ahead > platform.quantum
+        asleep = (
+            ahead is None or ahead > WORKING_WITHIN_QUANTA * platform.quantum
+        )
         if not asleep and time.monotonic() < look_again:
             platform.step()
             continue

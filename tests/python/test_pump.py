@@ -20,7 +20,7 @@ import pytest
 import socpuppet as sp
 from socpuppet.ops import wait
 from socpuppet.pump import LONGEST_WAIT, LOOK_EVERY, PumpedFarEnd, pump
-from socpuppet.time import ns, s, us
+from socpuppet.time import ms, ns, s, us
 
 pytestmark = pytest.mark.platform
 
@@ -173,10 +173,30 @@ class TestWhenThereIsNoFarEnd:
         assert s(0.3) <= platform.time <= s(time.monotonic() - started)
 
 
-def a_platform_whose_cpu(script: Callable) -> sp.Platform:
+class TestWhenACpusNextStepIsJustPastTheQuantum:
+    def test_it_is_taken_as_working_and_its_clock_runs_ahead_of_the_wall(
+        self,
+    ):
+        # 🎓 QBox's hart ends each quantum at the end of a translation
+        # block, a few instructions past the quantum: that is a CPU hard
+        # at work, not one asleep.
+        # 💡 A tenth of a second a step: taken as asleep, each step would
+        # be waited out on the wall and the second would take a second.
+        quantum = ms(100)
+        platform = a_platform_whose_cpu(
+            steps_just_past(quantum), quantum=quantum
+        )
+        started = time.monotonic()
+
+        pump(platform, until=lambda: platform.time >= s(1))
+
+        assert platform.time > 2 * s(time.monotonic() - started)
+
+
+def a_platform_whose_cpu(script: Callable, quantum: int = us(1)) -> sp.Platform:
     """A platform with one bus master, running `script`, and its memory."""
     platform = sp.Platform()
-    platform.quantum = us(1)
+    platform.quantum = quantum
     cpu = platform.add("cpu", sp.ScriptedBusMaster(script=script))
     ram = platform.add("ram", sp.Memory(size=0x100))
     platform.connect(cpu.socket, ram.socket)
@@ -193,6 +213,16 @@ def works():
     """A CPU that is never more than a nanosecond from its next step."""
     while True:
         yield wait(ns(1))
+
+
+def steps_just_past(quantum: int) -> Callable:
+    """A CPU whose every step is a microsecond past `quantum`."""
+
+    def script():
+        while True:
+            yield wait(quantum + us(1))
+
+    return script
 
 
 def pumped_until(
