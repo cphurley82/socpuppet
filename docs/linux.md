@@ -1,6 +1,6 @@
 # Booting Linux 🐧
 
-How to boot Linux on the host and type at its shell, yourself or from Python, share a directory with it, and find out why when it does not boot.
+How to boot Linux on the host and type at its shell, yourself or from Python, share a directory with it, and find out why when it does not boot. 🧪 [The Linux lab](labs/linux-tour.md) is the same ground as a session at the keyboard.
 
 🧦 The kernel is a stock one: Linux's own `defconfig` for RISC-V, with nothing of socpuppet's in it. It runs in supervisor mode on [OpenSBI](boards.md#booting-opensbi), which the host boots the way a server does, and it finds its hardware in the devicetree the host writes. Its root filesystem is [Alpine's](https://alpinelinux.org) mini root, a real distribution's busybox and musl, with Alpine's SSH server added and one file of ours laid over it.
 
@@ -76,7 +76,7 @@ ssh -p 2222 root@localhost          # a shell of its own, beside the console
 - **A key exchange runs on the simulated CPU**: seconds on the interpreter, and less on QBox's hart. The first connection also makes the host key.
 - **Another port**: `--ssh-port 2223`, as for a second Linux at once; `--ssh-port 0` leaves the cable out. Without libslirp, or with the port taken, Linux boots anyway, and a line says why ssh is off. 🩺 `uv run python tools/doctor.py cable` says what this machine lacks.
 - 💡 **Linux reaches out too**: the cable is a router onto this machine's network, so `wget` or `nc` from Linux's shell reaches what this machine reaches, and names resolve through this machine's own resolver. ping goes as far as the gateway, 10.0.2.2.
-- 🧵 **From Python**, `sp.EthernetCable(board.virtio.net, forward={port: 22})` is a far end to pump the platform with (`socpuppet.pump.pump`, or `interact`'s `far_ends`), and `capture="cable.pcap"` writes what goes over it for Wireshark.
+- 🧵 **From Python**, `sp.EthernetCable(board.virtio.net, forward={port: 22})` is a far end to pump the platform with (`socpuppet.pump.pump`, or `interact`'s `far_ends`), and `capture="cable.pcap"` writes what goes over it for Wireshark. `examples/linux_cable.py` does both: this machine's `ssh` runs `uname -a` on Linux, and the capture is left behind.
 
 ## From Python
 
@@ -107,7 +107,7 @@ Linux socpuppet 6.18.57 #3 SMP Mon Oct 19 21:10:53 PDT 2026 riscv64 Linux
 socpuppet:~#
 ```
 
-Run it with `PYTHONPATH=python uv run python linux_hello.py` from the checkout, and `SOCPUPPET_CPU=qbox_cpu` in front for QBox's hart, if your build has it ([qbox-cpu.md](models/qbox-cpu.md)). `socpuppet/linux.py` has the recipe, in a dozen lines.
+`examples/linux_hello.py` is this with the answers printed and the host switched off at the end: run it with `PYTHONPATH=python uv run python examples/linux_hello.py` from the checkout, and `SOCPUPPET_CPU=qbox_cpu` in front for QBox's hart, if your build has it ([qbox-cpu.md](models/qbox-cpu.md)). `socpuppet/linux.py` has the recipe, in a dozen lines.
 
 - **The command line** is the devicetree's `bootargs`, `linux.BOOTARGS`. `console=hvc0` makes the virtio console Linux's console; `earlycon=sbi` sends its first words through OpenSBI's console on the 16550, in `board.uart.output`, until the virtio console is up; `root=/dev/vda rw` is the virtio disk.
 - **The prompt comes at 208 s of the CPU's time on QBox's hart**, 6 s on the wall, **and at 171 s on the interpreter**, 75 to 100 s on the wall: the two harts count time a little differently. 64 MiB of RAM is enough.

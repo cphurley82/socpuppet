@@ -54,6 +54,7 @@ Add to it when something new keeps coming up.
 | 🌱 | the first rung: a reader who knows a little Python and nothing of chips |
 | 🐧 | Linux |
 | 🔌 | a cable to this machine's network: `sp.EthernetCable`, and libslirp behind it (`socpuppet.slirp`) |
+| 🧪 | a lab: a session of commands to run and things to look at (`docs/labs/`) |
 
 ## Workflow
 

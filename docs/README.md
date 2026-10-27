@@ -4,10 +4,11 @@ The map of socpuppet's documentation. Start where you stand; every page says wha
 
 ## 🌱 Never seen a chip from the inside?
 
-Start with the [README](../README.md): it runs a whole chip's boot in a dozen lines of Python, and then a smaller show with no CPU at all. 🚧 A page that needs nothing but Python is on the list for the first release ([vision.md](vision.md), the release gate).
+Start with the [README](../README.md): it runs a whole chip's boot in a dozen lines of Python, and then a smaller show with no CPU at all. Then 🧪 [the labs](labs/README.md), sessions of commands to run with a line under each saying what to look at. 🚧 A page that needs nothing but Python is on the list for the first release ([vision.md](vision.md), the release gate).
 
 ## 🎓 Learning how a chip boots, or building a first virtual platform
 
+- 🧪 [The labs](labs/README.md): sessions at the keyboard, the first of them [Linux end to end](labs/linux-tour.md): boot it, `ssh` in, swap the CPU and the 🎭 stand-ins, and poke at the logs and a debugger.
 - [How socpuppet is put together](architecture.md): the parts, the words used for them (TLM, DMI, the quantum), and why they are shaped the way they are. Its list of models links to a page for each block, which says what real hardware it stands for and what it leaves out.
 - [A PCIe device and its hosts](pcie.md): how a device is modelled, how PCIe lands on SystemC and Python pulls its strings, with the host played in the simulation or by 🐧 this machine's own Linux through pciem, and a command to run each.
 - [Why socpuppet exists](vision.md): who it is for, the aims, and how choices get made.

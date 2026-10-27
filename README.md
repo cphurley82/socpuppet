@@ -146,6 +146,8 @@ PYTHONPATH=python uv run python -m socpuppet linux
 
 🐧 Or the other way round: with pciem, a Linux kernel module, `socpuppet drive` puts the puppet's SSD on this machine's own PCIe bus, and this machine's Linux formats and mounts it ([setup.md](docs/setup.md#6-pciem-optional)).
 
+🧪 [The labs](docs/labs/README.md) are sessions to run at the keyboard, and the first, [Linux end to end](docs/labs/linux-tour.md), is this boot with everything you can do to it: `ssh` in, swap the CPU for QEMU's, swap the 🎭 stand-ins for the real models, and watch what changes.
+
 - 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
 - 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained and a page for every model.
