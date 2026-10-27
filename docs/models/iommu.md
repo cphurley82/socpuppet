@@ -37,7 +37,7 @@ platform.connect(iommu.irq, aplic.source24)
 ### What firmware does
 
 1. It reads **`capabilities`**: version 1.0, a first stage of Sv39, device contexts in the 32-byte base format, and wired interrupts.
-2. It puts the two queues in memory and says where, and how big, in **`cqb`** and **`fqb`**. It turns each on, with its interrupt, in **`cqcsr`** and **`fqcsr`**, and waits until they say they are on.
+2. It puts the two queues in memory and says where, and how big, in **`cqb`** and **`fqb`**. It turns each on, with its interrupt, in **`cqcsr`** and **`fqcsr`**, and waits until they say they are on. Turning a queue on empties it: its head and tail go to 0, which Linux counts on, since it cannot write `cqh`.
 3. It builds a device directory and says where its root is, and how many levels it has, in **`ddtp`**. Out of reset the mode there is Off, and every access is refused. Bare lets every access through untranslated.
 4. For each device it fills in a device context. Its first stage is Bare, which lets the device's accesses through as they are, or Sv39, with the root of the device's page tables. A page a device may use has U set, since a device's access counts as user mode's, and A, and D for a write, since this IOMMU sets neither itself. ⚠️ A device's interrupt messages are its accesses too, and go through the same page tables: map the IMSIC's page (`0x2400_0000` on the host) at its own address, or every interrupt is a fault record. A Bare first stage, which is what Linux gives a device, lets them through by itself.
 5. Each time it changes a table, it says so in the command queue: IODIR.INVAL_DDT for the directory, IOTINVAL.VMA for page tables, and IOFENCE.C to wait for the commands before it. It moves **`cqt`** past them and waits for **`cqh`** to get there, or for a fence with AV to write its word.
@@ -54,7 +54,7 @@ platform.connect(iommu.irq, aplic.source24)
 | `0x000` | `capabilities` | What this IOMMU is. Nothing writes it. |
 | `0x008` | `fctl` | WSI, bit 1, set: it interrupts by wire, which Linux reads before it asks for wires. Nothing writes it. |
 | `0x010` | `ddtp` | The directory's mode, bits 3:0 (Off, Bare, one to three levels), and the page its root table is at, bits 53:10. A mode the specification reserves is not taken, and the register keeps the one it had. `busy` is never seen set. |
-| `0x018`, `0x020`, `0x024` | `cqb`, `cqh`, `cqt` | The command queue: where it is and how big, LOG2SZ in bits 4:0 being one less than the log of its entries; the next command the IOMMU runs; and where software puts the next. |
+| `0x018`, `0x020`, `0x024` | `cqb`, `cqh`, `cqt` | The command queue: where it is and how big, LOG2SZ in bits 4:0 being one less than the log of its entries; the next command the IOMMU runs; and where software puts the next, an index only as wide as the queue. |
 | `0x028`, `0x030`, `0x034` | `fqb`, `fqh`, `fqt` | The fault queue: the same, with software at the head and the IOMMU at the tail. |
 | `0x048` | `cqcsr` | The command queue on and its interrupt on, and what went wrong: CMD_ILL, a command this IOMMU does not have, and CQMF, a command it could not read. Either stops the queue at the command, and is cleared by writing it. |
 | `0x04C` | `fqcsr` | The same for the fault queue: FQOF, a record with no room, and FQMF, a record nothing took. |
