@@ -1,0 +1,56 @@
+diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/include/cpu.h
+--- a/qemu-components/common/include/cpu.h
++++ b/qemu-components/common/include/cpu.h
+@@ -332,7 +332,16 @@
+         // All syncing will be done in end_of_loop_cb
+         m_cpu.kick();
+         // Rearm timer for next time ....
+-        if (!m_finished) {
++        /*
++         * Not while a coroutine CPU is halted with no work: icount with
++         * sleep off warps the clock of an idle CPU straight to the next
++         * timer, and QEMU's loop runs the timers in its own idle wait
++         * without yielding to SystemC, so a deadline that re-armed itself
++         * would fire, kick and re-arm for as long as the CPU sleeps, and a
++         * CPU with no interrupt to come would spin there for ever. It is
++         * armed again when the CPU has work (wait_for_work).
++         */
++        if (!m_finished && (!m_coroutines || m_cpu.can_run())) {
+             rearm_deadline_timer();
+ 
+             /* Take this opportunity to set the time */
+@@ -360,7 +369,13 @@
+         if (m_finished) return;
+ 
+         if (m_coroutines) {
++            /*
++             * A CPU with no work holds no deadline (deadline_timer_cb). It
++             * is armed again once there is work.
++             */
++            m_time_sync->on_halt_pre(true);
+             m_on_sysc.run_on_sysc([this]() { wait(m_external_ev); });
++            if (!m_finished) m_time_sync->on_halt_pre(false);
+         } else {
+             if (m_inst.get_tcg_mode() != QemuInstance::TCG_SINGLE) {
+                 std::unique_lock<std::mutex> lock(m_signaled_lock);
+@@ -520,6 +535,20 @@
+     {
+         m_cpu.register_thread();
+ 
++        /*
++         * Bound each run of the CPU loop by the quantum. The deadline timer
++         * re-arms itself from its callback, but nothing arms it the first
++         * time in coroutine mode: with no timer on the virtual clock, icount
++         * lets the CPU run INT32_MAX ns (over two seconds) before it yields
++         * to SystemC, however short the quantum, and the CPU stops only at
++         * a non-DMI access or an interrupt. A device's event, a reset or an
++         * interrupt that comes meanwhile is seen seconds late. Armed here,
++         * on SystemC's thread once the simulation has started, since arming
++         * kicks the CPU, which notifies an event at once, and that is not
++         * allowed before the simulation runs.
++         */
++        m_time_sync->on_arm_deadline();
++
+         for (; !m_finished;) {
+             prepare_run_cpu();
+             run_cpu_loop();

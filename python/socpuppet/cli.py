@@ -299,10 +299,10 @@ def _linux(cpu: HostCpu | None, root: linux.Root, ssh_port: int) -> None:
         "🧦 Booting 🐧 Linux on the host's "
         f"{board.cpu.component.implementation}. Its shell prompts "
         + (
-            "in seconds."
+            "in half a minute."
             if on_qbox
             else "in a minute or two, after a quiet spell in the middle "
-            f"(in seconds on {QboxCpu.implementation})."
+            f"(in half a minute on {QboxCpu.implementation})."
         )
         + " Ctrl-] leaves.",
         file=sys.stderr,

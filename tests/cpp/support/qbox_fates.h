@@ -139,10 +139,6 @@ inline constexpr std::array kQboxFates{
             "TheThree/WhenACpuWithAnImsicAndNoSupervisorModeWritesARegister"
             "OfThatModes.*",
         .reason = "QBox's CPU always has supervisor mode"},
-    QboxFate{
-        .tests = "WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock.*",
-        .reason = "QBox does not take a reset that comes and goes while a busy "
-                  "CPU is ahead of the clock (docs/upstream.md)"},
 };
 
 // Whether `name` is matched by `pattern`, in which each "*" stands for any

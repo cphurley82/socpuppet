@@ -1414,12 +1414,22 @@ Two more things read in the same file and not acted on:
 ### A target's delay is forgotten, and a lead can pass the quantum
 
 - **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::QuantumKeeperSync::get_local_time` and `set_local_time`, and `ports/initiator.h`, `do_regular_access`.
-- **What is wrong**: QBox keeps the CPU's time in QEMU's clock, which with `icount` counts instructions, and works the CPU's lead over SystemC's clock out from it before each access. What the target adds to the delay is written back to the quantum keeper after the access, and the next access works the lead out from QEMU's clock again, which never had it. So a target's delay is lost to the CPU unless it makes the CPU wait for the kernel then and there. And the lead is held to the quantum only when QEMU's timer for the end of a quantum fires, so an access can arrive with a lead longer than the quantum, and with no quantum at all, with one.
+- **What is wrong**: QBox keeps the CPU's time in QEMU's clock, which with `icount` counts instructions, and works the CPU's lead over SystemC's clock out from it before each access. What the target adds to the delay is written back to the quantum keeper after the access, and the next access works the lead out from QEMU's clock again, which never had it. So a target's delay is lost to the CPU unless it makes the CPU wait for the kernel then and there. And the lead is held to the quantum only when QEMU's timer for the end of a quantum fires, which as a coroutine nothing armed (the next entry), so an access can arrive with a lead longer than the quantum, and with no quantum at all, with one.
 - **How to see it**: the contract's `TimeATargetAddsDelaysTheMastersNextAccess` and `WithNoQuantumEveryAccessArrivesWithNoDelay` on the `qbox_cpu`, without the catch-up below: the second access arrives 2 ns after the first, behind a target that takes 3 µs, and every access arrives 2 ns ahead with no quantum.
 - **What we do**: `src/socpuppet/models/qbox_cpu.cpp` lets the clock catch up when a lead before an access, or after what the target added, is longer than the quantum. ⚠️ A target's delay that stays inside the quantum is still lost: at the boards' 100 µs, a device that takes 3 µs costs QBox's CPU nothing. Time a device against `dbt_rise_cpu`.
 - **Upstream fix**: keep what targets add beside QEMU's clock, as time the CPU owes, and count it in the lead; or move QEMU's virtual clock on by it. And sync before an access whose lead is past the quantum.
 - **Kind**: bug.
 - **When it lands**: the catch-up goes, and the ⚠️ in docs/models/qbox-cpu.md.
+
+### As a coroutine, the quantum's deadline is never armed, so the CPU runs on until its next access or interrupt
+
+- **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::start_of_simulation`, which arms `m_deadline_timer` only when QEMU is on threads of its own (`!m_coroutines`), and `mainloop_thread_coroutine`.
+- **What is wrong**: with `icount`, QEMU runs the CPU up to the next timer on its virtual clock, and the deadline timer, set a quantum ahead, is that timer: its callback kicks the CPU out of its loop and sets it again. As a coroutine nothing sets it the first time, and with no timer at all QEMU's budget is `INT32_MAX` ns, over two seconds. So the CPU yields to SystemC only at an access that does not go through direct memory, or at an interrupt: every 100 µs or so while 🐧 Linux writes to its console, and after hundreds of milliseconds of pure computation, such as ssh's key exchange. Whatever the platform scheduled meanwhile, a reset pulse, a device's event, an interrupt, is seen that late. And a run that keeps to the wall while the CPU sleeps (`socpuppet.pump`) takes such a lead for a sleeping CPU and waits it out: `socpuppet linux --cpu qbox_cpu` booted in 220 s on the wall where a plain run took 6, and an ssh to it took 30 s.
+- **How to see it**: `WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock.TheCpuStartsOverAtItsResetVector` in `tests/cpp/platform/cpu_test.cpp` with `SOCPUPPET_CPU=qbox_cpu` and without the patch: the pulse at 250 µs comes and goes while the CPU is in a loop that ends at 1 ms, and the program counts one start where it should count two. Or pump a boot of Linux and watch `Platform.time_to_next_activity` read hundreds of milliseconds while the CPU is hard at work.
+- **What we do**: `cmake/patches/qbox-coroutine-quantum-deadline.patch` arms the timer at the start of the coroutine's thread, before its first run; from then on its callback arms it again each quantum. Not in `start_of_simulation`, as the other mode does: arming kicks the CPU, which notifies an event at once, which the kernel forbids before the simulation runs. And the callback does not arm it again while a coroutine CPU is halted with no work, which the wake from `wait_for_work` (where `wfi` ends up) does instead: with a timer armed, `icount` with sleep off warps the sleeping CPU's clock straight to it, and QEMU's loop runs the timers in its own idle wait without yielding to SystemC, so a deadline that armed itself again would fire, kick and arm for as long as the CPU slept, and a CPU with no interrupt to come, which is how every program of the hart's suite ends, would spin there for ever at 100% of a core. ⚠️ The CPU then yields every quantum, 782 instructions at the boards' 100 µs, as the DBT-RISE CPU does: a boot of Linux takes 26 s on the wall where it took 6 running unbounded, and the speeds in docs/models/qbox-cpu.md say which were measured which way.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: delete the patch file.
 
 ### A RISC-V CPU's `time` register and its IMSIC's registers cannot be answered from outside QEMU
 
@@ -1446,10 +1456,10 @@ Two more things read in the same file and not acted on:
 - **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::reset_cb`.
 - **What is wrong**: on reset's rising edge QBox queues a job for QEMU's CPU (`async_safe_run`) that resets it, and on the falling edge waits for that job to have run before it ends the reset. With QEMU as a coroutine, a CPU in a loop that is ahead of the clock had not run the job by the end of a 1 ms run, so the falling edge waits all that time and the CPU never starts over. It also takes about 13 s of the host's time to get there.
 - **How to see it**: `WhenAResetPulseComesAndGoesWhileABusyCpuIsAheadOfTheClock.TheCpuStartsOverAtItsResetVector` in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu`: QBox logs "Start reset" at 250 µs and "Hold reset" at 251 µs, never "Finished reset", and the program counted one start where it should have counted two. A reset while the CPU sleeps, or before it starts, works (the bus-master contract).
-- **What we do**: nothing; it is one of the qbox_cpu's recorded fates.
-- **Upstream fix**: in coroutine mode, run the reset on the SystemC thread when the CPU's coroutine next yields, rather than as safe work for a CPU thread there is not.
+- **What we do**: nothing of its own. The loop was one that nothing bounded (the quantum's deadline, two entries above): with the deadline armed the coroutine yields each quantum, the job runs within one, and the test passes, so it is no longer a fate.
+- **Upstream fix**: the deadline's. A reset that has to wait for the coroutine's next yield is still up to a quantum late, which is what any busy CPU model makes of it.
 - **Kind**: bug.
-- **When it lands**: the fate goes.
+- **When it lands**: with the deadline's patch.
 
 ### An atomic to memory without direct access never completes
 

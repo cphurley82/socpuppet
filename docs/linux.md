@@ -35,7 +35,7 @@ PYTHONPATH=python uv run python -m socpuppet linux
 🐧 Linux boots on the host, and your terminal is at its console, as a serial console is: OpenSBI's banner and the kernel's messages scroll by, and then the shell's prompt is yours.
 
 ```text
-🧦 Booting 🐧 Linux on the host's dbt_rise_cpu. Its shell prompts in a minute or two, after a quiet spell in the middle (in seconds on qbox_cpu). Ctrl-] leaves.
+🧦 Booting 🐧 Linux on the host's dbt_rise_cpu. Its shell prompts in a minute or two, after a quiet spell in the middle (in half a minute on qbox_cpu). Ctrl-] leaves.
 🔌 ssh -p 2222 root@localhost reaches Linux's shell once it prompts, with no password. Its host key is new at each boot.
 
 OpenSBI v1.9
@@ -55,7 +55,7 @@ socpuppet:~#
 ```
 
 - **Your keys go to Linux as you press them**, as they would down a serial line: Ctrl-C stops what the shell is running, Tab and the arrow keys are busybox's line editing, and what you type before the prompt waits for it. **Ctrl-] leaves**, as in telnet and `virsh console`, and `poweroff` switches the host off; either ends the command. ⚠️ Leaving ends the simulation too: a SystemC kernel cannot be restarted, so the next run boots afresh.
-- **The quiet spell** is the stock kernel's own start-up, the initialisation of everything `defconfig` builds in, the tracing subsystem's tens of seconds among it: on the interpreter, a minute on the wall with nothing said, and the prompt at about 80 s. `--cpu qbox_cpu` boots in seconds, on a build with QBox ([qbox-cpu.md](models/qbox-cpu.md)).
+- **The quiet spell** is the stock kernel's own start-up, the initialisation of everything `defconfig` builds in, the tracing subsystem's tens of seconds among it: on the interpreter, a minute on the wall with nothing said, and the prompt at about 80 s. `--cpu qbox_cpu` boots in half a minute, on a build with QBox ([qbox-cpu.md](models/qbox-cpu.md)).
 - 💡 **While Linux waits, its clock keeps to the wall's.** While the CPU works, the simulation runs as fast as it can; while it sleeps, waiting for a timer or a key, the simulated clock moves as the wall's does. So `sleep 3` takes three seconds, and a prompt nobody is typing at costs your machine almost nothing. 🎓 QEMU does the same with `-icount sleep=on`. The boot ran faster than its own clock, so `uptime` says two minutes where the wall says one and a half.
 - **Standard output is the machine's console and nothing else**; socpuppet's own lines go to standard error. So it can be scripted: `printf 'uname -a\npoweroff\n' | socpuppet linux` prints the boot and the answer, and ends when Linux switches the host off.
 - ⚠️ **Linux does not know your terminal's size**: 🎭 the virtio console is a stand-in without the size feature, so full-screen programs such as `vi` and `top` assume 80 columns by 24 lines, as on a real serial console. `stty rows 40 cols 120` at the prompt tells it otherwise.
@@ -110,7 +110,7 @@ socpuppet:~#
 `examples/linux_hello.py` is this with the answers printed and the host switched off at the end: run it with `PYTHONPATH=python uv run python examples/linux_hello.py` from the checkout, and `SOCPUPPET_CPU=qbox_cpu` in front for QBox's hart, if your build has it ([qbox-cpu.md](models/qbox-cpu.md)). `socpuppet/linux.py` has the recipe, in a dozen lines.
 
 - **The command line** is the devicetree's `bootargs`, `linux.BOOTARGS`. `console=hvc0` makes the virtio console Linux's console; `earlycon=sbi` sends its first words through OpenSBI's console on the 16550, in `board.uart.output`, until the virtio console is up; `root=/dev/vda rw` is the virtio disk.
-- **The prompt comes at 208 s of the CPU's time on QBox's hart**, 6 s on the wall, **and at 171 s on the interpreter**, 75 to 100 s on the wall: the two harts count time a little differently. 64 MiB of RAM is enough.
+- **The prompt comes at 243 s of the CPU's time on QBox's hart**, 26 s on the wall, **and at 171 s on the interpreter**, 75 to 100 s on the wall: the two harts count time a little differently. 64 MiB of RAM is enough.
 - 🧵 **Type at it** with `console.write`, and Enter is `"\n"`. `poweroff` switches the host off through the system controller, which the kernel's `syscon-poweroff` driver writes; `socpuppet.boards.host.switched_off(board)` says whether it has.
 - **Both harts boot it**, with no change to either. `tests/python/test_m20_exit.py` is the exit test, and `tests/python/linux_shell.py` has the helpers it uses, `a_host_with_linux` and `type_and_wait_for_the_prompt`.
 - 🎭 **Choose the cast.** `host_with_linux(firmware, root="drive", drive=functools.partial(add_ssd, firmware=scripted_firmware().script), manager=functools.partial(add_manager, script=scripted_manager().script))` puts a Python script in the SSD's CPU's place, or the manager's, as [boards.md](boards.md#the-whole-cast-three-firmwares) does for Zephyr; a CPU that is a script needs no image. `trace=True` records everything that crosses the link between the dies in `platform.trace`.
