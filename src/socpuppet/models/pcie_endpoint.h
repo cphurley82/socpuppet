@@ -139,14 +139,15 @@ class PcieEndpoint : public sc_core::sc_module {
     return 0;
   }
 
-  // The function's DMA goes up the link as it is, once the host has let
-  // the device be a bus master.
+  // The function's DMA goes up the link once the host has let the device
+  // be a bus master, marked with who sent it.
   void FromFunction(tlm::tlm_generic_payload& transaction,
                     sc_core::sc_time& delay) {
     if (!registers_.IsBusMaster()) {
       transaction.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
       return;
     }
+    const AsFromRequester from_this_function{transaction, requester_id_};
     to_host->b_transport(transaction, delay);
   }
 
@@ -201,6 +202,8 @@ class PcieEndpoint : public sc_core::sc_module {
 
   sc_core::sc_signal<bool> tied_low_{"tied_low"};
   PcieEndpointRegisters registers_;
+  // Who the function is on the link: bus 0, device 0, function 0.
+  std::uint16_t requester_id_ = 0;
   // Messages waiting to go up the link, oldest first.
   std::deque<PcieEndpointRegisters::Message> outbox_;
   sc_core::sc_event send_;

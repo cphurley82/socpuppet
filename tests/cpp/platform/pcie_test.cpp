@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <systemc>
 #include <tlm>
@@ -189,6 +190,10 @@ constexpr std::uint32_t kVector = 1;
 // late enough for the host to have set the endpoint up first.
 sc_core::sc_time LineRisesAt() { return {10, sc_core::SC_NS}; }
 
+// When the function's DMA starts, in the tests where it does: after the
+// host has made its configuration accesses at time 0, which take none.
+sc_core::sc_time DmaStartsAt() { return {10, sc_core::SC_NS}; }
+
 // What a test varies in setting vector 1 up: which bits of the command
 // register the host switches on, and where the vector's messages go.
 struct VectorOne {
@@ -346,21 +351,40 @@ TEST(WhenAnAccessInTheWindowIsOutsideBar0, ItGetsAnAddressError) {
 TEST(WhenTheFunctionWritesToHostMemoryAndIsABusMaster, TheWriteLandsThere) {
   constexpr std::uint64_t kSomewhere = HostWithAnEndpoint::kMemoryBase + 0x100;
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
+  HostWithAnEndpoint fixture{{.host =
+                                  [](PcieHost& host) {
+                                    host.Command(kEndpoint,
+                                                 PcieHost::kBusMastering);
+                                  },
+                              .function =
+                                  [&](BusDriver& function) {
+                                    function.WaitFor(DmaStartsAt());
+                                    function.Write(kSomewhere, written);
+                                  }}};
+
+  fixture.platform.Run();
+
+  EXPECT_EQ(fixture.HostMemory(kSomewhere), written);
+}
+
+TEST(WhenTheFunctionWritesToTheHostsBus,
+     TheWriteArrivesMarkedAsFromBus0Device0Function0) {
   HostWithAnEndpoint fixture{
       {.host =
            [](PcieHost& host) {
              host.Command(kEndpoint, PcieHost::kBusMastering);
            },
        .function =
-           [&](BusDriver& function) {
-             // Later, so that the host has set the endpoint up.
-             function.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
-             function.Write(kSomewhere, written);
+           [](BusDriver& function) {
+             function.WaitFor(DmaStartsAt());
+             function.Write32(HostWithAnEndpoint::kMessagesBase, 0x1234);
            }}};
 
   fixture.platform.Run();
 
-  EXPECT_EQ(fixture.HostMemory(kSomewhere), written);
+  EXPECT_THAT(fixture.messages,
+              ::testing::ElementsAre(::testing::Field(
+                  &RecordedAccess::requester_id, ::testing::Optional(0))));
 }
 
 TEST(WhenTheFunctionWritesToHostMemoryAndIsNotABusMaster,

@@ -2,11 +2,14 @@
 #define TESTS_CPP_SUPPORT_RECORDING_TARGET_H_
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include <systemc>
 #include <tlm>
 #include <tlm_utils/simple_target_socket.h>
+
+#include "socpuppet/models/pcie_link.h"
 
 // One access as a target saw it arrive.
 struct RecordedAccess {
@@ -17,6 +20,8 @@ struct RecordedAccess {
   sc_core::sc_time kernel_time;
   // What a write carried. Empty for a read.
   std::vector<std::uint8_t> written;
+  // Which PCIe function sent it, if it came up a PCIe link.
+  std::optional<std::uint16_t> requester_id;
 
   // When the access happened, as the master sees time.
   sc_core::sc_time Time() const { return kernel_time + delay; }
@@ -49,7 +54,8 @@ class RecordingTarget : public sc_core::sc_module {
          .written = transaction.is_write()
                         ? std::vector<std::uint8_t>(
                               data, data + transaction.get_data_length())
-                        : std::vector<std::uint8_t>{}});
+                        : std::vector<std::uint8_t>{},
+         .requester_id = socpuppet::RequesterIdOf(transaction)});
     delay += latency_;
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }

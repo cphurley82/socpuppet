@@ -2,6 +2,7 @@
 #define SOCPUPPET_MODELS_PCIE_LINK_H_
 
 #include <cstdint>
+#include <optional>
 
 #include <systemc>
 #include <tlm>
@@ -23,8 +24,8 @@ namespace socpuppet {
 // configuration access carries this extension, and its address is an
 // offset into those registers.
 //
-// Not built yet: a packet also says which device sent it, and that will
-// ride along here too once something needs to know.
+// A packet a function sends up the link also says who sent it, and that
+// rides along too, as PcieRequesterId below.
 struct PcieConfigurationAccess : tlm::tlm_extension<PcieConfigurationAccess> {
   tlm::tlm_extension_base* clone() const override {
     return new PcieConfigurationAccess(*this);
@@ -58,6 +59,49 @@ inline bool IsConfigurationAccess(const tlm::tlm_generic_payload& transaction) {
   const PcieConfigurationAccess* marker = nullptr;
   transaction.get_extension(marker);
   return marker != nullptr;
+}
+
+// Which function sent a transaction up a link: its requester ID, which is
+// its bus, device and function numbers as bus << 8 | device << 3 |
+// function. An IOMMU looks a device up by it.
+struct PcieRequesterId : tlm::tlm_extension<PcieRequesterId> {
+  explicit PcieRequesterId(std::uint16_t requester) : id(requester) {}
+  tlm::tlm_extension_base* clone() const override {
+    return new PcieRequesterId(*this);
+  }
+  void copy_from(const tlm::tlm_extension_base& other) override {
+    id = static_cast<const PcieRequesterId&>(other).id;
+  }
+
+  std::uint16_t id;
+};
+
+// Marks a transaction as sent by the function with requester ID `id` for
+// as long as this is alive: send it up a link meanwhile. The transaction is
+// the caller's again afterwards, unmarked.
+class AsFromRequester {
+ public:
+  AsFromRequester(tlm::tlm_generic_payload& transaction, std::uint16_t id)
+      : transaction_(transaction), marker_(id) {
+    transaction_.set_extension(&marker_);
+  }
+  ~AsFromRequester() { transaction_.clear_extension(&marker_); }
+  AsFromRequester(const AsFromRequester&) = delete;
+  AsFromRequester& operator=(const AsFromRequester&) = delete;
+
+ private:
+  tlm::tlm_generic_payload& transaction_;
+  PcieRequesterId marker_;
+};
+
+// Which function sent a transaction that came up a link, or nothing if it
+// does not say.
+inline std::optional<std::uint16_t> RequesterIdOf(
+    const tlm::tlm_generic_payload& transaction) {
+  const PcieRequesterId* requester = nullptr;
+  transaction.get_extension(requester);
+  if (requester == nullptr) return std::nullopt;
+  return requester->id;
 }
 
 }  // namespace socpuppet
