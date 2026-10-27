@@ -485,6 +485,13 @@ GUEST = (
 )
 
 
+#: Where socpuppet.slirp.places() looks for libslirp after where this
+#: machine says it is: Homebrew's is not where an Apple silicon Mac looks
+#: for libraries. A copy, since the doctor cannot import the package before
+#: socpuppet is built; tests/python/test_slirp_contract.py keeps it in step.
+SLIRP_OTHER_PLACES = ("/opt/homebrew/lib/libslirp.0.dylib",)
+
+
 AREAS = (
     Area(
         "build",
@@ -566,12 +573,9 @@ AREAS = (
         "cable",
         "a cable to this machine's network, and ssh to Linux",
         (
-            # Looked for where socpuppet.slirp.places() looks, which the
-            # doctor cannot import before socpuppet is built: Homebrew's
-            # is not where an Apple silicon Mac looks for libraries.
             Need(
                 "libslirp",
-                loadable("slirp", "/opt/homebrew/lib/libslirp.0.dylib"),
+                loadable("slirp", *SLIRP_OTHER_PLACES),
                 {
                     "Linux": Fix("libslirp-dev", APT),
                     "Darwin": Fix("libslirp", BREW),

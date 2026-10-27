@@ -9,9 +9,11 @@ plays its frames by hand with dpkt, with no platform at all.
                      ◀── frames ──
 """
 
+import importlib.util
 import re
 import socket
 import time
+from pathlib import Path
 
 import dpkt
 import pytest
@@ -22,6 +24,8 @@ from cable_area import needs_cable
 from sockets import a_free_port
 from socpuppet import slirp
 
+#: tools/doctor.py, which a checkout has and the wheel's run does not.
+DOCTOR = Path(__file__).resolve().parents[2] / "tools" / "doctor.py"
 #: The guest's MAC: that of the 🎭 virtio network device.
 GUEST_MAC = ethernet.mac("02:00:5e:00:53:01")
 #: How long, on the wall, a test waits for what it waits for, so that
@@ -41,6 +45,19 @@ class TestWhereLibslirpIsLookedFor:
         # 🎓 Which is not where a Mac looks for libraries.
         assert "/opt/homebrew/lib/libslirp.0.dylib" in slirp.places()
 
+    @pytest.mark.skipif(
+        not DOCTOR.is_file(),
+        reason=f"There is no {DOCTOR} here: it is not in the package.",
+    )
+    def test_the_doctor_looks_in_the_same_places_besides_this_machines(
+        self, monkeypatch
+    ):
+        # 🩺 The doctor cannot import the package before it is built, so it
+        # has a copy of the places, which this keeps in step.
+        monkeypatch.setattr(slirp, "find_library", lambda name: None)
+
+        assert slirp.places() == list(the_doctor().SLIRP_OTHER_PLACES)
+
 
 class TestWhenLibslirpIsNotInstalled:
     def test_using_it_fails_saying_how_to_install_it(
@@ -52,6 +69,14 @@ class TestWhenLibslirpIsNotInstalled:
 
         with pytest.raises(sp.SlirpUnavailable, match=r"doctor\.py cable"):
             slirp.version()
+
+
+def the_doctor():
+    """tools/doctor.py as a module, loaded by path as it is no package."""
+    spec = importlib.util.spec_from_file_location("doctor", DOCTOR)
+    doctor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(doctor)
+    return doctor
 
 
 @needs_cable
