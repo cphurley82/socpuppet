@@ -44,6 +44,7 @@ struct Iommu::Model {
   explicit Model(Iommu& owner) : owner_(owner) {
     iommu_.rst_i.bind(reset_tied_low_);
     iommu_.dma_o.bind(out_);
+    iommu_.irq_o.bind(owner.irq);
     out_.register_b_transport(this, &Model::PassOn);
   }
 

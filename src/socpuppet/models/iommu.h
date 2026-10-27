@@ -15,11 +15,12 @@ namespace socpuppet {
 // its operating system gave it. Every access a device makes comes in at
 // `target`, marked with who sent it, its PCIe requester ID; it is looked up
 // by that in a device directory, translated through that device's page
-// tables, and goes out at `initiator`, which the IOMMU's own reads of its
-// tables go out of too. An access that is not allowed, or that does not say
-// who sent it, is refused. Firmware reaches its registers at `socket`.
-//
-// 🚧 Not built yet: the command and fault queues, and `irq`.
+// tables, and goes out at `initiator`, which the IOMMU's own reads and
+// writes of memory go out of too. An access that is not allowed is
+// refused, and the IOMMU writes a fault record to its fault queue and
+// raises `irq`; one that does not say who sent it is refused with no
+// record, since there is no device to name in it. Firmware reaches its
+// registers at `socket`, and sends commands through a queue in memory.
 //
 // The model is ours, written for VPV-Peripherals' rvi/ directory to be
 // offered upstream (src/vpvper/rvi/iommu.h). This class is the adapter that

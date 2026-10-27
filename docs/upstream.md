@@ -97,6 +97,16 @@ Each entry says:
 - **Kind**: build.
 - **When it lands**: link the target, and drop the include path.
 
+### A bit field assigned another value's same field takes the whole word
+
+- **Where**: `src/common/util/bit_field.h`, `BitFieldMember`.
+- **What is wrong**: `BitFieldMember` has an `operator=(T)` that sets its own bits, and the copy assignment the compiler writes for it besides, which copies `value`, the whole word the union stores. So `a.mode = b.mode`, where `a` and `b` are two values of the same register type, picks the copy assignment and sets every bit of `a` to `b`'s, not its mode alone.
+- **How to see it**: `IommuContract.AWriteToDdtpCannotMakeItBusy` in `tests/cpp/contracts/iommu_contract.h`, with `r_ddtp.iommu_mode = written.iommu_mode` in the `ddtp` write callback of `src/vpvper/rvi/iommu.cpp`: the busy bit the test writes reads back set.
+- **What we do**: no patch. `src/vpvper/rvi/iommu.cpp` converts a field to a number on its way, `r_ddtp.iommu_mode = static_cast<uint64_t>(written.iommu_mode)`, which picks `operator=(T)`.
+- **Upstream fix**: define the copy assignment to copy the field's bits alone, `operator=(T(other))`.
+- **Kind**: bug.
+- **When it lands**: the casts can go.
+
 ## SystemC
 
 [accellera-official/systemc](https://github.com/accellera-official/systemc), pinned at `febde7a3` (after 3.0.2) in `cmake/Dependencies.cmake`, the commit QBox builds. Without QBox it is built from source and linked statically. With QBox, socpuppet links the shared library QBox built, so that a process holds one SystemC kernel.

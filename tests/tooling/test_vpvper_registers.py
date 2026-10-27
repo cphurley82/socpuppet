@@ -25,9 +25,24 @@ class Register:
 
     offset: int
     width: int
-    #: Each field's name, lowest bit and width, lowest bit first.
+    #: Each field's name, lowest bit and width, lowest bit first. A register
+    #: that is one field from end to end is declared as a plain integer in a
+    #: register file, with no name for the field, so its field is WHOLE.
     fields: tuple[tuple[str, int, int], ...]
     reset: int
+
+
+#: The name of the field of a register that is one field from end to end.
+WHOLE = "(whole)"
+
+
+def named(
+    fields: list[tuple[str, int, int]], width: int
+) -> tuple[tuple[str, int, int], ...]:
+    """Fields lowest first, with a field that is the whole register as WHOLE."""
+    if len(fields) == 1 and fields[0][1:] == (0, width):
+        return ((WHOLE, 0, width),)
+    return tuple(sorted(fields, key=lambda field: field[1]))
 
 
 def from_the_map(rdl: Path) -> dict[str, Register]:
@@ -39,11 +54,14 @@ def from_the_map(rdl: Path) -> dict[str, Register]:
     for node in root.top.descendants():
         if not isinstance(node, RegNode):
             continue
-        fields = sorted(node.fields(), key=lambda field: field.lsb)
+        fields = list(node.fields())
+        width = node.get_property("regwidth")
         registers[node.inst_name] = Register(
             offset=node.absolute_address,
-            width=node.get_property("regwidth"),
-            fields=tuple((f.inst_name, f.lsb, f.width) for f in fields),
+            width=width,
+            fields=named(
+                [(f.inst_name, f.lsb, f.width) for f in fields], width
+            ),
             reset=sum((f.get_property("reset") or 0) << f.lsb for f in fields),
         )
     return registers
@@ -66,6 +84,9 @@ def from_the_register_file(header: Path) -> dict[str, Register]:
                 r"BF_FIELD\((\w+), (\d+), (\d+)\)", body
             )
         ]
+    for width, name in re.findall(r"^\s*uint(\d+)_t r_(\w+);", text, re.M):
+        widths[name] = int(width)
+        fields[name] = [(WHOLE, 0, int(width))]
     resets = {
         name: int(reset.rstrip("UL"), 0)
         for name, reset in re.findall(
@@ -76,7 +97,7 @@ def from_the_register_file(header: Path) -> dict[str, Register]:
         name: Register(
             offset=int(offset.rstrip("UL"), 0),
             width=widths[name],
-            fields=tuple(sorted(fields[name], key=lambda field: field[1])),
+            fields=named(fields[name], widths[name]),
             reset=resets[name],
         )
         for name, offset in re.findall(r"addResource\((\w+), (\w+)\);", text)
