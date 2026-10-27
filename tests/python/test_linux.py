@@ -66,6 +66,12 @@ class TestWhenAnImageForTheRootOnTheDriveIsMissing:
         )
 
 
+class TestWhenAnIommuIsAskedForWithTheRootOnVirtio:
+    def test_it_is_refused_for_want_of_a_drive_to_put_behind_it(self, tmp_path):
+        with pytest.raises(ValueError, match='root="drive"'):
+            linux.host_with_linux(tmp_path, root="virtio", iommu=True)
+
+
 @pytest.fixture
 def a_host_with_its_root_on_the_drive(firmware):
     """The host `root="drive"` builds, from the images the build left.
