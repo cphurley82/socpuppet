@@ -56,7 +56,7 @@ It has three jobs.
 
 ## What it leaves out
 
-- **Everything about the link** that the [root complex](pcie-root-complex.md) leaves out too: packets, training, errors, and who sent what.
+- **Everything about the link** that the [root complex](pcie-root-complex.md) leaves out too: packets, training and errors. What it sends up does say who sent it: its DMA and its interrupt messages carry its requester ID, which it takes from the host's configuration writes to it. A real function learns only its bus and device numbers that way; this one is a single function and takes its function number from them too.
 - **More than one of anything.** One function, one BAR. No expansion ROM, no I/O ports.
 - **Other interrupts.** No interrupt pin and no plain MSI, only MSI-X. With MSI-X off, a rising line is not an interrupt at all.
 - **Other capabilities.** The list holds MSI-X and nothing else: no power management and no PCI Express capability, which real devices also have and some drivers look for. The registers underneath can take more (`PcieEndpointRegisters::AddCapability`), read-only for now, so adding one is a few lines when a driver asks.

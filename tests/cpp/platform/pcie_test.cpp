@@ -529,6 +529,24 @@ TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
   EXPECT_EQ(Received(fixture.messages), Messages(1));
 }
 
+TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
+     ItsMessageIsMarkedAsFromBus0Device0Function0) {
+  HostWithAnEndpoint fixture{
+      {.host =
+           [](PcieHost& host) {
+             const PcieHost::Msix msix = SetUpVectorOne(host);
+             host.MaskVector(msix, kVector, false);
+             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+           },
+       .line = RaiseTheLineOnce}};
+
+  fixture.platform.Run();
+
+  EXPECT_THAT(fixture.messages,
+              ::testing::ElementsAre(::testing::Field(
+                  &RecordedAccess::requester_id, ::testing::Optional(0))));
+}
+
 TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
      TheStatusRegisterSaysAMasterAbortWasReceived) {
   // Outside everything on the host's bus.
