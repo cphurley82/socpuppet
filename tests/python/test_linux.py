@@ -182,3 +182,65 @@ def run_until_opensbi_speaks(board):
         lambda: bool(board.uart.output), timeout=SPEAKS_WITHIN
     )
     assert spoke, "OpenSBI said nothing on the UART"
+
+
+class AConsole:
+    """🎭 A console for a shell that answers from a script."""
+
+    def __init__(self):
+        self.output = ""
+        self.typed = ""
+
+    def write(self, text):
+        self.typed += text
+
+
+class APlatform:
+    """🎭 A platform whose run prints `prints` on `console`, then asks."""
+
+    def __init__(self, console, prints):
+        self.console = console
+        self.prints = prints
+
+    def run_until(self, condition, timeout=None):
+        self.console.output += self.prints
+        return bool(condition())
+
+
+class ABoard:
+    """🎭 A host with Linux at its virtio console, as `linux.ask` sees it."""
+
+    class Virtio:
+        pass
+
+    def __init__(self, prints):
+        self.virtio = ABoard.Virtio()
+        self.virtio.console = AConsole()
+        self.platform = APlatform(self.virtio.console, prints)
+
+
+class TestWhenAskedAtThePrompt:
+    def test_the_answer_is_what_the_shell_said_between_echo_and_prompt(self):
+        board = ABoard(prints="uname -a\r\nLinux spam\r\nsocpuppet:~# ")
+
+        answer = linux.ask(board, "uname -a")
+
+        assert answer == "Linux spam\r\n"
+        assert board.virtio.console.typed == "uname -a\n"
+
+    def test_the_terminals_escape_sequences_are_left_out(self):
+        board = ABoard(
+            prints="ls\r\n\x1b[1;36mspam\x1b[m\r\nsocpuppet:~# \x1b[6n"
+        )
+
+        answer = linux.ask(board, "ls")
+
+        assert answer == "spam\r\n"
+
+
+class TestWhenTheShellDoesNotPromptAgain:
+    def test_it_is_a_timeout_that_names_the_command(self):
+        board = ABoard(prints="spam\r\n")
+
+        with pytest.raises(TimeoutError, match="spam"):
+            linux.ask(board, "spam")

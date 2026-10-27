@@ -39,6 +39,7 @@ from socpuppet.boards.host import (
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import DRIVE_BLOCKS_PER_NAND_BLOCK, Ssd, add_ssd
 from socpuppet.boards.virtio import SECTOR, Virtio
+from socpuppet.time import ms
 
 #: The kernel, as the flat Image `fw_jump` jumps to, and its root filesystem:
 #: Alpine's mini root as an ext4 image, which `firmware/build.py linux`
@@ -63,6 +64,12 @@ BOOTARGS_ON_THE_DRIVE = f"{_CONSOLE} root=/dev/nvme0n1p1 rw"
 #: How a busybox shell that is logged in as root prompts on the host, by
 #: Alpine's /etc/profile: the host's name, the directory, and a hash.
 PROMPT = re.compile(r"socpuppet:\S+# ")
+#: An escape sequence as the shell dresses what it prints with, to move and
+#: colour a terminal: ESC, `[`, numbers and semicolons, and a letter.
+_ESCAPE_SEQUENCE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+#: How long a command typed at the prompt may take to prompt again, in
+#: simulated time: `uname -a` answers in under a second of the CPU's time.
+ANSWERS_WITHIN = ms(10_000)
 #: Where the root filesystem can be: 🎭 the virtio disk, or the drive.
 type Root = Literal["virtio", "drive"]
 
@@ -298,3 +305,37 @@ def built(image: pathlib.Path) -> pathlib.Path:
             f"{_BUILT_BY[image.name]}`, which takes a while the first time."
         )
     return image
+
+
+def ask(board: Host[Any], command: str, *, within: int = ANSWERS_WITHIN) -> str:
+    """Type `command` at Linux's shell, and give back what it answered.
+
+    `board` is a host with Linux at its prompt on the virtio console. The
+    answer is what the shell printed between the command's own echo and
+    the next prompt, as plain text: the escape sequences a shell dresses
+    its output with, to move and colour a terminal, are left out. A shell
+    that does not prompt again within `within` of simulated time is a
+    TimeoutError that names the command.
+    """
+    assert board.virtio is not None  # Linux's console is a virtio one
+    console = board.virtio.console
+    said_before = len(console.output)
+    console.write(command + "\n")
+    prompted = board.platform.run_until(
+        lambda: PROMPT.search(_plain(console.output[said_before:])) is not None,
+        timeout=within,
+    )
+    if not prompted:
+        raise TimeoutError(
+            f"The shell did not prompt again after {command!r}. It said:\n"
+            + _plain(console.output[said_before:])
+        )
+    answer = _plain(console.output[said_before:]).partition("\n")[2]
+    prompt = PROMPT.search(answer)
+    assert prompt is not None  # it was found above
+    return answer[: prompt.start()]
+
+
+def _plain(text: str) -> str:
+    """`text` without the escape sequences a terminal moves and colours by."""
+    return _ESCAPE_SEQUENCE.sub("", text)
