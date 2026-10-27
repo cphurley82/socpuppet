@@ -52,6 +52,7 @@ platform.connect(iommu.irq, aplic.source24)
 | Offset | Register | |
 |---|---|---|
 | `0x000` | `capabilities` | What this IOMMU is. Nothing writes it. |
+| `0x008` | `fctl` | WSI, bit 1, set: it interrupts by wire, which Linux reads before it asks for wires. Nothing writes it. |
 | `0x010` | `ddtp` | The directory's mode, bits 3:0 (Off, Bare, one to three levels), and the page its root table is at, bits 53:10. A mode the specification reserves is not taken, and the register keeps the one it had. `busy` is never seen set. |
 | `0x018`, `0x020`, `0x024` | `cqb`, `cqh`, `cqt` | The command queue: where it is and how big, LOG2SZ in bits 4:0 being one less than the log of its entries; the next command the IOMMU runs; and where software puts the next. |
 | `0x028`, `0x030`, `0x034` | `fqb`, `fqh`, `fqt` | The fault queue: the same, with software at the head and the IOMMU at the tail. |

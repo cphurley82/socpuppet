@@ -12,6 +12,13 @@ addrmap iommu_block {
             field { sw = r; } pas[37:32] = 56;
         } capabilities @0x0;
         reg {
+            name = "fctl";
+            desc = "Features control: interrupts are wired (WSI), little-endian, and nothing writes it";
+            field { sw = r; } be[0:0] = 0;
+            field { sw = r; } wsi[1:1] = 1;
+            field { sw = r; } gxl[2:2] = 0;
+        } fctl @0x8;
+        reg {
             name = "ddtp";
             desc = "Device Directory Table Pointer";
             regwidth = 64;
