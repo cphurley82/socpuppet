@@ -108,6 +108,7 @@ from socpuppet.components import (
     D2dLink,
     DbtRiseCpu,
     Imsic,
+    Iommu,
     MachineTimer,
     Memory,
     Ns16550,
@@ -183,6 +184,12 @@ ECAM_OFFSET = 0x10_0000
 ECAM_SIZE = 0x10_0000
 PCIE_WINDOW_OFFSET = 0x120_0000
 PCIE_WINDOW_SIZE = 0x10_0000
+#: With an IOMMU: where its registers are, counted from the start of the IO
+#: die's window, the page after the boot flash's controller; and which
+#: source of the IO die's APLIC its line is, the number after the virtio
+#: slots'.
+IOMMU_OFFSET = 0x0E_0000
+IOMMU_SOURCE = 24
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
 #: firmware writes one into the drive for each vector, and that is the
@@ -249,6 +256,9 @@ class HostDrive[Drive: PcieDrive](NamedTuple):
     ssd: Drive
     #: The host's end of the PCIe link the SSD is on.
     root_complex: Placed
+    #: What the SSD's accesses go through on their way to memory, if the
+    #: host was described with one (`iommu=True`).
+    iommu: Placed | None
 
 
 class Host[Drive: PcieDrive](NamedTuple):
@@ -301,6 +311,7 @@ def host(
     ram: int = RAM_SIZE,
     sbi: bool = False,
     virtio: Virtio | None = None,
+    iommu: bool = False,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -315,6 +326,7 @@ def host[Drive: PcieDrive](
     ram: int = RAM_SIZE,
     sbi: bool = False,
     virtio: Virtio | None = None,
+    iommu: bool = False,
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -328,6 +340,7 @@ def host(
     ram: int = RAM_SIZE,
     sbi: bool = False,
     virtio: Virtio | None = None,
+    iommu: bool = False,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -384,6 +397,11 @@ def host(
     IMSIC's page for supervisor mode, since neither of those says where.
     Without it nobody has said, and Zephyr's driver says where when it
     reads that.
+
+    With `iommu=True`, the drive's accesses go through an IOMMU on the IO
+    die (`sp.Iommu`), which confines the drive to the memory firmware gave
+    it. It needs a drive to put behind it, so `drive_blocks` too. Without
+    it the drive reaches all of memory, as it always has.
     """
     if boot is not None and ram < RAM_SIZE:
         raise ValueError(
@@ -396,6 +414,11 @@ def host(
             "The host was given a `drive` and not told how big it is. "
             "Say how many 512-byte blocks it holds: "
             "host(drive_blocks=4096, drive=...)."
+        )
+    if iommu and drive_blocks is None:
+        raise ValueError(
+            "The host was given an IOMMU and no drive to put behind it. "
+            "Give it a drive too: host(drive_blocks=4096, iommu=True)."
         )
     named_by = "SOCPUPPET_CPU" if cpu is None else "The host's cpu"
     chosen = cpu or os.environ.get("SOCPUPPET_CPU", DbtRiseCpu.implementation)
@@ -485,6 +508,7 @@ def host(
                 io,
                 blocks=drive_blocks,
                 add=drive or add_behavioral_drive,
+                iommu=iommu,
             )
         ),
         manager=placed_manager,
@@ -628,20 +652,36 @@ def _drive[Drive: PcieDrive](
     *,
     blocks: int,
     add: AddDrive[Drive],
+    iommu: bool,
 ) -> HostDrive[Drive]:
-    """Describe a PCIe root complex on the IO die, and the SSD on its link."""
+    """Describe a PCIe root complex on the IO die, and the SSD on its link.
+
+    With `iommu`, what the SSD sends up goes through an IOMMU.
+    """
     root_complex = place.add("rc", PcieRootComplex())
     io.bus.map(root_complex.ecam, base=ECAM_OFFSET, size=ECAM_SIZE)
     io.bus.map(
         root_complex.mmio, base=PCIE_WINDOW_OFFSET, size=PCIE_WINDOW_SIZE
     )
     # What the drive sends up goes the way the APLIC's messages do: its
-    # DMA to the RAM, and its interrupt messages to the IMSIC's page.
-    platform.connect(root_complex.dma, io.up.add_input())
+    # DMA to the RAM, and its interrupt messages to the IMSIC's page. With
+    # an IOMMU, through it, messages too: it translates whatever the drive
+    # sends.
+    sends_up = root_complex.dma
+    placed_iommu = None
+    if iommu:
+        placed_iommu = place.add("iommu", Iommu())
+        io.bus.map(placed_iommu.socket, base=IOMMU_OFFSET)
+        platform.connect(root_complex.dma, placed_iommu.target)
+        platform.connect(
+            placed_iommu.irq, getattr(io.aplic, f"source{IOMMU_SOURCE}")
+        )
+        sends_up = placed_iommu.initiator
+    platform.connect(sends_up, io.up.add_input())
     ssd = add(
         platform, root_complex, blocks=blocks, group=platform.group("ssd")
     )
-    return HostDrive(ssd, root_complex)
+    return HostDrive(ssd, root_complex, placed_iommu)
 
 
 def switched_off(board: Host[Any]) -> bool:
@@ -704,6 +744,38 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
         \t}};
         }};
         """
+    )
+
+
+def iommu_overlay(board: Host[Any] | None = None) -> str:
+    """The devicetree that the host with an IOMMU has more than with a drive.
+
+    It is the overlay of the Zephyr shield `socpuppet_host_iommu`, which
+    goes on after `socpuppet_host_drive`'s: the IOMMU, and in the root
+    complex's node which device IDs the IOMMU knows its devices by
+    (`iommus`), which is what has Zephyr's driver for the IOMMU start
+    before the one for the root complex.
+
+    `board` is a host with a drive and an IOMMU, and by default the host
+    with 🎭 the stand-in drive. The shield's copy is checked in, and a test
+    holds it to this. To write the file again, print what this returns into
+    it, with no newline added, as for `drive_overlay`.
+    """
+    if board is None:
+        board = host(drive_blocks=1, iommu=True)
+    drive = board.drive
+    assert drive is not None
+    assert drive.iommu is not None
+    root_complex = drive.root_complex
+    behind = "\n".join(
+        f"\t{each}"
+        for each in root_complex.component.iommu_properties(
+            devicetree.label(drive.iommu.path), dialect="zephyr"
+        )
+    )
+    return (
+        board.platform.devicetree_overlay([drive.iommu], via=board.cpu.socket)
+        + f"\n&{devicetree.label(root_complex.path)} {{\n{behind}\n}};\n"
     )
 
 

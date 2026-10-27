@@ -355,7 +355,7 @@ target_sources(socpuppet_models INTERFACE
     models/virtio_net.h
     models/virtio_rng.h)
 target_link_libraries(socpuppet_models INTERFACE
-  socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu
+  socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_iommu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
   socpuppet_spi_flash socpuppet_watchdog
   $<$<BOOL:${SOCPUPPET_HAS_QBOX}>:socpuppet_qbox_cpu>)

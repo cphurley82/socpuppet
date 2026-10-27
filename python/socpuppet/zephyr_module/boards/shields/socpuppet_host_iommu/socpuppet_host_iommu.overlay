@@ -1,0 +1,15 @@
+/ {
+	soc {
+		io_iommu: iommu@100e0000 {
+			compatible = "riscv,iommu";
+			reg = <0x0 0x100e0000 0x0 0x1000>;
+			#iommu-cells = <1>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <24 1 4>;
+		};
+	};
+};
+
+&io_rc {
+	iommus = <&io_iommu 0x0>;
+};

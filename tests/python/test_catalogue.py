@@ -52,6 +52,7 @@ EXAMPLES = [
     sp.FlashController(),
     sp.IdealNand(blocks=4),
     sp.Imsic(),
+    sp.Iommu(),
     sp.MachineTimer(),
     sp.Memory(size=0x100),
     sp.MsiReceiver(),

@@ -21,6 +21,7 @@
 #include "socpuppet/models/flash_controller.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/imsic.h"
+#include "socpuppet/models/iommu.h"
 #include "socpuppet/models/machine_timer.h"
 #include "socpuppet/models/memory.h"
 #include "socpuppet/models/msi_receiver.h"
@@ -55,6 +56,7 @@
 namespace socpuppet {
 
 static_assert(AplicSlot<Aplic>);
+static_assert(IommuSlot<Iommu>);
 static_assert(MemorySlot<Memory>);
 static_assert(MemorySlot<Rom>);
 static_assert(VirtioDeviceSlot<Virtio9p>);
@@ -229,6 +231,15 @@ Registry BuiltinComponents() {
                      .blocks = static_cast<std::uint32_t>(
                          parameters.Required("blocks", kNandCount))});
     std::vector<Port> ports{TargetPort("socket", module->socket)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("iommu", [](const char* name, Parameters&) {
+    auto module = std::make_unique<Iommu>(name);
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        TargetPort("target", module->target),
+        InitiatorPort("initiator", module->initiator),
+        WireSourcePort("irq", module->irq, /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("imsic", [](const char* name, Parameters& parameters) {

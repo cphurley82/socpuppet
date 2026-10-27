@@ -83,8 +83,7 @@ add_executable(kernel_tests
   platform/virtio_net_test.cpp
   platform/transport_test.cpp)
 target_link_libraries(kernel_tests PRIVATE
-  socpuppet_builtin_components socpuppet_models socpuppet_iommu scc::components
-  GTest::gmock)
+  socpuppet_builtin_components socpuppet_models scc::components GTest::gmock)
 # The tests' own headers are included by their path from the top of the
 # repository: "tests/cpp/support/bus_driver.h".
 target_include_directories(kernel_tests PRIVATE ${PROJECT_SOURCE_DIR})

@@ -174,6 +174,23 @@ class TestWhenTheRunCommandIsGivenAShieldTheHostDoesNotTake:
         assert "socpuppet_host_drive" in line
 
 
+class TestWhenTheRunCommandIsGivenTheIommusShieldWithoutTheDrives:
+    def test_it_fails_in_one_line_that_names_the_drives_shield(self, tmp_path):
+        result = run_socpuppet(
+            "run",
+            str(a_program(tmp_path)),
+            "--board",
+            "socpuppet_host",
+            "--shield",
+            "socpuppet_host_iommu",
+            check=False,
+        )
+
+        assert result.returncode != 0
+        [line] = result.stderr.strip().splitlines()
+        assert "socpuppet_host_drive" in line
+
+
 class TestWhenTheRunCommandIsGivenAnImageThatIsNotThere:
     def test_it_fails_in_one_line_that_names_the_file(self, tmp_path):
         result = run_socpuppet(
