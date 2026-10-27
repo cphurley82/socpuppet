@@ -194,10 +194,16 @@ class PcieEndpoint : public sc_core::sc_module {
         const PcieEndpointRegisters::Message message = outbox_.front();
         outbox_.pop_front();
         // An interrupt message is a 32-bit write of the vector's data to
-        // its address, little-endian like everything on this bus.
+        // its address, little-endian like everything on this bus, and
+        // marked with who sent it, as DMA is.
         std::array data = LittleEndianBytes(message.data);
+        tlm::tlm_generic_payload transaction;
+        SetUpAccess(transaction, tlm::TLM_WRITE_COMMAND, message.address, data);
+        const AsFromRequester from_this_function{transaction, requester_id_};
+        sc_core::sc_time delay = sc_core::SC_ZERO_TIME;
+        to_host->b_transport(transaction, delay);
         // Nobody answering is what the bus calls a master abort.
-        if (Transport(to_host, tlm::TLM_WRITE_COMMAND, message.address, data) ==
+        if (transaction.get_response_status() ==
             tlm::TLM_ADDRESS_ERROR_RESPONSE) {
           registers_.NoteMasterAbort();
         }

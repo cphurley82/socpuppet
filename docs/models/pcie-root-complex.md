@@ -54,9 +54,9 @@ In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for
 
 ## What it leaves out
 
-- **The link itself.** No packets, lanes, training, flow control or errors. The link is a pair of ordinary TLM sockets, and a transaction on it is marked only with whether it is a configuration access.
+- **The link itself.** No packets, lanes, training, flow control or errors. The link is a pair of ordinary TLM sockets, and a transaction on it is marked only with whether it is a configuration access and for which function, and, coming up, with which function sent it (its requester ID).
 - **A tree.** One device sits on the link, and it is function 0 of device 0 on bus 0. There are no root ports, bridges or switches, and no bus beyond the first.
-- **Who sent it.** 🚧 A real packet names its sender, which is what lets a host confine a device to its own memory. Nothing here carries or checks that yet.
+- **Checking who sent it.** What comes up the link names its sender, and the root complex passes it up untouched; 🚧 confining a device to its own memory is the IOMMU's job, behind `dma`.
 - **Translation.** An address means the same on the link as on the host's bus.
 - **Legacy.** No I/O ports and no interrupt pins.
 - **DMI.** The direct memory interface does not cross the link. A debugger's look does: `platform.peek` and GDB see the device's registers through the memory window, and its configuration space through the other.
