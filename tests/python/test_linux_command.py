@@ -57,6 +57,25 @@ class TestWhenTheRootIsAskedForOnTheDrive:
         assert "uv run firmware/build.py zephyr" in said
 
 
+class TestWhenAnIommuIsAskedForWithTheRootOnVirtio:
+    def test_it_fails_in_one_line_that_says_to_put_the_root_on_the_drive(
+        self, tmp_path
+    ):
+        ran = run_socpuppet(
+            "linux",
+            "--root",
+            "virtio",
+            "--iommu",
+            check=False,
+            SOCPUPPET_FIRMWARE_DIR=str(tmp_path),
+        )
+
+        assert ran.returncode != 0
+        said = ran.stderr.strip()
+        assert "\n" not in said
+        assert "--root drive" in said
+
+
 @needs_dtc
 @pytest.mark.skipif(_core.has_qbox, reason="this build has QBox's CPU")
 class TestWhenItIsAskedForQboxsCpuInABuildWithoutIt:

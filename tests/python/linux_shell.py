@@ -149,16 +149,18 @@ def a_host_with_the_bootchain_and_the_initramfs(firmware, *, drive_blocks):
     return board
 
 
-def a_host_with_its_root_on_the_drive(firmware):
+def a_host_with_its_root_on_the_drive(firmware, *, iommu=False):
     """M8's board, with Linux on the host and its root on the SSD.
 
     As `socpuppet.linux` boots it (`root="drive"`), from the directory the
     `firmware` fixture finds the images in, so that a missing one skips
-    the test.
+    the test. With `iommu=True`, the drive is behind an IOMMU.
     """
     for image in (INITRAMFS_CPIO, MANAGER, SSD):
         firmware(image)
-    return linux.host_with_linux(linux_images(firmware), root="drive")
+    return linux.host_with_linux(
+        linux_images(firmware), root="drive", iommu=iommu
+    )
 
 
 def linux_images(firmware):

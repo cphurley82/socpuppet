@@ -198,6 +198,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
         ),
     )
     linux_command.add_argument(
+        "--iommu",
+        action="store_true",
+        help=(
+            "put the drive behind an IOMMU, which Linux's own driver "
+            "brings up; with --root drive"
+        ),
+    )
+    linux_command.add_argument(
         "--ssh-port",
         type=int,
         default=SSH_PORT,
@@ -245,7 +253,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
     options = parser.parse_args(arguments)
 
     if options.command == "linux":
-        _linux(options.cpu, options.root, options.ssh_port)
+        _linux(options.cpu, options.root, options.ssh_port, iommu=options.iommu)
     elif options.command == "drive":
         _drive(options.firmware, options.blocks)
     elif options.command == "run":
@@ -270,7 +278,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
 
 
-def _linux(cpu: HostCpu | None, root: linux.Root, ssh_port: int) -> None:
+def _linux(
+    cpu: HostCpu | None, root: linux.Root, ssh_port: int, *, iommu: bool
+) -> None:
     """Boot Linux on the host, with this terminal at its console.
 
     It says first, on standard error, which CPU it boots on and that
@@ -282,14 +292,20 @@ def _linux(cpu: HostCpu | None, root: linux.Root, ssh_port: int) -> None:
     Ctrl-], or when the reader of its output has gone (`socpuppet linux
     | head -1`), and says which.
 
-    `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names, and
-    `root` where the root filesystem is (`linux.host_with_linux`). An
+    `cpu` is the host's CPU, or None for the one SOCPUPPET_CPU names,
+    `root` where the root filesystem is, and `iommu` whether the drive is
+    behind an IOMMU (`linux.host_with_linux`). An
     image, a tool such as dtc, or a CPU that this build has not ends the
     command with one line that says how to get it.
     """
+    if iommu and root != "drive":
+        sys.exit(
+            "--iommu needs the drive, which the host has only with Linux's "
+            "root on it: socpuppet linux --root drive --iommu."
+        )
     try:
         board = linux.host_with_linux(
-            run.firmware_directory(), cpu=cpu, root=root
+            run.firmware_directory(), cpu=cpu, root=root, iommu=iommu
         )
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
