@@ -122,6 +122,7 @@ def while_pumping(linux: Plugged, *argv: str) -> bytes:
     made again, until SSH_PATIENCE. Returns what the command printed.
     """
     started = time.monotonic()
+    failed: list[bytes] = []
     while True:
         command = subprocess.Popen(
             argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -131,10 +132,24 @@ def while_pumping(linux: Plugged, *argv: str) -> bytes:
             linux, lambda done=command.poll: done() is not None, left
         ):
             command.kill()
-            raise TimeoutError(f"{argv[0]} took over {SSH_PATIENCE} s")
+            _, errors = command.communicate()
+            said = [f"{argv[0]} took over {SSH_PATIENCE} s."]
+            if failed:
+                said.append(
+                    f"Of {len(failed)} tries before that failed, the last "
+                    f"said:\n{failed[-1].decode(errors='replace')}"
+                )
+            said.append(
+                f"The try still going said:\n{errors.decode(errors='replace')}"
+            )
+            said.append(
+                f"The console:\n{plain(linux.board.virtio.console.output)}"
+            )
+            raise TimeoutError("\n".join(said))
         output, errors = command.communicate()
         if command.returncode == 0:
             return output
+        failed.append(errors)
         if time.monotonic() - started > SSH_PATIENCE:
             raise subprocess.CalledProcessError(
                 command.returncode, argv, output, errors
