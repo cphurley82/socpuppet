@@ -75,14 +75,14 @@ iommu::iommu(sc_core::sc_module_name nm)
         irq_changed.notify(sc_core::SC_ZERO_TIME);
         return true;
     });
-    // there is one line, so every cause is on vector 0 and stays there
-    regs->icvec.set_write_cb([](scc::sc_register<uint64_t>&, uint64_t const&, sc_core::sc_time&) { return true; });
-    SC_METHOD(update_irq);
-    sensitive << irq_changed;
     // the tail is the IOMMU's to move
     regs->fqt.set_write_cb([](scc::sc_register<uint32_t>&, uint32_t const&, sc_core::sc_time&) { return true; });
-    SC_THREAD(run_commands);
+    // there is one line, so every cause is on vector 0 and stays there
+    regs->icvec.set_write_cb([](scc::sc_register<uint64_t>&, uint64_t const&, sc_core::sc_time&) { return true; });
     dma_i.register_b_transport([this](tlm::tlm_generic_payload& gp, sc_core::sc_time& delay) { translate(gp, delay); });
+    SC_THREAD(run_commands);
+    SC_METHOD(update_irq);
+    sensitive << irq_changed;
     SC_METHOD(reset_cb);
     sensitive << rst_i;
 }
@@ -103,7 +103,8 @@ void iommu::translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay) {
     iommu_device_directory const ddt{static_cast<iommu_ddt_mode>(mode), ppn << 12};
     auto const translation = walker.translate(ddt, {device->id, gp.get_address(), gp.is_write()});
     if(translation.fault) {
-        record(*translation.fault, gp.is_write() ? ttyp_untranslated_write : ttyp_untranslated_read, device->id, gp.get_address(), delay);
+        auto const type = gp.is_write() ? iommu_transaction_type::untranslated_write : iommu_transaction_type::untranslated_read;
+        record(*translation.fault, type, device->id, gp.get_address(), delay);
         gp.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
         return;
     }
@@ -116,11 +117,10 @@ void iommu::translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay) {
 void iommu::run_commands() {
     for(;;) {
         wait(commands_written);
-        auto const last = (uint32_t(2) << regs->r_cqb.log2sz_1) - 1;
         while(regs->r_cqcsr.cqon && !regs->r_cqcsr.cmd_ill && !regs->r_cqcsr.cqmf && regs->r_cqh != regs->r_cqt) {
             // a command is 16 bytes, two doublewords
             sc_core::sc_time delay;
-            uint64_t const at = (uint64_t(regs->r_cqb.ppn) << 12) + uint64_t(regs->r_cqh) * 16;
+            uint64_t const at = slot(regs->r_cqb.ppn, regs->r_cqh, command_size);
             uint64_t first = 0, second = 0;
             // a command that cannot be read, or one this IOMMU does not have, stops the queue at it
             if(!load(at, first, delay) || !load(at + 8, second, delay)) {
@@ -131,7 +131,7 @@ void iommu::run_commands() {
                 stop_commands(regs->r_cqcsr.cmd_ill, delay);
                 break;
             }
-            regs->r_cqh = (regs->r_cqh + 1) & last;
+            regs->r_cqh = after(regs->r_cqh, regs->r_cqb.log2sz_1);
             wait(delay);
         }
     }
@@ -162,29 +162,36 @@ bool iommu::run(uint64_t first, uint64_t second, sc_core::sc_time& delay) {
     }
 }
 
-void iommu::record(iommu_fault_cause cause, uint64_t ttyp, uint32_t device_id, uint64_t iova, sc_core::sc_time& delay) {
+void iommu::record(iommu_fault_cause cause, iommu_transaction_type type, uint32_t device_id, uint64_t iova, sc_core::sc_time& delay) {
     if(!regs->r_fqcsr.fqon)
         return;
     // a record is 32 bytes: its header, with the cause in bits 11:0, the type of the transaction in bits 39:34 and
     // the device in bits 63:40; a doubleword kept for later; the address the transaction was for; and a second address
     // that only a second stage has
-    std::array<uint64_t, 4> const words{static_cast<uint64_t>(cause) | ttyp << 34 | uint64_t(device_id) << 40, 0, iova, 0};
-    std::array<uint8_t, 32> data{};
-    for(size_t i = 0; i < data.size(); ++i)
-        data[i] = static_cast<uint8_t>(words[i / 8] >> (8 * (i % 8)));
+    uint64_t const header = static_cast<uint64_t>(cause) | uint64_t(type) << 34 | uint64_t(device_id) << 40;
+    std::array<uint8_t, record_size> data{};
+    to_le(data.data(), header, 8);
+    to_le(data.data() + 16, iova, 8);
     // the queue is full when one more record would bring the tail to the head, and the record is then lost
-    auto const next = (regs->r_fqt + 1) & ((uint32_t(2) << regs->r_fqb.log2sz_1) - 1);
-    if(next == regs->r_fqh) {
+    auto const next = after(regs->r_fqt, regs->r_fqb.log2sz_1);
+    if(next == regs->r_fqh)
         regs->r_fqcsr.fqof = 1;
-    } else {
-        uint64_t const at = (uint64_t(regs->r_fqb.ppn) << 12) + uint64_t(regs->r_fqt) * data.size();
-        if(store(at, data.data(), data.size(), delay))
-            regs->r_fqt = next;
-        else
-            regs->r_fqcsr.fqmf = 1;
-    }
+    else if(store(slot(regs->r_fqb.ppn, regs->r_fqt, record_size), data.data(), data.size(), delay))
+        regs->r_fqt = next;
+    else
+        regs->r_fqcsr.fqmf = 1;
     regs->r_ipsr.fip = 1;
-    irq_changed.notify(sc_core::SC_ZERO_TIME);
+    // in step with the record it is for
+    irq_changed.notify(delay);
+}
+
+uint64_t iommu::slot(uint64_t ppn, uint32_t index, size_t size) { return (ppn << 12) + uint64_t(index) * size; }
+
+uint32_t iommu::after(uint32_t index, uint64_t log2sz_1) { return (index + 1) & ((uint32_t(2) << log2sz_1) - 1); }
+
+void iommu::to_le(uint8_t* bytes, uint64_t value, size_t length) {
+    for(size_t i = 0; i < length; ++i)
+        bytes[i] = static_cast<uint8_t>(value >> (8 * i));
 }
 
 void iommu::update_irq() {
@@ -194,8 +201,7 @@ void iommu::update_irq() {
 
 bool iommu::store(uint64_t pa, uint32_t value, sc_core::sc_time& delay) {
     std::array<uint8_t, 4> data{};
-    for(size_t i = 0; i < data.size(); ++i)
-        data[i] = static_cast<uint8_t>(value >> (8 * i));
+    to_le(data.data(), value, data.size());
     return store(pa, data.data(), data.size(), delay);
 }
 

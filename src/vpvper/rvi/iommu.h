@@ -7,8 +7,8 @@
 #ifndef _RVI_IOMMU_H_
 #define _RVI_IOMMU_H_
 
-#include "iommu_walker.h"
-
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <scc/tlm_target.h>
 #include <scc/utilities.h>
@@ -19,6 +19,10 @@ namespace vpvper {
 namespace rvi {
 
 class iommu_regs;
+enum class iommu_fault_cause : uint16_t;
+
+// the type of transaction a fault record says it was for: a read or write of an untranslated address
+enum class iommu_transaction_type : uint8_t { untranslated_read = 2, untranslated_write = 3 };
 
 // which device a transaction that comes in to be translated is from: what the RISC-V IOMMU specification calls its
 // device_id, a PCIe device's requester ID say
@@ -52,9 +56,9 @@ protected:
     static constexpr uint64_t command_iofence_c = 2;
     static constexpr uint64_t command_iodir_inval_ddt = 3;
     static constexpr uint64_t iofence_av = uint64_t(1) << 10;
-    // the types of transaction a fault record says it was for: a read or write of an untranslated address
-    static constexpr uint64_t ttyp_untranslated_read = 2;
-    static constexpr uint64_t ttyp_untranslated_write = 3;
+    // how big a command and a fault record are
+    static constexpr size_t command_size = 16;
+    static constexpr size_t record_size = 32;
 
     void reset_cb();
     void translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay);
@@ -66,8 +70,14 @@ protected:
     template <typename Field> void stop_commands(Field& error, sc_core::sc_time const& delay);
     // runs the command whose doublewords are first and second; false if this IOMMU does not have it
     bool run(uint64_t first, uint64_t second, sc_core::sc_time& delay);
-    // writes a fault record for a transaction of type ttyp from a device, if the fault queue is on
-    void record(iommu_fault_cause cause, uint64_t ttyp, uint32_t device_id, uint64_t iova, sc_core::sc_time& delay);
+    // writes a fault record for a transaction of a type from a device, if the fault queue is on
+    void record(iommu_fault_cause cause, iommu_transaction_type type, uint32_t device_id, uint64_t iova, sc_core::sc_time& delay);
+    // where entry index of a queue of entries of size bytes, at the page ppn, is
+    static uint64_t slot(uint64_t ppn, uint32_t index, size_t size);
+    // the index after index in a queue of 2^(log2sz_1 + 1) entries
+    static uint32_t after(uint32_t index, uint64_t log2sz_1);
+    // writes the low length bytes of value at bytes, least significant first
+    static void to_le(uint8_t* bytes, uint64_t value, size_t length);
     // writes 4 bytes at a physical address through dma_o, least significant first; false if nothing answered
     bool store(uint64_t pa, uint32_t value, sc_core::sc_time& delay);
     // writes length bytes at a physical address through dma_o; false if nothing answered
