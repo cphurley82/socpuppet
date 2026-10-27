@@ -8,6 +8,7 @@
 #include "gen/iommu_regs.h"
 #include "iommu_walker.h"
 
+#include <algorithm>
 #include <array>
 #include <scc/utilities.h>
 
@@ -114,17 +115,39 @@ void iommu::translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay) {
     iommu_walker const walker{[this, &delay](uint64_t pa, uint64_t& value) { return load(pa, value, delay); }};
     uint64_t const mode = regs->r_ddtp.iommu_mode, ppn = regs->r_ddtp.ppn;
     iommu_device_directory const ddt{static_cast<iommu_ddt_mode>(mode), ppn << 12};
-    auto const translation = walker.translate(ddt, {device->id, gp.get_address(), gp.is_write()});
-    if(translation.fault) {
-        auto const type = gp.is_write() ? iommu_transaction_type::untranslated_write : iommu_transaction_type::untranslated_read;
-        record(*translation.fault, type, device->id, gp.get_address(), delay);
-        gp.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
-        return;
+    // a transaction is translated a page at a time, as the fabric presents one to a real IOMMU (a PCIe request stops
+    // at a page), each page where its own entry says; a page that faults stops it there, the pages before it done
+    uint64_t const iova = gp.get_address();
+    unsigned const length = gp.get_data_length();
+    for(unsigned done = 0; done < length;) {
+        uint64_t const at = iova + done;
+        auto const to_page_end = static_cast<unsigned>(page_size - (at & (page_size - 1)));
+        unsigned const in_page = std::min(length - done, to_page_end);
+        auto const translation = walker.translate(ddt, {device->id, at, gp.is_write()});
+        if(translation.fault) {
+            auto const type = gp.is_write() ? iommu_transaction_type::untranslated_write : iommu_transaction_type::untranslated_read;
+            record(*translation.fault, type, device->id, at, delay);
+            gp.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+            return;
+        }
+        forward(gp, done, in_page, translation.pa, delay);
+        if(!gp.is_response_ok())
+            return;
+        done += in_page;
     }
-    auto const iova = gp.get_address();
-    gp.set_address(translation.pa);
-    dma_o->b_transport(gp, delay);
-    gp.set_address(iova);
+}
+
+void iommu::forward(tlm::tlm_generic_payload& gp, unsigned offset, unsigned length, uint64_t pa, sc_core::sc_time& delay) {
+    // the piece is a transaction of the IOMMU's own, as its stores and loads are, over the device's bytes: what comes in
+    // here carries no byte-enable mask, and what the memory offers the piece, DMI say, is not the device's to have
+    tlm::tlm_generic_payload piece;
+    piece.set_command(gp.get_command());
+    piece.set_address(pa);
+    piece.set_data_ptr(gp.get_data_ptr() + offset);
+    piece.set_data_length(length);
+    piece.set_streaming_width(length);
+    dma_o->b_transport(piece, delay);
+    gp.set_response_status(piece.get_response_status());
 }
 
 void iommu::run_commands() {

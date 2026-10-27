@@ -59,9 +59,14 @@ protected:
     // how big a command and a fault record are
     static constexpr size_t command_size = 16;
     static constexpr size_t record_size = 32;
+    // how big a page is: what a transaction is translated by
+    static constexpr uint64_t page_size = 4096;
 
     void reset_cb();
     void translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay);
+    // sends length bytes of a transaction, from offset, on through dma_o at a physical address, and gives the
+    // transaction their response
+    void forward(tlm::tlm_generic_payload& gp, unsigned offset, unsigned length, uint64_t pa, sc_core::sc_time& delay);
     // runs the commands from the head of the command queue to its tail, each time software moves the tail
     void run_commands();
     // sets the wired interrupt from what is pending and what may interrupt; the one process that writes it
