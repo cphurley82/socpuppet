@@ -329,7 +329,11 @@ int riscv_iommu_map(const struct device *iommu, uint32_t device_id, uintptr_t io
 	struct riscv_iommu_data *data = iommu->data;
 	uint64_t fsc;
 
-	if (device_id >= CONTEXTS || (iova | pa | size) % PAGE != 0) {
+	/* A page that allows nothing is not a page: an entry with neither R nor
+	 * W is what Sv39 calls a pointer to the next table.
+	 */
+	if (device_id >= CONTEXTS || (iova | pa | size) % PAGE != 0 || access == 0 ||
+	    (access & ~(RISCV_IOMMU_READ | RISCV_IOMMU_WRITE)) != 0) {
 		return -EINVAL;
 	}
 	if (data->roots[device_id] == NULL) {
