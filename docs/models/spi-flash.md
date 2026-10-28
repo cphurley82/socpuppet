@@ -128,6 +128,6 @@ io_boot_flash: spi@100d0000 {
 
 The chip is socpuppet's own, `src/socpuppet/core/spi_nor_chip.cpp`, plain C++ with no simulation kernel, written against QEMU's `hw/block/m25p80.c` as the reference: its tests were written by reading what `m25p80` does, and none of its code was copied, since it is GPL. The window is ours too: it reads the chip's bytes straight, as a controller's memory-mapped mode does.
 
-🦜 Until M18 both halves were borrowed, Minres's QSPI controller and VPV's flash chip, and the chip knew no read command ([history/decisions.md](../history/decisions.md), 2026-10-27).
+🦜 Both halves used to be borrowed, Minres's QSPI controller and VPV's flash chip, and the chip knew no read command ([history/decisions.md](../history/decisions.md), 2026-10-27).
 
 `tests/cpp/unit/spi_nor_chip_test.cpp` holds the chip, `tests/cpp/contracts/spi_controller_contract.h` the controller, and `tests/cpp/platform/spi_flash_test.cpp` the two together with the window.

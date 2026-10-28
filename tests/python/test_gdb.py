@@ -812,7 +812,7 @@ class ThreeDebuggedCpus:
         )
         self.board = host(
             gdb_port=self.ports["host"],
-            # 2 MiB of drive, as in the exit tests that run this disk test.
+            # 2 MiB of drive, as in the other tests that run this disk test.
             drive_blocks=4096,
             manager=functools.partial(
                 add_manager, gdb_port=self.ports["manager"]

@@ -1,4 +1,4 @@
-"""The M2 exit test: a Python host finds an NVMe drive over PCIe and uses it.
+"""A Python host finds an NVMe drive over PCIe and uses it.
 
 There are no CPUs. The host's firmware is a Python script, and the drive
 answers for itself.

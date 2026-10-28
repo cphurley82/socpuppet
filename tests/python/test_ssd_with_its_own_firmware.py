@@ -1,8 +1,8 @@
-"""Milestone M4's exit test: the SSD boots standalone, with its own firmware.
+"""The SSD boots standalone, with its own firmware.
 
-It is the M2 exit test again, for the third time. The host is still a
-Python script, and still M2's. The drive is now a whole SSD: hardware that
-keeps the queues and moves the data, a NAND to keep it in, and Zephyr on a
+It is test_nvme_over_pcie.py again, for the third time. The host is still a
+Python script, and still the same one. The drive is now a whole SSD: hardware
+that keeps the queues and moves the data, a NAND to keep it in, and Zephyr on a
 RISC-V core of its own making every decision.
 
  the host                           the SSD

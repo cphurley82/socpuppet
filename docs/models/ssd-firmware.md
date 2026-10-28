@@ -125,7 +125,7 @@ After it, from the reserve's second page, the table: for each page of the drive,
 - **A CPU.** Nothing is executed. Each step of the script is one access on the SSD's bus.
 - **Time.** The firmware takes none. A real one takes most of the time a command takes.
 - **A table in the SSD's buffer.** It is kept in Python. It is read from the NAND's reserve at start and saved there at a shutdown, as Zephyr's is. A controller reset, which is the host's doing, loses nothing. 🚧 A reset of the SSD's own CPU is not something the board can do yet.
-- **Power lost without a shutdown.** ⚠️ Both firmwares save the table only when the host asks for a shutdown, so a drive whose power just goes keeps the table it was last shut down with, and what was written since is lost. A real SSD rebuilds its table from what each page says of itself, or saves it as it goes. 🚧 That is M10's, with the power-loss scenarios.
+- **Power lost without a shutdown.** ⚠️ Both firmwares save the table only when the host asks for a shutdown, so a drive whose power just goes keeps the table it was last shut down with, and what was written since is lost. A real SSD rebuilds its table from what each page says of itself, or saves it as it goes. 🚧 That comes with the power-loss scenarios on the roadmap.
 - **More than one thing at a time.** One command, one page of buffer.
 - **Garbage collection, wear levelling, bad blocks.** Everything a real FTL spends its life on.
 - **A write that fails half-way** has written the pages before the failure.

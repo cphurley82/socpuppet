@@ -1,21 +1,23 @@
-"""Milestone M8's exit test: the full bootchain, three firmwares.
+"""The full bootchain: three firmwares on one board.
 
-M7's host crossed the real die-to-die link with 🎭 a script for the
-manager that brings the link up. Here the manager is the real thing: a
-32-bit CPU on the IO die running the Zephyr application of
-`firmware/iomgr`, which trains the link and then lets the host's CPU out
-of reset.
+In test_host_across_the_real_link.py the host crosses the real die-to-die link
+with 🎭 a script for the manager that brings the link up. Here the manager is the
+real thing: a 32-bit CPU on the IO die running the Zephyr application of
+`firmware/iomgr`, which trains the link and then lets the host's CPU out of
+reset.
 
 Then all three firmwares boot together: the manager's, the host's, which
 is Zephyr's test of its disk interface, and the SSD's, which is the drive
 that test reads and writes. Each has a console, and the three are heard
 as one story.
 
-No image is built for this. The manager's is the one M5 runs on the IO
-manager board, the SSD's is the one M4 runs on the SSD board, and the
-host's are the ones M3's tests run.
+No image is built for this. The manager's is the one test_link_training.py
+runs on the IO manager board, the SSD's is the one
+test_ssd_with_its_own_firmware.py runs on the SSD board, and the host's
+are the ones test_zephyr_on_the_host_board.py and
+test_zephyr_disk_on_the_host.py run.
 
-Since M14 the three boot both ways there are: with 🎭 Python putting each
+The three boot both ways there are: with 🎭 Python putting each
 image in its CPU's RAM, and with each CPU starting in a boot ROM that
 finds its image in a flash. What the three then do is the same.
 """
@@ -105,7 +107,7 @@ def bootchain(request, firmware):
 
     Gives the story their three consoles told: `manager`, `ssd`, `host`.
     """
-    # 2 MiB of drive, as in M3b, M6 and M7.
+    # 2 MiB of drive, as in the other runs of the disk test.
     board = host(drive_blocks=4096, **request.param)
     story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
     gave_a_verdict = story.run_until(

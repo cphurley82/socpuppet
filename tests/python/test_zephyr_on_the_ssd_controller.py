@@ -1,4 +1,4 @@
-"""Milestone M4b's exit test: Zephyr boots on the SSD's own controller.
+"""Zephyr boots on the SSD's own controller.
 
 The board is `socpuppet_ssd`: a 32-bit RISC-V core with an SRAM, a UART, a
 timer and an interrupt controller, and the SSD's three devices around it.

@@ -1,4 +1,4 @@
-"""🐧 Linux sets its clock from the host's real-time clock, as part of M18's.
+"""🐧 Linux sets its clock from the host's real-time clock.
 
 The clock is the Goldfish real-time clock, on the host's IO die, given a
 time as the simulation starts. A stock kernel's own driver, `rtc-goldfish`,

@@ -183,7 +183,7 @@ DEV_BUILD = (
 # A missing firmware image fails its boot test instead of skipping it.
 REQUIRE_FIRMWARE = {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
 # And a missing cable, libslirp or ssh and scp, fails a test over it: the
-# exit test of M29 among them, on each hart.
+# test of ssh over the cable among them, on each hart.
 REQUIRE_CABLE = {**REQUIRE_FIRMWARE, "SOCPUPPET_REQUIRE_CABLE": "1"}
 
 

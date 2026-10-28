@@ -112,7 +112,7 @@ _HEADER_BYTES = 8
 
 
 #: The port an end of `sp.D2dLink()` sends its sideband packets from. The
-#: name is the model's (`D2dLinkEndpoint`), and the exit tests, which
+#: name is the model's (`D2dLinkEndpoint`), and the tests, which
 #: read a real run back, are what notice if it changes.
 _SIDEBAND_PORT = "sideband_peer_initiator"
 

@@ -1,4 +1,4 @@
-"""Zephyr's test of its disk interface, as an exit test runs it on a host.
+"""Zephyr's test of its disk interface, as a test runs it on a host.
 
 The image is `disk_access_socpuppet_host.elf`: Zephyr's own
 `tests/drivers/disk/disk_access`, built for the board `socpuppet_host`

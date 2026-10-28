@@ -1,6 +1,6 @@
-"""The M4a exit test: a Python host uses an SSD that is built like one.
+"""A Python host uses an SSD that is built like one.
 
-It is the M2 exit test again, with the 🎭 stand-in drive swapped for the
+It is test_nvme_over_pcie.py again, with the 🎭 stand-in drive swapped for the
 SSD's hardware. The host is the same script, and cannot tell.
 
  the host                           the SSD

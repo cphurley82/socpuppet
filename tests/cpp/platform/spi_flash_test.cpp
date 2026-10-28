@@ -152,7 +152,7 @@ TEST(AnAccessThroughAFlashsWindowThatRunsPastItsSize, IsRefused) {
 
 // Far past the flash is past any chip a platform could ask for, and must
 // still be an error and not the end of the process, as it was with the
-// chip socpuppet borrowed until M18.
+// chip socpuppet used to borrow.
 TEST(AnAccessThroughAFlashsWindowFarPastItsSize, IsRefusedAndTheRunGoesOn) {
   std::array<std::uint8_t, 4> data{};
   tlm::tlm_response_status far_past = tlm::TLM_INCOMPLETE_RESPONSE;

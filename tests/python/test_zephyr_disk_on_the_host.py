@@ -1,4 +1,4 @@
-"""Milestone M3b's exit test: Zephyr does block I/O on the host's SSD.
+"""Zephyr does block I/O on the host's SSD.
 
 The firmware is Zephyr's own test of its disk interface (its
 `tests/drivers/disk/disk_access`), built by `firmware/build.py` for the

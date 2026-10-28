@@ -1,4 +1,4 @@
-"""M23's exit test: OpenSBI boots, and its test payload runs on it.
+"""OpenSBI boots, and its test payload runs on it.
 
 🧦 OpenSBI is the machine-mode firmware a RISC-V kernel sits on, and the
 first program here that runs in supervisor mode is the one it starts. Its

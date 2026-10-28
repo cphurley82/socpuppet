@@ -1,11 +1,11 @@
-"""M24's exit test: Linux's root filesystem on the drive.
+"""Linux's root filesystem on the drive.
 
-🐧 The drive is the SSD with its own Zephyr firmware, across the
-die-to-die link, on M8's board: the IO manager trains the link and lets
-the host out of reset, and the host boots OpenSBI and a stock Linux,
-whose own NVMe driver, loaded by the initramfs, finds the drive behind
-the root complex. The root filesystem is the drive's first partition,
-which Python programmed into the SSD's NAND as a factory would.
+🐧 The drive is the SSD with its own Zephyr firmware, across the die-to-die link,
+on the full bootchain's board: the IO manager trains the link and lets the host
+out of reset, and the host boots OpenSBI and a stock Linux, whose own NVMe
+driver, loaded by the initramfs, finds the drive behind the root complex. The
+root filesystem is the drive's first partition, which Python programmed into the
+SSD's NAND as a factory would.
 """
 
 import re
@@ -34,7 +34,7 @@ pytestmark = [needs_dtc, pytest.mark.long]
 
 @pytest.fixture
 def linux_on_the_drive(firmware):
-    """M8's board, booted to Linux's prompt, its root on the drive."""
+    """The full bootchain's board at Linux's prompt, its root on the drive."""
     board = a_host_with_its_root_on_the_drive(firmware)
     prompted = run_to_the_prompt(board)
     assert prompted, (
@@ -83,7 +83,7 @@ NUMBERS = "".join(f"{number}\n" for number in range(1, LAST + 1)).encode()
 
 @pytest.mark.platform
 class TestWhenLinuxWritesAFileAndSwitchesOff:
-    """🎓 The exit test: what Linux wrote is on the drive, for Python to read.
+    """🎓 What Linux wrote is on the drive, for Python to read.
 
     Linux's `poweroff` unmounts the root, which writes out what it holds,
     and shuts the drive down, which has the SSD's firmware keep its table

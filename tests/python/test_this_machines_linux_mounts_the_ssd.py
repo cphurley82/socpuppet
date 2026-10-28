@@ -1,4 +1,4 @@
-"""M31's exit test: this machine's own Linux formats and mounts the SSD.
+"""This machine's own Linux formats and mounts the SSD.
 
 🐧 The drive is the SSD with its own Zephyr firmware, and its host is the
 machine the simulation runs on: `sp.PciemHost` puts it on this machine's
@@ -78,7 +78,7 @@ class TestWhenThisMachinesLinuxFindsTheZephyrSsd:
 
 
 class TestWhenThisMachinesLinuxFormatsAndMountsTheZephyrSsd:
-    """🎓 The exit test: what Linux wrote is on the drive, for Python to read.
+    """🎓 What Linux wrote is on the drive, for Python to read.
 
     Unmounting writes out what Linux holds of the file, and letting go of
     the drive shuts it down, which has the SSD's firmware keep its table

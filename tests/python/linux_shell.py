@@ -1,6 +1,6 @@
 """Python at the keyboard of Linux's shell, on 🎭 the host.
 
-The Linux boot's exit test, `test_linux_boots.py`, brings a kernel to its
+The Linux boot's test, `test_linux_boots.py`, brings a kernel to its
 prompt on the virtio console; these are its ways of getting there, of
 waiting for the prompt and of typing at it, for every test that boots
 Linux.
@@ -136,7 +136,7 @@ def a_host_with_the_initramfs(
 
 
 def a_host_with_the_bootchain_and_the_initramfs(firmware, *, drive_blocks):
-    """M8's board with Linux on the host, booted as `a_host_with_the_initramfs`.
+    """The full bootchain's board, booted as `a_host_with_the_initramfs`.
 
     The IO manager and the SSD each run their own Zephyr firmware, loaded
     straight into their RAM; the manager trains the die-to-die link and
@@ -154,7 +154,7 @@ def a_host_with_the_bootchain_and_the_initramfs(firmware, *, drive_blocks):
 
 
 def a_host_with_its_root_on_the_drive(firmware, *, iommu=False):
-    """M8's board, with Linux on the host and its root on the SSD.
+    """The full bootchain's board, Linux on the host, its root on the SSD.
 
     As `socpuppet.linux` boots it (`root="drive"`), from the directory the
     `firmware` fixture finds the images in, so that a missing one skips
@@ -232,7 +232,7 @@ STARTUP_NSH = (
 
 
 def a_host_with_uefi_and_its_root_on_the_drive(firmware):
-    """M8's board, UEFI starting the kernel from the drive, as a server's.
+    """The full bootchain's board, UEFI starting the kernel from the drive.
 
     The drive is cut up as a server's: an EFI system partition with UEFI's
     shell where the boot manager looks on a disk with no boot entry of its

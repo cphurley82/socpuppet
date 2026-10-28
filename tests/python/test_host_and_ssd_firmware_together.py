@@ -1,14 +1,14 @@
-"""Milestone M6's exit test: the host's firmware with the SSD's firmware.
+"""The host's firmware with the SSD's firmware.
 
-It is M3b's exit test with the drive swapped. The host's firmware is the
-same image, Zephyr's own test of its disk interface, built for the board
-`socpuppet_host` with the shield `socpuppet_host_drive`. Where M3b's host
-had 🎭 the stand-in drive on its PCIe link, this one has the SSD of
-`socpuppet.boards.ssd`, which is hardware that does nothing until
-firmware tells it to.
+It is test_zephyr_disk_on_the_host.py with the drive swapped. The host's
+firmware is the same image, Zephyr's own test of its disk interface, built for
+the board `socpuppet_host` with the shield `socpuppet_host_drive`. Where that
+host has 🎭 the stand-in drive on its PCIe link, this one has the SSD of
+`socpuppet.boards.ssd`, which is hardware that does nothing until firmware tells
+it to.
 
 Nothing was built again for this. The host cannot tell which drive it
-has, so its image is M3b's.
+has, so its image is the same.
 """
 
 import functools
@@ -67,7 +67,7 @@ only_with_zephyr = pytest.mark.parametrize(
 @pytest.mark.platform
 class TestWhenZephyrsDiskTestRunsOnTheHostWithTheSsd:
     def test_its_read_and_write_tests_pass(self, host_with_the_ssd):
-        # 2 MiB, as in M3b.
+        # 2 MiB, as in test_zephyr_disk_on_the_host.py.
         board = host_with_the_ssd(blocks=4096)
 
         run_to_a_verdict(board)

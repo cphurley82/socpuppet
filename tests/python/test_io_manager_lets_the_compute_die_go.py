@@ -1,9 +1,9 @@
-"""M5a's exit test: the IO die's manager brings the link up, lets the
+"""The IO die's manager brings the link up, lets the
 compute die go, and 🎭 the compute-side stand-in then reaches the IO die's
 memory across the real link.
 
-What the milestone map asks for is firmware doing this; M5a has 🎭 a script
-in the manager's place (`sp.IoManager`), and M5b puts Zephyr there.
+Here 🎭 a script is in the manager's place (`sp.IoManager`);
+test_link_training.py puts Zephyr there.
 """
 
 import pytest

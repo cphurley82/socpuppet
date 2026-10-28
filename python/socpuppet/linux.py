@@ -11,11 +11,11 @@ console, and its first words, before that is up, are on the UART.
         lambda: linux.PROMPT.search(console.output), timeout=sp.ms(400_000)
     )
 
-Or with the root filesystem on the drive, `root="drive"`: M8's board, the
-IO manager and the SSD each running their own Zephyr firmware, and the
-root in the first partition of the SSD, which Python programmed as a
-factory would. The kernel's NVMe driver is a module, which the initramfs
-loads before it mounts the root.
+Or with the root filesystem on the drive, `root="drive"`: the full bootchain's
+board, the IO manager and the SSD each running their own Zephyr firmware, and
+the root in the first partition of the SSD, which Python programmed as a factory
+would. The kernel's NVMe driver is a module, which the initramfs loads before it
+mounts the root.
 """
 
 import datetime
@@ -129,14 +129,14 @@ def host_with_linux(
 ) -> Host[Any]:
     """A host built with Linux in place, from the images in `firmware`.
 
-    `firmware` is the directory `firmware/build.py` left OpenSBI and Linux
-    in. `cpu` is the host's CPU, as `host()` takes it, so that with none
-    it is the one SOCPUPPET_CPU names. `share` is a directory of this
-    machine for Linux to mount (`mount -t 9p`), if any. With a
-    `gdb_port`, the CPU waits for a debugger. `root` is where the root
-    filesystem is: 🎭 the virtio disk, or the drive, on M8's board. With
-    `trace=True`, everything that crosses the link between the dies is
-    recorded in `platform.trace`, as `host(trace=True)` records it.
+    `firmware` is the directory `firmware/build.py` left OpenSBI and Linux in.
+    `cpu` is the host's CPU, as `host()` takes it, so that with none it is the
+    one SOCPUPPET_CPU names. `share` is a directory of this machine for Linux to
+    mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
+    debugger. `root` is where the root filesystem is: 🎭 the virtio disk, or the
+    drive, on the full bootchain's board. With `trace=True`, everything that
+    crosses the link between the dies is recorded in `platform.trace`, as
+    `host(trace=True)` records it.
 
     With the root on the drive, `drive` and `manager` are the functions
     `host()` describes the SSD and the IO manager with: `add_ssd` and
@@ -242,7 +242,7 @@ def _with_the_root_on_the_drive(
     iommu: bool,
     rtc_time: datetime.datetime | int,
 ) -> Host[Ssd]:
-    """M8's board, with Linux on the host and its root on the SSD.
+    """The full bootchain's board, Linux on the host, its root on the SSD.
 
     The disk is a GUID partition table with the root filesystem as its
     first partition, as big as the drive: whole NAND blocks. The manager's

@@ -397,7 +397,7 @@ jobs:
       # dtc checks the devicetrees the boards generate and compiles the one
       # a boot under OpenSBI is handed. Without it those tests skip here.
       # libslirp is the cable to this machine's network that ssh to Linux
-      # goes over (M29), which this job requires.
+      # goes over (test_ssh_over_the_cable.py), which this job requires.
       - name: Install system packages
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev

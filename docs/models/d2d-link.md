@@ -122,7 +122,7 @@ A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, an
 - **The physical layer.** No lanes, no clock, no speed negotiation, no repair of a broken lane. MBTRAIN is a state that takes time and does nothing.
 - **The protocol layers.** Mainband traffic is a TLM transaction passed on as it is. There is no flit, no CRC, no retry, no credit, and no PCIe or CXL layer on top: the mainband is raw memory-mapped access.
 - **PHYRETRAIN.** A retrain here starts over from RESET, so the state UCIe has for retraining in place has nothing to do.
-- **Dropped and corrupted traffic.** A fault takes the whole link down; nothing can be injected finer than that. 🚧 M10 is where error injection gets interesting.
+- **Dropped and corrupted traffic.** A fault takes the whole link down; nothing can be injected finer than that. 🚧 Finer error injection is on the roadmap.
 - **Power states.** No L1, no L2.
 - **Negotiation.** The MBINIT.PARAM messages carry nothing: both ends are the same link, built from the same parameters.
 - **DMI, the direct memory interface.** Refused outright, so every access crosses the link and is seen taking its time.

@@ -60,7 +60,7 @@ Add to it when something new keeps coming up.
 
 Changes are test-first, with the skills in `.claude/skills/`: `/tdd [specification]` drives a change through Canon TDD (agree the specifications, one failing test, make it pass, commit), running `/test-design-review` on each new test and `/software-design-review` on the code once it is green. Both reviews also run on their own against the working tree. `spikes/` is exploratory and not test-first, and nothing outside it may depend on it.
 
-Work goes on a branch, never straight onto `main`: a branch for each milestone or change, named for it (`m29-cable`), cut from `main` unless the maintainer says otherwise, committed to and pushed as it goes, and merged by a pull request when the maintainer says so. Check the branch at the start of a session, and carry on with the one the work is on.
+Work goes on a branch, never straight onto `main`: a branch for each milestone or change, named for it (`linux-over-ssh`), cut from `main` unless the maintainer says otherwise, committed to and pushed as it goes, and merged by a pull request when the maintainer says so. Check the branch at the start of a session, and carry on with the one the work is on.
 
 The history stays linear and tidy: a branch is rebased onto `main` and lands by fast-forward, with no merge commits, and each commit is one change that builds and passes on its own, with a message that says what it does and why: a summary of one line, a blank line, then a concise description, in bullets rather than paragraphs of prose. Tidy a branch's commits (squash a fixup into the commit it fixes, reword a vague message) before it lands, never after: `main` is not rewritten once pushed.
 

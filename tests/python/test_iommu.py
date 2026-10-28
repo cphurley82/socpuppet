@@ -1,4 +1,4 @@
-"""Milestone M15's exit test: the drive behind an IOMMU.
+"""The drive behind an IOMMU.
 
 The host has an IOMMU between its PCIe root complex and the link to the
 compute die (`host(iommu=True)`), and everything the drive sends up goes
@@ -12,10 +12,10 @@ RAM and the IMSIC's page to themselves, so that every access the drive
 makes is walked, across the link. And socpuppet's test of the driver takes
 a page away from the drive, and reads the fault the IOMMU reports.
 
-🐧 Then Linux, with its root on the drive on M8's board, and Linux's own
-driver for the IOMMU: it brings the IOMMU up on its wire and puts the drive
-in a device context, through which the root is mounted. Linux 6.18 has no
-DMA API through an IOMMU on RISC-V, so the context lets the drive through
+🐧 Then Linux, with its root on the drive on the full bootchain's board, and
+Linux's own driver for the IOMMU: it brings the IOMMU up on its wire and puts
+the drive in a device context, through which the root is mounted. Linux 6.18 has
+no DMA API through an IOMMU on RISC-V, so the context lets the drive through
 untranslated.
 """
 
@@ -44,7 +44,7 @@ THE_DRIVERS_TEST = "riscv_iommu_test_socpuppet_host.elf"
 #: Its case that takes a page away from the drive and reads the fault.
 THE_FAULT = "riscv_iommu.test_a_read_into_a_page_the_drive_may_not_write_fails_and_is_reported"
 
-#: 2 MiB, as in M3b's test of the drive.
+#: 2 MiB, as in test_zephyr_disk_on_the_host.py.
 BLOCKS = 4096
 #: The drive's requester ID, which is the IOMMU's ID for it.
 DRIVE = PcieRootComplex.REQUESTER_ID
@@ -248,7 +248,7 @@ def peek64(board, address):
 
 @pytest.fixture
 def linux_behind_an_iommu(firmware):
-    """M8's board with the drive behind the IOMMU, booted to Linux's prompt.
+    """The full bootchain's board, its drive behind the IOMMU, at Linux's shell.
 
     🐧 Linux's root is on the drive, and Linux's own driver for the IOMMU,
     `riscv-iommu`, brings it up and puts the drive in a device context.

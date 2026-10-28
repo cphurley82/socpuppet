@@ -1,4 +1,4 @@
-"""M29's exit test: ssh from this machine to Linux, over a cable.
+"""Ssh from this machine to Linux, over a cable.
 
 🔌 Linux's network card, 🎭 the virtio network device, is plugged into this
 machine's network by `sp.EthernetCable`, through libslirp, with no root.

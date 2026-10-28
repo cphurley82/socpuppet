@@ -1,4 +1,4 @@
-"""The M0 exit test: Python pulls the strings of a small two-die platform.
+"""Python pulls the strings of a small two-die platform.
 
 compute die                              IO die
 scripted master ─▶ link endpoint ══ link endpoint ─▶ router ─▶ memory
