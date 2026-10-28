@@ -168,11 +168,35 @@ TYPED_TEST_P(
   EXPECT_EQ(out_by_then, (std::vector<std::uint8_t>{0x11, 0x22, 0x33}));
 }
 
+// Linux's driver queues a transfer's bytes and then reads the watermark, at
+// once: what it reads must be about the bytes it has just queued, and not
+// the last transfer's empty FIFO.
+TYPED_TEST_P(SpiControllerContract,
+             APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued) {
+  bool pending_before_queueing = false;
+  bool pending_after_queueing = true;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.SetTransmitMark(1);
+    spi.Format(/*transmit_only=*/true);
+    spi.Queue(0x11);
+    pending_before_queueing = spi.WaitFor(SifiveSpiDriver::kTransmitWatermark);
+    spi.Queue(0x22);
+    pending_after_queueing = spi.Pending(SifiveSpiDriver::kTransmitWatermark);
+  });
+
+  ASSERT_TRUE(pending_before_queueing);
+  EXPECT_FALSE(pending_after_queueing);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
     AByteSentWhereNoChipIsComesBackAsFf,
     BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo,
-    AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty);
+    AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty,
+    APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
