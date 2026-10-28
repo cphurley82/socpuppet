@@ -84,7 +84,8 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     // can tell.
     if (command_ == kWriteEnable) write_enable_latch_ = true;
     if (command_ == kWriteDisable) write_enable_latch_ = false;
-    if (command_ == kChipErase60 || command_ == kChipEraseC7) {
+    if ((command_ == kChipErase60 || command_ == kChipEraseC7) &&
+        write_enable_latch_) {
       std::ranges::fill(bytes_, kErased);
     }
     return 0;
