@@ -35,6 +35,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     host,
     iommu_overlay,
+    spi_loopback_overlay,
     virtio_overlay,
 )
 from socpuppet.boards.manager import add_manager, scripted_manager
@@ -463,6 +464,19 @@ class TestTheZephyrShieldForTheHostsDrive:
         ).read_text()
 
         assert dtc_errors(board + drive_overlay(), tmp_path) == ""
+
+
+class TestTheZephyrShieldForSpiLoopback:
+    def test_its_overlay_is_what_the_host_description_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_spi_loopback"
+            / "socpuppet_host_spi_loopback.overlay"
+        )
+
+        # When this fails, the docstring of `spi_loopback_overlay` has the
+        # command that writes the file again.
+        assert checked_in.read_text() == spi_loopback_overlay()
 
 
 class TestTheZephyrShieldForTheHostsIommu:

@@ -438,8 +438,7 @@ class TestWhenACpuHasAFlashOnItsBus:
         bus.map(flash.xip, base=0x1020_0000)
         bus.map(flash.socket, base=0x100D_0000)
 
-        # SPI's clock is at most half its controller's.
-        fastest = sp.SpiFlash.CLOCK_HZ // 2
+        fastest = sp.SpiFlash.FASTEST_HZ
         node = textwrap.dedent(
             f"""\
             flash: spi@100d0000 {{

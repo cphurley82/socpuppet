@@ -193,6 +193,13 @@ IMAGES = [
     # it started each time.
     # Zephyr's own sample for an SPI flash, on the host's boot flash.
     Image("samples/drivers/spi_flash", "socpuppet_host"),
+    # Zephyr's test of an SPI controller, whose two devices the shield puts
+    # on the boot flash's bus, where Python's loopback answers them.
+    Image(
+        "tests/drivers/spi/spi_loopback",
+        "socpuppet_host",
+        "socpuppet_host_spi_loopback",
+    ),
     Image("firmware/watchdog", "socpuppet_host"),
     Image("firmware/watchdog", "socpuppet_ssd"),
 ]

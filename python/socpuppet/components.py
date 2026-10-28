@@ -1157,6 +1157,9 @@ class SpiFlash(Component):
     CHIP_SELECTS = 4
     #: The controller's clock: 50 MHz.
     CLOCK_HZ = 50_000_000
+    #: The fastest SPI clock: SiFive's controller divides its own by at
+    #: least two to make it.
+    FASTEST_HZ = CLOCK_HZ // 2
     #: The controller's registers take a page.
     mapped_size = 0x1000
 
@@ -1224,9 +1227,7 @@ class SpiFlash(Component):
                 f"jedec-id = [ef 40 {capacity:02x}];",
                 # Zephyr's binding counts the size in bits.
                 f"size = <{self.size * 8:#x}>;",
-                # SiFive's controller divides its clock by at least two to
-                # make SPI's.
-                f"spi-max-frequency = <{self.CLOCK_HZ // 2}>;",
+                f"spi-max-frequency = <{self.FASTEST_HZ}>;",
             ),
             interrupts=(),
             suffix="_chip",
