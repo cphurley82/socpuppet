@@ -1,15 +1,9 @@
 """🩺 needs_pciem, where pciem is required, as it is in CI's guest."""
 
-import os
-from pathlib import Path
-
 import pytest
 
+import processes
 from pciem_area import what_pciem_lacks
-
-HERE = Path(__file__).resolve().parent
-# Where a run in a process of its own finds pciem_area and socpuppet.
-PATH = (HERE, HERE.parents[1] / "python")
 
 A_TEST_OF_A_REAL_HOST = """
 from pciem_area import needs_pciem
@@ -22,8 +16,12 @@ def test_spam():
 
 @pytest.fixture
 def run_apart(pytester, monkeypatch):
-    """pytester, whose runs in a process of their own find pciem_area."""
-    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(map(str, PATH)))
+    """pytester, whose runs in a process of their own find pciem_area.
+
+    And socpuppet, which pciem_area asks: both are on this run's path,
+    which is what `processes.environment` hands a fresh interpreter.
+    """
+    monkeypatch.setenv("PYTHONPATH", processes.environment()["PYTHONPATH"])
     return pytester
 
 
