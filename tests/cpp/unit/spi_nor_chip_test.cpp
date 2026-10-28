@@ -129,4 +129,17 @@ TEST(WhenAnErasedChipIsProgrammedWithWritesDisabled, ItStillReadsAsErased) {
               ElementsAre(_, _, _, _, 0xFF, 0xFF));
 }
 
+// 🎓 Programming can only turn ones into zeros. Only an erase turns a zero
+// back into a one.
+TEST(WhenAChipIsProgrammedOverBytesItHolds, OnlyTheBitsBothHaveAsOnesStayOnes) {
+  SpiNorChip chip{kSixteenMebibytes};
+  chip.Bytes()[0x12'3456] = 0x0F;
+  Frame(chip, {0x06});
+
+  Frame(chip, {0x02, 0x12, 0x34, 0x56, 0x3C});
+
+  EXPECT_THAT(Frame(chip, {0x03, 0x12, 0x34, 0x56, 0}),
+              ElementsAre(_, _, _, _, 0x0C));
+}
+
 }  // namespace socpuppet
