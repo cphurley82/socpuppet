@@ -31,4 +31,4 @@ Of 9P2000.L: `Tremove`, `Trename` and `Tlink` (Linux's client uses the at-forms,
 
 ## Who has driven it
 
-🧵 `sp.Virtio9pHost`, which attaches, opens a file and reads it; and 🐧 Linux's `9pnet_virtio` with its `9p` file system, from RISC-V's `defconfig` unchanged, which mounts the share by its tag (`mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt`), reads a file Python put there and writes one Python reads back (`tests/python/test_m20_exit.py`).
+🧵 `sp.Virtio9pHost`, which attaches, opens a file and reads it; and 🐧 Linux's `9pnet_virtio` with its `9p` file system, from RISC-V's `defconfig` unchanged, which mounts the share by its tag (`mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt`), reads a file Python put there and writes one Python reads back (`tests/python/test_linux_boots.py`).

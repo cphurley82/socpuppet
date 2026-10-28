@@ -6,7 +6,7 @@ it mounts the root. Here the root is still 🎭 the virtio disk, and the
 drive is 🎭 the behavioral NVMe stand-in behind the root complex, which
 Linux finds as a generic ECAM host (`pci-host-ecam-generic`) and whose
 interrupts reach it as MSI-X messages to the IMSIC. The drive as the
-root is M24's exit test, `test_m24_exit.py`.
+root is M24's exit test, `test_linux_root_on_the_drive.py`.
 """
 
 import re

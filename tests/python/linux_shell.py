@@ -1,6 +1,6 @@
 """Python at the keyboard of Linux's shell, on 🎭 the host.
 
-The Linux boot's exit test, `test_m20_exit.py`, brings a kernel to its
+The Linux boot's exit test, `test_linux_boots.py`, brings a kernel to its
 prompt on the virtio console; these are its ways of getting there, of
 waiting for the prompt and of typing at it, for every test that boots
 Linux.

@@ -14,9 +14,9 @@ add_test(NAME pytest
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 # The examples are documentation that runs. Keep them running.
-add_test(NAME example_m0_passthrough
+add_test(NAME example_passthrough_hello
   COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
-          ${SOCPUPPET_TEST_PYTHON} examples/m0_passthrough.py
+          ${SOCPUPPET_TEST_PYTHON} examples/passthrough_hello.py
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
 add_test(NAME example_nvme_hello

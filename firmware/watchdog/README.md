@@ -1,6 +1,6 @@
 # The watchdog firmware 🧦
 
-A Zephyr application that gets itself reset twice and says why each time it starts. It is what `tests/python/test_m14_exit.py` boots to show a [system controller](../../docs/models/system-controller.md) and a [watchdog](../../docs/models/watchdog.md) at work.
+A Zephyr application that gets itself reset twice and says why each time it starts. It is what `tests/python/test_rom_boot.py` boots to show a [system controller](../../docs/models/system-controller.md) and a [watchdog](../../docs/models/watchdog.md) at work.
 
 What it prints, over its three starts (Zephyr's banner, and the boot ROM's line when it is booted from a flash, come before each `reset cause`):
 

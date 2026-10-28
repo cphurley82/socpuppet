@@ -122,7 +122,7 @@ Each prints the link's own bring-up packet by packet, then every console as one 
 | The SSD's table of where each block is | On the NAND, saved at shutdown ([ssd-firmware.md](../models/ssd-firmware.md)) | In Python, and gone when the run ends |
 
 - 💡 This is what a stand-in is for: everything around the block you are studying can be simple, and the boot still happens. The pages say what each leaves out: [io-manager.md](../models/io-manager.md#what-it-leaves-out), [ssd-firmware.md](../models/ssd-firmware.md#what-it-leaves-out), and for the link that a manager makes real, [pass-through-link.md](../models/pass-through-link.md#what-it-leaves-out).
-- `tests/python/test_m4_exit.py` gives the SSD and 🎭 the stand-in drive the same writes and compares what each holds, which is how a stand-in is held to its contract ([architecture.md](../architecture.md#stand-ins-and-contracts)).
+- `tests/python/test_ssd_with_its_own_firmware.py` gives the SSD and 🎭 the stand-in drive the same writes and compares what each holds, which is how a stand-in is held to its contract ([architecture.md](../architecture.md#stand-ins-and-contracts)).
 
 ## 8. Logs, traces and a debugger
 

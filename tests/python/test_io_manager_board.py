@@ -35,7 +35,7 @@ class TestWhenTheBoardIsDescribed:
     ):
         # What that reset does is tested where it can be seen: the compute
         # die reaches nothing until the manager lets it go
-        # (test_io_manager.py, test_m5a_exit.py). This is that the line
+        # (test_io_manager.py, test_io_manager_lets_the_compute_die_go.py). This is that the line
         # comes from the link and from nowhere else.
         board = a_board_with_a_scripted_manager()
 

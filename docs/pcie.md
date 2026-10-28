@@ -150,7 +150,7 @@ flowchart LR
 
 | The host | Its firmware | Takes the interrupt messages | Shown in |
 |---|---|---|---|
-| 🎭 A Python script in the CPU's place | the script: `sp.PcieHost` finds and places the drive, `sp.NvmeHost` drives it | 🎭 [an MSI receiver](models/msi-receiver.md), one register | `examples/nvme_hello.py`, `tests/python/test_m2_exit.py` |
+| 🎭 A Python script in the CPU's place | the script: `sp.PcieHost` finds and places the drive, `sp.NvmeHost` drives it | 🎭 [an MSI receiver](models/msi-receiver.md), one register | `examples/nvme_hello.py`, `tests/python/test_nvme_over_pcie.py` |
 | The host CPU, Zephyr | Zephyr's own PCIe and NVMe drivers, with socpuppet's root complex driver | the [IMSIC](models/imsic.md), the interrupt controller RISC-V servers use | `examples/host_and_ssd_hello.py`, [boards.md](boards.md#with-a-drive) |
 | The host CPU, 🐧 Linux | a stock kernel: `pci-host-ecam-generic` finds the root complex, `nvme` the drive | the IMSIC, by the devicetree's `msi-parent` | `tests/python/test_linux_nvme.py`, [linux.md](linux.md#its-root-on-the-drive) |
 
@@ -413,7 +413,7 @@ It holds 2048 blocks of 512 bytes: 1.0 MB.
 The 21 accesses are the drive fetching commands, moving blocks, posting completions and sending six messages. The tests that hold this path run on every push:
 
 ```sh
-uv run pytest tests/python/test_m2_exit.py tests/python/test_pcie.py      # 32 passed in 2.4 s
+uv run pytest tests/python/test_nvme_over_pcie.py tests/python/test_pcie.py      # 32 passed in 2.4 s
 uv run ctest --preset dev -R 'Endpoint|Msix|Capability|Pciem'           # the C++ side: tests/cpp/platform/pcie_test.cpp and more
 ```
 
@@ -454,7 +454,7 @@ PYTHONPATH=python uv run python -m socpuppet drive --firmware behavioral --block
 lsblk                                                           # a new 64M disk, no partitions yet
 ```
 
-The program says where on the bus the drive is. Ctrl-C ends it; if Linux's driver still holds the drive it prints the `unbind` line to type as root and waits, because a drive that vanishes with commands outstanding costs the driver half a minute each. Linux cannot tell the puppet from a card in a slot, and neither can `lsblk`, which is the point, and also why the drive is found by its place on pciem's bus (`socpuppet.boards.real_host.puppet_function()`) and never by name: formatting the wrong disk is a sketch nobody wants to be in. `tests/python/test_m31_exit.py` goes on to `mkfs.ext4`, `mount`, a file written, `umount`, and Python reading the file back out of the simulated NAND.
+The program says where on the bus the drive is. Ctrl-C ends it; if Linux's driver still holds the drive it prints the `unbind` line to type as root and waits, because a drive that vanishes with commands outstanding costs the driver half a minute each. Linux cannot tell the puppet from a card in a slot, and neither can `lsblk`, which is the point, and also why the drive is found by its place on pciem's bus (`socpuppet.boards.real_host.puppet_function()`) and never by name: formatting the wrong disk is a sketch nobody wants to be in. `tests/python/test_this_machines_linux_mounts_the_ssd.py` goes on to `mkfs.ext4`, `mount`, a file written, `umount`, and Python reading the file back out of the simulated NAND.
 
 Without a prepared machine: `tests/python/test_real_host_board.py` checks the wiring with `PciemHost` in it without building a platform, so it runs anywhere; and the nightly job runs the real thing in a QEMU guest of this machine's own, with no reboot ([development.md](development.md#pciem-a-real-host)):
 

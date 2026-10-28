@@ -69,6 +69,6 @@ io_rtc: rtc@100f2000 {
 
 💡 The registers are written once, in `regs/rtc.rdl`, and the logic is plain C++, `src/socpuppet/core/rtc_logic.cpp`, with no simulation kernel: it is told the simulated time with each call, and says when its alarm is next due. The SystemC wrapper, `src/socpuppet/models/rtc.h`, waits until then, or until firmware writes a register.
 
-📮 Zephyr has no driver for the clock, so socpuppet's module has one, `drivers/rtc/rtc_goldfish.c`; [upstream.md](../upstream.md) has it as one to send. Zephyr's own `tests/drivers/rtc/rtc_api` passes on it (`tests/python/test_m18_exit.py`, and twister).
+📮 Zephyr has no driver for the clock, so socpuppet's module has one, `drivers/rtc/rtc_goldfish.c`; [upstream.md](../upstream.md) has it as one to send. Zephyr's own `tests/drivers/rtc/rtc_api` passes on it (`tests/python/test_zephyr_peripheral_samples.py`, and twister).
 
 `tests/cpp/unit/rtc_logic_test.cpp` holds the logic, and `tests/cpp/platform/rtc_test.cpp` the clock keeping the simulation's time and its alarm raising its line.

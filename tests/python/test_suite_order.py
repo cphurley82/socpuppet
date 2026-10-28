@@ -8,18 +8,22 @@ whole run waiting while every other core sat idle.
 
 import pytest
 
-# The modules whose tests boot OpenSBI, UEFI and Linux.
+# The modules whose tests boot OpenSBI, UEFI and Linux, or Zephyr on virtio.
 BOOTS = {
     "test_linux_boot_flash",
     "test_linux_command_boots",
     "test_linux_gpio",
     "test_linux_nvme",
     "test_linux_rtc",
-    "test_m15_exit",
-    "test_m20_exit",
-    "test_m23_exit",
-    "test_m24_exit",
-    "test_m28_exit",
+    "test_iommu",
+    "test_linux_boots",
+    "test_opensbi_boots",
+    "test_linux_root_on_the_drive",
+    "test_uefi_boots",
+    "test_ssh_over_the_cable",
+    "test_this_machines_linux_mounts_the_ssd",
+    "test_virtio_uefi",
+    "test_virtio_zephyr",
 }
 
 

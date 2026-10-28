@@ -5,7 +5,7 @@ socpuppet's behind it, on the host's IO die. A stock kernel drives it
 through its own drivers, `spi-sifive` and `spi-nor`, which show it as an
 MTD device, the kind of block Linux gives a flash: it reads what Python
 put there, and Python reads what it writes. Zephyr's half of the exit is
-`test_m18_exit.py`.
+`test_zephyr_peripheral_samples.py`.
 """
 
 import pytest

@@ -343,7 +343,7 @@ PCIEM_GUEST = (
             *(f"{name}={value}" for name, value in REQUIRE_PCIEM.items()),
             *(".venv/bin/python", "-m", "pytest", "-p", "no:cacheprovider"),
             "tests/python/test_pciem_contract.py",
-            "tests/python/test_m31_exit.py",
+            "tests/python/test_this_machines_linux_mounts_the_ssd.py",
             "tests/python/test_drive_command.py",
         ),
     ),

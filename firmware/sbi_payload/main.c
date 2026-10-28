@@ -1,7 +1,7 @@
 /*
  * A payload for OpenSBI: a program in supervisor mode that makes SBI's
  * calls, as a kernel will, and says what each one did. It is what the
- * OpenSBI exit test reads (tests/python/test_m23_exit.py), so every line
+ * OpenSBI exit test reads (tests/python/test_opensbi_boots.py), so every line
  * starts with "payload: " and means one thing.
  *
  * SBI, the Supervisor Binary Interface, is how supervisor mode asks

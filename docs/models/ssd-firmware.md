@@ -167,6 +167,6 @@ A host cannot tell the two apart by what they answer. This is what differs behin
 - `python/socpuppet/ssd_firmware.py` is all of the stand-in: the registers it uses of the three devices, at the top, and then the firmware from the loop down.
 - `firmware/ssd/src` is the Zephyr application, a file for each section of the script, and `python/socpuppet/zephyr_module/drivers/ssd` its three drivers.
 - `tests/python/test_ssd_firmware.py` runs each of them on the SSD's hardware, every test once with the script and once with Zephyr, with the [driver stand-in](nvme-host.md) for what a driver does and a bare host of the tests' own (`tests/python/raw_nvme.py`) for what a drive refuses.
-- `tests/python/test_m4_exit.py` gives the SSD with Zephyr on it and 🎭 the [stand-in drive](behavioral-nvme.md) the same writes, and reads both back whole.
+- `tests/python/test_ssd_with_its_own_firmware.py` gives the SSD with Zephyr on it and 🎭 the [stand-in drive](behavioral-nvme.md) the same writes, and reads both back whole.
 - `tests/python/test_ssd_zephyr_firmware.py` is what only the real one has, a console, and `test_ssd_scripted_firmware.py` what only the script has: a table that Python can read.
 - `tests/cpp/support/ssd_firmware.h` is the same firmware again in C++, for the NVMe contract. It is a test's own, and the two share nothing but the specification.
