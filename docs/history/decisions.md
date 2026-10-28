@@ -2,6 +2,10 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-10-28
+
+- **The root of Linux's devicetree says `compatible = "socpuppet,platform"`.** 🐧 Linux 6.18 takes a root with no `compatible` for the empty tree it builds in, and then refuses the dummy power supply a device whose node names none would otherwise get: `spi-nor` asks for one, so the flash went unprobed with no error but a warning. Any platform socpuppet describes says it, as QEMU's `virt` says `riscv-virtio`, because the generator does not know which board it is describing; the board's name is `model`. Zephyr's trees are unchanged, since nothing of Zephyr's reads it.
+
 ## 2026-10-27
 
 - **Only a bus master that can reach the boot flash's controller is told of the flash, and on the 32-bit boards none can.** The SSD's and the manager's CPU kits map the flash's window and not its controller's registers: their boot ROMs read the window, and no firmware of theirs speaks SPI to the flash, where a node would have brought Zephyr's SPI NOR driver into every image built with the flash API, the SSD's among them, and Zephyr's flash test would have tested the boot flash instead of the NAND. The host's flash, which Linux and Zephyr are to drive, keeps its registers at `0x100D_0000` and has its node, in Zephyr's dialect: the controller's, the chip inside it, and a fixed clock of 50 MHz, which socpuppet's `soc.h` gives SiFive's drivers as `SIFIVE_PERIPHERAL_CLOCK_FREQUENCY`. 🚧 Linux's node comes with the controller's interrupt, which Linux's driver requires.

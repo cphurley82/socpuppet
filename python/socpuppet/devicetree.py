@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 _CONSOLE = "zephyr,console"
 #: The node every device on the bus is under.
 _BUS = "soc"
+#: What the root of Linux's tree says the board is compatible with: any
+#: platform of socpuppet's, as QEMU's `virt` says `riscv-virtio`. 🐧 Linux
+#: takes a root with no `compatible` for the empty tree it builds in, and
+#: then gives no device the dummy power supply it gives one whose node
+#: names none. The flash's chip, which asks for one, would then be refused.
+_ROOT_FOR_LINUX = "socpuppet,platform"
 
 
 def generate(
@@ -58,6 +64,11 @@ def generate(
         "\t#address-cells = <2>;",
         "\t#size-cells = <2>;",
         *([f'\tmodel = "{model}";'] if model is not None else []),
+        *(
+            [f'\tcompatible = "{_ROOT_FOR_LINUX}";']
+            if dialect == "linux"
+            else []
+        ),
     ]
     # A stand-in for a CPU runs no firmware, so it has no `cpus` node and
     # nothing to choose or name devices for.
