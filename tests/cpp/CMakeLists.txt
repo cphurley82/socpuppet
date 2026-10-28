@@ -22,6 +22,7 @@ add_executable(unit_tests
   unit/prp_test.cpp
   unit/qbox_fates_test.cpp
   unit/script_test.cpp
+  unit/spi_nor_chip_test.cpp
   unit/system_controller_logic_test.cpp
   unit/ucie_link_registers_test.cpp
   unit/ucie_link_state_test.cpp

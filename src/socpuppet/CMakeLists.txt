@@ -37,6 +37,7 @@ target_sources(socpuppet_core INTERFACE
     core/pciem_device.h
     core/pciem_host_logic.h
     core/script.h
+    core/spi_device.h
     core/system_controller_logic.h
     core/time.h
     core/trace.h
@@ -93,6 +94,15 @@ target_sources(socpuppet_ssd_devices PUBLIC
 target_link_libraries(socpuppet_ssd_devices PUBLIC socpuppet_regs)
 socpuppet_dev_checks(socpuppet_ssd_devices)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
+
+# A NOR flash chip on an SPI bus, the device behind the boot flash's
+# controller.
+add_library(socpuppet_spi_nor_chip STATIC core/spi_nor_chip.cpp)
+target_sources(socpuppet_spi_nor_chip PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/spi_nor_chip.h)
+socpuppet_dev_checks(socpuppet_spi_nor_chip)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_spi_nor_chip)
 
 # The die-to-die link: where it is on its way up, and what its registers
 # do. UCIe's state machine and message codes, from public sources.
