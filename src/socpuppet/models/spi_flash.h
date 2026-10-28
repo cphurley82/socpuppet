@@ -20,7 +20,8 @@ namespace socpuppet {
 // (`socket`). And the controller maps the flash into the address space, so
 // that it reads like memory and code can even run from it (execute in
 // place, XIP): that is `xip`, and it is what a boot ROM uses, since a ROM
-// has no room for an SPI driver.
+// has no room for an SPI driver. A driver may also want `irq`, the
+// controller's interrupt.
 //
 // The controller is SiFive's, borrowed from VPV-Peripherals (Minres) as
 // SpiController, and the chip is socpuppet's own, a SpiNorChip of

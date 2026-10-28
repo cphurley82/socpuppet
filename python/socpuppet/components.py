@@ -1130,10 +1130,11 @@ class SpiFlash(Component):
     memory (execute in place, XIP), which is how a boot ROM reads it.
 
     Map `xip` where the CPU is to find the flash, and `socket`, the
-    controller's own registers, somewhere else. Fill it before the first
-    run with `platform.load_binary(image, at=<where xip is>)`. A write from
-    the bus through `xip` fails: a flash is written by commands to its
-    controller.
+    controller's own registers, somewhere else. Fill the flash before the
+    first run with `platform.load_binary(image, at=<where xip is>)`. A write
+    from the bus through `xip` fails: a flash is written by commands to its
+    controller. A CPU whose firmware drives the controller may also want
+    `irq`, its interrupt.
 
     The controller is SiFive's, borrowed from VPV-Peripherals, and the chip
     is socpuppet's own, of Winbond's W25Q kind. Its devicetree node is the
