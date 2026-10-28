@@ -1130,15 +1130,16 @@ class SpiFlash(Component):
     controller's own registers, somewhere else. Fill it before the first
     run with `platform.load_binary(image, at=<where xip is>)`. A write from
     the bus through `xip` fails: a flash is written by commands to its
-    controller, and 🚧 nothing here speaks those yet.
+    controller.
 
-    Both halves are borrowed from VPV-Peripherals. It has no devicetree
-    node: nothing in firmware reads it yet.
+    The controller is SiFive's, borrowed from VPV-Peripherals, and the chip
+    is socpuppet's own, of Winbond's W25Q kind. It has no devicetree node
+    yet.
     """
 
     implementation = "spi_flash"
     port_specs = (target("socket"), target("xip"))
-    #: The most the borrowed chip holds.
+    #: The most a flash may hold.
     LARGEST = 256 << 20
     #: The controller's registers take a page.
     mapped_size = 0x1000

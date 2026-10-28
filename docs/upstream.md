@@ -92,10 +92,10 @@ Each entry says:
 - **Where**: `src/interfaces/CMakeLists.txt`, the `interfaces` library (`scc::busses`), which has `spi/spi_tlm.h` beside AHB, AXI and CHI, and `third_party/axi_chi/chi/lwtr/chi_lwtr.cpp`.
 - **What is wrong**: the SPI sockets are headers, and the only target that puts them on an include path is the whole `interfaces` library. Linking it compiles the AXI and CHI transaction recorders, and with Apple's Clang `chi_lwtr.cpp` fails: a call to `record` is ambiguous between three templates.
 - **How to see it**: link `scc::busses` into anything, on a Mac.
-- **What we do**: `src/socpuppet/CMakeLists.txt` adds `${scc_SOURCE_DIR}/src/interfaces` to the flash model's include path and links nothing new.
+- **What we do**: nothing now. 🦜 socpuppet has needed no SPI sockets since M18, when the boot flash's controller became SiFive's, which moves its bytes on signal sockets ([history/decisions.md](history/decisions.md), 2026-10-27). Until then `src/socpuppet/CMakeLists.txt` added `${scc_SOURCE_DIR}/src/interfaces` to the flash model's include path and linked nothing new.
 - **Upstream fix**: an interface target for the header-only protocols, and the ambiguity in `chi_lwtr.cpp` mended, which is the same one as in "LWTR4SC's `record` is ambiguous" above.
 - **Kind**: build.
-- **When it lands**: link the target, and drop the include path.
+- **When it lands**: nothing to delete.
 
 ### A bit field assigned another value's same field takes the whole word
 
@@ -674,7 +674,7 @@ Each entry says:
 
 ## VPV-Peripherals
 
-[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`; the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`; the RISC-V PLIC and APLIC, behind `src/socpuppet/models/plic.cpp` and `aplic.cpp`; SiFive's always-on block, behind `src/socpuppet/models/watchdog.cpp`; SiFive's SPI controller, behind `src/socpuppet/models/spi_controller.cpp`; and Minres's QSPI controller and flash chip, behind `src/socpuppet/models/spi_flash.cpp`.
+[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`; the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`; the RISC-V PLIC and APLIC, behind `src/socpuppet/models/plic.cpp` and `aplic.cpp`; SiFive's always-on block, behind `src/socpuppet/models/watchdog.cpp`; and SiFive's SPI controller, behind `src/socpuppet/models/spi_controller.cpp`. Until M18 it lent Minres's QSPI controller and flash chip to the boot flash too.
 
 ### The ACLINT ignores a compare value written at time zero
 
@@ -872,30 +872,30 @@ Two more things read in the same file and not acted on:
 - **Where**: `generic/spi_mem.h`, `scc::memory<256_MB, scc::LT> mem`, reached through `spi_t`'s blocking and debug transport, and so through `minres/qspi`'s `xip_sck`.
 - **What is wrong**: the chip is 256 MB whatever a platform wants, with no parameter for it, and an access that starts past the end does not come back with an address error. The process ends: "pointer being freed was not allocated".
 - **How to see it**: a read at `0x1000_0000` through `xip_sck`. M14's spike did it ([boot-spike.md](history/boot-spike.md)). In socpuppet, `AnAccessThroughAFlashsWindowFarPastItsSize` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own check taken out.
-- **What we do**: no patch. The adapter (`src/socpuppet/models/spi_flash.cpp`) has a size of its own and turns an access past it away before the chip sees it.
+- **What we do**: nothing now. 🦜 socpuppet has not used this model since M18, when the boot flash's chip became one of its own behind SiFive's SPI controller ([history/decisions.md](history/decisions.md), 2026-10-27). Until then the adapter had a size of its own and turned an access past it away before the chip saw it.
 - **Upstream fix**: a size parameter for the chip, and an address-error response past it.
 - **Kind**: bug.
-- **When it lands**: the adapter's check can go, with its size given to the chip.
+- **When it lands**: nothing to delete.
 
 ### The flash's memory window takes a write
 
 - **Where**: `minres/qspi.cpp`, the `xip_sck` socket, and `generic/spi_mem.cpp`, which hands what arrives to its memory.
 - **What is wrong**: 🎓 a flash mapped for execute in place is read through that window, and written by erase and program commands to its controller. The model's window passes a write on to the chip's memory, which takes it, so firmware that stores to its flash by mistake changes it and is told nothing.
 - **How to see it**: a write through `xip_sck` and a read of the same address. In socpuppet, `ABusWriteThroughAFlashsWindow` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own check taken out.
-- **What we do**: no patch. The adapter answers a write through its window with a command error. A debugger's write is passed on, on purpose: it is how a platform fills the flash.
+- **What we do**: nothing now. 🦜 socpuppet has not used this model since M18, when the boot flash's chip became one of its own behind SiFive's SPI controller ([history/decisions.md](history/decisions.md), 2026-10-27). Until then the adapter answered a write through its window with a command error, as the window of ours still does.
 - **Upstream fix**: refuse a write command in `xip_sck`'s blocking transport.
 - **Kind**: bug.
-- **When it lands**: the adapter's check can go.
+- **When it lands**: nothing to delete.
 
 ### The flash's memory window says direct access is allowed, and cannot grant it
 
 - **Where**: `minres/qspi.cpp`, `xip_sck`, which registers a blocking and a debug transport and no `get_direct_mem_ptr`, and `generic/spi_mem.h`, whose `scc::memory` sets the DMI-allowed hint on what it answers.
 - **What is wrong**: 🎓 a target that sets the hint on a transaction is telling its initiator that a pointer to its memory is worth asking for. The chip's memory sets it, the hint rides back out through the window, and a CPU model that then asks is refused: neither the window nor an SPI socket has a way to pass the request on. A CPU asks again at every access.
 - **How to see it**: a read through `xip_sck`, the hint on the transaction that comes back, and a request for direct memory access that is then refused. In socpuppet, `AFlashsWindow.GrantsNoDirectMemoryAccess` in `tests/cpp/platform/spi_flash_test.cpp` with the adapter's own line taken out.
-- **What we do**: no patch. The adapter clears the hint on what comes back through its window. socpuppet wants no direct access there in any case: a boot ROM's reads are meant to show in a trace.
+- **What we do**: nothing now. 🦜 socpuppet has not used this model since M18, when the boot flash's chip became one of its own behind SiFive's SPI controller ([history/decisions.md](history/decisions.md), 2026-10-27). Until then the adapter cleared the hint on what came back through its window; the window of ours never sets it, since a boot ROM's reads are meant to show in a trace.
 - **Upstream fix**: clear the hint in `xip_sck`'s blocking transport, or pass a request for direct memory access on to the chip.
 - **Kind**: bug.
-- **When it lands**: nothing to delete. The adapter keeps its line, for the trace's sake.
+- **When it lands**: nothing to delete.
 
 ### `pulpino/uart.h` does not include what it uses
 

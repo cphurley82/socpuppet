@@ -290,29 +290,13 @@ target_link_libraries(socpuppet_spi_controller
   PRIVATE vpv_sifive_spi)
 socpuppet_dev_checks(socpuppet_spi_controller)
 
-# The flash: VPV-Peripherals' SPI controller and its flash chip, built
-# apart from ours as the timer's model is. SCC's SPI sockets are headers in
-# the directory of its `interfaces` library, which is not linked: it has AXI
-# and CHI in it as well, whose transaction recording does not compile here
-# (see docs/upstream.md). The chip reads ELF files for a preload of its own
-# that socpuppet does not use, and needs ELFIO for it all the same.
-add_library(vpv_spi_flash STATIC
-  ${vpv_peripherals_SOURCE_DIR}/minres/qspi.cpp
-  ${vpv_peripherals_SOURCE_DIR}/generic/spi_mem.cpp)
-target_compile_options(vpv_spi_flash PRIVATE -w)
-target_include_directories(vpv_spi_flash SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR} ${scc_SOURCE_DIR}/src/interfaces)
-target_link_libraries(vpv_spi_flash
-  PUBLIC scc::components SystemC::systemc
-  PRIVATE elfio::elfio)
-
+# The flash: the SPI controller above with our chip behind it.
 add_library(socpuppet_spi_flash STATIC models/spi_flash.cpp)
 target_sources(socpuppet_spi_flash PUBLIC
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     models/spi_flash.h)
 target_link_libraries(socpuppet_spi_flash
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_spi_flash)
+  PUBLIC SystemC::systemc socpuppet_core socpuppet_spi_controller)
 socpuppet_dev_checks(socpuppet_spi_flash)
 
 # platform/: composing components by name (ports, the registry, the
