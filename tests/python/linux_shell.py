@@ -89,17 +89,21 @@ def switch_off_at_the_prompt(board):
     )
 
 
-def a_host_with_linux(firmware, *, share=None, gdb_port=0):
+def a_host_with_linux(firmware, *, share=None, gdb_port=0, rtc_time=0):
     """A host built with the kernel and its root filesystem in place.
 
     🎭 The quick way, as `socpuppet.linux` boots it, from the directory
     the `firmware` fixture finds the images in, so that a missing one
     skips the test. `share` is a directory of this machine for Linux to
     mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
-    debugger.
+    debugger. `rtc_time` is what the real-time clock reads as the
+    simulation starts.
     """
     return linux.host_with_linux(
-        linux_images(firmware), share=share, gdb_port=gdb_port
+        linux_images(firmware),
+        share=share,
+        gdb_port=gdb_port,
+        rtc_time=rtc_time,
     )
 
 
