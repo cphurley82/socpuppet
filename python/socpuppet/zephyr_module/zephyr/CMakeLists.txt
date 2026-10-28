@@ -18,6 +18,10 @@ zephyr_sources_ifdef(CONFIG_SOCPUPPET_DMA_ENGINE
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_FLASH_CONTROLLER
   ${CMAKE_CURRENT_LIST_DIR}/../drivers/ssd/flash_controller.c)
 
+# The driver for the Goldfish real-time clock, which Zephyr has none for.
+zephyr_sources_ifdef(CONFIG_SOCPUPPET_RTC_GOLDFISH
+  ${CMAKE_CURRENT_LIST_DIR}/../drivers/rtc/rtc_goldfish.c)
+
 # The driver for one end of a socpuppet die-to-die link, for the firmware
 # on the die that manages it.
 zephyr_sources_ifdef(CONFIG_SOCPUPPET_UCIE_LINK

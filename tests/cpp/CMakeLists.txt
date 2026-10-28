@@ -86,6 +86,7 @@ add_executable(kernel_tests
   platform/pciem_host_test.cpp
   platform/qbox_cpu_test.cpp
   platform/router_test.cpp
+  platform/rtc_test.cpp
   platform/scripted_master_test.cpp
   platform/spi_flash_test.cpp
   platform/system_controller_test.cpp

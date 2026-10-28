@@ -394,6 +394,7 @@ target_sources(socpuppet_models INTERFACE
     models/pcie_root_complex.h
     models/pciem_host.h
     models/rom.h
+    models/rtc.h
     models/scripted_bus_master.h
     models/socket_memory.h
     models/system_controller.h

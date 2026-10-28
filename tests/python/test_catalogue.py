@@ -5,6 +5,8 @@ the registry knows. These tests keep the two from drifting apart, which is
 why they look inside socpuppet._core.
 """
 
+import datetime
+
 import pytest
 
 import socpuppet as sp
@@ -79,6 +81,7 @@ EXAMPLES = [
     sp.Plic(),
     sp.QboxCpu(xlen=64, reset_vector=0x8000_0000),
     sp.Rom(size=0x100),
+    sp.Rtc(),
     router_with_one_output(),
     router_with_two_inputs(),
     sp.ScriptedBusMaster(),
@@ -189,6 +192,23 @@ class TestAnI2cControllerWithADeviceAtAnAddressI2cHasNot:
     def test_is_refused_and_the_error_gives_the_addresses(self, address):
         with pytest.raises(ValueError, match="0 to 127"):
             sp.I2cController(devices={address: object()})
+
+
+class TestAClockGivenATime:
+    def test_as_a_datetime_counts_it_in_nanoseconds_since_1970(self):
+        given = datetime.datetime(2026, 10, 26, tzinfo=datetime.UTC)
+
+        assert sp.Rtc(time=given).parameters == {
+            "time_ns": 1_792_972_800_000_000_000
+        }
+
+    def test_with_no_time_zone_is_refused_and_told_to_give_one(self):
+        with pytest.raises(ValueError, match="time zone"):
+            sp.Rtc(time=datetime.datetime(2026, 10, 26))
+
+    def test_before_1970_is_refused(self):
+        with pytest.raises(ValueError, match="1970"):
+            sp.Rtc(time=-1)
 
 
 class TestASpiFlashOfASizeTheChipCannotBe:

@@ -33,6 +33,8 @@ from socpuppet.boards.host import (
     IOMMU_OFFSET,
     IOMMU_SOURCE,
     RAM_BASE,
+    RTC_OFFSET,
+    RTC_SOURCE,
     UART_SOURCE,
     VIRTIO_FIRST_SOURCE,
     VIRTIO_SLOT_OFFSET,
@@ -293,6 +295,27 @@ class TestTheHostsI2cController:
 
         assert (
             InterruptEntry("io.aplic", I2C_SOURCE, f"{board.i2c.path}.irq")
+            in board.platform.interrupt_map()
+        )
+
+
+class TestTheHostsRealTimeClock:
+    def test_is_on_the_io_die_where_its_cpu_finds_it(self):
+        board = host()
+
+        [registers] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.rtc.path
+        ]
+
+        assert registers.address == IO_BASE + RTC_OFFSET
+
+    def test_its_interrupt_line_goes_to_the_io_dies_aplic(self):
+        board = host()
+
+        assert (
+            InterruptEntry("io.aplic", RTC_SOURCE, f"{board.rtc.path}.irq")
             in board.platform.interrupt_map()
         )
 
