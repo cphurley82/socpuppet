@@ -23,6 +23,7 @@ struct SifiveSpiDriver {
   static constexpr std::uint64_t kTransmit = 0x48;
   static constexpr std::uint64_t kReceive = 0x4C;
   static constexpr std::uint64_t kTransmitMark = 0x50;
+  static constexpr std::uint64_t kReceiveMark = 0x54;
   static constexpr std::uint64_t kInterruptPending = 0x74;
 
   // The chip select modes: hold the selected chip's line low from the
@@ -35,9 +36,11 @@ struct SifiveSpiDriver {
   // whether a transfer only transmits, so that nothing it gets back is kept.
   static constexpr std::uint32_t kEightBits = 8U << 16;
   static constexpr std::uint32_t kTransmitOnly = 1U << 3;
-  // The transmit watermark, a bit of the interrupt registers: pending
-  // while the transmit FIFO holds fewer bytes than its mark.
+  // The watermarks, bits of the interrupt registers. The transmit
+  // watermark is pending while the transmit FIFO holds fewer bytes than its
+  // mark, and the receive watermark while the receive FIFO holds more.
   static constexpr std::uint32_t kTransmitWatermark = 1U << 0;
+  static constexpr std::uint32_t kReceiveWatermark = 1U << 1;
 
   // Selects the chip at `chip_select`: its id, then its line held low from
   // the first byte until the mode changes.
@@ -74,6 +77,20 @@ struct SifiveSpiDriver {
   // Sets the transmit watermark's mark, as Linux's driver does once.
   void SetTransmitMark(std::uint32_t mark) const {
     bus.Write32(kTransmitMark, mark);
+  }
+
+  // Sets the receive watermark's mark, as Linux's driver does before it
+  // waits for a transfer's answers: one less than how many it waits for.
+  void SetReceiveMark(std::uint32_t mark) const {
+    bus.Write32(kReceiveMark, mark);
+  }
+
+  // Takes a byte from the receive FIFO, as Linux's driver does once the
+  // receive watermark is pending. Nothing, if the FIFO is empty.
+  std::optional<std::uint8_t> Take() const {
+    const std::uint32_t received = bus.Read32(kReceive);
+    if ((received & kReceiveEmpty) != 0) return std::nullopt;
+    return static_cast<std::uint8_t>(received);
   }
 
   // Puts a byte in the transmit FIFO and goes on, as Linux's driver does
