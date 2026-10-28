@@ -181,7 +181,8 @@ TEST_P(WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
 
 INSTANTIATE_TEST_SUITE_P(
     EachEraseCommand, WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
-    ::testing::Values(Erase{.command = 0x20, .block = 4 * 1024}),
+    ::testing::Values(Erase{.command = 0x20, .block = 4 * 1024},
+                      Erase{.command = 0x52, .block = 32 * 1024}),
     [](const ::testing::TestParamInfo<Erase>& row) {
       return std::format("Command{:02X}Erases{}KiB", row.param.command,
                          row.param.block / 1024);

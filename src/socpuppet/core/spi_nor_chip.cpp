@@ -20,6 +20,7 @@ constexpr std::uint8_t kReadStatus = 0x05;
 constexpr std::uint8_t kWriteEnable = 0x06;
 constexpr std::uint8_t kFastRead = 0x0B;
 constexpr std::uint8_t kSectorErase = 0x20;
+constexpr std::uint8_t kBlockErase32 = 0x52;
 constexpr std::uint8_t kReadJedecId = 0x9F;
 
 // Status register 1's write enable latch: writes are enabled.
@@ -31,13 +32,23 @@ constexpr std::uint8_t kErased = 0xFF;
 // How many bytes an address is sent in.
 constexpr std::size_t kAddressBytes = 3;
 
-// How many bytes a sector erase erases: the 4 KiB block its address is in.
-constexpr std::size_t kSectorBytes = 4 * 1024;
+// How many bytes a command erases, the aligned block its address is in, or
+// zero for a command that erases nothing.
+std::size_t ErasedBytes(std::uint8_t command) {
+  switch (command) {
+    case kSectorErase:
+      return 4 * 1024;
+    case kBlockErase32:
+      return 32 * 1024;
+    default:
+      return 0;
+  }
+}
 
 // Whether a command is followed by an address.
 bool TakesAnAddress(std::uint8_t command) {
   return command == kPageProgram || command == kRead || command == kFastRead ||
-         command == kSectorErase;
+         ErasedBytes(command) != 0;
 }
 
 // The JEDEC id: Winbond's maker code, then the W25Q family, then the
@@ -78,8 +89,8 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     // and not at all if more bytes come first; this one erases as the
     // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's
     // driver nor Zephyr's sends more, so none can tell.
-    if (position == kAddressBytes && command_ == kSectorErase) {
-      EraseBlock(kSectorBytes);
+    if (position == kAddressBytes && ErasedBytes(command_) != 0) {
+      EraseBlock(ErasedBytes(command_));
     }
     return 0;
   }
