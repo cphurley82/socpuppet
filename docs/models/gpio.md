@@ -37,6 +37,7 @@ gpio.on_change(lambda pin, level: print(pin, level))
 - **`gpio.drive(pin, level)`** drives a pin from outside: `True`, `False`, or `None` to let it go. Firmware reads it a delta cycle on, the next instant of the simulation at the same time.
 - **`gpio.on_change(listener)`** has `listener(pin, level)` told of each change of what a pin drives, in order, a delta cycle after firmware made it, after any listener added before it. It is called from the GPIO's own process, never from the CPU's, so it may `drive` a pin in answer.
 - **`sp.Gpio(wires={0: 1})`** is a wire from pin 0 to pin 1, set up as the platform is built: what the GPIO drives on pin 0 is on pin 1 too, as a board's loopback has it.
+- **`sp.Gpio(leds=(2,))`** puts an LED on pin 2, which firmware is told of: lit while the pin is high.
 
 ⚠️ `level` is the GPIO's side of a pin only. What `drive` puts on a pin is for firmware to read, and `level` does not show it.
 
@@ -81,12 +82,23 @@ io_gpio: gpio@100f0000 {
 };
 ```
 
+With `leds`, a `gpio-leds` node beside it, named for the GPIO, has a child for each LED, the first with the alias `led0`, which Zephyr's samples look for. The host has its LED on pin 2:
+
+```dts
+io_gpio_leds: io_gpio_leds {
+	compatible = "gpio-leds";
+	io_gpio_led0: led_0 {
+		gpios = <&io_gpio 2 0>;
+	};
+};
+```
+
 🚧 Linux's tree has no GPIO yet. Linux's `gpio-sifive` puts an interrupt domain of its own on top of its parent's, which has not been checked on the host's APLIC.
 
 ## Under the hood
 
 💡 The GPIO is SiFive's, borrowed from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) by Minres, behind the adapter `src/socpuppet/models/gpio.cpp`, which is the far end of its pins. The borrowed model had the interrupt registers and nothing behind them, and its pull-ups did nothing: two patches add both, and [upstream.md](../upstream.md) has them, with what was read and left alone. 📮 Zephyr's driver asked a PLIC which pin interrupted, and a third patch, to Zephyr, hands each pin's handler its pin.
 
-Zephyr's own `tests/drivers/gpio/gpio_basic_api` passes, with 🧵 Python's wire from pin 0 to pin 1 (`host(gpio_wires=...)`, or the shield `socpuppet_host_gpio_loopback` under `socpuppet run` and twister): its pins read and written, its pull-up read, and its interrupts of each kind (`tests/python/test_m18_exit.py`).
+Zephyr's own `tests/drivers/gpio/gpio_basic_api` passes, with 🧵 Python's wire from pin 0 to pin 1 (`host(gpio_wires=...)`, or the shield `socpuppet_host_gpio_loopback` under `socpuppet run` and twister): its pins read and written, its pull-up read, and its interrupts of each kind (`tests/python/test_m18_exit.py`). So does `samples/basic/blinky`, which turns the host's LED on and off each second.
 
 `tests/cpp/contracts/gpio_contract.h` holds the GPIO to what Zephyr's driver relies on, and `tests/python/test_gpio.py` holds Python's end of the pins.

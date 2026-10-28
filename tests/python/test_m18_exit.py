@@ -15,6 +15,8 @@ drivers (`test_linux_boot_flash.py`, which is handed out with the other
 boots).
 """
 
+import itertools
+
 import pytest
 
 import socpuppet as sp
@@ -22,6 +24,7 @@ from cast import boot
 from processes import run_socpuppet
 from socpuppet import ztest
 from socpuppet.boards.host import (
+    GPIO_LED,
     GPIO_LOOPBACK_WIRES,
     SPI_LOOPBACK_CHIP_SELECT,
     host,
@@ -36,6 +39,8 @@ SPI_LOOPBACK = "spi_loopback_socpuppet_host.elf"
 #: Zephyr's `tests/drivers/gpio/gpio_basic_api`, with the shield that names
 #: its two pins: one it drives, and one wired to it that it reads.
 GPIO_BASIC_API = "gpio_basic_api_socpuppet_host.elf"
+#: Zephyr's `samples/basic/blinky`, which blinks the board's LED.
+BLINKY = "blinky_socpuppet_host.elf"
 #: What the sample says when it passes, in order: its `sample.yaml` has them
 #: as the lines its console must show. Copied here, as `cast.GREETING` is:
 #: CI's test job has the images and not Zephyr's tree to read them from.
@@ -53,6 +58,10 @@ LIMIT = sp.ms(50)
 #: twice that leaves room for the quantum to move its timed transfers, and
 #: still ends a run that never gives one.
 LOOPBACK_LIMIT = sp.ms(1000)
+#: Blinky turns its LED over a second apart, from boot on: its four
+#: changes take two seconds, and twice that ends a run that never makes
+#: them.
+BLINKY_LIMIT = sp.ms(4000)
 #: The GPIO test gives its verdict at 19.7 s of simulated time, most of it
 #: the sleeps of its tests of interrupts; about twice that still ends a run
 #: that never gives one.
@@ -109,6 +118,29 @@ class TestWhenZephyrsGpioTestRunsWithPythonWiringItsPins:
         assert ztest.parse(board.uart.output).passed, board.uart.output
 
 
+@pytest.mark.platform
+class TestWhenZephyrsBlinkySampleRuns:
+    def test_the_led_is_lit_and_then_goes_off_and_on_each_second(
+        self, firmware
+    ):
+        # 🎓 It lights the LED as it makes its pin an output, and then
+        # turns it the other way, a second between each.
+        board = host()
+        boot(board, firmware, host=BLINKY)
+        changes = changes_of_pin(board, GPIO_LED)
+
+        board.platform.run_until(
+            lambda: len(changes) == 4, timeout=BLINKY_LIMIT
+        )
+
+        levels = [level for _, level in changes]
+        times = [at for at, _ in changes]
+        assert levels == [True, False, True, False]
+        assert [b - a for a, b in itertools.pairwise(times[1:])] == [
+            pytest.approx(sp.ms(1000), abs=sp.ms(10))
+        ] * 2
+
+
 class TestWhenZephyrsGpioTestIsRunAsTwisterRunsIt:
     def test_the_shield_wires_its_pins_and_nothing_failed(self, firmware):
         result = run_socpuppet(
@@ -138,6 +170,18 @@ class TestWhenZephyrsSpiLoopbackTestIsRunAsTwisterRunsIt:
         )
 
         assert ztest.parse(result.stdout).passed, result.stdout
+
+
+def changes_of_pin(board, pin):
+    """The (time, level) of each change the host's GPIO makes to `pin`."""
+    changes = []
+
+    def heard(changed, level):
+        if changed == pin:
+            changes.append((board.platform.time, level))
+
+    board.gpio.on_change(heard)
+    return changes
 
 
 def heard_in_order(output):

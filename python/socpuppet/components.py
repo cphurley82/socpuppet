@@ -1701,7 +1701,8 @@ class Gpio(Component):
     and `on_change(listener)` is told of each change (`PlacedGpio`).
     `wires` joins pins before then: `{0: 1}` is a wire from pin 0 to pin
     1, so what the GPIO drives on pin 0 is on pin 1 too, as a board's
-    loopback has it.
+    loopback has it. `leds` are the pins a board has an LED on, which
+    firmware is told of, the first as `led0`.
 
     The model is borrowed from VPV-Peripherals, with its pull-ups and its
     interrupts added: it had the registers and nothing behind them.
@@ -1722,6 +1723,8 @@ class Gpio(Component):
     pins: int = not_a_parameter(default=PINS)
     #: 🧵 Wires between pins brought out, from a pin to the pin it drives.
     wires: Mapping[int, int] = not_a_parameter(default=MappingProxyType({}))
+    #: The pins brought out that a board has an LED on, lit while high.
+    leds: tuple[int, ...] = not_a_parameter(default=())
 
     def __post_init__(self) -> None:
         if self.pins not in range(1, self.PINS + 1):
@@ -1737,6 +1740,12 @@ class Gpio(Component):
                 raise ValueError(
                     f"A wire joins pins the GPIO brings out, 0 to "
                     f"{self.pins - 1}; one was to {which} at pin {end}."
+                )
+        for led in self.leds:
+            if led not in range(self.pins):
+                raise ValueError(
+                    f"An LED is on a pin the GPIO brings out, 0 to "
+                    f"{self.pins - 1}; one was to be on pin {led}."
                 )
 
     @override
@@ -1754,6 +1763,41 @@ class Gpio(Component):
     @override
     def place(self, platform: Platform, path: str) -> PlacedGpio:
         return PlacedGpio(platform, path, self)
+
+    @override
+    def device_nodes(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
+    ) -> tuple[DeviceNode, ...]:
+        nodes = super().device_nodes(reached, dialect=dialect, label=label)
+        # No GPIO node (Linux's tree, or a bus master that cannot reach the
+        # GPIO), no LEDs: each names the GPIO's node.
+        if not nodes or not self.leds:
+            return nodes
+        # 🎓 A board's LEDs, each a pin it drives, lit while high (the
+        # flags' 0). Zephyr's samples find the first by the name `led0`.
+        # ⚠️ So of two GPIOs with LEDs, the first's is `led0`. The node is
+        # named for its GPIO, as the binding allows, so the two do not
+        # clash.
+        leds = DeviceNode(
+            f"{label}_leds",
+            (),
+            ('compatible = "gpio-leds";',),
+            on_bus=False,
+            interrupts=(),
+            suffix="_leds",
+            children=tuple(
+                DeviceNode(
+                    f"led_{number}",
+                    (),
+                    (f"gpios = <&{label} {pin} 0>;",),
+                    aliases=(f"led{number}",),
+                    interrupts=(),
+                    suffix=f"_led{number}",
+                )
+                for number, pin in enumerate(self.leds)
+            ),
+        )
+        return (*nodes, leds)
 
     @override
     def device_node(

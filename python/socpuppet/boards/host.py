@@ -202,6 +202,10 @@ IOMMU_SOURCE = 24
 GPIO_OFFSET = 0x0F_0000
 GPIO_PINS = 4
 GPIO_FIRST_SOURCE = 25
+#: The pin the board has its LED on, which Zephyr knows as `led0`: not
+#: one of the two the shield `socpuppet_host_gpio_loopback` wires
+#: (`GPIO_LOOPBACK_OUT`, `GPIO_LOOPBACK_IN`).
+GPIO_LED = 2
 #: Which source of the IO die's APLIC the boot flash's controller's line
 #: is: the number after the GPIO's pins'.
 BOOT_FLASH_SOURCE = GPIO_FIRST_SOURCE + GPIO_PINS
@@ -684,7 +688,9 @@ def _io_die(
         SpiFlash(size=BOOT_FLASH_SIZE, devices=boot_flash_devices),
     )
     boot_flash_bus = place.add("boot_flash_bus", Router())
-    gpio = place.add("gpio", Gpio(pins=GPIO_PINS, wires=gpio_wires))
+    gpio = place.add(
+        "gpio", Gpio(pins=GPIO_PINS, wires=gpio_wires, leds=(GPIO_LED,))
+    )
     bus.map(uart.socket, base=UART_OFFSET)
     bus.map(gpio.socket, base=GPIO_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
