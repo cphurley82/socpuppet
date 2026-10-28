@@ -20,6 +20,7 @@
 #include "socpuppet/models/dma_engine.h"
 #include "socpuppet/models/flash_controller.h"
 #include "socpuppet/models/gpio.h"
+#include "socpuppet/models/i2c_controller.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/imsic.h"
 #include "socpuppet/models/iommu.h"
@@ -221,6 +222,15 @@ Registry BuiltinComponents() {
         // Firmware may poll the status and leave the line alone.
         WireSourcePort("irq", module->irq,
                        /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("i2c_controller", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<I2cController>(
+        name, parameters.Required("clock_hz", kAtLeastOne));
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        // Firmware may poll the status and leave the line alone.
+        WireSourcePort("irq", module->irq, /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("ideal_nand", [](const char* name, Parameters& parameters) {

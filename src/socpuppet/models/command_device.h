@@ -35,11 +35,12 @@ concept CommandLogic =
 //
 // A write to a register returns at once, and a command is carried out by a
 // process of the device's own, one delta cycle later at the same simulated
-// time. (A delta cycle is one round of the simulator letting every process
-// that is ready run, with no time passing.) Real hardware works alongside
-// its CPU in the same way, and there is an engineering reason too: carrying
-// a command out puts an access on the bus the CPU's own write is still
-// crossing.
+// time, or later by TimeToCarryOut(), for a device whose bus takes time to
+// cross, as an I2C controller's does. (A delta cycle is one round of the
+// simulator letting every process that is ready run, with no time passing.)
+// Real hardware works alongside its CPU in the same way, and there is an
+// engineering reason too: carrying a command out puts an access on the bus the
+// CPU's own write is still crossing.
 template <CommandLogic Logic>
 class CommandDevice : public sc_core::sc_module {
  public:
@@ -60,6 +61,16 @@ class CommandDevice : public sc_core::sc_module {
     SC_METHOD(DriveTheLine);
     sensitive << line_may_have_changed_;
     dont_initialize();
+  }
+
+  // How long carrying out what the logic was last given takes: nothing,
+  // for a device whose work is done at once, unless the deriving device
+  // says otherwise. It is asked as the device's process wakes to a write,
+  // and the process then waits that long, through any writes meanwhile:
+  // so a write that gives no work must take no time, or a command given
+  // during its wait is carried out late.
+  virtual sc_core::sc_time TimeToCarryOut() const {
+    return sc_core::SC_ZERO_TIME;
   }
 
   // Has the logic carry out again, a delta cycle on, for something that
@@ -99,6 +110,8 @@ class CommandDevice : public sc_core::sc_module {
   void Work() {
     for (;;) {
       wait(work_);
+      const sc_core::sc_time takes = TimeToCarryOut();
+      if (takes != sc_core::SC_ZERO_TIME) wait(takes);
       if (logic_.CarryOut()) line_may_have_changed_.notify();
     }
   }

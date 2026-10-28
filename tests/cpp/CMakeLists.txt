@@ -77,6 +77,7 @@ add_executable(kernel_tests
   platform/d2d_link_test.cpp
   platform/dma_engine_test.cpp
   platform/flash_controller_test.cpp
+  platform/i2c_controller_test.cpp
   platform/msi_receiver_test.cpp
   platform/ns16550_test.cpp
   platform/nvme_frontend_test.cpp

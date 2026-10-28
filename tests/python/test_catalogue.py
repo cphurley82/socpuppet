@@ -51,6 +51,7 @@ EXAMPLES = [
     sp.DmaEngine(),
     sp.FlashController(),
     sp.Gpio(),
+    sp.I2cController(),
     sp.IdealNand(blocks=4),
     sp.Imsic(),
     sp.Iommu(),
@@ -181,6 +182,13 @@ class TestAGpioWithAnLedOnAPinItDoesNotBringOut:
     def test_is_refused_and_the_error_gives_the_pins_it_has(self):
         with pytest.raises(ValueError, match="0 to 3"):
             sp.Gpio(pins=4, leds=(4,))
+
+
+class TestAnI2cControllerWithADeviceAtAnAddressI2cHasNot:
+    @pytest.mark.parametrize("address", [-1, 0x80])
+    def test_is_refused_and_the_error_gives_the_addresses(self, address):
+        with pytest.raises(ValueError, match="0 to 127"):
+            sp.I2cController(devices={address: object()})
 
 
 class TestASpiFlashOfASizeTheChipCannotBe:
