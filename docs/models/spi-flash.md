@@ -34,11 +34,15 @@ platform.load_binary("image.img", at=0x1020_0000)
 
 ## What it leaves out
 
-- 🚧 **A devicetree node.** Firmware is not told of the flash yet: its boot ROM learns where its image is from the [system controller](system-controller.md). The controller's registers answer, and the chip behind them reads, programs and erases; telling a driver so is M18's next step.
+- 🚧 **Linux's devicetree node, and the controller's interrupt.** Zephyr's tree has the flash, where a CPU can reach its controller's registers; Linux's driver wants the controller's interrupt as well, which comes later in M18.
 - **Wear.** A real flash wears out after so many erases, and this one never does. A debugger's write through the window puts any bytes anywhere, as a factory's programmer would.
 - **Timing.** A read through the window takes no time of its own.
 - **The controller's say over the window.** A real controller's window works once firmware has enabled it and told it which read command the chip wants. This one answers whatever those registers hold.
 - **More than 16 MiB**, the most three address bytes reach.
+
+## In a devicetree
+
+Zephyr's, for a CPU that reaches the controller's registers, has the controller as `sifive,spi0`, with its registers and the window as its two ranges, and the chip inside it at chip select 0, a `jedec,spi-nor` with its JEDEC id and its size, which Zephyr's `spi_nor` reads where it would otherwise ask the chip. A `fixed-clock` node beside it gives the controller's clock, `sp.SpiFlash.CLOCK_HZ`. A CPU that reaches only the window, as a boot ROM's does, is told of no flash: its ROM learns where its image is from the [system controller](system-controller.md).
 
 ## Under the hood
 

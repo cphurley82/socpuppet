@@ -412,8 +412,11 @@ Registry BuiltinComponents() {
   registry.Add("spi_flash", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<SpiFlash>(
         name, parameters.Required("size", kFlashSize));
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            TargetPort("xip", module->xip)};
+    // A CPU whose boot ROM reads the window, and which drives nothing else,
+    // needs the controller's registers nowhere on its bus.
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket, /*required=*/false),
+        TargetPort("xip", module->xip)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_blk", [](const char* name, Parameters& parameters) {

@@ -241,7 +241,6 @@ What the SSD's own CPU sees (`ssd.cpu.socket`):
 | `0x1001_0000` | 128 bytes | `ssd.frontend.cpu` | [NVMe frontend](models/nvme-frontend.md) | |
 | `0x1002_0000` | 32 bytes | `ssd.dma.cpu` | [DMA engine](models/dma-engine.md) | |
 | `0x1003_0000` | 48 bytes | `ssd.flash.cpu` | [Flash controller](models/flash-controller.md) | |
-| `0x100D_0000` | 4 KiB | `ssd.boot_flash.socket` | [SPI flash](models/spi-flash.md) | |
 | `0x1020_0000` | 16 MiB | `ssd.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
 | `0x2000_0000` | 256 KiB | `ssd.sram.socket` | [Memory](models/memory.md) | |
 | `0x4000_0000` | 4 MiB | `ssd.buffer.socket` | [Memory](models/memory.md) | |
@@ -333,7 +332,6 @@ What the manager's CPU sees (`io.cpu.socket`):
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | |
-| `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | |
 | `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | |
 | `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | |
 | `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | |
@@ -352,7 +350,6 @@ What 🎭 the compute die sees (`compute.cpu.socket`), which is the same again t
 | `0x0C00_0000` | 64 MiB | `io.plic.socket` | [Interrupt controller (PLIC)](models/plic.md) | `compute.bus`, same addresses |
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus`, same addresses |
 | `0x1001_0000` | 256 bytes | `io.d2d.sideband` | [Die-to-die link](models/d2d-link.md) | `compute.bus`, same addresses |
-| `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | `compute.bus`, same addresses |
 | `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus`, same addresses |
 | `0x2000_0000` | 256 KiB | `io.sram.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |
 | `0x3000_0000` | 4 KiB | `io.scratch.socket` | [Memory](models/memory.md) | `compute.bus`, same addresses |

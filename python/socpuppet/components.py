@@ -128,9 +128,10 @@ class DeviceNode(NamedTuple):
     #: What the node's label has after the component's, for a component
     #: with more than one node: `_s` makes `imsic` `imsic_s`.
     suffix: str = ""
-    #: Nodes inside this one, for a device whose driver binds to a child
-    #: of its node, as Zephyr's virtio drivers do. A child has no
-    #: registers and no interrupts of its own: those are the node's.
+    #: Nodes inside this one: a child a driver binds to, as Zephyr's virtio
+    #: drivers do, or a device on a bus the node controls, as a flash chip
+    #: on its SPI controller. A child has no memory-mapped `reg` ranges and
+    #: no interrupts of its own: those are the node's.
     children: tuple[DeviceNode, ...] = ()
 
 
@@ -1135,16 +1136,22 @@ class SpiFlash(Component):
     controller.
 
     The controller is SiFive's, borrowed from VPV-Peripherals, and the chip
-    is socpuppet's own, of Winbond's W25Q kind. It has no devicetree node
-    yet.
+    is socpuppet's own, of Winbond's W25Q kind. Its devicetree node is the
+    controller's (`sifive,spi0`), with the chip inside it at chip select 0
+    as a `jedec,spi-nor`, and a fixed clock of its own.
     """
 
     implementation = "spi_flash"
-    port_specs = (target("socket"), target("xip"))
+    # A CPU whose boot ROM reads the window, and which drives nothing else,
+    # needs the controller's registers nowhere on its bus.
+    port_specs = (target("socket", required=False), target("xip"))
     #: The most a flash holds: what three address bytes reach.
     LARGEST = 16 << 20
     #: The controller's chip selects. The flash's own chip is at 0.
     CHIP_SELECTS = 4
+    #: The controller's clock: 50 MHz. 🚧 The C++ adapter has the same
+    #: number of its own, in spi_controller.cpp, until it is given this one.
+    CLOCK_HZ = 50_000_000
     #: The controller's registers take a page.
     mapped_size = 0x1000
 
@@ -1178,6 +1185,73 @@ class SpiFlash(Component):
     def configure(self, native: _core.Platform, path: str) -> None:
         for chip_select, device in self.devices.items():
             native.spi_flash_attach(path, chip_select, device)
+
+    @override
+    def device_nodes(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
+    ) -> tuple[DeviceNode, ...]:
+        # A bus master that cannot reach the controller's registers cannot
+        # drive it, as a boot ROM, which reads the window, has no need to.
+        # 🚧 And Linux's spi-sifive wants the controller's interrupt, which
+        # the flash does not bring out yet.
+        if "socket" not in reached or dialect == "linux":
+            return ()
+        # The chip's JEDEC id, as it answers its Read JEDEC ID command
+        # (JedecId in spi_nor_chip.cpp), which Zephyr's spi_nor checks this
+        # against: Winbond's maker code, the W25Q family, and the capacity as
+        # the power of two of the size.
+        capacity = self.size.bit_length() - 1
+        clock_suffix = "_clock"
+        clock_label = label + clock_suffix
+        # On an SPI bus a device's address is its chip select, one cell and
+        # no range of memory, so it is in the name and in `reg` by hand.
+        chip = DeviceNode(
+            "flash@0",
+            (),
+            (
+                'compatible = "jedec,spi-nor";',
+                "reg = <0>;",
+                f"jedec-id = [ef 40 {capacity:02x}];",
+                # Zephyr's binding counts the size in bits.
+                f"size = <{self.size * 8:#x}>;",
+                # SiFive's controller divides its clock by at least two to
+                # make SPI's.
+                f"spi-max-frequency = <{self.CLOCK_HZ // 2}>;",
+            ),
+            interrupts=(),
+            suffix="_chip",
+        )
+        controller = DeviceNode(
+            "spi",
+            (
+                (reached["socket"].address, self.mapped_size),
+                (reached["xip"].address, self.size),
+            ),
+            (
+                'compatible = "sifive,spi0";',
+                'reg-names = "control", "mem";',
+                f"clocks = <&{clock_label}>;",
+                "#address-cells = <1>;",
+                "#size-cells = <0>;",
+            ),
+            children=(chip,),
+        )
+        # 🎓 A clock that only ever runs at one rate is a fixed clock: a
+        # node of its own that says the rate, which a driver reads to set
+        # the bus's speed.
+        clock = DeviceNode(
+            clock_label,
+            (),
+            (
+                'compatible = "fixed-clock";',
+                "#clock-cells = <0>;",
+                f"clock-frequency = <{self.CLOCK_HZ}>;",
+            ),
+            on_bus=False,
+            interrupts=(),
+            suffix=clock_suffix,
+        )
+        return (controller, clock)
 
 
 class VirtioRng(Component):

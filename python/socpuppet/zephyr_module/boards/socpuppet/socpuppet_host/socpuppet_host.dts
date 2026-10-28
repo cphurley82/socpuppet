@@ -36,6 +36,12 @@
 		};
 	};
 
+	io_boot_flash_clock: io_boot_flash_clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <50000000>;
+	};
+
 	compute_ram: memory@80000000 {
 		device_type = "memory";
 		reg = <0x0 0x80000000 0x0 0x4000000>;
@@ -93,6 +99,22 @@
 			interrupt-controller;
 			riscv,num-sources = <31>;
 			msi-parent = <&compute_imsic>;
+		};
+
+		io_boot_flash: spi@100d0000 {
+			compatible = "sifive,spi0";
+			reg = <0x0 0x100d0000 0x0 0x1000>, <0x0 0x10200000 0x0 0x1000000>;
+			reg-names = "control", "mem";
+			clocks = <&io_boot_flash_clock>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			io_boot_flash_chip: flash@0 {
+				compatible = "jedec,spi-nor";
+				reg = <0>;
+				jedec-id = [ef 40 18];
+				size = <0x8000000>;
+				spi-max-frequency = <25000000>;
+			};
 		};
 
 		compute_imsic: interrupt-controller@24000000 {

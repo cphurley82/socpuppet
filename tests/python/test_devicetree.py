@@ -428,15 +428,69 @@ class TestWhenACpuHasARomBelowItsRam:
 
 
 class TestWhenACpuHasAFlashOnItsBus:
-    def test_the_devicetree_is_the_one_without_the_flash(self):
-        # 🚧 Nothing in firmware reads the flash yet: a boot ROM is told
-        # where it is by its system controller. A driver that speaks SPI
-        # to it, and the node that driver wants, come with M18.
+    def test_its_node_is_the_controllers_with_the_chip_inside(self):
+        # 🎓 The controller's node has its registers and the window as its
+        # two ranges, named; the chip is a node inside it, at its chip
+        # select, with its JEDEC id and its size in bits, which Zephyr's
+        # spi_nor driver reads where it would otherwise ask the chip.
+        platform, bus, _ = cpu_with_its_peripherals()
+        flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
+        bus.map(flash.xip, base=0x1020_0000)
+        bus.map(flash.socket, base=0x100D_0000)
+
+        # SPI's clock is at most half its controller's.
+        fastest = sp.SpiFlash.CLOCK_HZ // 2
+        node = textwrap.dedent(
+            f"""\
+            flash: spi@100d0000 {{
+            \tcompatible = "sifive,spi0";
+            \treg = <0x0 0x100d0000 0x0 0x1000>, <0x0 0x10200000 0x0 0x400000>;
+            \treg-names = "control", "mem";
+            \tclocks = <&flash_clock>;
+            \t#address-cells = <1>;
+            \t#size-cells = <0>;
+            \tflash_chip: flash@0 {{
+            \t\tcompatible = "jedec,spi-nor";
+            \t\treg = <0>;
+            \t\tjedec-id = [ef 40 16];
+            \t\tsize = <0x2000000>;
+            \t\tspi-max-frequency = <{fastest}>;
+            \t}};
+            }};
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_its_controllers_clock_is_a_fixed_clock_at_the_top_of_the_tree(
+        self,
+    ):
+        # 🎓 A clock that only ever runs at one rate is a fixed clock: a node
+        # that says the rate, which a driver reads to set the bus's speed.
+        platform, bus, _ = cpu_with_its_peripherals()
+        flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
+        bus.map(flash.xip, base=0x1020_0000)
+        bus.map(flash.socket, base=0x100D_0000)
+
+        clock = textwrap.dedent(
+            f"""\
+            flash_clock: flash_clock {{
+            \tcompatible = "fixed-clock";
+            \t#clock-cells = <0>;
+            \tclock-frequency = <{sp.SpiFlash.CLOCK_HZ}>;
+            }};
+            """
+        )
+        assert textwrap.indent(clock, "\t") in platform.devicetree()
+
+
+class TestWhenACpuReachesOnlyAFlashsWindow:
+    def test_its_devicetree_has_no_node_for_the_flash(self):
+        # A CPU that cannot reach the controller's registers cannot drive
+        # it, as a boot ROM, which reads the window, has no need to.
         platform, bus, _ = cpu_with_its_peripherals()
         without = platform.devicetree()
         flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
         bus.map(flash.xip, base=0x1020_0000)
-        bus.map(flash.socket, base=0x100D_0000)
 
         assert platform.devicetree() == without
 

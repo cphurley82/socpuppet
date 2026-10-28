@@ -65,7 +65,8 @@ WATCHDOG_BASE = 0x0010_1000
 #: and UEFI is a little over 4 MiB, and the manager's.
 BOOT_FLASH_BASE = 0x1020_0000
 BOOT_FLASH_SIZE = 16 * 1024 * 1024
-#: The registers of the flash's SPI controller, which no firmware uses yet.
+#: Where a board whose firmware drives its flash, the host, puts the
+#: registers of the flash's SPI controller.
 BOOT_FLASH_CONTROLLER_BASE = 0x100D_0000
 #: The dies of the chiplet host, by the number each one's system
 #: controller gives its CPU. A board of one die, as the SSD is, is die 0.
@@ -242,16 +243,17 @@ def add_watchdog(
 def add_boot_flash(place: Platform | Group, bus: PlacedRouter) -> Placed:
     """Put the flash a CPU boots from on `bus`, for a CPU with one to itself.
 
-    It is read like memory from `BOOT_FLASH_BASE`, and its controller's
-    registers are at `BOOT_FLASH_CONTROLLER_BASE`. Fill it before the
-    first run, where the CPU's system controller says its image is, which
-    is its `boot_address` and need not be the flash's first byte:
+    It is read like memory from `BOOT_FLASH_BASE`. Its controller's
+    registers are not on the bus: the CPU's boot ROM reads the window, and
+    no firmware of a CPU of this kit speaks SPI to the flash. Fill it before
+    the first run, where the CPU's system controller says its image is,
+    which is its `boot_address` and need not be the flash's first byte:
     `platform.load_binary(image, at=syscon.component.boot_address,
     via=cpu.socket)`.
 
-    The host's two CPUs share one flash, and the host places that itself.
+    The host's two CPUs share one flash, and the host places that itself,
+    with its controller's registers at `BOOT_FLASH_CONTROLLER_BASE`.
     """
     flash = place.add("boot_flash", SpiFlash(size=BOOT_FLASH_SIZE))
     bus.map(flash.xip, base=BOOT_FLASH_BASE)
-    bus.map(flash.socket, base=BOOT_FLASH_CONTROLLER_BASE)
     return flash
