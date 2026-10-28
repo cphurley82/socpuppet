@@ -19,7 +19,7 @@ import pytest
 
 import socpuppet as sp
 from socpuppet.ops import wait
-from socpuppet.pump import LONGEST_WAIT, LOOK_EVERY, PumpedFarEnd, pump
+from socpuppet.pump import LONGEST_WAIT, PumpedFarEnd, pump
 from socpuppet.time import ms, ns, s, us
 
 pytestmark = pytest.mark.platform
@@ -39,12 +39,14 @@ class Pipe:
     """A far end that is a pipe: what is written to it is serviced.
 
     `events` is what the pump did with it, in order: "service" when its
-    descriptor was readable, and "refresh" at each look.
+    descriptor was readable, and "refresh" at each look. `looked_at` is
+    when each look came, on the wall.
     """
 
     def __init__(self) -> None:
         self._read, self._write = os.pipe()
         self.events: list[str] = []
+        self.looked_at: list[float] = []
         self.written_at: float | None = None
         self.serviced_at: float | None = None
 
@@ -61,6 +63,7 @@ class Pipe:
 
     def refresh(self) -> None:
         self.events.append("refresh")
+        self.looked_at.append(time.monotonic())
 
     def write_after(self, seconds: float) -> None:
         """Write a byte to the pipe `seconds` from now."""
@@ -69,13 +72,26 @@ class Pipe:
     def was_refreshed_after_its_service(self) -> bool:
         return self.events[-2:] == ["service", "refresh"]
 
+    def looks_between_the_write_and_its_service(self) -> int:
+        """How many looks came between the byte's write and its service.
+
+        None, or the one that found it.
+        """
+        assert self.written_at is not None
+        assert self.serviced_at is not None
+        return sum(
+            self.written_at < at < self.serviced_at for at in self.looked_at
+        )
+
     def close(self) -> None:
         os.close(self._read)
         os.close(self._write)
 
     def _write_a_byte(self) -> None:
-        self.written_at = time.monotonic()
         os.write(self._write, b"x")
+        # Once it is there to be read: a look between the stamp and the
+        # write would be one that could not have found it.
+        self.written_at = time.monotonic()
 
 
 #: How far ahead of now, in seconds on the wall, an alarm is due: much
@@ -132,12 +148,17 @@ class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuSleeps:
 
 
 class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuWorks:
-    def test_it_is_serviced_within_a_look(self, pipe):
+    def test_it_is_serviced_at_the_first_look_that_finds_it(self, pipe):
         platform = a_platform_whose_cpu(works)
         pipe.write_after(WRITTEN_AFTER)
 
         assert pumped_until(platform, pipe, lambda: "service" in pipe.events)
-        assert pipe.serviced_at - pipe.written_at < LOOK_EVERY + SLACK
+        assert pipe.looks_between_the_write_and_its_service() <= 1
+        # 💡 The looks come every LOOK_EVERY, but a busy Mac of CI's has
+        # taken 0.12 s from the write to the service. So, as for a due far
+        # end below, the bound is half the longest wait: a pump that looked
+        # only once that was up would fail it.
+        assert pipe.serviced_at - pipe.written_at < LONGEST_WAIT / 2
 
 
 class TestWhenAFarEndHasBeenServiced:
