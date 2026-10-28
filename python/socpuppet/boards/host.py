@@ -111,6 +111,7 @@ from socpuppet.components import (
     D2dLink,
     DbtRiseCpu,
     Gpio,
+    I2cController,
     Imsic,
     Iommu,
     MachineTimer,
@@ -122,6 +123,7 @@ from socpuppet.components import (
     Router,
     SpiFlash,
 )
+from socpuppet.i2c import I2cDevice
 from socpuppet.placed import Placed, PlacedGpio, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
 from socpuppet.regs import system_controller
@@ -209,6 +211,11 @@ GPIO_LED = 2
 #: Which source of the IO die's APLIC the boot flash's controller's line
 #: is: the number after the GPIO's pins'.
 BOOT_FLASH_SOURCE = GPIO_FIRST_SOURCE + GPIO_PINS
+#: The I2C controller: where its registers are, counted from the start of
+#: the IO die's window, the page after the GPIO's; and which source of the
+#: IO die's APLIC its line is, the number after the boot flash's.
+I2C_OFFSET = 0x0F_1000
+I2C_SOURCE = BOOT_FLASH_SOURCE + 1
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
 #: firmware writes one into the drive for each vector, and that is the
@@ -227,6 +234,10 @@ SPI_LOOPBACK_CHIP_SELECT = 1
 #: between: the one a test drives, and the one it reads.
 GPIO_LOOPBACK_OUT = 0
 GPIO_LOOPBACK_IN = 1
+#: The address on the I2C controller's bus at which the shield
+#: `socpuppet_host_i2c_ram` puts a RAM: the one Zephyr's `i2c_ram` test
+#: talks to.
+I2C_RAM_ADDRESS = 0x51
 #: The shield's wire, as `host(gpio_wires=...)` takes it.
 GPIO_LOOPBACK_WIRES: Mapping[int, int] = MappingProxyType(
     {GPIO_LOOPBACK_OUT: GPIO_LOOPBACK_IN}
@@ -316,6 +327,8 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: The GPIO on the IO die, with `GPIO_PINS` pins brought out. 🧵 Python
     #: is at the far end of them.
     gpio: PlacedGpio
+    #: The I2C controller on the IO die. 🧵 Its devices are Python's.
+    i2c: Placed
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -347,6 +360,7 @@ def host(
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
+    i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -364,6 +378,7 @@ def host[Drive: PcieDrive](
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
+    i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -380,6 +395,7 @@ def host(
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
+    i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -445,7 +461,8 @@ def host(
     🧵 `boot_flash_devices` are on the boot flash's SPI bus beside its chip,
     by chip select, 1 to 3: Python's own devices (`socpuppet.spi`). And
     `gpio_wires` are wires between the GPIO's pins, from a pin to the pin
-    it drives, 0 to 3 (`sp.Gpio`'s `wires`).
+    it drives, 0 to 3 (`sp.Gpio`'s `wires`). And `i2c_devices` are on
+    the I2C controller's bus, by address: Python's own (`socpuppet.i2c`).
     """
     if boot is not None and ram < RAM_SIZE:
         raise ValueError(
@@ -495,6 +512,7 @@ def host(
         messages_to=messages_to,
         boot_flash_devices=boot_flash_devices,
         gpio_wires=gpio_wires,
+        i2c_devices=i2c_devices,
     )
     slots = (
         None
@@ -550,6 +568,7 @@ def host(
         compute.wdt,
         io.boot_flash,
         io.gpio,
+        io.i2c,
         drive=(
             None
             if drive_blocks is None
@@ -664,6 +683,7 @@ class _IoDie(NamedTuple):
     up: PlacedRouter
     boot_flash: Placed
     gpio: PlacedGpio
+    i2c: Placed
     #: The way to the flash's window. A socket takes one connection, and
     #: the flash has two readers when the die has a manager, so each comes
     #: in by an input of this.
@@ -677,6 +697,7 @@ def _io_die(
     messages_to: int,
     boot_flash_devices: Mapping[int, SpiDevice],
     gpio_wires: Mapping[int, int],
+    i2c_devices: Mapping[int, I2cDevice],
 ) -> _IoDie:
     """Describe the die the devices are on, up to its end of the link."""
     bus = place.add("bus", Router())
@@ -693,6 +714,8 @@ def _io_die(
     )
     bus.map(uart.socket, base=UART_OFFSET)
     bus.map(gpio.socket, base=GPIO_OFFSET)
+    i2c = place.add("i2c", I2cController(devices=i2c_devices))
+    bus.map(i2c.cpu, base=I2C_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
     # The flash is where every socpuppet CPU has its own, which for this
     # die's devices is a place in the window the compute die sees them in.
@@ -715,8 +738,9 @@ def _io_die(
             getattr(gpio, f"irq{pin}"),
             getattr(aplic, f"source{GPIO_FIRST_SOURCE + pin}"),
         )
+    platform.connect(i2c.irq, getattr(aplic, f"source{I2C_SOURCE}"))
     platform.connect(aplic.msi, up.target)
-    return _IoDie(bus, uart, aplic, up, boot_flash, gpio, boot_flash_bus)
+    return _IoDie(bus, uart, aplic, up, boot_flash, gpio, i2c, boot_flash_bus)
 
 
 def _drive[Drive: PcieDrive](
@@ -874,6 +898,30 @@ def gpio_loopback_overlay() -> str:
         \t\tcompatible = "test-gpio-basic-api";
         \t\tout-gpios = <&{gpio} {GPIO_LOOPBACK_OUT} 0>;
         \t\tin-gpios = <&{gpio} {GPIO_LOOPBACK_IN} 0>;
+        \t}};
+        }};
+        """
+    )
+
+
+def i2c_ram_overlay() -> str:
+    """The devicetree that Zephyr's `i2c_ram` test wants of the host.
+
+    It is the overlay of the Zephyr shield `socpuppet_host_i2c_ram`: the
+    alias by which the test finds the I2C controller whose bus 🧵 Python's
+    RAM (`socpuppet.i2c.Ram`) is on, at `I2C_RAM_ADDRESS`, which the test
+    knows already.
+
+    The shield's copy is checked in, and a test holds it to this. To write
+    the file again, print what this returns into it, with no newline added,
+    as for `drive_overlay`.
+    """
+    i2c = devicetree.label(host().i2c.path)
+    return textwrap.dedent(
+        f"""\
+        / {{
+        \taliases {{
+        \t\ti2c-ram = &{i2c};
         \t}};
         }};
         """

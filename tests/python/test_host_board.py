@@ -25,6 +25,8 @@ from socpuppet.boards.host import (
     GPIO_FIRST_SOURCE,
     GPIO_OFFSET,
     GPIO_PINS,
+    I2C_OFFSET,
+    I2C_SOURCE,
     IMSIC_SUPERVISOR_BASE,
     IO_BASE,
     IO_SIZE,
@@ -38,6 +40,7 @@ from socpuppet.boards.host import (
     drive_overlay,
     gpio_loopback_overlay,
     host,
+    i2c_ram_overlay,
     iommu_overlay,
     spi_loopback_overlay,
     virtio_overlay,
@@ -271,6 +274,27 @@ class TestTheHostsGpio:
             for each in board.platform.interrupt_map()
             if each.line.startswith(f"{gpio}.")
         }
+
+
+class TestTheHostsI2cController:
+    def test_is_on_the_io_die_where_its_cpu_finds_it(self):
+        board = host()
+
+        [registers] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.i2c.path
+        ]
+
+        assert registers.address == IO_BASE + I2C_OFFSET
+
+    def test_its_interrupt_line_goes_to_the_io_dies_aplic(self):
+        board = host()
+
+        assert (
+            InterruptEntry("io.aplic", I2C_SOURCE, f"{board.i2c.path}.irq")
+            in board.platform.interrupt_map()
+        )
 
 
 def the_boot_flash_as_seen_by(master, board):
@@ -522,6 +546,19 @@ class TestTheZephyrShieldForGpioLoopback:
         # When this fails, the docstring of `gpio_loopback_overlay` has the
         # command that writes the file again.
         assert checked_in.read_text() == gpio_loopback_overlay()
+
+
+class TestTheZephyrShieldForI2cRam:
+    def test_its_overlay_is_what_the_host_description_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_i2c_ram"
+            / "socpuppet_host_i2c_ram.overlay"
+        )
+
+        # When this fails, the docstring of `i2c_ram_overlay` has the
+        # command that writes the file again.
+        assert checked_in.read_text() == i2c_ram_overlay()
 
 
 class TestTheZephyrShieldForTheHostsIommu:

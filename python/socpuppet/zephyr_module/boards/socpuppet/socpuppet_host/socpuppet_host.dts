@@ -136,6 +136,15 @@
 			interrupts = <25 1 4 26 1 4 27 1 4 28 1 4>;
 		};
 
+		io_i2c: i2c@100f1000 {
+			compatible = "sifive,i2c0";
+			reg = <0x0 0x100f1000 0x0 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			clock-frequency = <100000>;
+			interrupts-extended = <&io_aplic 30 1 4>;
+		};
+
 		compute_imsic: interrupt-controller@24000000 {
 			compatible = "riscv,imsic";
 			reg = <0x0 0x24000000 0x0 0x1000>;

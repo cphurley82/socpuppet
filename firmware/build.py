@@ -205,6 +205,12 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_gpio_loopback",
     ),
+    # Zephyr's test of an I2C controller, with Python's RAM on its bus.
+    Image(
+        "tests/drivers/i2c/i2c_ram",
+        "socpuppet_host",
+        "socpuppet_host_i2c_ram",
+    ),
     # Zephyr's own sample that blinks a board's LED, on the GPIO's pin.
     Image("samples/basic/blinky", "socpuppet_host"),
     # Asks for a reset and then stops feeding its watchdog, and says why

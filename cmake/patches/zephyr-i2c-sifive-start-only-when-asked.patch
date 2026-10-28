@@ -1,0 +1,66 @@
+diff --git a/drivers/i2c/i2c_sifive.c b/drivers/i2c/i2c_sifive.c
+index 39fb9c46..187f536c 100644
+--- a/drivers/i2c/i2c_sifive.c
++++ b/drivers/i2c/i2c_sifive.c
+@@ -110,16 +110,19 @@ static int i2c_sifive_send_addr(const struct device *dev,
+ 
+ static int i2c_sifive_write_msg(const struct device *dev,
+ 				struct i2c_msg *msg,
+-				uint16_t addr)
++				uint16_t addr,
++				bool start)
+ {
+ 	const struct i2c_sifive_cfg *config = dev->config;
+ 	int rc = 0;
+ 	uint8_t command = 0U;
+ 
+-	rc = i2c_sifive_send_addr(dev, addr, SF_TX_WRITE);
+-	if (rc != 0) {
+-		LOG_ERR("I2C failed to write message\n");
+-		return rc;
++	if (start) {
++		rc = i2c_sifive_send_addr(dev, addr, SF_TX_WRITE);
++		if (rc != 0) {
++			LOG_ERR("I2C failed to write message\n");
++			return rc;
++		}
+ 	}
+ 
+ 	for (uint32_t i = 0; i < msg->len; i++) {
+@@ -159,12 +162,15 @@ static int i2c_sifive_write_msg(const struct device *dev,
+ 
+ static int i2c_sifive_read_msg(const struct device *dev,
+ 			       struct i2c_msg *msg,
+-			       uint16_t addr)
++			       uint16_t addr,
++			       bool start)
+ {
+ 	const struct i2c_sifive_cfg *config = dev->config;
+ 	uint8_t command = 0U;
+ 
+-	i2c_sifive_send_addr(dev, addr, SF_TX_READ);
++	if (start) {
++		i2c_sifive_send_addr(dev, addr, SF_TX_READ);
++	}
+ 
+ 	while (i2c_sifive_busy(dev)) {
+ 	}
+@@ -286,10 +292,16 @@ static int i2c_sifive_transfer(const struct device *dev,
+ 	}
+ 
+ 	for (int i = 0; i < num_msgs; i++) {
++		/* A message after the first goes on with the transfer, unless it
++		 * asks for a start again, or the one before it stopped
++		 */
++		bool start = (i == 0) || (msgs[i].flags & I2C_MSG_RESTART) ||
++			     (msgs[i - 1].flags & I2C_MSG_STOP);
++
+ 		if (msgs[i].flags & I2C_MSG_READ) {
+-			rc = i2c_sifive_read_msg(dev, &(msgs[i]), addr);
++			rc = i2c_sifive_read_msg(dev, &(msgs[i]), addr, start);
+ 		} else {
+-			rc = i2c_sifive_write_msg(dev, &(msgs[i]), addr);
++			rc = i2c_sifive_write_msg(dev, &(msgs[i]), addr, start);
+ 		}
+ 
+ 		if (rc != 0) {

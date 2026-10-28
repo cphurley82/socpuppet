@@ -1860,6 +1860,9 @@ class I2cController(Component):
     #: The controller's clock, which the bus's is made from: SiFive's
     #: peripherals' (`PERIPHERAL_CLOCK_HZ`).
     CLOCK_HZ = PERIPHERAL_CLOCK_HZ
+    #: The bus's speed firmware is told to set: 100 kHz, I2C's standard
+    #: mode, which every device on a bus can keep up with.
+    BUS_HZ = 100_000
     #: The seven bits of an address reach this many devices.
     ADDRESSES = 128
     #: The registers take a page.
@@ -1887,6 +1890,26 @@ class I2cController(Component):
     def configure(self, native: _core.Platform, path: str) -> None:
         for address, device in self.devices.items():
             native.i2c_controller_attach(path, address, device)
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
+        # 🐧 The stock kernel has no driver for it: `I2C_OCORES` is not set.
+        if dialect == "linux":
+            return None
+        return DeviceNode(
+            "i2c",
+            ((reached["cpu"].address, self.mapped_size),),
+            (
+                'compatible = "sifive,i2c0";',
+                # 🎓 A device on the bus is known by its address, one cell,
+                # and has no range of memory.
+                "#address-cells = <1>;",
+                "#size-cells = <0>;",
+                f"clock-frequency = <{self.BUS_HZ}>;",
+            ),
+        )
 
 
 class MsiReceiver(Component):

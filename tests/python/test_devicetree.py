@@ -698,6 +698,31 @@ class TestWhenACpuHasAGpioWithAnLedOnAPin:
         assert "\t\tled0 = &gpio_led0;\n" in platform.devicetree()
 
 
+class TestWhenACpuHasAnI2cController:
+    def test_its_node_is_sifives_i2c_at_the_buses_standard_speed(self):
+        # 🎓 Zephyr's binding counts the devices on the bus by address,
+        # one cell and no size, and takes the bus's speed from
+        # `clock-frequency`: 100 kHz is I2C's standard mode.
+        platform, bus, plic = cpu_with_its_peripherals()
+        i2c = platform.add("i2c", sp.I2cController())
+        bus.map(i2c.cpu, base=0x0010_3000)
+        platform.connect(i2c.irq, plic.source8)
+
+        node = textwrap.dedent(
+            """\
+            i2c: i2c@103000 {
+            \tcompatible = "sifive,i2c0";
+            \treg = <0x0 0x103000 0x0 0x1000>;
+            \t#address-cells = <1>;
+            \t#size-cells = <0>;
+            \tclock-frequency = <100000>;
+            \tinterrupts-extended = <&plic 8 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
 class TestWhenACpuHasTwoWatchdogsOnItsBus:
     def test_the_one_at_the_lower_address_is_the_alias_watchdog0(self):
         # An alias names one device, as a role in `chosen` does, and goes
