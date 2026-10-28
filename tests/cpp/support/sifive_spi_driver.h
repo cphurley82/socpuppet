@@ -80,11 +80,15 @@ struct SifiveSpiDriver {
   // with as many as the FIFO holds before it waits.
   void Queue(std::uint8_t byte) const { bus.Write32(kTransmit, byte); }
 
+  // Whether the interrupt bit `watermark` is pending now.
+  bool Pending(std::uint32_t watermark) const {
+    return (bus.Read32(kInterruptPending) & watermark) != 0;
+  }
+
   // Waits until the interrupt bit `watermark` is pending, as Linux's driver
   // does when it polls. False if it never is.
   bool WaitFor(std::uint32_t watermark) const {
-    return PollUntil(
-        [&] { return (bus.Read32(kInterruptPending) & watermark) != 0; });
+    return PollUntil([&] { return Pending(watermark); });
   }
 
   BusDriver& bus;
