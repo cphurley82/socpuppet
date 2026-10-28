@@ -65,6 +65,7 @@ add_executable(kernel_tests
   contracts/nand_test.cpp
   contracts/nvme_test.cpp
   contracts/rom_test.cpp
+  contracts/spi_controller_test.cpp
   contracts/uart_test.cpp
   contracts/virtio_device_test.cpp
   contracts/watchdog_test.cpp

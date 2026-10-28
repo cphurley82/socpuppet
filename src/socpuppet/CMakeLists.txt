@@ -273,6 +273,23 @@ target_link_libraries(socpuppet_watchdog
   PRIVATE vpv_aon)
 socpuppet_dev_checks(socpuppet_watchdog)
 
+# The SPI controller: VPV-Peripherals' model of SiFive's, built apart from
+# ours as the timer's model is.
+add_library(vpv_sifive_spi STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/spi.cpp)
+target_compile_options(vpv_sifive_spi PRIVATE -w)
+target_include_directories(vpv_sifive_spi SYSTEM PUBLIC
+  ${vpv_peripherals_SOURCE_DIR})
+target_link_libraries(vpv_sifive_spi PUBLIC scc::components SystemC::systemc)
+
+add_library(socpuppet_spi_controller STATIC models/spi_controller.cpp)
+target_sources(socpuppet_spi_controller PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/spi_controller.h)
+target_link_libraries(socpuppet_spi_controller
+  PUBLIC SystemC::systemc socpuppet_core
+  PRIVATE vpv_sifive_spi)
+socpuppet_dev_checks(socpuppet_spi_controller)
+
 # The flash: VPV-Peripherals' SPI controller and its flash chip, built
 # apart from ours as the timer's model is. SCC's SPI sockets are headers in
 # the directory of its `interfaces` library, which is not linked: it has AXI
@@ -367,7 +384,7 @@ target_sources(socpuppet_models INTERFACE
 target_link_libraries(socpuppet_models INTERFACE
   socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_iommu
   socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
-  socpuppet_spi_flash socpuppet_watchdog
+  socpuppet_spi_controller socpuppet_spi_flash socpuppet_watchdog
   $<$<BOOL:${SOCPUPPET_HAS_QBOX}>:socpuppet_qbox_cpu>)
 
 # The registry of everything above, by name. Compiled on its own, so that a
@@ -394,7 +411,8 @@ socpuppet_check_headers(
   socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
   socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
   socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_machine_timer
-  socpuppet_ns16550 socpuppet_plic socpuppet_spi_flash socpuppet_watchdog)
+  socpuppet_ns16550 socpuppet_plic socpuppet_spi_controller socpuppet_spi_flash
+  socpuppet_watchdog)
 if(SOCPUPPET_HAS_QBOX)
   socpuppet_check_headers(socpuppet_qbox_cpu)
 endif()
