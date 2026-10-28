@@ -135,6 +135,20 @@ mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt
 
 🎓 Linux speaks 9P2000.L to it, the dialect of Plan 9's file protocol that Linux's client speaks, and 🧵 Python serves it with `socpuppet.ninep`. ⚠️ Linux may change anything in the directory, and nothing outside it.
 
+## The small essentials under Linux
+
+The host's own small parts meet Linux's drivers, from `defconfig` unchanged, each in a boot of its own in the tests:
+
+| Part | Linux's driver | What the test does with it |
+|---|---|---|
+| [Boot flash](models/spi-flash.md) | `spi-sifive` and `spi-nor`, as `/dev/mtd0` | names the chip `w25q128`, reads Python's bytes from it, and writes bytes Python reads back (`test_linux_boot_flash.py`) |
+| [GPIO](models/gpio.md) | `gpio-sifive`, as `gpiochip0` | finds four lines in debugfs (`test_linux_gpio.py`) |
+| [Real-time clock](models/rtc.md) | `rtc-goldfish`, as `rtc0` | `date` reads the time the clock was given, and the simulated time since (`test_linux_rtc.py`) |
+
+🎓 The kernel sets its own clock from `rtc0` as it boots (`RTC_HCTOSYS`). The clock reads what it was given, `host_with_linux(..., rtc_time=datetime.datetime(..., tzinfo=datetime.UTC))`, or 1970 if nothing, and keeps the simulation's time, not the wall's. ⚠️ So `socpuppet linux` boots into 1970.
+
+The [I2C controller](models/i2c-controller.md) is not among them: its driver, `i2c-ocores`, is not in the stock kernel, so Linux's tree leaves it out.
+
 ## Its root on the drive
 
 The real drive can take 🎭 the virtio disk's place: the SSD with its own Zephyr firmware, across the die-to-die link, on the board with all three firmwares ([boards.md](boards.md)). Linux finds it with its own NVMe driver, behind the root complex, which it reads as a generic ECAM host (`pci-host-ecam-generic`), and the drive's interrupts reach it as MSI-X messages to the IMSIC.
