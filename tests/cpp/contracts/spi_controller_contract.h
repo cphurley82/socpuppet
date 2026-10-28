@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <systemc>
 
@@ -216,6 +217,31 @@ TYPED_TEST_P(SpiControllerContract,
   EXPECT_EQ(received, 0xBB);
 }
 
+// Linux's driver, for a transfer that reads, queues its bytes, sets the
+// receive watermark's mark one below their count, waits for it, and then
+// takes every answer: they must all be there by then.
+TYPED_TEST_P(SpiControllerContract,
+             AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn) {
+  bool pending = false;
+  std::vector<std::optional<std::uint8_t>> taken;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.Format(/*transmit_only=*/false);
+    for (const std::uint8_t byte :
+         {std::uint8_t{0x11}, std::uint8_t{0x22}, std::uint8_t{0x33}}) {
+      spi.Queue(byte);
+    }
+    spi.SetReceiveMark(2);
+    pending = spi.WaitFor(SifiveSpiDriver::kReceiveWatermark);
+    for (int answer = 0; answer < 3; ++answer) taken.push_back(spi.Take());
+  });
+
+  EXPECT_TRUE(pending);
+  EXPECT_THAT(taken, ::testing::Each(::testing::Optional(::testing::_)));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
@@ -223,6 +249,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo,
     AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty,
     APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued,
-    AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer);
+    AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer,
+    AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
