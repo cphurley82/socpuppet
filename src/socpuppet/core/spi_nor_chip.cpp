@@ -12,7 +12,12 @@ namespace {
 
 constexpr std::uint8_t kRead = 0x03;
 constexpr std::uint8_t kFastRead = 0x0B;
+constexpr std::uint8_t kReadStatus = 0x05;
+constexpr std::uint8_t kWriteEnable = 0x06;
 constexpr std::uint8_t kReadJedecId = 0x9F;
+
+// Status register 1's write enable latch: writes are enabled.
+constexpr std::uint8_t kWriteEnableLatch = 1 << 1;
 
 // What an erased byte of NOR flash reads as: every bit a one.
 constexpr std::uint8_t kErased = 0xFF;
@@ -39,8 +44,14 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   const std::size_t position = position_++;
   if (position == 0) {
     command_ = sent;
+    // 🎓 A real chip sets the latch when the select goes high after the
+    // command; this one sets it as the command arrives, as QEMU's m25p80
+    // does, which no controller can tell apart.
+    if (command_ == kWriteEnable) write_enable_latch_ = true;
     return 0;
   }
+  if (command_ == kReadStatus)
+    return write_enable_latch_ ? kWriteEnableLatch : 0;
   if (command_ == kReadJedecId) {
     const auto id = JedecId(bytes_.size());
     if (position <= id.size()) return id[position - 1];

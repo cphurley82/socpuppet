@@ -33,6 +33,14 @@ std::vector<std::uint8_t> Frame(SpiDevice& chip,
   return received;
 }
 
+// Whether the chip's status register says writes are enabled. 🎓 Bit 1 of
+// status register 1, which RDSR (0x05) reads, is the write enable latch.
+bool WriteEnableLatch(SpiDevice& chip) {
+  constexpr std::uint8_t kWriteEnableLatch = 1 << 1;
+  const std::vector<std::uint8_t> received = Frame(chip, {0x05, 0});
+  return (received.back() & kWriteEnableLatch) != 0;
+}
+
 }  // namespace
 
 TEST(WhenASixteenMebibyteChipIsAskedForItsJedecId, ItAnswersEf4018) {
@@ -84,6 +92,13 @@ TEST(WhenAChipIsFastReadWhereBytesWerePutIn,
 
   EXPECT_THAT(Frame(chip, {0x0B, 0x12, 0x34, 0x56, 0, 0, 0}),
               ElementsAre(_, _, _, _, _, 0xCA, 0xFE));
+}
+
+TEST(WhenWritesToAChipHaveBeenEnabled, ItsStatusShowsTheWriteEnableLatch) {
+  SpiNorChip chip{kSixteenMebibytes};
+  Frame(chip, {0x06});
+
+  EXPECT_TRUE(WriteEnableLatch(chip));
 }
 
 }  // namespace socpuppet
