@@ -100,7 +100,9 @@ class SpiControllerContract : public ::testing::Test {
 
   // Two chips, at chip selects 0 and 1. Chip selects 2 and 3 have none.
   std::array<RecordingChip, 2> chips_;
-  ControllerType controller_{"controller"};
+  // Any clock will do: what the contract asks of a controller takes no
+  // time it counts.
+  ControllerType controller_{"controller", 50'000'000};
   sc_core::sc_signal<bool> irq_{"irq"};
   LineWatcher interrupt_{"interrupt"};
 };

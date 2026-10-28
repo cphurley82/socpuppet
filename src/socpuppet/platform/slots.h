@@ -157,13 +157,13 @@ concept WatchdogSlot = std::constructible_from<T, sc_core::sc_module_name> &&
                          } -> std::convertible_to<sc_core::sc_out<bool>&>;
                        };
 
-// An SPI controller: built from a name and reached through one TLM target
-// socket, with one interrupt output. The devices on its bus are attached
-// by chip select, each a SpiDevice that the controller talks to a byte at
-// a time.
+// An SPI controller: built from a name and its clock in hertz, and reached
+// through one TLM target socket, with one interrupt output. The devices on
+// its bus are attached by chip select, each a SpiDevice that the
+// controller talks to a byte at a time.
 template <typename T>
 concept SpiControllerSlot =
-    std::constructible_from<T, sc_core::sc_module_name> &&
+    std::constructible_from<T, sc_core::sc_module_name, std::uint64_t> &&
     requires(T controller, unsigned chip_select, SpiDevice& device) {
       { controller.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
       { controller.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;

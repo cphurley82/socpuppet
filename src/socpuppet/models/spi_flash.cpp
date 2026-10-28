@@ -9,8 +9,9 @@
 
 namespace socpuppet {
 
-SpiFlash::SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size)
-    : sc_module(name), chip_(size) {
+SpiFlash::SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size,
+                   std::uint64_t clock_hz)
+    : sc_module(name), chip_(size), controller_("controller", clock_hz) {
   controller_.irq.bind(interrupt_unread_);
   controller_.Attach(0, chip_);
   socket.bind(controller_.socket);

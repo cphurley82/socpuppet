@@ -18,9 +18,6 @@ namespace socpuppet {
 
 namespace {
 
-// The controller's clock, which its bit time is a multiple of: 50 MHz.
-const sc_core::sc_time kClockPeriod{20, sc_core::SC_NS};
-
 // What a byte reads as when no chip answers it: the line back to the
 // controller floats high.
 constexpr std::uint8_t kNobody = 0xFF;
@@ -43,7 +40,9 @@ using SpiByte = vpvper::generic::tlm_signal_spi_extension;
 // edge's answer and ignores the other. The data out line is left alone,
 // since the byte is on the clock's transactions.
 struct SpiController::Model {
-  Model() {
+  explicit Model(std::uint64_t clock_hz)
+      : clock_{"clock", sc_core::sc_time{1.0 / static_cast<double>(clock_hz),
+                                         sc_core::SC_SEC}} {
     controller_.clk_i.bind(clock_);
     controller_.rst_i.bind(reset_tied_low_);
     controller_.irq_o.bind(interrupt_);
@@ -140,7 +139,8 @@ struct SpiController::Model {
   }
 
   std::array<SpiDevice*, 4> devices_{};
-  sc_core::sc_signal<sc_core::sc_time> clock_{"clock", kClockPeriod};
+  // The controller's clock, which its bit time is a multiple of.
+  sc_core::sc_signal<sc_core::sc_time> clock_;
   sc_core::sc_signal<bool> reset_tied_low_{"reset_tied_low"};
   // The borrowed model writes its output from whichever process is running:
   // its own method when a FIFO fills or drains, and the caller's thread
@@ -167,8 +167,9 @@ struct SpiController::Model {
   BorrowedSocket registers{controller_.socket};
 };
 
-SpiController::SpiController(const sc_core::sc_module_name& name)
-    : sc_module(name), model_(std::make_unique<Model>()) {
+SpiController::SpiController(const sc_core::sc_module_name& name,
+                             std::uint64_t clock_hz)
+    : sc_module(name), model_(std::make_unique<Model>(clock_hz)) {
   socket.register_b_transport(this, &SpiController::b_transport);
   SC_METHOD(DriveTheLine);
   sensitive << model_->Interrupt();
