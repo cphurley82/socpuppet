@@ -8,9 +8,9 @@ diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/inclu
 +        /*
 +         * A quantum of zero is no quantum: nothing bounds the run, and there
 +         * is no deadline to arm. One armed at now + 0 has expired by the time
-+         * timerlist_run_timers looks at it, which calls this callback, which
-+         * arms it again at now + 0, for ever, on the CPU's thread and with
-+         * the BQL held.
++         * timerlist_run_timers looks at it, which runs the deadline's
++         * callback (deadline_timer_cb), which arms it again at now + 0, for
++         * ever, on the CPU's thread and with the BQL held.
 +         */
 +        if (m_quantum_ns == 0) return;
          // This is a simple "every quantum" tick. Whether the QK makes use of it or not
@@ -21,12 +21,12 @@ diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/inclu
          for (; !m_finished;) {
              prepare_run_cpu();
 +            /*
-+             * Bound this run of the CPU by the quantum. In coroutine mode only
-+             * a release of the halt line arms the deadline otherwise, and with
-+             * no timer on the virtual clock icount lets the CPU run INT32_MAX
-+             * ns, over two seconds, before it yields to SystemC: it stops only
-+             * at a non-DMI access or an interrupt, and a device's event, a
-+             * reset or an interrupt that comes meanwhile is seen that late.
++             * Bound this run of the CPU by the quantum. Nothing else arms the
++             * deadline in coroutine mode, and with no timer on the virtual
++             * clock icount lets the CPU run INT32_MAX ns, over two seconds,
++             * before it yields to SystemC: it stops only at a non-DMI access
++             * or an interrupt, and a device's event, a reset or an interrupt
++             * that comes meanwhile is seen that late.
 +             *
 +             * Armed only while the CPU runs: a timer left armed while it is
 +             * halted, held for a debugger or waiting for work is one QEMU's
@@ -40,3 +40,19 @@ diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/inclu
              sync_with_kernel();
          }
      }
+@@ -902,7 +926,14 @@ inline void QemuCpu::QuantumKeeperSync::on_halt_pre(bool val)
+         m_qemu_cpu.m_qk->stop();
+     } else {
+         m_qemu_cpu.m_qk->start();
+-        m_qemu_cpu.rearm_deadline_timer();
++        /*
++         * In coroutine mode the run arms its own deadline
++         * (mainloop_thread_coroutine). One armed here is armed outside a
++         * run, while the CPU may be unable to run (held in reset, say), and
++         * a deadline armed while the CPU waits is one QEMU's main loop warps
++         * the clock to and fires every quantum until the CPU can run.
++         */
++        if (!m_qemu_cpu.m_coroutines) m_qemu_cpu.rearm_deadline_timer();
+     }
+ }
+ 
