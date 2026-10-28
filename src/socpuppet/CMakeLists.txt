@@ -12,6 +12,7 @@ target_sources(socpuppet_regs INTERFACE
     ${_socpuppet_regs}/socpuppet/regs/flash_controller.h
     ${_socpuppet_regs}/socpuppet/regs/i2c_controller.h
     ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h
+    ${_socpuppet_regs}/socpuppet/regs/rtc.h
     ${_socpuppet_regs}/socpuppet/regs/system_controller.h
     ${_socpuppet_regs}/socpuppet/regs/ucie_link.h
     ${_socpuppet_regs}/socpuppet/regs/virtio_mmio.h)
@@ -108,6 +109,15 @@ target_sources(socpuppet_i2c_controller_logic PUBLIC
 target_link_libraries(socpuppet_i2c_controller_logic PUBLIC socpuppet_regs)
 socpuppet_dev_checks(socpuppet_i2c_controller_logic)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_i2c_controller_logic)
+
+# What a real-time clock does: its registers, and its alarm.
+add_library(socpuppet_rtc_logic STATIC core/rtc_logic.cpp)
+target_sources(socpuppet_rtc_logic PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/rtc_logic.h)
+target_link_libraries(socpuppet_rtc_logic PUBLIC socpuppet_regs)
+socpuppet_dev_checks(socpuppet_rtc_logic)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_rtc_logic)
 
 # A NOR flash chip on an SPI bus, the device behind the boot flash's
 # controller.
