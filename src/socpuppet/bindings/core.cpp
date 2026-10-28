@@ -20,12 +20,14 @@
 
 #include "socpuppet/bindings/python_executor.h"
 #include "socpuppet/bindings/python_script.h"
+#include "socpuppet/bindings/python_spi_device.h"
 #include "socpuppet/core/elf_image.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/pciem_host.h"
 #include "socpuppet/models/scripted_bus_master.h"
+#include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/virtio_9p.h"
 #include "socpuppet/models/virtio_blk.h"
 #include "socpuppet/models/virtio_fs.h"
@@ -115,9 +117,11 @@ struct NativePlatform {
   KernelClaim kernel_claim;  // first member: checked before any module is built
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
   socpuppet::PythonExecutor python_executor{"socpuppet_python_executor"};
-  // Declared last, so the Python scripts and answerers are dropped first,
-  // while the GIL is held by whoever is destroying this platform from
-  // Python.
+  // Declared last, so the Python SPI devices, scripts and answerers are
+  // dropped first, while the GIL is held by whoever is destroying this
+  // platform from Python. A flash still points at its devices then, but
+  // nothing calls them once the run is over.
+  std::list<socpuppet::PythonSpiDevice> python_spi_devices;
   std::list<socpuppet::PythonScript> python_scripts;
   std::list<py::object> python_answerers;
 };
@@ -212,6 +216,17 @@ PYBIND11_MODULE(_core, m) {
                  std::move(generator_function), self.python_executor);
              self.platform.ModuleAt<socpuppet::ScriptedBusMaster>(path)
                  .SetScript([&script] { return script.Play(); });
+           })
+      // Puts `device`, a Python object with `select()`, `transfer(byte)` and
+      // `deselect()`, on the SPI bus of the flash at `path`, at
+      // `chip_select`.
+      .def("spi_flash_attach",
+           [](NativePlatform& self, const std::string& path,
+              unsigned chip_select, py::object device) {
+             auto& wrapped = self.python_spi_devices.emplace_back(
+                 std::move(device), self.python_executor);
+             self.platform.ModuleAt<socpuppet::SpiFlash>(path).Attach(
+                 chip_select, wrapped);
            })
       // What the serial transport at `path` (a UART, a virtio console) has
       // transmitted after its first `since` bytes, and nothing if it has

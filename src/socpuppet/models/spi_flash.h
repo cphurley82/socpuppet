@@ -39,6 +39,11 @@ class SpiFlash : public sc_core::sc_module {
   // W25Q part's is.
   SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size);
 
+  // Puts `device` on the flash's SPI bus beside its chip, at `chip_select`,
+  // 1 to 3: the chip is at 0. It is not owned, and must stay alive while
+  // the simulation runs.
+  void Attach(unsigned chip_select, SpiDevice& device);
+
  private:
   void WindowAccess(tlm::tlm_generic_payload& transaction,
                     sc_core::sc_time& delay);

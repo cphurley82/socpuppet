@@ -18,6 +18,10 @@ SpiFlash::SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size)
   xip.register_transport_dbg(this, &SpiFlash::DebugWindowAccess);
 }
 
+void SpiFlash::Attach(unsigned chip_select, SpiDevice& device) {
+  controller_.Attach(chip_select, device);
+}
+
 bool SpiFlash::Fits(const tlm::tlm_generic_payload& transaction) {
   const std::uint64_t size = chip_.Bytes().size();
   const std::uint64_t address = transaction.get_address();

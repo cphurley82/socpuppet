@@ -30,7 +30,7 @@ class SpiController : public sc_core::sc_module {
   ~SpiController() override;
 
   // Puts `device` on the bus at `chip_select`, 0 to 3. It is not owned,
-  // and must outlive the controller.
+  // and must stay alive while the simulation runs.
   void Attach(unsigned chip_select, SpiDevice& device);
 
  private:
