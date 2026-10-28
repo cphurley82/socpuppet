@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from socpuppet.components import Component, IdealNand, PortSpec, Router
     from socpuppet.platform import Platform
 
@@ -126,6 +128,43 @@ class PlacedFarEnd(Placed):
         """
         received = typed.encode() if isinstance(typed, str) else typed
         self._platform.native().far_end_write(self.path, received)
+
+
+class PlacedGpio(Placed):
+    """A GPIO block at its place in a platform, and 🧵 the far end of its pins.
+
+    Pins are numbered 0 to 31. A pin that is not there is an IndexError.
+    The platform must be built first.
+
+    ⚠️ `level` is the GPIO's side of a pin only: what `drive` puts on a
+    pin is for firmware to read, and `level` does not show it.
+    """
+
+    def level(self, pin: int) -> bool | None:
+        """What the GPIO drives on `pin`: True, high; False, low; None, nothing.
+
+        The GPIO drives nothing on a pin until firmware makes it an output.
+        """
+        return self._platform.native().gpio_level(self.path, pin)
+
+    def drive(self, pin: int, level: bool | None) -> None:
+        """Drive `pin` from outside: True, high; False, low; None, let go.
+
+        Firmware reads it a delta cycle on, the next instant of the
+        simulation that is at the same time. A pin let go reads high if
+        firmware has its pull-up on, and low if not.
+        """
+        self._platform.native().gpio_drive(self.path, pin, level)
+
+    def on_change(self, listener: Callable[[int, bool | None], object]) -> None:
+        """Have `listener(pin, level)` told of each change of what a pin drives.
+
+        Each change is told in the order it happened, a delta cycle after
+        firmware made it, from the GPIO's own process: so the listener may
+        `drive` a pin, which firmware reads a delta cycle after that. It
+        takes the place of any listener before it.
+        """
+        self._platform.native().gpio_on_change(self.path, listener)
 
 
 class PlacedUart(PlacedFarEnd):

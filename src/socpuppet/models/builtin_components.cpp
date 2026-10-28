@@ -19,6 +19,7 @@
 #include "socpuppet/models/dbt_rise_cpu.h"
 #include "socpuppet/models/dma_engine.h"
 #include "socpuppet/models/flash_controller.h"
+#include "socpuppet/models/gpio.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/imsic.h"
 #include "socpuppet/models/iommu.h"
@@ -472,6 +473,17 @@ Registry BuiltinComponents() {
                             // the line alone.
                             WireSourcePort("irq", module->irq,
                                            /*required=*/false)};
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("gpio", [](const char* name, Parameters&) {
+    auto module = std::make_unique<Gpio>(name);
+    std::vector<Port> ports{TargetPort("socket", module->socket)};
+    // A board need not bring out every pin's interrupt.
+    AddNumberedPorts(ports, "irq", 0, module->irq,
+                     [](std::string port, sc_core::sc_out<bool>& line) {
+                       return WireSourcePort(std::move(port), line,
+                                             /*required=*/false);
+                     });
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("watchdog", [](const char* name, Parameters&) {
