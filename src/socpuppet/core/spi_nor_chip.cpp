@@ -74,21 +74,25 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     // 🎓 A real W25Q wraps a program within its 256-byte page; this one
     // carries on to the next, as QEMU's m25p80 does. Neither Linux's
     // driver nor Zephyr's sends a program across a page, so none can tell.
-    bytes_[address_++ & (bytes_.size() - 1)] = sent;
+    NextByte() = sent;
     return 0;
   }
   if (command_ == kRead || command_ == kFastRead) {
     // A fast read's eight dummy clocks, which a controller that moves
     // whole bytes sends as one byte.
     if (command_ == kFastRead && position == kAddressBytes + 1) return 0;
-    // An address wraps at the chip's end, as it does on the real one: the
-    // chip ignores the bits above its size, which is a power of two.
-    return bytes_[address_++ & (bytes_.size() - 1)];
+    return NextByte();
   }
   return 0;
 }
 
 void SpiNorChip::Deselect() {}
+
+std::uint8_t& SpiNorChip::NextByte() {
+  // An address wraps at the chip's end, as it does on the real one: the
+  // chip ignores the bits above its size, which is a power of two.
+  return bytes_[address_++ & (bytes_.size() - 1)];
+}
 
 std::span<std::uint8_t> SpiNorChip::Bytes() { return bytes_; }
 
