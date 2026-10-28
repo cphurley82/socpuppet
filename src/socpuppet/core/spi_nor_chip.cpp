@@ -12,6 +12,7 @@ namespace {
 
 // The commands, by the first byte of a frame. Winbond's datasheet has the
 // same names.
+constexpr std::uint8_t kPageProgram = 0x02;
 constexpr std::uint8_t kRead = 0x03;
 constexpr std::uint8_t kWriteDisable = 0x04;
 constexpr std::uint8_t kReadStatus = 0x05;
@@ -30,7 +31,7 @@ constexpr std::size_t kAddressBytes = 3;
 
 // Whether a command is followed by an address.
 bool TakesAnAddress(std::uint8_t command) {
-  return command == kRead || command == kFastRead;
+  return command == kPageProgram || command == kRead || command == kFastRead;
 }
 
 // The JEDEC id: Winbond's maker code, then the W25Q family, then the
@@ -67,6 +68,13 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   }
   if (TakesAnAddress(command_) && position <= kAddressBytes) {
     address_ = (address_ << 8) | sent;
+    return 0;
+  }
+  if (command_ == kPageProgram) {
+    // 🎓 A real W25Q wraps a program within its 256-byte page; this one
+    // carries on to the next, as QEMU's m25p80 does. Neither Linux's
+    // driver nor Zephyr's sends a program across a page, so none can tell.
+    bytes_[address_++ & (bytes_.size() - 1)] = sent;
     return 0;
   }
   if (command_ == kRead || command_ == kFastRead) {
