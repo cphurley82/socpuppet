@@ -20,6 +20,7 @@ from socpuppet.boards.cpu_kit import (
 )
 from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
+    BOOT_FLASH_SOURCE,
     ECAM_OFFSET,
     IMSIC_SUPERVISOR_BASE,
     IO_BASE,
@@ -228,6 +229,15 @@ class TestTheHostsBootFlash:
         ]
 
         assert registers.address == BOOT_FLASH_CONTROLLER_BASE
+
+    def test_its_controllers_interrupt_line_goes_to_the_io_dies_aplic(self):
+        # Linux's driver for the controller sleeps on it.
+        board = host()
+
+        assert (
+            InterruptEntry("io.aplic", BOOT_FLASH_SOURCE, "io.boot_flash.irq")
+            in board.platform.interrupt_map()
+        )
 
 
 def the_boot_flash_as_seen_by(master, board):
