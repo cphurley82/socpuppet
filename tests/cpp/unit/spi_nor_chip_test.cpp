@@ -21,6 +21,8 @@ using ::testing::_;
 using ::testing::Each;
 using ::testing::ElementsAre;
 
+// A chip smaller than a 32 KiB or 64 KiB block, the size of a 4 KiB sector.
+constexpr std::size_t kFourKibibytes = 4 * 1024;
 // A small chip, for a test that looks at every byte, but bigger than the
 // largest block an erase can take, so a chip erase shows it reached past
 // one.
@@ -261,5 +263,18 @@ TEST_P(WhenAChipIsErasedWholeWithWritesDisabled, ItKeepsWhatItHolds) {
 INSTANTIATE_TEST_SUITE_P(EachChipEraseCommand,
                          WhenAChipIsErasedWholeWithWritesDisabled,
                          ::testing::ValuesIn(kChipErases), ChipEraseName);
+
+// A chip smaller than the block an erase takes, as a test's flash may be.
+// No W25Q part is, so the datasheet does not say; erasing the chip whole
+// is what the address's wrap at the chip's end suggests.
+TEST(WhenAChipSmallerThanABlockIsErasedAsABlock, ItIsErasedWhole) {
+  SpiNorChip chip{kFourKibibytes};
+  std::ranges::fill(chip.Bytes(), 0x00);
+  Frame(chip, {0x06});
+
+  SendWithAddress(chip, 0xD8, 0);
+
+  EXPECT_THAT(chip.Bytes(), Each(0xFF));
+}
 
 }  // namespace socpuppet

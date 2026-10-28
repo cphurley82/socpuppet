@@ -29,7 +29,8 @@ class SpiNorChip : public SpiDevice {
 
  private:
   // Erases the aligned block of `bytes` bytes that holds the address a
-  // command was sent: every byte in it reads 0xFF again.
+  // command was sent, or the whole chip if it is smaller: every byte erased
+  // reads 0xFF again.
   void EraseBlock(std::size_t bytes);
   // The address a command has reached, on the chip.
   std::size_t ChipAddress() const;
