@@ -1699,6 +1699,9 @@ class Gpio(Component):
     🧵 Python is at the far end of the pins: once the platform is built,
     `level(pin)` says what a pin drives, `drive(pin, level)` drives one,
     and `on_change(listener)` is told of each change (`PlacedGpio`).
+    `wires` joins pins before then: `{0: 1}` is a wire from pin 0 to pin
+    1, so what the GPIO drives on pin 0 is on pin 1 too, as a board's
+    loopback has it.
 
     The model is borrowed from VPV-Peripherals, with its pull-ups and its
     interrupts added: it had the registers and nothing behind them.
@@ -1717,6 +1720,8 @@ class Gpio(Component):
     #: How many of the block's pins a board brings out, from pin 0 up, which
     #: is what firmware is told it has.
     pins: int = not_a_parameter(default=PINS)
+    #: 🧵 Wires between pins brought out, from a pin to the pin it drives.
+    wires: Mapping[int, int] = not_a_parameter(default=MappingProxyType({}))
 
     def __post_init__(self) -> None:
         if self.pins not in range(1, self.PINS + 1):
@@ -1724,6 +1729,27 @@ class Gpio(Component):
                 f"A GPIO brings out 1 to {self.PINS} pins; {self.pins} were "
                 "asked for."
             )
+        for end, which in [
+            *((out, "start") for out in self.wires),
+            *((into, "end") for into in self.wires.values()),
+        ]:
+            if end not in range(self.pins):
+                raise ValueError(
+                    f"A wire joins pins the GPIO brings out, 0 to "
+                    f"{self.pins - 1}; one was to {which} at pin {end}."
+                )
+
+    @override
+    def configure(self, native: _core.Platform, path: str) -> None:
+        if not self.wires:
+            return
+        wires = self.wires
+
+        def carry(pin: int, level: bool | None) -> None:
+            if pin in wires:
+                native.gpio_drive(path, wires[pin], level)
+
+        native.gpio_on_change(path, carry)
 
     @override
     def place(self, platform: Platform, path: str) -> PlacedGpio:
