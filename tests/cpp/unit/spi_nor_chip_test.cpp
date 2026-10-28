@@ -101,4 +101,13 @@ TEST(WhenWritesToAChipHaveBeenEnabled, ItsStatusShowsTheWriteEnableLatch) {
   EXPECT_TRUE(WriteEnableLatch(chip));
 }
 
+TEST(WhenWritesToAChipHaveBeenEnabledAndThenDisabled,
+     ItsStatusShowsTheWriteEnableLatchClear) {
+  SpiNorChip chip{kSixteenMebibytes};
+  Frame(chip, {0x06});
+  Frame(chip, {0x04});
+
+  EXPECT_FALSE(WriteEnableLatch(chip));
+}
+
 }  // namespace socpuppet
