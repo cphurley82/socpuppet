@@ -1,15 +1,9 @@
 """🔌 needs_cable, where the cable is required, as it is in CI's nightly runs."""
 
-import os
-from pathlib import Path
-
 import pytest
 
+import processes
 from cable_area import what_the_cable_lacks
-
-HERE = Path(__file__).resolve().parent
-# Where a run in a process of its own finds cable_area.
-PATH = (HERE,)
 
 A_TEST_OVER_THE_CABLE = """
 from cable_area import needs_cable
@@ -22,8 +16,14 @@ def test_spam():
 
 @pytest.fixture
 def run_apart(pytester, monkeypatch):
-    """pytester, whose runs in a process of their own find cable_area."""
-    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(map(str, PATH)))
+    """pytester, whose runs in a process of their own find cable_area.
+
+    And the package cable_area asks: python/ in a checkout, which only
+    this run's own configuration names, or wherever the wheel was
+    installed. Both are on this run's path, which is what
+    `processes.environment` hands a fresh interpreter.
+    """
+    monkeypatch.setenv("PYTHONPATH", processes.environment()["PYTHONPATH"])
     return pytester
 
 
