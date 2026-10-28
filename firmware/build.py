@@ -191,6 +191,8 @@ IMAGES = [
     Image("firmware/flash_test", "socpuppet_ssd"),
     # Asks for a reset and then stops feeding its watchdog, and says why
     # it started each time.
+    # Zephyr's own sample for an SPI flash, on the host's boot flash.
+    Image("samples/drivers/spi_flash", "socpuppet_host"),
     Image("firmware/watchdog", "socpuppet_host"),
     Image("firmware/watchdog", "socpuppet_ssd"),
 ]
