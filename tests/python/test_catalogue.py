@@ -169,6 +169,13 @@ class TestASpiFlashOfASizeTheChipCannotBe:
             sp.SpiFlash(size=size)
 
 
+class TestASpiFlashWithADeviceAtAChipSelectItCannotHave:
+    @pytest.mark.parametrize("chip_select", [0, 4])
+    def test_is_refused_and_the_error_says_which_it_can_have(self, chip_select):
+        with pytest.raises(ValueError, match=r"chip select.*1 to 3"):
+            sp.SpiFlash(size=0x1000, devices={chip_select: object()})
+
+
 class TestTheCatalogue:
     def test_has_an_example_here_for_every_component_class(self):
         assert {type(example) for example in EXAMPLES} == component_classes()

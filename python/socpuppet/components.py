@@ -1143,11 +1143,14 @@ class SpiFlash(Component):
     port_specs = (target("socket"), target("xip"))
     #: The most a flash holds: what three address bytes reach.
     LARGEST = 16 << 20
+    #: The controller's chip selects. The flash's own chip is at 0.
+    CHIP_SELECTS = 4
     #: The controller's registers take a page.
     mapped_size = 0x1000
 
     size: int
-    #: 🧵 Devices on the flash's SPI bus beside its chip, by chip select.
+    #: 🧵 Devices on the flash's SPI bus beside its chip, by chip select:
+    #: 1 to 3, since the chip is at 0.
     devices: Mapping[int, SpiDevice] = not_a_parameter(
         default=MappingProxyType({})
     )
@@ -1159,6 +1162,13 @@ class SpiFlash(Component):
                 "and at most 16 MiB, the most three address bytes reach; "
                 f"{self.size:#x} bytes were asked for."
             )
+        for chip_select in self.devices:
+            if chip_select not in range(1, self.CHIP_SELECTS):
+                raise ValueError(
+                    "A device on a flash's SPI bus goes at chip select 1 to "
+                    "3: the flash's own chip is at 0, and its controller has "
+                    f"four. One was put at {chip_select}."
+                )
 
     @override
     def size_at(self, port: str) -> int | None:
