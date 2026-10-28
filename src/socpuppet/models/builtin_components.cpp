@@ -411,7 +411,8 @@ Registry BuiltinComponents() {
       });
   registry.Add("spi_flash", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<SpiFlash>(
-        name, parameters.Required("size", kFlashSize));
+        name, parameters.Required("size", kFlashSize),
+        parameters.Required("clock_hz"));
     // A CPU whose boot ROM reads the window, and which drives nothing else,
     // needs the controller's registers nowhere on its bus.
     std::vector<Port> ports{

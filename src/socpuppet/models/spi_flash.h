@@ -36,8 +36,9 @@ class SpiFlash : public sc_core::sc_module {
   tlm_utils::simple_target_socket<SpiFlash> xip{"xip"};
 
   // `size` is how many bytes the flash holds: a power of two, as every
-  // W25Q part's is.
-  SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size);
+  // W25Q part's is. `clock_hz` is its controller's clock.
+  SpiFlash(const sc_core::sc_module_name& name, std::uint64_t size,
+           std::uint64_t clock_hz);
 
   // Puts `device` on the flash's SPI bus beside its chip, at `chip_select`,
   // 1 to 3: the chip is at 0. It is not owned, and must stay alive while
@@ -59,7 +60,7 @@ class SpiFlash : public sc_core::sc_module {
   // The controller's interrupt is nobody's yet.
   sc_core::sc_signal<bool> interrupt_unread_{"interrupt_unread"};
   // After the chip, which it is handed and must not outlive.
-  SpiController controller_{"controller"};
+  SpiController controller_;
 };
 
 }  // namespace socpuppet

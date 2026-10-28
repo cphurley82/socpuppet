@@ -1149,8 +1149,7 @@ class SpiFlash(Component):
     LARGEST = 16 << 20
     #: The controller's chip selects. The flash's own chip is at 0.
     CHIP_SELECTS = 4
-    #: The controller's clock: 50 MHz. 🚧 The C++ adapter has the same
-    #: number of its own, in spi_controller.cpp, until it is given this one.
+    #: The controller's clock: 50 MHz.
     CLOCK_HZ = 50_000_000
     #: The controller's registers take a page.
     mapped_size = 0x1000
@@ -1180,6 +1179,11 @@ class SpiFlash(Component):
     @override
     def size_at(self, port: str) -> int | None:
         return self.size if port == "xip" else self.mapped_size
+
+    @property
+    @override
+    def parameters(self) -> dict[str, int]:
+        return {**super().parameters, "clock_hz": self.CLOCK_HZ}
 
     @override
     def configure(self, native: _core.Platform, path: str) -> None:

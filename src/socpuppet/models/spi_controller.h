@@ -1,6 +1,7 @@
 #ifndef SOCPUPPET_MODELS_SPI_CONTROLLER_H_
 #define SOCPUPPET_MODELS_SPI_CONTROLLER_H_
 
+#include <cstdint>
 #include <memory>
 
 #include <systemc>
@@ -26,7 +27,8 @@ class SpiController : public sc_core::sc_module {
   // The controller's interrupt, for its FIFOs' watermarks.
   sc_core::sc_out<bool> irq{"irq"};
 
-  explicit SpiController(const sc_core::sc_module_name& name);
+  // `clock_hz` is the controller's clock, which SPI's is made from.
+  SpiController(const sc_core::sc_module_name& name, std::uint64_t clock_hz);
   ~SpiController() override;
 
   // Puts `device` on the bus at `chip_select`, 0 to 3. It is not owned,

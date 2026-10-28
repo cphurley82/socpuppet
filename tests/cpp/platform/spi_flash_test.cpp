@@ -28,6 +28,11 @@ constexpr std::uint64_t kSize = 0x1000;
 constexpr std::array<std::uint8_t, 4> kLoaded{0x11, 0x22, 0x33, 0x44};
 constexpr std::uint64_t kLoadedAt = 0x10;
 
+// A clock for a flash, and how long one tick of it is.
+constexpr std::uint64_t kTenMegahertz = 10'000'000;
+const sc_core::sc_time kTenMegahertzPeriod{1.0 / kTenMegahertz,
+                                           sc_core::SC_SEC};
+
 // A flash with a test's thread at its window, and a second at its
 // controller's registers.
 struct Rig {
@@ -42,7 +47,37 @@ struct Rig {
     sc_core::sc_start();
   }
 
-  socpuppet::SpiFlash flash{"flash", kSize};
+  socpuppet::SpiFlash flash{"flash", kSize, kTenMegahertz};
+  BusDriver window;
+  BusDriver registers;
+};
+
+// A chip on a flash's bus that notes when each byte reaches it.
+struct TimingChip : socpuppet::SpiDevice {
+  void Select() override {}
+  std::uint8_t Transfer(std::uint8_t /*sent*/) override {
+    arrivals.push_back(sc_core::sc_time_stamp());
+    return 0;
+  }
+  void Deselect() override {}
+  std::vector<sc_core::sc_time> arrivals;
+};
+
+// A flash with a clock and `device` at chip select 1, and a test's thread
+// at its controller's registers.
+struct ClockedRig {
+  ClockedRig(std::uint64_t clock_hz, socpuppet::SpiDevice& device,
+             const std::function<void(BusDriver&)>& at_the_registers)
+      : flash{"flash", kSize, clock_hz},
+        window{"window", [](BusDriver&) {}},
+        registers{"registers", at_the_registers} {
+    flash.Attach(1, device);
+    window.socket.bind(flash.xip);
+    registers.socket.bind(flash.socket);
+    sc_core::sc_start();
+  }
+
+  socpuppet::SpiFlash flash;
   BusDriver window;
   BusDriver registers;
 };
@@ -156,4 +191,25 @@ TEST(TheChipOnAFlashsFirstChipSelect, AnswersAJedecIdOfTheFlashsSize) {
           }};
 
   EXPECT_THAT(id, ElementsAre(_, _, Optional(0x0C)));
+}
+
+// 🎓 SiFive's controller makes SPI's clock by dividing its own by
+// 2 * (sckdiv + 1). Out of reset sckdiv is 0, so a byte's eight bits take
+// sixteen of the flash's clocks.
+TEST(BytesInABurstAtTheControllersResetDivisor,
+     AreSixteenOfTheFlashsClocksApart) {
+  TimingChip chip;
+
+  ClockedRig rig{kTenMegahertz, chip, [](BusDriver& bus) {
+                   const SifiveSpiDriver spi{bus};
+                   spi.Select(1);
+                   spi.SetTransmitMark(1);
+                   spi.Format(/*transmit_only=*/true);
+                   spi.Queue(0x11);
+                   spi.Queue(0x22);
+                   spi.WaitFor(SifiveSpiDriver::kTransmitWatermark);
+                 }};
+
+  ASSERT_EQ(chip.arrivals.size(), 2U);
+  EXPECT_EQ(chip.arrivals[1] - chip.arrivals[0], 16 * kTenMegahertzPeriod);
 }
