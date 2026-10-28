@@ -33,9 +33,10 @@ using SpiByte = vpvper::generic::tlm_signal_spi_extension;
 
 // The borrowed controller and the wires of its bus.
 //
-// 🎓 The controller moves a byte as transactions on its pins: one on each
-// chip select when the line falls or rises, one on the clock when it goes
-// idle at the start of a burst, and two on the clock for each byte, as it
+// 🎓 The controller moves a byte as transactions on its pins: one on a
+// chip select whenever it drives the line (when it falls, when it rises,
+// and again at each burst while it is held low), one on the clock when it
+// goes idle at the start of a burst, and two on the clock for each byte, as it
 // leaves its idle level and comes back. The byte rides on both of a byte's
 // clock edges, with room for the chip's answer, so the chip is handed the
 // byte on the edge that leaves the idle level: the controller keeps that
@@ -52,8 +53,7 @@ struct SpiController::Model {
       chip_selects_[line].register_nb_transport(
           [this](unsigned chip_select, Signal& signal, tlm::tlm_phase&,
                  sc_core::sc_time&) {
-            // A line is low while its chip is selected.
-            selected_[chip_select] = !signal.get_value();
+            ChipSelect(chip_select, signal.get_value());
             return tlm::TLM_COMPLETED;
           },
           line);
@@ -73,6 +73,22 @@ struct SpiController::Model {
   const sc_core::sc_signal_in_if<bool>& Interrupt() const { return interrupt_; }
 
  private:
+  // A chip select line has been driven: low selects its chip, high lets it
+  // go. The controller drives a held line low again at each burst, which is
+  // no edge and changes nothing.
+  void ChipSelect(unsigned chip_select, bool high) {
+    const bool selected = !high;  // A line is low while its chip is selected.
+    if (selected_[chip_select] == selected) return;
+    selected_[chip_select] = selected;
+    SpiDevice* device = devices_[chip_select];
+    if (device == nullptr) return;
+    if (selected) {
+      device->Select();
+    } else {
+      device->Deselect();
+    }
+  }
+
   void ClockEdge(Signal& signal) {
     auto* byte = signal.get_extension<SpiByte>();
     if (!byte->tx.m2s_data_valid) {
