@@ -93,9 +93,12 @@ class TestWhenSomeoneRunsItAtATerminal:
     ):
         terminal = linux_at_this_terminal
         terminal.wait_for(PROMPT)
-        terminal.type(b"echo spam; sleep 100\r")
-        # What `echo` said, and not the keys' own echo: the shell is
-        # running the line.
+        # 🎓 The `sh` that says spam, and then becomes the sleep, is already
+        # in the terminal's foreground when it says it. Said by the shell
+        # itself, before it had put a `sleep` there, a ctrl-C could reach
+        # the shell and leave the sleep to run its 100 s.
+        terminal.type(b"sh -c 'echo spam; exec sleep 100'\r")
+        # What `echo` said, and not the keys' own echo.
         terminal.wait_for(b"\r\nspam")
 
         terminal.type(b"\x03")
