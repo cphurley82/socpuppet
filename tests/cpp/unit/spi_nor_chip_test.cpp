@@ -45,4 +45,11 @@ TEST(WhenAnEightMebibyteChipIsAskedForItsJedecId, ItsCapacityByteIs17) {
   EXPECT_THAT(Frame(chip, {0x9F, 0, 0, 0}), ElementsAre(_, _, _, 0x17));
 }
 
+TEST(WhenAnErasedChipIsRead, EveryByteReadsFf) {
+  SpiNorChip chip{kSixteenMebibytes};
+
+  EXPECT_THAT(Frame(chip, {0x03, 0x12, 0x34, 0x56, 0, 0, 0}),
+              ElementsAre(_, _, _, _, 0xFF, 0xFF, 0xFF));
+}
+
 }  // namespace socpuppet

@@ -9,7 +9,14 @@ namespace socpuppet {
 
 namespace {
 
+constexpr std::uint8_t kRead = 0x03;
 constexpr std::uint8_t kReadJedecId = 0x9F;
+
+// What an erased byte of NOR flash reads as: every bit a one.
+constexpr std::uint8_t kErased = 0xFF;
+
+// How many bytes an address is sent in.
+constexpr std::size_t kAddressBytes = 3;
 
 // The JEDEC id: Winbond's maker code, then the W25Q family, then the
 // capacity, as the power of two of the size in bytes (0x18: 16 MiB).
@@ -33,6 +40,7 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     const auto id = JedecId(size_);
     if (position <= id.size()) return id[position - 1];
   }
+  if (command_ == kRead && position > kAddressBytes) return kErased;
   return 0;
 }
 
