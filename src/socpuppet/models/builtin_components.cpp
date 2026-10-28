@@ -121,9 +121,10 @@ constexpr Within kDiskSectors{
 // What a NAND chip's geometry is made of: counts that a controller reads
 // from 32-bit registers, and none of which can be nothing.
 constexpr Within kNandCount{.least = 1, .most = 0xFFFF'FFFF};
-// A flash holds a byte at the least, and at the most what the borrowed
-// chip has: 256 MiB.
-constexpr Within kFlashSize{.least = 1, .most = 0x1000'0000};
+// A flash holds a byte at the least, and at the most what three address
+// bytes reach: 16 MiB. That its size is a power of two, as the chip needs,
+// is the Python component's to check: a range cannot say it.
+constexpr Within kFlashSize{.least = 1, .most = 0x100'0000};
 
 }  // namespace
 
