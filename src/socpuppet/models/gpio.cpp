@@ -99,7 +99,7 @@ struct Gpio::Model {
   //
   // A value that is neither high nor low drives nothing: Z, which is what
   // the GPIO drives on a pin that is not an output, and X, unknown.
-  void Driven(unsigned pin, sc_dt::sc_logic value) {
+  void Driven(unsigned pin, const sc_dt::sc_logic& value) {
     std::optional<bool> level;
     if (value == sc_dt::Log_1) level = true;
     if (value == sc_dt::Log_0) level = false;

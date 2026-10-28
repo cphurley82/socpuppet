@@ -69,6 +69,8 @@ class CommandDevice : public sc_core::sc_module {
   // and the process then waits that long, through any writes meanwhile:
   // so a write that gives no work must take no time, or a command given
   // during its wait is carried out late.
+  // It uses nothing of Logic's, so it compiles for every Logic.
+  // NOLINTNEXTLINE(portability-template-virtual-member-function)
   virtual sc_core::sc_time TimeToCarryOut() const {
     return sc_core::SC_ZERO_TIME;
   }

@@ -19,14 +19,14 @@ namespace {
 // 2026-10-26 at midnight, in nanoseconds since 1970.
 constexpr std::uint64_t kGiven = 1'792'972'800'000'000'000ULL;
 constexpr std::uint64_t kASecond = 1'000'000'000ULL;
-const sc_core::sc_time kOneSecond{1, sc_core::SC_SEC};
-const sc_core::sc_time kAMicrosecond{1, sc_core::SC_US};
+sc_core::sc_time OneSecond() { return {1, sc_core::SC_SEC}; }
+sc_core::sc_time AMicrosecond() { return {1, sc_core::SC_US}; }
 
 // A clock given kGiven, a test's thread at its registers, and its
 // interrupt line, which `line`, if given, is pointed at for the thread.
 struct Rig {
-  Rig(const std::function<void(BusDriver&)>& at_the_registers,
-      sc_core::sc_signal<bool>** line = nullptr)
+  explicit Rig(const std::function<void(BusDriver&)>& at_the_registers,
+               sc_core::sc_signal<bool>** line = nullptr)
       : registers{"registers", [&](BusDriver& bus) {
                     at_the_registers(bus);
                     sc_core::sc_stop();
@@ -60,11 +60,11 @@ TEST(AClockInASimulation, ReadsAsTheTimeItWasGivenAndTheSimulatedTimeSince) {
   std::uint64_t time = 0;
 
   Rig rig{[&](BusDriver& bus) {
-    bus.WaitFor(3 * kOneSecond);
+    bus.WaitFor(3 * OneSecond());
     time = ReadTime(bus);
   }};
 
-  EXPECT_EQ(time, kGiven + 3 * kASecond);
+  EXPECT_EQ(time, kGiven + (3 * kASecond));
 }
 
 TEST(AClocksAlarm, RaisesItsInterruptLineAtTheTimeItWasSetFor) {
@@ -75,9 +75,9 @@ TEST(AClocksAlarm, RaisesItsInterruptLineAtTheTimeItWasSetFor) {
   Rig rig{[&](BusDriver& bus) {
             bus.Write32(RTC_IRQ_ENABLED, RTC_IRQ_ENABLED_ENABLED);
             SetAlarm(bus, kGiven + kASecond);
-            bus.WaitFor(kOneSecond - kAMicrosecond);
+            bus.WaitFor(OneSecond() - AMicrosecond());
             before = line->read();
-            bus.WaitFor(2 * kAMicrosecond);
+            bus.WaitFor(2 * AMicrosecond());
             after = line->read();
           },
           &line};

@@ -42,11 +42,11 @@ constexpr std::size_t kAddressBytes = 3;
 std::size_t ErasedBytes(std::uint8_t command) {
   switch (command) {
     case kSectorErase:
-      return 4 * 1024;
+      return std::size_t{4} * 1024;
     case kBlockErase32:
-      return 32 * 1024;
+      return std::size_t{32} * 1024;
     case kBlockErase64:
-      return 64 * 1024;
+      return std::size_t{64} * 1024;
     default:
       return 0;
   }
@@ -76,36 +76,18 @@ void SpiNorChip::Select() {
 std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   const std::size_t position = position_++;
   if (position == 0) {
-    command_ = sent;
-    // 🎓 A real chip sets or clears the latch, or erases the whole chip,
-    // when the select goes high after the command, and does nothing if more
-    // bytes come first; this one acts as the command arrives, as QEMU's
-    // m25p80 does. Neither Linux's driver nor Zephyr's sends more, so none
-    // can tell.
-    if (command_ == kWriteEnable) write_enable_latch_ = true;
-    if (command_ == kWriteDisable) write_enable_latch_ = false;
-    if ((command_ == kChipErase60 || command_ == kChipEraseC7) &&
-        write_enable_latch_) {
-      std::ranges::fill(bytes_, kErased);
-    }
+    TakeCommand(sent);
     return 0;
   }
-  if (command_ == kReadStatus)
+  if (command_ == kReadStatus) {
     return write_enable_latch_ ? kWriteEnableLatch : 0;
+  }
   if (command_ == kReadJedecId) {
     const auto id = JedecId(bytes_.size());
     if (position <= id.size()) return id[position - 1];
   }
   if (TakesAnAddress(command_) && position <= kAddressBytes) {
-    address_ = (address_ << 8) | sent;
-    // 🎓 A real chip erases when the select goes high after the address,
-    // and not at all if more bytes come first; this one erases as the
-    // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's
-    // driver nor Zephyr's sends more, so none can tell.
-    const std::size_t erased = ErasedBytes(command_);
-    if (position == kAddressBytes && erased != 0 && write_enable_latch_) {
-      EraseBlock(erased);
-    }
+    TakeAddressByte(sent, position);
     return 0;
   }
   if (command_ == kPageProgram) {
@@ -125,6 +107,33 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     return NextByte();
   }
   return 0;
+}
+
+void SpiNorChip::TakeCommand(std::uint8_t command) {
+  command_ = command;
+  // 🎓 A real chip sets or clears the latch, or erases the whole chip,
+  // when the select goes high after the command, and does nothing if more
+  // bytes come first; this one acts as the command arrives, as QEMU's
+  // m25p80 does. Neither Linux's driver nor Zephyr's sends more, so none
+  // can tell.
+  if (command_ == kWriteEnable) write_enable_latch_ = true;
+  if (command_ == kWriteDisable) write_enable_latch_ = false;
+  if ((command_ == kChipErase60 || command_ == kChipEraseC7) &&
+      write_enable_latch_) {
+    std::ranges::fill(bytes_, kErased);
+  }
+}
+
+void SpiNorChip::TakeAddressByte(std::uint8_t sent, std::size_t position) {
+  address_ = (address_ << 8) | sent;
+  // 🎓 A real chip erases when the select goes high after the address,
+  // and not at all if more bytes come first; this one erases as the
+  // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's
+  // driver nor Zephyr's sends more, so none can tell.
+  const std::size_t erased = ErasedBytes(command_);
+  if (position == kAddressBytes && erased != 0 && write_enable_latch_) {
+    EraseBlock(erased);
+  }
 }
 
 void SpiNorChip::Deselect() {}

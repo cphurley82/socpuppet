@@ -25,7 +25,7 @@ constexpr std::uint8_t kAddress = 0x51;
 constexpr std::uint64_t kFiftyMegahertz = 50'000'000;
 constexpr std::uint32_t kPrescaleForOneHundredKilohertz = 99;
 // Nine of the bus's clocks at 100 kHz: a byte and its acknowledgement.
-const sc_core::sc_time kAByteOnTheBus{90, sc_core::SC_US};
+sc_core::sc_time AByteOnTheBus() { return {90, sc_core::SC_US}; }
 
 // A device on the bus that notes when a start reaches it, and from which
 // process.
@@ -94,10 +94,10 @@ TEST(AStartGivenToAnI2cController, ReachesTheDeviceNineOfTheBusesClocksOn) {
             SwitchOn(bus);
             GiveAStart(bus);
             given_at = sc_core::sc_time_stamp();
-            bus.WaitFor(2 * kAByteOnTheBus);
+            bus.WaitFor(2 * AByteOnTheBus());
           }};
 
-  EXPECT_EQ(device.started_at - given_at, kAByteOnTheBus);
+  EXPECT_EQ(device.started_at - given_at, AByteOnTheBus());
 }
 
 // A write that is no command takes no time on the bus, and the command
@@ -109,13 +109,13 @@ TEST(AStartGivenToAnI2cControllerAWhileAfterItIsSwitchedOn,
 
   Rig rig{device, [&](BusDriver& bus) {
             SwitchOn(bus);
-            bus.WaitFor(kAByteOnTheBus / 2);
+            bus.WaitFor(AByteOnTheBus() / 2);
             GiveAStart(bus);
             given_at = sc_core::sc_time_stamp();
-            bus.WaitFor(2 * kAByteOnTheBus);
+            bus.WaitFor(2 * AByteOnTheBus());
           }};
 
-  EXPECT_EQ(device.started_at - given_at, kAByteOnTheBus);
+  EXPECT_EQ(device.started_at - given_at, AByteOnTheBus());
 }
 
 // So that a device that is a Python script may wait for the interpreter,
@@ -126,7 +126,7 @@ TEST(AnI2cControllersDevice, IsCalledFromAThreadOfTheControllersOwn) {
   Rig rig{device, [&](BusDriver& bus) {
             SwitchOn(bus);
             GiveAStart(bus);
-            bus.WaitFor(2 * kAByteOnTheBus);
+            bus.WaitFor(2 * AByteOnTheBus());
           }};
 
   EXPECT_EQ(device.caller_kind, sc_core::SC_THREAD_PROC_);
@@ -143,7 +143,7 @@ TEST(AnI2cControllersInterruptLine, RisesOnceTheCommandIsDone) {
           [&](BusDriver& bus) {
             SwitchOn(bus, I2C_CONTROLLER_CONTROL_INTERRUPT_ENABLE);
             GiveAStart(bus);
-            bus.WaitFor(kAByteOnTheBus - sc_core::sc_time{1, sc_core::SC_US});
+            bus.WaitFor(AByteOnTheBus() - sc_core::sc_time{1, sc_core::SC_US});
             before = line->read();
             bus.WaitFor(sc_core::sc_time{2, sc_core::SC_US});
             after = line->read();

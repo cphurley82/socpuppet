@@ -22,13 +22,13 @@ using ::testing::Each;
 using ::testing::ElementsAre;
 
 // A chip smaller than a 32 KiB or 64 KiB block, the size of a 4 KiB sector.
-constexpr std::size_t kFourKibibytes = 4 * 1024;
+constexpr std::size_t kFourKibibytes = std::size_t{4} * 1024;
 // A small chip, for a test that looks at every byte, but bigger than the
 // largest block an erase can take, so a chip erase shows it reached past
 // one.
-constexpr std::size_t kOneHundredTwentyEightKibibytes = 128 * 1024;
-constexpr std::size_t kEightMebibytes = 8 * 1024 * 1024;
-constexpr std::size_t kSixteenMebibytes = 16 * 1024 * 1024;
+constexpr std::size_t kOneHundredTwentyEightKibibytes = std::size_t{128} * 1024;
+constexpr std::size_t kEightMebibytes = std::size_t{8} * 1024 * 1024;
+constexpr std::size_t kSixteenMebibytes = std::size_t{16} * 1024 * 1024;
 
 // One frame: chip select down, `sent` out a byte at a time, chip select
 // up. Returns what came back for each byte sent.
@@ -67,9 +67,9 @@ struct Erase {
 
 // Each erase that takes an address, and the size of the block it erases.
 constexpr std::array<Erase, 3> kBlockErases{
-    Erase{.command = 0x20, .block = 4 * 1024},
-    Erase{.command = 0x52, .block = 32 * 1024},
-    Erase{.command = 0xD8, .block = 64 * 1024}};
+    Erase{.command = 0x20, .block = std::size_t{4} * 1024},
+    Erase{.command = 0x52, .block = std::size_t{32} * 1024},
+    Erase{.command = 0xD8, .block = std::size_t{64} * 1024}};
 
 // A row of kBlockErases by its command and its block: Command20Erases4KiB.
 std::string BlockEraseName(const ::testing::TestParamInfo<Erase>& row) {

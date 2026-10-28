@@ -28,6 +28,12 @@ class SpiNorChip : public SpiDevice {
   std::span<std::uint8_t> Bytes();
 
  private:
+  // Takes a frame's first byte, and does at once what a command with no
+  // more to it does.
+  void TakeCommand(std::uint8_t command);
+  // Takes a byte of a command's address, the one at `position` in the
+  // frame, and erases once the last arrives, if the command is an erase.
+  void TakeAddressByte(std::uint8_t sent, std::size_t position);
   // Erases the aligned block of `bytes` bytes that holds the address a
   // command was sent, or the whole chip if it is smaller: every byte erased
   // reads 0xFF again.
