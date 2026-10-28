@@ -20,6 +20,10 @@ using ::testing::_;
 using ::testing::Each;
 using ::testing::ElementsAre;
 
+// A small chip, for a test that looks at every byte, but bigger than the
+// largest block an erase can take, so a chip erase shows it reached past
+// one.
+constexpr std::size_t kOneHundredTwentyEightKibibytes = 128 * 1024;
 constexpr std::size_t kEightMebibytes = 8 * 1024 * 1024;
 constexpr std::size_t kSixteenMebibytes = 16 * 1024 * 1024;
 
@@ -188,5 +192,26 @@ INSTANTIATE_TEST_SUITE_P(
       return std::format("Command{:02X}Erases{}KiB", row.param.command,
                          row.param.block / 1024);
     });
+
+class WhenAChipIsErasedWholeWithWritesEnabled
+    : public ::testing::TestWithParam<std::uint8_t> {};
+
+TEST_P(WhenAChipIsErasedWholeWithWritesEnabled, EveryByteReadsAsErased) {
+  SpiNorChip chip{kOneHundredTwentyEightKibibytes};
+  std::ranges::fill(chip.Bytes(), 0x00);
+  Frame(chip, {0x06});
+
+  Frame(chip, {GetParam()});
+
+  EXPECT_THAT(chip.Bytes(), Each(0xFF));
+}
+
+// Chip erase has two codes, and a chip answers either.
+INSTANTIATE_TEST_SUITE_P(EachChipEraseCommand,
+                         WhenAChipIsErasedWholeWithWritesEnabled,
+                         ::testing::Values(0xC7, 0x60),
+                         [](const ::testing::TestParamInfo<std::uint8_t>& row) {
+                           return std::format("Command{:02X}", row.param);
+                         });
 
 }  // namespace socpuppet
