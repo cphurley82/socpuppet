@@ -189,8 +189,6 @@ IMAGES = [
     # SSD's NAND. The application says how to build it for the board, and
     # adds nothing to it.
     Image("firmware/flash_test", "socpuppet_ssd"),
-    # Asks for a reset and then stops feeding its watchdog, and says why
-    # it started each time.
     # Zephyr's own sample for an SPI flash, on the host's boot flash.
     Image("samples/drivers/spi_flash", "socpuppet_host"),
     # Zephyr's test of an SPI controller, whose two devices the shield puts
@@ -200,6 +198,8 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_spi_loopback",
     ),
+    # Asks for a reset and then stops feeding its watchdog, and says why
+    # it started each time.
     Image("firmware/watchdog", "socpuppet_host"),
     Image("firmware/watchdog", "socpuppet_ssd"),
 ]
