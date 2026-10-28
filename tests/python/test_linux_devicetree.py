@@ -171,16 +171,37 @@ class TestWhenACpuHasASystemControllerForLinux:
 
 
 class TestWhenACpuHasAFlashOnItsBusForLinux:
-    def test_the_devicetree_has_no_node_for_it_yet(self):
-        # 🚧 Linux's spi-sifive wants the controller's interrupt, which the
-        # flash brings out later in M18; the node comes with it.
-        platform, bus, _ = cpu_with_its_peripherals()
-        without = platform.devicetree(dialect="linux")
+    def test_its_node_is_the_controllers_with_the_chip_inside_in_linuxs_words(
+        self,
+    ):
+        # Linux reads the chip's id and size from the chip, where Zephyr's
+        # binding has them in the node, and has no names for the ranges.
+        platform, bus, plic = cpu_with_its_peripherals()
         flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
         bus.map(flash.xip, base=0x1020_0000)
         bus.map(flash.socket, base=0x100D_0000)
+        platform.connect(flash.irq, plic.source5)
 
-        assert platform.devicetree(dialect="linux") == without
+        node = textwrap.dedent(
+            f"""\
+            flash: spi@100d0000 {{
+            \tcompatible = "sifive,spi0";
+            \treg = <0x0 0x100d0000 0x0 0x1000>, <0x0 0x10200000 0x0 0x400000>;
+            \tclocks = <&flash_clock>;
+            \t#address-cells = <1>;
+            \t#size-cells = <0>;
+            \tinterrupts-extended = <&plic 5 1>;
+            \tflash_chip: flash@0 {{
+            \t\tcompatible = "jedec,spi-nor";
+            \t\treg = <0>;
+            \t\tspi-max-frequency = <{sp.SpiFlash.FASTEST_HZ}>;
+            \t}};
+            }};
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree(
+            dialect="linux"
+        )
 
 
 class TestWhenAPlatformHasAPcieRootComplexForLinux:

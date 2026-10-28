@@ -34,7 +34,6 @@ platform.load_binary("image.img", at=0x1020_0000)
 
 ## What it leaves out
 
-- 🚧 **Linux's devicetree node, and the controller's interrupt.** Zephyr's tree has the flash, where a CPU can reach its controller's registers; Linux's driver wants the controller's interrupt as well, which comes later in M18.
 - **Wear.** A real flash wears out after so many erases, and this one never does. A debugger's write through the window puts any bytes anywhere, as a factory's programmer would.
 - **Timing.** A read through the window takes no time of its own.
 - **The controller's say over the window.** A real controller's window works once firmware has enabled it and told it which read command the chip wants. This one answers whatever those registers hold.
@@ -42,7 +41,7 @@ platform.load_binary("image.img", at=0x1020_0000)
 
 ## In a devicetree
 
-Zephyr's, for a CPU that reaches the controller's registers, has the controller as `sifive,spi0`, with its registers and the window as its two ranges, and the chip inside it at chip select 0, a `jedec,spi-nor` with its JEDEC id and its size, which Zephyr's `spi_nor` reads where it would otherwise ask the chip. A `fixed-clock` node beside it gives the controller's clock, `sp.SpiFlash.CLOCK_HZ`. A CPU that reaches only the window, as a boot ROM's does, is told of no flash: its ROM learns where its image is from the [system controller](system-controller.md).
+Zephyr's, for a CPU that reaches the controller's registers, has the controller as `sifive,spi0`, with its registers and the window as its two ranges, and the chip inside it at chip select 0, a `jedec,spi-nor` with its JEDEC id and its size, which Zephyr's `spi_nor` reads where it would otherwise ask the chip. A `fixed-clock` node beside it gives the controller's clock, `sp.SpiFlash.CLOCK_HZ`. 🐧 Linux's has the same controller, chip and clock without `reg-names`, `jedec-id` and `size`: Linux's `spi-nor` asks the chip for its id and finds its size from it, and `spi-sifive` wants the controller's interrupt, `irq`, connected. Linux then shows the flash as `/dev/mtd0` (`tests/python/test_m18_exit.py`). A CPU that reaches only the window, as a boot ROM's does, is told of no flash: its ROM learns where its image is from the [system controller](system-controller.md).
 
 ## Under the hood
 
