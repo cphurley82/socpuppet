@@ -29,6 +29,15 @@ class TestWhenTheDevicetreeIsForLinux:
         # One tab in: a property of the root.
         assert '\n\tmodel = "spam";\n' in devicetree
 
+    def test_the_root_says_it_is_a_socpuppet_platform(self):
+        # 🎓 Without one, Linux takes the tree for the empty one it builds
+        # in (`_ROOT_FOR_LINUX` in devicetree.py says what follows).
+        platform, _, _ = cpu_with_its_peripherals()
+
+        devicetree = platform.devicetree(dialect="linux")
+
+        assert '\n\tcompatible = "socpuppet,platform";\n' in devicetree
+
     def test_chosen_names_the_console_by_its_path_and_carries_the_command_line(
         self,
     ):
