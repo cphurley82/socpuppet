@@ -17,15 +17,19 @@ namespace socpuppet {
 // SiFive's FE310 and FU540, which Zephyr (`gpio_sifive`) and Linux
 // (`gpio-sifive`) both drive.
 //
-// The model is borrowed: SiFive's GPIO from VPV-Peripherals (Minres). This
-// class is the adapter that fits it into a socpuppet platform, and is the
-// far end of its pins: whoever holds it sees what each pin drives, is told
-// when that changes, and drives the pins firmware reads.
+// The model is borrowed: SiFive's GPIO from VPV-Peripherals (Minres), with
+// its interrupts added by a patch. This class is the adapter that fits it
+// into a socpuppet platform, and is the far end of its pins: whoever holds
+// it sees what each pin drives, is told when that changes, and drives the
+// pins firmware reads.
 class Gpio : public sc_core::sc_module {
  public:
   static constexpr unsigned kPins = 32;
 
   tlm_utils::simple_target_socket<Gpio> socket{"socket"};
+  // Each pin's interrupt: high while one of its enabled events (a rise, a
+  // fall, a high level or a low level) is pending.
+  sc_core::sc_vector<sc_core::sc_out<bool>> irq{"irq", kPins};
 
   explicit Gpio(const sc_core::sc_module_name& name);
   ~Gpio() override;

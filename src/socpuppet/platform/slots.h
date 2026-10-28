@@ -172,21 +172,23 @@ concept SpiControllerSlot =
       controller.Attach(chip_select, device);
     };
 
-// A GPIO block: built from a name, reached through one TLM target socket.
-// Whoever is at the far end of its pins sees what each one drives
-// (nothing, high or low), is told when that changes, and drives the pins
-// itself.
+// A GPIO block: built from a name, reached through one TLM target socket,
+// with an interrupt output for each of its pins. Whoever is at the far end
+// of its pins sees what each one drives (nothing, high or low), is told
+// when that changes, and drives the pins itself.
 template <typename T>
-concept GpioSlot = std::constructible_from<T, sc_core::sc_module_name> &&
-                   requires(T gpio, unsigned pin, std::optional<bool> level,
-                            PinListener listener) {
-                     {
-                       gpio.socket
-                     } -> std::convertible_to<tlm::tlm_target_socket<>&>;
-                     { gpio.Level(pin) } -> std::same_as<std::optional<bool>>;
-                     gpio.Drive(pin, level);
-                     gpio.OnChange(listener);
-                   };
+concept GpioSlot =
+    std::constructible_from<T, sc_core::sc_module_name> &&
+    requires(T gpio, unsigned pin, std::optional<bool> level,
+             PinListener listener) {
+      { gpio.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      {
+        gpio.irq
+      } -> std::convertible_to<sc_core::sc_vector<sc_core::sc_out<bool>>&>;
+      { gpio.Level(pin) } -> std::same_as<std::optional<bool>>;
+      gpio.Drive(pin, level);
+      gpio.OnChange(listener);
+    };
 
 // A UART: built from a name and reached through one TLM target socket.
 // Whoever is at the other end of its serial line is the test or the script

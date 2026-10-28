@@ -918,6 +918,16 @@ Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since nei
 - **Kind**: missing feature.
 - **When it lands**: drop the patch.
 
+### The SiFive GPIO has its interrupt registers and nothing behind them
+
+- **Where**: `sifive/gpio.h` and `gpio.cpp`: `rise_ie` to `low_ip` are registers that hold what is written, and the model has no interrupt output.
+- **What is wrong**: nothing sets a pending bit, writing a one to one does not clear it, and no interrupt comes out. Zephyr's `gpio_sifive` and Linux's `gpio-sifive` take an interrupt for each pin.
+- **How to see it**: the seven tests of interrupts in `tests/cpp/contracts/gpio_contract.h`, from `AnEdgeOnAnInputIsPendingEvenThoughItIsNotEnabled` on, with the patch taken out; or Zephyr's `tests/drivers/gpio/gpio_basic_api`, whose callback tests wait for interrupts.
+- **What we do**: `cmake/patches/vpv-peripherals-gpio-interrupts.patch`, on top of `vpv-peripherals-gpio-pull-up.patch`, sets a rise or a fall pending as an input's `value` changes, and the level it leaves. The level a pin is at reads as pending for as long as it holds, from reset on and however often it is cleared, as the manual has it: `high_ip` and `low_ip` read as what was latched together with the pins' levels now. Writing a one to a pending bit clears it. `irq_o`, a line for each pin, is up while one of that pin's enabled events is pending, and is written from one method of the model's own.
+- **Upstream fix**: the same.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
 Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Linux's meets them here:
 
 - `input_en` is kept and ignored: every pin that is not an output reads what is on it.
