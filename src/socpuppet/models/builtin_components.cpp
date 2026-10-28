@@ -417,7 +417,8 @@ Registry BuiltinComponents() {
     // needs the controller's registers nowhere on its bus.
     std::vector<Port> ports{
         TargetPort("socket", module->socket, /*required=*/false),
-        TargetPort("xip", module->xip)};
+        TargetPort("xip", module->xip),
+        WireSourcePort("irq", module->irq, /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_blk", [](const char* name, Parameters& parameters) {

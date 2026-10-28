@@ -1144,7 +1144,12 @@ class SpiFlash(Component):
     implementation = "spi_flash"
     # A CPU whose boot ROM reads the window, and which drives nothing else,
     # needs the controller's registers nowhere on its bus.
-    port_specs = (target("socket", required=False), target("xip"))
+    port_specs = (
+        target("socket", required=False),
+        target("xip"),
+        # The controller's interrupt, for its FIFOs' watermarks.
+        wire_out("irq", required=False),
+    )
     #: The most a flash holds: what three address bytes reach.
     LARGEST = 16 << 20
     #: The controller's chip selects. The flash's own chip is at 0.
