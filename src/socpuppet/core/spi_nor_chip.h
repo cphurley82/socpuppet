@@ -28,6 +28,10 @@ class SpiNorChip : public SpiDevice {
   std::span<std::uint8_t> Bytes();
 
  private:
+  // The byte at the address a command has reached, which then moves on to
+  // the next.
+  std::uint8_t& NextByte();
+
   // What the chip holds, a byte for each address.
   std::vector<std::uint8_t> bytes_;
   // The write enable latch: whether a program or an erase may change the
