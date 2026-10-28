@@ -547,6 +547,9 @@ FetchContent_Declare(vpv_peripherals
   # spi-transmit-only: the SiFive SPI kept the answer to every byte, even with
   # its frame format set to transmit only, so a transfer that reads found
   # the answers to the one that only sent before it.
+  # spi-receive-fifo-full: the SiFive SPI dropped an answer with its receive
+  # FIFO full, which a CPU running ahead of the clock lets happen, and a
+  # driver then waits for ever for it.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
@@ -561,6 +564,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-first-byte.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-watermark.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-only.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-receive-fifo-full.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)
