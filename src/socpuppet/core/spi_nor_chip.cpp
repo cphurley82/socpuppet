@@ -22,6 +22,7 @@ constexpr std::uint8_t kFastRead = 0x0B;
 constexpr std::uint8_t kSectorErase = 0x20;
 constexpr std::uint8_t kBlockErase32 = 0x52;
 constexpr std::uint8_t kReadJedecId = 0x9F;
+constexpr std::uint8_t kBlockErase64 = 0xD8;
 
 // Status register 1's write enable latch: writes are enabled.
 constexpr std::uint8_t kWriteEnableLatch = 1 << 1;
@@ -40,6 +41,8 @@ std::size_t ErasedBytes(std::uint8_t command) {
       return 4 * 1024;
     case kBlockErase32:
       return 32 * 1024;
+    case kBlockErase64:
+      return 64 * 1024;
     default:
       return 0;
   }
