@@ -887,6 +887,17 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since neither Zephyr's driver nor Linux's meets them here:
+
+- In auto chip select mode, the end of a burst drives the chip select low again where it should let it go (`set_bit(false, ...)` after the loop). Both drivers select a chip by hold mode; Linux uses auto mode only as its idle, between transfers.
+- Each byte's two clock edges both carry its data, as `m2s_data_valid`, and the model keeps the answer to the first and drops the second's. socpuppet's adapter hands the chip the byte on the first alone.
+- The `rxdata` read callback sets the receive watermark when `rxmark <= ` what is left, where `update_irq` has `<`; `update_irq` runs straight after it and puts it right.
+- Every register resets to zero: the manual has `sckdiv` at 3, `csdef` all ones and `fmt.len` at 8. Both drivers write each before they use it.
+- `ip` can be written, where the manual has it read only; `update_irq` writes it over again.
+- `csdef` is 32 bits wide, so Linux counts 32 chip selects where the model has four.
+- `fmt.len`, `fmt.proto` and `fmt.endian` are kept and ignored: every frame is eight bits, on one data line, most significant bit first. And with `bit_true_transfer` off, the default, only a byte's top bit goes on `mosi_o`.
+- `fctrl` and `ffmt`, the memory-mapped flash mode, are kept and ignored. socpuppet's flash maps its chip into memory itself.
+
 ### The flash chip ends the process at an access past its 256 MB
 
 - **Where**: `generic/spi_mem.h`, `scc::memory<256_MB, scc::LT> mem`, reached through `spi_t`'s blocking and debug transport, and so through `minres/qspi`'s `xip_sck`.
