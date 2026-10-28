@@ -44,6 +44,7 @@ from socpuppet.placed import (
     Placed,
     PlacedBlock,
     PlacedConsole,
+    PlacedGpio,
     PlacedNand,
     PlacedNet,
     PlacedPciemHost,
@@ -1676,6 +1677,43 @@ class Watchdog(Component):
             # Zephyr's binding requires the property by this name.
             short_interrupts=True,
         )
+
+
+class Gpio(Component):
+    """A GPIO block: 32 general-purpose pins, each an output or an input.
+
+    🎓 A pin of a chip that is for no one thing is a GPIO pin, a
+    general-purpose input or output. Firmware makes it an output and
+    drives it high or low, to light an LED, say, or makes it an input and
+    reads what is on it, a button's state. This is the GPIO block of
+    SiFive's FE310, which Zephyr (`gpio_sifive`) and Linux (`gpio-sifive`)
+    have drivers for.
+
+    Map `socket`, its registers, on a bus. `irq0` to `irq31` are each a
+    pin's interrupt, for whichever of them firmware is to hear: connect
+    each to an interrupt controller's source.
+
+    🧵 Python is at the far end of the pins: once the platform is built,
+    `level(pin)` says what a pin drives, `drive(pin, level)` drives one,
+    and `on_change(listener)` is told of each change (`PlacedGpio`).
+
+    The model is borrowed from VPV-Peripherals, with its pull-ups and its
+    interrupts added: it had the registers and nothing behind them.
+    """
+
+    implementation = "gpio"
+    #: Pins 0 to 31.
+    PINS = 32
+    port_specs = (
+        target("socket"),
+        *(wire_out(f"irq{pin}", required=False) for pin in range(PINS)),
+    )
+    #: A page, for the registers.
+    mapped_size = 0x1000
+
+    @override
+    def place(self, platform: Platform, path: str) -> PlacedGpio:
+        return PlacedGpio(platform, path, self)
 
 
 class MsiReceiver(Component):

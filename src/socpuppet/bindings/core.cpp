@@ -22,8 +22,10 @@
 #include "socpuppet/bindings/python_script.h"
 #include "socpuppet/bindings/python_spi_device.h"
 #include "socpuppet/core/elf_image.h"
+#include "socpuppet/core/pin_listener.h"
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
+#include "socpuppet/models/gpio.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/pciem_host.h"
 #include "socpuppet/models/scripted_bus_master.h"
@@ -101,7 +103,7 @@ struct NativePlatform {
   // stack.
   std::function<std::vector<std::uint8_t>(std::span<const std::uint8_t>)>
   Answerer(py::object answer) {
-    py::object& kept = python_answerers.emplace_back(std::move(answer));
+    py::object& kept = python_callables.emplace_back(std::move(answer));
     return [this, &kept](std::span<const std::uint8_t> request) {
       std::vector<std::uint8_t> answered;
       python_executor.Run([&] {
@@ -114,16 +116,27 @@ struct NativePlatform {
     };
   }
 
+  // `listener`, a Python callable taking a pin and its level, as what a
+  // GPIO tells of each change. The GPIO calls it from its own thread
+  // process, so it runs through the executor, on Python's stack.
+  socpuppet::PinListener Listener(py::object listener) {
+    py::object& kept = python_callables.emplace_back(std::move(listener));
+    return [this, &kept](unsigned pin, std::optional<bool> level) {
+      python_executor.Run([&] { kept(pin, level); });
+    };
+  }
+
   KernelClaim kernel_claim;  // first member: checked before any module is built
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
   socpuppet::PythonExecutor python_executor{"socpuppet_python_executor"};
-  // Declared last, so the Python SPI devices, scripts and answerers are
-  // dropped first, while the GIL is held by whoever is destroying this
-  // platform from Python. A flash still points at its devices then, but
-  // nothing calls them once the run is over.
+  // Declared last, so the Python SPI devices, scripts, and callables
+  // (answerers and listeners) are dropped first, while the GIL is held by
+  // whoever is destroying this platform from Python. A flash still points
+  // at its devices then, and a GPIO at its listener, but nothing calls
+  // them once the run is over.
   std::list<socpuppet::PythonSpiDevice> python_spi_devices;
   std::list<socpuppet::PythonScript> python_scripts;
-  std::list<py::object> python_answerers;
+  std::list<py::object> python_callables;
 };
 
 }  // namespace
@@ -227,6 +240,26 @@ PYBIND11_MODULE(_core, m) {
                  std::move(device), self.python_executor);
              self.platform.ModuleAt<socpuppet::SpiFlash>(path).Attach(
                  chip_select, wrapped);
+           })
+      // What the GPIO at `path` drives on `pin`: True, False, or None.
+      .def("gpio_level",
+           [](NativePlatform& self, const std::string& path, unsigned pin) {
+             return self.platform.ModuleAt<socpuppet::Gpio>(path).Level(pin);
+           })
+      // Drives `pin` of the GPIO at `path` from the far end: True, False,
+      // or None to let it go.
+      .def("gpio_drive",
+           [](NativePlatform& self, const std::string& path, unsigned pin,
+              std::optional<bool> level) {
+             self.platform.ModuleAt<socpuppet::Gpio>(path).Drive(pin, level);
+           })
+      // Has `listener`, a Python callable taking a pin and its level, told
+      // of each change of what a pin of the GPIO at `path` drives.
+      .def("gpio_on_change",
+           [](NativePlatform& self, const std::string& path,
+              py::object listener) {
+             self.platform.ModuleAt<socpuppet::Gpio>(path).OnChange(
+                 self.Listener(std::move(listener)));
            })
       // What the serial transport at `path` (a UART, a virtio console) has
       // transmitted after its first `since` bytes, and nothing if it has

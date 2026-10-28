@@ -50,6 +50,7 @@ EXAMPLES = [
     sp.DbtRiseCpu(xlen=64, reset_vector=0x8000_0000),
     sp.DmaEngine(),
     sp.FlashController(),
+    sp.Gpio(),
     sp.IdealNand(blocks=4),
     sp.Imsic(),
     sp.Iommu(),
