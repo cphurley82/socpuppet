@@ -56,6 +56,7 @@ add_executable(kernel_tests
   kernel_test_main.cpp
   contracts/aplic_test.cpp
   contracts/bus_master_test.cpp
+  contracts/gpio_test.cpp
   contracts/interrupt_controller_test.cpp
   contracts/iommu_test.cpp
   contracts/link_test.cpp

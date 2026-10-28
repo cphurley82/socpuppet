@@ -674,7 +674,7 @@ Each entry says:
 
 ## VPV-Peripherals
 
-[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`; the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`; the RISC-V PLIC and APLIC, behind `src/socpuppet/models/plic.cpp` and `aplic.cpp`; SiFive's always-on block, behind `src/socpuppet/models/watchdog.cpp`; and SiFive's SPI controller, behind `src/socpuppet/models/spi_controller.cpp`. Until M18 it lent Minres's QSPI controller and flash chip to the boot flash too.
+[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`; the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`; the RISC-V PLIC and APLIC, behind `src/socpuppet/models/plic.cpp` and `aplic.cpp`; SiFive's always-on block, behind `src/socpuppet/models/watchdog.cpp`; SiFive's SPI controller, behind `src/socpuppet/models/spi_controller.cpp`; and SiFive's GPIO, behind `src/socpuppet/models/gpio.cpp`. Until M18 it lent Minres's QSPI controller and flash chip to the boot flash too.
 
 ### The ACLINT ignores a compare value written at time zero
 
@@ -907,6 +907,22 @@ Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since nei
 - `csdef` is 32 bits wide, so Linux counts 32 chip selects where the model has four.
 - `fmt.len`, `fmt.proto` and `fmt.endian` are kept and ignored: every frame is eight bits, on one data line, most significant bit first. And with `bit_true_transfer` off, the default, only a byte's top bit goes on `mosi_o`.
 - `fctrl` and `ffmt`, the memory-mapped flash mode, are kept and ignored. socpuppet's flash maps its chip into memory itself.
+
+### The SiFive GPIO ignores a pin nothing drives, and its pull-up does nothing
+
+- **Where**: `sifive/gpio.cpp`, `pin_input`, whose `default:` case drops a value of Z, high impedance, which is a pin nothing drives; the `pue` register, which nothing reads; and `value`, which is written only when an input pin is driven, so a pin that stops being an output keeps whatever it read before.
+- **What is wrong**: a pin that was driven and is let go keeps reading what was last driven on it, and a pin with its pull-up on reads the same as one without. On silicon a pull-up holds a pin nothing drives high.
+- **How to see it**: `GpioContract.APinLetGoReadsHighOnceItsPullUpIsOn`, `APinLetGoWithNoPullUpReadsLow` and `AnOutputThatBecomesAnInputWithItsPullUpOnAndNothingOnItReadsHigh` in `tests/cpp/contracts/gpio_contract.h`, with the patch taken out; or Zephyr's `tests/drivers/gpio/gpio_basic_api`, whose `check_pulls` lets a pin go and turns its pull-up on.
+- **What we do**: `cmake/patches/vpv-peripherals-gpio-pull-up.patch` keeps what is driven on each pin from outside, and works out every input pin's `value` from it whenever a pin is driven or let go and whenever `pue`, `output_en` or the other output registers are written: what is driven, or with nothing driving the pin, its `pue` bit. A pin with no pull-up reads low: a real one floats.
+- **Upstream fix**: the same.
+- **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
+Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Linux's meets them here:
+
+- `input_en` is kept and ignored: every pin that is not an output reads what is on it.
+- `value` does not follow a pin that is an output, where on silicon it reads the pin, and so what the pin drives.
+- A pin whose `iof_en` bit is set, with nothing bound to its IOF (alternate-function) sockets, drives a value left over from the pin before it in `update_pins`'s loop. socpuppet's adapter binds none, and takes anything but high or low for nothing driven. Zephyr's driver clears `iof_en`.
 
 ### The flash chip ends the process at an access past its 256 MB
 
