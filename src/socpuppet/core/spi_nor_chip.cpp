@@ -28,6 +28,11 @@ constexpr std::uint8_t kErased = 0xFF;
 // How many bytes an address is sent in.
 constexpr std::size_t kAddressBytes = 3;
 
+// Whether a command is followed by an address.
+bool TakesAnAddress(std::uint8_t command) {
+  return command == kRead || command == kFastRead;
+}
+
 // The JEDEC id: Winbond's maker code, then the W25Q family, then the
 // capacity, as the power of two of the size in bytes (0x18: 16 MiB).
 std::array<std::uint8_t, 3> JedecId(std::size_t size) {
@@ -60,11 +65,11 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     const auto id = JedecId(bytes_.size());
     if (position <= id.size()) return id[position - 1];
   }
+  if (TakesAnAddress(command_) && position <= kAddressBytes) {
+    address_ = (address_ << 8) | sent;
+    return 0;
+  }
   if (command_ == kRead || command_ == kFastRead) {
-    if (position <= kAddressBytes) {
-      address_ = (address_ << 8) | sent;
-      return 0;
-    }
     // A fast read's eight dummy clocks, which a controller that moves
     // whole bytes sends as one byte.
     if (command_ == kFastRead && position == kAddressBytes + 1) return 0;
