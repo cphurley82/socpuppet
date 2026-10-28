@@ -79,6 +79,8 @@ from __future__ import annotations
 import os
 import sys
 import textwrap
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any, Literal, NamedTuple, Protocol, overload
 
 from socpuppet import devicetree
@@ -121,6 +123,7 @@ from socpuppet.components import (
 from socpuppet.placed import Placed, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
 from socpuppet.regs import system_controller
+from socpuppet.spi import SpiDevice
 from socpuppet.time import ms
 
 #: Which of its two CPUs the host has: socpuppet's own, or QEMU's.
@@ -206,6 +209,9 @@ BOOT_FLASH_SOURCE = 29
 #: which the drive is the first. The 16 between are kept for devices that
 #: only have a wire.
 DRIVE_IDENTITIES = tuple(range(32, 32 + VECTORS))
+#: The chip select on the boot flash's bus that the shield
+#: `socpuppet_host_spi_loopback` puts its devices at.
+SPI_LOOPBACK_CHIP_SELECT = 1
 
 
 class PcieDrive(Protocol):
@@ -317,6 +323,7 @@ def host(
     sbi: bool = False,
     virtio: Virtio | None = None,
     iommu: bool = False,
+    boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -332,6 +339,7 @@ def host[Drive: PcieDrive](
     sbi: bool = False,
     virtio: Virtio | None = None,
     iommu: bool = False,
+    boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -346,6 +354,7 @@ def host(
     sbi: bool = False,
     virtio: Virtio | None = None,
     iommu: bool = False,
+    boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -407,6 +416,9 @@ def host(
     die (`sp.Iommu`), which confines the drive to the memory firmware gave
     it. It needs a drive to put behind it, so `drive_blocks` too. Without
     it the drive reaches all of memory, as it always has.
+
+    🧵 `boot_flash_devices` are on the boot flash's SPI bus beside its chip,
+    by chip select, 1 to 3: Python's own devices (`socpuppet.spi`).
     """
     if boot is not None and ram < RAM_SIZE:
         raise ValueError(
@@ -450,7 +462,12 @@ def host(
     )
     link_model = PassThroughLink() if manager is None else D2dLink()
     d2d = platform.link("d2d", link_model, compute_group, io_group, trace=trace)
-    io = _io_die(platform, io_group, messages_to=messages_to)
+    io = _io_die(
+        platform,
+        io_group,
+        messages_to=messages_to,
+        boot_flash_devices=boot_flash_devices,
+    )
     slots = (
         None
         if virtio is None
@@ -623,13 +640,22 @@ class _IoDie(NamedTuple):
     boot_flash_bus: PlacedRouter
 
 
-def _io_die(platform: Platform, place: Group, *, messages_to: int) -> _IoDie:
+def _io_die(
+    platform: Platform,
+    place: Group,
+    *,
+    messages_to: int,
+    boot_flash_devices: Mapping[int, SpiDevice],
+) -> _IoDie:
     """Describe the die the devices are on, up to its end of the link."""
     bus = place.add("bus", Router())
     uart = place.add("uart", Ns16550())
     aplic = place.add("aplic", Aplic(messages_to=messages_to))
     up = place.add("up", Router())
-    boot_flash = place.add("boot_flash", SpiFlash(size=BOOT_FLASH_SIZE))
+    boot_flash = place.add(
+        "boot_flash",
+        SpiFlash(size=BOOT_FLASH_SIZE, devices=boot_flash_devices),
+    )
     boot_flash_bus = place.add("boot_flash_bus", Router())
     bus.map(uart.socket, base=UART_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
@@ -749,6 +775,40 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
         \t\tcompatible = "nvme-controller";
         \t\tvendor-id = <{endpoint.component.parameters["vendor_id"]:#x}>;
         \t\tdevice-id = <{endpoint.component.parameters["device_id"]:#x}>;
+        \t}};
+        }};
+        """
+    )
+
+
+def spi_loopback_overlay() -> str:
+    """The devicetree that Zephyr's `spi_loopback` test wants of the host.
+
+    It is the overlay of the Zephyr shield `socpuppet_host_spi_loopback`:
+    the test's two devices, a slow one and a fast one, on the boot flash's
+    SPI bus at chip select 1, where 🧵 Python's `socpuppet.spi.Loopback`
+    answers each byte with itself. The fast one is as fast as the bus goes.
+
+    The shield's copy is checked in, and a test holds it to this. To write
+    the file again, print what this returns into it, with no newline added,
+    as for `drive_overlay`.
+    """
+    flash = devicetree.label(host().boot_flash.path)
+    fastest = SpiFlash.FASTEST_HZ
+    cs = SPI_LOOPBACK_CHIP_SELECT
+    return textwrap.dedent(
+        f"""\
+        &{flash} {{
+        \tslow@{cs} {{
+        \t\tcompatible = "test-spi-loopback-slow";
+        \t\treg = <{cs}>;
+        \t\tspi-max-frequency = <500000>;
+        \t}};
+
+        \tfast@{cs} {{
+        \t\tcompatible = "test-spi-loopback-fast";
+        \t\treg = <{cs}>;
+        \t\tspi-max-frequency = <{fastest}>;
         \t}};
         }};
         """

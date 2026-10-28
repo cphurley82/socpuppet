@@ -10,7 +10,12 @@ from typing import NamedTuple
 from socpuppet import boot_image, ztest
 from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
-from socpuppet.boards.host import HOST_CPUS, HostCpu, host
+from socpuppet.boards.host import (
+    HOST_CPUS,
+    SPI_LOOPBACK_CHIP_SELECT,
+    HostCpu,
+    host,
+)
 from socpuppet.boards.io_manager import io_manager, one_round_trip
 from socpuppet.boards.scripted_host import bring_up_the_drive, idle_host
 from socpuppet.boards.ssd import ssd
@@ -19,6 +24,7 @@ from socpuppet.errors import NvmeError
 from socpuppet.ops import Steps
 from socpuppet.placed import Placed, PlacedUart
 from socpuppet.platform import Platform
+from socpuppet.spi import Loopback
 from socpuppet.time import ms
 from socpuppet.transcript import Transcript
 
@@ -51,9 +57,14 @@ class _Board(NamedTuple):
 def _host(
     shields: Sequence[str], how: boot.Boot | None, cpu: HostCpu | None = None
 ) -> _Stage:
-    """The host, with 🎭 the drive and an IOMMU if their shields are on."""
+    """The host, with 🎭 the drive and an IOMMU if their shields are on.
+
+    And with 🧵 Python's loopback on the boot flash's SPI bus, at chip
+    select 1, if its shield is.
+    """
     drive = "socpuppet_host_drive" in shields
     iommu = "socpuppet_host_iommu" in shields
+    loopback = "socpuppet_host_spi_loopback" in shields
     if iommu and not drive:
         sys.exit(
             "The shield socpuppet_host_iommu puts the drive behind an IOMMU, "
@@ -65,6 +76,9 @@ def _host(
         boot=how,
         drive_blocks=_DRIVE_BLOCKS if drive else None,
         iommu=iommu,
+        boot_flash_devices=(
+            {SPI_LOOPBACK_CHIP_SELECT: Loopback()} if loopback else {}
+        ),
     )
     return _Stage(it.platform, it.cpu, it.uart, it.syscon)
 
@@ -129,7 +143,13 @@ def _on_a_kit(platform: Platform, cpu: Placed, kit: CpuKit | None) -> _Stage:
 #: The boards an image can be run on, by the names Zephyr has for them.
 BOARDS = {
     "socpuppet_host": _Board(
-        ("socpuppet_host_drive", "socpuppet_host_iommu"), _host, HOST_CPUS
+        (
+            "socpuppet_host_drive",
+            "socpuppet_host_iommu",
+            "socpuppet_host_spi_loopback",
+        ),
+        _host,
+        HOST_CPUS,
     ),
     "socpuppet_ssd": _Board(("socpuppet_ssd_host",), _ssd),
     "socpuppet_iomgr": _Board((), _iomgr),

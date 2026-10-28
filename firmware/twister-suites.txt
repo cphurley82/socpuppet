@@ -28,6 +28,11 @@ tests/arch/riscv/fatal -K
 # The watchdog, which resets the CPU and expects to come back.
 tests/drivers/watchdog/wdt_basic_api
 
+# The host's SPI controller, with Python at the far end of the bus: the
+# shield puts the test's two devices on it, and its fixture says the board
+# has the loopback the test wants.
+tests/drivers/spi/spi_loopback -x=SHIELD=socpuppet_host_spi_loopback --fixture spi_loopback
+
 # The console both ways, and the C library.
 tests/subsys/shell/shell
 tests/lib/c_lib

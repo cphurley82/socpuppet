@@ -1112,6 +1112,16 @@ Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since nei
 - **Kind**: bug.
 - **When it lands**: the quarantine entry goes, and the watchdog's suite runs on all three boards.
 
+### 📮 The SPI API calls a driver's asynchronous transfer without asking whether it has one
+
+- **Where**: `include/zephyr/drivers/spi.h`, `spi_transceive_cb` and `spi_transceive_signal`, which call `api->transceive_async` with `CONFIG_SPI_ASYNC` on; and `drivers/spi/spi_sifive.c`, whose API has none.
+- **What is wrong**: with `CONFIG_SPI_ASYNC=y`, an asynchronous transfer on a controller whose driver has no `transceive_async` jumps to address 0, where the call should say `-ENOTSUP`. Zephyr's own `tests/drivers/spi/spi_loopback` turns `CONFIG_SPI_ASYNC` on for every board.
+- **How to see it**: that test, built for `socpuppet_host` with the shield `socpuppet_host_spi_loopback` and `CONFIG_SPI_ASYNC=y`: `test_spi_async_call` ends in an instruction access fault at 0.
+- **What we do**: the shield's `socpuppet_host_spi_loopback.conf` turns `CONFIG_SPI_ASYNC` off, as the test's own variants for drivers without it do, and the asynchronous cases skip themselves.
+- **Upstream fix**: return `-ENOTSUP` from both calls when `transceive_async` is null; or give `spi_sifive` an asynchronous transfer.
+- **Kind**: bug.
+- **When it lands**: the shield's line can go.
+
 ### The documented `run_custom` target does not depend on the image
 
 - **Where**: `doc/develop/test/twister.rst`, "Running tests on custom emulator", and `cmake/modules/kernel.cmake`, which includes a board's `board.cmake`.
