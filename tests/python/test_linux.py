@@ -66,6 +66,19 @@ class TestWhenAnImageForTheRootOnTheDriveIsMissing:
         )
 
 
+class TestWhenAnImageForTheRootOnTheDriveIsMissingAndDtcIsNotInstalled:
+    @pytest.mark.parametrize("missing", ON_THE_DRIVE)
+    @pytest.mark.usefixtures("dtc_is_not_installed")
+    def test_it_is_the_image_that_is_refused(self, tmp_path, missing):
+        for image in set(ON_THE_DRIVE) - {missing}:
+            (tmp_path / image).write_bytes(b"spam")
+
+        with pytest.raises(FileNotFoundError) as refused:
+            linux.host_with_linux(tmp_path, root="drive")
+
+        assert str(tmp_path / missing) in str(refused.value)
+
+
 class TestWhenAnIommuIsAskedForWithTheRootOnVirtio:
     def test_it_is_refused_for_want_of_a_drive_to_put_behind_it(self, tmp_path):
         with pytest.raises(ValueError, match='root="drive"'):

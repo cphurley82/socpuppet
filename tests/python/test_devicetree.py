@@ -408,9 +408,8 @@ class TestWhenADevicetreeIsCompiled:
 
 
 class TestWhenADevicetreeIsCompiledWithNoDtcInstalled:
-    def test_the_error_names_dtc_and_how_to_install_it(self, monkeypatch):
-        monkeypatch.setenv("PATH", "")
-
+    @pytest.mark.usefixtures("dtc_is_not_installed")
+    def test_the_error_names_dtc_and_how_to_install_it(self):
         with pytest.raises(FileNotFoundError, match="device-tree-compiler"):
             sp.devicetree.compile("/dts-v1/;\n/ { };\n")
 

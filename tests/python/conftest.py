@@ -63,6 +63,16 @@ def zephyr_tree(pytestconfig):
     return tree
 
 
+@pytest.fixture
+def dtc_is_not_installed(tmp_path, monkeypatch):
+    """A PATH on which dtc, the devicetree compiler, is nowhere to be found.
+
+    A directory that is not there, and not an empty PATH, which the
+    operating system reads as the current directory.
+    """
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+
+
 def pytest_configure(config):
     _stop_if_qbox_cpu_is_asked_for_and_not_in_this_build()
     config.addinivalue_line(

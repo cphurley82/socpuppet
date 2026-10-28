@@ -258,6 +258,18 @@ def _with_the_root_on_the_drive(
         trace=trace,
         iommu=iommu,
     )
+    assert board.drive is not None  # it was described with one
+    assert board.manager is not None
+    # Each image is looked for before anything is built, so that a missing
+    # one is refused while the process can still build another platform;
+    # and before dtc is asked for, so that on a machine without dtc it is
+    # still the missing image that is named.
+    # 🎭 A script in a CPU's place needs none.
+    images = []
+    if board.manager.cpu_kit is not None:
+        images.append((built(firmware / MANAGER_ELF), board.manager.cpu.socket))
+    if board.drive.ssd.cpu_kit is not None:
+        images.append((built(firmware / SSD_ELF), board.drive.ssd.cpu.socket))
     layout = opensbi.lay_out(
         fw_jump,
         kernel,
@@ -273,16 +285,6 @@ def _with_the_root_on_the_drive(
         ram=RAM_BASE,
         initrd=initramfs,
     )
-    assert board.drive is not None  # it was described with one
-    assert board.manager is not None
-    # Each image is looked for before anything is built, so that a missing
-    # one is refused while the process can still build another platform.
-    # 🎭 A script in a CPU's place needs none.
-    images = []
-    if board.manager.cpu_kit is not None:
-        images.append((built(firmware / MANAGER_ELF), board.manager.cpu.socket))
-    if board.drive.ssd.cpu_kit is not None:
-        images.append((built(firmware / SSD_ELF), board.drive.ssd.cpu.socket))
     board.platform.build()
     nand = board.drive.ssd.nand
     nand.load(ftl.nand_image(disk, nand.component))
