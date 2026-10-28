@@ -1,0 +1,63 @@
+// The I2C controller: docs/models/i2c-controller.md.
+//
+// The register map of the OpenCores I2C master core (I2C-Master Core
+// Specification, rev. 0.9), which SiFive's I2C block is, with each 8-bit
+// register in a 32-bit word of its own, as SiFive has them. Two pairs
+// share an offset: a write reaches one and a read the other.
+//
+// tools/regs.py writes the C header, the Python module and the table in
+// that page from this file. `uv run python tools/lint.py --fix` runs it.
+
+`include "properties.rdl"
+
+addrmap i2c_controller {
+    name = "I2C controller";
+    desc = "A controller on an I2C bus: it starts and stops transfers, and sends and receives one byte at a time.";
+    block_size = 0x1000;
+    default regwidth = 32;
+
+    reg {
+        desc = "The low byte of the clock's prescale: the bus's clock is the controller's divided by five times one more than the prescale.";
+        field { sw = rw; } VALUE[7:0] = 0xFF;
+    } PRESCALE_LOW @ 0x00;
+
+    reg {
+        desc = "The high byte of the clock's prescale.";
+        field { sw = rw; } VALUE[7:0] = 0xFF;
+    } PRESCALE_HIGH @ 0x04;
+
+    reg {
+        desc = "Switches the controller on, and its interrupt.";
+        field { sw = rw; desc = "The interrupt is raised when a command is done."; } INTERRUPT_ENABLE[6:6] = 0;
+        field { sw = rw; desc = "The controller is on: commands are carried out."; } ENABLE[7:7] = 0;
+    } CONTROL @ 0x08;
+
+    reg {
+        desc = "The next byte to send: an address, with the direction in bit 0 (1 is a read), or a byte of data.";
+        field { sw = w; } VALUE[7:0] = 0;
+    } TRANSMIT @ 0x0C;
+
+    reg {
+        desc = "The last byte received.";
+        field { sw = r; } VALUE[7:0] = 0;
+    } RECEIVE @ 0x0C;
+
+    reg {
+        desc = "What the controller is to do next. Reads as status.";
+        field { sw = w; desc = "Clears the interrupt."; } CLEAR_INTERRUPT[0:0] = 0;
+        field { sw = w; desc = "With a read: do not acknowledge the byte, which ends the read."; } NACK[3:3] = 0;
+        field { sw = w; desc = "Send the byte in `TRANSMIT`."; } WRITE[4:4] = 0;
+        field { sw = w; desc = "Receive a byte into `RECEIVE`."; } READ[5:5] = 0;
+        field { sw = w; desc = "After the byte, end the transfer."; } STOP[6:6] = 0;
+        field { sw = w; desc = "Before the byte, start a transfer, or start again."; } START[7:7] = 0;
+    } COMMAND @ 0x10;
+
+    reg {
+        desc = "What the controller is doing, and what came of its last command.";
+        field { sw = r; desc = "A command is done, and the interrupt not cleared."; } INTERRUPT[0:0] = 0;
+        field { sw = r; desc = "A command is being carried out."; } TRANSFER_IN_PROGRESS[1:1] = 0;
+        field { sw = r; desc = "Another controller won the bus. Never set: this one is alone on it."; } ARBITRATION_LOST[5:5] = 0;
+        field { sw = r; desc = "Between a start and a stop."; } BUSY[6:6] = 0;
+        field { sw = r; desc = "The last byte sent was not acknowledged."; } NO_ACK[7:7] = 0;
+    } STATUS @ 0x10;
+};
