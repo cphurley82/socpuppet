@@ -240,6 +240,26 @@ TYPED_TEST_P(GpioContract, AWriteThatChangesNoPinTellsTheFarEndNothing) {
             (std::vector<typename TestFixture::Change>{{3, true}}));
 }
 
+// A board's wire from one pin to another, and a script that watches the
+// pins, are two listeners.
+TYPED_TEST_P(GpioContract, EveryListenerIsToldOfEachChange) {
+  std::vector<typename TestFixture::Change> first;
+  std::vector<typename TestFixture::Change> second;
+  this->gpio_.OnChange([&](unsigned pin, std::optional<bool> level) {
+    first.emplace_back(pin, level);
+  });
+  this->gpio_.OnChange([&](unsigned pin, std::optional<bool> level) {
+    second.emplace_back(pin, level);
+  });
+
+  this->OnTheBus(
+      [&](BusDriver& bus) { bus.Write32(this->kOutputEnable, 1U << 3); });
+
+  const std::vector<typename TestFixture::Change> told{{3, false}};
+  EXPECT_EQ(first, told);
+  EXPECT_EQ(second, told);
+}
+
 // So that a far end that is a Python script may wait for the interpreter,
 // as no CPU's process may: QBox's runs inside QEMU, which cannot wait.
 TYPED_TEST_P(GpioContract, TheFarEndMayWaitWithoutHoldingUpTheWriter) {
@@ -382,7 +402,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     AnOutputThatBecomesAnInputWithItsPullUpOnAndNothingOnItReadsHigh,
     TheFarEndIsToldOfEachChangeOfWhatAPinDrivesInOrder,
     AWriteThatChangesNoPinTellsTheFarEndNothing,
-    TheFarEndMayWaitWithoutHoldingUpTheWriter,
+    EveryListenerIsToldOfEachChange, TheFarEndMayWaitWithoutHoldingUpTheWriter,
     APinThatIsNotThereIsNeitherDrivenNorLookedAt,
     AnEdgeOnAnInputIsPendingEvenThoughItIsNotEnabled,
     WritingAOneToAPendingEdgeClearsItAndNoOther,

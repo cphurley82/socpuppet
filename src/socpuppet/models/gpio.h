@@ -45,9 +45,9 @@ class Gpio : public sc_core::sc_module {
   void Drive(unsigned pin, std::optional<bool> level);
 
   // `listener` is told of each change of what a pin drives, in the order
-  // they happen. It is called from a thread process of the GPIO's own,
-  // never from whoever wrote the register, and may wait. It takes the place
-  // of any listener before it.
+  // they happen, after any listener added before it. It is called from a
+  // thread process of the GPIO's own, never from whoever wrote the
+  // register, and may wait.
   void OnChange(PinListener listener);
 
  private:
