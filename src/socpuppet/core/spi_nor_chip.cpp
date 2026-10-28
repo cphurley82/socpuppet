@@ -1,5 +1,6 @@
 #include "socpuppet/core/spi_nor_chip.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -18,6 +19,7 @@ constexpr std::uint8_t kWriteDisable = 0x04;
 constexpr std::uint8_t kReadStatus = 0x05;
 constexpr std::uint8_t kWriteEnable = 0x06;
 constexpr std::uint8_t kFastRead = 0x0B;
+constexpr std::uint8_t kSectorErase = 0x20;
 constexpr std::uint8_t kReadJedecId = 0x9F;
 
 // Status register 1's write enable latch: writes are enabled.
@@ -29,9 +31,13 @@ constexpr std::uint8_t kErased = 0xFF;
 // How many bytes an address is sent in.
 constexpr std::size_t kAddressBytes = 3;
 
+// How many bytes a sector erase erases: the 4 KiB block its address is in.
+constexpr std::size_t kSectorBytes = 4 * 1024;
+
 // Whether a command is followed by an address.
 bool TakesAnAddress(std::uint8_t command) {
-  return command == kPageProgram || command == kRead || command == kFastRead;
+  return command == kPageProgram || command == kRead || command == kFastRead ||
+         command == kSectorErase;
 }
 
 // The JEDEC id: Winbond's maker code, then the W25Q family, then the
@@ -68,6 +74,13 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   }
   if (TakesAnAddress(command_) && position <= kAddressBytes) {
     address_ = (address_ << 8) | sent;
+    // 🎓 A real chip erases when the select goes high after the address,
+    // and not at all if more bytes come first; this one erases as the
+    // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's
+    // driver nor Zephyr's sends more, so none can tell.
+    if (position == kAddressBytes && command_ == kSectorErase) {
+      EraseBlock(kSectorBytes);
+    }
     return 0;
   }
   if (command_ == kPageProgram) {
@@ -91,10 +104,23 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
 
 void SpiNorChip::Deselect() {}
 
-std::uint8_t& SpiNorChip::NextByte() {
+void SpiNorChip::EraseBlock(std::size_t bytes) {
+  // A block's size is a power of two, as the chip's is, so the block an
+  // address is in starts where the address's low bits are cleared.
+  const std::size_t start = ChipAddress() & ~(bytes - 1);
+  std::ranges::fill(std::span(bytes_).subspan(start, bytes), kErased);
+}
+
+std::size_t SpiNorChip::ChipAddress() const {
   // An address wraps at the chip's end, as it does on the real one: the
   // chip ignores the bits above its size, which is a power of two.
-  return bytes_[address_++ & (bytes_.size() - 1)];
+  return address_ & (bytes_.size() - 1);
+}
+
+std::uint8_t& SpiNorChip::NextByte() {
+  std::uint8_t& byte = bytes_[ChipAddress()];
+  ++address_;
+  return byte;
 }
 
 std::span<std::uint8_t> SpiNorChip::Bytes() { return bytes_; }
