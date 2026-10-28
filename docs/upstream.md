@@ -887,6 +887,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The SiFive SPI drops an answer with its receive FIFO full
+
+- **Where**: `sifive/spi.cpp`, `transmit_data`, `rx_fifo.nb_write`, which fails without a word when the FIFO's eight entries are taken.
+- **What is wrong**: Zephyr's `spi_sifive` keeps the transmit FIFO full and reads answers as they come, so on silicon its loop drains the receive FIFO long before eight answers are waiting. In a simulation the CPU runs a quantum ahead of the clock, and reads the FIFO as it was when its quantum began: at a slow SPI clock eight answers come before it looks again, the ninth is dropped, and the driver waits for ever for an answer it counted on.
+- **How to see it**: `SpiControllerContract.NoAnswerIsLostWhenTheReceiveFifoIsFullAsBytesComeToBeSent` in `tests/cpp/contracts/spi_controller_contract.h`, with the patch taken out; or Zephyr's `tests/drivers/spi/spi_loopback`, whose `test_spi_lock_release` hangs at 500 kHz.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-receive-fifo-full.patch` writes the answer with the FIFO's blocking `write`, so with the FIFO full the answer waits for room, and the next byte with it. ⚠️ So a driver that leaves `dir` clear and never reads the answers now stalls the controller after eight, where it overran before. Drivers that only send set `dir`, which `vpv-peripherals-spi-transmit-only.patch`, applied before this one, honours.
+- **Upstream fix**: what SiFive's own controller does with a full receive FIFO, stall or overrun, socpuppet has not checked. If it stalls, the patch is the hardware's way. If it overruns, a parameter choosing between the two, stalling being the safe choice for a CPU that runs ahead of the clock, since a reader who is late then loses nothing it would have read in time on silicon.
+- **Kind**: bug, in a loosely timed model.
+- **When it lands**: drop the patch.
+
 Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since neither Zephyr's driver nor Linux's meets them here:
 
 - In auto chip select mode, the end of a burst drives the chip select low again where it should let it go (`set_bit(false, ...)` after the loop). Both drivers select a chip by hold mode; Linux uses auto mode only as its idle, between transfers.

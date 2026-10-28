@@ -1,0 +1,16 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index 669d197..3d83344 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -186,8 +186,10 @@ void spi::transmit_data() {
+                 }
+             } else
+                 wait(7 * bit_duration);
++            // With the receive FIFO full the answer waits for room, and so
++            // does the next byte: a reader that comes late loses nothing.
+             if(s2m.first && !transmit_only)
+-                rx_fifo.nb_write(s2m.second & 0xff);
++                rx_fifo.write(s2m.second & 0xff);
+             update_irq_evt.notify();
+         }
+         if(regs->r_csmode.mode == 0 && regs->r_csid < 4) // in AUTO mode

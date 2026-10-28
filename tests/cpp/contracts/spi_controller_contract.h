@@ -338,6 +338,32 @@ TYPED_TEST_P(SpiControllerContract,
             (std::vector<std::vector<std::uint8_t>>{{0x11}, {0x22}}));
 }
 
+// A CPU running ahead of the clock may read the receive FIFO long after the
+// answers came: a byte whose answer has no room waits to be sent, and no
+// answer is lost.
+TYPED_TEST_P(SpiControllerContract,
+             NoAnswerIsLostWhenTheReceiveFifoIsFullAsBytesComeToBeSent) {
+  int answers = 0;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    // Eight bytes, which fill the receive FIFO with their answers once
+    // they are out; then two more, with no room for theirs.
+    for (int byte = 0; byte < 8; ++byte) spi.Queue(0);
+    bus.WaitFor(SifiveSpiDriver::Patience());
+    for (int byte = 0; byte < 2; ++byte) spi.Queue(0);
+    bus.WaitFor(SifiveSpiDriver::Patience());
+    while (spi.Take()) {
+      ++answers;
+      // The bytes that waited for room go now, and their answers come.
+      bus.WaitFor(SifiveSpiDriver::Patience());
+    }
+  });
+
+  EXPECT_EQ(answers, 10);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
@@ -349,6 +375,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn,
     TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled,
     AChipIsCalledOnlyFromTheControllersOwnProcesses,
-    AChipLetGoAndSelectedAgainAtOnceSeesTwoFramesInOrder);
+    AChipLetGoAndSelectedAgainAtOnceSeesTwoFramesInOrder,
+    NoAnswerIsLostWhenTheReceiveFifoIsFullAsBytesComeToBeSent);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
