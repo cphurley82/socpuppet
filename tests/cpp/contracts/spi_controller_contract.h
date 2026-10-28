@@ -14,6 +14,7 @@
 #include "socpuppet/core/spi_device.h"
 #include "socpuppet/platform/slots.h"
 #include "tests/cpp/support/bus_driver.h"
+#include "tests/cpp/support/line_watcher.h"
 #include "tests/cpp/support/sifive_spi_driver.h"
 
 // What an SPI controller with the registers of SiFive's (the one in the
@@ -60,6 +61,7 @@ class SpiControllerContract : public ::testing::Test {
 
   SpiControllerContract() {
     controller_.irq.bind(irq_);
+    interrupt_.line.bind(irq_);
     for (unsigned chip_select = 0; chip_select < chips_.size(); ++chip_select) {
       controller_.Attach(chip_select, chips_[chip_select]);
     }
@@ -79,6 +81,7 @@ class SpiControllerContract : public ::testing::Test {
   std::array<RecordingChip, 2> chips_;
   ControllerType controller_{"controller"};
   sc_core::sc_signal<bool> irq_{"irq"};
+  LineWatcher interrupt_{"interrupt"};
 };
 
 TYPED_TEST_SUITE_P(SpiControllerContract);
@@ -242,6 +245,30 @@ TYPED_TEST_P(SpiControllerContract,
   EXPECT_THAT(taken, ::testing::Each(::testing::Optional(::testing::_)));
 }
 
+// Linux's driver, at a slow enough clock, sleeps on the interrupt: it
+// enables the watermark it waits for, and its handler disables it again.
+TYPED_TEST_P(
+    SpiControllerContract,
+    TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled) {
+  bool up = false;
+  bool down = false;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.SetTransmitMark(1);
+    spi.Format(/*transmit_only=*/true);
+    spi.Queue(0x11);
+    spi.Enable(SifiveSpiDriver::kTransmitWatermark);
+    up = this->interrupt_.WaitForLevel(true, SifiveSpiDriver::Patience());
+    spi.Enable(0);
+    down = this->interrupt_.WaitForLevel(false, SifiveSpiDriver::Patience());
+  });
+
+  EXPECT_TRUE(up);
+  EXPECT_TRUE(down);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
@@ -250,6 +277,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty,
     APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued,
     AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer,
-    AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn);
+    AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn,
+    TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_

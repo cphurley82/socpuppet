@@ -24,6 +24,7 @@ struct SifiveSpiDriver {
   static constexpr std::uint64_t kReceive = 0x4C;
   static constexpr std::uint64_t kTransmitMark = 0x50;
   static constexpr std::uint64_t kReceiveMark = 0x54;
+  static constexpr std::uint64_t kInterruptEnable = 0x70;
   static constexpr std::uint64_t kInterruptPending = 0x74;
 
   // The chip select modes: hold the selected chip's line low from the
@@ -68,6 +69,10 @@ struct SifiveSpiDriver {
     return answer;
   }
 
+  // How long a driver waits for what it polls for before it gives up: far
+  // longer than a FIFO's bytes take at any clock a test uses.
+  static sc_core::sc_time Patience() { return {1, sc_core::SC_MS}; }
+
   // Sets the frame format as Linux's driver does before each transfer:
   // eight bits, and whether the transfer only transmits.
   void Format(bool transmit_only) const {
@@ -97,6 +102,12 @@ struct SifiveSpiDriver {
   // with as many as the FIFO holds before it waits.
   void Queue(std::uint8_t byte) const { bus.Write32(kTransmit, byte); }
 
+  // Enables the interrupt for `watermarks`, and for no others: Linux's
+  // driver enables one before it sleeps, and its handler enables none.
+  void Enable(std::uint32_t watermarks) const {
+    bus.Write32(kInterruptEnable, watermarks);
+  }
+
   // Whether the interrupt bit `watermark` is pending now.
   bool Pending(std::uint32_t watermark) const {
     return (bus.Read32(kInterruptPending) & watermark) != 0;
@@ -112,11 +123,9 @@ struct SifiveSpiDriver {
 
  private:
   // Looks until `done` says so, as a driver polls. False if it does not
-  // within a millisecond, far longer than a FIFO's bytes take at any clock
-  // a test uses.
+  // within Patience().
   bool PollUntil(const std::function<bool()>& done) const {
-    const sc_core::sc_time give_up =
-        sc_core::sc_time_stamp() + sc_core::sc_time{1, sc_core::SC_MS};
+    const sc_core::sc_time give_up = sc_core::sc_time_stamp() + Patience();
     while (sc_core::sc_time_stamp() < give_up) {
       if (done()) return true;
       // A driver's look takes time on a real bus; here it has to be made
