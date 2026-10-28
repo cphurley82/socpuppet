@@ -205,6 +205,8 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_gpio_loopback",
     ),
+    # Zephyr's own sample that blinks a board's LED, on the GPIO's pin.
+    Image("samples/basic/blinky", "socpuppet_host"),
     # Asks for a reset and then stops feeding its watchdog, and says why
     # it started each time.
     Image("firmware/watchdog", "socpuppet_host"),

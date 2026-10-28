@@ -38,6 +38,11 @@ tests/drivers/spi/spi_loopback -x=SHIELD=socpuppet_host_spi_loopback --fixture s
 # wants.
 tests/drivers/gpio/gpio_basic_api -x=SHIELD=socpuppet_host_gpio_loopback --fixture gpio_loopback
 
+# The sample that blinks the board's LED, on a pin of the host's GPIO.
+# Twister builds it but does not run it: its harness watches a real LED.
+# tests/python/test_m18_exit.py watches the pin instead.
+samples/basic/blinky
+
 # The console both ways, and the C library.
 tests/subsys/shell/shell
 tests/lib/c_lib

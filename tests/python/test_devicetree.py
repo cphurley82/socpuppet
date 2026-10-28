@@ -670,6 +670,34 @@ class TestWhenACpuHasAGpioWithItsPinsInterruptsAtPlicSources:
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
 
+class TestWhenACpuHasAGpioWithAnLedOnAPin:
+    def test_the_led_is_in_a_gpio_leds_node_by_its_pin(self):
+        # 🎓 An LED is a pin firmware drives; `gpio-leds` says which.
+        platform, bus, _ = cpu_with_its_peripherals()
+        gpio = platform.add("gpio", sp.Gpio(pins=4, leds=(2,)))
+        bus.map(gpio.socket, base=0x0010_2000)
+
+        node = textwrap.dedent(
+            """\
+            gpio_leds: gpio_leds {
+            \tcompatible = "gpio-leds";
+            \tgpio_led0: led_0 {
+            \t\tgpios = <&gpio 2 0>;
+            \t};
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t") in platform.devicetree()
+
+    def test_the_led_is_the_alias_led0(self):
+        # Zephyr's samples look for the board's first LED by this name.
+        platform, bus, _ = cpu_with_its_peripherals()
+        gpio = platform.add("gpio", sp.Gpio(pins=4, leds=(2,)))
+        bus.map(gpio.socket, base=0x0010_2000)
+
+        assert "\t\tled0 = &gpio_led0;\n" in platform.devicetree()
+
+
 class TestWhenACpuHasTwoWatchdogsOnItsBus:
     def test_the_one_at_the_lower_address_is_the_alias_watchdog0(self):
         # An alias names one device, as a role in `chosen` does, and goes
