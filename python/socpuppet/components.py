@@ -27,6 +27,7 @@ from collections.abc import (
     Iterator,
     Mapping,
 )
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -57,6 +58,7 @@ from socpuppet.regs import (
     ucie_link,
     virtio_mmio,
 )
+from socpuppet.spi import SpiDevice
 
 #: Whose bindings a devicetree is written in. 🎓 A devicetree says what
 #: hardware there is, and each operating system's drivers look for their
@@ -1145,6 +1147,10 @@ class SpiFlash(Component):
     mapped_size = 0x1000
 
     size: int
+    #: 🧵 Devices on the flash's SPI bus beside its chip, by chip select.
+    devices: Mapping[int, SpiDevice] = not_a_parameter(
+        default=MappingProxyType({})
+    )
 
     def __post_init__(self) -> None:
         if not (0 < self.size <= self.LARGEST and self.size.bit_count() == 1):
@@ -1157,6 +1163,11 @@ class SpiFlash(Component):
     @override
     def size_at(self, port: str) -> int | None:
         return self.size if port == "xip" else self.mapped_size
+
+    @override
+    def configure(self, native: _core.Platform, path: str) -> None:
+        for chip_select, device in self.devices.items():
+            native.spi_flash_attach(path, chip_select, device)
 
 
 class VirtioRng(Component):

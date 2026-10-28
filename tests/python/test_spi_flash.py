@@ -16,16 +16,79 @@ FLASH_SIZE = 0x2000
 SPAM = bytes.fromhex("5350414d2c207370616d21")
 
 
-def master_with_a_flash(script=None):
-    """A bus master with a flash of FLASH_SIZE bytes, its window at FLASH_BASE."""
+#: Where the flash's controller is, and its registers, SiFive's (the
+#: FE310's manual has them).
+CONTROLLER = 0x100D_0000
+CHIP_SELECT_ID = CONTROLLER + 0x10
+CHIP_SELECT_MODE = CONTROLLER + 0x18
+TRANSMIT = CONTROLLER + 0x48
+RECEIVE = CONTROLLER + 0x4C
+#: The chip select modes: hold the selected chip's line low, or drive none.
+HOLD = 2
+OFF = 3
+#: Set in the receive register when there was nothing to receive.
+RECEIVE_EMPTY = 1 << 31
+
+
+def master_with_a_flash(script=None, devices=None):
+    """A bus master with a flash of FLASH_SIZE bytes, its window at FLASH_BASE.
+
+    `devices` are on the flash's SPI bus beside its chip, by chip select.
+    """
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
-    flash = platform.add("flash", sp.SpiFlash(size=FLASH_SIZE))
+    flash = platform.add(
+        "flash", sp.SpiFlash(size=FLASH_SIZE, devices=devices or {})
+    )
     platform.connect(cpu.socket, bus.target)
     bus.map(flash.xip, base=FLASH_BASE)
-    bus.map(flash.socket, base=0x100D_0000)
+    bus.map(flash.socket, base=CONTROLLER)
     return platform
+
+
+def select(chip_select):
+    """Selects a chip and holds its line low, as Zephyr's driver does."""
+    yield sp.write32(CHIP_SELECT_ID, chip_select)
+    yield sp.write32(CHIP_SELECT_MODE, HOLD)
+
+
+def send(byte):
+    """Sends a byte and returns its answer, as Zephyr's driver does.
+
+    It gives up after a millisecond, far longer than a byte takes.
+    """
+    yield sp.write32(TRANSMIT, byte)
+    for _ in range(10_000):
+        received = yield sp.read32(RECEIVE)
+        if not received & RECEIVE_EMPTY:
+            return received & 0xFF
+        # A driver's look takes time on a real bus; here it has to be made
+        # to, or simulated time would never move on to the answer.
+        yield sp.wait(sp.ns(100))
+    raise AssertionError(f"No answer to {byte:#04x} came back.")
+
+
+def let_go():
+    """Lets the selected chip go, as Zephyr's driver does: no line driven."""
+    yield sp.write32(CHIP_SELECT_MODE, OFF)
+
+
+class NotingDevice:
+    """A device on the SPI bus that answers 0x3C and notes what happens."""
+
+    def __init__(self):
+        self.happened = []
+
+    def select(self):
+        self.happened.append("select")
+
+    def transfer(self, byte):
+        self.happened.append(byte)
+        return 0x3C
+
+    def deselect(self):
+        self.happened.append("deselect")
 
 
 @pytest.mark.platform
@@ -60,6 +123,26 @@ class TestWhenAFlashsBusMasterWritesThroughItsWindow:
 
         with pytest.raises(sp.BusError, match="0x10200010"):
             platform.run()
+
+
+@pytest.mark.platform
+class TestWhenPythonIsADeviceOnAFlashsSpiBus:
+    def test_it_is_selected_sent_the_byte_its_answer_is_read_and_let_go(self):
+        device = NotingDevice()
+        answers = []
+
+        def script():
+            yield from select(1)
+            answers.append((yield from send(0xA5)))
+            yield from let_go()
+
+        platform = master_with_a_flash(script, devices={1: device})
+        platform.build()
+
+        platform.run()
+
+        assert device.happened == ["select", 0xA5, "deselect"]
+        assert answers == [0x3C]
 
 
 class TestAFlashsWindow:
