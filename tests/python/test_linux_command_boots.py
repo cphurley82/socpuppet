@@ -107,9 +107,11 @@ class TestWhenSomeoneRunsItAtATerminal:
     ):
         terminal = linux_at_this_terminal
         terminal.wait_for(PROMPT)
+        # From the moment it is typed, since the shell may be asleep before
+        # its echo of the line is read here.
+        typed_at = time.monotonic()
         terminal.type(b"sleep 2\r")
         terminal.wait_for(b"sleep 2")
-        typed_at = time.monotonic()
 
         terminal.wait_for(PROMPT)
 
