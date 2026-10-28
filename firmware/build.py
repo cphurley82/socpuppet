@@ -198,6 +198,13 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_spi_loopback",
     ),
+    # Zephyr's test of a GPIO, whose two pins the shield names, with
+    # Python's wire between them.
+    Image(
+        "tests/drivers/gpio/gpio_basic_api",
+        "socpuppet_host",
+        "socpuppet_host_gpio_loopback",
+    ),
     # Asks for a reset and then stops feeding its watchdog, and says why
     # it started each time.
     Image("firmware/watchdog", "socpuppet_host"),

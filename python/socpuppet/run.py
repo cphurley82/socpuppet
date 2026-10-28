@@ -11,6 +11,7 @@ from socpuppet import boot_image, ztest
 from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
 from socpuppet.boards.host import (
+    GPIO_LOOPBACK_WIRES,
     HOST_CPUS,
     SPI_LOOPBACK_CHIP_SELECT,
     HostCpu,
@@ -60,11 +61,13 @@ def _host(
     """The host, with 🎭 the drive and an IOMMU if their shields are on.
 
     And with 🧵 Python's loopback on the boot flash's SPI bus, at chip
-    select 1, if its shield is.
+    select 1, and Python's wire between two of the GPIO's pins, if their
+    shields are.
     """
     drive = "socpuppet_host_drive" in shields
     iommu = "socpuppet_host_iommu" in shields
-    loopback = "socpuppet_host_spi_loopback" in shields
+    spi_loopback = "socpuppet_host_spi_loopback" in shields
+    gpio_loopback = "socpuppet_host_gpio_loopback" in shields
     if iommu and not drive:
         sys.exit(
             "The shield socpuppet_host_iommu puts the drive behind an IOMMU, "
@@ -77,8 +80,9 @@ def _host(
         drive_blocks=_DRIVE_BLOCKS if drive else None,
         iommu=iommu,
         boot_flash_devices=(
-            {SPI_LOOPBACK_CHIP_SELECT: Loopback()} if loopback else {}
+            {SPI_LOOPBACK_CHIP_SELECT: Loopback()} if spi_loopback else {}
         ),
+        gpio_wires=GPIO_LOOPBACK_WIRES if gpio_loopback else {},
     )
     return _Stage(it.platform, it.cpu, it.uart, it.syscon)
 
@@ -147,6 +151,7 @@ BOARDS = {
             "socpuppet_host_drive",
             "socpuppet_host_iommu",
             "socpuppet_host_spi_loopback",
+            "socpuppet_host_gpio_loopback",
         ),
         _host,
         HOST_CPUS,

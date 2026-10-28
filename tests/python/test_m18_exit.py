@@ -21,7 +21,11 @@ import socpuppet as sp
 from cast import boot
 from processes import run_socpuppet
 from socpuppet import ztest
-from socpuppet.boards.host import SPI_LOOPBACK_CHIP_SELECT, host
+from socpuppet.boards.host import (
+    GPIO_LOOPBACK_WIRES,
+    SPI_LOOPBACK_CHIP_SELECT,
+    host,
+)
 from socpuppet.spi import Loopback
 
 #: Zephyr's `samples/drivers/spi_flash`.
@@ -29,6 +33,9 @@ SPI_FLASH = "spi_flash_socpuppet_host.elf"
 #: Zephyr's `tests/drivers/spi/spi_loopback`, with the shield that puts its
 #: two devices on the boot flash's bus, at chip select 1.
 SPI_LOOPBACK = "spi_loopback_socpuppet_host.elf"
+#: Zephyr's `tests/drivers/gpio/gpio_basic_api`, with the shield that names
+#: its two pins: one it drives, and one wired to it that it reads.
+GPIO_BASIC_API = "gpio_basic_api_socpuppet_host.elf"
 #: What the sample says when it passes, in order: its `sample.yaml` has them
 #: as the lines its console must show. Copied here, as `cast.GREETING` is:
 #: CI's test job has the images and not Zephyr's tree to read them from.
@@ -46,6 +53,10 @@ LIMIT = sp.ms(50)
 #: twice that leaves room for the quantum to move its timed transfers, and
 #: still ends a run that never gives one.
 LOOPBACK_LIMIT = sp.ms(1000)
+#: The GPIO test gives its verdict at 19.7 s of simulated time, most of it
+#: the sleeps of its tests of interrupts; about twice that still ends a run
+#: that never gives one.
+GPIO_LIMIT = sp.ms(40_000)
 
 
 @pytest.mark.platform
@@ -80,6 +91,36 @@ class TestWhenZephyrsSpiLoopbackTestRunsWithPythonAtTheFarEnd:
         )
 
         assert ztest.parse(board.uart.output).passed, board.uart.output
+
+
+@pytest.mark.platform
+class TestWhenZephyrsGpioTestRunsWithPythonWiringItsPins:
+    def test_it_gives_a_verdict_and_nothing_failed(self, firmware):
+        # 🧵 Python is the wire from the pin the test drives to the pin it
+        # reads, which the test wants a board to have.
+        board = host(gpio_wires=GPIO_LOOPBACK_WIRES)
+        boot(board, firmware, host=GPIO_BASIC_API)
+
+        board.platform.run_until(
+            lambda: ztest.verdict_of(board.uart.output) is not None,
+            timeout=GPIO_LIMIT,
+        )
+
+        assert ztest.parse(board.uart.output).passed, board.uart.output
+
+
+class TestWhenZephyrsGpioTestIsRunAsTwisterRunsIt:
+    def test_the_shield_wires_its_pins_and_nothing_failed(self, firmware):
+        result = run_socpuppet(
+            "run",
+            str(firmware(GPIO_BASIC_API)),
+            "--board",
+            "socpuppet_host",
+            "--shield",
+            "socpuppet_host_gpio_loopback",
+        )
+
+        assert ztest.parse(result.stdout).passed, result.stdout
 
 
 class TestWhenZephyrsSpiLoopbackTestIsRunAsTwisterRunsIt:

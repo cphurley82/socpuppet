@@ -1,0 +1,7 @@
+/ {
+	resources {
+		compatible = "test-gpio-basic-api";
+		out-gpios = <&io_gpio 0 0>;
+		in-gpios = <&io_gpio 1 0>;
+	};
+};

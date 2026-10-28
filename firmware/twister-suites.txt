@@ -33,6 +33,11 @@ tests/drivers/watchdog/wdt_basic_api
 # has the loopback the test wants.
 tests/drivers/spi/spi_loopback -x=SHIELD=socpuppet_host_spi_loopback --fixture spi_loopback
 
+# The host's GPIO, with Python's wire between two of its pins: the shield
+# names them, and its fixture says the board has the loopback the test
+# wants.
+tests/drivers/gpio/gpio_basic_api -x=SHIELD=socpuppet_host_gpio_loopback --fixture gpio_loopback
+
 # The console both ways, and the C library.
 tests/subsys/shell/shell
 tests/lib/c_lib

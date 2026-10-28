@@ -36,6 +36,7 @@ from socpuppet.boards.host import (
     VIRTIO_SLOT_OFFSET,
     WATCHDOG_SOURCE,
     drive_overlay,
+    gpio_loopback_overlay,
     host,
     iommu_overlay,
     spi_loopback_overlay,
@@ -508,6 +509,19 @@ class TestTheZephyrShieldForSpiLoopback:
         # When this fails, the docstring of `spi_loopback_overlay` has the
         # command that writes the file again.
         assert checked_in.read_text() == spi_loopback_overlay()
+
+
+class TestTheZephyrShieldForGpioLoopback:
+    def test_its_overlay_is_what_the_host_description_generates(self):
+        checked_in = (
+            ZEPHYR_MODULE
+            / "boards/shields/socpuppet_host_gpio_loopback"
+            / "socpuppet_host_gpio_loopback.overlay"
+        )
+
+        # When this fails, the docstring of `gpio_loopback_overlay` has the
+        # command that writes the file again.
+        assert checked_in.read_text() == gpio_loopback_overlay()
 
 
 class TestTheZephyrShieldForTheHostsIommu:

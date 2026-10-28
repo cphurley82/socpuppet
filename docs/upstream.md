@@ -1188,6 +1188,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: bug.
 - **When it lands**: drop the patch, and the `patch` call in `zephyr_tree` if it is the last.
 
+### 📮 The SiFive GPIO driver asks a PLIC which pin interrupted
+
+- **Where**: `drivers/gpio/gpio_sifive.c`: `gpio_sifive_irq_handler` works out its pin from `riscv_plic_get_irq()`, and `gpio_sifive_pin_irq` works out a pin's interrupt from the first pin's with `irq_get_level` and `CONFIG_1ST_LEVEL_INTERRUPT_BITS`.
+- **What is wrong**: the driver builds only where interrupts have two levels with a PLIC as the second, as on SiFive's own chips. On a board whose GPIO's lines go to an APLIC, as the host's do, `irq_get_level` and the level bits are undeclared and the build fails; and with one level and a PLIC, the handler's pin would be one past the right one (`1 +`). The pins' interrupts must also be numbered one after another, which the binding does not say.
+- **How to see it**: `tests/drivers/gpio/gpio_basic_api` built for `socpuppet_host` with the shield `socpuppet_host_gpio_loopback`, with the patch taken out: `implicit declaration of function 'irq_get_level'`.
+- **What we do**: `cmake/patches/zephyr-gpio-sifive-pin-per-handler.patch` gives each pin's handler its device and its pin as its argument, and finds pin n's interrupt as the node's interrupt n (`DT_INST_IRQN_BY_IDX`), so the driver asks no interrupt controller anything, and the interrupts may be numbered as a board likes. A pin with no interrupt in the node is `-ENOTSUP` for `gpio_pin_interrupt_configure`. `firmware/build.py` applies it to the clone.
+- **Upstream fix**: the same, which also serves SiFive's own boards: their interrupts are encoded with both levels in the node already.
+- **Kind**: limitation.
+- **When it lands**: drop the patch.
+
 ## SPDK
 
 [spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.
