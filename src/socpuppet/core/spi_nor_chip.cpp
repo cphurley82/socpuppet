@@ -11,6 +11,7 @@ namespace socpuppet {
 namespace {
 
 constexpr std::uint8_t kRead = 0x03;
+constexpr std::uint8_t kFastRead = 0x0B;
 constexpr std::uint8_t kReadJedecId = 0x9F;
 
 // What an erased byte of NOR flash reads as: every bit a one.
@@ -44,11 +45,14 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     const auto id = JedecId(bytes_.size());
     if (position <= id.size()) return id[position - 1];
   }
-  if (command_ == kRead) {
+  if (command_ == kRead || command_ == kFastRead) {
     if (position <= kAddressBytes) {
       address_ = (address_ << 8) | sent;
       return 0;
     }
+    // A fast read's eight dummy clocks, which a controller that moves
+    // whole bytes sends as one byte.
+    if (command_ == kFastRead && position == kAddressBytes + 1) return 0;
     // An address wraps at the chip's end, as it does on the real one: the
     // chip ignores the bits above its size, which is a power of two.
     return bytes_[address_++ & (bytes_.size() - 1)];

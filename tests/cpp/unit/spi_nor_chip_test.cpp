@@ -73,4 +73,17 @@ TEST(WhenAnEightMebibyteChipIsSentAnAddressPastItsEnd,
               ElementsAre(_, _, _, _, 0xCA, 0xFE));
 }
 
+// 🎓 A fast read waits eight clocks after its address before it answers,
+// time the chip needs at a high clock rate. A controller that moves whole
+// bytes sends them as one byte the chip ignores.
+TEST(WhenAChipIsFastReadWhereBytesWerePutIn,
+     ItAnswersThoseBytesAfterADummyByte) {
+  SpiNorChip chip{kSixteenMebibytes};
+  constexpr std::array<std::uint8_t, 2> kPutIn{0xCA, 0xFE};
+  std::ranges::copy(kPutIn, chip.Bytes().subspan(0x12'3456).begin());
+
+  EXPECT_THAT(Frame(chip, {0x0B, 0x12, 0x34, 0x56, 0, 0, 0}),
+              ElementsAre(_, _, _, _, _, 0xCA, 0xFE));
+}
+
 }  // namespace socpuppet
