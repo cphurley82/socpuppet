@@ -21,7 +21,11 @@ constexpr std::uint8_t kWriteEnable = 0x06;
 constexpr std::uint8_t kFastRead = 0x0B;
 constexpr std::uint8_t kSectorErase = 0x20;
 constexpr std::uint8_t kBlockErase32 = 0x52;
+// Chip erase has two codes, both in Winbond's datasheet; a chip answers
+// either.
+constexpr std::uint8_t kChipErase60 = 0x60;
 constexpr std::uint8_t kReadJedecId = 0x9F;
+constexpr std::uint8_t kChipEraseC7 = 0xC7;
 constexpr std::uint8_t kBlockErase64 = 0xD8;
 
 // Status register 1's write enable latch: writes are enabled.
@@ -73,11 +77,16 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   const std::size_t position = position_++;
   if (position == 0) {
     command_ = sent;
-    // 🎓 A real chip sets or clears the latch when the select goes high
-    // after the command; this one does it as the command arrives, as
-    // QEMU's m25p80 does, which no controller can tell apart.
+    // 🎓 A real chip sets or clears the latch, or erases the whole chip,
+    // when the select goes high after the command, and does nothing if more
+    // bytes come first; this one acts as the command arrives, as QEMU's
+    // m25p80 does. Neither Linux's driver nor Zephyr's sends more, so none
+    // can tell.
     if (command_ == kWriteEnable) write_enable_latch_ = true;
     if (command_ == kWriteDisable) write_enable_latch_ = false;
+    if (command_ == kChipErase60 || command_ == kChipEraseC7) {
+      std::ranges::fill(bytes_, kErased);
+    }
     return 0;
   }
   if (command_ == kReadStatus)
