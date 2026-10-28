@@ -1,0 +1,41 @@
+#include "socpuppet/core/spi_nor_chip.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+namespace socpuppet {
+
+namespace {
+
+using ::testing::_;
+using ::testing::ElementsAre;
+
+constexpr std::size_t kSixteenMebibytes = 16 * 1024 * 1024;
+
+// One frame: chip select down, `sent` out a byte at a time, chip select
+// up. Returns what came back for each byte sent.
+std::vector<std::uint8_t> Frame(SpiDevice& chip,
+                                std::initializer_list<std::uint8_t> sent) {
+  std::vector<std::uint8_t> received;
+  chip.Select();
+  for (const std::uint8_t byte : sent) {
+    received.push_back(chip.Transfer(byte));
+  }
+  chip.Deselect();
+  return received;
+}
+
+}  // namespace
+
+TEST(WhenASixteenMebibyteChipIsAskedForItsJedecId, ItAnswersEf4018) {
+  SpiNorChip chip{kSixteenMebibytes};
+
+  EXPECT_THAT(Frame(chip, {0x9F, 0, 0, 0}), ElementsAre(_, 0xEF, 0x40, 0x18));
+}
+
+}  // namespace socpuppet
