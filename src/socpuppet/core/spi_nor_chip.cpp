@@ -74,7 +74,7 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     // 🎓 A real W25Q wraps a program within its 256-byte page; this one
     // carries on to the next, as QEMU's m25p80 does. Neither Linux's
     // driver nor Zephyr's sends a program across a page, so none can tell.
-    NextByte() = sent;
+    if (write_enable_latch_) NextByte() = sent;
     return 0;
   }
   if (command_ == kRead || command_ == kFastRead) {
