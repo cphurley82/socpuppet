@@ -273,6 +273,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | APLIC | `AplicContract` | `Aplic` |
 | IOMMU | `IommuContract` | `Iommu`, socpuppet's own, written for VPV-Peripherals |
 | watchdog | `WatchdogContract` | `Watchdog` |
+| SPI controller | `SpiControllerContract` | `SpiController` |
 | NVMe function | `NvmeContract` | 🎭 `BehavioralNvme`, and the SSD's hardware (`NvmeFrontend`, `DmaEngine`, `FlashController`, a NAND) with 🎭 firmware. The Zephyr firmware is held to its share of the contract by `tests/python/test_ssd_firmware.py` |
 | NAND flash chip | `NandContract` | 🎭 `IdealNand` |
 | virtio device | `VirtioDeviceContract` | 🎭 `VirtioRng`, `VirtioConsole`, `VirtioBlk`, `VirtioNet`, `VirtioFs`, `Virtio9p`, each behind the [virtio-mmio](models/virtio-mmio.md) transport |
@@ -281,7 +282,7 @@ The real die-to-die link passes `LinkContract` beside the stand-in, and the plat
 
 ### Borrowed models
 
-💡 socpuppet borrows before it builds. The CPU, the UART, the timer, the PLIC, the APLIC, the watchdog and the SPI flash are other projects' models, each behind a small adapter of ours. A contract suite does a second job for a borrowed model: it is written first, it says what socpuppet relies on, and it found real bugs in every model it was pointed at. Those are fixed with small patches, and each patch is written up in [upstream.md](upstream.md), ready to send back.
+💡 socpuppet borrows before it builds. The CPU, the UART, the timer, the PLIC, the APLIC, the watchdog and the SPI controller are other projects' models, each behind a small adapter of ours. A contract suite does a second job for a borrowed model: it is written first, it says what socpuppet relies on, and it found real bugs in every model it was pointed at. Those are fixed with small patches, and each patch is written up in [upstream.md](upstream.md), ready to send back.
 
 ## The models
 
@@ -335,9 +336,9 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 | Piece | Source |
 |---|---|
 | Simulation kernel, TLM-2.0 | [SystemC 3.0](https://github.com/accellera-official/systemc) (Accellera) |
-| Router, logging, the SPI wires inside the flash | [SystemC-Components](https://github.com/Minres/SystemC-Components) (SCC, Minres) |
+| Router, logging, the signal sockets of the SPI controller's wires | [SystemC-Components](https://github.com/Minres/SystemC-Components) (SCC, Minres) |
 | CPU | [DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV) (Minres) |
-| UART, machine timer, interrupt controllers, watchdog, SPI flash and its controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
+| UART, machine timer, interrupt controllers, watchdog, SPI controller | [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) (TU Munich, Minres) |
 | Reading ELF files | [ELFIO](https://github.com/serge1/ELFIO) |
 | FAT disk images and Ethernet frames, in the tests | [pyfatfs](https://github.com/nathanhi/pyfatfs), [dpkt](https://github.com/kbandla/dpkt) |
 | The layouts of NVMe's registers and commands | [SPDK](https://github.com/spdk/spdk) (one header) |

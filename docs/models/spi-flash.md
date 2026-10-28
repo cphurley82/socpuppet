@@ -26,7 +26,7 @@ platform.load_binary("image.img", at=0x1020_0000)
 | **The window** (`xip`) | The flash, read like memory, `size` bytes of it. |
 | **The controller** (`socket`) | The SPI controller's registers, a page. |
 
-- **Reads through the window** are answered from the flash. An erased flash reads as zeros here.
+- **Reads through the window** are answered from the flash. An erased flash reads as 0xFF, every bit a one, as NOR flash does.
 - **A write through the window is refused**, with a command-error response, and changes nothing. In a script that is a `sp.BusError`.
 - **A read past the end** is an address error.
 - **No DMI**, the direct memory interface that lets a CPU read a memory's bytes through a pointer. Every read through the window is a transaction, so a trace shows a boot ROM fetching its image, and across a die-to-die link each read crosses it.
@@ -34,21 +34,16 @@ platform.load_binary("image.img", at=0x1020_0000)
 
 ## What it leaves out
 
-- 🚧 **A driver's way in.** The controller's registers answer, and the chip behind them knows a handful of SPI commands (identify, write enable, read status) and no read, erase or program. Nothing in socpuppet uses that path yet. The window is all a boot ROM needs, and the rest is M18's.
-- **A devicetree node.** Firmware is not told of the flash: its boot ROM learns where its image is from the [system controller](system-controller.md), and nothing else reads it yet.
-- **Erase and wear.** A real flash is erased a block at a time to all ones before it can be written, and wears out. Here a debugger's write puts any bytes anywhere.
+- 🚧 **A devicetree node.** Firmware is not told of the flash yet: its boot ROM learns where its image is from the [system controller](system-controller.md). The controller's registers answer, and the chip behind them reads, programs and erases; telling a driver so is M18's next step.
+- **Wear.** A real flash wears out after so many erases, and this one never does. A debugger's write through the window puts any bytes anywhere, as a factory's programmer would.
 - **Timing.** A read through the window takes no time of its own.
 - **The controller's say over the window.** A real controller's window works once firmware has enabled it and told it which read command the chip wants. This one answers whatever those registers hold.
-- **More than 256 MiB**, which is what the borrowed chip holds.
+- **More than 16 MiB**, the most three address bytes reach.
 
 ## Under the hood
 
-💡 This one is borrowed, twice over. The SPI controller (`minres/qspi`) and the flash chip (`generic/spi_mem`) are from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), by Minres, joined by the SPI channel of SCC, and neither is patched. The controller's XIP socket hands an access straight to the chip's memory, a debugger's access too, which is why a platform can fill the flash through the window.
+💡 Half of this one is borrowed. The SPI controller is SiFive's, from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) by Minres, behind the adapter `src/socpuppet/models/spi_controller.cpp`, which is the bus's wires: it hands each byte to the chip whose chip select is low. The chip is socpuppet's own, `src/socpuppet/core/spi_nor_chip.cpp`, a NOR flash of Winbond's W25Q kind written against QEMU's `m25p80` as the reference. The window is ours too: it reads the chip's bytes straight, as a controller's memory-mapped mode does.
 
-socpuppet wraps the three in an adapter (`src/socpuppet/models/spi_flash.cpp`) whose window is its own:
+🦜 Until M18 both halves were borrowed, Minres's QSPI controller and VPV's flash chip, and the chip knew no read command ([history/decisions.md](../history/decisions.md), 2026-10-27).
 
-- **It refuses a write.** The borrowed window takes one, as a memory does.
-- **It ends where the flash does.** The borrowed chip is 256 MiB whatever is asked for, and an access past that ends the process where it should be an error ([upstream.md](../upstream.md)).
-- **It does not say DMI is worth asking for.** The borrowed window says so, and then has no way to grant it.
-
-`tests/cpp/platform/spi_flash_test.cpp` holds it.
+`tests/cpp/platform/spi_flash_test.cpp` holds the flash, `tests/cpp/contracts/spi_controller_contract.h` the controller, and `tests/cpp/unit/spi_nor_chip_test.cpp` the chip.

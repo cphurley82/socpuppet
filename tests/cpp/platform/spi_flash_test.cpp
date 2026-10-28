@@ -3,27 +3,30 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <systemc>
 #include <tlm>
 
 #include "tests/cpp/support/bus_driver.h"
+#include "tests/cpp/support/sifive_spi_driver.h"
 
 // What socpuppet relies on of its SPI flash: the window a boot ROM reads
-// its image through, as if the flash were memory, and the way a platform
-// fills it. The controller's SPI commands, which a driver would speak, are
-// nobody's yet (M18).
+// its image through, as if the flash were memory, the way a platform fills
+// it, and the chip a driver reaches through the controller.
 
 namespace {
+
+using ::testing::_;
+using ::testing::ElementsAre;
+using ::testing::Optional;
 
 constexpr std::uint64_t kSize = 0x1000;
 constexpr std::array<std::uint8_t, 4> kLoaded{0x11, 0x22, 0x33, 0x44};
 constexpr std::uint64_t kLoadedAt = 0x10;
-// The controller's status register, which says how much room it has for
-// bytes to send, and so never reads as zero while it is idle. An erased
-// flash does, and so does a read that nothing answers.
-constexpr std::uint64_t kStatus = 0x04;
 
 // A flash with a test's thread at its window, and a second at its
 // controller's registers.
@@ -104,8 +107,9 @@ TEST(AnAccessThroughAFlashsWindowThatRunsPastItsSize, IsRefused) {
   EXPECT_EQ(debug_written, 0U);
 }
 
-// The borrowed chip is 256 MB whatever a platform asks for, and an access
-// past that is not an error there but the end of the process.
+// Far past the flash is past any chip a platform could ask for, and must
+// still be an error and not the end of the process, as it was with the
+// chip socpuppet borrowed until M18.
 TEST(AnAccessThroughAFlashsWindowFarPastItsSize, IsRefusedAndTheRunGoesOn) {
   std::array<std::uint8_t, 4> data{};
   tlm::tlm_response_status far_past = tlm::TLM_INCOMPLETE_RESPONSE;
@@ -138,11 +142,18 @@ TEST(AFlashsWindow, GrantsNoDirectMemoryAccess) {
   EXPECT_FALSE(granted);
 }
 
-TEST(AFlashsController, AnswersForItsRegistersOnItsOwnSocket) {
-  std::uint32_t status = 0;
+// The chip on the controller's first chip select is this flash: its JEDEC
+// id's capacity byte is 12, for 2 to the 12 bytes, kSize.
+TEST(TheChipOnAFlashsFirstChipSelect, AnswersAJedecIdOfTheFlashsSize) {
+  std::vector<std::optional<std::uint8_t>> id;
 
   Rig rig{[](BusDriver&) {},
-          [&](BusDriver& registers) { status = registers.Read32(kStatus); }};
+          [&](BusDriver& registers) {
+            const SifiveSpiDriver spi{registers};
+            spi.Select(0);
+            spi.Send(0x9F);
+            for (int byte = 0; byte < 3; ++byte) id.push_back(spi.Send(0));
+          }};
 
-  EXPECT_NE(status, 0U);
+  EXPECT_THAT(id, ElementsAre(_, _, Optional(0x0C)));
 }
