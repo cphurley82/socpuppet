@@ -25,3 +25,22 @@ class SpiDevice(Protocol):
 
     def deselect(self) -> None:
         """The chip select has gone high again: the frame is over."""
+
+
+class Loopback:
+    """A device whose answer to every byte is the byte itself.
+
+    🎓 It is what a wire from the controller's data out to its data in
+    does, which is how Zephyr's `spi_loopback` test is meant to be run on a
+    board: the test checks that what it receives is what it sent.
+    """
+
+    def select(self) -> None:
+        """Nothing to do: a wire has no frames."""
+
+    def transfer(self, byte: int) -> int:
+        """The byte that was sent, back."""
+        return byte
+
+    def deselect(self) -> None:
+        """Nothing to do: a wire has no frames."""
