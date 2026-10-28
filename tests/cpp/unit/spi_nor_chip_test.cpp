@@ -4,7 +4,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <initializer_list>
+#include <span>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -15,6 +17,7 @@ namespace socpuppet {
 namespace {
 
 using ::testing::_;
+using ::testing::Each;
 using ::testing::ElementsAre;
 
 constexpr std::size_t kEightMebibytes = 8 * 1024 * 1024;
@@ -40,6 +43,23 @@ bool WriteEnableLatch(SpiDevice& chip) {
   const std::vector<std::uint8_t> received = Frame(chip, {0x05, 0});
   return (received.back() & kWriteEnableLatch) != 0;
 }
+
+// The frame of a command that takes a three-byte address and nothing else.
+void SendWithAddress(SpiDevice& chip, std::uint8_t command,
+                     std::size_t address) {
+  Frame(chip, {command, static_cast<std::uint8_t>(address >> 16),
+               static_cast<std::uint8_t>(address >> 8),
+               static_cast<std::uint8_t>(address)});
+}
+
+// An erase command and the size of the block it erases.
+struct Erase {
+  std::uint8_t command;
+  std::size_t block;
+};
+
+class WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock
+    : public ::testing::TestWithParam<Erase> {};
 
 }  // namespace
 
@@ -141,5 +161,30 @@ TEST(WhenAChipIsProgrammedOverBytesItHolds, OnlyTheBitsBothHaveAsOnesStayOnes) {
   EXPECT_THAT(Frame(chip, {0x03, 0x12, 0x34, 0x56, 0}),
               ElementsAre(_, _, _, _, 0x0C));
 }
+
+TEST_P(WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
+       TheWholeBlockReadsAsErasedAndNothingEitherSide) {
+  const Erase erase = GetParam();
+  SpiNorChip chip{kSixteenMebibytes};
+  // Three blocks of zeros, and the address in the middle one.
+  const std::span<std::uint8_t> blocks = chip.Bytes().first(3 * erase.block);
+  std::ranges::fill(blocks, 0x00);
+  const std::size_t address = erase.block + 0x123;
+  Frame(chip, {0x06});
+
+  SendWithAddress(chip, erase.command, address);
+
+  EXPECT_THAT(blocks.first(erase.block), Each(0x00));
+  EXPECT_THAT(blocks.subspan(erase.block, erase.block), Each(0xFF));
+  EXPECT_THAT(blocks.last(erase.block), Each(0x00));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachEraseCommand, WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
+    ::testing::Values(Erase{.command = 0x20, .block = 4 * 1024}),
+    [](const ::testing::TestParamInfo<Erase>& row) {
+      return std::format("Command{:02X}Erases{}KiB", row.param.command,
+                         row.param.block / 1024);
+    });
 
 }  // namespace socpuppet
