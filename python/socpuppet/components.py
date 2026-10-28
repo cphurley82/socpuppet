@@ -1139,19 +1139,19 @@ class SpiFlash(Component):
 
     implementation = "spi_flash"
     port_specs = (target("socket"), target("xip"))
-    #: The most a flash may hold.
-    LARGEST = 256 << 20
+    #: The most a flash holds: what three address bytes reach.
+    LARGEST = 16 << 20
     #: The controller's registers take a page.
     mapped_size = 0x1000
 
     size: int
 
     def __post_init__(self) -> None:
-        if not 0 < self.size <= self.LARGEST:
+        if not (0 < self.size <= self.LARGEST and self.size.bit_count() == 1):
             raise ValueError(
-                f"A flash holds from one byte to 256 MiB, which is what the "
-                f"borrowed chip has, and {self.size:#x} bytes were asked "
-                "for."
+                "A flash's size is a power of two, as every W25Q chip's is, "
+                "and at most 16 MiB, the most three address bytes reach; "
+                f"{self.size:#x} bytes were asked for."
             )
 
     @override

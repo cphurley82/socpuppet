@@ -163,9 +163,9 @@ class TestASystemControllerWithANumberItsRegisterCannotHold:
 
 
 class TestASpiFlashOfASizeTheChipCannotBe:
-    @pytest.mark.parametrize("size", [0, (256 << 20) + 1])
-    def test_is_refused_and_the_error_gives_the_most_it_can_hold(self, size):
-        with pytest.raises(ValueError, match="256 MiB"):
+    @pytest.mark.parametrize("size", [0, 3 << 20, 32 << 20])
+    def test_is_refused_and_the_error_says_what_it_can_be(self, size):
+        with pytest.raises(ValueError, match=r"power of two.*16 MiB"):
             sp.SpiFlash(size=size)
 
 
