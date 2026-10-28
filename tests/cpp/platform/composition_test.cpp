@@ -281,6 +281,8 @@ INSTANTIATE_TEST_SUITE_P(
                    "size",
                    "16777217"},
         OutOfRange{
+            "spi_flash", {{"size", 0x1000}, {"clock_hz", 0}}, "clock_hz", "0"},
+        OutOfRange{
             "system_controller", {{"die", 0x1'0000'0000}}, "die", "4294967296"},
         OutOfRange{"system_controller",
                    {{"boot_address", 0x1'0000'0000}},
