@@ -12,8 +12,9 @@
 This is the platform behind the Zephyr board `socpuppet_host`. The compute
 die has the CPU, its RAM, the interrupt controller, the timer, the system
 controller, which drives the CPU's reset, and an APLIC of its own. The IO
-die has the UART, an APLIC that the UART's interrupt line goes to, and
-the flash the host boots from.
+die has the UART, an APLIC that the UART's interrupt line goes to, the
+flash the host boots from, and a GPIO with four pins brought out, 🧵 with
+Python at the far end of them.
 🎭 The link between the dies is a stand-in that passes every access
 straight through, unless the host is given a `manager`.
 
@@ -109,6 +110,7 @@ from socpuppet.components import (
     Aplic,
     D2dLink,
     DbtRiseCpu,
+    Gpio,
     Imsic,
     Iommu,
     MachineTimer,
@@ -120,7 +122,7 @@ from socpuppet.components import (
     Router,
     SpiFlash,
 )
-from socpuppet.placed import Placed, PlacedRouter, PlacedUart
+from socpuppet.placed import Placed, PlacedGpio, PlacedRouter, PlacedUart
 from socpuppet.platform import Group, Link, Platform
 from socpuppet.regs import system_controller
 from socpuppet.spi import SpiDevice
@@ -193,11 +195,16 @@ PCIE_WINDOW_SIZE = 0x10_0000
 #: slots'.
 IOMMU_OFFSET = 0x0E_0000
 IOMMU_SOURCE = 24
-#: Which source of the IO die's APLIC the boot flash's controller's line is.
-#: Four after the IOMMU's: the GPIO's four pins have the numbers between,
-#: since Zephyr's driver for SiFive's GPIO wants its pins' lines at sources
-#: one after another.
-BOOT_FLASH_SOURCE = 29
+#: The GPIO: where its registers are, counted from the start of the IO
+#: die's window, the page after the IOMMU's; how many of its pins the board
+#: brings out; and which source of the IO die's APLIC the first pin's line
+#: is, the number after the IOMMU's, with the other pins' after it.
+GPIO_OFFSET = 0x0F_0000
+GPIO_PINS = 4
+GPIO_FIRST_SOURCE = 25
+#: Which source of the IO die's APLIC the boot flash's controller's line
+#: is: the number after the GPIO's pins'.
+BOOT_FLASH_SOURCE = GPIO_FIRST_SOURCE + GPIO_PINS
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
 #: firmware writes one into the drive for each vector, and that is the
@@ -294,6 +301,9 @@ class Host[Drive: PcieDrive](NamedTuple):
     #: the manager too. Fill it through the CPU:
     #: `platform.load_binary(image, at=BOOT_FLASH_BASE, via=board.cpu.socket)`.
     boot_flash: Placed
+    #: The GPIO on the IO die, with `GPIO_PINS` pins brought out. 🧵 Python
+    #: is at the far end of them.
+    gpio: PlacedGpio
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -521,6 +531,7 @@ def host(
         compute.syscon,
         compute.wdt,
         io.boot_flash,
+        io.gpio,
         drive=(
             None
             if drive_blocks is None
@@ -634,6 +645,7 @@ class _IoDie(NamedTuple):
     #: accord: the APLIC's messages, and with a drive what the drive sends.
     up: PlacedRouter
     boot_flash: Placed
+    gpio: PlacedGpio
     #: The way to the flash's window. A socket takes one connection, and
     #: the flash has two readers when the die has a manager, so each comes
     #: in by an input of this.
@@ -657,7 +669,9 @@ def _io_die(
         SpiFlash(size=BOOT_FLASH_SIZE, devices=boot_flash_devices),
     )
     boot_flash_bus = place.add("boot_flash_bus", Router())
+    gpio = place.add("gpio", Gpio(pins=GPIO_PINS))
     bus.map(uart.socket, base=UART_OFFSET)
+    bus.map(gpio.socket, base=GPIO_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
     # The flash is where every socpuppet CPU has its own, which for this
     # die's devices is a place in the window the compute die sees them in.
@@ -675,8 +689,13 @@ def _io_die(
     platform.connect(
         boot_flash.irq, getattr(aplic, f"source{BOOT_FLASH_SOURCE}")
     )
+    for pin in range(GPIO_PINS):
+        platform.connect(
+            getattr(gpio, f"irq{pin}"),
+            getattr(aplic, f"source{GPIO_FIRST_SOURCE + pin}"),
+        )
     platform.connect(aplic.msi, up.target)
-    return _IoDie(bus, uart, aplic, up, boot_flash, boot_flash_bus)
+    return _IoDie(bus, uart, aplic, up, boot_flash, gpio, boot_flash_bus)
 
 
 def _drive[Drive: PcieDrive](

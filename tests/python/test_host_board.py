@@ -22,6 +22,9 @@ from socpuppet.boards.drive import DEVICE_ID, VECTORS, VENDOR_ID
 from socpuppet.boards.host import (
     BOOT_FLASH_SOURCE,
     ECAM_OFFSET,
+    GPIO_FIRST_SOURCE,
+    GPIO_OFFSET,
+    GPIO_PINS,
     IMSIC_SUPERVISOR_BASE,
     IO_BASE,
     IO_SIZE,
@@ -239,6 +242,34 @@ class TestTheHostsBootFlash:
             InterruptEntry("io.aplic", BOOT_FLASH_SOURCE, "io.boot_flash.irq")
             in board.platform.interrupt_map()
         )
+
+
+class TestTheHostsGpio:
+    def test_is_on_the_io_die_where_its_cpu_finds_it(self):
+        board = host()
+
+        [registers] = [
+            each
+            for each in board.platform.address_map(via=board.cpu.socket)
+            if each.component == board.gpio.path
+        ]
+
+        assert registers.address == IO_BASE + GPIO_OFFSET
+
+    def test_its_pins_interrupt_at_the_io_dies_aplic_one_after_another(self):
+        board = host()
+        gpio = board.gpio.path
+
+        assert {
+            InterruptEntry(
+                "io.aplic", GPIO_FIRST_SOURCE + pin, f"{gpio}.irq{pin}"
+            )
+            for pin in range(GPIO_PINS)
+        } == {
+            each
+            for each in board.platform.interrupt_map()
+            if each.line.startswith(f"{gpio}.")
+        }
 
 
 def the_boot_flash_as_seen_by(master, board):

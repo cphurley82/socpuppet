@@ -204,6 +204,17 @@ class TestWhenACpuHasAFlashOnItsBusForLinux:
         )
 
 
+class TestWhenACpuHasAGpioForLinux:
+    def test_linux_is_told_of_no_gpio_yet(self):
+        # 🚧 Linux's gpio-sifive has not been checked with an APLIC as its
+        # interrupts' parent, which is what the host's GPIO has.
+        platform, bus, _ = cpu_with_its_peripherals()
+        gpio = platform.add("gpio", sp.Gpio())
+        bus.map(gpio.socket, base=0x0010_2000)
+
+        assert "sifive,gpio0" not in platform.devicetree(dialect="linux")
+
+
 class TestWhenAPlatformHasAPcieRootComplexForLinux:
     def test_it_is_a_generic_ecam_host_and_nothing_of_zephyrs(self):
         # 🎓 ECAM is the standard layout of a PCIe configuration window, and

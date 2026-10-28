@@ -80,6 +80,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | `0x1000_0000` | 8 bytes | `io.uart.socket` | [UART (16550)](models/ns16550.md) | `compute.bus` from `0x1000_0000` |
 | `0x100C_0000` | 32 KiB | `io.aplic.socket` | [Interrupt controller (APLIC)](models/aplic.md) | `compute.bus` from `0x1000_0000` |
 | `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000` |
+| `0x100F_0000` | 4 KiB | `io.gpio.socket` | [GPIO](models/gpio.md) | `compute.bus` from `0x1000_0000` |
 | `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000`, then `io.bus` from `0x1020_0000` |
 | `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x2800_0000` | 4 KiB | `compute.imsic.supervisor` | [Interrupt controller (IMSIC)](models/imsic.md) | |
@@ -109,6 +110,10 @@ The interrupt lines of the board with no drive:
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
 | `io.aplic` | 16 | `io.uart.irq` |
+| `io.aplic` | 25 | `io.gpio.irq0` |
+| `io.aplic` | 26 | `io.gpio.irq1` |
+| `io.aplic` | 27 | `io.gpio.irq2` |
+| `io.aplic` | 28 | `io.gpio.irq3` |
 | `io.aplic` | 29 | `io.boot_flash.irq` |
 
 <!-- interrupts:host end -->
@@ -305,6 +310,10 @@ What is new is the interrupt lines side by side. There are two interrupt control
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
 | `io.aplic` | 16 | `io.uart.irq` |
+| `io.aplic` | 25 | `io.gpio.irq0` |
+| `io.aplic` | 26 | `io.gpio.irq1` |
+| `io.aplic` | 27 | `io.gpio.irq2` |
+| `io.aplic` | 28 | `io.gpio.irq3` |
 | `io.aplic` | 29 | `io.boot_flash.irq` |
 | `ssd.cpu` | 7 | `ssd.timer.irq` |
 | `ssd.cpu` | 11 | `ssd.plic.irq` |
