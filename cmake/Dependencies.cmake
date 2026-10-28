@@ -544,6 +544,9 @@ FetchContent_Declare(vpv_peripherals
   # spi-transmit-watermark: the SiFive SPI's transmit watermark was pending
   # while its FIFO held bytes, and not once it was empty, so Linux's driver
   # waited for ever after a transfer it only sends.
+  # spi-transmit-only: the SiFive SPI kept the answer to every byte, even with
+  # its frame format set to transmit only, so a transfer that reads found
+  # the answers to the one that only sent before it.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
@@ -557,6 +560,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-power-on-reset.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-first-byte.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-watermark.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-only.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

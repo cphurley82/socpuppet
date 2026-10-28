@@ -877,6 +877,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The SiFive SPI keeps the answer to a byte it only sends
+
+- **Where**: `sifive/spi.cpp`, `transmit_data`, which puts every byte's answer in the receive FIFO, and never reads the frame format's `dir`.
+- **What is wrong**: 🎓 with `fmt.dir` set, the FE310's manual has the receive FIFO left alone: the transfer only sends. Linux's `spi-sifive` sets it for every transfer with nothing to read, which in an `spi-nor` command is the opcode and the address. The model keeps their answers all the same, and the transfer that reads after them, which waits for its own count of bytes, takes those first: the data Linux reads from a flash comes back shifted by the bytes of the command.
+- **How to see it**: `SpiControllerContract.AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer` in `tests/cpp/contracts/spi_controller_contract.h`, with the patch taken out: the reading transfer gets the answer to the byte sent before it.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-transmit-only.patch` keeps no answer to a byte taken from the transmit FIFO while `dir` is set. It looks at `dir` as it takes the byte, since a driver that has waited for the transmit watermark may set the next transfer's format while this byte is still going out.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### The flash chip ends the process at an access past its 256 MB
 
 - **Where**: `generic/spi_mem.h`, `scc::memory<256_MB, scc::LT> mem`, reached through `spi_t`'s blocking and debug transport, and so through `minres/qspi`'s `xip_sck`.
