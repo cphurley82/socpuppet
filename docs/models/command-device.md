@@ -51,6 +51,6 @@ A device's own registers come after these, from `0x0C`, and what its `COMMAND` c
 
 - `regs/command_device.rdl` is the register map, in SystemRDL. `tools/regs.py` writes the table above from it, and the C header and the Python module that the rest go by.
 - `src/socpuppet/core/command_status.h` is the status and interrupt-enable registers, with no simulator in it.
-- `src/socpuppet/models/command_device.h` is the SystemC shell of any such device: the process that does the work, and the one process that drives the interrupt line.
+- `src/socpuppet/models/command_device.h` is the SystemC shell of any such device: the process that does the work, and the one process that drives the interrupt line. A device whose work takes time on a bus says how long, `TimeToCarryOut()`, and the work is done that long after the command: the [I2C controller](i2c-controller.md), whose registers are another core's and not these three, is carried in the shell that way.
 - `python/socpuppet/zephyr_module/drivers/ssd/command_status.h` is the part the two Zephyr drivers share: give a command, and wait for it.
 - `tests/cpp/unit/command_status_test.cpp` says what the two registers do, one behaviour each.
