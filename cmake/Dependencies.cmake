@@ -550,6 +550,8 @@ FetchContent_Declare(vpv_peripherals
   # spi-receive-fifo-full: the SiFive SPI dropped an answer with its receive
   # FIFO full, which a CPU running ahead of the clock lets happen, and a
   # driver then waits for ever for it.
+  # gpio-pull-up: the SiFive GPIO ignored a pin that nothing drives, which
+  # kept reading what was last driven on it, and its pull-up did nothing.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
@@ -565,6 +567,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-watermark.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-only.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-receive-fifo-full.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-gpio-pull-up.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

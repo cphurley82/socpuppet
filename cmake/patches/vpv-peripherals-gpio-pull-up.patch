@@ -1,0 +1,73 @@
+diff --git a/sifive/gpio.cpp b/sifive/gpio.cpp
+index 2b65835..23f1022 100644
+--- a/sifive/gpio.cpp
++++ b/sifive/gpio.cpp
+@@ -74,6 +74,7 @@ gpio::gpio(sc_core::sc_module_name nm)
+             auto changed_bits = (reg.get() ^ data);
+             reg.put(data);
+             update_pins(changed_bits);
++            update_inputs();
+         }
+         return true;
+     };
+@@ -82,6 +83,19 @@ gpio::gpio(sc_core::sc_module_name nm)
+     regs->out_xor.set_write_cb(update_pins_cb);
+     regs->iof_en.set_write_cb(update_pins_cb);
+     regs->iof_sel.set_write_cb(update_pins_cb);
++    regs->pue.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        reg.put(data);
++        update_inputs();
++        return true;
++    });
++}
++
++// What each input pin reads: what is driven on it from outside, or with
++// nothing driving it, its pull-up, which holds it high, or low without.
++void gpio::update_inputs() {
++    auto inputs = ~regs->r_output_en;
++    auto outside = (driven_high & driven) | (regs->r_pue & ~driven);
++    regs->r_value = (regs->r_value & ~inputs) | (outside & inputs);
+ }
+ 
+ gpio::~gpio() = default;
+@@ -150,16 +164,20 @@ void gpio::pin_input(unsigned int tag, tlm::scc::tlm_signal_gp<sc_logic>& gp, sc
+     auto mask = 1u << tag;
+     switch(gp.get_value().value()) {
+     case sc_dt::Log_1:
+-        if((regs->r_output_en & mask) == 0)
+-            regs->r_value |= mask;
++        driven |= mask;
++        driven_high |= mask;
++        update_inputs();
+         forward_pin_input(tag, gp);
+         break;
+     case sc_dt::Log_0:
+-        if((regs->r_output_en & mask) == 0)
+-            regs->r_value &= ~mask;
++        driven |= mask;
++        driven_high &= ~mask;
++        update_inputs();
+         forward_pin_input(tag, gp);
+         break;
+     default:
++        driven &= ~mask;
++        update_inputs();
+         break;
+     }
+ }
+diff --git a/sifive/gpio.h b/sifive/gpio.h
+index 77797a4..601e9b4 100644
+--- a/sifive/gpio.h
++++ b/sifive/gpio.h
+@@ -52,6 +52,11 @@ protected:
+     void iof_input(unsigned int tag, unsigned iof_idx, tlm::scc::tlm_signal_gp<>& gp, sc_core::sc_time& delay);
+     sc_core::sc_time clk;
+     std::array<bool, 32> last_iof0, last_iof1;
++    // What is on each pin from outside: driven high, and driven at all. A
++    // pin nothing drives reads as its pull-up has it.
++    uint32_t driven_high{0};
++    uint32_t driven{0};
++    void update_inputs();
+     std::unique_ptr<gpio_regs> regs;
+     std::shared_ptr<vpvper::generic::WsHandler> handler;
+ 

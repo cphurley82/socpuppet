@@ -37,6 +37,7 @@ target_sources(socpuppet_core INTERFACE
     core/pciem_device.h
     core/pciem_host_logic.h
     core/script.h
+    core/pin_listener.h
     core/spi_device.h
     core/system_controller_logic.h
     core/time.h
@@ -273,6 +274,23 @@ target_link_libraries(socpuppet_watchdog
   PRIVATE vpv_aon)
 socpuppet_dev_checks(socpuppet_watchdog)
 
+# The GPIO: VPV-Peripherals' model of SiFive's, built apart from ours as
+# the timer's model is.
+add_library(vpv_sifive_gpio STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/gpio.cpp)
+target_compile_options(vpv_sifive_gpio PRIVATE -w)
+target_include_directories(vpv_sifive_gpio SYSTEM PUBLIC
+  ${vpv_peripherals_SOURCE_DIR})
+target_link_libraries(vpv_sifive_gpio PUBLIC scc::components SystemC::systemc)
+
+add_library(socpuppet_gpio STATIC models/gpio.cpp)
+target_sources(socpuppet_gpio PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    models/gpio.h)
+target_link_libraries(socpuppet_gpio
+  PUBLIC SystemC::systemc
+  PRIVATE vpv_sifive_gpio)
+socpuppet_dev_checks(socpuppet_gpio)
+
 # The SPI controller: VPV-Peripherals' model of SiFive's, built apart from
 # ours as the timer's model is.
 add_library(vpv_sifive_spi STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/spi.cpp)
@@ -366,8 +384,8 @@ target_sources(socpuppet_models INTERFACE
     models/virtio_net.h
     models/virtio_rng.h)
 target_link_libraries(socpuppet_models INTERFACE
-  socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_iommu
-  socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
+  socpuppet_platform socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_gpio
+  socpuppet_iommu socpuppet_machine_timer socpuppet_ns16550 socpuppet_plic
   socpuppet_spi_controller socpuppet_spi_flash socpuppet_watchdog
   $<$<BOOL:${SOCPUPPET_HAS_QBOX}>:socpuppet_qbox_cpu>)
 
@@ -394,7 +412,7 @@ endif()
 socpuppet_check_headers(
   socpuppet_regs socpuppet_core socpuppet_elf_image socpuppet_nvme_controller
   socpuppet_ssd_devices socpuppet_ucie_link socpuppet_pcie_registers socpuppet_platform socpuppet_models socpuppet_builtin_components
-  socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_machine_timer
+  socpuppet_aplic socpuppet_dbt_rise_cpu socpuppet_gpio socpuppet_machine_timer
   socpuppet_ns16550 socpuppet_plic socpuppet_spi_controller socpuppet_spi_flash
   socpuppet_watchdog)
 if(SOCPUPPET_HAS_QBOX)
