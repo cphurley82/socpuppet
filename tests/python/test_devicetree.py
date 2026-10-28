@@ -644,6 +644,32 @@ class TestWhenACpuHasAWatchdogOnItsBus:
         assert textwrap.indent(aliases, "\t") in platform.devicetree()
 
 
+class TestWhenACpuHasAGpioWithItsPinsInterruptsAtPlicSources:
+    def test_its_node_has_its_pins_and_an_interrupt_for_each(self):
+        # 🎓 Zephyr's driver gives pin n the node's interrupt n, and
+        # Zephyr's binding asks for them the short way.
+        platform, bus, plic = cpu_with_its_peripherals()
+        gpio = platform.add("gpio", sp.Gpio(pins=2))
+        bus.map(gpio.socket, base=0x0010_2000)
+        platform.connect(gpio.irq0, plic.source6)
+        platform.connect(gpio.irq1, plic.source7)
+
+        node = textwrap.dedent(
+            """\
+            gpio: gpio@102000 {
+            \tcompatible = "sifive,gpio0";
+            \treg = <0x0 0x102000 0x0 0x1000>;
+            \tgpio-controller;
+            \t#gpio-cells = <2>;
+            \tngpios = <2>;
+            \tinterrupt-parent = <&plic>;
+            \tinterrupts = <6 1 7 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+
 class TestWhenACpuHasTwoWatchdogsOnItsBus:
     def test_the_one_at_the_lower_address_is_the_alias_watchdog0(self):
         # An alias names one device, as a role in `chosen` does, and goes

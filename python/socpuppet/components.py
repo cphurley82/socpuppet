@@ -181,8 +181,10 @@ def wire_in(name: str) -> PortSpec:
 def not_a_parameter(default: Any, *, kw_only: bool = True) -> Any:
     """A field the simulator is not configured with, and its default.
 
-    For what a component is handed that is not a number, such as a script.
-    It is given by keyword, as a parameter is, unless `kw_only` is false.
+    For what is for Python's side only: what a component is handed that is
+    not a number, such as a script, or a number only its devicetree node
+    uses, such as how many of a GPIO's pins a board brings out. It is given
+    by keyword, as a parameter is, unless `kw_only` is false.
     """
     return dataclasses.field(
         default=default, kw_only=kw_only, metadata={"parameter": False}
@@ -1689,9 +1691,10 @@ class Gpio(Component):
     SiFive's FE310, which Zephyr (`gpio_sifive`) and Linux (`gpio-sifive`)
     have drivers for.
 
-    Map `socket`, its registers, on a bus. `irq0` to `irq31` are each a
-    pin's interrupt, for whichever of them firmware is to hear: connect
-    each to an interrupt controller's source.
+    Map `socket`, its registers, on a bus. `pins` is how many of the 32 a
+    board brings out, from pin 0 up, which is what firmware is told it
+    has. `irq0` and up are each a pin's interrupt: connect one for each
+    pin brought out to an interrupt controller's source.
 
     🧵 Python is at the far end of the pins: once the platform is built,
     `level(pin)` says what a pin drives, `drive(pin, level)` drives one,
@@ -1702,7 +1705,7 @@ class Gpio(Component):
     """
 
     implementation = "gpio"
-    #: Pins 0 to 31.
+    #: The pins the block has, 0 to 31, whatever a board brings out.
     PINS = 32
     port_specs = (
         target("socket"),
@@ -1711,9 +1714,42 @@ class Gpio(Component):
     #: A page, for the registers.
     mapped_size = 0x1000
 
+    #: How many of the block's pins a board brings out, from pin 0 up, which
+    #: is what firmware is told it has.
+    pins: int = not_a_parameter(default=PINS)
+
+    def __post_init__(self) -> None:
+        if self.pins not in range(1, self.PINS + 1):
+            raise ValueError(
+                f"A GPIO brings out 1 to {self.PINS} pins; {self.pins} were "
+                "asked for."
+            )
+
     @override
     def place(self, platform: Platform, path: str) -> PlacedGpio:
         return PlacedGpio(platform, path, self)
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode | None:
+        # 🚧 Linux's gpio-sifive puts an interrupt domain of its own on top
+        # of its parent's, which has not been checked with an APLIC as that
+        # parent.
+        if dialect == "linux":
+            return None
+        return DeviceNode(
+            "gpio",
+            ((reached["socket"].address, self.mapped_size),),
+            (
+                'compatible = "sifive,gpio0";',
+                "gpio-controller;",
+                "#gpio-cells = <2>;",
+                f"ngpios = <{self.pins}>;",
+            ),
+            # Zephyr's binding requires the property by this name.
+            short_interrupts=True,
+        )
 
 
 class MsiReceiver(Component):

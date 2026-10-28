@@ -163,6 +163,13 @@ class TestASystemControllerWithANumberItsRegisterCannotHold:
             sp.SystemController(**{register: number})
 
 
+class TestAGpioWithANumberOfPinsItCannotHave:
+    @pytest.mark.parametrize("pins", [0, 33])
+    def test_is_refused_and_the_error_gives_the_range(self, pins):
+        with pytest.raises(ValueError, match="1 to 32"):
+            sp.Gpio(pins=pins)
+
+
 class TestASpiFlashOfASizeTheChipCannotBe:
     @pytest.mark.parametrize("size", [0, 3 << 20, 32 << 20])
     def test_is_refused_and_the_error_says_what_it_can_be(self, size):

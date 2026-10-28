@@ -118,6 +118,16 @@
 			};
 		};
 
+		io_gpio: gpio@100f0000 {
+			compatible = "sifive,gpio0";
+			reg = <0x0 0x100f0000 0x0 0x1000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <4>;
+			interrupt-parent = <&io_aplic>;
+			interrupts = <25 1 4 26 1 4 27 1 4 28 1 4>;
+		};
+
 		compute_imsic: interrupt-controller@24000000 {
 			compatible = "riscv,imsic";
 			reg = <0x0 0x24000000 0x0 0x1000>;
