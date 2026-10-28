@@ -170,6 +170,13 @@ class TestAGpioWithANumberOfPinsItCannotHave:
             sp.Gpio(pins=pins)
 
 
+class TestAGpioWithAWireToAPinItDoesNotBringOut:
+    @pytest.mark.parametrize("wires", [{0: 4}, {4: 0}])
+    def test_is_refused_and_the_error_gives_the_pins_it_has(self, wires):
+        with pytest.raises(ValueError, match="0 to 3"):
+            sp.Gpio(pins=4, wires=wires)
+
+
 class TestASpiFlashOfASizeTheChipCannotBe:
     @pytest.mark.parametrize("size", [0, 3 << 20, 32 << 20])
     def test_is_refused_and_the_error_says_what_it_can_be(self, size):

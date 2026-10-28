@@ -25,12 +25,15 @@ PORT = GPIO_BASE + 0x0C
 A_MOMENT = sp.ns(1)
 
 
-def master_with_a_gpio(script):
-    """A bus master running `script`, with a GPIO at GPIO_BASE."""
+def master_with_a_gpio(script, wires=None):
+    """A bus master running `script`, with a GPIO at GPIO_BASE.
+
+    `wires` are the GPIO's, from a pin to the pin it drives.
+    """
     platform = sp.Platform()
     cpu = platform.add("cpu", sp.ScriptedBusMaster(script))
     bus = platform.add("bus", sp.Router())
-    gpio = platform.add("gpio", sp.Gpio())
+    gpio = platform.add("gpio", sp.Gpio(wires=wires or {}))
     platform.connect(cpu.socket, bus.target)
     bus.map(gpio.socket, base=GPIO_BASE)
     return platform, gpio
@@ -105,6 +108,25 @@ class TestWhenWhatAPinDrivesChanges:
         gpio.on_change(
             lambda pin, level: gpio.drive(1, level) if pin == 0 else None
         )
+
+        platform.run()
+
+        (value,) = read
+        assert value & (1 << 1)
+
+
+class TestWhenAGpioHasAWireFromOnePinToAnother:
+    def test_firmware_reads_on_the_second_what_it_drives_on_the_first(self):
+        read = []
+
+        def script():
+            yield sp.write32(OUTPUT_ENABLE, 1 << 0)
+            yield sp.write32(PORT, 1 << 0)
+            yield sp.wait(A_MOMENT)
+            read.append((yield sp.read32(VALUE)))
+
+        platform, _ = master_with_a_gpio(script, wires={0: 1})
+        platform.build()
 
         platform.run()
 
