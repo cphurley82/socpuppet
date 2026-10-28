@@ -41,21 +41,33 @@ class SpiControllerContract : public ::testing::Test {
   // The chip select modes: hold the selected chip's line low from the
   // first byte until the mode changes.
   static constexpr std::uint32_t kHold = 2;
+  // Drive no chip select line at all.
+  static constexpr std::uint32_t kOff = 3;
   // Set in the receive register when the receive FIFO had nothing in it.
   static constexpr std::uint32_t kReceiveEmpty = 1U << 31;
 
   // A chip on the bus that keeps everything it is sent, and answers every
-  // byte with the same one.
+  // byte with the same one. A frame is the bytes between its select and
+  // its deselect.
   struct RecordingChip : socpuppet::SpiDevice {
-    void Select() override {}
+    void Select() override { frame_.emplace(); }
     std::uint8_t Transfer(std::uint8_t sent) override {
       received.push_back(sent);
+      if (frame_) frame_->push_back(sent);
       return answer;
     }
-    void Deselect() override {}
+    void Deselect() override {
+      if (frame_) frames.push_back(*frame_);
+      frame_.reset();
+    }
 
     std::uint8_t answer = 0;
     std::vector<std::uint8_t> received;
+    // Every frame that has ended.
+    std::vector<std::vector<std::uint8_t>> frames;
+
+   private:
+    std::optional<std::vector<std::uint8_t>> frame_;
   };
 
   SpiControllerContract() {
@@ -81,6 +93,10 @@ class SpiControllerContract : public ::testing::Test {
     bus.Write32(kChipSelectId, chip_select);
     bus.Write32(kChipSelectMode, kHold);
   }
+
+  // Lets the selected chip go, as Zephyr's driver does at the end of a
+  // transfer: no chip select line is driven.
+  static void LetGo(BusDriver& bus) { bus.Write32(kChipSelectMode, kOff); }
 
   // Sends one byte and returns what came back, the way Zephyr's driver
   // does: the byte into the transmit FIFO, then a look at the receive FIFO
@@ -152,10 +168,23 @@ TYPED_TEST_P(SpiControllerContract, AByteSentWhereNoChipIsComesBackAsFf) {
   EXPECT_EQ(received, 0xFF);
 }
 
-REGISTER_TYPED_TEST_SUITE_P(SpiControllerContract,
-                            AByteSentReachesTheSelectedChipOnce,
-                            TheSelectedChipsAnswerIsReceived,
-                            AChipThatIsNotSelectedHearsNothing,
-                            AByteSentWhereNoChipIsComesBackAsFf);
+TYPED_TEST_P(SpiControllerContract,
+             BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo) {
+  this->OnTheBus([](BusDriver& bus) {
+    TestFixture::Select(bus, 1);
+    TestFixture::Send(bus, 0x11);
+    TestFixture::Send(bus, 0x22);
+    TestFixture::LetGo(bus);
+  });
+
+  EXPECT_EQ(this->chips_[1].frames,
+            (std::vector<std::vector<std::uint8_t>>{{0x11, 0x22}}));
+}
+
+REGISTER_TYPED_TEST_SUITE_P(
+    SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
+    TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
+    AByteSentWhereNoChipIsComesBackAsFf,
+    BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
