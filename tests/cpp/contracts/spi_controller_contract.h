@@ -102,7 +102,7 @@ class SpiControllerContract : public ::testing::Test {
     return std::nullopt;
   }
 
-  // Two chips, at chip selects 0 and 1.
+  // Two chips, at chip selects 0 and 1. Chip selects 2 and 3 have none.
   std::array<RecordingChip, 2> chips_;
   ControllerType controller_{"controller"};
   sc_core::sc_signal<bool> irq_{"irq"};
@@ -119,7 +119,43 @@ TYPED_TEST_P(SpiControllerContract, AByteSentReachesTheSelectedChipOnce) {
   EXPECT_EQ(this->chips_[1].received, std::vector<std::uint8_t>{0xA5});
 }
 
+TYPED_TEST_P(SpiControllerContract, TheSelectedChipsAnswerIsReceived) {
+  this->chips_[1].answer = 0x3C;
+  std::optional<std::uint8_t> received;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    TestFixture::Select(bus, 1);
+    received = TestFixture::Send(bus, 0xA5);
+  });
+
+  EXPECT_EQ(received, 0x3C);
+}
+
+TYPED_TEST_P(SpiControllerContract, AChipThatIsNotSelectedHearsNothing) {
+  this->OnTheBus([](BusDriver& bus) {
+    TestFixture::Select(bus, 1);
+    TestFixture::Send(bus, 0xA5);
+  });
+
+  EXPECT_TRUE(this->chips_[0].received.empty());
+}
+
+// 🎓 Nothing drives the line back to the controller, and it floats high.
+TYPED_TEST_P(SpiControllerContract, AByteSentWhereNoChipIsComesBackAsFf) {
+  std::optional<std::uint8_t> received;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    TestFixture::Select(bus, 2);
+    received = TestFixture::Send(bus, 0xA5);
+  });
+
+  EXPECT_EQ(received, 0xFF);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(SpiControllerContract,
-                            AByteSentReachesTheSelectedChipOnce);
+                            AByteSentReachesTheSelectedChipOnce,
+                            TheSelectedChipsAnswerIsReceived,
+                            AChipThatIsNotSelectedHearsNothing,
+                            AByteSentWhereNoChipIsComesBackAsFf);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
