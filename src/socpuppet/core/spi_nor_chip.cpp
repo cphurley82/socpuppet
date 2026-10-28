@@ -130,10 +130,13 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
 void SpiNorChip::Deselect() {}
 
 void SpiNorChip::EraseBlock(std::size_t bytes) {
+  // A chip smaller than the block is erased whole, as if the block wrapped
+  // at the chip's end as an address does.
+  const std::size_t block_bytes = std::min(bytes, bytes_.size());
   // A block's size is a power of two, as the chip's is, so the block an
   // address is in starts where the address's low bits are cleared.
-  const std::size_t start = ChipAddress() & ~(bytes - 1);
-  std::ranges::fill(std::span(bytes_).subspan(start, bytes), kErased);
+  const std::size_t start = ChipAddress() & ~(block_bytes - 1);
+  std::ranges::fill(std::span(bytes_).subspan(start, block_bytes), kErased);
 }
 
 std::size_t SpiNorChip::ChipAddress() const {
