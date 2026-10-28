@@ -891,7 +891,7 @@ Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since nei
 
 - In auto chip select mode, the end of a burst drives the chip select low again where it should let it go (`set_bit(false, ...)` after the loop). Both drivers select a chip by hold mode; Linux uses auto mode only as its idle, between transfers.
 - Each byte's two clock edges both carry its data, as `m2s_data_valid`, and the model keeps the answer to the first and drops the second's. socpuppet's adapter hands the chip the byte on the first alone.
-- The `rxdata` read callback sets the receive watermark when `rxmark <= ` what is left, where `update_irq` has `<`; `update_irq` runs straight after it and puts it right.
+- The `rxdata` read callback sets the receive watermark when `rxmark` is at most what is left, where `update_irq` has it below; `update_irq` runs straight after it and puts it right.
 - Every register resets to zero: the manual has `sckdiv` at 3, `csdef` all ones and `fmt.len` at 8. Both drivers write each before they use it.
 - `ip` can be written, where the manual has it read only; `update_irq` writes it over again.
 - `csdef` is 32 bits wide, so Linux counts 32 chip selects where the model has four.
