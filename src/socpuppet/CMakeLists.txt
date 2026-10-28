@@ -389,6 +389,7 @@ target_sources(socpuppet_models INTERFACE
     models/system_controller.h
     models/tie_low.h
     models/far_end.h
+    models/i2c_controller.h
     models/virtio_9p.h
     models/virtio_blk.h
     models/virtio_console.h
@@ -438,7 +439,9 @@ add_library(socpuppet_bindings INTERFACE)
 target_sources(socpuppet_bindings INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     bindings/python_executor.h
-    bindings/python_script.h)
+    bindings/python_i2c_device.h
+    bindings/python_script.h
+    bindings/python_spi_device.h)
 target_link_libraries(socpuppet_bindings INTERFACE
   socpuppet_models pybind11::module)
 socpuppet_check_headers(socpuppet_bindings)

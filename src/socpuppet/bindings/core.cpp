@@ -19,6 +19,7 @@
 #include <tlm>
 
 #include "socpuppet/bindings/python_executor.h"
+#include "socpuppet/bindings/python_i2c_device.h"
 #include "socpuppet/bindings/python_script.h"
 #include "socpuppet/bindings/python_spi_device.h"
 #include "socpuppet/core/elf_image.h"
@@ -26,6 +27,7 @@
 #include "socpuppet/models/builtin_components.h"
 #include "socpuppet/models/far_end.h"
 #include "socpuppet/models/gpio.h"
+#include "socpuppet/models/i2c_controller.h"
 #include "socpuppet/models/ideal_nand.h"
 #include "socpuppet/models/pciem_host.h"
 #include "socpuppet/models/scripted_bus_master.h"
@@ -129,12 +131,13 @@ struct NativePlatform {
   KernelClaim kernel_claim;  // first member: checked before any module is built
   socpuppet::Platform platform{socpuppet::BuiltinComponents()};
   socpuppet::PythonExecutor python_executor{"socpuppet_python_executor"};
-  // Declared last, so the Python SPI devices, scripts, and callables
+  // Declared last, so the Python SPI and I2C devices, scripts, and callables
   // (answerers and listeners) are dropped first, while the GIL is held by
   // whoever is destroying this platform from Python. A flash still points
   // at its devices then, and a GPIO at its listener, but nothing calls
   // them once the run is over.
   std::list<socpuppet::PythonSpiDevice> python_spi_devices;
+  std::list<socpuppet::PythonI2cDevice> python_i2c_devices;
   std::list<socpuppet::PythonScript> python_scripts;
   std::list<py::object> python_callables;
 };
@@ -240,6 +243,17 @@ PYBIND11_MODULE(_core, m) {
                  std::move(device), self.python_executor);
              self.platform.ModuleAt<socpuppet::SpiFlash>(path).Attach(
                  chip_select, wrapped);
+           })
+      // Puts `device`, a Python object with `start(read)`, `write(byte)`,
+      // `read(last)` and `stop()`, on the bus of the I2C controller at
+      // `path`, at `address`.
+      .def("i2c_controller_attach",
+           [](NativePlatform& self, const std::string& path,
+              std::uint8_t address, py::object device) {
+             auto& wrapped = self.python_i2c_devices.emplace_back(
+                 std::move(device), self.python_executor);
+             self.platform.ModuleAt<socpuppet::I2cController>(path).Attach(
+                 address, wrapped);
            })
       // What the GPIO at `path` drives on `pin`: True, False, or None.
       .def("gpio_level",

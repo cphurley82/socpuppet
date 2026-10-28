@@ -40,6 +40,7 @@ from typing import (
 )
 
 from socpuppet import fuse, ninep
+from socpuppet.i2c import I2cDevice
 from socpuppet.placed import (
     Placed,
     PlacedBlock,
@@ -1124,6 +1125,12 @@ class SystemController(Component):
         )
 
 
+#: The clock of SiFive's peripherals: 50 MHz. Its SPI and I2C controllers
+#: make their buses' clocks from it, and Zephyr's drivers for them share
+#: one number for it (`SIFIVE_PERIPHERAL_CLOCK_FREQUENCY`).
+PERIPHERAL_CLOCK_HZ = 50_000_000
+
+
 class SpiFlash(Component):
     """A flash of `size` bytes and its SPI controller: where firmware is kept.
 
@@ -1158,8 +1165,8 @@ class SpiFlash(Component):
     LARGEST = 16 << 20
     #: The controller's chip selects. The flash's own chip is at 0.
     CHIP_SELECTS = 4
-    #: The controller's clock: 50 MHz.
-    CLOCK_HZ = 50_000_000
+    #: The controller's clock: SiFive's peripherals' (`PERIPHERAL_CLOCK_HZ`).
+    CLOCK_HZ = PERIPHERAL_CLOCK_HZ
     #: The fastest SPI clock: SiFive's controller divides its own by at
     #: least two to make it.
     FASTEST_HZ = CLOCK_HZ // 2
@@ -1825,6 +1832,61 @@ class Gpio(Component):
             # Zephyr's binding requires the property by this name.
             short_interrupts=True,
         )
+
+
+class I2cController(Component):
+    """A controller of an I2C bus, and 🧵 Python's devices on the bus.
+
+    🎓 I2C is a bus of two wires, a clock and a data line, that many small
+    chips share: sensors, clocks, the memory on a board that says what the
+    board is. The controller starts a transfer and sends the address of
+    the chip it wants, then sends or receives bytes one at a time.
+
+    This is the OpenCores I2C master core, which SiFive's chips have as
+    their I2C block and Zephyr's `i2c_sifive` drives. Map `cpu`, its
+    registers, on a bus; `irq` is its interrupt, up when a command is done
+    if firmware asked for it. `devices` are on its bus, by their seven-bit
+    address: Python's own (`socpuppet.i2c`), such as a `Ram`.
+
+    The model is socpuppet's own, from the core's specification.
+    """
+
+    implementation = "i2c_controller"
+    port_specs = (
+        target("cpu"),
+        # Firmware may poll the status and leave the line alone.
+        wire_out("irq", required=False),
+    )
+    #: The controller's clock, which the bus's is made from: SiFive's
+    #: peripherals' (`PERIPHERAL_CLOCK_HZ`).
+    CLOCK_HZ = PERIPHERAL_CLOCK_HZ
+    #: The seven bits of an address reach this many devices.
+    ADDRESSES = 128
+    #: The registers take a page.
+    mapped_size = 0x1000
+
+    #: 🧵 Devices on the bus, by their seven-bit address.
+    devices: Mapping[int, I2cDevice] = not_a_parameter(
+        default=MappingProxyType({})
+    )
+
+    def __post_init__(self) -> None:
+        for address in self.devices:
+            if address not in range(self.ADDRESSES):
+                raise ValueError(
+                    "A device on an I2C bus is at a seven-bit address, 0 to "
+                    f"{self.ADDRESSES - 1}. One was put at {address}."
+                )
+
+    @property
+    @override
+    def parameters(self) -> dict[str, int]:
+        return {**super().parameters, "clock_hz": self.CLOCK_HZ}
+
+    @override
+    def configure(self, native: _core.Platform, path: str) -> None:
+        for address, device in self.devices.items():
+            native.i2c_controller_attach(path, address, device)
 
 
 class MsiReceiver(Component):

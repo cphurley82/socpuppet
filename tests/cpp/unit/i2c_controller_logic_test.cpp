@@ -127,9 +127,9 @@ TEST(AnI2cControllerThatIsOff, TakesNoCommand) {
   Issue(bus.controller,
         I2C_CONTROLLER_COMMAND_START | I2C_CONTROLLER_COMMAND_WRITE,
         kWriteToTheDevice);
-  bus.controller.CarryOut();
+  const bool carried_out = bus.controller.CarryOut();
 
-  EXPECT_FALSE(bus.controller.CommandWaiting());
+  EXPECT_FALSE(carried_out);
   EXPECT_TRUE(device.calls.empty());
 }
 
@@ -289,7 +289,29 @@ TEST(AnI2cCommand, TakesNineOfTheBusesClocksInTheControllersCycles) {
   Write32(bus.controller, I2C_CONTROLLER_PRESCALE_LOW, 0x02);
   Write32(bus.controller, I2C_CONTROLLER_PRESCALE_HIGH, 0x01);
 
+  Issue(bus.controller, I2C_CONTROLLER_COMMAND_WRITE, kByte);
+
   EXPECT_EQ(bus.controller.CommandCycles(), 9U * 5U * (0x0102U + 1U));
+}
+
+// A write to a register that is no command takes no time on the bus.
+TEST(AnI2cControllerWithNoCommandWaiting, HasNoCyclesToTake) {
+  RecordingDevice device;
+  OnTheBus bus{device};
+
+  EXPECT_EQ(bus.controller.CommandCycles(), 0U);
+}
+
+TEST(AnI2cCommandThatHasBeenCarriedOut, LeavesNothingMoreToDo) {
+  RecordingDevice device;
+  OnTheBus bus{device};
+  Issue(bus.controller, I2C_CONTROLLER_COMMAND_WRITE, kByte);
+
+  const bool first = bus.controller.CarryOut();
+  const bool second = bus.controller.CarryOut();
+
+  EXPECT_TRUE(first);
+  EXPECT_FALSE(second);
 }
 
 }  // namespace

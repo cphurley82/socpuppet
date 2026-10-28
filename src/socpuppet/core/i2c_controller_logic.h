@@ -32,15 +32,15 @@ class I2cControllerLogic {
   // the status's transfer in progress.
   bool CommandWaiting() const { return command_ != 0; }
 
-  // How many of the controller's clock cycles a command takes on the bus:
-  // a byte and its acknowledgement, nine of the bus's clocks, each five
-  // times one more than the prescale.
+  // How many of the controller's clock cycles the command that waits takes
+  // on the bus: a byte and its acknowledgement, nine of the bus's clocks,
+  // each five times one more than the prescale. None, with no command.
   std::uint64_t CommandCycles() const;
 
-  // Carries out the command that waits, on the bus, if one does: the calls
-  // to the devices it makes are all here, for whoever has the time to make
-  // them.
-  void CarryOut();
+  // Carries out the command that waits, on the bus, if one does, and says
+  // whether one did: the calls to the devices it makes are all here, for
+  // whoever has the time to make them.
+  bool CarryOut();
 
   // Whether the controller's interrupt is up: a command is done, and the
   // interrupt is enabled and not yet cleared.
