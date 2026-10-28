@@ -31,8 +31,9 @@ constexpr std::uint64_t kLoadedAt = 0x10;
 
 // A clock for a flash, and how long one tick of it is.
 constexpr std::uint64_t kTenMegahertz = 10'000'000;
-const sc_core::sc_time kTenMegahertzPeriod{1.0 / kTenMegahertz,
-                                           sc_core::SC_SEC};
+sc_core::sc_time TenMegahertzPeriod() {
+  return {1.0 / kTenMegahertz, sc_core::SC_SEC};
+}
 
 // A flash with a test's thread at its window, a second at its
 // controller's registers, and a watcher on its interrupt.
@@ -218,7 +219,7 @@ TEST(BytesInABurstAtTheControllersResetDivisor,
                  }};
 
   ASSERT_EQ(chip.arrivals.size(), 2U);
-  EXPECT_EQ(chip.arrivals[1] - chip.arrivals[0], 16 * kTenMegahertzPeriod);
+  EXPECT_EQ(chip.arrivals[1] - chip.arrivals[0], 16 * TenMegahertzPeriod());
 }
 
 // A flash's interrupt is its controller's, which Linux's driver sleeps on.

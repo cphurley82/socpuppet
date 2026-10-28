@@ -28,18 +28,18 @@ constexpr std::uint8_t kByte = 0xA5;
 // is told.
 struct RecordingDevice : I2cDevice {
   bool Start(bool read) override {
-    calls.push_back(read ? "start read" : "start write");
+    calls.emplace_back(read ? "start read" : "start write");
     return acknowledges;
   }
   bool Write(std::uint8_t byte) override {
-    calls.push_back(std::format("write {:#04x}", byte));
+    calls.emplace_back(std::format("write {:#04x}", byte));
     return acknowledges;
   }
   std::uint8_t Read(bool last) override {
-    calls.push_back(last ? "read last" : "read");
+    calls.emplace_back(last ? "read last" : "read");
     return answer;
   }
-  void Stop() override { calls.push_back("stop"); }
+  void Stop() override { calls.emplace_back("stop"); }
 
   bool acknowledges = true;
   std::uint8_t answer = 0;

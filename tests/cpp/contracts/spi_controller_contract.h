@@ -305,7 +305,7 @@ TYPED_TEST_P(SpiControllerContract,
     spi.LetGo();
   });
 
-  using Caller = typename TestFixture::RecordingChip::Caller;
+  using Caller = TestFixture::RecordingChip::Caller;
   const std::string controller = std::string(this->controller_.name()) + ".";
   EXPECT_THAT(
       this->chips_[1].callers,

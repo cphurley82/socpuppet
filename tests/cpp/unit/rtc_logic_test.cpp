@@ -76,7 +76,7 @@ void EnableTheInterrupt(RtcLogic& rtc) {
 TEST(AClockGivenATime, ReadsAsThatTimeAndTheTimeSimulatedSince) {
   RtcLogic rtc{kGiven};
 
-  EXPECT_EQ(ReadTime(rtc, Seconds(3)), kGiven + 3 * kASecond);
+  EXPECT_EQ(ReadTime(rtc, Seconds(3)), kGiven + (3 * kASecond));
 }
 
 // So that a carry from the low half into the high one between the two
@@ -94,9 +94,9 @@ TEST(AClocksHighHalf, IsAsItWasWhenTheLowHalfWasRead) {
 TEST(AClockSetToATime, CountsOnFromIt) {
   RtcLogic rtc{kGiven};
 
-  SetTime(rtc, kGiven + 100 * kASecond, Seconds(1));
+  SetTime(rtc, kGiven + (100 * kASecond), Seconds(1));
 
-  EXPECT_EQ(ReadTime(rtc, Seconds(3)), kGiven + 102 * kASecond);
+  EXPECT_EQ(ReadTime(rtc, Seconds(3)), kGiven + (102 * kASecond));
 }
 
 TEST(AnAlarmGivenATime, ReadsAsSetAndReadsBackThatTime) {
@@ -120,7 +120,7 @@ TEST(AnAlarmThatIsTakenOff, IsNotSetAndIsNotWaitedFor) {
 
 TEST(AnAlarmThatIsSet, IsWaitedForUntilItsTime) {
   RtcLogic rtc{kGiven};
-  SetAlarm(rtc, kGiven + 5 * kASecond, kStart);
+  SetAlarm(rtc, kGiven + (5 * kASecond), kStart);
 
   EXPECT_EQ(rtc.Advance(Seconds(2)), Seconds(5));
 }
@@ -158,9 +158,9 @@ TEST(AnAlarmSetForATimeThatHasPassed, GoesOffAtOnce) {
 TEST(AClockSetPastItsAlarm, GoesOffAtOnce) {
   RtcLogic rtc{kGiven};
   EnableTheInterrupt(rtc);
-  SetAlarm(rtc, kGiven + 10 * kASecond, kStart);
+  SetAlarm(rtc, kGiven + (10 * kASecond), kStart);
 
-  SetTime(rtc, kGiven + 20 * kASecond, kStart);
+  SetTime(rtc, kGiven + (20 * kASecond), kStart);
 
   EXPECT_TRUE(rtc.Interrupting());
 }
