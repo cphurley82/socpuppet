@@ -40,8 +40,13 @@ target_link_libraries(unit_tests PRIVATE
 # As for the kernel tests below: "tests/cpp/support/elf_file.h".
 target_include_directories(unit_tests PRIVATE ${PROJECT_SOURCE_DIR})
 socpuppet_dev_checks(unit_tests)
-# The label lets a test run pick out the C++ tests (the asan preset does).
-gtest_discover_tests(unit_tests PROPERTIES LABELS cpp)
+# What every C++ test is registered with. The label lets a test run pick
+# out the C++ tests (the asan preset does). The slowest C++ test takes a
+# few seconds, so one that runs for two minutes has hung: it fails then,
+# where with no timeout a hang holds a CI job until the runner gives up on
+# it, hours later, with nothing uploaded.
+set(SOCPUPPET_CPP_TEST_PROPERTIES LABELS cpp TIMEOUT 120)
+gtest_discover_tests(unit_tests PROPERTIES ${SOCPUPPET_CPP_TEST_PROPERTIES})
 
 # Tests that start the SystemC kernel. The kernel cannot be restarted, so
 # gtest_discover_tests registers each test with CTest separately and CTest
@@ -91,7 +96,8 @@ socpuppet_dev_checks(kernel_tests)
 # What the CPU tests expect a CPU to run with when nothing says.
 target_compile_definitions(kernel_tests PRIVATE
   SOCPUPPET_DBT_RISE_DEFAULT_BACKEND="${SOCPUPPET_DBT_RISE_DEFAULT_BACKEND}")
-gtest_discover_tests(kernel_tests PROPERTIES LABELS cpp)
+gtest_discover_tests(kernel_tests
+  PROPERTIES ${SOCPUPPET_CPP_TEST_PROPERTIES})
 
 # The ring pciem posts the host's writes on, in a build with pciem only.
 # Its test includes pciem's header, which needs C++23, and SystemC refuses
@@ -104,5 +110,6 @@ if(SOCPUPPET_HAS_PCIEM)
     ${SOCPUPPET_PCIEM_DIR})
   set_target_properties(pciem_ring_tests PROPERTIES CXX_STANDARD 23)
   socpuppet_dev_checks(pciem_ring_tests)
-  gtest_discover_tests(pciem_ring_tests PROPERTIES LABELS cpp)
+  gtest_discover_tests(pciem_ring_tests
+    PROPERTIES ${SOCPUPPET_CPP_TEST_PROPERTIES})
 endif()
