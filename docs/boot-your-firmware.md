@@ -108,7 +108,7 @@ assert booted, board.uart.output
 
 ⚠️ Give `run` a duration, or `run_until` a timeout. With no limit a run ends when nothing is left to do, and firmware with a timer running always has something left to do.
 
-In pytest, mark each test that builds a platform with `@pytest.mark.platform`. A process can hold only one simulation, and the marker gives the test a process of its own. `tests/python/test_m3a_exit.py` is a complete example.
+In pytest, mark each test that builds a platform with `@pytest.mark.platform`. A process can hold only one simulation, and the marker gives the test a process of its own. `tests/python/test_zephyr_on_the_host_board.py` is a complete example.
 
 ## Looking inside
 

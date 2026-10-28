@@ -82,13 +82,13 @@ print(sp.render_trace(platform.trace))
 And now for something completely different: the same description also gives the devicetree that firmware is built against, with nothing simulated.
 
 ```sh
-socpuppet devicetree examples/m0_passthrough.py
+socpuppet devicetree examples/passthrough_hello.py
 ```
 
 And its address map, which is what answers at which address and through which window:
 
 ```sh
-socpuppet address-map examples/m0_passthrough.py
+socpuppet address-map examples/passthrough_hello.py
 ```
 
 ## A show with a drive in it
@@ -131,7 +131,7 @@ socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 comp
 git clone https://github.com/cphurley82/socpuppet && cd socpuppet
 uv sync
 uv run cmake --preset dev && uv run cmake --build --preset dev
-PYTHONPATH=python uv run python examples/m0_passthrough.py
+PYTHONPATH=python uv run python examples/passthrough_hello.py
 PYTHONPATH=python uv run python examples/nvme_hello.py
 PYTHONPATH=python uv run python examples/ssd_hello.py
 ```

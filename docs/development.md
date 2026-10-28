@@ -22,7 +22,7 @@ The build puts the Python extension next to the Python sources, so the package r
 ```sh
 uv run pytest                            # just the Python tests
 uv run pytest -n auto --dist loadscope --no-loadscope-reorder   # the same, on every core
-PYTHONPATH=python uv run python examples/m0_passthrough.py
+PYTHONPATH=python uv run python examples/passthrough_hello.py
 ```
 
 💡 `ctest` runs the Python tests on every core with [pytest-xdist](https://pytest-xdist.readthedocs.io), which takes about a minute where one core takes six. `--dist loadscope` keeps the tests of one class on one worker, so a board the class shares is built once. The boots of OpenSBI and UEFI take most of a minute each, so they are marked `@pytest.mark.long` and handed out first: started last, one would keep the whole run waiting while every other core sat idle. `--no-loadscope-reorder` stops xdist from putting the classes with the most tests first instead.
@@ -204,7 +204,7 @@ The parts are `sdk`, `llvm` and `zephyr-tree`, which fetch what the rest is buil
 - 💡 On an Intel Mac the same command works, and it needs Docker. The Zephyr SDK ships no macOS x86-64 toolchain, so there the script runs itself in the devcontainer's image, which is Linux and has one, by way of `tools/devcontainer.py`, which builds the image the first time and again when `.devcontainer/Dockerfile` changes. `--in-docker` does the same on any machine. The images it leaves in `build/firmware` are plain RISC-V ELF files, so the tests on the Mac boot them as they are. Each run takes a few minutes there, not seconds: the files are the Mac's, and a container reaches them slowly.
 - ⚠️ The toolchain an Intel Mac ends up with is Linux's, GDB included, in the `socpuppet-firmware-linux-ubuntu-26.04` volume. To debug from there, run GDB in the same image ([boot-your-firmware.md](boot-your-firmware.md#debugging-with-gdb) has the command).
 - A test that needs an image you have not built is skipped, and says so. Set `SOCPUPPET_REQUIRE_FIRMWARE=1` to make it fail instead, which is what CI does.
-- A test marked `@pytest.mark.on_demand("why")` is worth running but too long to run every time, such as 🐧 Linux booted through UEFI from the flash. It is skipped unless `SOCPUPPET_ON_DEMAND=1`, and the skip says so: `SOCPUPPET_ON_DEMAND=1 uv run pytest tests/python/test_m20_exit.py`.
+- A test marked `@pytest.mark.on_demand("why")` is worth running but too long to run every time, such as 🐧 Linux booted through UEFI from the flash. It is skipped unless `SOCPUPPET_ON_DEMAND=1`, and the skip says so: `SOCPUPPET_ON_DEMAND=1 uv run pytest tests/python/test_linux_boots.py`.
 - `SOCPUPPET_FIRMWARE_DIR` points the tests at images kept somewhere else.
 
 `firmware/twister.py` is the other thing to run there. It has twister, Zephyr's test runner, build Zephyr's own test suites and ours for each board and run every one on socpuppet, which is how a change to a model, a driver or a board is held to several thousand tests nobody here wrote. It takes six and a half minutes for the whole list on an Apple silicon Mac and about eight on an Intel one, where it runs in Docker, so it is for before a push and for CI, and not for the inner loop. [twister.md](twister.md) is its page.

@@ -2,7 +2,7 @@
 
 Before anything is simulated, so these run anywhere: describing a
 `PciemHost` opens nothing. tests/python/test_pciem_contract.py and
-test_m31_exit.py put the drives on this machine's bus.
+test_this_machines_linux_mounts_the_ssd.py put the drives on this machine's bus.
 """
 
 from typing import NamedTuple

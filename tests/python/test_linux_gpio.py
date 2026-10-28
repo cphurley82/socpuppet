@@ -3,7 +3,7 @@
 The GPIO is SiFive's, on the host's IO die, with four pins brought out. A
 stock kernel's own driver, `gpio-sifive`, takes it as a GPIO chip with a
 line for each pin. Busybox has no GPIO tools, so nothing here drives a
-pin from Linux: Zephyr's half (`test_m18_exit.py`) does that.
+pin from Linux: Zephyr's half (`test_zephyr_peripheral_samples.py`) does that.
 """
 
 import pytest

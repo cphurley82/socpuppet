@@ -3,7 +3,7 @@
 The clock is the Goldfish real-time clock, on the host's IO die, given a
 time as the simulation starts. A stock kernel's own driver, `rtc-goldfish`,
 takes it as `rtc0`, and the kernel sets the system's clock from it as it
-boots (`RTC_HCTOSYS`). Zephyr's half is in `test_m18_exit.py`.
+boots (`RTC_HCTOSYS`). Zephyr's half is in `test_zephyr_peripheral_samples.py`.
 """
 
 import datetime

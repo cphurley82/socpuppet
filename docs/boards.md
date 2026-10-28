@@ -27,7 +27,7 @@ board.platform.build()
 board.platform.load_elf("build/zephyr/zephyr.elf")
 ```
 
-`tests/python/test_m3b_exit.py` is a complete example. It runs Zephyr's own test of its disk interface, unchanged.
+`tests/python/test_zephyr_disk_on_the_host.py` is a complete example. It runs Zephyr's own test of its disk interface, unchanged.
 
 💡 The same image runs against the real SSD, with firmware of its own behind it: see [The host with the SSD](#the-host-with-the-ssd).
 
@@ -48,7 +48,7 @@ west build -b socpuppet_host --shield "socpuppet_host_drive;socpuppet_host_iommu
     -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
 ```
 
-The module's driver sets the IOMMU up and, before Zephyr scans the bus, lets the drive through untranslated. With `CONFIG_SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE=y` it gives the drive page tables instead, which map the RAM and each IMSIC's page to themselves, and your application can take pages away and give them back, and read what the drive did wrong, through `<socpuppet/drivers/riscv_iommu.h>`. `tests/python/test_m15_exit.py` runs Zephyr's disk test both ways, unchanged, and the driver's own test, which takes a page away from the drive.
+The module's driver sets the IOMMU up and, before Zephyr scans the bus, lets the drive through untranslated. With `CONFIG_SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE=y` it gives the drive page tables instead, which map the RAM and each IMSIC's page to themselves, and your application can take pages away and give them back, and read what the drive did wrong, through `<socpuppet/drivers/riscv_iommu.h>`. `tests/python/test_iommu.py` runs Zephyr's disk test both ways, unchanged, and the driver's own test, which takes a page away from the drive.
 
 ## With the virtio slots
 
@@ -84,7 +84,7 @@ board.platform.run(sp.ms(100))
 print(board.virtio.console.output)
 ```
 
-`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, `tests/python/test_virtio_uefi.py` boots UEFI with them, and `tests/python/test_m20_exit.py` boots 🐧 Linux with every one under its own driver ([linux.md](linux.md)). 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
+`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, `tests/python/test_virtio_uefi.py` boots UEFI with them, and `tests/python/test_linux_boots.py` boots 🐧 Linux with every one under its own driver ([linux.md](linux.md)). 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
 
 ## The SSD's controller
 
@@ -135,7 +135,7 @@ Or `python -m socpuppet.boards.ssd build/zephyr/zephyr.elf`.
 
 - ⚠️ **Say whose firmware it is.** The platform has two places an image could go, so `load_elf` wants `via=board.ssd.cpu.socket`. The same goes for the devicetree: `socpuppet devicetree python/socpuppet/boards/ssd.py --via ssd.cpu.socket` is the SSD's own CPU's view, and the host is not in it.
 - **Everything below applies**: waiting for output, looking inside, and GDB, with `ssd(host=idle_host, gdb_port=1234)` and the same `riscv64-zephyr-elf-gdb`, which debugs 32-bit code too.
-- `tests/python/test_m4b_exit.py` is a complete example.
+- `tests/python/test_zephyr_on_the_ssd_controller.py` is a complete example.
 
 ### Bring up your SSD firmware
 
@@ -267,7 +267,7 @@ ms     who   said
 - 💡 **One clock, and the same story every time.** Both CPUs are in one simulation, so a run is deterministic: run it twice and every line comes at the same simulated time. A bug that needs the two firmwares to be in step by luck will be there again tomorrow.
 - 🎓 **Each CPU runs ahead a little, then lets the other catch up.** That stretch is the *quantum*, 100 µs by default, and it is what makes two CPUs fast: thirty times faster than taking turns after every instruction. The cost is that a CPU sees an interrupt up to a quantum late, and this run comes out 3% longer in simulated time. `board.platform.quantum = sp.us(10)` before `build()` trades speed for timing, and `0` is exact and slow.
 - 🎭 **Take the SSD's firmware out when it is not what you are working on.** `drive=functools.partial(add_ssd, firmware=scripted_firmware().script)` is the SSD's hardware with a Python script for its firmware and no second CPU, and leaving `drive` out is the stand-in drive. The host's image is the same for all three.
-- `tests/python/test_m6_exit.py` is a complete example.
+- `tests/python/test_host_and_ssd_firmware_together.py` is a complete example.
 
 ## The SSD under this machine's Linux
 
@@ -296,7 +296,7 @@ pump(board.platform, far_ends=[board.host], until=lambda: done)
 - ⚠️ **Find it by where it is.** The puppet's drive is the one under pciem's bus, `socpuppet.boards.real_host.puppet_function()`. On a machine with NVMe drives of its own it is not `nvme0n1`.
 - ⚠️ **Let Linux go before the platform ends**: unbind its driver while the platform still runs, or each command Linux was owed costs half a minute as the program ends ([pciem-host.md](models/pciem-host.md#what-it-does)). Unbinding shuts the drive down, which has the firmware save its table, so what was written can be read back out of the NAND.
 - 🎭 `socpuppet.boards.real_host.behavioral_drive(blocks=)` is the stand-in drive in front of this machine's Linux, with no CPU.
-- `tests/python/test_m31_exit.py` is a complete example: Linux formats and mounts the SSD, writes a file, and Python reads it back from the NAND.
+- `tests/python/test_this_machines_linux_mounts_the_ssd.py` is a complete example: Linux formats and mounts the SSD, writes a file, and Python reads it back from the NAND.
 
 ## The host across the link
 
@@ -341,7 +341,7 @@ Hello World! socpuppet_host/socpuppet_rv64
 - **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
 - 💡 **Watch it cross.** `host(manager=..., trace=True)` records every crossing in `board.platform.trace`, each with the port it left by: `compute.d2d.peer_initiator` for what the compute die sent and `io.d2d.peer_initiator` for what came back. ⚠️ An address in a record is the receiving die's own. What the compute die sends has had the start of its window taken off, so the UART is at `0x0` there and not at `0x1000_0000`. `sp.render_sideband(board.platform.trace)` is the link's own management traffic as a table, and `ucie.sideband_packets` the packets themselves.
 - **It costs nothing you will notice.** Zephyr's disk test finishes 5 ms later than with the stand-in link, which is the late start and nothing more, and in the same wall time. ⚠️ That is not the whole truth about the link. A crossing takes [the link's](models/d2d-link.md) `latency_ns`, 20 ns by default, and its bytes at `bytes_per_ns`, and the host's CPU counts in whole cycles of 100 ns: a crossing of less than 200 ns does not show on its clock at all ([upstream.md](upstream.md) has why). The trace is where to look for the link's own timing. 🚧 `host()` has no way to be given a link of your own yet: copy the board to try a slow one.
-- `tests/python/test_m7_exit.py` is a complete example: `hello_world`, Zephyr's disk test against all three drives, and what the trace shows of each command.
+- `tests/python/test_host_across_the_real_link.py` is a complete example: `hello_world`, Zephyr's disk test against all three drives, and what the trace shows of each command.
 
 ## The IO die's manager
 
@@ -402,8 +402,8 @@ iomgr: compute die released
 - 🎓 **Letting the other die go is Zephyr's reset API**, because that is what it is: the other die's CPU is this link's one reset line. The register that holds it is at the *far* end of the link, so the driver reaches it over the link's sideband. `CONFIG_RESET=y` in `prj.conf` is what asks for the driver.
 - ⚠️ **The link's interrupt is a level.** Its line stays high for as long as the status says it has changed, so the driver's handler clears that bit before it returns. A handler that only woke a thread would be called again at once, for ever, and the thread would never run. What changed is still there to read: whether the link is up.
 - ⚠️ **A link takes 5 ms to come up, and 4 ms of that cannot be hurried.** UCIe holds a link in reset that long. Firmware that polled the status in a tight loop would wait just as long and learn nothing sooner.
-- 💡 **Break the link to see the firmware mend it.** A second 🎭 scripted master on the IO die's bus can write the link's fault-injection register, as `tests/python/test_m5_exit.py` does. The firmware says `iomgr: the D2D link went down`, trains it again, and says it is up.
-- `tests/python/test_m5b_exit.py` and `tests/python/test_m5_exit.py` are complete examples, and `examples/io_manager_hello.py` is the same boot with 🎭 a script in the firmware's place and the link's whole handshake printed out.
+- 💡 **Break the link to see the firmware mend it.** A second 🎭 scripted master on the IO die's bus can write the link's fault-injection register, as `tests/python/test_link_training.py` does. The firmware says `iomgr: the D2D link went down`, trains it again, and says it is up.
+- `tests/python/test_zephyr_on_the_io_manager.py` and `tests/python/test_link_training.py` are complete examples, and `examples/io_manager_hello.py` is the same boot with 🎭 a script in the firmware's place and the link's whole handshake printed out.
 
 ## The whole cast: three firmwares
 
@@ -466,7 +466,7 @@ ms     who      said
 - **The manager's firmware sees its own board, less the scratch memory.** Under the host the manager has a bus of its own with its kit and the link's registers on it, at the addresses `socpuppet_iomgr` has them ([the address map](address-map.md#the-host-across-the-link)). The scratch memory of that board was for 🎭 a compute die to reach, and the firmware never used it.
 - 🎭 **Take out what you are not working on.** Each of the two functions has its stand-in, and the host's image is the same with any of them: `manager=functools.partial(add_manager, script=scripted_manager().script)` is a script for the manager, `drive=functools.partial(add_ssd, firmware=scripted_firmware().script)` a script for the SSD's firmware, and leaving `drive` out is the stand-in drive.
 - **It costs nothing you will notice.** The manager's firmware lets the host go half a millisecond later than 🎭 the script does, the disk test's verdict comes that half millisecond later, at 603.7 ms of simulated time, and the wall time is the same as with the script: under half a second.
-- `tests/python/test_m8_exit.py` is a complete example.
+- `tests/python/test_full_bootchain.py` is a complete example.
 
 ## Booting from flash
 
@@ -521,7 +521,7 @@ Nothing is built differently. The two ways show firmware the same devicetree, so
 - **A bad image is a sentence on the console**, and nothing is started: `rom: no image at 0x10200000` for an empty flash, `rom: zephyr: bad CRC: ...` for bytes that are not the ones the header was made for, `rom: zephyr is a 32-bit image, and this is a 64-bit CPU`, and `rom: stopped by a trap: ...` for an image with nowhere to go.
 - ⚠️ **`load_elf` of the firmware is refused on a board with a ROM**, and the error says where the image goes instead. What a CPU is given by `load_elf` has to start where the CPU does, and that is now the ROM.
 - **All three CPUs can.** `host(boot=from_rom, manager=functools.partial(add_manager, boot=from_rom), drive=functools.partial(add_ssd, boot=from_rom))` is three ROMs and two flashes, the IO die's holding the host's image and the manager's, and the SSD's its own. Each is loaded through its own CPU, at its own system controller's `boot_address`. Or mix them: a board can boot one CPU from its ROM and load another the quick way.
-- `tests/python/test_m14_exit.py` is a complete example, and `tests/python/cast.py` has the loading for three CPUs in one function.
+- `tests/python/test_rom_boot.py` is a complete example, and `tests/python/cast.py` has the loading for three CPUs in one function.
 
 ## Booting OpenSBI
 
@@ -574,7 +574,7 @@ What is different from booting Zephyr:
 - **From the flash**, `opensbi.flash_image(layout)` is the whole layout as one boot image, its argument the devicetree's address, which the ROM hands on in `a1`. It is 2 MiB of zeros and a little more, which the ROM checks in about four seconds of the CPU's time, three on the clock on the wall.
 - **About a second of the CPU's time** passes before the payload runs: most of it is OpenSBI's banner, a character at a time through a UART on the other die. The wall clock says about the same.
 - ⚠️ **A reboot from the quick way does not come back.** Nothing loads RAM again, and `fw_jump` started a second time finds its choice of which hart boots already made. To see a reboot, boot from the flash, where the ROM copies OpenSBI afresh.
-- `tests/python/test_m23_exit.py` boots both ways, with OpenSBI's payload and with ours, which takes a timer interrupt, has a misaligned load made for it, reboots once and is then switched off.
+- `tests/python/test_opensbi_boots.py` boots both ways, with OpenSBI's payload and with ours, which takes a timer interrupt, has a misaligned load made for it, reboots once and is then switched off.
 
 ## Booting UEFI
 
@@ -645,7 +645,7 @@ What is different from booting OpenSBI's payloads:
 - **Its variables are kept in RAM** and forgotten at reset: there is no flash UEFI can write them to. The boot manager registers the shell as a boot option again at each boot, so nothing is lost that a test needs.
 - ⚠️ **A line of exclamation marks for most drivers it loads**, `Image Section Alignment(0x40) does not match Required Alignment (0x1000)`, is EDK2's own build for RISC-V, which links its modules with sections too close together to protect. The boot is unaffected ([upstream.md](upstream.md)).
 - **Nothing of the AIA.** EDK2 has no driver for the APLIC or the IMSIC, so its console is polled and its only interrupt is the timer's.
-- `tests/python/test_m28_exit.py` boots both ways, types `ver` and `memmap`, and resets from the flash.
+- `tests/python/test_uefi_boots.py` boots both ways, types `ver` and `memmap`, and resets from the flash.
 
 ## Booting Linux
 
@@ -708,7 +708,7 @@ ms     who   said
 - ⚠️ **A reset reaches the CPU and nothing else.** The interrupt controllers and every other device are left as they were, as on many real chips whose watchdog resets the core alone. Zephyr's drivers set up what they use, so it comes up. Firmware that trusts a device to be as it was at power-on would be wrong here.
 - **A watchdog that has bitten is off**, and at zero, as it is at power-on: that much it does for itself. After a reset the firmware asked for it is still running as it was set up, and firmware that starts again feeds it or sets it up again.
 - ⚠️ **Zephyr cannot switch this watchdog off.** `wdt_disable()` on SiFive's watchdog gives it its longest period, about eighteen hours, and leaves it running ([watchdog.md](models/watchdog.md)).
-- `tests/python/test_m14_exit.py` holds all of it, on the host and on the SSD.
+- `tests/python/test_rom_boot.py` holds all of it, on the host and on the SSD.
 
 ## Debugging three CPUs at once
 

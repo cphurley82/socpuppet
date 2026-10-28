@@ -190,7 +190,7 @@ What the host does to the drive does need root: binding and unbinding Linux's dr
 
 ```sh
 sudo PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -p no:cacheprovider \
-    tests/python/test_pciem_contract.py tests/python/test_m31_exit.py tests/python/test_drive_command.py -v -rs
+    tests/python/test_pciem_contract.py tests/python/test_this_machines_linux_mounts_the_ssd.py tests/python/test_drive_command.py -v -rs
 ```
 
 💡 sudo leaves `uv` behind, so the venv's Python runs pytest itself, and the two settings keep root from leaving files of its own in the checkout. ⚠️ A line in `/etc/sudoers.d/` that lets your user run anything as root without a password works too, and lets every program you run do the same; keep it to a machine that is only for this.

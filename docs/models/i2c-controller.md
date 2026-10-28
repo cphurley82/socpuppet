@@ -78,4 +78,4 @@ io_i2c: i2c@100f1000 {
 
 📮 Zephyr's `i2c_sifive` had two faults that silicon would show as well: it sent a device's address unshifted, and it started every message of a transfer again. Two patches put them right, and [upstream.md](../upstream.md) has both.
 
-Zephyr's own `tests/drivers/i2c/i2c_ram` passes against Python's RAM, its RTIO cases too (`tests/python/test_m18_exit.py`, and twister). `tests/cpp/unit/i2c_controller_logic_test.cpp` holds the logic, `tests/cpp/platform/i2c_controller_test.cpp` the wrapper's time and thread, and `tests/python/test_i2c_controller.py` a script driving it as firmware would.
+Zephyr's own `tests/drivers/i2c/i2c_ram` passes against Python's RAM, its RTIO cases too (`tests/python/test_zephyr_peripheral_samples.py`, and twister). `tests/cpp/unit/i2c_controller_logic_test.cpp` holds the logic, `tests/cpp/platform/i2c_controller_test.cpp` the wrapper's time and thread, and `tests/python/test_i2c_controller.py` a script driving it as firmware would.

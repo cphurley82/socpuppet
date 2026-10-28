@@ -103,6 +103,6 @@ io_gpio_leds: io_gpio_leds {
 
 💡 The GPIO is SiFive's, borrowed from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) by Minres, behind the adapter `src/socpuppet/models/gpio.cpp`, which is the far end of its pins. The borrowed model had the interrupt registers and nothing behind them, and its pull-ups did nothing: two patches add both, and [upstream.md](../upstream.md) has them, with what was read and left alone. 📮 Zephyr's driver asked a PLIC which pin interrupted, and a third patch, to Zephyr, hands each pin's handler its pin.
 
-Zephyr's own `tests/drivers/gpio/gpio_basic_api` passes, with 🧵 Python's wire from pin 0 to pin 1 (`host(gpio_wires=...)`, or the shield `socpuppet_host_gpio_loopback` under `socpuppet run` and twister): its pins read and written, its pull-up read, and its interrupts of each kind (`tests/python/test_m18_exit.py`). So does `samples/basic/blinky`, which turns the host's LED on and off each second.
+Zephyr's own `tests/drivers/gpio/gpio_basic_api` passes, with 🧵 Python's wire from pin 0 to pin 1 (`host(gpio_wires=...)`, or the shield `socpuppet_host_gpio_loopback` under `socpuppet run` and twister): its pins read and written, its pull-up read, and its interrupts of each kind (`tests/python/test_zephyr_peripheral_samples.py`). So does `samples/basic/blinky`, which turns the host's LED on and off each second.
 
 `tests/cpp/contracts/gpio_contract.h` holds the GPIO to what Zephyr's driver relies on, and `tests/python/test_gpio.py` holds Python's end of the pins.

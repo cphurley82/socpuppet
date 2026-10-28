@@ -48,7 +48,7 @@ tests/drivers/rtc/rtc_api
 
 # The sample that blinks the board's LED, on a pin of the host's GPIO.
 # Twister builds it but does not run it: its harness watches a real LED.
-# tests/python/test_m18_exit.py watches the pin instead.
+# tests/python/test_zephyr_peripheral_samples.py watches the pin instead.
 samples/basic/blinky
 
 # The console both ways, and the C library.

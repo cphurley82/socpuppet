@@ -548,7 +548,7 @@ def three_cpus_with_roms(firmware):
 @pytest.mark.platform
 class TestWhenAllThreeCpusOfAHostBootFromTheirRoms:
     # What the three firmwares then do is M8's, and its exit test runs
-    # this way too (test_m8_exit.py).
+    # this way too (test_full_bootchain.py).
 
     def test_nothing_is_in_any_cpus_ram_before_it_runs(
         self, three_cpus_with_roms, firmware

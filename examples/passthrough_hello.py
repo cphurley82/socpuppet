@@ -8,8 +8,8 @@ out a Python script of bus operations, and the die-to-die link is a stand-in
 that passes everything straight through. The rest (the router and the
 memory) is real, so this is already enough to rehearse a memory map.
 
-Run it:                    python examples/m0_passthrough.py
-See its devicetree:        socpuppet devicetree examples/m0_passthrough.py
+Run it:                    python examples/passthrough_hello.py
+See its devicetree:        socpuppet devicetree examples/passthrough_hello.py
 """
 
 import socpuppet as sp
