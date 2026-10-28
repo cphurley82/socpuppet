@@ -270,8 +270,9 @@ def compatibles_the_drivers_are_for():
 
 #: The vendors of the module's bindings that Zephyr's own list of prefixes
 #: has: the RISC-V IOMMU's binding is the module's, and its vendor is the
-#: one the specification gives it.
-ZEPHYRS_OWN_VENDORS = {"riscv"}
+#: one the specification gives it; and the Goldfish real-time clock's is
+#: Google's, as QEMU and Linux have it.
+ZEPHYRS_OWN_VENDORS = {"riscv", "google"}
 
 
 def vendors_zephyr_is_told_of():
