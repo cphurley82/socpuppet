@@ -10,7 +10,8 @@ namespace socpuppet {
 
 // A NOR flash chip on an SPI bus, of Winbond's W25Q kind.
 //
-// `size` is how many bytes the chip holds.
+// `size` is how many bytes the chip holds: a power of two, as every W25Q
+// part's is.
 class SpiNorChip : public SpiDevice {
  public:
   explicit SpiNorChip(std::size_t size);
@@ -20,6 +21,8 @@ class SpiNorChip : public SpiDevice {
   void Deselect() override;
 
  private:
+  // How many bytes the chip holds, a power of two.
+  std::size_t size_;
   // The frame's first byte, which says what the rest of it is.
   std::uint8_t command_ = 0;
   // How many bytes of the frame have been sent so far.
