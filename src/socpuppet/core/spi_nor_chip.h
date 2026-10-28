@@ -35,7 +35,8 @@ class SpiNorChip : public SpiDevice {
   // How many bytes of the frame have been sent so far.
   std::size_t position_ = 0;
   // The address a command was sent, gathered a byte at a time, then the
-  // address of the next byte it reads.
+  // address of the next byte it reads, as sent: the chip ignores the bits
+  // above its size when it uses it.
   std::size_t address_ = 0;
 };
 
