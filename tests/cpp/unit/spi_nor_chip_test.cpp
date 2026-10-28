@@ -15,6 +15,7 @@ namespace {
 using ::testing::_;
 using ::testing::ElementsAre;
 
+constexpr std::size_t kEightMebibytes = 8 * 1024 * 1024;
 constexpr std::size_t kSixteenMebibytes = 16 * 1024 * 1024;
 
 // One frame: chip select down, `sent` out a byte at a time, chip select
@@ -36,6 +37,12 @@ TEST(WhenASixteenMebibyteChipIsAskedForItsJedecId, ItAnswersEf4018) {
   SpiNorChip chip{kSixteenMebibytes};
 
   EXPECT_THAT(Frame(chip, {0x9F, 0, 0, 0}), ElementsAre(_, 0xEF, 0x40, 0x18));
+}
+
+TEST(WhenAnEightMebibyteChipIsAskedForItsJedecId, ItsCapacityByteIs17) {
+  SpiNorChip chip{kEightMebibytes};
+
+  EXPECT_THAT(Frame(chip, {0x9F, 0, 0, 0}), ElementsAre(_, _, _, 0x17));
 }
 
 }  // namespace socpuppet
