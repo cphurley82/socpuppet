@@ -10,6 +10,7 @@ target_sources(socpuppet_regs INTERFACE
     ${_socpuppet_regs}/socpuppet/regs/command_device.h
     ${_socpuppet_regs}/socpuppet/regs/dma_engine.h
     ${_socpuppet_regs}/socpuppet/regs/flash_controller.h
+    ${_socpuppet_regs}/socpuppet/regs/i2c_controller.h
     ${_socpuppet_regs}/socpuppet/regs/nvme_frontend.h
     ${_socpuppet_regs}/socpuppet/regs/system_controller.h
     ${_socpuppet_regs}/socpuppet/regs/ucie_link.h
@@ -26,6 +27,7 @@ target_sources(socpuppet_core INTERFACE
   FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
     core/block_store.h
     core/command_status.h
+    core/i2c_device.h
     core/interrupt_file.h
     core/interrupt_requests.h
     core/link_channel.h
@@ -95,6 +97,17 @@ target_sources(socpuppet_ssd_devices PUBLIC
 target_link_libraries(socpuppet_ssd_devices PUBLIC socpuppet_regs)
 socpuppet_dev_checks(socpuppet_ssd_devices)
 target_link_libraries(socpuppet_core INTERFACE socpuppet_ssd_devices)
+
+# What an I2C controller does: its registers, and the commands it carries
+# out on its bus.
+add_library(socpuppet_i2c_controller_logic STATIC
+  core/i2c_controller_logic.cpp)
+target_sources(socpuppet_i2c_controller_logic PUBLIC
+  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+    core/i2c_controller_logic.h)
+target_link_libraries(socpuppet_i2c_controller_logic PUBLIC socpuppet_regs)
+socpuppet_dev_checks(socpuppet_i2c_controller_logic)
+target_link_libraries(socpuppet_core INTERFACE socpuppet_i2c_controller_logic)
 
 # A NOR flash chip on an SPI bus, the device behind the boot flash's
 # controller.
