@@ -1218,6 +1218,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### 📮 Zephyr has no driver for the Goldfish real-time clock
+
+- **Where**: `drivers/rtc/`, which has drivers for many clocks and none for `google,goldfish-rtc`, though QEMU's `virt` machine has one, as Android's emulator does.
+- **What is wrong**: nothing; it is missing. Zephyr on QEMU's `riscv64` and `aarch64` `virt` machines cannot read the time of day the machine gives it.
+- **How to see it**: `tests/drivers/rtc/rtc_api` built for `socpuppet_host` without socpuppet's module: the clock's alias is there and no driver binds it, so the image does not link (`undefined reference to __device_dts_ord_...`).
+- **What we do**: socpuppet's Zephyr module has one, `drivers/rtc/rtc_goldfish.c`, with its binding, which sets and gets the time as Linux's `rtc-goldfish` does; its alarm is not offered.
+- **Upstream fix**: the driver and the binding, with the alarm, and the clock in the devicetrees of the `virt` boards.
+- **Kind**: missing feature.
+- **When it lands**: drop the module's driver and binding.
+
 ## SPDK
 
 [spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.

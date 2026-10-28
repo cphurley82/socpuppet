@@ -723,6 +723,32 @@ class TestWhenACpuHasAnI2cController:
         assert textwrap.indent(node, "\t\t") in platform.devicetree()
 
 
+class TestWhenACpuHasARealTimeClock:
+    def test_its_node_is_goldfishs_with_its_interrupt(self):
+        platform, bus, plic = cpu_with_its_peripherals()
+        rtc = platform.add("rtc", sp.Rtc())
+        bus.map(rtc.cpu, base=0x0010_4000)
+        platform.connect(rtc.irq, plic.source9)
+
+        node = textwrap.dedent(
+            """\
+            rtc: rtc@104000 {
+            \tcompatible = "google,goldfish-rtc";
+            \treg = <0x0 0x104000 0x0 0x1000>;
+            \tinterrupts-extended = <&plic 9 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree()
+
+    def test_it_is_the_alias_rtc(self):
+        # Zephyr's own test of a clock asks for its device by this alias.
+        platform, bus, _ = cpu_with_its_peripherals()
+        bus.map(platform.add("rtc", sp.Rtc()).cpu, base=0x0010_4000)
+
+        assert "\t\trtc = &rtc;\n" in platform.devicetree()
+
+
 class TestWhenACpuHasTwoWatchdogsOnItsBus:
     def test_the_one_at_the_lower_address_is_the_alias_watchdog0(self):
         # An alias names one device, as a role in `chosen` does, and goes

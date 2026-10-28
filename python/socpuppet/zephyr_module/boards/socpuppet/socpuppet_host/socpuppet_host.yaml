@@ -20,5 +20,6 @@ flash: 65536
 supported:
   - gpio
   - i2c
+  - rtc
   - spi
   - watchdog

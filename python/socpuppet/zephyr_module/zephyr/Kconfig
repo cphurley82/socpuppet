@@ -144,3 +144,16 @@ config SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE
 endchoice
 
 endif # SOCPUPPET_RISCV_IOMMU
+
+# The Goldfish real-time clock, which a socpuppet host has. Its driver is
+# built whenever the devicetree has the clock and the application wants a
+# clock.
+config SOCPUPPET_RTC_GOLDFISH
+	bool "Goldfish real-time clock"
+	default y
+	depends on DT_HAS_GOOGLE_GOLDFISH_RTC_ENABLED
+	depends on RTC
+	help
+	  The Goldfish real-time clock, which counts nanoseconds since 1970:
+	  the time is set and got through Zephyr's RTC API, and the alarm is
+	  not offered.

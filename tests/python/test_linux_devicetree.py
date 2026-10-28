@@ -257,6 +257,17 @@ class TestWhenACpuHasAnI2cControllerForLinux:
         assert '"sifive,i2c0"' not in platform.devicetree(dialect="linux")
 
 
+class TestWhenACpuHasARealTimeClockForLinux:
+    def test_linux_is_told_of_goldfishs(self):
+        # 🐧 Linux's rtc-goldfish is in the stock kernel.
+        platform, bus, _ = cpu_with_its_peripherals()
+        bus.map(platform.add("rtc", sp.Rtc()).cpu, base=0x0010_4000)
+
+        assert 'compatible = "google,goldfish-rtc";' in platform.devicetree(
+            dialect="linux"
+        )
+
+
 class TestWhenAPlatformHasAPcieRootComplexForLinux:
     def test_it_is_a_generic_ecam_host_and_nothing_of_zephyrs(self):
         # 🎓 ECAM is the standard layout of a PCIe configuration window, and

@@ -1,0 +1,14 @@
+description: |
+  The Goldfish real-time clock: the clock of Android's emulator, which
+  QEMU's `virt` machine has too, and which Linux's `rtc-goldfish` drives.
+  It counts nanoseconds since 1970. socpuppet's module has the driver.
+
+  Its interrupt is its alarm's, which the driver does not offer.
+
+compatible: "google,goldfish-rtc"
+
+include: [rtc-device.yaml]
+
+properties:
+  reg:
+    required: true

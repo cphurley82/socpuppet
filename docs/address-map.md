@@ -82,6 +82,7 @@ As one flat list, which is how the CPU (`compute.cpu.socket`) and its firmware s
 | `0x100D_0000` | 4 KiB | `io.boot_flash.socket` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000` |
 | `0x100F_0000` | 4 KiB | `io.gpio.socket` | [GPIO](models/gpio.md) | `compute.bus` from `0x1000_0000` |
 | `0x100F_1000` | 4 KiB | `io.i2c.cpu` | [I2C controller](models/i2c-controller.md) | `compute.bus` from `0x1000_0000` |
+| `0x100F_2000` | 4 KiB | `io.rtc.cpu` | [Real-time clock](models/rtc.md) | `compute.bus` from `0x1000_0000` |
 | `0x1020_0000` | 16 MiB | `io.boot_flash.xip` | [SPI flash](models/spi-flash.md) | `compute.bus` from `0x1000_0000`, then `io.bus` from `0x1020_0000` |
 | `0x2400_0000` | 4 KiB | `compute.imsic.machine` | [Interrupt controller (IMSIC)](models/imsic.md) | |
 | `0x2800_0000` | 4 KiB | `compute.imsic.supervisor` | [Interrupt controller (IMSIC)](models/imsic.md) | |
@@ -117,6 +118,7 @@ The interrupt lines of the board with no drive:
 | `io.aplic` | 28 | `io.gpio.irq3` |
 | `io.aplic` | 29 | `io.boot_flash.irq` |
 | `io.aplic` | 30 | `io.i2c.irq` |
+| `io.aplic` | 31 | `io.rtc.irq` |
 
 <!-- interrupts:host end -->
 
@@ -318,6 +320,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 | `io.aplic` | 28 | `io.gpio.irq3` |
 | `io.aplic` | 29 | `io.boot_flash.irq` |
 | `io.aplic` | 30 | `io.i2c.irq` |
+| `io.aplic` | 31 | `io.rtc.irq` |
 | `ssd.cpu` | 7 | `ssd.timer.irq` |
 | `ssd.cpu` | 11 | `ssd.plic.irq` |
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |

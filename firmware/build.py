@@ -211,6 +211,9 @@ IMAGES = [
         "socpuppet_host",
         "socpuppet_host_i2c_ram",
     ),
+    # Zephyr's test of a real-time clock, on the host's, with socpuppet's
+    # driver for it.
+    Image("tests/drivers/rtc/rtc_api", "socpuppet_host"),
     # Zephyr's own sample that blinks a board's LED, on the GPIO's pin.
     Image("samples/basic/blinky", "socpuppet_host"),
     # Asks for a reset and then stops feeding its watchdog, and says why

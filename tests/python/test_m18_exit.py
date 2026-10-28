@@ -44,6 +44,8 @@ GPIO_BASIC_API = "gpio_basic_api_socpuppet_host.elf"
 #: Zephyr's `tests/drivers/i2c/i2c_ram`, with the shield that names the
 #: I2C controller whose bus its RAM is on.
 I2C_RAM = "i2c_ram_socpuppet_host.elf"
+#: Zephyr's `tests/drivers/rtc/rtc_api`, which finds the clock by its alias.
+RTC_API = "rtc_api_socpuppet_host.elf"
 #: Zephyr's `samples/basic/blinky`, which blinks the board's LED.
 BLINKY = "blinky_socpuppet_host.elf"
 #: What the sample says when it passes, in order: its `sample.yaml` has them
@@ -67,6 +69,10 @@ LOOPBACK_LIMIT = sp.ms(1000)
 #: taking their time on a bus of 100 kHz; about six times that still ends
 #: a run that never gives one.
 I2C_LIMIT = sp.ms(100)
+#: The clock's test gives its verdict at 12.0 s of simulated time, ten
+#: seconds of it watching the clock count; about twice that still ends a
+#: run that never gives one.
+RTC_LIMIT = sp.ms(25_000)
 #: Blinky turns its LED over a second apart, from boot on: its four
 #: changes take two seconds, and twice that ends a run that never makes
 #: them.
@@ -179,6 +185,20 @@ class TestWhenZephyrsI2cRamTestIsRunAsTwisterRunsIt:
         )
 
         assert ztest.parse(result.stdout).passed, result.stdout
+
+
+@pytest.mark.platform
+class TestWhenZephyrsRtcTestRuns:
+    def test_it_gives_a_verdict_and_nothing_failed(self, firmware):
+        board = host()
+        boot(board, firmware, host=RTC_API)
+
+        board.platform.run_until(
+            lambda: ztest.verdict_of(board.uart.output) is not None,
+            timeout=RTC_LIMIT,
+        )
+
+        assert ztest.parse(board.uart.output).passed, board.uart.output
 
 
 class TestWhenZephyrsGpioTestIsRunAsTwisterRunsIt:

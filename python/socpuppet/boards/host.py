@@ -77,6 +77,7 @@ See its devicetree:     socpuppet devicetree <this file>
 
 from __future__ import annotations
 
+import datetime
 import os
 import sys
 import textwrap
@@ -121,6 +122,7 @@ from socpuppet.components import (
     PcieRootComplex,
     QboxCpu,
     Router,
+    Rtc,
     SpiFlash,
 )
 from socpuppet.i2c import I2cDevice
@@ -216,6 +218,12 @@ BOOT_FLASH_SOURCE = GPIO_FIRST_SOURCE + GPIO_PINS
 #: IO die's APLIC its line is, the number after the boot flash's.
 I2C_OFFSET = 0x0F_1000
 I2C_SOURCE = BOOT_FLASH_SOURCE + 1
+#: The real-time clock: where its registers are, counted from the start of
+#: the IO die's window, the page after the I2C controller's; and which
+#: source of the IO die's APLIC its line is, the number after the I2C
+#: controller's, which is the last a wire has (`DRIVE_IDENTITIES`).
+RTC_OFFSET = 0x0F_2000
+RTC_SOURCE = I2C_SOURCE + 1
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
 #: firmware writes one into the drive for each vector, and that is the
@@ -329,6 +337,8 @@ class Host[Drive: PcieDrive](NamedTuple):
     gpio: PlacedGpio
     #: The I2C controller on the IO die. 🧵 Its devices are Python's.
     i2c: Placed
+    #: The real-time clock on the IO die.
+    rtc: Placed
     #: The SSD and its way in, if the host was described with one.
     drive: HostDrive[Drive] | None = None
     #: The IO die's manager, if the host was described with one.
@@ -361,6 +371,7 @@ def host(
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
     i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -379,6 +390,7 @@ def host[Drive: PcieDrive](
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
     i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -396,6 +408,7 @@ def host(
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
     gpio_wires: Mapping[int, int] = MappingProxyType({}),
     i2c_devices: Mapping[int, I2cDevice] = MappingProxyType({}),
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -463,6 +476,8 @@ def host(
     `gpio_wires` are wires between the GPIO's pins, from a pin to the pin
     it drives, 0 to 3 (`sp.Gpio`'s `wires`). And `i2c_devices` are on
     the I2C controller's bus, by address: Python's own (`socpuppet.i2c`).
+    `rtc_time` is what the real-time clock reads as the simulation
+    starts (`sp.Rtc`'s `time`): 1970, unless told otherwise.
     """
     if boot is not None and ram < RAM_SIZE:
         raise ValueError(
@@ -513,6 +528,7 @@ def host(
         boot_flash_devices=boot_flash_devices,
         gpio_wires=gpio_wires,
         i2c_devices=i2c_devices,
+        rtc_time=rtc_time,
     )
     slots = (
         None
@@ -569,6 +585,7 @@ def host(
         io.boot_flash,
         io.gpio,
         io.i2c,
+        io.rtc,
         drive=(
             None
             if drive_blocks is None
@@ -684,6 +701,7 @@ class _IoDie(NamedTuple):
     boot_flash: Placed
     gpio: PlacedGpio
     i2c: Placed
+    rtc: Placed
     #: The way to the flash's window. A socket takes one connection, and
     #: the flash has two readers when the die has a manager, so each comes
     #: in by an input of this.
@@ -698,6 +716,7 @@ def _io_die(
     boot_flash_devices: Mapping[int, SpiDevice],
     gpio_wires: Mapping[int, int],
     i2c_devices: Mapping[int, I2cDevice],
+    rtc_time: datetime.datetime | int,
 ) -> _IoDie:
     """Describe the die the devices are on, up to its end of the link."""
     bus = place.add("bus", Router())
@@ -716,6 +735,8 @@ def _io_die(
     bus.map(gpio.socket, base=GPIO_OFFSET)
     i2c = place.add("i2c", I2cController(devices=i2c_devices))
     bus.map(i2c.cpu, base=I2C_OFFSET)
+    rtc = place.add("rtc", Rtc(time=rtc_time))
+    bus.map(rtc.cpu, base=RTC_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
     # The flash is where every socpuppet CPU has its own, which for this
     # die's devices is a place in the window the compute die sees them in.
@@ -739,8 +760,11 @@ def _io_die(
             getattr(aplic, f"source{GPIO_FIRST_SOURCE + pin}"),
         )
     platform.connect(i2c.irq, getattr(aplic, f"source{I2C_SOURCE}"))
+    platform.connect(rtc.irq, getattr(aplic, f"source{RTC_SOURCE}"))
     platform.connect(aplic.msi, up.target)
-    return _IoDie(bus, uart, aplic, up, boot_flash, gpio, i2c, boot_flash_bus)
+    return _IoDie(
+        bus, uart, aplic, up, boot_flash, gpio, i2c, rtc, boot_flash_bus
+    )
 
 
 def _drive[Drive: PcieDrive](

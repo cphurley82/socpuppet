@@ -41,6 +41,7 @@
 #include "socpuppet/models/qbox_cpu.h"
 #endif
 #include "socpuppet/models/rom.h"
+#include "socpuppet/models/rtc.h"
 #include "socpuppet/models/scripted_bus_master.h"
 #include "socpuppet/models/spi_flash.h"
 #include "socpuppet/models/system_controller.h"
@@ -494,6 +495,14 @@ Registry BuiltinComponents() {
                        return WireSourcePort(std::move(port), line,
                                              /*required=*/false);
                      });
+    return Instance{.module = std::move(module), .ports = std::move(ports)};
+  });
+  registry.Add("rtc", [](const char* name, Parameters& parameters) {
+    auto module = std::make_unique<Rtc>(name, parameters.Required("time_ns"));
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        // Firmware that sets no alarm needs no line.
+        WireSourcePort("irq", module->irq, /*required=*/false)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("watchdog", [](const char* name, Parameters&) {

@@ -17,6 +17,7 @@ its ports are a tuple of `PortSpec`:
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import inspect
 import os
 from abc import ABC, abstractmethod
@@ -1909,6 +1910,80 @@ class I2cController(Component):
                 "#size-cells = <0>;",
                 f"clock-frequency = <{self.BUS_HZ}>;",
             ),
+        )
+
+
+class Rtc(Component):
+    """A real-time clock: the time of day, and an alarm.
+
+    🎓 A CPU counts time from when it started, and forgets it when it
+    stops. A real-time clock keeps the date and time, on a battery of its
+    own on a real board, and an operating system sets its own clock from
+    it as it starts.
+
+    This is the Goldfish real-time clock: not a chip, but the clock of
+    Android's emulator, which QEMU's `virt` machine has too, and which
+    Linux's `rtc-goldfish` drives. Map `cpu`, its registers, on a bus;
+    `irq` is its interrupt, up when its alarm has gone off.
+
+    `time` is what it reads as the simulation starts: a `datetime` with a
+    time zone, or nanoseconds since 1970. It goes on with the simulated
+    time, not the wall's. By default it is 1970 itself, as a clock whose
+    battery was never in reads.
+    """
+
+    implementation = "rtc"
+    port_specs = (
+        target("cpu"),
+        # Firmware that sets no alarm needs no line.
+        wire_out("irq", required=False),
+    )
+    #: The registers take a page.
+    mapped_size = 0x1000
+
+    time: datetime.datetime | int = not_a_parameter(default=0)
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.time, datetime.datetime)
+            and self.time.tzinfo is None
+        ):
+            raise ValueError(
+                f"A clock's time {self.time} has no time zone, so which "
+                "moment it is cannot be told. Give it one: "
+                "datetime.datetime(..., tzinfo=datetime.UTC)."
+            )
+        if self._time_ns < 0:
+            raise ValueError(
+                "A clock counts from 1970, and cannot be set before it; "
+                f"{self.time} was asked for."
+            )
+
+    @property
+    def _time_ns(self) -> int:
+        """The time it is given, in nanoseconds since 1970."""
+        if isinstance(self.time, datetime.datetime):
+            since = self.time - datetime.datetime(
+                1970, 1, 1, tzinfo=datetime.UTC
+            )
+            return since // datetime.timedelta(microseconds=1) * 1_000
+        return self.time
+
+    @property
+    @override
+    def parameters(self) -> dict[str, int]:
+        return {**super().parameters, "time_ns": self._time_ns}
+
+    @override
+    def device_node(
+        self, reached: Mapping[str, Reached], *, dialect: Dialect
+    ) -> DeviceNode:
+        return DeviceNode(
+            "rtc",
+            ((reached["cpu"].address, self.mapped_size),),
+            ('compatible = "google,goldfish-rtc";',),
+            # Zephyr's own test of a clock looks for this name.
+            aliases=("rtc",),
         )
 
 
