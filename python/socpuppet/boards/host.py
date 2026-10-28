@@ -219,6 +219,14 @@ DRIVE_IDENTITIES = tuple(range(32, 32 + VECTORS))
 #: The chip select on the boot flash's bus that the shield
 #: `socpuppet_host_spi_loopback` puts its devices at.
 SPI_LOOPBACK_CHIP_SELECT = 1
+#: The GPIO's pins that the shield `socpuppet_host_gpio_loopback` has a wire
+#: between: the one a test drives, and the one it reads.
+GPIO_LOOPBACK_OUT = 0
+GPIO_LOOPBACK_IN = 1
+#: The shield's wire, as `host(gpio_wires=...)` takes it.
+GPIO_LOOPBACK_WIRES: Mapping[int, int] = MappingProxyType(
+    {GPIO_LOOPBACK_OUT: GPIO_LOOPBACK_IN}
+)
 
 
 class PcieDrive(Protocol):
@@ -334,6 +342,7 @@ def host(
     virtio: Virtio | None = None,
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
+    gpio_wires: Mapping[int, int] = MappingProxyType({}),
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host[Drive: PcieDrive](
@@ -350,6 +359,7 @@ def host[Drive: PcieDrive](
     virtio: Virtio | None = None,
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
+    gpio_wires: Mapping[int, int] = MappingProxyType({}),
 ) -> Host[Drive]: ...
 def host(
     *,
@@ -365,6 +375,7 @@ def host(
     virtio: Virtio | None = None,
     iommu: bool = False,
     boot_flash_devices: Mapping[int, SpiDevice] = MappingProxyType({}),
+    gpio_wires: Mapping[int, int] = MappingProxyType({}),
 ) -> Host[Any]:
     """Describe the host. Nothing is simulated until `platform.build()`.
 
@@ -428,7 +439,9 @@ def host(
     it the drive reaches all of memory, as it always has.
 
     🧵 `boot_flash_devices` are on the boot flash's SPI bus beside its chip,
-    by chip select, 1 to 3: Python's own devices (`socpuppet.spi`).
+    by chip select, 1 to 3: Python's own devices (`socpuppet.spi`). And
+    `gpio_wires` are wires between the GPIO's pins, from a pin to the pin
+    it drives, 0 to 3 (`sp.Gpio`'s `wires`).
     """
     if boot is not None and ram < RAM_SIZE:
         raise ValueError(
@@ -477,6 +490,7 @@ def host(
         io_group,
         messages_to=messages_to,
         boot_flash_devices=boot_flash_devices,
+        gpio_wires=gpio_wires,
     )
     slots = (
         None
@@ -658,6 +672,7 @@ def _io_die(
     *,
     messages_to: int,
     boot_flash_devices: Mapping[int, SpiDevice],
+    gpio_wires: Mapping[int, int],
 ) -> _IoDie:
     """Describe the die the devices are on, up to its end of the link."""
     bus = place.add("bus", Router())
@@ -669,7 +684,7 @@ def _io_die(
         SpiFlash(size=BOOT_FLASH_SIZE, devices=boot_flash_devices),
     )
     boot_flash_bus = place.add("boot_flash_bus", Router())
-    gpio = place.add("gpio", Gpio(pins=GPIO_PINS))
+    gpio = place.add("gpio", Gpio(pins=GPIO_PINS, wires=gpio_wires))
     bus.map(uart.socket, base=UART_OFFSET)
     bus.map(gpio.socket, base=GPIO_OFFSET)
     bus.map(aplic.socket, base=APLIC_OFFSET)
@@ -828,6 +843,31 @@ def spi_loopback_overlay() -> str:
         \t\tcompatible = "test-spi-loopback-fast";
         \t\treg = <{cs}>;
         \t\tspi-max-frequency = <{fastest}>;
+        \t}};
+        }};
+        """
+    )
+
+
+def gpio_loopback_overlay() -> str:
+    """The devicetree that Zephyr's `gpio_basic_api` test wants of the host.
+
+    It is the overlay of the Zephyr shield `socpuppet_host_gpio_loopback`:
+    the test's two pins on the GPIO, the one it drives and the one it
+    reads, which 🧵 a wire of Python's joins (`host(gpio_wires=...)`).
+
+    The shield's copy is checked in, and a test holds it to this. To write
+    the file again, print what this returns into it, with no newline added,
+    as for `drive_overlay`.
+    """
+    gpio = devicetree.label(host().gpio.path)
+    return textwrap.dedent(
+        f"""\
+        / {{
+        \tresources {{
+        \t\tcompatible = "test-gpio-basic-api";
+        \t\tout-gpios = <&{gpio} {GPIO_LOOPBACK_OUT} 0>;
+        \t\tin-gpios = <&{gpio} {GPIO_LOOPBACK_IN} 0>;
         \t}};
         }};
         """

@@ -35,7 +35,8 @@ gpio.on_change(lambda pin, level: print(pin, level))
 
 - **`gpio.level(pin)`** says what the GPIO drives on a pin: `True`, `False`, or `None` while the pin is not an output.
 - **`gpio.drive(pin, level)`** drives a pin from outside: `True`, `False`, or `None` to let it go. Firmware reads it a delta cycle on, the next instant of the simulation at the same time.
-- **`gpio.on_change(listener)`** has `listener(pin, level)` told of each change of what a pin drives, in order, a delta cycle after firmware made it. It is called from the GPIO's own process, never from the CPU's, so it may `drive` a pin in answer: a wire from one pin to another is `lambda pin, level: gpio.drive(1, level) if pin == 0 else None`.
+- **`gpio.on_change(listener)`** has `listener(pin, level)` told of each change of what a pin drives, in order, a delta cycle after firmware made it, after any listener added before it. It is called from the GPIO's own process, never from the CPU's, so it may `drive` a pin in answer.
+- **`sp.Gpio(wires={0: 1})`** is a wire from pin 0 to pin 1, set up as the platform is built: what the GPIO drives on pin 0 is on pin 1 too, as a board's loopback has it.
 
 ⚠️ `level` is the GPIO's side of a pin only. What `drive` puts on a pin is for firmware to read, and `level` does not show it.
 
@@ -62,11 +63,11 @@ gpio.on_change(lambda pin, level: print(pin, level))
 - **`value` of an output.** On silicon `value` reads the pin itself, so it follows what an output drives. Here it holds what the pin last read as an input.
 - **`input_en`.** A real pin whose input is disabled reads zero.
 - **Other blocks on a pin** (`iof_en`), such as a UART's or an SPI's lines.
-- **Timing.** What Python drives reads a delta cycle later, and a CPU running a quantum ahead of the clock sees it at the end of its quantum, up to 100 µs on. Zephyr's own GPIO test has a setting for wiring that is slow, `READ_DELAY`, which reads once more after a short sleep.
+- **Timing.** What Python drives reads a delta cycle later, and a CPU running a quantum ahead of the clock sees it at the end of its quantum, up to 100 µs on. Zephyr's own GPIO test has a setting for wiring that is slow, `READ_DELAY`, which reads once more after a short sleep: the shield `socpuppet_host_gpio_loopback` sets it to a millisecond.
 
 ## In a devicetree
 
-Zephyr's has the GPIO as `sifive,gpio0`, a `gpio-controller` with two cells to a pin, its pin and flags, `ngpios` from `pins`, and its interrupts the short way, `interrupt-parent` and `interrupts`, one for each pin brought out, in pin order. On the host:
+Zephyr's has the GPIO as `sifive,gpio0`, a `gpio-controller` with two cells to a pin, its pin and flags, `ngpios` from `pins`, and its interrupts the short way, `interrupt-parent` and `interrupts`, one for each pin brought out, in pin order: Zephyr's driver, with socpuppet's patch, gives pin n the node's interrupt n. On the host:
 
 ```dts
 io_gpio: gpio@100f0000 {
@@ -84,6 +85,8 @@ io_gpio: gpio@100f0000 {
 
 ## Under the hood
 
-💡 The GPIO is SiFive's, borrowed from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) by Minres, behind the adapter `src/socpuppet/models/gpio.cpp`, which is the far end of its pins. The borrowed model had the interrupt registers and nothing behind them, and its pull-ups did nothing: two patches add both, and [upstream.md](../upstream.md) has them, with what was read and left alone.
+💡 The GPIO is SiFive's, borrowed from [VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals) by Minres, behind the adapter `src/socpuppet/models/gpio.cpp`, which is the far end of its pins. The borrowed model had the interrupt registers and nothing behind them, and its pull-ups did nothing: two patches add both, and [upstream.md](../upstream.md) has them, with what was read and left alone. 📮 Zephyr's driver asked a PLIC which pin interrupted, and a third patch, to Zephyr, hands each pin's handler its pin.
+
+Zephyr's own `tests/drivers/gpio/gpio_basic_api` passes, with 🧵 Python's wire from pin 0 to pin 1 (`host(gpio_wires=...)`, or the shield `socpuppet_host_gpio_loopback` under `socpuppet run` and twister): its pins read and written, its pull-up read, and its interrupts of each kind (`tests/python/test_m18_exit.py`).
 
 `tests/cpp/contracts/gpio_contract.h` holds the GPIO to what Zephyr's driver relies on, and `tests/python/test_gpio.py` holds Python's end of the pins.
