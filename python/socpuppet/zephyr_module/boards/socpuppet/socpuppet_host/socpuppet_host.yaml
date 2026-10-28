@@ -18,4 +18,5 @@ toolchain:
 ram: 65536
 flash: 65536
 supported:
+  - spi
   - watchdog

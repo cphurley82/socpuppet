@@ -32,9 +32,11 @@ tests/drivers/watchdog/wdt_basic_api
 tests/subsys/shell/shell
 tests/lib/c_lib
 
-# Two samples, judged by what they print.
+# Samples, judged by what they print.
 samples/hello_world -K
 samples/synchronization -K
+# The host's boot flash, through Zephyr's spi_sifive and spi_nor.
+samples/drivers/spi_flash
 
 # socpuppet's own applications, each on the board it is for: every
 # directory under firmware/ that has a testcase.yaml.
