@@ -36,8 +36,8 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M29 | A cable to this machine, and ssh | M20, M31 | Linux boots with its network card bridged to this machine's network, with no root needed; `ssh` from this machine answers `uname -a`, on both harts; a file sent by `scp` is read back at the console (`test_m29_exit.py`, [models/ethernet-cable.md](models/ethernet-cable.md)) | ✅ |
 | M17 | Ethernet | M13, M20, M29 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | deferred 2026-10-27 |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed, untranslated and through page tables; DMA to an unmapped page is a fault record and an interrupt; then the root on the drive in a context Linux's own IOMMU driver programmed (`test_m15_exit.py`, [models/iommu.md](models/iommu.md)) | ✅ |
-| M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | 🚧 next |
-| M18 | The small essentials: GPIO, SPI, I2C, RTC, TRNG | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the RTC and TRNG under Linux's drivers | |
+| M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers | 🚧 next |
+| M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | |
 | M16 | SHRM and the two-socket board | M13 | two hosts in one simulation: one writes into memory the other's SHRM lent it, and the other reads it on its console | |
 | M9 | Realistic NAND and garbage collection | M4 | M4's and M6's tests pass under sustained writes | |
 | M10 | Validation scenarios | M8, M9 | the scenario suite | |
@@ -68,7 +68,7 @@ M8 ─┬─ M12 (NPU gate)
                                                                                                                                                    └─ M18 the small essentials
 ```
 
-The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the branches are independent, and the suggested order was M24, M29, M17, M15, M19, M18, then Phase 7 in any order; M24 is done. On 2026-10-22 the maintainer put M30 and M31 first, and M29 after them because both need the same thing: a loop that waits on the wall while the CPU sleeps and looks at a file descriptor meanwhile, which `interact` did for the keyboard and M31's pump now does for `/dev/pciem` too; M30, M31 and M29 are done. On 2026-10-27 the maintainer deferred M17 and took M15 next, since Linux asks for an IOMMU and not for a second network card ([history/decisions.md](history/decisions.md)); M15 is done. M29 came before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
+The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the branches are independent, and the suggested order was M24, M29, M17, M15, M19, M18, then Phase 7 in any order; M24 is done. On 2026-10-22 the maintainer put M30 and M31 first, and M29 after them because both need the same thing: a loop that waits on the wall while the CPU sleeps and looks at a file descriptor meanwhile, which `interact` did for the keyboard and M31's pump now does for `/dev/pciem` too; M30, M31 and M29 are done. On 2026-10-27 the maintainer deferred M17 and took M15 next, since Linux asks for an IOMMU and not for a second network card ([history/decisions.md](history/decisions.md)); M15 is done. The same day the maintainer took M18 before M19. M29 came before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
 
 ## How a milestone is done
 
@@ -81,6 +81,18 @@ A milestone's steps are planned when it starts, one `/tdd` session each, and liv
 
 ## What is next
 
+### M18: the small essentials
+
+The parts every board has and no milestone has needed, one `/tdd` session each: a contract or unit tests first, a model page, a Zephyr sample that passes, Python at the far end of the wires. All four go on the host's IO die, where Linux is.
+
+- **SPI**: VPV-Peripherals' SiFive SPI controller, behind an adapter of ours, becomes the boot flash's controller, and the flash chip is ours, a JEDEC NOR flash written against QEMU's `m25p80` as the reference. So the flash gets the read command it lacked, under Zephyr's `spi_nor` and Linux's `spi-nor` alike. 🧵 A second chip select is Python's.
+- **GPIO**: VPV-Peripherals' SiFive GPIO behind an adapter, with the interrupts it lacks added by a patch; Zephyr's driver asks a PLIC which pin fired, and the host has none, so it gets a patch too. 🧵 Python holds the pins.
+- **I2C**: ours and small, with the OpenCores controller's registers, which Zephyr drives as SiFive's; 🎭 a Python script plays the device at the other end.
+- **RTC**: ours, with the Goldfish clock's registers, which Linux drives; it tells the time Python gives it. Zephyr's driver is ours.
+- 🦜 **No TRNG.** 🎭 The virtio entropy device already is one: seeded from Python, run under Zephyr's entropy test, and read as `/dev/hwrng` under Linux's own driver since M20 ([history/decisions.md](history/decisions.md), 2026-10-27).
+
+Exit: Zephyr's own sample or test for each passes; Linux reads the boot flash through `spi-nor`, and `date` reads the time Python gave the RTC.
+
 ### M19: AI processor
 
 M12's gate chose 🎭 a behavioral NPU of ours, a simplified model on the compute die with its arithmetic in Python ([history/npu-spike.md](history/npu-spike.md)). What the host's firmware does is what it would do with any NPU: describe the work, ring a doorbell, wait for an interrupt.
@@ -90,17 +102,6 @@ M12's gate chose 🎭 a behavioral NPU of ours, a simplified model on the comput
 - 🦜 **Not QBox's Hexagon**, which the spike also ran; it stays a candidate for an optional, from-source component later, behind the same doorbell.
 
 Exit: an inference whose weights were read from flash, whose data went through the IOMMU, whose completion was an interrupt message, and whose answer Python checks against numpy's. Then the same inference from Linux user space, through a UIO driver written here.
-
-### M18: the small essentials
-
-The parts every board has and no milestone has needed, one `/tdd` session each: a contract or unit tests first, a model page, a Zephyr sample that passes, Python at the far end of the wires.
-
-- **GPIO and SPI**: VPV-Peripherals' SiFive blocks behind adapters; Zephyr and Linux both have drivers. With a driver that speaks SPI, the boot flash gets the read command it lacks.
-- **I2C**: ours and small, with the OpenCores controller's registers, which Linux drives; 🎭 a Python script plays the device at the other end.
-- **RTC**: ours, with the Goldfish clock's registers, which Linux drives; it tells the time Python gives it.
-- **TRNG**: one register, seeded from Python so a run can be had again, read through Linux's driver.
-
-Exit: Zephyr's own sample or test for each passes; `date` reads the time Python gave the RTC, and `/dev/hwrng` reads the seeded stream.
 
 ### M17: Ethernet
 
