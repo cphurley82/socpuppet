@@ -101,8 +101,9 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     // and not at all if more bytes come first; this one erases as the
     // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's
     // driver nor Zephyr's sends more, so none can tell.
-    if (position == kAddressBytes && ErasedBytes(command_) != 0) {
-      EraseBlock(ErasedBytes(command_));
+    const std::size_t erased = ErasedBytes(command_);
+    if (position == kAddressBytes && erased != 0 && write_enable_latch_) {
+      EraseBlock(erased);
     }
     return 0;
   }

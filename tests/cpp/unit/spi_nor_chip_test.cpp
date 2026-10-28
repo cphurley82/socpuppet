@@ -7,6 +7,7 @@
 #include <format>
 #include <initializer_list>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -62,8 +63,26 @@ struct Erase {
   std::size_t block;
 };
 
+// Each erase that takes an address, and the size of the block it erases.
+constexpr std::array<Erase, 3> kBlockErases{
+    Erase{.command = 0x20, .block = 4 * 1024},
+    Erase{.command = 0x52, .block = 32 * 1024},
+    Erase{.command = 0xD8, .block = 64 * 1024}};
+
+// A row of kBlockErases by its command and its block: Command20Erases4KiB.
+std::string BlockEraseName(const ::testing::TestParamInfo<Erase>& row) {
+  return std::format("Command{:02X}Erases{}KiB", row.param.command,
+                     row.param.block / 1024);
+}
+
 class WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock
     : public ::testing::TestWithParam<Erase> {};
+
+class WhenAChipIsErasedWithWritesDisabledAtAnAddressInsideABlock
+    : public ::testing::TestWithParam<Erase> {};
+
+class WhenAChipIsErasedWholeWithWritesEnabled
+    : public ::testing::TestWithParam<std::uint8_t> {};
 
 }  // namespace
 
@@ -185,16 +204,25 @@ TEST_P(WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
 
 INSTANTIATE_TEST_SUITE_P(
     EachEraseCommand, WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock,
-    ::testing::Values(Erase{.command = 0x20, .block = 4 * 1024},
-                      Erase{.command = 0x52, .block = 32 * 1024},
-                      Erase{.command = 0xD8, .block = 64 * 1024}),
-    [](const ::testing::TestParamInfo<Erase>& row) {
-      return std::format("Command{:02X}Erases{}KiB", row.param.command,
-                         row.param.block / 1024);
-    });
+    ::testing::ValuesIn(kBlockErases), BlockEraseName);
 
-class WhenAChipIsErasedWholeWithWritesEnabled
-    : public ::testing::TestWithParam<std::uint8_t> {};
+TEST_P(WhenAChipIsErasedWithWritesDisabledAtAnAddressInsideABlock,
+       TheBlockKeepsWhatItHolds) {
+  const Erase erase = GetParam();
+  SpiNorChip chip{kSixteenMebibytes};
+  const std::span<std::uint8_t> block =
+      chip.Bytes().subspan(erase.block, erase.block);
+  std::ranges::fill(block, 0x00);
+
+  SendWithAddress(chip, erase.command, erase.block + 0x123);
+
+  EXPECT_THAT(block, Each(0x00));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    EachEraseCommand,
+    WhenAChipIsErasedWithWritesDisabledAtAnAddressInsideABlock,
+    ::testing::ValuesIn(kBlockErases), BlockEraseName);
 
 TEST_P(WhenAChipIsErasedWholeWithWritesEnabled, EveryByteReadsAsErased) {
   SpiNorChip chip{kOneHundredTwentyEightKibibytes};
