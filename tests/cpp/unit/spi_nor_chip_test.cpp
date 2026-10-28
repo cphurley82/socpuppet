@@ -81,7 +81,18 @@ class WhenAChipIsErasedWithWritesEnabledAtAnAddressInsideABlock
 class WhenAChipIsErasedWithWritesDisabledAtAnAddressInsideABlock
     : public ::testing::TestWithParam<Erase> {};
 
+// Chip erase has two codes, and a chip answers either.
+constexpr std::array<std::uint8_t, 2> kChipErases{0xC7, 0x60};
+
+// A row of kChipErases by its command: CommandC7.
+std::string ChipEraseName(const ::testing::TestParamInfo<std::uint8_t>& row) {
+  return std::format("Command{:02X}", row.param);
+}
+
 class WhenAChipIsErasedWholeWithWritesEnabled
+    : public ::testing::TestWithParam<std::uint8_t> {};
+
+class WhenAChipIsErasedWholeWithWritesDisabled
     : public ::testing::TestWithParam<std::uint8_t> {};
 
 }  // namespace
@@ -234,12 +245,21 @@ TEST_P(WhenAChipIsErasedWholeWithWritesEnabled, EveryByteReadsAsErased) {
   EXPECT_THAT(chip.Bytes(), Each(0xFF));
 }
 
-// Chip erase has two codes, and a chip answers either.
 INSTANTIATE_TEST_SUITE_P(EachChipEraseCommand,
                          WhenAChipIsErasedWholeWithWritesEnabled,
-                         ::testing::Values(0xC7, 0x60),
-                         [](const ::testing::TestParamInfo<std::uint8_t>& row) {
-                           return std::format("Command{:02X}", row.param);
-                         });
+                         ::testing::ValuesIn(kChipErases), ChipEraseName);
+
+TEST_P(WhenAChipIsErasedWholeWithWritesDisabled, ItKeepsWhatItHolds) {
+  SpiNorChip chip{kOneHundredTwentyEightKibibytes};
+  std::ranges::fill(chip.Bytes(), 0x00);
+
+  Frame(chip, {GetParam()});
+
+  EXPECT_THAT(chip.Bytes(), Each(0x00));
+}
+
+INSTANTIATE_TEST_SUITE_P(EachChipEraseCommand,
+                         WhenAChipIsErasedWholeWithWritesDisabled,
+                         ::testing::ValuesIn(kChipErases), ChipEraseName);
 
 }  // namespace socpuppet
