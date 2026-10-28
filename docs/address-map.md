@@ -109,6 +109,7 @@ The interrupt lines of the board with no drive:
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
 | `io.aplic` | 16 | `io.uart.irq` |
+| `io.aplic` | 29 | `io.boot_flash.irq` |
 
 <!-- interrupts:host end -->
 
@@ -304,6 +305,7 @@ What is new is the interrupt lines side by side. There are two interrupt control
 | `compute.cpu` | 9 | `compute.imsic.supervisor_irq` |
 | `compute.cpu` | 11 | `compute.imsic.irq` |
 | `io.aplic` | 16 | `io.uart.irq` |
+| `io.aplic` | 29 | `io.boot_flash.irq` |
 | `ssd.cpu` | 7 | `ssd.timer.irq` |
 | `ssd.cpu` | 11 | `ssd.plic.irq` |
 | `ssd.plic` | 1 | `ssd.frontend.cpu_irq` |

@@ -190,6 +190,11 @@ PCIE_WINDOW_SIZE = 0x10_0000
 #: slots'.
 IOMMU_OFFSET = 0x0E_0000
 IOMMU_SOURCE = 24
+#: Which source of the IO die's APLIC the boot flash's controller's line is.
+#: Four after the IOMMU's: the GPIO's four pins have the numbers between,
+#: since Zephyr's driver for SiFive's GPIO wants its pins' lines at sources
+#: one after another.
+BOOT_FLASH_SOURCE = 29
 #: The identities the board sets aside at its interrupt controller for the
 #: drive's interrupt vectors, one each. The drive does not know them:
 #: firmware writes one into the drive for each vector, and that is the
@@ -637,10 +642,13 @@ def _io_die(platform: Platform, place: Group, *, messages_to: int) -> _IoDie:
         size=BOOT_FLASH_SIZE,
     )
     boot_flash_bus.map(boot_flash.xip, base=0)
-    # The UART's interrupt is a wire as far as the APLIC, on its own die,
+    # A device's interrupt is a wire as far as the APLIC, on its own die,
     # and a message from there: it crosses the die-to-die link the other
     # way and comes onto the compute die's bus, where the IMSIC's page is.
     platform.connect(uart.irq, getattr(aplic, f"source{UART_SOURCE}"))
+    platform.connect(
+        boot_flash.irq, getattr(aplic, f"source{BOOT_FLASH_SOURCE}")
+    )
     platform.connect(aplic.msi, up.target)
     return _IoDie(bus, uart, aplic, up, boot_flash, boot_flash_bus)
 

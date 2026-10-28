@@ -108,6 +108,7 @@
 			clocks = <&io_boot_flash_clock>;
 			#address-cells = <1>;
 			#size-cells = <0>;
+			interrupts-extended = <&io_aplic 29 1 4>;
 			io_boot_flash_chip: flash@0 {
 				compatible = "jedec,spi-nor";
 				reg = <0>;
