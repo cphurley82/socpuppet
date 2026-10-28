@@ -536,6 +536,11 @@ FetchContent_Declare(vpv_peripherals
   # delivery by message, which a platform whose harts have IMSICs needs.
   # aon-watchdog: the model of SiFive's always-on block had the watchdog's
   # registers and nothing behind them. This adds the watchdog.
+  # spi-power-on-reset: the SiFive SPI could not be reset as the simulation
+  # starts: its registers were private, and resetting them notified an event
+  # at once, which the kernel allows only while it runs.
+  # spi-first-byte: the SiFive SPI never sent a byte written before its
+  # sending thread first waited, until another came after it.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
@@ -546,6 +551,8 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-uart-interrupt-from-state.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aplic-msi-mode.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aon-watchdog.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-power-on-reset.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-first-byte.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)

@@ -11,6 +11,7 @@
 #include <tlm>
 
 #include "socpuppet/core/nand_geometry.h"
+#include "socpuppet/core/spi_device.h"
 
 namespace socpuppet {
 
@@ -155,6 +156,19 @@ concept WatchdogSlot = std::constructible_from<T, sc_core::sc_module_name> &&
                            watchdog.bite
                          } -> std::convertible_to<sc_core::sc_out<bool>&>;
                        };
+
+// An SPI controller: built from a name and reached through one TLM target
+// socket, with one interrupt output. The devices on its bus are attached
+// by chip select, each a SpiDevice that the controller talks to a byte at
+// a time.
+template <typename T>
+concept SpiControllerSlot =
+    std::constructible_from<T, sc_core::sc_module_name> &&
+    requires(T controller, unsigned chip_select, SpiDevice& device) {
+      { controller.socket } -> std::convertible_to<tlm::tlm_target_socket<>&>;
+      { controller.irq } -> std::convertible_to<sc_core::sc_out<bool>&>;
+      controller.Attach(chip_select, device);
+    };
 
 // A UART: built from a name and reached through one TLM target socket.
 // Whoever is at the other end of its serial line is the test or the script

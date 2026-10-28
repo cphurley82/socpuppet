@@ -674,7 +674,7 @@ Each entry says:
 
 ## VPV-Peripherals
 
-[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`, the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`, and the RISC-V PLIC, behind `src/socpuppet/models/plic.cpp`.
+[VP-Vibes/VPV-Peripherals](https://github.com/VP-Vibes/VPV-Peripherals), pinned at `8c70afc`. socpuppet borrows peripheral models from it: the PULPino UART, behind `src/socpuppet/models/ns16550.cpp`; the Minres ACLINT, behind `src/socpuppet/models/machine_timer.cpp`; the RISC-V PLIC and APLIC, behind `src/socpuppet/models/plic.cpp` and `aplic.cpp`; SiFive's always-on block, behind `src/socpuppet/models/watchdog.cpp`; SiFive's SPI controller, behind `src/socpuppet/models/spi_controller.cpp`; and Minres's QSPI controller and flash chip, behind `src/socpuppet/models/spi_flash.cpp`.
 
 ### The ACLINT ignores a compare value written at time zero
 
@@ -761,13 +761,13 @@ Two more things read in the same file and not acted on:
 - **Kind**: missing feature.
 - **When it lands**: drop the patch.
 
-### The PLIC and the ACLINT write their interrupt outputs from whichever process is running
+### The PLIC, the ACLINT and the SiFive SPI write their interrupt outputs from whichever process is running
 
-- **Where**: `rvi/plic.h`, `write_irq`, reached from `source_irq_cb` (the model's own method) and from the claim/complete callbacks, which run in the thread of whoever is accessing the register (with `cmake/patches/vpv-peripherals-plic-look-again.patch`, the priority, enable and threshold writes reach it the same way). And `minres/aclint.cpp`, `update_mtime`, which writes `mtime_int_o` and is both a method of the model's own and what the `mtime` and `mtimecmp` write callbacks call.
+- **Where**: `rvi/plic.h`, `write_irq`, reached from `source_irq_cb` (the model's own method) and from the claim/complete callbacks, which run in the thread of whoever is accessing the register (with `cmake/patches/vpv-peripherals-plic-look-again.patch`, the priority, enable and threshold writes reach it the same way). And `minres/aclint.cpp`, `update_mtime`, which writes `mtime_int_o` and is both a method of the model's own and what the `mtime` and `mtimecmp` write callbacks call. And `sifive/spi.cpp`, `update_irq`, which writes `irq_o`, a method of the model's own that the `rxdata` read callback also calls.
 - **What is wrong**: 🎓 SystemC lets one process write a signal in a delta cycle, and reports `E115` ("cannot have more than one driver") when a second one changes it in the same delta. Each model's output is written by its method when something of its own happens (a source's line rises, the count reaches the compare value) and by the caller's thread when a register is written. So a line that rises in the same delta cycle as a PLIC register write ends the simulation, and so does a compare value written in the instant the timer reaches it, as a tick handler does. A device that interrupts at time zero while the firmware is enabling it was enough to see the first.
-- **How to see it**: `InterruptControllerContract.ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts` in `tests/cpp/contracts/interrupt_controller_contract.h` and `MachineTimerContract.MovingTheCompareValueAheadInTheInstantTheCountReachesItEndsTheInterrupt` in `tests/cpp/contracts/machine_timer_contract.h`, with the adapters binding the outputs straight to checked signals.
-- **What we do**: no patch. Each adapter (`plic.cpp`, `machine_timer.cpp`) binds the output to a signal that does not check its writers, and copies it to `irq` from one method of its own. The CPU sees the line one delta cycle later than it would otherwise, which nothing notices.
-- **Upstream fix**: have `write_irq` and `update_mtime` only note the new level and notify an event, and one `SC_METHOD` per model write the output.
+- **How to see it**: `InterruptControllerContract.ASourceThatRisesInTheSameDeltaCycleAsAnEnableWriteInterrupts` in `tests/cpp/contracts/interrupt_controller_contract.h` and `MachineTimerContract.MovingTheCompareValueAheadInTheInstantTheCountReachesItEndsTheInterrupt` in `tests/cpp/contracts/machine_timer_contract.h`, with the adapters binding the outputs straight to checked signals. For the SPI, `SpiControllerContract.AByteSentReachesTheSelectedChipOnce` in `tests/cpp/contracts/spi_controller_contract.h`: a driver's first read of the receive register is enough.
+- **What we do**: no patch. Each adapter (`plic.cpp`, `machine_timer.cpp`, `spi_controller.cpp`) binds the output to a signal that does not check its writers, and copies it to `irq` from one method of its own. The CPU sees the line one delta cycle later than it would otherwise, which nothing notices.
+- **Upstream fix**: have `write_irq` and `update_mtime` only note the new level and notify an event, and one `SC_METHOD` per model write the output; in the SPI, have the `rxdata` callback notify `update_irq_evt` instead of calling `update_irq`.
 - **Kind**: bug.
 - **When it lands**: the adapters can bind the outputs to `irq` directly again.
 
@@ -845,6 +845,26 @@ Two more things read in the same file and not acted on:
   - `wdogcmp` out of reset as `0xFFFF`, where it was zero, which would bite the moment the watchdog was started.
 - **Upstream fix**: the patch as it is, as an offer of a feature. It leaves the rest of the block alone: the real-time clock and the power manager are still registers and nothing more. `rst_o` now has one process that writes it, where the button's callback wrote it directly. Two things it does not do, to say when offering it: the count goes by the simulation's clock and ignores how far ahead of it an accessing CPU is, where the ACLINT counts that in, and it does not wrap at 31 bits.
 - **Kind**: missing feature.
+- **When it lands**: drop the patch.
+
+### The SiFive SPI cannot be reset before the simulation starts
+
+- **Where**: `sifive/spi.h`, `std::unique_ptr<spi_regs> regs`, under `private:`; and `sifive/spi.cpp`, the write callbacks of `ie` and `ip`, which call `update_irq_evt.notify()`.
+- **What is wrong**: SCC's registers hold whatever was in memory until they are reset, and the model resets them only when its reset line moves, which in a platform it never does. So an adapter resets them as the simulation starts, as socpuppet's `PoweredOn` does for every VPV model (`src/socpuppet/models/borrowed_model.h`). Here it cannot, twice over. The registers are private, where the other SiFive models (`aon`, `gpio`, `uart`) keep theirs protected so that a class built on one can reach them. And resetting a register runs its write callback, and the ones for `ie` and `ip` notify an event at once: 🎓 SystemC allows an immediate notification only while it runs, and reports `E521` before.
+- **How to see it**: an adapter that resets the model as the simulation starts does not compile, and with the registers protected, `SpiControllerContract` in `tests/cpp/contracts/spi_controller_contract.h` ends in `E521` before its first test begins.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-power-on-reset.patch` moves `regs` under `protected:`, and has the two callbacks notify the event a delta cycle later, which `update_irq` then answers. Nothing notices the delta cycle.
+- **Upstream fix**: the same as the patch.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### The SiFive SPI does not send a byte written before its sending thread first waits
+
+- **Where**: `sifive/spi.cpp`, `transmit_data`, which waits for `tx_fifo.data_written_event()` at the top of its loop, whatever the FIFO holds.
+- **What is wrong**: 🎓 an event that fires while nothing waits for it is lost. The thread starts with a wait of no time, and a byte written to `txdata` in the first delta cycle at time zero fires the FIFO's event while the thread is still in that wait. The thread then waits for the next byte, with this one in the FIFO, and sends both only when another comes. A driver that writes one byte and waits for its answer waits for ever.
+- **How to see it**: `SpiControllerContract.AByteSentReachesTheSelectedChipOnce` in `tests/cpp/contracts/spi_controller_contract.h`, with the patch taken out: the test's thread writes its byte at time zero and the chip hears nothing.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-first-byte.patch` waits only when the FIFO is empty.
+- **Upstream fix**: the same.
+- **Kind**: bug.
 - **When it lands**: drop the patch.
 
 ### The flash chip ends the process at an access past its 256 MB

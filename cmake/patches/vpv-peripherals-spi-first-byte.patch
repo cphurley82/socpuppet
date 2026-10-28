@@ -1,0 +1,14 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index 25993fb..b6ecb9f 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -156,7 +156,8 @@ void spi::transmit_data() {
+ 
+     wait(delay); // intentionally 0ns;
+     while(true) {
+-        wait(tx_fifo.data_written_event());
++        if(tx_fifo.num_available() == 0)
++            wait(tx_fifo.data_written_event());
+         if(regs->r_csmode.mode != 3 && regs->r_csid < 4) // not in OFF mode
+             set_bit(false, scs_o[regs->r_csid]);
+         set_bit(regs->r_sckmode.pol, sck_o);

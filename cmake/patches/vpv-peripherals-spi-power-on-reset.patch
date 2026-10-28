@@ -1,0 +1,35 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index 25993fb..13d2a66 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -101,12 +101,12 @@ spi::spi(sc_core::sc_module_name nm)
+     });
+     regs->ie.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
+         reg.put(data);
+-        update_irq_evt.notify();
++        update_irq_evt.notify(sc_core::SC_ZERO_TIME);
+         return true;
+     });
+     regs->ip.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
+         reg.put(data);
+-        update_irq_evt.notify();
++        update_irq_evt.notify(sc_core::SC_ZERO_TIME);
+         return true;
+     });
+ 
+diff --git a/sifive/spi.h b/sifive/spi.h
+index f1211d2..ae81640 100644
+--- a/sifive/spi.h
++++ b/sifive/spi.h
+@@ -52,7 +52,11 @@ private:
+     void update_irq();
+     sc_core::sc_event update_irq_evt;
+     sc_core::sc_time clk;
++
++protected:
+     std::unique_ptr<spi_regs> regs;
++
++private:
+     sc_core::sc_fifo<uint8_t> rx_fifo, tx_fifo;
+ };
+ 
