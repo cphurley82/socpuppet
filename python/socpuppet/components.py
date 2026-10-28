@@ -1205,15 +1205,29 @@ class SpiFlash(Component):
     ) -> tuple[DeviceNode, ...]:
         # A bus master that cannot reach the controller's registers cannot
         # drive it, as a boot ROM, which reads the window, has no need to.
-        # 🚧 And Linux's spi-sifive wants the controller's interrupt, which
-        # the flash does not bring out yet.
-        if "socket" not in reached or dialect == "linux":
+        # ⚠️ Linux's spi-sifive also wants the controller's `irq` connected:
+        # with no interrupt in the node, it does not take the controller.
+        if "socket" not in reached:
             return ()
-        # The chip's JEDEC id, as it answers its Read JEDEC ID command
-        # (JedecId in spi_nor_chip.cpp), which Zephyr's spi_nor checks this
-        # against: Winbond's maker code, the W25Q family, and the capacity as
-        # the power of two of the size.
+        # Zephyr's binding has the chip's JEDEC id and its size in the node,
+        # where Linux reads both from the chip. The id is the one the chip
+        # answers its Read JEDEC ID command with (JedecId in
+        # spi_nor_chip.cpp), which Zephyr's spi_nor checks this against:
+        # Winbond's maker code, the W25Q family, and the capacity as the
+        # power of two of the size. Zephyr's binding counts the size in bits.
         capacity = self.size.bit_length() - 1
+        zephyrs_chip = (
+            (
+                f"jedec-id = [ef 40 {capacity:02x}];",
+                f"size = <{self.size * 8:#x}>;",
+            )
+            if dialect == "zephyr"
+            else ()
+        )
+        # And Zephyr's names the controller's two ranges; Linux's does not.
+        zephyrs_controller = (
+            ('reg-names = "control", "mem";',) if dialect == "zephyr" else ()
+        )
         clock_suffix = "_clock"
         clock_label = label + clock_suffix
         # On an SPI bus a device's address is its chip select, one cell and
@@ -1224,9 +1238,7 @@ class SpiFlash(Component):
             (
                 'compatible = "jedec,spi-nor";',
                 "reg = <0>;",
-                f"jedec-id = [ef 40 {capacity:02x}];",
-                # Zephyr's binding counts the size in bits.
-                f"size = <{self.size * 8:#x}>;",
+                *zephyrs_chip,
                 f"spi-max-frequency = <{self.FASTEST_HZ}>;",
             ),
             interrupts=(),
@@ -1240,7 +1252,7 @@ class SpiFlash(Component):
             ),
             (
                 'compatible = "sifive,spi0";',
-                'reg-names = "control", "mem";',
+                *zephyrs_controller,
                 f"clocks = <&{clock_label}>;",
                 "#address-cells = <1>;",
                 "#size-cells = <0>;",
