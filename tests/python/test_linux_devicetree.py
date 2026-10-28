@@ -205,14 +205,46 @@ class TestWhenACpuHasAFlashOnItsBusForLinux:
 
 
 class TestWhenACpuHasAGpioForLinux:
-    def test_linux_is_told_of_no_gpio_yet(self):
-        # 🚧 Linux's gpio-sifive has not been checked with an APLIC as its
-        # interrupts' parent, which is what the host's GPIO has.
+    def test_its_node_is_zephyrs_and_also_an_interrupt_controller_for_its_pins(
+        self,
+    ):
+        # 🎓 Linux's gpio-sifive hands out an interrupt for each pin, which
+        # a driver of a device on a pin asks the GPIO's node for.
+        platform, bus, plic = cpu_with_its_peripherals()
+        gpio = platform.add("gpio", sp.Gpio(pins=2))
+        bus.map(gpio.socket, base=0x0010_2000)
+        platform.connect(gpio.irq0, plic.source6)
+        platform.connect(gpio.irq1, plic.source7)
+
+        node = textwrap.dedent(
+            """\
+            gpio: gpio@102000 {
+            \tcompatible = "sifive,gpio0";
+            \treg = <0x0 0x102000 0x0 0x1000>;
+            \tgpio-controller;
+            \t#gpio-cells = <2>;
+            \tngpios = <2>;
+            \tinterrupt-controller;
+            \t#interrupt-cells = <2>;
+            \tinterrupt-parent = <&plic>;
+            \tinterrupts = <6 1 7 1>;
+            };
+            """
+        )
+        assert textwrap.indent(node, "\t\t") in platform.devicetree(
+            dialect="linux"
+        )
+
+    def test_with_an_led_the_gpio_is_there_and_the_led_is_not(self):
+        # The stock kernel has no LED drivers (`NEW_LEDS` is not set).
         platform, bus, _ = cpu_with_its_peripherals()
-        gpio = platform.add("gpio", sp.Gpio())
+        gpio = platform.add("gpio", sp.Gpio(pins=4, leds=(2,)))
         bus.map(gpio.socket, base=0x0010_2000)
 
-        assert "sifive,gpio0" not in platform.devicetree(dialect="linux")
+        devicetree = platform.devicetree(dialect="linux")
+
+        assert 'compatible = "sifive,gpio0";' in devicetree
+        assert "gpio-leds" not in devicetree
 
 
 class TestWhenAPlatformHasAPcieRootComplexForLinux:
