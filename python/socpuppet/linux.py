@@ -18,6 +18,7 @@ factory would. The kernel's NVMe driver is a module, which the initramfs
 loads before it mounts the root.
 """
 
+import datetime
 import os
 import pathlib
 import re
@@ -97,6 +98,7 @@ def host_with_linux(
     root: Literal["virtio"] = "virtio",
     trace: bool = False,
     iommu: bool = False,
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host_with_linux(
@@ -110,6 +112,7 @@ def host_with_linux(
     drive: AddDrive[Ssd] = add_ssd,
     manager: AddManager = add_manager,
     iommu: bool = False,
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[Ssd]: ...
 def host_with_linux(
     firmware: pathlib.Path,
@@ -122,6 +125,7 @@ def host_with_linux(
     drive: AddDrive[Ssd] = add_ssd,
     manager: AddManager = add_manager,
     iommu: bool = False,
+    rtc_time: datetime.datetime | int = 0,
 ) -> Host[Any]:
     """A host built with Linux in place, from the images in `firmware`.
 
@@ -146,6 +150,10 @@ def host_with_linux(
     which Linux's own driver brings up. It needs the drive, and so the root
     on it.
 
+    `rtc_time` is what the real-time clock reads as the simulation starts
+    (`host(rtc_time=...)`), 1970 unless told otherwise, and the kernel
+    sets its own clock from it as it boots, with either root.
+
     A missing image is a FileNotFoundError that says how to build it,
     before the simulator is built, so the process can still build another
     platform. A CPU that this build has not, or that
@@ -167,9 +175,15 @@ def host_with_linux(
             drive=drive,
             manager=manager,
             iommu=iommu,
+            rtc_time=rtc_time,
         )
     return _with_the_root_on_virtio(
-        firmware, cpu=cpu, share=share, gdb_port=gdb_port, trace=trace
+        firmware,
+        cpu=cpu,
+        share=share,
+        gdb_port=gdb_port,
+        trace=trace,
+        rtc_time=rtc_time,
     )
 
 
@@ -180,6 +194,7 @@ def _with_the_root_on_virtio(
     share: str | os.PathLike[str] | None,
     gdb_port: int,
     trace: bool,
+    rtc_time: datetime.datetime | int,
 ) -> Host[BehavioralDrive]:
     """The host alone, with Linux's root on 🎭 the virtio disk."""
     fw_jump, kernel, rootfs = (
@@ -193,6 +208,7 @@ def _with_the_root_on_virtio(
         virtio=Virtio(blocks=len(rootfs) // SECTOR, share=share),
         gdb_port=gdb_port,
         trace=trace,
+        rtc_time=rtc_time,
     )
     layout = opensbi.lay_out(
         fw_jump,
@@ -224,6 +240,7 @@ def _with_the_root_on_the_drive(
     drive: AddDrive[Ssd],
     manager: AddManager,
     iommu: bool,
+    rtc_time: datetime.datetime | int,
 ) -> Host[Ssd]:
     """M8's board, with Linux on the host and its root on the SSD.
 
@@ -257,6 +274,7 @@ def _with_the_root_on_the_drive(
         gdb_port=gdb_port,
         trace=trace,
         iommu=iommu,
+        rtc_time=rtc_time,
     )
     assert board.drive is not None  # it was described with one
     assert board.manager is not None
