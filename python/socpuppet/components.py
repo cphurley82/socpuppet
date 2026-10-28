@@ -1769,9 +1769,10 @@ class Gpio(Component):
         self, reached: Mapping[str, Reached], *, dialect: Dialect, label: str
     ) -> tuple[DeviceNode, ...]:
         nodes = super().device_nodes(reached, dialect=dialect, label=label)
-        # No GPIO node (Linux's tree, or a bus master that cannot reach the
-        # GPIO), no LEDs: each names the GPIO's node.
-        if not nodes or not self.leds:
+        # No GPIO node (a bus master that cannot reach the GPIO), no LEDs:
+        # each names the GPIO's node. Nor in Linux's tree: the stock kernel
+        # has no LED drivers (`NEW_LEDS` is not set).
+        if not nodes or not self.leds or dialect == "linux":
             return nodes
         # 🎓 A board's LEDs, each a pin it drives, lit while high (the
         # flags' 0). Zephyr's samples find the first by the name `led0`.
@@ -1803,11 +1804,14 @@ class Gpio(Component):
     def device_node(
         self, reached: Mapping[str, Reached], *, dialect: Dialect
     ) -> DeviceNode | None:
-        # 🚧 Linux's gpio-sifive puts an interrupt domain of its own on top
-        # of its parent's, which has not been checked with an APLIC as that
-        # parent.
-        if dialect == "linux":
-            return None
+        # Linux's binding has the GPIO an interrupt controller too, two
+        # cells to an interrupt: gpio-sifive hands out a pin's interrupt to
+        # a driver of what is on the pin.
+        linuxs_interrupts = (
+            ("interrupt-controller;", "#interrupt-cells = <2>;")
+            if dialect == "linux"
+            else ()
+        )
         return DeviceNode(
             "gpio",
             ((reached["socket"].address, self.mapped_size),),
@@ -1816,6 +1820,7 @@ class Gpio(Component):
                 "gpio-controller;",
                 "#gpio-cells = <2>;",
                 f"ngpios = <{self.pins}>;",
+                *linuxs_interrupts,
             ),
             # Zephyr's binding requires the property by this name.
             short_interrupts=True,

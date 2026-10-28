@@ -93,7 +93,11 @@ io_gpio_leds: io_gpio_leds {
 };
 ```
 
-🚧 Linux's tree has no GPIO yet. Linux's `gpio-sifive` puts an interrupt domain of its own on top of its parent's, which has not been checked on the host's APLIC.
+🐧 Linux's has the same node, and is also told it is an interrupt controller (`interrupt-controller`, two cells to an interrupt), as Linux's binding asks: `gpio-sifive` hands out a pin's interrupt to the driver of whatever is on the pin. Linux's tree has no LEDs: the stock kernel has no LED drivers. Linux takes the host's GPIO as `gpiochip0`, with a line for each of its four pins (`tests/python/test_linux_gpio.py`).
+
+⚠️ Linux counts a GPIO's lines by its interrupts, not by `ngpios`: a pin whose `irq` is left unconnected is no line of Linux's, and with none connected the driver refuses the GPIO ("no IRQ found").
+
+🚧 Nothing has driven a pin or taken an interrupt under Linux yet: busybox has no GPIO tools.
 
 ## Under the hood
 
