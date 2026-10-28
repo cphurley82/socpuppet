@@ -142,10 +142,37 @@ TYPED_TEST_P(SpiControllerContract,
             (std::vector<std::vector<std::uint8_t>>{{0x11, 0x22}}));
 }
 
+// Linux's driver, after bytes it only sends, waits for the transmit
+// watermark with a mark of one: for the transmit FIFO to be empty, its
+// last byte taken to be sent.
+TYPED_TEST_P(
+    SpiControllerContract,
+    AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty) {
+  bool pending = false;
+  std::vector<std::uint8_t> out_by_then;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.SetTransmitMark(1);
+    spi.Format(/*transmit_only=*/true);
+    for (const std::uint8_t byte :
+         {std::uint8_t{0x11}, std::uint8_t{0x22}, std::uint8_t{0x33}}) {
+      spi.Queue(byte);
+    }
+    pending = spi.WaitFor(SifiveSpiDriver::kTransmitWatermark);
+    out_by_then = this->chips_[1].received;
+  });
+
+  EXPECT_TRUE(pending);
+  EXPECT_EQ(out_by_then, (std::vector<std::uint8_t>{0x11, 0x22, 0x33}));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
     AByteSentWhereNoChipIsComesBackAsFf,
-    BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo);
+    BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo,
+    AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_

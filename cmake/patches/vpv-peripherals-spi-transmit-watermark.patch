@@ -1,0 +1,21 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index e2baf77..cdc3519 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -163,7 +163,6 @@ void spi::transmit_data() {
+         set_bit(regs->r_sckmode.pol, sck_o);
+         while(tx_fifo.nb_read(txdata)) {
+             regs->r_txdata.full = tx_fifo.num_free() == 0;
+-            regs->r_ip.txwm = regs->r_txmark.txmark <= (7 - tx_fifo.num_free()) ? 1 : 0;
+             update_irq_evt.notify();
+             bit_duration = 2 * (regs->r_sckdiv.div + 1) * clk;
+             start_time = sc_core::sc_time_stamp();
+@@ -195,7 +194,7 @@ void spi::receive_data(tlm::scc::tlm_signal_gp<>& gp, sc_core::sc_time& delay) {
+ 
+ void spi::update_irq() {
+     regs->r_ip.rxwm = regs->r_rxmark.rxmark < rx_fifo.num_available();
+-    regs->r_ip.txwm = regs->r_txmark.txmark <= tx_fifo.num_available();
++    regs->r_ip.txwm = tx_fifo.num_available() < regs->r_txmark.txmark;
+     regs->r_txdata.full = tx_fifo.num_free() == 0;
+     irq_o.write((regs->r_ie.rxwm > 0 && regs->r_ip.rxwm > 0) || (regs->r_ie.txwm > 0 && regs->r_ip.txwm > 0));
+ }

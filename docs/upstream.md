@@ -867,6 +867,16 @@ Two more things read in the same file and not acted on:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### The SiFive SPI's transmit watermark is pending the wrong way round
+
+- **Where**: `sifive/spi.cpp`, `update_irq`, `regs->r_ip.txwm = regs->r_txmark.txmark <= tx_fifo.num_available()`, and the same test in `transmit_data`, written there as `txmark <= 7 - tx_fifo.num_free()`, one entry short.
+- **What is wrong**: 🎓 the FE310's manual has the transmit watermark pending while the transmit FIFO holds fewer entries than `txmark`: with a mark of one, once the FIFO is empty. The model has it pending while the FIFO holds at least `txmark`, and not once it has emptied. Linux's `spi-sifive` sets a mark of one, and after a transfer it only sends, which is most of an `spi-nor` command, it waits for the watermark: it sees it at once, before a byte is out, and overruns the FIFO on the next transfer, or, polling, waits for ever once the FIFO has emptied. Zephyr's driver never looks at it.
+- **How to see it**: `SpiControllerContract.AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty` in `tests/cpp/contracts/spi_controller_contract.h`, with the patch taken out: the watermark is pending with none of the three bytes out.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-transmit-watermark.patch` has `update_irq` test `tx_fifo.num_available() < txmark`, and deletes the second copy in `transmit_data`, since `update_irq` runs straight after it anyway.
+- **Upstream fix**: the same: the rule stated once.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### The flash chip ends the process at an access past its 256 MB
 
 - **Where**: `generic/spi_mem.h`, `scc::memory<256_MB, scc::LT> mem`, reached through `spi_t`'s blocking and debug transport, and so through `minres/qspi`'s `xip_sck`.
