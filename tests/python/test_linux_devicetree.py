@@ -161,6 +161,19 @@ class TestWhenACpuHasASystemControllerForLinux:
         )
 
 
+class TestWhenACpuHasAFlashOnItsBusForLinux:
+    def test_the_devicetree_has_no_node_for_it_yet(self):
+        # 🚧 Linux's spi-sifive wants the controller's interrupt, which the
+        # flash brings out later in M18; the node comes with it.
+        platform, bus, _ = cpu_with_its_peripherals()
+        without = platform.devicetree(dialect="linux")
+        flash = platform.add("flash", sp.SpiFlash(size=0x40_0000))
+        bus.map(flash.xip, base=0x1020_0000)
+        bus.map(flash.socket, base=0x100D_0000)
+
+        assert platform.devicetree(dialect="linux") == without
+
+
 class TestWhenAPlatformHasAPcieRootComplexForLinux:
     def test_it_is_a_generic_ecam_host_and_nothing_of_zephyrs(self):
         # 🎓 ECAM is the standard layout of a PCIe configuration window, and
