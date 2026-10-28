@@ -4,6 +4,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace socpuppet {
 
@@ -26,9 +27,12 @@ std::array<std::uint8_t, 3> JedecId(std::size_t size) {
 
 }  // namespace
 
-SpiNorChip::SpiNorChip(std::size_t size) : size_(size) {}
+SpiNorChip::SpiNorChip(std::size_t size) : bytes_(size, kErased) {}
 
-void SpiNorChip::Select() { position_ = 0; }
+void SpiNorChip::Select() {
+  position_ = 0;
+  address_ = 0;
+}
 
 std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   const std::size_t position = position_++;
@@ -37,13 +41,21 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
     return 0;
   }
   if (command_ == kReadJedecId) {
-    const auto id = JedecId(size_);
+    const auto id = JedecId(bytes_.size());
     if (position <= id.size()) return id[position - 1];
   }
-  if (command_ == kRead && position > kAddressBytes) return kErased;
+  if (command_ == kRead) {
+    if (position <= kAddressBytes) {
+      address_ = (address_ << 8) | sent;
+      return 0;
+    }
+    return bytes_[address_++];
+  }
   return 0;
 }
 
 void SpiNorChip::Deselect() {}
+
+std::span<std::uint8_t> SpiNorChip::Bytes() { return bytes_; }
 
 }  // namespace socpuppet

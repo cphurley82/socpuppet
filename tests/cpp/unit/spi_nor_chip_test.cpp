@@ -1,5 +1,7 @@
 #include "socpuppet/core/spi_nor_chip.h"
 
+#include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -50,6 +52,15 @@ TEST(WhenAnErasedChipIsRead, EveryByteReadsFf) {
 
   EXPECT_THAT(Frame(chip, {0x03, 0x12, 0x34, 0x56, 0, 0, 0}),
               ElementsAre(_, _, _, _, 0xFF, 0xFF, 0xFF));
+}
+
+TEST(WhenAChipIsReadWhereBytesWerePutIn, ItAnswersThoseBytes) {
+  SpiNorChip chip{kSixteenMebibytes};
+  constexpr std::array<std::uint8_t, 2> kPutIn{0xCA, 0xFE};
+  std::ranges::copy(kPutIn, chip.Bytes().subspan(0x12'3456).begin());
+
+  EXPECT_THAT(Frame(chip, {0x03, 0x12, 0x34, 0x56, 0, 0}),
+              ElementsAre(_, _, _, _, 0xCA, 0xFE));
 }
 
 }  // namespace socpuppet
