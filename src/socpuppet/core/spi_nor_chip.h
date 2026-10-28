@@ -30,6 +30,9 @@ class SpiNorChip : public SpiDevice {
  private:
   // What the chip holds, a byte for each address.
   std::vector<std::uint8_t> bytes_;
+  // The write enable latch: whether a program or an erase may change the
+  // chip's bytes.
+  bool write_enable_latch_ = false;
   // The frame's first byte, which says what the rest of it is.
   std::uint8_t command_ = 0;
   // How many bytes of the frame have been sent so far.
