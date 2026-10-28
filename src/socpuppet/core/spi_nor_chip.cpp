@@ -10,10 +10,13 @@ namespace socpuppet {
 
 namespace {
 
+// The commands, by the first byte of a frame. Winbond's datasheet has the
+// same names.
 constexpr std::uint8_t kRead = 0x03;
-constexpr std::uint8_t kFastRead = 0x0B;
+constexpr std::uint8_t kWriteDisable = 0x04;
 constexpr std::uint8_t kReadStatus = 0x05;
 constexpr std::uint8_t kWriteEnable = 0x06;
+constexpr std::uint8_t kFastRead = 0x0B;
 constexpr std::uint8_t kReadJedecId = 0x9F;
 
 // Status register 1's write enable latch: writes are enabled.
@@ -44,10 +47,11 @@ std::uint8_t SpiNorChip::Transfer(std::uint8_t sent) {
   const std::size_t position = position_++;
   if (position == 0) {
     command_ = sent;
-    // 🎓 A real chip sets the latch when the select goes high after the
-    // command; this one sets it as the command arrives, as QEMU's m25p80
-    // does, which no controller can tell apart.
+    // 🎓 A real chip sets or clears the latch when the select goes high
+    // after the command; this one does it as the command arrives, as
+    // QEMU's m25p80 does, which no controller can tell apart.
     if (command_ == kWriteEnable) write_enable_latch_ = true;
+    if (command_ == kWriteDisable) write_enable_latch_ = false;
     return 0;
   }
   if (command_ == kReadStatus)
