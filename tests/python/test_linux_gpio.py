@@ -1,4 +1,4 @@
-"""🐧 Linux takes the host's GPIO, as part of M18's.
+"""🐧 Linux takes the host's GPIO, beside Zephyr's driver of it.
 
 The GPIO is SiFive's, on the host's IO die, with four pins brought out. A
 stock kernel's own driver, `gpio-sifive`, takes it as a GPIO chip with a

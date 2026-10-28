@@ -1,4 +1,4 @@
-"""M20's exit test: Linux boots on OpenSBI, to a shell Python types at.
+"""Linux boots on OpenSBI, to a shell Python types at.
 
 🐧 The kernel is a stock one, built by `firmware/build.py` as Linux's own
 `defconfig`, with nothing of socpuppet's in it. OpenSBI's `fw_jump` starts
@@ -13,7 +13,8 @@ demand (`SOCPUPPET_ON_DEMAND=1`) it also boots the server's way: UEFI
 finds the kernel on a disk cut up as a server's, the quick way and from
 the flash.
 
-🧵 Python is the keyboard at the console, as at UEFI's shell in M28.
+🧵 Python is the keyboard at the console, as at UEFI's shell
+(test_uefi_boots.py).
 """
 
 import re

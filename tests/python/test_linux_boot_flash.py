@@ -1,4 +1,4 @@
-"""🐧 Linux drives the host's boot flash, as part of M18's exit.
+"""🐧 Linux drives the host's boot flash, beside Zephyr's drivers of it.
 
 The boot flash is SiFive's SPI controller with a W25Q-kind chip of
 socpuppet's behind it, on the host's IO die. A stock kernel drives it

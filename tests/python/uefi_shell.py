@@ -1,6 +1,6 @@
 """Python at the keyboard of UEFI's shell, on 🎭 the host.
 
-The UEFI boot's exit test, `test_uefi_boots.py`, brought UEFI to `Shell>`;
+The UEFI boot's test, `test_uefi_boots.py`, brought UEFI to `Shell>`;
 these are its ways of getting
 there and of typing at it, for every test that boots UEFI.
 """

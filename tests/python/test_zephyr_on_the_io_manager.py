@@ -1,4 +1,4 @@
-"""Milestone M5b's exit test: Zephyr boots on the IO die's manager.
+"""Zephyr boots on the IO die's manager.
 
 The board is `socpuppet_iomgr`: a 32-bit RISC-V core with an SRAM, a UART,
 a timer and an interrupt controller, and the die-to-die link's registers

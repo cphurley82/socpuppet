@@ -44,4 +44,4 @@ Nearly everything that makes the real link interesting:
 
 Any link, this stand-in included, must pass `LinkContract` (`tests/cpp/contracts/link_contract.h`). The contract allows a link to refuse DMI, and [the real link](d2d-link.md) does.
 
-The real link arrived in M5. Nothing it does needs a wire to cross: an interrupt or a reset is a message on its sideband, or it stays on its die. 💡 Swapping this stand-in for the real one is one line in a board, plus firmware to train the link — the stand-in's link is up from the start, and the real one is not. The host board does exactly that when it is given a manager, `host(manager=...)`, and is this stand-in when it is not.
+The real link is [d2d-link.md](d2d-link.md). Nothing it does needs a wire to cross: an interrupt or a reset is a message on its sideband, or it stays on its die. 💡 Swapping this stand-in for the real one is one line in a board, plus firmware to train the link — the stand-in's link is up from the start, and the real one is not. The host board does exactly that when it is given a manager, `host(manager=...)`, and is this stand-in when it is not.

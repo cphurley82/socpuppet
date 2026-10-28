@@ -1,4 +1,4 @@
-"""M28's exit test: UEFI boots on OpenSBI, to a shell Python types at.
+"""UEFI boots on OpenSBI, to a shell Python types at.
 
 🧦 EDK2 is UEFI, the firmware a server's kernel is loaded by. Its RISC-V
 port runs in supervisor mode as OpenSBI's next stage, where a kernel
@@ -8,10 +8,11 @@ reads the devicetree whole. It says what each of its drivers does as it
 loads, counts down twice on the timer, once for its boot manager and once
 for its shell, and stops at `Shell>`.
 
-It boots both ways M23's tests do (`opensbi_boots`): the quick way, with
-Python as the stage before, and from the flash, as silicon does.
+It boots both ways test_opensbi_boots.py does (`opensbi_boots`): the quick way,
+with Python as the stage before, and from the flash, as silicon does.
 
-🧵 Python is the keyboard at the console, as at Zephyr's shell in M13.
+🧵 Python is the keyboard at the console, as at Zephyr's shell
+(test_zephyr_shell.py).
 """
 
 import re
@@ -43,7 +44,7 @@ PAGING_ON = re.compile(r"SATP mode \d+ successfully configured")
 ROMS_LINE = re.compile(r"rom: \S+: \d+ bytes to ")
 #: After a reset the ROM copies the image again, a little over 4 MiB, and
 #: checks it a byte at a time before it says its line: about 9 s, at the
-#: 4 s for each 2 MiB that M23 measured.
+#: 4 s for each 2 MiB, as OpenSBI's boot from the flash takes.
 REBOOTS_WITHIN = sp.ms(20_000)
 
 

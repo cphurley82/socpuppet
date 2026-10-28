@@ -1,11 +1,11 @@
-"""Milestone M14's exit test: a CPU boots from its ROM and a flash.
+"""A CPU boots from its ROM and a flash.
 
-Until now a CPU woke up with its firmware already in RAM, because Python
-put it there. Here nothing is loaded into RAM at all. The CPU's reset
+In most tests a CPU wakes up with its firmware already in RAM, because
+Python put it there. Here nothing is loaded into RAM at all. The CPU's reset
 vector is in a boot ROM, whose program asks the system controller where
 its image is, finds it in the flash, copies it to RAM and jumps to it.
 
-The firmware is the same image the other milestones' tests load: what is
+The firmware is the same image the other tests load: what is
 in the flash is that ELF file, wrapped (`socpuppet.boot_image`). The ROM
 is `firmware/rom`, which `firmware/build.py` builds for each kind of CPU.
 """
@@ -539,7 +539,7 @@ def three_cpus_with_roms(firmware):
 
     Gives the board, and the story its three consoles will tell.
     """
-    # 2 MiB of drive, as in M8's own test of the three.
+    # 2 MiB of drive, as in test_full_bootchain.py.
     board = host(drive_blocks=4096, **FROM_THEIR_ROMS)
     story = boot(board, firmware, host=DISK_TEST, manager=MANAGER, ssd=SSD)
     return board, story
@@ -547,8 +547,8 @@ def three_cpus_with_roms(firmware):
 
 @pytest.mark.platform
 class TestWhenAllThreeCpusOfAHostBootFromTheirRoms:
-    # What the three firmwares then do is M8's, and its exit test runs
-    # this way too (test_full_bootchain.py).
+    # What the three firmwares then do is test_full_bootchain.py's, which
+    # boots this way too.
 
     def test_nothing_is_in_any_cpus_ram_before_it_runs(
         self, three_cpus_with_roms, firmware

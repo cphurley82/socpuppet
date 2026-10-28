@@ -1,14 +1,13 @@
-"""Milestone M7's exit test: the host across the real die-to-die link.
+"""The host across the real die-to-die link.
 
-The host of M3 and M6 was two dies with 🎭 a stand-in between them, a
-link that passes every access straight through. Here the link is the
-real one (`sp.D2dLink`), which carries no traffic until it has been
-trained, and the IO die has 🎭 the script for a manager to train it. The
-link's end on the compute die holds the host's CPU in reset until the
-manager lets it go.
+The host of test_zephyr_disk_on_the_host.py is two dies with 🎭 a stand-in
+between them, a link that passes every access straight through. Here the link is
+the real one (`sp.D2dLink`), which carries no traffic until it has been trained,
+and the IO die has 🎭 the script for a manager to train it. The link's end on the
+compute die holds the host's CPU in reset until the manager lets it go.
 
 Nothing is built differently for this. The host's firmware cannot tell
-which link it has, so its images are the ones M3's and M6's tests run:
+which link it has, so its images are the ones the other host tests run:
 Zephyr's `hello_world` and its test of its disk interface.
 """
 
@@ -102,7 +101,7 @@ def host_across_the_link(request, firmware):
     """The host across the real link, with a drive and every image loaded.
 
     The host's image is Zephyr's disk test. A test that asks for this runs
-    three times, once for each thing M3b and M6 put on the host's PCIe
+    three times, once for each thing the other disk tests put on the host's PCIe
     link: 🎭 the stand-in drive, the SSD with 🎭 a script for its firmware,
     and the SSD with the Zephyr application of firmware/ssd on a CPU of
     its own.
@@ -116,7 +115,7 @@ def host_across_the_link(request, firmware):
         },
         THE_SSD_WITH_ZEPHYR: {"drive": add_ssd},
     }
-    # 2 MiB, as in M3b and M6.
+    # 2 MiB, as in the other runs of the disk test.
     board = host(
         drive_blocks=4096,
         manager=a_scripted_manager(),

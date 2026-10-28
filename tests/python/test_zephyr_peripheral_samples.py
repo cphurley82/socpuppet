@@ -1,4 +1,4 @@
-"""M18's exit: the small essentials, under Zephyr's own samples and tests.
+"""GPIO, SPI, I2C and the clock, under Zephyr's own samples and tests.
 
 The host's boot flash is SiFive's SPI controller with a W25Q-kind chip of
 socpuppet's behind it, on the IO die:

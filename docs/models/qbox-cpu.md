@@ -6,7 +6,7 @@
 
 The same RISC-V processor core as the [DBT-RISE CPU](dbt-rise-cpu.md)'s RV64GC with supervisor and user mode, played by a different actor. 🎓 The model is [QEMU](https://www.qemu.org)'s RISC-V CPU, inside SystemC by way of Qualcomm's [QBox](https://github.com/qualcomm/qbox). Where DBT-RISE interprets each instruction as it comes, QEMU **translates**: the first time it meets a stretch of RISC-V code it writes the host's own instructions that do the same, and from then on runs those. So it is several times faster on code that loops.
 
-💡 It is here as a **second opinion**. Two harts written by different people rarely share a mistake. When firmware works on one and not the other, the difference says where to look, before anyone suspects the firmware or the devices. M27 put it in for the Linux work that follows ([roadmap.md](../roadmap.md)).
+💡 It is here as a **second opinion**. Two harts written by different people rarely share a mistake. When firmware works on one and not the other, the difference says where to look, before anyone suspects the firmware or the devices. It came in for the Linux boots, which run on both harts.
 
 ## Getting it
 
@@ -52,7 +52,7 @@ board = host(cpu="qbox_cpu")        # or SOCPUPPET_CPU=qbox_cpu for every host
 
 ## What makes it fast
 
-🎓 The same two things as the DBT-RISE CPU (the direct memory interface and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran M26's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../history/speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34; 🐧 Linux to its prompt took 6 s where the interpreter took 75 ([linux.md](../linux.md)).
+🎓 The same two things as the DBT-RISE CPU (the direct memory interface and temporal decoupling, both on [its page](dbt-rise-cpu.md#what-makes-it-fast)), plus translation. On the A51 (an Intel Core Ultra 9 285K, Ubuntu 26.04) at the boards' 100 µs quantum, through socpuppet's own platform, it ran the speed spike's three loops at about 280 million instructions a second counting down, 610 million through pages it had already walked, and 18 million when every load is a walk of the page tables ([speed-spike.md](../history/speed-spike.md)). A boot of OpenSBI and UEFI to the shell ran at 343 million, 1.6 s on the wall where the interpreter took 34; 🐧 Linux to its prompt took 6 s where the interpreter took 75 ([linux.md](../linux.md)).
 
 ## What it does differently
 
@@ -74,8 +74,8 @@ The hart's suite runs on it with `ctest --preset qbox`, and what it does not pas
 ## What it leaves out
 
 - **A device's delay inside the quantum.** QBox keeps the CPU's time in QEMU's clock, which counts instructions, and forgets what a target adds to an access unless the CPU has to wait for SystemC there and then. ⚠️ At the boards' 100 µs a device that takes 3 µs costs this CPU nothing. Time a device against `dbt_rise_cpu` ([upstream.md](../upstream.md)).
-- **A no-quantum run that keeps time.** With no quantum, a CPU running from memory it reaches directly never waits for SystemC's clock, which then stands still while it runs. The boards set 100 µs. M26's 1 ms for 33.5 million instructions was that.
-- **QEMU's threaded configuration**, a thread for each CPU with nothing to keep it in step. It hung in every environment M26 tried, and it would give up repeatability, which is the point of a second opinion.
+- **A no-quantum run that keeps time.** With no quantum, a CPU running from memory it reaches directly never waits for SystemC's clock, which then stands still while it runs. The boards set 100 µs. The speed spike's 1 ms for 33.5 million instructions was that.
+- **QEMU's threaded configuration**, a thread for each CPU with nothing to keep it in step. It hung in every environment the speed spike tried, and it would give up repeatability, which is the point of a second opinion.
 
 ## Where it comes from
 

@@ -5,7 +5,7 @@ when it does not pretend to be real hardware: a block device, a network
 card, a console and a few more, each a small register block
 (`virtio-mmio`) and rings of descriptors in the guest's memory. No real
 SoC has one. The host has them as stand-ins, in the sense socpuppet has
-used since its first milestone: each holds a real block's place so that
+used from the start: each holds a real block's place so that
 the rest of the cast can rehearse, and tells a kernel that will not boot
 from a device that does not work.
 

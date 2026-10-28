@@ -12,7 +12,7 @@
 ::sysinit:/sbin/ip link set eth0 up
 # A shell, and no login, on hvc0, the virtio console: Linux's console on the
 # host, by the decision of 2026-10-18 (docs/history/decisions.md), and where
-# the exit test of M20 waits for the prompt. The leading - makes it a login
+# test_linux_boots.py waits for the prompt. The leading - makes it a login
 # shell, which reads /etc/profile.
 hvc0::respawn:-/bin/sh
 # 🔌 An address by DHCP, where a cable to this machine's network is plugged

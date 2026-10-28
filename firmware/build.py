@@ -136,7 +136,7 @@ IMAGES = [
         options=("CONFIG_SOCPUPPET_RISCV_IOMMU_IDENTITY_PAGE_TABLE=y",),
     ),
     # socpuppet's test of its driver for the IOMMU, which takes a page away
-    # from the drive and reads the fault, for M15's exit test to run.
+    # from the drive and reads the fault, for test_iommu.py to run.
     Image(
         "python/socpuppet/zephyr_module/tests/drivers/riscv_iommu",
         "socpuppet_host",

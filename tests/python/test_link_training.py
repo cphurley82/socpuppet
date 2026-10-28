@@ -1,12 +1,12 @@
-"""Milestone M5's exit test: the IO die's firmware trains the die-to-die
+"""The IO die's firmware trains the die-to-die
 link and lets the compute die go, and 🎭 the compute-side stand-in then
 reaches the IO die's memory across it.
 
-The firmware is `firmware/iomgr`, a Zephyr application on the manager's
-own RISC-V core, with socpuppet's driver for the link under it. It is
-M5a's exit test with the real thing in the manager's place: what 🎭 the
-script did there, Zephyr does here, and the compute die cannot tell which
-it got.
+The firmware is `firmware/iomgr`, a Zephyr application on the manager's own
+RISC-V core, with socpuppet's driver for the link under it. It is
+test_io_manager_lets_the_compute_die_go.py with the real thing in the manager's
+place: what 🎭 the script did there, Zephyr does here, and the compute die cannot
+tell which it got.
 """
 
 import pytest

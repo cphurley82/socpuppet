@@ -1,4 +1,4 @@
-"""Milestone M13's exit test: a shell that answers Python.
+"""A shell that answers Python.
 
 The host runs Zephyr's shell, and Python is at the other end of the
 serial line: it types a command and reads the answer. A shell wants to be
@@ -9,8 +9,8 @@ IMSIC. (A shell whose console cannot interrupt polls it, and answers all
 the same, which is why one test here looks for the messages.)
 
 So every interrupt the host takes but its timer's is a message now: the
-console's here, and the drive's in the disk test (M3b to M8), which runs
-on the same board.
+console's here, and the drive's in the disk test
+(test_zephyr_disk_on_the_host.py), which runs on the same board.
 
 The image is `samples/subsys/shell/shell_module` for `socpuppet_host`, as
 `firmware/build.py` builds it, with nothing of socpuppet's in the
@@ -163,9 +163,9 @@ class TestWhenTheHostsShellIsAcrossTheRealLink:
     def test_it_answers_and_its_console_interrupts_by_messages_over_the_link(
         self, firmware
     ):
-        # 🎭 A script trains the link and lets the host go, as in M7. The
-        # APLIC's registers are then written across the trained link, and
-        # its messages come back over it.
+        # 🎭 A script trains the link and lets the host go, as in
+        # test_host_across_the_real_link.py. The APLIC's registers are then
+        # written across the trained link, and its messages come back over it.
         board = a_host_running_the_shell(
             firmware,
             manager=functools.partial(

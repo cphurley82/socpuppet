@@ -50,7 +50,7 @@ io_rc: pcie@10100000 {
 
 💡 The compatible is socpuppet's own. Zephyr has a generic driver for a root complex like this one, and it cannot deliver a message-signalled interrupt on RISC-V, so socpuppet's Zephyr module brings a driver ([upstream.md](../upstream.md) has the story).
 
-In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for any root complex whose configuration window is laid out as ECAM, the standard layout, and has nothing more to it. This one is, so Linux needs no driver of ours: 🐧 M24 ran it, and Linux's `pci-host-generic` found the drive behind it, placed its registers itself, and took its interrupts as MSI-X messages to the IMSIC, by the node's `msi-parent` (`tests/python/test_linux_root_on_the_drive.py`). EDK2 reads the same node, with its FDT host bridge.
+In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for any root complex whose configuration window is laid out as ECAM, the standard layout, and has nothing more to it. This one is, so Linux needs no driver of ours: 🐧 with its root on the drive, Linux's `pci-host-generic` found the drive behind it, placed its registers itself, and took its interrupts as MSI-X messages to the IMSIC, by the node's `msi-parent` (`tests/python/test_linux_root_on_the_drive.py`). EDK2 reads the same node, with its FDT host bridge.
 
 ## What it leaves out
 
