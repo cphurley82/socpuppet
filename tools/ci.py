@@ -967,6 +967,7 @@ def drop_stale_dependencies(clean: bool) -> None:
         REPO / "build" / "dev": patched,
         REPO / "build" / "qbox-dev": patched,
         REPO / "build" / "linux": patched,
+        REPO / "build" / "pciem-dev": patched,
         # The linux preset's tree of each Ubuntu's container, which is
         # build/linux in there (tools/devcontainer.py): those of the Ubuntus
         # the devcontainer jobs build on, and any other there is.

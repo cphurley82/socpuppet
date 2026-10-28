@@ -886,6 +886,18 @@ def test_when_the_patches_change_the_patched_dependencies_are_dropped(ci):
     assert dropped(dependencies) == PATCHED
 
 
+def test_the_trees_whose_dependencies_are_looked_after_are_the_presets():
+    presets = json.loads((REPO / "CMakePresets.json").read_text())
+
+    trees = {
+        preset["binaryDir"].replace("${sourceDir}/", "")
+        for preset in presets["configurePresets"]
+        if "binaryDir" in preset
+    }
+
+    assert trees == set(PRESET_TREES)
+
+
 def test_when_the_patches_are_the_same_nothing_is_dropped(ci):
     ci("lint")
     dependencies = make_dependencies(ci.root)
@@ -1248,14 +1260,20 @@ def write_fake(path, program=FAKE):
     path.chmod(0o755)
 
 
+# socpuppet's trees on this machine: the presets' binaryDir.
+PRESET_TREES = (
+    "build/dev",
+    "build/qbox-dev",
+    "build/linux",
+    "build/pciem-dev",
+)
 # The dependencies a run finds in the build trees: those of socpuppet's
-# trees (the presets' binaryDir), as FetchContent names them, and QBox's own
-# two (tools/build_qbox.py's tree).
+# trees, as FetchContent names them, and QBox's own two
+# (tools/build_qbox.py's tree).
 DEPENDENCY_DIRECTORIES = [
     f"{tree}/_deps/{name}-{part}"
     for tree in (
-        "build/dev",
-        "build/qbox-dev",
+        *PRESET_TREES,
         # The linux preset's tree of each Ubuntu the devcontainer jobs build
         # in (tools/devcontainer.py).
         *(
