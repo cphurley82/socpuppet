@@ -1,0 +1,24 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index 4067d81..669d197 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -167,6 +167,10 @@ void spi::transmit_data() {
+             update_irq_evt.notify();
+             bit_duration = 2 * (regs->r_sckdiv.div + 1) * clk;
+             start_time = sc_core::sc_time_stamp();
++            // Whether this byte's answer is kept is the frame format's as the
++            // byte is taken, since a driver may change it for the next
++            // transfer while this byte is still going out.
++            const bool transmit_only = static_cast<uint32_t>(regs->r_fmt.dir) != 0;
+             set_bit(txdata & 0x80, mosi_o); // 8 data bits, MSB first
+             auto s2m = set_bit(1 - regs->r_sckmode.pol, sck_o, true);
+             wait(bit_duration / 2);
+@@ -182,7 +186,7 @@ void spi::transmit_data() {
+                 }
+             } else
+                 wait(7 * bit_duration);
+-            if(s2m.first)
++            if(s2m.first && !transmit_only)
+                 rx_fifo.nb_write(s2m.second & 0xff);
+             update_irq_evt.notify();
+         }

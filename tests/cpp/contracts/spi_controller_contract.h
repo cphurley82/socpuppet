@@ -191,12 +191,38 @@ TYPED_TEST_P(SpiControllerContract,
   EXPECT_FALSE(pending_after_queueing);
 }
 
+// Linux's driver sends a command's opcode and address transmit-only, then
+// reads the data that follows: what it reads must be the data's answer,
+// not one kept from the bytes before.
+TYPED_TEST_P(SpiControllerContract,
+             AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer) {
+  bool sent = false;
+  std::optional<std::uint8_t> received;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.SetTransmitMark(1);
+    this->chips_[1].answer = 0xAA;
+    spi.Format(/*transmit_only=*/true);
+    spi.Queue(0x11);
+    sent = spi.WaitFor(SifiveSpiDriver::kTransmitWatermark);
+    this->chips_[1].answer = 0xBB;
+    spi.Format(/*transmit_only=*/false);
+    received = spi.Send(0x22);
+  });
+
+  ASSERT_TRUE(sent);
+  EXPECT_EQ(received, 0xBB);
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
     AByteSentWhereNoChipIsComesBackAsFf,
     BytesSentWhileAChipIsHeldReachItAsOneFrameThatEndsWhenItIsLetGo,
     AfterTransmitOnlyBytesTheWatermarkOfOneIsPendingOnceTheFifoIsEmpty,
-    APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued);
+    APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued,
+    AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
