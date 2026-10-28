@@ -7,6 +7,7 @@
 #include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include <sifive/gen/gpio_regs.h>
 #include <sifive/gpio.h>
@@ -77,7 +78,9 @@ struct Gpio::Model {
     sc_core::sc_spawn([this] { TellTheFarEnd(); }, "tell_the_far_end");
   }
 
-  void OnChange(PinListener listener) { listener_ = std::move(listener); }
+  void OnChange(PinListener listener) {
+    listeners_.push_back(std::move(listener));
+  }
 
   // Applied a delta cycle on, by ApplyTheFarEndsDrives.
   void Drive(unsigned pin, std::optional<bool> level) {
@@ -110,11 +113,11 @@ struct Gpio::Model {
   void TellTheFarEnd() {
     while (true) {
       sc_core::wait(changed_);
-      // The listener may wait, and more changes come meanwhile.
+      // A listener may wait, and more changes come meanwhile.
       while (!changes_.empty()) {
         const auto [pin, level] = changes_.front();
         changes_.pop_front();
-        if (listener_) listener_(pin, level);
+        for (const PinListener& listener : listeners_) listener(pin, level);
       }
     }
   }
@@ -141,7 +144,7 @@ struct Gpio::Model {
   // first.
   std::deque<PinLevel> changes_;
   sc_core::sc_event changed_{"changed"};
-  PinListener listener_;
+  std::vector<PinListener> listeners_;
   // What each pin drives.
   std::array<std::optional<bool>, kPins> levels_{};
   sc_core::sc_signal<sc_core::sc_time> bus_clock_{"bus_clock"};

@@ -161,8 +161,8 @@ class PlacedGpio(Placed):
 
         Each change is told in the order it happened, a delta cycle after
         firmware made it, from the GPIO's own process: so the listener may
-        `drive` a pin, which firmware reads a delta cycle after that. It
-        takes the place of any listener before it.
+        `drive` a pin, which firmware reads a delta cycle after that. Each
+        listener added is told, after those added before it.
         """
         self._platform.native().gpio_on_change(self.path, listener)
 
