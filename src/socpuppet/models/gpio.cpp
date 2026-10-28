@@ -49,8 +49,11 @@ unsigned Checked(unsigned pin) {
 // carrying a logic value: one, zero, or Z, high impedance, which is a pin
 // that drives nothing. It is told what is on a pin the same way, on the
 // pin's input socket.
+//
+// Each pin's interrupt output is bound straight through: the GPIO writes
+// them from one process of its own.
 struct Gpio::Model {
-  Model() {
+  explicit Model(Gpio& owner) {
     gpio_.clk_i.bind(bus_clock_);
     gpio_.rst_i.bind(reset_tied_low_);
     for (unsigned pin = 0; pin < kPins; ++pin) {
@@ -63,6 +66,7 @@ struct Gpio::Model {
           },
           pin);
       inputs_[pin].bind(gpio_.pins_i[pin]);
+      gpio_.irq_o[pin].bind(owner.irq[pin]);
     }
     sc_core::sc_spawn_options method;
     method.spawn_method();
@@ -151,7 +155,7 @@ struct Gpio::Model {
 };
 
 Gpio::Gpio(const sc_core::sc_module_name& name)
-    : sc_module(name), model_(std::make_unique<Model>()) {
+    : sc_module(name), model_(std::make_unique<Model>(*this)) {
   socket.register_b_transport(this, &Gpio::b_transport);
 }
 

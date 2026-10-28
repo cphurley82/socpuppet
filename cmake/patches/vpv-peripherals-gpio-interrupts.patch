@@ -1,0 +1,120 @@
+diff --git a/sifive/gpio.cpp b/sifive/gpio.cpp
+index 23f1022..835abe1 100644
+--- a/sifive/gpio.cpp
++++ b/sifive/gpio.cpp
+@@ -29,6 +29,7 @@ gpio::gpio(sc_core::sc_module_name nm)
+ , NAMED(iof1_o, 32)
+ , NAMED(iof0_i, 32)
+ , NAMED(iof1_i, 32)
++, NAMED(irq_o, 32)
+ , NAMEDD(regs, gpio_regs)
+ , NAMED(write_to_ws, false) {
+     regs->registerResources(*this);
+@@ -37,6 +38,9 @@ gpio::gpio(sc_core::sc_module_name nm)
+     SC_METHOD(reset_cb);
+     sensitive << rst_i;
+     dont_initialize();
++    SC_METHOD(update_irq);
++    sensitive << irq_evt;
++    dont_initialize();
+     auto pins_i_cb = [this](unsigned int tag, tlm::scc::tlm_signal_gp<sc_logic>& gp, tlm::tlm_phase& phase,
+                             sc_core::sc_time& delay) -> tlm::tlm_sync_enum {
+         this->pin_input(tag, gp, delay);
+@@ -88,6 +92,52 @@ gpio::gpio(sc_core::sc_module_name nm)
+         update_inputs();
+         return true;
+     });
++    auto enable_cb = [this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        reg.put(data);
++        irq_evt.notify(sc_core::SC_ZERO_TIME);
++        return true;
++    };
++    regs->rise_ie.set_write_cb(enable_cb);
++    regs->fall_ie.set_write_cb(enable_cb);
++    regs->high_ie.set_write_cb(enable_cb);
++    regs->low_ie.set_write_cb(enable_cb);
++    // A pending bit is cleared by writing a one to it.
++    auto clear_cb = [this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        reg.put(reg.get() & ~data);
++        irq_evt.notify(sc_core::SC_ZERO_TIME);
++        return true;
++    };
++    regs->rise_ip.set_write_cb(clear_cb);
++    regs->fall_ip.set_write_cb(clear_cb);
++    regs->high_ip.set_write_cb(clear_cb);
++    regs->low_ip.set_write_cb(clear_cb);
++    // A level is pending while a pin is at it, whatever has been cleared.
++    regs->high_ip.set_read_cb([this](const scc::sc_register<uint32_t>& reg, uint32_t& data, sc_core::sc_time d) -> bool {
++        data = reg.get() | regs->r_value;
++        return true;
++    });
++    regs->low_ip.set_read_cb([this](const scc::sc_register<uint32_t>& reg, uint32_t& data, sc_core::sc_time d) -> bool {
++        data = reg.get() | ~regs->r_value;
++        return true;
++    });
++}
++
++void gpio::pend_events(uint32_t before, uint32_t changed) {
++    regs->r_rise_ip |= changed & ~before;
++    regs->r_fall_ip |= changed & before;
++    regs->r_high_ip |= changed & before;
++    regs->r_low_ip |= changed & ~before;
++    irq_evt.notify(sc_core::SC_ZERO_TIME);
++}
++
++void gpio::update_irq() {
++    auto high = regs->r_high_ip | regs->r_value;
++    auto low = regs->r_low_ip | ~regs->r_value;
++    auto pending = (regs->r_rise_ie & regs->r_rise_ip) | (regs->r_fall_ie & regs->r_fall_ip) |
++                   (regs->r_high_ie & high) | (regs->r_low_ie & low);
++    for(size_t i = 0; i < irq_o.size(); ++i)
++        if(irq_o[i].get_interface())
++            irq_o[i].write((pending >> i) & 1);
+ }
+ 
+ // What each input pin reads: what is driven on it from outside, or with
+@@ -95,7 +145,9 @@ gpio::gpio(sc_core::sc_module_name nm)
+ void gpio::update_inputs() {
+     auto inputs = ~regs->r_output_en;
+     auto outside = (driven_high & driven) | (regs->r_pue & ~driven);
++    auto before = regs->r_value;
+     regs->r_value = (regs->r_value & ~inputs) | (outside & inputs);
++    pend_events(before, before ^ regs->r_value);
+ }
+ 
+ gpio::~gpio() = default;
+diff --git a/sifive/gpio.h b/sifive/gpio.h
+index 601e9b4..87aea28 100644
+--- a/sifive/gpio.h
++++ b/sifive/gpio.h
+@@ -9,6 +9,7 @@
+ 
+ #include <cci_configuration>
+ #include <memory>
++#include <scc/signal_opt_ports.h>
+ #include <scc/tlm_target.h>
+ #include <tlm/scc/signal_initiator_mixin.h>
+ #include <tlm/scc/signal_target_mixin.h>
+@@ -37,6 +38,9 @@ public:
+     sc_core::sc_vector<tlm::scc::tlm_signal_bool_opt_in> iof0_i;
+     sc_core::sc_vector<tlm::scc::tlm_signal_bool_opt_in> iof1_i;
+ 
++    // Each pin's interrupt: up while one of its enabled events is pending.
++    sc_core::sc_vector<scc::sc_out_opt<bool>> irq_o;
++
+     gpio(sc_core::sc_module_name nm);
+     virtual ~gpio() override; // need to keep it in source file because of fwd declaration of gpio_regs
+ 
+@@ -57,6 +61,12 @@ protected:
+     uint32_t driven_high{0};
+     uint32_t driven{0};
+     void update_inputs();
++    // Sets pending the rises and falls of the pins `changed` from `before`,
++    // and the level each of them has left. The level a pin is at is
++    // pending for as long as it holds, so is added as the register is read.
++    void pend_events(uint32_t before, uint32_t changed);
++    void update_irq();
++    sc_core::sc_event irq_evt;
+     std::unique_ptr<gpio_regs> regs;
+     std::shared_ptr<vpvper::generic::WsHandler> handler;
+ 

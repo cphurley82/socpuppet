@@ -552,6 +552,8 @@ FetchContent_Declare(vpv_peripherals
   # driver then waits for ever for it.
   # gpio-pull-up: the SiFive GPIO ignored a pin that nothing drives, which
   # kept reading what was last driven on it, and its pull-up did nothing.
+  # gpio-interrupts: the SiFive GPIO had its interrupt registers and nothing
+  # behind them. This adds the events and each pin's interrupt output.
   PATCH_COMMAND git apply
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-time-zero.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-aclint-write-ahead.patch
@@ -568,6 +570,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-only.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-receive-fifo-full.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-gpio-pull-up.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-gpio-interrupts.patch
   UPDATE_DISCONNECTED TRUE
   # A directory with no CMakeLists.txt, so that nothing of its build runs.
   SOURCE_SUBDIR .github)
