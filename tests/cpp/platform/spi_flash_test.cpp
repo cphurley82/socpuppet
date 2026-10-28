@@ -12,6 +12,7 @@
 #include <tlm>
 
 #include "tests/cpp/support/bus_driver.h"
+#include "tests/cpp/support/line_watcher.h"
 #include "tests/cpp/support/sifive_spi_driver.h"
 
 // What socpuppet relies on of its SPI flash: the window a boot ROM reads
@@ -33,8 +34,8 @@ constexpr std::uint64_t kTenMegahertz = 10'000'000;
 const sc_core::sc_time kTenMegahertzPeriod{1.0 / kTenMegahertz,
                                            sc_core::SC_SEC};
 
-// A flash with a test's thread at its window, and a second at its
-// controller's registers.
+// A flash with a test's thread at its window, a second at its
+// controller's registers, and a watcher on its interrupt.
 struct Rig {
   explicit Rig(
       const std::function<void(BusDriver& window)>& at_the_window,
@@ -44,12 +45,16 @@ struct Rig {
         registers{"registers", at_the_registers} {
     window.socket.bind(flash.xip);
     registers.socket.bind(flash.socket);
+    flash.irq.bind(irq);
+    interrupt.line.bind(irq);
     sc_core::sc_start();
   }
 
   socpuppet::SpiFlash flash{"flash", kSize, kTenMegahertz};
   BusDriver window;
   BusDriver registers;
+  sc_core::sc_signal<bool> irq{"irq"};
+  LineWatcher interrupt{"interrupt"};
 };
 
 // A chip on a flash's bus that notes when each byte reaches it.
@@ -74,12 +79,14 @@ struct ClockedRig {
     flash.Attach(1, device);
     window.socket.bind(flash.xip);
     registers.socket.bind(flash.socket);
+    flash.irq.bind(irq);
     sc_core::sc_start();
   }
 
   socpuppet::SpiFlash flash;
   BusDriver window;
   BusDriver registers;
+  sc_core::sc_signal<bool> irq{"irq"};
 };
 
 }  // namespace
@@ -212,4 +219,20 @@ TEST(BytesInABurstAtTheControllersResetDivisor,
 
   ASSERT_EQ(chip.arrivals.size(), 2U);
   EXPECT_EQ(chip.arrivals[1] - chip.arrivals[0], 16 * kTenMegahertzPeriod);
+}
+
+// A flash's interrupt is its controller's, which Linux's driver sleeps on.
+// What raises it is the controller contract's to say.
+TEST(AFlashsInterrupt, IsItsControllers) {
+  Rig rig{[](BusDriver&) {},
+          [](BusDriver& registers) {
+            const SifiveSpiDriver spi{registers};
+            spi.SetTransmitMark(1);
+            // Any byte: the watermark is pending once it is out.
+            spi.Queue(0);
+            spi.Enable(SifiveSpiDriver::kTransmitWatermark);
+            spi.WaitFor(SifiveSpiDriver::kTransmitWatermark);
+          }};
+
+  EXPECT_EQ(rig.interrupt.Rises(), 1);
 }

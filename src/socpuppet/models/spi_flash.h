@@ -34,6 +34,8 @@ class SpiFlash : public sc_core::sc_module {
   tlm::tlm_target_socket<> socket{"socket"};
   // The flash, read like memory.
   tlm_utils::simple_target_socket<SpiFlash> xip{"xip"};
+  // The controller's interrupt, for its FIFOs' watermarks.
+  sc_core::sc_out<bool> irq{"irq"};
 
   // `size` is how many bytes the flash holds: a power of two, as every
   // W25Q part's is. `clock_hz` is its controller's clock.
@@ -57,8 +59,6 @@ class SpiFlash : public sc_core::sc_module {
   void Copy(tlm::tlm_generic_payload& transaction);
 
   SpiNorChip chip_;
-  // The controller's interrupt is nobody's yet.
-  sc_core::sc_signal<bool> interrupt_unread_{"interrupt_unread"};
   // After the chip, which it is handed and must not outlive.
   SpiController controller_;
 };
