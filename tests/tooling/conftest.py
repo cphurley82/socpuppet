@@ -63,6 +63,23 @@ def zephyr_tree():
 
 
 @pytest.fixture
+def dev_tree():
+    """The dev preset's build tree, with its C++ test programs built.
+
+    A test that asks CTest what is registered there is skipped where there
+    is none, which is a machine that has not built the dev preset:
+    `cmake --preset dev && cmake --build --preset dev`.
+    """
+    tree = REPO / "build/dev"
+    if not (tree / "tests/cpp/unit_tests").is_file():
+        pytest.skip(
+            f"There is no {tree} with its C++ tests built. `cmake --preset "
+            "dev && cmake --build --preset dev` builds them."
+        )
+    return tree
+
+
+@pytest.fixture
 def repo(tmp_path):
     """A throwaway git repository carrying the real lint configuration."""
     _make_repo(tmp_path)
