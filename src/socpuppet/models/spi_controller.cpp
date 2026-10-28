@@ -63,6 +63,7 @@ struct SpiController::Model {
           ClockEdge(signal);
           return tlm::TLM_COMPLETED;
         });
+    sc_core::sc_spawn([this] { DeliverDeselects(); }, "deliver_deselects");
   }
 
   void Attach(unsigned chip_select, SpiDevice& device) {
@@ -76,16 +77,43 @@ struct SpiController::Model {
   // A chip select line has been driven: low selects its chip, high lets it
   // go. The controller drives a held line low again at each burst, which is
   // no edge and changes nothing.
+  //
+  // The controller selects a chip from its own sending thread, but lets one
+  // go from a register's write callback, in the writer's thread: a CPU's,
+  // which on QBox's hart is a coroutine of QEMU's and must not wait. A chip
+  // may wait in any call, so it is told it is let go from a thread of the
+  // adapter's own, a delta cycle on, or before any chip is selected, if that
+  // comes sooner.
   void ChipSelect(unsigned chip_select, bool high) {
     const bool selected = !high;  // A line is low while its chip is selected.
     if (selected_[chip_select] == selected) return;
     selected_[chip_select] = selected;
-    SpiDevice* device = devices_[chip_select];
-    if (device == nullptr) return;
+    if (devices_[chip_select] == nullptr) return;
     if (selected) {
-      device->Select();
+      DeliverDueDeselects();
+      devices_[chip_select]->Select();
     } else {
-      device->Deselect();
+      deselect_due_[chip_select] = true;
+      deselected_.notify(sc_core::SC_ZERO_TIME);
+    }
+  }
+
+  // The adapter's own thread, which tells chips they are let go.
+  void DeliverDeselects() {
+    while (true) {
+      sc_core::wait(deselected_);
+      DeliverDueDeselects();
+    }
+  }
+
+  // Tells every chip that has been let go and not yet told, in the order
+  // of their chip selects.
+  void DeliverDueDeselects() {
+    for (unsigned chip_select = 0; chip_select < devices_.size();
+         ++chip_select) {
+      if (!deselect_due_[chip_select]) continue;
+      deselect_due_[chip_select] = false;
+      devices_[chip_select]->Deselect();
     }
   }
 
@@ -127,6 +155,9 @@ struct SpiController::Model {
                                    Pin{"chip_select_2"}, Pin{"chip_select_3"}};
   // Which chip select lines are low.
   std::array<bool, 4> selected_{};
+  // Which chips have been let go and not yet told.
+  std::array<bool, 4> deselect_due_{};
+  sc_core::sc_event deselected_{"deselected"};
   // The clock's level between bytes, which the controller sends at the
   // start of a burst.
   bool idle_ = false;

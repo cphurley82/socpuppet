@@ -13,6 +13,12 @@ namespace socpuppet {
 // out is always a byte back, whether the device had anything to say or
 // not. A frame is everything between pulling the select low and letting
 // it go: a command and its address, then data.
+//
+// Every call comes from a thread process of the controller's own, never
+// from the thread of whoever wrote the controller's registers, so a device
+// may wait in any of them. Time a device waits in Transfer() is time on
+// the bus. Deselect() may come a delta cycle after the line rises, and
+// always before a chip is selected again.
 class SpiDevice {
  public:
   virtual ~SpiDevice() = default;

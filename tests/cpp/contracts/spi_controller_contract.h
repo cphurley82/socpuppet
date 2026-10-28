@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -39,13 +40,18 @@ class SpiControllerContract : public ::testing::Test {
   // byte with the same one. A frame is the bytes between its select and
   // its deselect.
   struct RecordingChip : socpuppet::SpiDevice {
-    void Select() override { frame_.emplace(); }
+    void Select() override {
+      NoteTheCaller();
+      frame_.emplace();
+    }
     std::uint8_t Transfer(std::uint8_t sent) override {
+      NoteTheCaller();
       received.push_back(sent);
       if (frame_) frame_->push_back(sent);
       return answer;
     }
     void Deselect() override {
+      NoteTheCaller();
       if (frame_) frames.push_back(*frame_);
       frame_.reset();
     }
@@ -54,8 +60,20 @@ class SpiControllerContract : public ::testing::Test {
     std::vector<std::uint8_t> received;
     // Every frame that has ended.
     std::vector<std::vector<std::uint8_t>> frames;
+    // The process each call came from.
+    struct Caller {
+      std::string name;
+      sc_core::sc_curr_proc_kind kind;
+    };
+    std::vector<Caller> callers;
 
    private:
+    void NoteTheCaller() {
+      const sc_core::sc_process_handle process =
+          sc_core::sc_get_current_process_handle();
+      callers.push_back({.name = process.name(), .kind = process.proc_kind()});
+    }
+
     std::optional<std::vector<std::uint8_t>> frame_;
   };
 
@@ -67,10 +85,13 @@ class SpiControllerContract : public ::testing::Test {
     }
   }
 
-  // Runs `body` in a simulation thread wired to the controller.
+  // Runs `body` in a simulation thread wired to the controller. The run
+  // ends a delta cycle after the body does: the controller tells a chip it
+  // is let go a delta cycle on.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
     BusDriver driver{"driver", [&](BusDriver& bus) {
                        body(bus);
+                       sc_core::wait(sc_core::SC_ZERO_TIME);
                        sc_core::sc_stop();
                      }};
     driver.socket.bind(controller_.socket);
@@ -269,6 +290,52 @@ TYPED_TEST_P(
   EXPECT_TRUE(down);
 }
 
+// A chip may wait in any call, as one that is a Python object does to
+// reach Python: so it is called from the controller's own processes, never
+// from the thread of whoever wrote its registers, which may be a CPU's that
+// must not wait.
+TYPED_TEST_P(SpiControllerContract,
+             AChipIsCalledOnlyFromTheControllersOwnProcesses) {
+  this->OnTheBus([](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.Send(0xA5);
+    spi.LetGo();
+  });
+
+  using Caller = typename TestFixture::RecordingChip::Caller;
+  const std::string controller = std::string(this->controller_.name()) + ".";
+  EXPECT_THAT(
+      this->chips_[1].callers,
+      ::testing::AllOf(
+          ::testing::Not(::testing::IsEmpty()),
+          ::testing::Each(::testing::AllOf(
+              ::testing::Field(&Caller::name,
+                               ::testing::StartsWith(controller)),
+              // A method process cannot wait.
+              ::testing::Field(&Caller::kind,
+                               ::testing::Ne(sc_core::SC_METHOD_PROC_))))));
+}
+
+// A driver that lets a chip go and selects it again at once, as a CPU
+// running ahead of the clock does, starts a second frame: the chip is told
+// it was let go before it is selected again.
+TYPED_TEST_P(SpiControllerContract,
+             AChipLetGoAndSelectedAgainAtOnceSeesTwoFramesInOrder) {
+  this->OnTheBus([](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.Send(0x11);
+    spi.LetGo();
+    spi.Select(1);
+    spi.Send(0x22);
+    spi.LetGo();
+  });
+
+  EXPECT_EQ(this->chips_[1].frames,
+            (std::vector<std::vector<std::uint8_t>>{{0x11}, {0x22}}));
+}
+
 REGISTER_TYPED_TEST_SUITE_P(
     SpiControllerContract, AByteSentReachesTheSelectedChipOnce,
     TheSelectedChipsAnswerIsReceived, AChipThatIsNotSelectedHearsNothing,
@@ -278,6 +345,8 @@ REGISTER_TYPED_TEST_SUITE_P(
     APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued,
     AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer,
     AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn,
-    TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled);
+    TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled,
+    AChipIsCalledOnlyFromTheControllersOwnProcesses,
+    AChipLetGoAndSelectedAgainAtOnceSeesTwoFramesInOrder);
 
 #endif  // TESTS_CPP_CONTRACTS_SPI_CONTROLLER_CONTRACT_H_
