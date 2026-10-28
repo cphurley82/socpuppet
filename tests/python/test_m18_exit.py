@@ -26,9 +26,11 @@ from socpuppet import ztest
 from socpuppet.boards.host import (
     GPIO_LED,
     GPIO_LOOPBACK_WIRES,
+    I2C_RAM_ADDRESS,
     SPI_LOOPBACK_CHIP_SELECT,
     host,
 )
+from socpuppet.i2c import Ram
 from socpuppet.spi import Loopback
 
 #: Zephyr's `samples/drivers/spi_flash`.
@@ -39,6 +41,9 @@ SPI_LOOPBACK = "spi_loopback_socpuppet_host.elf"
 #: Zephyr's `tests/drivers/gpio/gpio_basic_api`, with the shield that names
 #: its two pins: one it drives, and one wired to it that it reads.
 GPIO_BASIC_API = "gpio_basic_api_socpuppet_host.elf"
+#: Zephyr's `tests/drivers/i2c/i2c_ram`, with the shield that names the
+#: I2C controller whose bus its RAM is on.
+I2C_RAM = "i2c_ram_socpuppet_host.elf"
 #: Zephyr's `samples/basic/blinky`, which blinks the board's LED.
 BLINKY = "blinky_socpuppet_host.elf"
 #: What the sample says when it passes, in order: its `sample.yaml` has them
@@ -58,6 +63,10 @@ LIMIT = sp.ms(50)
 #: twice that leaves room for the quantum to move its timed transfers, and
 #: still ends a run that never gives one.
 LOOPBACK_LIMIT = sp.ms(1000)
+#: The I2C test gives its verdict at 15.5 ms of simulated time, its bytes
+#: taking their time on a bus of 100 kHz; about six times that still ends
+#: a run that never gives one.
+I2C_LIMIT = sp.ms(100)
 #: Blinky turns its LED over a second apart, from boot on: its four
 #: changes take two seconds, and twice that ends a run that never makes
 #: them.
@@ -139,6 +148,37 @@ class TestWhenZephyrsBlinkySampleRuns:
         assert [b - a for a, b in itertools.pairwise(times[1:])] == [
             pytest.approx(sp.ms(1000), abs=sp.ms(10))
         ] * 2
+
+
+@pytest.mark.platform
+class TestWhenZephyrsI2cRamTestRunsWithPythonsRamOnTheBus:
+    def test_it_gives_a_verdict_and_nothing_failed(self, firmware):
+        # 🧵 Python is the RAM at the address the test talks to.
+        board = host(i2c_devices={I2C_RAM_ADDRESS: Ram()})
+        boot(board, firmware, host=I2C_RAM)
+
+        board.platform.run_until(
+            lambda: ztest.verdict_of(board.uart.output) is not None,
+            timeout=I2C_LIMIT,
+        )
+
+        assert ztest.parse(board.uart.output).passed, board.uart.output
+
+
+class TestWhenZephyrsI2cRamTestIsRunAsTwisterRunsIt:
+    def test_the_shield_puts_pythons_ram_on_the_bus_and_nothing_failed(
+        self, firmware
+    ):
+        result = run_socpuppet(
+            "run",
+            str(firmware(I2C_RAM)),
+            "--board",
+            "socpuppet_host",
+            "--shield",
+            "socpuppet_host_i2c_ram",
+        )
+
+        assert ztest.parse(result.stdout).passed, result.stdout
 
 
 class TestWhenZephyrsGpioTestIsRunAsTwisterRunsIt:

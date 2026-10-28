@@ -19,5 +19,6 @@ ram: 65536
 flash: 65536
 supported:
   - gpio
+  - i2c
   - spi
   - watchdog

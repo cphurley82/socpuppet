@@ -247,6 +247,16 @@ class TestWhenACpuHasAGpioForLinux:
         assert "gpio-leds" not in devicetree
 
 
+class TestWhenACpuHasAnI2cControllerForLinux:
+    def test_linux_is_told_of_none(self):
+        # 🐧 The stock kernel has no driver for it: `I2C_OCORES` is not set.
+        platform, bus, _ = cpu_with_its_peripherals()
+        i2c = platform.add("i2c", sp.I2cController())
+        bus.map(i2c.cpu, base=0x0010_3000)
+
+        assert '"sifive,i2c0"' not in platform.devicetree(dialect="linux")
+
+
 class TestWhenAPlatformHasAPcieRootComplexForLinux:
     def test_it_is_a_generic_ecam_host_and_nothing_of_zephyrs(self):
         # 🎓 ECAM is the standard layout of a PCIe configuration window, and

@@ -38,6 +38,11 @@ tests/drivers/spi/spi_loopback -x=SHIELD=socpuppet_host_spi_loopback --fixture s
 # wants.
 tests/drivers/gpio/gpio_basic_api -x=SHIELD=socpuppet_host_gpio_loopback --fixture gpio_loopback
 
+# The host's I2C controller, with Python's RAM on its bus: the shield
+# names the controller, and its fixture says the board has the RAM the
+# test wants.
+tests/drivers/i2c/i2c_ram -x=SHIELD=socpuppet_host_i2c_ram --fixture i2c_ram
+
 # The sample that blinks the board's LED, on a pin of the host's GPIO.
 # Twister builds it but does not run it: its harness watches a real LED.
 # tests/python/test_m18_exit.py watches the pin instead.

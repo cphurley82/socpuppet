@@ -1,0 +1,17 @@
+diff --git a/drivers/i2c/i2c_sifive.c b/drivers/i2c/i2c_sifive.c
+index 2677e530..39fb9c46 100644
+--- a/drivers/i2c/i2c_sifive.c
++++ b/drivers/i2c/i2c_sifive.c
+@@ -86,8 +86,10 @@ static int i2c_sifive_send_addr(const struct device *dev,
+ 	while (i2c_sifive_busy(dev)) {
+ 	}
+ 
+-	/* Set transmit register to address with read/write flag */
+-	sys_write8((addr | rw_flag), I2C_REG(config, REG_TRANSMIT));
++	/* Set transmit register to the 7-bit address, with the read/write flag
++	 * in its bit 0
++	 */
++	sys_write8(((addr << 1) | rw_flag), I2C_REG(config, REG_TRANSMIT));
+ 
+ 	/* Addresses are always written */
+ 	command = SF_CMD_WRITE | SF_CMD_START;

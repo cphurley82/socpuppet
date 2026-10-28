@@ -1198,6 +1198,26 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: limitation.
 - **When it lands**: drop the patch.
 
+### 📮 The SiFive I2C driver sends the device's address unshifted
+
+- **Where**: `drivers/i2c/i2c_sifive.c`, `i2c_sifive_send_addr`: `sys_write8((addr | rw_flag), ...)`.
+- **What is wrong**: Zephyr hands a driver a device's seven-bit address, and the OpenCores core sends the transmit register's eight bits as they are, the address in the top seven and the direction in bit 0. Unshifted, a device at 0x51 is addressed as 0x28, for a read whatever was asked: no device at 0x51 hears its address, on silicon as here.
+- **How to see it**: `tests/drivers/i2c/i2c_ram` built for `socpuppet_host` with the shield `socpuppet_host_i2c_ram`, with the patch taken out: `I2C Rx failed to acknowledge`, and `test_ram_transfer` fails.
+- **What we do**: `cmake/patches/zephyr-i2c-sifive-address-shifted.patch` writes `(addr << 1) | rw_flag`. `firmware/build.py` applies it to the clone.
+- **Upstream fix**: the same.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
+### 📮 The SiFive I2C driver starts every message again, as if each asked for it
+
+- **Where**: `drivers/i2c/i2c_sifive.c`, `i2c_sifive_write_msg` and `i2c_sifive_read_msg`, which each send a start and the address first, and `i2c_sifive_transfer`, which calls them for every message.
+- **What is wrong**: Zephyr's API has a message after the first go on with the transfer unless it is flagged `I2C_MSG_RESTART`. Two writes in one transaction, an address and then data, as many drivers send a register's address and its value, become two transfers, and the device takes the data's first bytes for an address. The driver also never looks at what sending a read's address returned.
+- **How to see it**: `tests/drivers/i2c/i2c_ram` with `CONFIG_I2C_RTIO=y` (twister's `drivers.i2c.ram.rtio`), with the patch taken out: `test_ram_rtio_write_with_transaction` reads back other bytes than it wrote.
+- **What we do**: `cmake/patches/zephyr-i2c-sifive-start-only-when-asked.patch`, on top of `zephyr-i2c-sifive-address-shifted.patch`, sends the start and the address before the first message, before one flagged `I2C_MSG_RESTART`, and before one after a message that stopped, and no other. `firmware/build.py` applies both to the clone. Not acted on: a read's address that is not acknowledged still goes unnoticed.
+- **Upstream fix**: the same, and a read that fails its address says so.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ## SPDK
 
 [spdk/spdk](https://github.com/spdk/spdk), the Storage Performance Development Kit, pinned at `0bbb7fe4` ("v26.09") in `cmake/Dependencies.cmake`. socpuppet borrows one file from it, `include/spdk/nvme_spec.h`: the registers, commands and data structures of the NVMe specification as C structs. The NVMe controller's logic (`src/socpuppet/core/nvme_controller.cpp`) is ours.

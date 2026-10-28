@@ -143,6 +143,7 @@ Two more lines of the list are directories of this repository, and every suite u
 | `socpuppet_host_iommu` | `socpuppet_host`, after `socpuppet_host_drive` | An [IOMMU](models/iommu.md) in front of the drive |
 | `socpuppet_host_spi_loopback` | `socpuppet_host` | 🧵 Python's loopback (`socpuppet.spi.Loopback`) on the [boot flash](models/spi-flash.md)'s SPI bus at chip select 1, which answers each byte with itself, for Zephyr's `tests/drivers/spi/spi_loopback` |
 | `socpuppet_host_gpio_loopback` | `socpuppet_host` | 🧵 Python's wire from the [GPIO](models/gpio.md)'s pin 0 to its pin 1 (`host(gpio_wires=...)`), for Zephyr's `tests/drivers/gpio/gpio_basic_api` |
+| `socpuppet_host_i2c_ram` | `socpuppet_host` | 🧵 Python's RAM (`socpuppet.i2c.Ram`) at address 0x51 on the [I2C controller](models/i2c-controller.md)'s bus, for Zephyr's `tests/drivers/i2c/i2c_ram` |
 | `socpuppet_ssd_host` | `socpuppet_ssd` | 🎭 A host in front of the SSD that says a host's first words to a drive: it finds it and lets it reach the host's memory, enables it, waits to be told it is ready, asks for a pair of I/O queues and how big the drive is, and writes one block |
 
 ⚠️ The SSD's host waits one second of simulated time to be told the drive is ready, and ends the run if it never is, in one line that says so. A suite built with that shield says so in time, as `nvme_frontend`'s does, or is done by then, as `dma_engine`'s is.
