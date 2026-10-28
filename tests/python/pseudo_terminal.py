@@ -102,6 +102,21 @@ class Terminal:
                 )
         self.seen = found.end()
 
+    def read_what_is_pending(self):
+        """Read what the process has shown that nothing has waited for."""
+        while select.select([self.controller], [], [], 0)[0]:
+            self.screen += os.read(self.controller, 4096)
+
+    def said_so_far(self):
+        """What the process has said on standard error, as text, so far."""
+        said = b""
+        while select.select([self.process.stderr], [], [], 0)[0]:
+            chunk = os.read(self.process.stderr.fileno(), 4096)
+            if not chunk:
+                break
+            said += chunk
+        return said.decode(errors="replace")
+
     def shown(self):
         """Everything the screen has shown, as text."""
         return self.screen.decode(errors="replace")

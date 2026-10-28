@@ -140,25 +140,34 @@ class TestWhenSomeoneSshesToLinuxWhileItRunsAtATerminal:
         terminal, port = linux_at_this_terminal_with_ssh
         terminal.wait_for(PROMPT)
 
-        answer = ssh_answer(port, "uname -a")
+        answer = ssh_answer(port, "uname -a", terminal)
 
         assert answer.startswith("Linux ")
 
 
-def ssh_answer(port: int, command: str) -> str:
+def ssh_answer(port: int, command: str, terminal: Terminal) -> str:
     """What `command` prints, run on Linux by this machine's ssh at `port`.
 
     dropbear may not be up yet at the prompt, so a try that fails is made
-    again, until ANSWERS_WITHIN.
+    again, until ANSWERS_WITHIN. An ssh that never answers fails the test
+    with what `terminal`, where Linux is, has shown.
     """
     started = time.monotonic()
     while True:
-        ran = subprocess.run(
-            ssh_to_linux.ssh(port, command),
-            capture_output=True,
-            text=True,
-            timeout=ANSWERS_WITHIN,
-        )
+        try:
+            ran = subprocess.run(
+                ssh_to_linux.ssh(port, command),
+                capture_output=True,
+                text=True,
+                timeout=ANSWERS_WITHIN,
+            )
+        except subprocess.TimeoutExpired:
+            terminal.read_what_is_pending()
+            pytest.fail(
+                f"ssh had no answer in {ANSWERS_WITHIN} s. The terminal "
+                f"showed:\n{terminal.shown()}\nand the command said:\n"
+                f"{terminal.said_so_far()}"
+            )
         if ran.returncode == 0 or time.monotonic() - started > ANSWERS_WITHIN:
             assert ran.returncode == 0, ran.stderr
             return ran.stdout
