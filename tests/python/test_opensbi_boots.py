@@ -76,9 +76,10 @@ class TestWhenTheBootRomStartsOpenSbiFromTheFlash:
 
 
 @pytest.mark.platform(scope="class")
+@pytest.mark.representative("opensbi")
 class TestWhenOpenSbiBootsWithItsTestPayload:
-    # 💡 One boot for the class, each way: its tests read what it said.
-    @pytest.mark.representative("opensbi")
+    # 💡 One boot for the class, each way: its tests read what it said, so
+    # the push that boots it for the area runs them all.
     def test_it_prints_its_banner(self, opensbi_with_its_test_payload):
         board = opensbi_with_its_test_payload
 

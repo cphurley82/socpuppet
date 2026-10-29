@@ -37,7 +37,7 @@ from socpuppet.pump import pump
 
 #: A boot of Linux takes seconds on QBox's hart and minutes on the
 #: interpreter, so the tests are handed out first.
-pytestmark = [needs_cable, needs_dtc, pytest.mark.long, pytest.mark.platform]
+pytestmark = [needs_cable, needs_dtc, pytest.mark.long]
 
 #: How long, on the wall, an ssh or an scp may take, tries and all: udhcpc
 #: asks again 20 s of the CPU's time after its last try, the keys of a

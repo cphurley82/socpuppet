@@ -162,14 +162,24 @@ runs:
       with:
         path: build/ccache
         key: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-${{ env.CCACHE_WEEK }}
-        restore-keys: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
+        # Failing this week's, last week's; failing one for these dependencies,
+        # the last there was: ccache hashes what it compiles, so a changed
+        # dependency misses and the rest still hit.
+        restore-keys: |
+          ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
+          ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-
     - name: Restore what was compiled
       if: inputs.compiler-cache != '' && github.ref != 'refs/heads/main'
       uses: actions/cache/restore@v6
       with:
         path: build/ccache
         key: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-${{ env.CCACHE_WEEK }}
-        restore-keys: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
+        # Failing this week's, last week's; failing one for these dependencies,
+        # the last there was: ccache hashes what it compiles, so a changed
+        # dependency misses and the rest still hit.
+        restore-keys: |
+          ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
+          ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-
     - name: Restore the Zephyr SDK
       if: inputs.zephyr == 'true'
       uses: actions/cache/restore@v6
