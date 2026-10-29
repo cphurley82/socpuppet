@@ -901,7 +901,7 @@ TYPED_TEST_P(NvmeContract, AFlushSucceeds) {
 TYPED_TEST_P(NvmeContract, AReadFarPastTheEndOfTheNamespaceIsOutOfRange) {
   // A block number so large that it would wrap around if it were turned
   // into a byte offset.
-  constexpr std::uint64_t kFarAway = std::uint64_t{1} << 55;
+  constexpr std::uint64_t kFarAway = std::uint64_t{1} << 55U;
   std::optional<NvmeHost::Completion> completion;
 
   this->OnTheHost([&](NvmeHost& host) {

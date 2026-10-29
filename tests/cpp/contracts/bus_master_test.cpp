@@ -59,7 +59,7 @@ struct ScriptedRig {
           constexpr std::uint64_t kClaimComplete =
               Contract::kPlicBase + 0x20'0004;
           co_await socpuppet::Write32(kPriority1, 1);
-          co_await socpuppet::Write32(kEnable, 1 << 1);
+          co_await socpuppet::Write32(kEnable, 1U << 1U);
           for (;;) {
             co_await socpuppet::WaitIrq{};
             const std::uint32_t claimed =

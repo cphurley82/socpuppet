@@ -206,7 +206,7 @@ class SsdFirmware : public sc_core::sc_module {
     Write32(map_.dma + DMA_ENGINE_HOST_ADDRESS_LOW,
             static_cast<std::uint32_t>(host_address));
     Write32(map_.dma + DMA_ENGINE_HOST_ADDRESS_HIGH,
-            static_cast<std::uint32_t>(host_address >> 32));
+            static_cast<std::uint32_t>(host_address >> 32U));
     Write32(map_.dma + DMA_ENGINE_LOCAL_ADDRESS,
             static_cast<std::uint32_t>(local_address));
     Write32(map_.dma + DMA_ENGINE_LENGTH, length);
@@ -331,10 +331,10 @@ class SsdFirmware : public sc_core::sc_module {
   // low half of dword 10, the size (counted from zero) in the high half,
   // and where the queue is in the first data pointer.
   static std::uint32_t QueueId(const Command& command) {
-    return command.Dword(10) & 0xFFFF;
+    return command.Dword(10) & 0xFFFFU;
   }
   static std::uint32_t LastSlot(const Command& command) {
-    return command.Dword(10) >> 16;
+    return command.Dword(10) >> 16U;
   }
   // Whether the host may create an I/O queue with this identifier: queue
   // 0 is the admin queue, and there are only so many.
@@ -348,7 +348,7 @@ class SsdFirmware : public sc_core::sc_module {
     Write32(map_.frontend + NVME_FRONTEND_QUEUE_BASE_LOW,
             static_cast<std::uint32_t>(command.Prp1()));
     Write32(map_.frontend + NVME_FRONTEND_QUEUE_BASE_HIGH,
-            static_cast<std::uint32_t>(command.Prp1() >> 32));
+            static_cast<std::uint32_t>(command.Prp1() >> 32U));
     Write32(map_.frontend + NVME_FRONTEND_QUEUE_LAST, LastSlot(command));
     Write32(map_.frontend + NVME_FRONTEND_QUEUE_LINK, link);
     Write32(map_.frontend + NVME_FRONTEND_QUEUE_CREATE, kind);
@@ -361,7 +361,7 @@ class SsdFirmware : public sc_core::sc_module {
     }
     // A queue keeps one slot empty, so one of a single entry holds nothing.
     if (LastSlot(command) == 0) return OfTheCommand(kInvalidQueueSize);
-    const std::uint32_t vector = command.Dword(11) >> 16;
+    const std::uint32_t vector = command.Dword(11) >> 16U;
     if (vector >= vectors_) return OfTheCommand(kInvalidInterruptVector);
     HaveItCreated(NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE, command, vector);
     completion_queues_[queue_id] = true;
@@ -376,7 +376,7 @@ class SsdFirmware : public sc_core::sc_module {
     if (LastSlot(command) == 0) return OfTheCommand(kInvalidQueueSize);
     // Its commands' completions go to a completion queue, which has to be
     // there first. The admin completion queue always is.
-    const std::uint32_t completion_queue = command.Dword(11) >> 16;
+    const std::uint32_t completion_queue = command.Dword(11) >> 16U;
     const bool is_there =
         completion_queue == 0 ||
         (IsAnIoQueue(completion_queue) && completion_queues_[completion_queue]);
@@ -392,7 +392,7 @@ class SsdFirmware : public sc_core::sc_module {
   Outcome Identify(const Command& command) {
     std::vector<std::uint8_t> page(kHostPage);
     const std::span<std::uint8_t> bytes{page};
-    switch (command.Dword(10) & 0xFF) {
+    switch (command.Dword(10) & 0xFFU) {
       case kTheController:
         // How many namespaces there are, at offset 516.
         socpuppet::StoreLittleEndian(std::uint32_t{1}, bytes.subspan(516));
@@ -419,14 +419,14 @@ class SsdFirmware : public sc_core::sc_module {
   }
 
   Outcome SetFeatures(const Command& command) const {
-    if ((command.Dword(10) & 0xFF) != kNumberOfQueues) {
+    if ((command.Dword(10) & 0xFFU) != kNumberOfQueues) {
       return Generic(kInvalidField);
     }
     // The answer is how many I/O queues the controller has, whatever the
     // host asked for, counted from zero: submission queues in the low
     // half, completion queues in the high half.
     const std::uint32_t from_zero = io_queue_pairs_ - 1;
-    return {.result = from_zero << 16 | from_zero};
+    return {.result = from_zero << 16U | from_zero};
   }
 
   // ---- I/O commands.
@@ -454,8 +454,9 @@ class SsdFirmware : public sc_core::sc_module {
     // The first block is in dwords 10 and 11, and how many, counted from
     // zero, in the low half of dword 12.
     const std::uint64_t first =
-        std::uint64_t{command.Dword(11)} << 32 | command.Dword(10);
-    const std::uint64_t count = (command.Dword(12) & 0xFFFF) + std::uint64_t{1};
+        std::uint64_t{command.Dword(11)} << 32U | command.Dword(10);
+    const std::uint64_t count =
+        (command.Dword(12) & 0xFFFFU) + std::uint64_t{1};
     if (first > DriveBlocks() || count > DriveBlocks() - first) {
       return Generic(kLbaOutOfRange);
     }

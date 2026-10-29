@@ -35,14 +35,14 @@ constexpr Word Field(std::int32_t value, unsigned bits) {
 // rd = upper20 << 12. (On a 64-bit core the result is sign-extended, so
 // this reaches addresses below 0x8000'0000 only.)
 constexpr Word Lui(Word rd, Word upper20) {
-  return (upper20 << 12) | (rd << 7) | 0x37;
+  return (upper20 << 12U) | (rd << 7U) | 0x37U;
 }
 // rd = the address of this instruction, plus upper20 << 12.
 constexpr Word Auipc(Word rd, Word upper20) {
-  return (upper20 << 12) | (rd << 7) | 0x17;
+  return (upper20 << 12U) | (rd << 7U) | 0x17U;
 }
 constexpr Word Addi(Word rd, Word rs1, std::int32_t immediate) {
-  return (Field(immediate, 12) << 20) | (rs1 << 15) | (rd << 7) | 0x13;
+  return (Field(immediate, 12) << 20U) | (rs1 << 15U) | (rd << 7U) | 0x13U;
 }
 constexpr Word Li(Word rd, std::int32_t immediate) {
   return Addi(rd, kZero, immediate);
@@ -50,127 +50,131 @@ constexpr Word Li(Word rd, std::int32_t immediate) {
 // rd = rs1 shifted right by `amount` bits, with zeros coming in at the top.
 // Only an amount below 32 is encoded the same for both word sizes.
 constexpr Word Srli(Word rd, Word rs1, Word amount) {
-  return (amount << 20) | (rs1 << 15) | (5 << 12) | (rd << 7) | 0x13;
+  return (amount << 20U) | (rs1 << 15U) | (5U << 12U) | (rd << 7U) | 0x13U;
 }
 // rd = rs1 shifted left by `amount` bits (fewer than 32, as for Srli).
 constexpr Word Slli(Word rd, Word rs1, Word amount) {
-  return (amount << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x13;
+  return (amount << 20U) | (rs1 << 15U) | (1U << 12U) | (rd << 7U) | 0x13U;
 }
 // Store the low byte of rs2 at offset(rs1).
 constexpr Word Sb(Word rs2, Word rs1, std::int32_t offset) {
   const Word immediate = Field(offset, 12);
-  return ((immediate >> 5) << 25) | (rs2 << 20) | (rs1 << 15) |
-         ((immediate & 0x1F) << 7) | 0x23;
+  return ((immediate >> 5U) << 25U) | (rs2 << 20U) | (rs1 << 15U) |
+         ((immediate & 0x1FU) << 7U) | 0x23U;
 }
 // Store the low 32 bits of rs2 at offset(rs1).
 constexpr Word Sw(Word rs2, Word rs1, std::int32_t offset) {
-  return Sb(rs2, rs1, offset) | (2 << 12);
+  return Sb(rs2, rs1, offset) | (2U << 12U);
 }
 // Branch to pc + offset if rs1 and rs2 differ.
 constexpr Word Bne(Word rs1, Word rs2, std::int32_t offset) {
   const Word immediate = Field(offset, 13);
-  return ((immediate >> 12) << 31) | (((immediate >> 5) & 0x3F) << 25) |
-         (rs2 << 20) | (rs1 << 15) | (1 << 12) |
-         (((immediate >> 1) & 0xF) << 8) | (((immediate >> 11) & 1) << 7) |
-         0x63;
+  return ((immediate >> 12U) << 31U) | (((immediate >> 5U) & 0x3FU) << 25U) |
+         (rs2 << 20U) | (rs1 << 15U) | (1U << 12U) |
+         (((immediate >> 1U) & 0xFU) << 8U) |
+         (((immediate >> 11U) & 1U) << 7U) | 0x63U;
 }
 // Branch to pc + offset if rs1 is less than rs2, both taken as signed.
 constexpr Word Blt(Word rs1, Word rs2, std::int32_t offset) {
-  return (Bne(rs1, rs2, offset) & ~(Word{7} << 12)) | (Word{4} << 12);
+  return (Bne(rs1, rs2, offset) & ~(Word{7} << 12U)) | (Word{4} << 12U);
 }
 // Store all 64 bits of rs2 at offset(rs1). Only a 64-bit core has it.
 constexpr Word Sd(Word rs2, Word rs1, std::int32_t offset) {
-  return Sb(rs2, rs1, offset) | (3 << 12);
+  return Sb(rs2, rs1, offset) | (3U << 12U);
 }
 // Load the 32-bit word at offset(rs1) into rd.
 constexpr Word Lw(Word rd, Word rs1, std::int32_t offset) {
-  return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x03;
+  return (Field(offset, 12) << 20U) | (rs1 << 15U) | (2U << 12U) | (rd << 7U) |
+         0x03U;
 }
 // Load all 64 bits at offset(rs1) into rd. Only a 64-bit core has it.
 constexpr Word Ld(Word rd, Word rs1, std::int32_t offset) {
-  return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x03;
+  return (Field(offset, 12) << 20U) | (rs1 << 15U) | (3U << 12U) | (rd << 7U) |
+         0x03U;
 }
 // rd = rs1 - rs2.
 constexpr Word Sub(Word rd, Word rs1, Word rs2) {
-  return 0x4000'0033 | (rs2 << 20) | (rs1 << 15) | (rd << 7);
+  return 0x4000'0033U | (rs2 << 20U) | (rs1 << 15U) | (rd << 7U);
 }
 // Jump to rs1 + offset, leaving the return address in rd.
 constexpr Word Jalr(Word rd, Word rs1, std::int32_t offset) {
-  return (Field(offset, 12) << 20) | (rs1 << 15) | (rd << 7) | 0x67;
+  return (Field(offset, 12) << 20U) | (rs1 << 15U) | (rd << 7U) | 0x67U;
 }
 // Jump to pc + offset, leaving the return address in rd.
 constexpr Word Jal(Word rd, std::int32_t offset) {
   const Word immediate = Field(offset, 21);
-  return ((immediate >> 20) << 31) | (((immediate >> 1) & 0x3FF) << 21) |
-         (((immediate >> 11) & 1) << 20) | (((immediate >> 12) & 0xFF) << 12) |
-         (rd << 7) | 0x6F;
+  return ((immediate >> 20U) << 31U) | (((immediate >> 1U) & 0x3FFU) << 21U) |
+         (((immediate >> 11U) & 1U) << 20U) |
+         (((immediate >> 12U) & 0xFFU) << 12U) | (rd << 7U) | 0x6FU;
 }
 // Set, in a control and status register, the bits that are set in rs1.
 constexpr Word Csrs(Word csr, Word rs1) {
-  return (csr << 20) | (rs1 << 15) | (2 << 12) | 0x73;
+  return (csr << 20U) | (rs1 << 15U) | (2U << 12U) | 0x73U;
 }
 // rd = a control and status register.
 constexpr Word Csrr(Word rd, Word csr) {
-  return (csr << 20) | (2 << 12) | (rd << 7) | 0x73;
+  return (csr << 20U) | (2U << 12U) | (rd << 7U) | 0x73U;
 }
 // rd = a control and status register, which is then written with rs1.
 constexpr Word Csrrw(Word rd, Word csr, Word rs1) {
-  return (csr << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x73;
+  return (csr << 20U) | (rs1 << 15U) | (1U << 12U) | (rd << 7U) | 0x73U;
 }
 // Clear, in a control and status register, the bits that are set in rs1.
 constexpr Word Csrc(Word csr, Word rs1) {
-  return (csr << 20) | (rs1 << 15) | (3 << 12) | 0x73;
+  return (csr << 20U) | (rs1 << 15U) | (3U << 12U) | 0x73U;
 }
 // Write rs1 to a control and status register.
 constexpr Word Csrw(Word csr, Word rs1) {
-  return (csr << 20) | (rs1 << 15) | (1 << 12) | 0x73;
+  return (csr << 20U) | (rs1 << 15U) | (1U << 12U) | 0x73U;
 }
 // Floating-point register `rd` = the 64 bits of integer register rs1, as
 // they are. Only a 64-bit core with double-precision floating point (the D
 // extension) has it.
 constexpr Word FmvDX(Word rd, Word rs1) {
-  return 0xF200'0053 | (rs1 << 15) | (rd << 7);
+  return 0xF200'0053 | (rs1 << 15U) | (rd << 7U);
 }
 // Integer register `rd` = the 64 bits of floating-point register rs1, as
 // they are. For the same cores as FmvDX.
 constexpr Word FmvXD(Word rd, Word rs1) {
-  return 0xE200'0053 | (rs1 << 15) | (rd << 7);
+  return 0xE200'0053 | (rs1 << 15U) | (rd << 7U);
 }
 // Load the double at offset(rs1) into floating-point register `rd`.
 constexpr Word Fld(Word rd, Word rs1, std::int32_t offset) {
-  return (Field(offset, 12) << 20) | (rs1 << 15) | (3 << 12) | (rd << 7) | 0x07;
+  return (Field(offset, 12) << 20U) | (rs1 << 15U) | (3U << 12U) | (rd << 7U) |
+         0x07U;
 }
 // Floating-point register `rd` = rs1 + rs2, as doubles, rounded the way the
 // floating-point control register says.
 constexpr Word FaddD(Word rd, Word rs1, Word rs2) {
-  return (Word{1} << 25) | (rs2 << 20) | (rs1 << 15) | (7 << 12) | (rd << 7) |
-         0x53;
+  return (Word{1} << 25U) | (rs2 << 20U) | (rs1 << 15U) | (7U << 12U) |
+         (rd << 7U) | 0x53U;
 }
 // Load the single at offset(rs1) into floating-point register `rd`, and
 // store the single in floating-point register rs2 at offset(rs1).
 constexpr Word Flw(Word rd, Word rs1, std::int32_t offset) {
-  return (Field(offset, 12) << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x07;
+  return (Field(offset, 12) << 20U) | (rs1 << 15U) | (2U << 12U) | (rd << 7U) |
+         0x07U;
 }
 constexpr Word Fsw(Word rs2, Word rs1, std::int32_t offset) {
-  return (Sw(rs2, rs1, offset) & ~Word{0x7F}) | 0x27;
+  return (Sw(rs2, rs1, offset) & ~Word{0x7F}) | 0x27U;
 }
 // Floating-point register `rd` = the low 32 bits of integer register rs1,
 // as they are, and the other way about, with the sign carried up.
 constexpr Word FmvWX(Word rd, Word rs1) {
-  return 0xF000'0053 | (rs1 << 15) | (rd << 7);
+  return 0xF000'0053 | (rs1 << 15U) | (rd << 7U);
 }
 constexpr Word FmvXW(Word rd, Word rs1) {
-  return 0xE000'0053 | (rs1 << 15) | (rd << 7);
+  return 0xE000'0053 | (rs1 << 15U) | (rd << 7U);
 }
 // Store the double in floating-point register rs2 at offset(rs1).
 constexpr Word Fsd(Word rs2, Word rs1, std::int32_t offset) {
-  return (Sd(rs2, rs1, offset) & ~Word{0x7F}) | 0x27;
+  return (Sd(rs2, rs1, offset) & ~Word{0x7F}) | 0x27U;
 }
 // Floating-point register `rd` = rs1 * rs2 + rs3, as doubles, in one
 // rounding.
 constexpr Word FmaddD(Word rd, Word rs1, Word rs2, Word rs3) {
-  return (rs3 << 27) | (Word{1} << 25) | (rs2 << 20) | (rs1 << 15) | (7 << 12) |
-         (rd << 7) | 0x43;
+  return (rs3 << 27U) | (Word{1} << 25U) | (rs2 << 20U) | (rs1 << 15U) |
+         (7U << 12U) | (rd << 7U) | 0x43U;
 }
 // Two compressed instructions in one word, of which the second does
 // nothing. The first is a load of the double at the address in x8 into
@@ -186,8 +190,8 @@ inline constexpr Word kFcsr = 0x003;
 // The atomic instructions, which read a word of memory and write it as
 // one act. `width` is 2 for a word of 32 bits and 3 for one of 64.
 constexpr Word Atomic(Word which, Word width, Word rd, Word rs1, Word rs2) {
-  return (which << 27) | (rs2 << 20) | (rs1 << 15) | (width << 12) | (rd << 7) |
-         0x2F;
+  return (which << 27U) | (rs2 << 20U) | (rs1 << 15U) | (width << 12U) |
+         (rd << 7U) | 0x2FU;
 }
 // 🎓 A pair that makes a read and a later write one act: rd = the 64 bits
 // at the address in rs1, which the hart then holds a reservation on. And
@@ -241,17 +245,17 @@ inline constexpr Word kFloatingPointInitial = 1;
 inline constexpr Word kFloatingPointClean = 2;
 inline constexpr Word kFloatingPointDirty = 3;
 constexpr Word FloatingPointStateIn(std::uint64_t status) {
-  return static_cast<Word>(status >> kFloatingPointOn) & 3;
+  return static_cast<Word>(status >> kFloatingPointOn) & 3U;
 }
 // The status register's top bit, which says in one place that some state
 // of the kind is dirty.
 constexpr bool SomeStateIsDirtyIn(std::uint64_t status) {
-  return (status >> 63) != 0;
+  return (status >> 63U) != 0;
 }
 // The two instructions that set, in the register numbered `csr`, the bits
 // that are set in `bits`, which are among bits 12 to 31. They use `scratch`.
 inline Program SetBits(Word csr, std::uint64_t bits, Word scratch) {
-  return {Lui(scratch, static_cast<Word>(bits >> 12)), Csrs(csr, scratch)};
+  return {Lui(scratch, static_cast<Word>(bits >> 12U)), Csrs(csr, scratch)};
 }
 // The instructions that set the field to `state`, in the register numbered
 // `csr`, `mstatus` or `sstatus`, from zero. They use t0.
@@ -261,7 +265,7 @@ inline Program SetFloatingPointState(Word csr, Word state) {
 // And the ones that mark dirty state clean: dirty is both bits of the
 // field, and clean the upper one. They use t0.
 inline Program MarkDirtyFloatingPointStateClean(Word csr) {
-  return {Lui(kT0, 1 << (kFloatingPointOn - 12)), Csrc(csr, kT0)};
+  return {Lui(kT0, 1U << (kFloatingPointOn - 12)), Csrc(csr, kT0)};
 }
 // Its two-bit field that says which mode `mret` returns to, by the place
 // of its low bit: 1 there is supervisor mode, and 3 is machine mode.
@@ -294,9 +298,9 @@ inline constexpr Word kInstret = 0xC02;
 // may, and supervisor mode's whether user mode may as well.
 inline constexpr Word kMcounteren = 0x306;
 inline constexpr Word kScounteren = 0x106;
-inline constexpr Word kMayReadCycle = 1 << 0;
-inline constexpr Word kMayReadTime = 1 << 1;
-inline constexpr Word kMayReadInstret = 1 << 2;
+inline constexpr Word kMayReadCycle = 1U << 0U;
+inline constexpr Word kMayReadTime = 1U << 1U;
+inline constexpr Word kMayReadInstret = 1U << 2U;
 // The three modes, as the status register's field for the mode to return
 // to numbers them.
 inline constexpr Word kUserMode = 0;
@@ -356,8 +360,8 @@ inline constexpr Word kStimecmp = 0x14D;
 // mode use user mode's pages, and MXR lets a load read a page that may
 // otherwise only be executed.
 inline constexpr Word kSstatus = 0x100;
-inline constexpr Word kSupervisorUserMemoryInUpper20 = 1 << (18 - 12);
-inline constexpr Word kMakeExecutableReadableInUpper20 = 1 << (19 - 12);
+inline constexpr Word kSupervisorUserMemoryInUpper20 = 1U << (18U - 12U);
+inline constexpr Word kMakeExecutableReadableInUpper20 = 1U << (19U - 12U);
 // The register that says which exceptions are handed down to supervisor
 // mode, a bit for each cause, and the three causes that are page faults:
 // of an instruction fetch, of a load and of a store.
@@ -380,13 +384,13 @@ inline constexpr Word kMisalignedStore = 6;
 // 10 are Sv48 and Sv57, of four levels and five.
 inline constexpr Word kSatp = 0x180;
 constexpr std::uint64_t Satp(std::uint64_t kind, std::uint64_t root_table) {
-  return (kind << 60) | (root_table >> 12);
+  return (kind << 60U) | (root_table >> 12U);
 }
 constexpr std::uint64_t SatpForSv39(std::uint64_t root_table) {
   return Satp(8, root_table);
 }
 // Its sixteen bits between those two, for an address-space identifier.
-inline constexpr std::uint64_t kSatpIdentifier = std::uint64_t{0xFFFF} << 44;
+inline constexpr std::uint64_t kSatpIdentifier = std::uint64_t{0xFFFF} << 44U;
 // An entry of a page table: the number of the page it leads to, ten bits
 // up, over bits that say what the entry is. Valid alone is a pointer to
 // the next table down. With any of read, write and execute it is a page,
@@ -403,7 +407,7 @@ inline constexpr std::uint64_t kPteAccessed = 0x40;
 inline constexpr std::uint64_t kPteDirty = 0x80;
 constexpr std::uint64_t PageTableEntry(std::uint64_t leads_to,
                                        std::uint64_t bits) {
-  return ((leads_to >> 12) << 10) | bits;
+  return ((leads_to >> 12U) << 10U) | bits;
 }
 // Have the hart forget every translation it has kept, so that the next
 // use of an address walks the page tables again. A kernel executes it
@@ -494,7 +498,7 @@ class Assembler {
     }
     for (const std::uint64_t value : pool_) {
       program.push_back(static_cast<Word>(value));
-      program.push_back(static_cast<Word>(value >> 32));
+      program.push_back(static_cast<Word>(value >> 32U));
     }
     return program;
   }
@@ -578,8 +582,8 @@ inline Program CountStartsThen(bool sleep, std::uint64_t ask_at = 0) {
   program.push_back(Addi(kT1, kT1, 1));
   program.push_back(Sw(kT1, kT0, kResultOffset));
   if (ask_at != 0) {
-    const auto page = static_cast<Word>(ask_at >> 12);
-    const auto within = static_cast<std::int32_t>(ask_at & 0xFFF);
+    const auto page = static_cast<Word>(ask_at >> 12U);
+    const auto within = static_cast<std::int32_t>(ask_at & 0xFFFU);
     program.push_back(Li(kT2, 1));
     // Past the three instructions that ask, to where the waiting starts.
     program.push_back(Bne(kT1, kT2, 4 * 4));
@@ -632,7 +636,7 @@ inline Program StoreAllOnesShiftedRightThenSleep(Word amount) {
 // 0x8000'0000), `times` times over, and then sleeps.
 inline Program StoreWordThenSleep(std::uint64_t address, int times = 1) {
   Program program;
-  program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
+  program.push_back(Lui(kT0, static_cast<Word>(address >> 12U)));
   for (int count = 0; count < times; ++count) {
     program.push_back(Sw(kZero, kT0, 0));
   }
@@ -654,7 +658,7 @@ inline Program SleepUntilTheExternalInterruptThenStoreWord(
   program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
   program.push_back(Csrs(kMie, kT1));
   program.push_back(kWfi);
-  program.push_back(Lui(kT0, static_cast<Word>(address >> 12)));
+  program.push_back(Lui(kT0, static_cast<Word>(address >> 12U)));
   program.push_back(Sw(kZero, kT0, 0));
   AppendSleepForEver(program);
   return program;
@@ -708,7 +712,7 @@ inline Program TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
   program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
   program.push_back(Csrs(kMie, kT1));
   program.push_back(kWfi);
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   // What the load would leave untouched, if it did not happen.
   program.push_back(Li(kT0, 0));
   program.push_back(Csrs(kMstatus, kT1));
@@ -717,7 +721,7 @@ inline Program TakeTheExternalInterruptAtALoadOfItsOwnFirstWord(
   AppendSleepForEver(program);
 
   const std::size_t handler_at = program.size();
-  program.push_back(Lui(kT1, static_cast<Word>(device >> 12)));
+  program.push_back(Lui(kT1, static_cast<Word>(device >> 12U)));
   program.push_back(Sw(kZero, kT1, 0));
   program.push_back(kMret);
 
@@ -752,7 +756,7 @@ inline Program TakeAnInterruptAtAnEcallFromMachineMode(std::uint64_t device) {
   program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
   program.push_back(Csrs(kMie, kT1));
   program.push_back(kWfi);
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   // t0 = where the `ecall` is: four instructions on from here.
   program.push_back(Auipc(kT0, 0));
   program.push_back(Addi(kT0, kT0, 16));
@@ -775,7 +779,7 @@ inline Program TakeAnInterruptAtAnEcallFromMachineMode(std::uint64_t device) {
   program.push_back(Addi(kT1, kT1, 4));
   program.push_back(Csrw(kMepc, kT1));
   program.push_back(kMret);
-  program.push_back(Lui(kT1, static_cast<Word>(device >> 12)));
+  program.push_back(Lui(kT1, static_cast<Word>(device >> 12U)));
   program.push_back(Sw(kZero, kT1, 0));
   program.push_back(kMret);
 
@@ -789,7 +793,7 @@ inline Program TakeAnInterruptAtAnEcallFromMachineMode(std::uint64_t device) {
 // asks of the bus is to fetch them.
 inline Program CountDownThenSleep(Word iterations) {
   Program program;
-  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Lui(kT2, iterations >> 12U));
   program.push_back(Addi(kT2, kT2, -1));
   program.push_back(Bne(kT2, kZero, -4));
   AppendSleepForEver(program);
@@ -818,14 +822,14 @@ inline Program ReadTimeThenTheTimersOwnCountThenSleep(
     std::uint64_t mtime, Word iterations, const Program& first = {}) {
   // The address in two parts: what Lui can load, and what is left for the
   // load's offset, which is signed and of 12 bits.
-  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12U);
   const auto lower =
-      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12U));
   Program program;
   program.push_back(Auipc(kT0, 0));
   program.insert(program.end(), first.begin(), first.end());
   program.push_back(Lui(kT3, upper));
-  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Lui(kT2, iterations >> 12U));
   program.push_back(Addi(kT2, kT2, -1));
   program.push_back(Bne(kT2, kZero, -4));
   program.push_back(Csrr(kT1, kTime));
@@ -850,15 +854,15 @@ inline Program ReadTimeThenTheTimersOwnCountThenSleep(
 // come.
 inline Program ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
     std::uint64_t mtime, std::uint64_t mtimecmp, Word iterations, int xlen) {
-  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12U);
   const auto lower =
-      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12U));
   Program program;
   program.push_back(Auipc(kT0, 0));
   program.push_back(Lui(kT3, upper));
-  program.push_back(Lui(kT6, static_cast<Word>(mtimecmp >> 12)));
+  program.push_back(Lui(kT6, static_cast<Word>(mtimecmp >> 12U)));
   program.push_back(Li(kT1, -1));
-  program.push_back(Lui(kT2, iterations >> 12));
+  program.push_back(Lui(kT2, iterations >> 12U));
   program.push_back(Addi(kT2, kT2, -1));
   program.push_back(Bne(kT2, kZero, -4));
   program.push_back(Lw(kT4, kT3, lower));
@@ -882,9 +886,9 @@ inline Program ReadTheTimersCountEitherSideOfSettingItsCompareValueThenSleep(
 // `timeh` register, stores what it read as its result, and sleeps.
 inline Program WriteTheUpperHalfOfTheTimersCountThenStoreTimeh(
     std::uint64_t mtime, std::int32_t value) {
-  const Word upper = static_cast<Word>((mtime + 0x800) >> 12);
+  const Word upper = static_cast<Word>((mtime + 0x800) >> 12U);
   const auto lower =
-      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12));
+      static_cast<std::int32_t>(mtime - (std::uint64_t{upper} << 12U));
   Program program;
   program.push_back(Auipc(kT0, 0));
   program.push_back(Lui(kT3, upper));
@@ -912,12 +916,12 @@ inline Program HandleInterruptsByWritingTo(std::uint64_t device,
   program.push_back(Li(kT1, 1));
   program.push_back(Slli(kT1, kT1, interrupt));
   program.push_back(Csrs(kMie, kT1));
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   program.push_back(Csrs(kMstatus, kT1));
   AppendSleepForEver(program);
 
   const std::size_t handler_at = program.size();
-  program.push_back(Lui(kT0, static_cast<Word>(device >> 12)));
+  program.push_back(Lui(kT0, static_cast<Word>(device >> 12U)));
   program.push_back(Sw(kZero, kT0, 0));
   program.push_back(kMret);
 
@@ -946,7 +950,7 @@ inline Program InSupervisorMode(Word interrupt, const Program& body,
   program.push_back(Slli(kT1, kT1, interrupt));
   program.push_back(Csrs(kMideleg, kT1));
   program.push_back(Csrs(kSie, kT1));
-  program.push_back(Li(kT1, 1 << kSupervisorInterruptsOn));
+  program.push_back(Li(kT1, 1U << kSupervisorInterruptsOn));
   program.push_back(Csrs(kMstatus, kT1));
   // The mode to return to is supervisor: clear both bits of the field,
   // then set it to 1.
@@ -1008,7 +1012,7 @@ inline Program HandleMessagesThroughAnImsic(Word identity) {
   program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
   program.push_back(Csrs(kMie, kT1));
   program.push_back(Li(kT0, 0));
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   program.push_back(Csrs(kMstatus, kT1));
   // Sleep, and each time something wakes the hart, store what the handler
   // left in t0 and t4. An interrupt is taken after the instruction it
@@ -1152,7 +1156,7 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
                 // And the last trap to supervisor mode is said to have come
                 // from supervisor mode, so that one from user mode has to
                 // say otherwise.
-                Li(kT1, 1 << kSupervisorPreviousMode), Csrs(kMstatus, kT1)});
+                Li(kT1, 1U << kSupervisorPreviousMode), Csrs(kMstatus, kT1)});
   const Assembler::Constant users_code = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
@@ -1214,7 +1218,7 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
   program.Set(supervisors_code, at.code + program.Here());
   program.Load(kT2, at.result);
   const Assembler::Constant the_ecall = program.Load(kT0);
-  program.Emit({Sd(kT0, kT2, 16), kWfi, Li(kT3, 1 << kSupervisorInterruptsOn),
+  program.Emit({Sd(kT0, kT2, 16), kWfi, Li(kT3, 1U << kSupervisorInterruptsOn),
                 Csrs(kSstatus, kT3)});
   program.Set(the_ecall, at.code + program.Here());
   program.Emit({kEcall, Li(kT0, 1), Sd(kT0, kT2, 24)});
@@ -1344,7 +1348,7 @@ inline Program RunTheCodeAtAnAddressInUserModeUnderPaging(
   const Assembler::Constant handler = program.Load(kT1);
   program.Emit({Csrw(kStvec, kT1),
                 // The mode to return to is user mode.
-                Li(kT1, 1 << kSupervisorPreviousMode), Csrc(kSstatus, kT1)});
+                Li(kT1, 1U << kSupervisorPreviousMode), Csrc(kSstatus, kT1)});
   program.Load(kT1, users_code);
   program.Emit({Csrw(kSepc, kT1), kSret});
 
@@ -1447,7 +1451,7 @@ inline Program TakeAnInterruptAtALoadThatWalksThePageTables(
                 Slli(kT1, kT1, kSupervisorExternalInterrupt), Csrs(kSie, kT1)});
   program.Load(kT1, address);
   program.Load(kT2, at.result);
-  program.Emit({kWfi, Li(kT3, 1 << kSupervisorInterruptsOn),
+  program.Emit({kWfi, Li(kT3, 1U << kSupervisorInterruptsOn),
                 // What the load would leave untouched, if it did not
                 // happen.
                 Li(kT0, 0), Csrs(kSstatus, kT3), Ld(kT0, kT1, 0),
@@ -1524,7 +1528,7 @@ inline Program TakeAMisalignedAccessInSupervisorMode(
     const Pages& at, std::uint64_t address, Word access,
     const Program& then_the_handler = {}, std::uint64_t t0 = 0) {
   Assembler program;
-  program.Emit({Li(kT1, (1 << kMisalignedLoad) | (1 << kMisalignedStore)),
+  program.Emit({Li(kT1, (1U << kMisalignedLoad) | (1U << kMisalignedStore)),
                 Csrw(kMedeleg, kT1)});
   const Assembler::Constant handler = program.Load(kT1);
   program.Emit({Csrw(kStvec, kT1),
@@ -1689,7 +1693,7 @@ inline Program HandleTheSupervisorExternalInterruptByWritingTo(
   AppendSleepForEver(sleep);
   return InSupervisorMode(
       kSupervisorExternalInterrupt, sleep,
-      {Lui(kT0, static_cast<Word>(device >> 12)), Sw(kZero, kT0, 0), kSret});
+      {Lui(kT0, static_cast<Word>(device >> 12U)), Sw(kZero, kT0, 0), kSret});
 }
 
 // The same, whose handler first stores what supervisor mode sees of the
@@ -1703,7 +1707,7 @@ inline Program StoreSieThenSipOnTheSupervisorExternalInterrupt(
       kSupervisorExternalInterrupt, sleep,
       {Csrr(kT1, kSie), Sw(kT1, kT3, kResultOffset), Csrr(kT1, kSip),
        Sw(kT1, kT3, kResultOffset + 4),
-       Lui(kT0, static_cast<Word>(device >> 12)), Sw(kZero, kT0, 0), kSret});
+       Lui(kT0, static_cast<Word>(device >> 12U)), Sw(kZero, kT0, 0), kSret});
 }
 
 // A program that, with only the supervisor external interrupt handed down
@@ -1727,13 +1731,13 @@ inline Program EnableEverySupervisorInterruptThenStoreSie() {
 // count of the times it has run, and returns to sleep.
 inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
   Program ask_then_sleep{
-      Li(kT1, 1 << kSupervisorSoftwareInterrupt),
+      Li(kT1, 1U << kSupervisorSoftwareInterrupt),
       Csrs(kSip, kT1),
   };
   AppendSleepForEver(ask_then_sleep);
   return InSupervisorMode(
       kSupervisorSoftwareInterrupt, ask_then_sleep,
-      {Li(kT1, 1 << kSupervisorSoftwareInterrupt), Csrc(kSip, kT1),
+      {Li(kT1, 1U << kSupervisorSoftwareInterrupt), Csrc(kSip, kT1),
        Lw(kT4, kT3, kResultOffset), Addi(kT4, kT4, 1),
        Sw(kT4, kT3, kResultOffset), kSret});
 }
@@ -1754,11 +1758,11 @@ inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
   program.push_back(Li(kT1, 1));
   program.push_back(Slli(kT1, kT1, kMachineTimerInterrupt));
   program.push_back(Csrs(kMie, kT1));
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   program.push_back(Csrs(kMstatus, kT1));
   // The compare value is 64 bits, written as two words. Its high word is
   // all ones after reset, so the low word can go first.
-  program.push_back(Lui(kT3, static_cast<Word>(mtimecmp >> 12)));
+  program.push_back(Lui(kT3, static_cast<Word>(mtimecmp >> 12U)));
   program.push_back(Li(kT1, ticks));
   program.push_back(Sw(kT1, kT3, 0));
   program.push_back(Sw(kZero, kT3, 4));
@@ -1767,7 +1771,7 @@ inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
   const std::size_t handler_at = program.size();
   program.push_back(Li(kT1, -1));
   program.push_back(Sw(kT1, kT3, 4));
-  program.push_back(Lui(kT0, static_cast<Word>(probe >> 12)));
+  program.push_back(Lui(kT0, static_cast<Word>(probe >> 12U)));
   program.push_back(Sw(kZero, kT0, 0));
   program.push_back(kMret);
 
@@ -1791,26 +1795,26 @@ inline Program HandleInterruptsThroughAPlic(std::uint64_t plic,
   program.push_back(0);  // filled in below, once the handler's place is known
   program.push_back(Csrw(kMtvec, kT2));
   // Source 1: priority 1, at the PLIC's offset 4.
-  program.push_back(Lui(kT3, static_cast<Word>(plic >> 12)));
+  program.push_back(Lui(kT3, static_cast<Word>(plic >> 12U)));
   program.push_back(Li(kT1, 1));
   program.push_back(Sw(kT1, kT3, 4));
   // Source 1's enable bit, at offset 0x2000.
-  program.push_back(Lui(kT3, static_cast<Word>((plic + 0x2000) >> 12)));
-  program.push_back(Li(kT1, 1 << 1));
+  program.push_back(Lui(kT3, static_cast<Word>((plic + 0x2000) >> 12U)));
+  program.push_back(Li(kT1, 1U << 1U));
   program.push_back(Sw(kT1, kT3, 0));
   // t4 = offset 0x20'0000, where the threshold is, and the claim register
   // 4 further on. The threshold stays at 0.
-  program.push_back(Lui(kT4, static_cast<Word>((plic + 0x20'0000) >> 12)));
+  program.push_back(Lui(kT4, static_cast<Word>((plic + 0x20'0000) >> 12U)));
   program.push_back(Li(kT1, 1));
   program.push_back(Slli(kT1, kT1, kMachineExternalInterrupt));
   program.push_back(Csrs(kMie, kT1));
-  program.push_back(Li(kT1, 1 << kInterruptsOn));
+  program.push_back(Li(kT1, 1U << kInterruptsOn));
   program.push_back(Csrs(kMstatus, kT1));
   AppendSleepForEver(program);
 
   const std::size_t handler_at = program.size();
   program.push_back(Lw(kT1, kT4, 4));  // claim
-  program.push_back(Lui(kT0, static_cast<Word>(device >> 12)));
+  program.push_back(Lui(kT0, static_cast<Word>(device >> 12U)));
   program.push_back(Sw(kZero, kT0, 0));  // quiet the device
   program.push_back(Sw(kT1, kT4, 4));    // complete
   program.push_back(kMret);

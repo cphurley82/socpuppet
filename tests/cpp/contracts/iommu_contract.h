@@ -57,8 +57,8 @@ class IommuContract : public ::testing::Test {
   // Which queues want attention, a bit each, cleared by writing it: the
   // command queue's is bit 0 and the fault queue's bit 1.
   static constexpr std::uint64_t kIpsr = 0x54;
-  static constexpr std::uint32_t kCommandQueuePending = 1U << 0;
-  static constexpr std::uint32_t kFaultQueuePending = 1U << 1;
+  static constexpr std::uint32_t kCommandQueuePending = 1U << 0U;
+  static constexpr std::uint32_t kFaultQueuePending = 1U << 1U;
   // Which interrupt vector each cause is on, four bits each: the command
   // queue's in bits 3:0, the fault queue's in 7:4, then the performance
   // monitor's and the page-request queue's.
@@ -68,24 +68,24 @@ class IommuContract : public ::testing::Test {
   // enable and interrupt enable, which software sets, and its on and busy,
   // which the IOMMU does. A memory fault, bit 8, software clears by
   // writing it.
-  static constexpr std::uint32_t kEnable = 1U << 0;
-  static constexpr std::uint32_t kInterruptEnable = 1U << 1;
-  static constexpr std::uint32_t kMemoryFault = 1U << 8;
-  static constexpr std::uint32_t kOn = 1U << 16;
-  static constexpr std::uint32_t kBusy = 1U << 17;
+  static constexpr std::uint32_t kEnable = 1U << 0U;
+  static constexpr std::uint32_t kInterruptEnable = 1U << 1U;
+  static constexpr std::uint32_t kMemoryFault = 1U << 8U;
+  static constexpr std::uint32_t kOn = 1U << 16U;
+  static constexpr std::uint32_t kBusy = 1U << 17U;
   // And what goes wrong that each queue reports there: a command the IOMMU
   // does not have, and a record with no room in the fault queue.
-  static constexpr std::uint32_t kCommandIllegal = 1U << 10;
-  static constexpr std::uint32_t kOverflow = 1U << 9;
+  static constexpr std::uint32_t kCommandIllegal = 1U << 10U;
+  static constexpr std::uint32_t kOverflow = 1U << 9U;
 
   // ddtp: where the device directory's root table is, and what the
   // directory is. Three levels is what Linux asks for.
   static constexpr std::uint64_t kThreeLevels = 4;
   static constexpr std::uint64_t Ddtp(std::uint64_t mode, std::uint64_t root) {
-    return ((root >> 12) << 10) | mode;
+    return ((root >> 12U) << 10U) | mode;
   }
   static constexpr std::uint64_t ModeOf(std::uint64_t ddtp) {
-    return ddtp & 0xF;
+    return ddtp & 0xFU;
   }
 
   // The tables, each a page of the memory behind the IOMMU: the device
@@ -103,7 +103,7 @@ class IommuContract : public ::testing::Test {
   static constexpr std::uint64_t kV = 1;
   static constexpr std::uint64_t kNotValid = 0;
   static constexpr std::uint64_t kReadWrite =
-      kV | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 6) | (1U << 7);
+      kV | (1U << 1U) | (1U << 2U) | (1U << 4U) | (1U << 6U) | (1U << 7U);
 
   // How big an entry of a directory or a page table is, and a device
   // context.
@@ -114,7 +114,7 @@ class IommuContract : public ::testing::Test {
   // `address`.
   static constexpr std::uint64_t EntryFor(std::uint64_t address,
                                           std::uint64_t flags) {
-    return ((address >> 12) << 10) | flags;
+    return ((address >> 12U) << 10U) | flags;
   }
 
   // Puts in memory a three-level directory in which kDevice's context has a
@@ -122,15 +122,17 @@ class IommuContract : public ::testing::Test {
   // the directory as bits 23:16, 15:7 and 6:0, and its 32-byte context has
   // tc first and fsc fourth.
   void PlantTheDevicesContext() {
-    constexpr std::uint64_t kSv39 = std::uint64_t{8} << 60;
-    Plant64(kDirectory + (kEntrySize * ((kDevice >> 16) & 0xFF)),
-            EntryFor(kDirectoryMiddle, kV));
-    Plant64(kDirectoryMiddle + (kEntrySize * ((kDevice >> 7) & 0x1FF)),
+    constexpr std::uint64_t kSv39 = std::uint64_t{8} << 60U;
+    Plant64(
+        kDirectory + (kEntrySize * ((std::uint32_t{kDevice} >> 16U) & 0xFFU)),
+        EntryFor(kDirectoryMiddle, kV));
+    Plant64(kDirectoryMiddle +
+                (kEntrySize * ((std::uint32_t{kDevice} >> 7U) & 0x1FFU)),
             EntryFor(kDirectoryLeaf, kV));
     const std::uint64_t context =
-        kDirectoryLeaf + (kContextSize * (kDevice & 0x7F));
+        kDirectoryLeaf + (kContextSize * (kDevice & 0x7FU));
     Plant64(context, kV);
-    Plant64(context + 24, kSv39 | (kPageTable >> 12));
+    Plant64(context + 24, kSv39 | (kPageTable >> 12U));
   }
 
   // The address the tests' devices use, with a different index at each
@@ -140,18 +142,18 @@ class IommuContract : public ::testing::Test {
   // The last word of kIova's page, the page after it, and a page for that
   // one that is not the page after kPage, so that a transfer that crosses
   // cannot land right by luck.
-  static constexpr std::uint64_t kEndOfThePage = kIova | 0xFFC;
-  static constexpr std::uint64_t kNextIova = (kIova | 0xFFF) + 1;
+  static constexpr std::uint64_t kEndOfThePage = kIova | 0xFFCU;
+  static constexpr std::uint64_t kNextIova = (kIova | 0xFFFU) + 1;
   static constexpr std::uint64_t kNextPage = 0x7'9000;
 
   // Puts in kDevice's page tables a 4 KiB page at `page` for the address
   // `iova`, with `flags`.
   void PlantPage(std::uint64_t iova, std::uint64_t page, std::uint64_t flags) {
-    Plant64(kPageTable + (kEntrySize * ((iova >> 30) & 0x1FF)),
+    Plant64(kPageTable + (kEntrySize * ((iova >> 30U) & 0x1FFU)),
             EntryFor(kPageTableMiddle, kV));
-    Plant64(kPageTableMiddle + (kEntrySize * ((iova >> 21) & 0x1FF)),
+    Plant64(kPageTableMiddle + (kEntrySize * ((iova >> 21U) & 0x1FFU)),
             EntryFor(kPageTableLeaf, kV));
-    Plant64(kPageTableLeaf + (kEntrySize * ((iova >> 12) & 0x1FF)),
+    Plant64(kPageTableLeaf + (kEntrySize * ((iova >> 12U) & 0x1FFU)),
             EntryFor(page, flags));
   }
 
@@ -181,7 +183,7 @@ class IommuContract : public ::testing::Test {
   // and LOG2SZ, one less than the log of its entries, in bits 4:0.
   static constexpr std::uint64_t QueueBase(std::uint64_t address,
                                            std::uint64_t log2_size) {
-    return ((address >> 12) << 10) | log2_size;
+    return ((address >> 12U) << 10U) | log2_size;
   }
 
   // Commands: an opcode in bits 6:0 of the first doubleword and a function
@@ -199,9 +201,9 @@ class IommuContract : public ::testing::Test {
   static constexpr Command kFence{.first = 2};
   static constexpr Command FenceThatWrites(std::uint32_t data,
                                            std::uint64_t address) {
-    constexpr std::uint64_t kAv = 1U << 10;
-    return {.first = kFence.first | kAv | (std::uint64_t{data} << 32),
-            .second = address >> 2};
+    constexpr std::uint64_t kAv = 1U << 10U;
+    return {.first = kFence.first | kAv | (std::uint64_t{data} << 32U),
+            .second = address >> 2U};
   }
   // And one this IOMMU does not have: ATS.INVAL, for a device that caches
   // translations, which needs ATS.
@@ -250,7 +252,7 @@ class IommuContract : public ::testing::Test {
   };
   static constexpr FaultRecord Record(std::uint64_t cause, std::uint64_t type,
                                       std::uint64_t address) {
-    return {.header = cause | (type << 34) | (std::uint64_t{kDevice} << 40),
+    return {.header = cause | (type << 34U) | (std::uint64_t{kDevice} << 40U),
             .address = address};
   }
   // The record at entry `index` of the fault queue.
@@ -310,7 +312,7 @@ class IommuContract : public ::testing::Test {
   // What a driver does to write ddtp: waits until the IOMMU has finished
   // with the last write, which ddtp.busy says it has not.
   static void WriteDdtp(BusDriver& firmware, std::uint64_t value) {
-    constexpr std::uint64_t kDdtpBusy = 1U << 4;
+    constexpr std::uint64_t kDdtpBusy = 1U << 4U;
     while ((firmware.Read64(kDdtp) & kDdtpBusy) != 0) {
       firmware.WaitFor(sc_core::sc_time{1, sc_core::SC_NS});
     }
@@ -422,7 +424,7 @@ TYPED_TEST_P(IommuContract,
   });
 
   EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
-  EXPECT_EQ(this->InMemory(this->kPage + (this->kIova & 0xFFF)), 0x1234U);
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kIova & 0xFFFU)), 0x1234U);
 }
 
 // A transfer that crosses a page is translated a page at a time, as a real
@@ -439,7 +441,7 @@ TYPED_TEST_P(IommuContract, AWriteThatCrossesAPageLandsWhereEachPageIsMapped) {
   });
 
   EXPECT_EQ(response, tlm::TLM_OK_RESPONSE);
-  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFF)),
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFFU)),
             0x1234U);
   EXPECT_EQ(this->InMemory(this->kNextPage), 0x5678U);
 }
@@ -465,7 +467,7 @@ TYPED_TEST_P(IommuContract,
       });
 
   EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
-  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFF)),
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kEndOfThePage & 0xFFFU)),
             0x1234U);
   EXPECT_EQ(this->InMemory(this->kNextPage), 0U);
   EXPECT_EQ(this->RecordAt(0), this->Record(15, 3, this->kNextIova));
@@ -482,7 +484,7 @@ TYPED_TEST_P(IommuContract, AnAccessThatDoesNotSayWhoSentItIsRefused) {
   });
 
   EXPECT_EQ(response, tlm::TLM_GENERIC_ERROR_RESPONSE);
-  EXPECT_EQ(this->InMemory(this->kPage + (this->kIova & 0xFFF)), 0U);
+  EXPECT_EQ(this->InMemory(this->kPage + (this->kIova & 0xFFFU)), 0U);
 }
 
 // The mode keeps only values it can hold: Linux asks for three levels and,
@@ -503,7 +505,7 @@ TYPED_TEST_P(IommuContract, ADirectoryModeTheSpecReservesDoesNotReadBack) {
 // busy, bit 4, is the IOMMU's to say, and drivers wait for it to clear
 // before each write: one that software could set would never clear.
 TYPED_TEST_P(IommuContract, AWriteToDdtpCannotMakeItBusy) {
-  constexpr std::uint64_t kBusyBit = 1U << 4;
+  constexpr std::uint64_t kBusyBit = 1U << 4U;
   std::uint64_t ddtp = 0;
   this->Run(
       [&](BusDriver& firmware) {
@@ -530,13 +532,13 @@ TYPED_TEST_P(
       [](BusDriver&) {});
 
   // VERSION, bits 7:0, is 1.0 as major and minor nibbles.
-  EXPECT_EQ(capabilities & 0xFF, 0x10U);
+  EXPECT_EQ(capabilities & 0xFFU, 0x10U);
   // Sv39, bit 9.
-  EXPECT_TRUE(capabilities & (1U << 9));
+  EXPECT_TRUE(capabilities & (1U << 9U));
   // IGS, bits 29:28: wired interrupts alone, 1.
-  EXPECT_EQ((capabilities >> 28) & 0x3, 1U);
+  EXPECT_EQ((capabilities >> 28U) & 0x3U, 1U);
   // MSI_FLAT, bit 22, clear: contexts are the 32-byte base format.
-  EXPECT_FALSE(capabilities & (1U << 22));
+  EXPECT_FALSE(capabilities & (1U << 22U));
 }
 
 // A queue's base register says where the queue is and how big: LOG2SZ,
@@ -985,7 +987,7 @@ TYPED_TEST_P(IommuContract, ADebuggerCannotWriteItsRegisters) {
 // fctl's WSI, bit 1, says the IOMMU interrupts by wire. An IOMMU that has
 // wires alone has it set, and Linux reads it before it asks for wires.
 TYPED_TEST_P(IommuContract, ItsInterruptsAreWiredWhateverIsWrittenToFctl) {
-  constexpr std::uint32_t kWiredInterrupts = 1U << 1;
+  constexpr std::uint32_t kWiredInterrupts = 1U << 1U;
   tlm::tlm_response_status written = tlm::TLM_INCOMPLETE_RESPONSE;
   std::uint32_t fctl = 0;
   this->Run(

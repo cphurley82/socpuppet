@@ -62,7 +62,7 @@ struct SsdRig {
   // half of all the addresses 64 bits can say, which is far more than any
   // host here has.
   static constexpr std::uint64_t kAddressesTheUplinkPassesOn = std::uint64_t{1}
-                                                               << 63;
+                                                               << 63U;
 
   static void Register(socpuppet::Registry& registry) {
     AddSsdFirmware(registry, "ssd_firmware", kMap);

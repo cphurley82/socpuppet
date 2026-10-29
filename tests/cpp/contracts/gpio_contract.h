@@ -113,8 +113,8 @@ TYPED_TEST_P(GpioContract, AnOutputPinDrivesWhatItsPortBitSays) {
   std::optional<bool> low;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputEnable, 1U << 3);
-    bus.Write32(this->kPort, 1U << 3);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
+    bus.Write32(this->kPort, 1U << 3U);
     high = this->gpio_.Level(3);
     bus.Write32(this->kPort, 0);
     low = this->gpio_.Level(3);
@@ -129,9 +129,9 @@ TYPED_TEST_P(GpioContract, AnInvertedOutputPinDrivesTheOppositeOfItsPortBit) {
   std::optional<bool> from_low;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputInvert, 1U << 3);
-    bus.Write32(this->kOutputEnable, 1U << 3);
-    bus.Write32(this->kPort, 1U << 3);
+    bus.Write32(this->kOutputInvert, 1U << 3U);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
+    bus.Write32(this->kPort, 1U << 3U);
     from_high = this->gpio_.Level(3);
     bus.Write32(this->kPort, 0);
     from_low = this->gpio_.Level(3);
@@ -145,8 +145,8 @@ TYPED_TEST_P(GpioContract, APinThatStopsBeingAnOutputDrivesNothing) {
   std::optional<bool> level = true;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputEnable, 1U << 3);
-    bus.Write32(this->kPort, 1U << 3);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
+    bus.Write32(this->kPort, 1U << 3U);
     bus.Write32(this->kOutputEnable, 0);
     level = this->gpio_.Level(3);
   });
@@ -165,7 +165,7 @@ TYPED_TEST_P(GpioContract, APinTheFarEndDrivesReadsInValue) {
     low = bus.Read32(this->kValue);
   });
 
-  EXPECT_EQ(high, 1U << 5);
+  EXPECT_EQ(high, 1U << 5U);
   EXPECT_EQ(low, 0U);
 }
 
@@ -175,11 +175,11 @@ TYPED_TEST_P(GpioContract, APinLetGoReadsHighOnceItsPullUpIsOn) {
   this->OnTheBus([&](BusDriver& bus) {
     this->DriveFromTheFarEnd(5, false);
     this->DriveFromTheFarEnd(5, std::nullopt);
-    bus.Write32(this->kPullUp, 1U << 5);
+    bus.Write32(this->kPullUp, 1U << 5U);
     value = bus.Read32(this->kValue);
   });
 
-  EXPECT_EQ(value, 1U << 5);
+  EXPECT_EQ(value, 1U << 5U);
 }
 
 // 🎓 A real pin with nothing on it floats, and reads whatever it picked up
@@ -203,21 +203,21 @@ TYPED_TEST_P(GpioContract,
   std::uint32_t value = 0;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputEnable, 1U << 5);
-    bus.Write32(this->kPullUp, 1U << 5);
+    bus.Write32(this->kOutputEnable, 1U << 5U);
+    bus.Write32(this->kPullUp, 1U << 5U);
     bus.Write32(this->kOutputEnable, 0);
     value = bus.Read32(this->kValue);
   });
 
-  EXPECT_EQ(value, 1U << 5);
+  EXPECT_EQ(value, 1U << 5U);
 }
 
 TYPED_TEST_P(GpioContract, TheFarEndIsToldOfEachChangeOfWhatAPinDrivesInOrder) {
   this->Listen();
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputEnable, 1U << 3);
-    bus.Write32(this->kPort, 1U << 3);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
+    bus.Write32(this->kPort, 1U << 3U);
     bus.Write32(this->kPort, 0);
     bus.Write32(this->kOutputEnable, 0);
   });
@@ -231,9 +231,9 @@ TYPED_TEST_P(GpioContract, AWriteThatChangesNoPinTellsTheFarEndNothing) {
   this->Listen();
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kPort, 1U << 3);
-    bus.Write32(this->kOutputEnable, 1U << 3);
-    bus.Write32(this->kPort, 1U << 3);
+    bus.Write32(this->kPort, 1U << 3U);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
+    bus.Write32(this->kPort, 1U << 3U);
   });
 
   EXPECT_EQ(this->changes_,
@@ -253,7 +253,7 @@ TYPED_TEST_P(GpioContract, EveryListenerIsToldOfEachChange) {
   });
 
   this->OnTheBus(
-      [&](BusDriver& bus) { bus.Write32(this->kOutputEnable, 1U << 3); });
+      [&](BusDriver& bus) { bus.Write32(this->kOutputEnable, 1U << 3U); });
 
   const std::vector<typename TestFixture::Change> told{{3, false}};
   EXPECT_EQ(first, told);
@@ -271,7 +271,7 @@ TYPED_TEST_P(GpioContract, TheFarEndMayWaitWithoutHoldingUpTheWriter) {
   });
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kOutputEnable, 1U << 3);
+    bus.Write32(this->kOutputEnable, 1U << 3U);
     written_at = sc_core::sc_time_stamp();
     sc_core::wait(2, sc_core::SC_US);
   });
@@ -298,8 +298,8 @@ TYPED_TEST_P(GpioContract, AnEdgeOnAnInputIsPendingEvenThoughItIsNotEnabled) {
     falls = bus.Read32(this->Pending(this->kFallEnable));
   });
 
-  EXPECT_EQ(rises, 1U << 5);
-  EXPECT_EQ(falls, 1U << 6);
+  EXPECT_EQ(rises, 1U << 5U);
+  EXPECT_EQ(falls, 1U << 6U);
 }
 
 TYPED_TEST_P(GpioContract, WritingAOneToAPendingEdgeClearsItAndNoOther) {
@@ -308,11 +308,11 @@ TYPED_TEST_P(GpioContract, WritingAOneToAPendingEdgeClearsItAndNoOther) {
   this->OnTheBus([&](BusDriver& bus) {
     this->DriveFromTheFarEnd(5, true);
     this->DriveFromTheFarEnd(6, true);
-    bus.Write32(this->Pending(this->kRiseEnable), 1U << 5);
+    bus.Write32(this->Pending(this->kRiseEnable), 1U << 5U);
     rises = bus.Read32(this->Pending(this->kRiseEnable));
   });
 
-  EXPECT_EQ(rises, 1U << 6);
+  EXPECT_EQ(rises, 1U << 6U);
 }
 
 // Zephyr's driver clears a pin's four pending bits in its handler, and a
@@ -333,8 +333,8 @@ TYPED_TEST_P(GpioContract,
     lows = bus.Read32(this->Pending(this->kLowEnable));
   });
 
-  EXPECT_EQ(highs & (1U << 5 | 1U << 6), 1U << 5);
-  EXPECT_EQ(lows & (1U << 5 | 1U << 6), 1U << 6);
+  EXPECT_EQ(highs & (1U << 5U | 1U << 6U), 1U << 5U);
+  EXPECT_EQ(lows & (1U << 5U | 1U << 6U), 1U << 6U);
 }
 
 TYPED_TEST_P(GpioContract, APinsLineIsUpWhileAnEnabledEventOfItsIsPending) {
@@ -342,11 +342,11 @@ TYPED_TEST_P(GpioContract, APinsLineIsUpWhileAnEnabledEventOfItsIsPending) {
   bool cleared = true;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kRiseEnable, 1U << 5);
+    bus.Write32(this->kRiseEnable, 1U << 5U);
     this->DriveFromTheFarEnd(5, false);
     this->DriveFromTheFarEnd(5, true);
     pending = this->Interrupting(5);
-    bus.Write32(this->Pending(this->kRiseEnable), 1U << 5);
+    bus.Write32(this->Pending(this->kRiseEnable), 1U << 5U);
     cleared = this->Interrupting(5);
   });
 
@@ -358,7 +358,7 @@ TYPED_TEST_P(GpioContract, APendingEventThatIsNotEnabledLeavesTheLineDown) {
   bool interrupting = true;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kFallEnable, 1U << 5);
+    bus.Write32(this->kFallEnable, 1U << 5U);
     this->DriveFromTheFarEnd(5, false);
     this->DriveFromTheFarEnd(5, true);
     interrupting = this->Interrupting(5);
@@ -386,11 +386,11 @@ TYPED_TEST_P(GpioContract, AnInputThatReadsLowIsPendingALowLevelFromTheStart) {
 
   this->OnTheBus([&](BusDriver& bus) {
     lows = bus.Read32(this->Pending(this->kLowEnable));
-    bus.Write32(this->kLowEnable, 1U << 5);
+    bus.Write32(this->kLowEnable, 1U << 5U);
     interrupting = this->Interrupting(5);
   });
 
-  EXPECT_TRUE(lows & (1U << 5));
+  EXPECT_TRUE(lows & (1U << 5U));
   EXPECT_TRUE(interrupting);
 }
 

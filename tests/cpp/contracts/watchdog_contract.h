@@ -39,15 +39,15 @@ class WatchdogContract : public ::testing::Test {
   static constexpr std::uint64_t kCompare = 0x20;
 
   // The configuration register. The scale is its low four bits.
-  static constexpr std::uint32_t kResetWhenItRunsOut = 1U << 8;
-  static constexpr std::uint32_t kZeroTheCountAtTheCompareValue = 1U << 9;
-  static constexpr std::uint32_t kAlwaysCount = 1U << 12;
+  static constexpr std::uint32_t kResetWhenItRunsOut = 1U << 8U;
+  static constexpr std::uint32_t kZeroTheCountAtTheCompareValue = 1U << 9U;
+  static constexpr std::uint32_t kAlwaysCount = 1U << 12U;
   // Count while the CPU is awake, which Zephyr's driver asks for when it is
   // told to pause the watchdog in sleep.
-  static constexpr std::uint32_t kCountWhileAwake = 1U << 13;
+  static constexpr std::uint32_t kCountWhileAwake = 1U << 13U;
   // Set when the scaled count has reached the compare value. It is the
   // interrupt, and stays set until firmware clears it.
-  static constexpr std::uint32_t kInterruptPending = 1U << 28;
+  static constexpr std::uint32_t kInterruptPending = 1U << 28U;
 
   // What unlocks the registers for one write, and what feeds.
   static constexpr std::uint32_t kTheKey = 0x51F15E;

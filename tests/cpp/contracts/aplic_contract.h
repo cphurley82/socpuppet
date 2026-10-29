@@ -60,8 +60,8 @@ class AplicContract : public ::testing::Test {
 
   // Domain configuration: the domain's interrupts are on, and it delivers
   // by message.
-  static constexpr std::uint32_t kInterruptsOn = 1U << 8;
-  static constexpr std::uint32_t kDeliversByMessage = 1U << 2;
+  static constexpr std::uint32_t kInterruptsOn = 1U << 8U;
+  static constexpr std::uint32_t kDeliversByMessage = 1U << 2U;
   // Source configuration: the line is not listened to, and it asks while it
   // is high.
   static constexpr std::uint32_t kInactive = 0;
@@ -70,7 +70,7 @@ class AplicContract : public ::testing::Test {
   static constexpr std::uint32_t kLevelLow = 7;
   // Target: a bit the specification keeps for later, which Zephyr's
   // driver sets.
-  static constexpr std::uint32_t kReservedTargetBit = 1U << 11;
+  static constexpr std::uint32_t kReservedTargetBit = 1U << 11U;
 
   // Where the tests have messages sent, and the identities they give the
   // two sources they use.
@@ -109,7 +109,7 @@ class AplicContract : public ::testing::Test {
   // Zephyr's driver does not, so every test that sends relies on the
   // domain delivering that way unasked.
   void SetUpTheDomain(BusDriver& bus) {
-    bus.Write32(kMessageAddress, kHartsPage >> 12);
+    bus.Write32(kMessageAddress, kHartsPage >> 12U);
     bus.Write32(kDomainConfiguration, kInterruptsOn);
   }
 
@@ -326,7 +326,7 @@ TYPED_TEST_P(AplicContract,
   std::vector<std::uint32_t> before;
 
   this->OnTheBus([&](BusDriver& bus) {
-    bus.Write32(this->kMessageAddress, this->kHartsPage >> 12);
+    bus.Write32(this->kMessageAddress, this->kHartsPage >> 12U);
     this->Route(bus, this->kSource, this->kIdentity);
     this->Enable(bus, this->kSource);
     this->Raise(bus, this->kSource);
@@ -386,8 +386,8 @@ TYPED_TEST_P(AplicContract, ABitTheSpecificationKeepsInATargetIsNotSent) {
 // a hart's number tell the pages apart, and here it is one, so that hart 1
 // has the page after hart 0's.
 TYPED_TEST_P(AplicContract, AnInterruptForAnotherHartGoesToThatHartsPage) {
-  constexpr std::uint32_t kOneBitOfHartNumber = 1U << 12;
-  constexpr std::uint32_t kHartOne = 1U << 18;
+  constexpr std::uint32_t kOneBitOfHartNumber = 1U << 12U;
+  constexpr std::uint32_t kHartOne = 1U << 18U;
 
   this->OnTheBus([&](BusDriver& bus) {
     this->SetUpTheDomain(bus);
@@ -446,20 +446,20 @@ TYPED_TEST_P(AplicContract,
   this->OnTheBus([&](BusDriver& bus) {
     out_of_reset = bus.Read32(this->kMessageAddress);
     high_out_of_reset = bus.Read32(this->kMessageAddressHigh);
-    bus.Write32(this->kMessageAddress, this->kHartsPage >> 12);
+    bus.Write32(this->kMessageAddress, this->kHartsPage >> 12U);
     written = bus.Read32(this->kMessageAddress);
   });
 
   EXPECT_EQ(out_of_reset, 0U);
   EXPECT_EQ(high_out_of_reset, 0U);
-  EXPECT_EQ(written, this->kHartsPage >> 12);
+  EXPECT_EQ(written, this->kHartsPage >> 12U);
 }
 
 // What Zephyr's driver writes for one hart: no bits of a hart's number in
 // either part, and a place for the high part all the same.
 TYPED_TEST_P(AplicContract,
              WithTheLayoutZephyrGivesHartZerosPageIsTheOneGiven) {
-  constexpr std::uint32_t kHighPartAt24AndNoBits = 24U << 24;
+  constexpr std::uint32_t kHighPartAt24AndNoBits = 24U << 24U;
 
   this->OnTheBus([&](BusDriver& bus) {
     this->SetUpTheDomain(bus);
@@ -483,7 +483,7 @@ TYPED_TEST_P(AplicContract,
   std::uint32_t read_back = 1;
 
   this->OnTheBus([&](BusDriver& bus) {
-    low = bus.Write32(this->kSupervisorMessageAddress, this->kHartsPage >> 12);
+    low = bus.Write32(this->kSupervisorMessageAddress, this->kHartsPage >> 12U);
     high = bus.Write32(this->kSupervisorMessageAddressHigh, 0);
     read_back = bus.Read32(this->kSupervisorMessageAddress);
   });
@@ -528,7 +528,7 @@ TYPED_TEST_P(AplicContract, AMessageARegisterWriteCausesIsSentAfterTheWrite) {
 // The bits between them are for a hypervisor's guests, which this has
 // none of, or are kept by the specification, and all read as zero.
 TYPED_TEST_P(AplicContract, ATargetReadsBackTheHartAndTheIdentityOnly) {
-  constexpr std::uint32_t kHartOne = 1U << 18;
+  constexpr std::uint32_t kHartOne = 1U << 18U;
   constexpr std::uint32_t kAnIdentity = 0x100;
   constexpr std::uint32_t kEverythingBetween = 0x0003'F800;
   std::uint32_t target = 0;
@@ -550,11 +550,11 @@ TYPED_TEST_P(AplicContract, ATargetReadsBackTheHartAndTheIdentityOnly) {
 // 1 and a low part of 2. The address has high bits of its own too.
 TYPED_TEST_P(AplicContract, AHartsPageIsWhereTheLayoutFirmwareGavePutsIt) {
   constexpr std::uint32_t kAddressBit44 = 1U;
-  constexpr std::uint32_t kLowPartTwoBits = 2U << 12;
-  constexpr std::uint32_t kHighPartOneBit = 1U << 16;
-  constexpr std::uint32_t kLowPartOneBitUp = 1U << 20;
-  constexpr std::uint32_t kHighPartFourBitsUp = 4U << 24;
-  constexpr std::uint32_t kHartSix = 6U << 18;
+  constexpr std::uint32_t kLowPartTwoBits = 2U << 12U;
+  constexpr std::uint32_t kHighPartOneBit = 1U << 16U;
+  constexpr std::uint32_t kLowPartOneBitUp = 1U << 20U;
+  constexpr std::uint32_t kHighPartFourBitsUp = 4U << 24U;
+  constexpr std::uint32_t kHartSix = 6U << 18U;
 
   this->OnTheBus([&](BusDriver& bus) {
     this->SetUpTheDomain(bus);
@@ -570,7 +570,7 @@ TYPED_TEST_P(AplicContract, AHartsPageIsWhereTheLayoutFirmwareGavePutsIt) {
   ASSERT_EQ(this->messages_.size(), 1U);
   EXPECT_EQ(
       this->messages_[0].address,
-      (std::uint64_t{1} << 44) + this->kHartsPage + (1U << 28) + (1U << 14));
+      (std::uint64_t{1} << 44U) + this->kHartsPage + (1U << 28U) + (1U << 14U));
 }
 
 // Whatever is between the APLIC and the hart takes its time over a
