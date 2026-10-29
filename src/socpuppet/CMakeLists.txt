@@ -204,37 +204,45 @@ if(SOCPUPPET_HAS_PCIEM)
   socpuppet_dev_checks(socpuppet_pciem_device)
 endif()
 
+# One of our models, models/<name>.cpp with its header: the library
+# socpuppet_<name>, linking SystemC and what PUBLIC and PRIVATE name, and
+# held to our warnings and clang-tidy (cmake/DevChecks.cmake).
+function(socpuppet_model name)
+  cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "PUBLIC;PRIVATE")
+  add_library(socpuppet_${name} STATIC models/${name}.cpp)
+  target_sources(socpuppet_${name} PUBLIC
+    FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
+      models/${name}.h)
+  target_link_libraries(socpuppet_${name}
+    PUBLIC SystemC::systemc ${arg_PUBLIC}
+    PRIVATE ${arg_PRIVATE})
+  socpuppet_dev_checks(socpuppet_${name})
+endfunction()
+
+# A model of VPV-Peripherals' with a source file of its own, `source` in its
+# tree: built as a library apart from ours, so that our warnings and
+# clang-tidy leave it alone.
+function(socpuppet_borrowed_vpv name source)
+  add_library(${name} STATIC ${vpv_peripherals_SOURCE_DIR}/${source})
+  target_compile_options(${name} PRIVATE -w)
+  target_include_directories(${name} SYSTEM PUBLIC
+    ${vpv_peripherals_SOURCE_DIR})
+  target_link_libraries(${name} PUBLIC scc::components SystemC::systemc)
+endfunction()
+
 # The UART: VPV-Peripherals' PULPino UART.
-add_library(socpuppet_ns16550 STATIC models/ns16550.cpp)
-target_sources(socpuppet_ns16550 PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/ns16550.h)
-target_link_libraries(socpuppet_ns16550
-  PUBLIC SystemC::systemc
-  PRIVATE scc::components)
+socpuppet_model(ns16550 PRIVATE scc::components)
 target_include_directories(socpuppet_ns16550 SYSTEM PRIVATE
   ${vpv_peripherals_SOURCE_DIR})
-socpuppet_dev_checks(socpuppet_ns16550)
 
 # The machine timer: VPV-Peripherals' ACLINT. The model has a source file of
 # its own, which is built as a library apart from ours so that our warnings
 # and clang-tidy leave it alone. SC_SIGNAL_IF asks the model for plain
 # SystemC signals as its interrupt outputs.
-add_library(vpv_aclint STATIC ${vpv_peripherals_SOURCE_DIR}/minres/aclint.cpp)
+socpuppet_borrowed_vpv(vpv_aclint minres/aclint.cpp)
 target_compile_definitions(vpv_aclint PUBLIC SC_SIGNAL_IF)
-target_compile_options(vpv_aclint PRIVATE -w)
-target_include_directories(vpv_aclint SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR})
-target_link_libraries(vpv_aclint PUBLIC scc::components SystemC::systemc)
 
-add_library(socpuppet_machine_timer STATIC models/machine_timer.cpp)
-target_sources(socpuppet_machine_timer PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/machine_timer.h)
-target_link_libraries(socpuppet_machine_timer
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_aclint)
-socpuppet_dev_checks(socpuppet_machine_timer)
+socpuppet_model(machine_timer PRIVATE vpv_aclint)
 
 # The interrupt controller: VPV-Peripherals' PLIC, which is headers only.
 # SC_SIGNAL_IF is private here where the timer's is public: plic.cpp is the
@@ -253,92 +261,35 @@ socpuppet_dev_checks(socpuppet_plic)
 
 # The APLIC: VPV-Peripherals' APLIC, which has a source file of its own,
 # built apart from ours as the timer's is.
-add_library(vpv_aplic STATIC ${vpv_peripherals_SOURCE_DIR}/rvi/aplic.cpp)
+socpuppet_borrowed_vpv(vpv_aplic rvi/aplic.cpp)
 target_compile_definitions(vpv_aplic PUBLIC SC_SIGNAL_IF)
-target_compile_options(vpv_aplic PRIVATE -w)
-target_include_directories(vpv_aplic SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR})
-target_link_libraries(vpv_aplic PUBLIC scc::components SystemC::systemc)
 
-add_library(socpuppet_aplic STATIC models/aplic.cpp)
-target_sources(socpuppet_aplic PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/aplic.h)
-target_link_libraries(socpuppet_aplic
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_aplic)
-socpuppet_dev_checks(socpuppet_aplic)
+socpuppet_model(aplic PRIVATE vpv_aplic)
 
 # The IOMMU: ours, written for VPV-Peripherals (src/vpvper), with an
 # adapter as the borrowed models have.
-add_library(socpuppet_iommu STATIC models/iommu.cpp)
-target_sources(socpuppet_iommu PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/iommu.h)
-target_link_libraries(socpuppet_iommu
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_iommu)
-socpuppet_dev_checks(socpuppet_iommu)
+socpuppet_model(iommu PRIVATE vpv_iommu)
 
 # The watchdog: the one in VPV-Peripherals' model of SiFive's always-on
 # block, built apart from ours as the timer's model is.
-add_library(vpv_aon STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/aon.cpp)
-target_compile_options(vpv_aon PRIVATE -w)
-target_include_directories(vpv_aon SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR})
-target_link_libraries(vpv_aon PUBLIC scc::components SystemC::systemc)
+socpuppet_borrowed_vpv(vpv_aon sifive/aon.cpp)
 
-add_library(socpuppet_watchdog STATIC models/watchdog.cpp)
-target_sources(socpuppet_watchdog PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/watchdog.h)
-target_link_libraries(socpuppet_watchdog
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_aon)
-socpuppet_dev_checks(socpuppet_watchdog)
+socpuppet_model(watchdog PRIVATE vpv_aon)
 
 # The GPIO: VPV-Peripherals' model of SiFive's, built apart from ours as
 # the timer's model is.
-add_library(vpv_sifive_gpio STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/gpio.cpp)
-target_compile_options(vpv_sifive_gpio PRIVATE -w)
-target_include_directories(vpv_sifive_gpio SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR})
-target_link_libraries(vpv_sifive_gpio PUBLIC scc::components SystemC::systemc)
+socpuppet_borrowed_vpv(vpv_sifive_gpio sifive/gpio.cpp)
 
-add_library(socpuppet_gpio STATIC models/gpio.cpp)
-target_sources(socpuppet_gpio PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/gpio.h)
-target_link_libraries(socpuppet_gpio
-  PUBLIC SystemC::systemc
-  PRIVATE vpv_sifive_gpio)
-socpuppet_dev_checks(socpuppet_gpio)
+socpuppet_model(gpio PRIVATE vpv_sifive_gpio)
 
 # The SPI controller: VPV-Peripherals' model of SiFive's, built apart from
 # ours as the timer's model is.
-add_library(vpv_sifive_spi STATIC ${vpv_peripherals_SOURCE_DIR}/sifive/spi.cpp)
-target_compile_options(vpv_sifive_spi PRIVATE -w)
-target_include_directories(vpv_sifive_spi SYSTEM PUBLIC
-  ${vpv_peripherals_SOURCE_DIR})
-target_link_libraries(vpv_sifive_spi PUBLIC scc::components SystemC::systemc)
+socpuppet_borrowed_vpv(vpv_sifive_spi sifive/spi.cpp)
 
-add_library(socpuppet_spi_controller STATIC models/spi_controller.cpp)
-target_sources(socpuppet_spi_controller PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/spi_controller.h)
-target_link_libraries(socpuppet_spi_controller
-  PUBLIC SystemC::systemc socpuppet_core
-  PRIVATE vpv_sifive_spi)
-socpuppet_dev_checks(socpuppet_spi_controller)
+socpuppet_model(spi_controller PUBLIC socpuppet_core PRIVATE vpv_sifive_spi)
 
 # The flash: the SPI controller above with our chip behind it.
-add_library(socpuppet_spi_flash STATIC models/spi_flash.cpp)
-target_sources(socpuppet_spi_flash PUBLIC
-  FILE_SET HEADERS BASE_DIRS ${PROJECT_SOURCE_DIR}/src FILES
-    models/spi_flash.h)
-target_link_libraries(socpuppet_spi_flash
-  PUBLIC SystemC::systemc socpuppet_core socpuppet_spi_controller)
-socpuppet_dev_checks(socpuppet_spi_flash)
+socpuppet_model(spi_flash PUBLIC socpuppet_core socpuppet_spi_controller)
 
 # platform/: composing components by name (ports, the registry, the
 # platform builder), and what a model needs from the platform to take part.
