@@ -164,7 +164,7 @@ struct DbtRiseCpu::Core {
     // DBT-RISE wants an lvalue, and copies it.
     sysc::sc2core_if::rd_csr_f read_time = [this](unsigned number,
                                                   std::uint64_t& value) {
-      value = number == kTimehCsr ? Time() >> 32 : Time();
+      value = number == kTimehCsr ? Time() >> 32U : Time();
       return iss::Ok;
     };
     complex_.register_csr_rd(kTimeCsr, read_time);

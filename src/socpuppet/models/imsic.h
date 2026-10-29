@@ -142,7 +142,7 @@ class Imsic : public sc_core::sc_module {
                         std::span<std::uint8_t> data) {
     if (is_read) {
       const std::uint64_t top = file.Top();
-      StoreLittleEndian((top << 16) | top, data);
+      StoreLittleEndian((top << 16U) | top, data);
     } else {
       file.Claim();
     }

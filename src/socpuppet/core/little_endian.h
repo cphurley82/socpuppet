@@ -19,7 +19,7 @@ namespace socpuppet {
 template <std::unsigned_integral Value>
 constexpr void StoreLittleEndian(Value value, std::span<std::uint8_t> bytes) {
   for (std::size_t index = 0; index < sizeof(Value); ++index) {
-    bytes[index] = static_cast<std::uint8_t>(value >> (8 * index));
+    bytes[index] = static_cast<std::uint8_t>(value >> (8U * index));
   }
 }
 
@@ -28,7 +28,8 @@ template <std::unsigned_integral Value>
 constexpr Value LoadLittleEndian(std::span<const std::uint8_t> bytes) {
   Value value = 0;
   for (std::size_t index = 0; index < sizeof(Value); ++index) {
-    value = static_cast<Value>(value | Value{bytes[index]} << (8 * index));
+    value =
+        static_cast<Value>(value | std::uint64_t{bytes[index]} << (8U * index));
   }
   return value;
 }

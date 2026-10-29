@@ -96,7 +96,7 @@ void NvmeQueues::Post(const Command& command, const Outcome& outcome) {
   entry.cid = as_sent.cid;
   // The status code type is three bits wide. The mask is for GCC, which
   // cannot tell that an 8-bit value of 0 or 1 fits.
-  entry.status.sct = outcome.status_type & 0x7;
+  entry.status.sct = outcome.status_type & 0x7U;
   entry.status.sc = outcome.status;
   entry.status.p = completions.phase ? 1 : 0;
   // The bytes of SPDK's structure are laid out exactly as the

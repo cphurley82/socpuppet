@@ -114,7 +114,7 @@ void iommu::translate(tlm::tlm_generic_payload& gp, sc_core::sc_time& delay) {
     // the walk reads the tables in memory through dma_o, as late as the transaction it is for
     iommu_walker const walker{[this, &delay](uint64_t pa, uint64_t& value) { return load(pa, value, delay); }};
     uint64_t const mode = regs->r_ddtp.iommu_mode, ppn = regs->r_ddtp.ppn;
-    iommu_device_directory const ddt{static_cast<iommu_ddt_mode>(mode), ppn << 12};
+    iommu_device_directory const ddt{static_cast<iommu_ddt_mode>(mode), ppn << 12U};
     // a transaction is translated a page at a time, as the fabric presents one to a real IOMMU (a PCIe request stops
     // at a page), each page where its own entry says; a page that faults stops it there, the pages before it done
     uint64_t const iova = gp.get_address();
@@ -185,13 +185,13 @@ bool iommu::run(uint64_t first, uint64_t second, sc_core::sc_time& delay) {
     // IODIR.INVAL_DDT have nothing to do, and a fence has nothing to wait for; with AV, IOFENCE.C writes its DATA, bits
     // 63:32, to the address the second doubleword holds, shifted right by two. The rest are for what this IOMMU does
     // not have: a second stage, process contexts and ATS
-    switch(first & 0x3ff) {
+    switch(first & 0x3ffU) {
     case command_iotinval_vma:
     case command_iodir_inval_ddt:
         return true;
     case command_iofence_c:
         if(first & iofence_av)
-            store(second << 2, static_cast<uint32_t>(first >> 32), delay);
+            store(second << 2U, static_cast<uint32_t>(first >> 32U), delay);
         return true;
     default:
         return false;
@@ -204,7 +204,7 @@ void iommu::record(iommu_fault_cause cause, iommu_transaction_type type, uint32_
     // a record is 32 bytes: its header, with the cause in bits 11:0, the type of the transaction in bits 39:34 and
     // the device in bits 63:40; a doubleword kept for later; the address the transaction was for; and a second address
     // that only a second stage has
-    uint64_t const header = static_cast<uint64_t>(cause) | uint64_t(type) << 34 | uint64_t(device_id) << 40;
+    uint64_t const header = static_cast<uint64_t>(cause) | uint64_t(type) << 34U | uint64_t(device_id) << 40U;
     std::array<uint8_t, record_size> data{};
     to_le(data.data(), header, 8);
     to_le(data.data() + 16, iova, 8);
@@ -221,7 +221,7 @@ void iommu::record(iommu_fault_cause cause, iommu_transaction_type type, uint32_
     irq_changed.notify(delay);
 }
 
-uint64_t iommu::slot(uint64_t ppn, uint32_t index, size_t size) { return (ppn << 12) + uint64_t(index) * size; }
+uint64_t iommu::slot(uint64_t ppn, uint32_t index, size_t size) { return (ppn << 12U) + uint64_t(index) * size; }
 
 uint32_t iommu::wrap(uint32_t index, uint64_t log2sz_1) { return index & ((uint32_t(2) << log2sz_1) - 1); }
 
@@ -267,7 +267,7 @@ bool iommu::load(uint64_t pa, uint64_t& value, sc_core::sc_time& delay) {
         return false;
     value = 0;
     for(size_t i = data.size(); i-- > 0;)
-        value = (value << 8) | data[i];
+        value = (value << 8U) | data[i];
     return true;
 }
 

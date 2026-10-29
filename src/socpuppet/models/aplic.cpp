@@ -23,7 +23,7 @@ namespace {
 // The register that says how the domain delivers, and the bit in it for
 // "by message" (the specification's DM).
 constexpr std::uint64_t kDomainConfiguration = 0;
-constexpr std::uint8_t kDeliversByMessage = 1U << 2;
+constexpr std::uint8_t kDeliversByMessage = 1U << 2U;
 constexpr std::size_t kRegisterSize = 4;
 
 // Whether `address` is in a register of a source this APLIC does not
@@ -63,9 +63,9 @@ struct ByMessage : PoweredOn<vpvper::rvi::aplic> {
     // The registers hold the number of the page, its address without the
     // low twelve bits: the low 32 bits of it in one, and the rest in the
     // other's lowest field.
-    const std::uint64_t page = messages_to_ >> 12;
+    const std::uint64_t page = messages_to_ >> 12U;
     regs->r_mmsiaddrcfg = static_cast<std::uint32_t>(page);
-    regs->r_mmsiaddrcfgh.highbaseppn = static_cast<std::uint32_t>(page >> 32);
+    regs->r_mmsiaddrcfgh.highbaseppn = static_cast<std::uint32_t>(page >> 32U);
   }
 
  private:

@@ -108,7 +108,7 @@ constexpr Within kInterruptIdentities{.least = 63, .most = 2047};
 constexpr Within kAtLeastOne{.least = 1};
 
 // A MAC address, as a 48-bit number with its first byte highest.
-constexpr Within kMacAddresses{.most = (std::uint64_t{1} << 48) - 1};
+constexpr Within kMacAddresses{.most = (std::uint64_t{1} << 48U) - 1};
 
 // The address a virtio network device has unless it is given one,
 // 02:00:5e:00:53:01: locally administered (the second-lowest bit of the

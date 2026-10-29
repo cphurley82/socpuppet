@@ -62,7 +62,7 @@ bool DmaEngineLogic::ReadRegister(std::uint64_t offset,
       StoreLittleEndian(static_cast<std::uint32_t>(host_address_), out);
       break;
     case DMA_ENGINE_HOST_ADDRESS_HIGH:
-      StoreLittleEndian(static_cast<std::uint32_t>(host_address_ >> 32), out);
+      StoreLittleEndian(static_cast<std::uint32_t>(host_address_ >> 32U), out);
       break;
     case DMA_ENGINE_LOCAL_ADDRESS:
       StoreLittleEndian(local_address_, out);
@@ -103,7 +103,7 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
       break;
     case DMA_ENGINE_HOST_ADDRESS_HIGH:
       host_address_ =
-          (host_address_ & 0xFFFF'FFFF) | (std::uint64_t{value} << 32);
+          (host_address_ & 0xFFFF'FFFF) | (std::uint64_t{value} << 32U);
       break;
     case DMA_ENGINE_LOCAL_ADDRESS:
       local_address_ = value;

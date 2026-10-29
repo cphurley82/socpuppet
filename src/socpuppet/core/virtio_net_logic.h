@@ -33,7 +33,7 @@ class VirtioNetLogic : public VirtioDevice {
   // VIRTIO_NET_F_MAC: the address is in the configuration. EDK2's driver
   // will not bind without it; Zephyr's takes its address from the
   // devicetree instead.
-  static constexpr std::uint64_t kFeatureMac = std::uint64_t{1} << 5;
+  static constexpr std::uint64_t kFeatureMac = std::uint64_t{1} << 5U;
   // The header in front of every frame (section 5.1.6), the size it has
   // whenever VIRTIO_F_VERSION_1 is agreed, which this transport insists
   // on: flags, the offload's fields, and num_buffers last.

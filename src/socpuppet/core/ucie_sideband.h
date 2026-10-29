@@ -249,7 +249,7 @@ inline SidebandMessage MessageIn(const SidebandPacket& packet) {
 // information are. That is how UCIe fits a register access into the same
 // 64 bits, and keeping it means one packet type for the whole sideband.
 inline std::uint32_t AddressIn(const SidebandPacket& packet) {
-  return packet.msgsubcode | (std::uint32_t{packet.msginfo} << 8);
+  return packet.msgsubcode | (std::uint32_t{packet.msginfo} << 8U);
 }
 inline SidebandStatus StatusIn(const SidebandPacket& packet) {
   return static_cast<SidebandStatus>(packet.msgcode);
@@ -257,7 +257,7 @@ inline SidebandStatus StatusIn(const SidebandPacket& packet) {
 
 // How much of an address a register access can carry: the 24 bits that
 // fit where a message's subcode and information are.
-constexpr std::uint32_t kLargestSidebandAddress = (1U << 24) - 1;
+constexpr std::uint32_t kLargestSidebandAddress = (1U << 24U) - 1;
 
 // The packet that reads or writes `address` on the other die. An address
 // too big to travel is cut down to what fits, which is what arrives.
@@ -270,7 +270,7 @@ inline SidebandPacket RegisterAccessPacket(SidebandOpcode opcode,
           .srcid = from,
           .dstid = to,
           .msgsubcode = static_cast<std::uint8_t>(fits),
-          .msginfo = static_cast<std::uint16_t>(fits >> 8),
+          .msginfo = static_cast<std::uint16_t>(fits >> 8U),
           .data = data};
 }
 

@@ -151,7 +151,7 @@ bool NvmeFrontendLogic::ReadCpuRegister(std::uint64_t offset,
       StoreLittleEndian(static_cast<std::uint32_t>(queue_.base), out);
       break;
     case NVME_FRONTEND_QUEUE_BASE_HIGH:
-      StoreLittleEndian(static_cast<std::uint32_t>(queue_.base >> 32), out);
+      StoreLittleEndian(static_cast<std::uint32_t>(queue_.base >> 32U), out);
       break;
     case NVME_FRONTEND_QUEUE_LAST:
       StoreLittleEndian(queue_.last, out);
@@ -219,7 +219,7 @@ bool NvmeFrontendLogic::WriteCpuRegister(std::uint64_t offset,
       queue_.base = (queue_.base & ~std::uint64_t{0xFFFF'FFFF}) | value;
       break;
     case NVME_FRONTEND_QUEUE_BASE_HIGH:
-      queue_.base = (queue_.base & 0xFFFF'FFFF) | (std::uint64_t{value} << 32);
+      queue_.base = (queue_.base & 0xFFFF'FFFF) | (std::uint64_t{value} << 32U);
       break;
     case NVME_FRONTEND_QUEUE_LAST:
       queue_.last = value;
