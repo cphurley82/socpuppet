@@ -196,10 +196,15 @@ def test_the_quick_tier_has_a_ci_passed_check_that_needs_every_other_job():
     # So that a job added to the tier blocks a merge until it passes, with
     # no change to the ruleset.
     jobs = WORKFLOW_FILES[TIER.QUICK.value]
-    (passed,) = [
-        name for name, job in jobs.items() if job.get("name") == CI_PASSED
-    ]
+    passed = ci_passed()
     assert set(needs_of(jobs[passed])) == set(jobs) - {passed}
+
+
+def test_the_ci_passed_check_runs_whatever_the_jobs_it_needs_did():
+    # A required check that was skipped counts as passed (ci.yml says why
+    # not !cancelled()).
+    check = WORKFLOW_FILES[TIER.QUICK.value][ci_passed()]
+    assert condition_of(check) == "always()"
 
 
 def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
@@ -402,6 +407,22 @@ def test_the_devcontainers_image_is_the_default_ubuntu():
     dockerfile = REPO / ".devcontainer" / "Dockerfile"
     version = DEFAULT_UBUNTU.removeprefix("ubuntu-")
     assert set(base_images(dockerfile)) == {f"ubuntu:{version}"}
+
+
+def ci_passed():
+    """The name of the quick tier's CI passed check among its jobs."""
+    (name,) = [
+        name
+        for name, job in WORKFLOW_FILES[TIER.QUICK.value].items()
+        if job.get("name") == CI_PASSED
+    ]
+    return name
+
+
+def condition_of(job):
+    """A job's if, less the ${{ }} GitHub lets it be wrapped in."""
+    condition = job.get("if", "")
+    return condition.removeprefix("${{").removesuffix("}}").strip()
 
 
 def jobs_of(tier):
