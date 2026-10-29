@@ -91,8 +91,15 @@ def pytest_configure(config):
         "markers",
         "long: a test that takes seconds, or most of a minute, on its own: "
         "the boots of OpenSBI, UEFI and Linux. The long tests are collected "
-        "first, so that none of them starts last, and are left out of the "
-        "run when SOCPUPPET_SKIP_LONG is 1, as the quick test preset sets it.",
+        "first, so that none of them starts last. `-m 'not long'` leaves "
+        "them out, as the fast test preset does.",
+    )
+    config.addinivalue_line(
+        "markers",
+        "representative(area): the one long test that boots for its area "
+        "(linux, uefi, ...) on every push, as the quick test preset runs "
+        "them with `-m representative`; the rest of the long tests run "
+        "every night (CMakePresets.json).",
     )
 
 
@@ -116,26 +123,14 @@ def _stop_if_qbox_cpu_is_asked_for_and_not_in_this_build():
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip for the CPU, leave out the long when asked, and put them first.
+    """Skip for the CPU, and put the long tests first.
 
     pytest-xdist hands the tests out to its workers in this order. Started
     last, a long test would keep the whole run waiting while every other
-    worker sat idle. The rest stay in the order they were in. With
-    SOCPUPPET_SKIP_LONG set to 1, the long tests are not run at all.
+    worker sat idle. The rest stay in the order they were in.
     """
     _skip_for_the_cpu(items)
-    if os.environ.get("SOCPUPPET_SKIP_LONG") == "1":
-        _deselect_the_long(config, items)
     items.sort(key=lambda item: item.get_closest_marker("long") is None)
-
-
-def _deselect_the_long(config, items):
-    """Leave the tests marked `long` out of the run, as `-m "not long"` does."""
-    kept, long = [], []
-    for item in items:
-        (long if item.get_closest_marker("long") else kept).append(item)
-    config.hook.pytest_deselected(items=long)
-    items[:] = kept
 
 
 def _skip_for_the_cpu(items):

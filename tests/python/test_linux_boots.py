@@ -71,6 +71,7 @@ def linux_at_its_prompt(firmware, shared):
 
 
 @pytest.mark.platform
+@pytest.mark.representative("linux")
 class TestWhenLinuxBootsTheQuickWay:
     def test_it_says_its_version_through_opensbi_and_prompts_on_its_console(
         self, linux_at_its_prompt

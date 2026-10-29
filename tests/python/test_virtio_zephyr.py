@@ -81,6 +81,7 @@ class TestWhenZephyrsEntropyApiTestRunsOnTheVirtioEntropyDevice:
         ), f"The host's firmware printed:\n{board.uart.output}"
 
 
+@pytest.mark.representative("zephyr-virtio")
 @pytest.mark.platform
 class TestWhenZephyrsConsoleIsTheVirtioConsole:
     def test_the_greeting_comes_through_the_virtio_console_alone(

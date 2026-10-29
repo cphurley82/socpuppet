@@ -48,6 +48,7 @@ def linux_on_the_drive(firmware):
 
 @pytest.mark.platform
 class TestWhenLinuxBootsWithItsRootOnTheDrive:
+    @pytest.mark.representative("linux-on-the-drive")
     def test_its_root_is_the_drives_first_partition_writable(
         self, linux_on_the_drive
     ):

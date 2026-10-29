@@ -2,16 +2,28 @@
 # SOCPUPPET_TEST_PYTHON is the interpreter, under coverage.py when coverage
 # is being measured (cmake/DevChecks.cmake).
 #
+# They are three entries, so that a test preset chooses among them by label
+# (CMakePresets.json): `pytest`, the tests that take well under a second,
+# which every preset runs; `pytest_boots`, one boot of real firmware for each
+# area (tests/python/conftest.py, the `representative` marker), which every
+# push runs; and `pytest_long`, every other boot, which runs every night.
+#
 # pytest-xdist runs them on every core. --dist loadscope keeps the tests of
 # a class, or of a module of functions, on one worker, so that a fixture
 # shared by the class is made once and not once on each worker. Without
 # --no-loadscope-reorder it hands out the classes with the most tests
 # first, and the boots of firmware, each a class of one long test, would
 # start last (tests/python/conftest.py puts them first).
-add_test(NAME pytest
-  COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest
-          -n auto --dist loadscope --no-loadscope-reorder
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+function(socpuppet_add_pytest name marks label)
+  add_test(NAME ${name}
+    COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest -m ${marks}
+            -n auto --dist loadscope --no-loadscope-reorder
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+  set_tests_properties(${name} PROPERTIES LABELS ${label})
+endfunction()
+socpuppet_add_pytest(pytest "not long" python)
+socpuppet_add_pytest(pytest_boots representative boots)
+socpuppet_add_pytest(pytest_long "long and not representative" long)
 
 # The examples are documentation that runs. Keep them running.
 add_test(NAME example_passthrough_hello
@@ -83,6 +95,14 @@ add_test(NAME example_boot_from_flash
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 set_tests_properties(example_boot_from_flash
                      PROPERTIES SKIP_RETURN_CODE 77)
+
+# Each is a few seconds, and runs in the quick test preset.
+set_tests_properties(
+  example_passthrough_hello example_nvme_hello example_ssd_hello
+  example_io_manager_hello example_host_hello example_ssd_firmware_hello
+  example_host_and_ssd_hello example_chiplet_host_hello
+  example_shell_from_python example_full_bootchain example_boot_from_flash
+  PROPERTIES LABELS example)
 
 # These boot Linux: minutes on the interpreter, seconds on QBox's hart. So
 # the two that stay at the console carry the label `qbox` and run on that

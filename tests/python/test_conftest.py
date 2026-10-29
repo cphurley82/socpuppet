@@ -3,8 +3,7 @@
 `not_on_qbox` skips a test when SOCPUPPET_CPU is qbox_cpu, and
 `only_on_qbox` when it is not. A `platform` test runs in a process of its
 own (`socpuppet.pytest_plugin`), and one that is skipped needs none.
-`long` marks a test that takes seconds or more, which SOCPUPPET_SKIP_LONG
-leaves out of the run. And SOCPUPPET_CPU set to qbox_cpu on a build without
+And SOCPUPPET_CPU set to qbox_cpu on a build without
 QBox's CPU stops the session before any test, with how to build one. These
 tests run a scratch pytest session with the conftest.py in it.
 """
@@ -75,47 +74,19 @@ class TestASessionAskedForQboxsCpuOnABuildWithoutIt:
         assert "cmake --build --preset qbox" in line
 
 
-class TestATestMarkedLong:
-    def test_with_skip_long_set_it_is_deselected_and_the_others_run(
-        self, session, monkeypatch
-    ):
-        monkeypatch.setenv("SOCPUPPET_SKIP_LONG", "1")
-        a_long_test_and_another(session)
-
-        result = session.runpytest_subprocess("-v")
-
-        result.assert_outcomes(passed=1, deselected=1)
-        result.stdout.fnmatch_lines(["*test_that_is_not_long PASSED*"])
-
-    def test_without_skip_long_it_runs(self, session, monkeypatch):
-        monkeypatch.delenv("SOCPUPPET_SKIP_LONG", raising=False)
-        a_long_test_and_another(session)
-
-        result = session.runpytest_subprocess()
-
-        result.assert_outcomes(passed=2)
-
-
-def a_long_test_and_another(session):
-    """A module with a test marked `long` and a test that is not."""
+def two_tests_that_would_pass(session):
+    """A module of two tests, either of which would pass, were it run."""
     session.makepyfile(
         textwrap.dedent(
             """
-            import pytest
-
-            @pytest.mark.long
-            def test_that_is_long():
+            def test_spam():
                 pass
 
-            def test_that_is_not_long():
+            def test_eggs():
                 pass
             """
         )
     )
-
-
-#: The same two: either would pass, were the session to run them.
-two_tests_that_would_pass = a_long_test_and_another
 
 
 def a_platform_test_marked(session, marker):

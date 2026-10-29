@@ -75,6 +75,7 @@ def uefi_at_its_shell(firmware):
     return AtItsShell(board, countdown_began)
 
 
+@pytest.mark.representative("uefi")
 @pytest.mark.platform
 class TestWhenUefiBootsTheQuickWay:
     def test_it_turns_paging_on_and_counts_down_on_the_timer_to_its_prompt(
