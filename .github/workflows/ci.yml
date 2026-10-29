@@ -17,7 +17,7 @@ name: CI
 # and qbox-build.yml, each given the machines this tier runs it on.
 # tests/tooling/test_ci_workflow.py keeps the workflows to the jobs
 # tools/ci.py runs. The last job, CI passed, waits for all the others and
-# runs nothing of its own: it is the one check main's ruleset requires.
+# fails if one of them did: it is the one check main's ruleset requires.
 #
 # Nothing waits for lint but CI passed: a job waits only for a job whose
 # output it reads.
@@ -112,10 +112,16 @@ jobs:
     # stands for them all. It runs whatever they did, since a job whose
     # needs failed is skipped, and GitHub counts a required check that was
     # skipped as passed. Not !cancelled(): a run cancelled by hand would
-    # skip it too, and merge what it never tested.
+    # skip it too, and merge what it never tested. It fails when a job it
+    # needs failed or was cancelled, and passes when one was skipped by its
+    # own condition, as GitHub counts it.
     name: CI passed
     if: always()
     needs: [checks, firmware, test-quick, qbox-build, qbox-quick]
     runs-on: ubuntu-26.04
     steps:
-      - run: "true"
+      - name: A job it needs failed or was cancelled (see the run's summary)
+        if: >-
+          contains(needs.*.result, 'failure')
+          || contains(needs.*.result, 'cancelled')
+        run: exit 1
