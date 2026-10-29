@@ -39,13 +39,15 @@ one row for a register, in a page that is otherwise written by hand.
 import argparse
 import sys
 import textwrap
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import generated
-from systemrdl import RDLCompileError, RDLCompiler
+from systemrdl.compiler import RDLCompiler
 from systemrdl.component import Addrmap
-from systemrdl.rdltypes import OnWriteType
+from systemrdl.messages import RDLCompileError
+from systemrdl.rdltypes.builtin_enums import OnWriteType
 
 #: Where the C headers go: the one directory that both the simulator's
 #: build and a Zephyr build have on their include path, and that is in
@@ -95,7 +97,7 @@ class Field:
     told: tuple[Told, ...]
 
     @property
-    def width(self):
+    def width(self) -> int:
         """How many bits it is."""
         return self.high - self.low + 1
 
@@ -116,12 +118,12 @@ class Register:
     defined_in: str
 
     @property
-    def size(self):
+    def size(self) -> int:
         """How many bytes it takes, all of it."""
         return self.count * self.width // 8
 
     @property
-    def reset(self):
+    def reset(self) -> int:
         """What it holds when it comes out of reset, all its fields together."""
         return sum(field.reset << field.low for field in self.fields)
 
@@ -141,7 +143,7 @@ class Block:
     registers: tuple[Register, ...]
 
     @property
-    def offset_digits(self):
+    def offset_digits(self) -> int:
         """How many hexadecimal digits an offset in the block is written in."""
         return max(2, len(f"{self.size - 1:X}"))
 
@@ -163,7 +165,7 @@ class Constant:
     value: Value
 
 
-def main():
+def main() -> int:
     """Check or write what the register maps named give. Returns the status."""
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -190,9 +192,9 @@ def main():
     return generated.settle(args.command, wanted, "the register maps")
 
 
-def generated_from(blocks):
+def generated_from(blocks: Sequence[Block]) -> dict[Path, str]:
     """What each generated file holds, by its path from the top of the repo."""
-    wanted = {}
+    wanted: dict[Path, str] = {}
     for block in blocks:
         wanted[HEADERS / f"{block.name}.h"] = c_header(block)
         wanted[MODULES / f"{block.name}.py"] = python_module(block)
@@ -201,7 +203,7 @@ def generated_from(blocks):
     )
 
 
-def pages_with(tables):
+def pages_with(tables: dict[str, str]) -> dict[Path, str]:
     """What each page that has a place for one of the tables should hold.
 
     `tables` are the blocks' tables, by the names of their places. A table
@@ -226,7 +228,7 @@ def pages_with(tables):
     return wanted
 
 
-def read(file):
+def read(file: str) -> Block | None:
     """The block a SystemRDL file describes, or None if it describes none."""
     compiler = RDLCompiler()
     compiler.compile_file(file)
@@ -269,10 +271,12 @@ def read(file):
                 name=register.inst_name,
                 offset=register.raw_address_offset,
                 width=register.get_property("regwidth"),
-                count=register.array_dimensions[0] if register.is_array else 1,
+                count=(register.array_dimensions or [1])[0],
                 what=said(register.get_property("desc")),
                 type=register.orig_type_name,
-                defined_in=register.inst.def_src_ref.filename,
+                # Every register here is compiled from a file, so where
+                # it is defined is a place in a file, which has a name.
+                defined_in=register.inst.def_src_ref.filename,  # type: ignore[union-attr]
                 fields=tuple(
                     Field(
                         name=field.inst_name,
@@ -284,7 +288,9 @@ def read(file):
                         write_one_to_clear=(
                             field.get_property("onwrite") == OnWriteType.woclr
                         ),
-                        reset=field.get_property("reset") or 0,
+                        # A reset could name another field or a signal; the
+                        # maps here give only numbers.
+                        reset=field.get_property("reset") or 0,  # type: ignore[arg-type]
                         told=tuple(
                             Told(
                                 member.name, member.value, said(member.rdl_desc)
@@ -300,14 +306,14 @@ def read(file):
     )
 
 
-def misplaced(blocks):
+def misplaced(blocks: Sequence[Block]) -> Iterator[str]:
     """Yield what is wrong with each shared register that is out of place.
 
     A register whose type another block's file defines is one that block
     shares, and it has to be where that block has it.
     """
     # Where each block has each named type of register of its own file's.
-    shared = {
+    shared: dict[tuple[Path, str | None], tuple[Block, Register]] = {
         (Path(block.source).resolve(), register.type): (block, register)
         for block in blocks
         for register in block.registers
@@ -329,7 +335,7 @@ def misplaced(blocks):
                 )
 
 
-def named_twice(blocks):
+def named_twice(blocks: Sequence[Block]) -> Iterator[str]:
     """Yield what is wrong with each name a block would give two things.
 
     A generated name is a register's, with a field's or a number's after
@@ -337,7 +343,7 @@ def named_twice(blocks):
     out as.
     """
     for block in blocks:
-        seen = set()
+        seen: set[str] = set()
         for constants in paragraphs(block):
             for constant in constants:
                 if constant.name in seen:
@@ -350,12 +356,12 @@ def named_twice(blocks):
                 seen.add(constant.name)
 
 
-def said(description):
+def said(description: str | None) -> str | None:
     """A description on one line, however the file laid it out."""
     return None if description is None else " ".join(description.split())
 
 
-def paragraphs(block):
+def paragraphs(block: Block) -> Iterator[list[Constant]]:
     """Yield the block's constants: its size, and then a register at a time."""
     digits = block.offset_digits
     yield [
@@ -394,7 +400,7 @@ def paragraphs(block):
         yield constants
 
 
-def of_field(field, register):
+def of_field(field: Field, register: Register) -> list[Constant]:
     """The constants a field of a register gives.
 
     A field that is the whole of its register has no bits to name: the
@@ -403,7 +409,7 @@ def of_field(field, register):
     """
     if field.width == register.width:
         name = register.name
-        constants = []
+        constants: list[Constant] = []
     elif field.high == field.low:
         name = f"{register.name}_{field.name}"
         constants = [Constant(name, field.what, bit(field.low))]
@@ -424,22 +430,22 @@ def of_field(field, register):
     ]
 
 
-def hexadecimal(value, digits):
+def hexadecimal(value: int, digits: int) -> Value:
     """A number written in hexadecimal, with at least `digits` digits."""
     return Value(f"0x{value:0{digits}X}U", f"0x{value:0{digits}X}")
 
 
-def number(value):
+def number(value: int) -> Value:
     """A number written in decimal."""
     return Value(f"{value}U", str(value))
 
 
-def bit(position):
+def bit(position: int) -> Value:
     """The number with only the bit at `position` set."""
     return Value(f"(1U << {position})", f"1 << {position}")
 
 
-def preamble(block):
+def preamble(block: Block) -> list[str]:
     """What a generated file says of itself first, a paragraph at a time."""
     return [
         f"{block.title}: the registers.",
@@ -450,7 +456,7 @@ def preamble(block):
     ]
 
 
-def c_header(block):
+def c_header(block: Block) -> str:
     """The block's C header.
 
     It has nothing in it but `#define`, each of a number with `U` on it,
@@ -485,7 +491,7 @@ def c_header(block):
     return "\n".join(lines)
 
 
-def python_module(block):
+def python_module(block: Block) -> str:
     """The block's Python module: the header's names, less the block's own."""
     summary, *rest = preamble(block)
     lines = [f'"""{summary}', "", *wrapped("\n\n".join(rest), COLUMNS), '"""']
@@ -500,7 +506,7 @@ def python_module(block):
     return "\n".join(lines) + "\n"
 
 
-def register_table(block):
+def register_table(block: Block) -> str:
     """The block's registers as a Markdown table, one row for each."""
     return generated.markdown_table(
         ("Offset", "Name", "Access", "What it is"),
@@ -518,7 +524,7 @@ def register_table(block):
     )
 
 
-def access(fields):
+def access(fields: Sequence[Field]) -> list[str]:
     """What firmware may do to some fields between them, as a list of words."""
     return [
         word
@@ -530,7 +536,7 @@ def access(fields):
     ]
 
 
-def sentences(register):
+def sentences(register: Register) -> Iterator[str]:
     """Yield what a register's row says of it, a piece at a time.
 
     What the register is, what it holds at reset if that is not nothing,
@@ -557,7 +563,7 @@ def sentences(register):
             yield named(f"{told.value} `{told.name}`", told.what)
 
 
-def its_own_access(field, register):
+def its_own_access(field: Field, register: Register) -> str:
     """What sets a field apart from its register, in brackets, or nothing."""
     if field.write_one_to_clear:
         return " (write one to clear)"
@@ -566,21 +572,21 @@ def its_own_access(field, register):
     return ""
 
 
-def named(name, what):
+def named(name: str, what: str | None) -> str:
     """A name and what it is, as a sentence, such as `Bit 0: It is done.`."""
     return f"{name}." if what is None else f"{name}: {what}"
 
 
-def c_comment(text):
+def c_comment(text: str) -> list[str]:
     """A comment's lines: one line if it fits, and a block if it does not."""
     if len(text) <= COLUMNS - len("/*  */"):
         return [f"/* {text} */"]
     return ["/*", *(f" * {line}" for line in wrapped(text, COLUMNS - 3)), " */"]
 
 
-def wrapped(text, width):
+def wrapped(text: str, width: int) -> list[str]:
     """Text as lines no longer than `width`, its paragraphs kept apart."""
-    lines = []
+    lines: list[str] = []
     for paragraph in text.split("\n\n"):
         lines += [*textwrap.wrap(paragraph, width), ""]
     return lines[:-1]

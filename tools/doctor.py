@@ -696,7 +696,7 @@ def examine(areas: list[Area], system: str) -> list[Report]:
 
 def installs(fixes: Iterable[Fix]) -> list[str]:
     """What to do, with the packages of each installer on one command."""
-    packages: dict[str | None, list[str]] = {}
+    packages: dict[str, list[str]] = {}
     advice: list[str] = []
     for fix in fixes:
         said = (

@@ -79,8 +79,9 @@ LINTERS = [
     ),
     Linter(
         "mypy",
-        # The package, where a wrong type would reach a user.
-        patterns=("python/*.py",),
+        # The package, where a wrong type would reach a user, and the
+        # tools and firmware scripts, which lint, CI and the tests run.
+        patterns=("python/*.py", "tools/*.py", "firmware/*.py"),
         check=("mypy", "--no-error-summary"),
     ),
     Linter(
@@ -120,7 +121,7 @@ LINTERS = [
 ]
 
 
-def main():
+def main() -> int:
     """Run the linters asked for. Returns the exit status."""
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -148,7 +149,7 @@ def main():
     return 0 if all(results) else 1
 
 
-def run(linter, files, root, fix):
+def run(linter: Linter, files: list[str], root: Path, fix: bool) -> bool:
     """Run one linter over the files that are its business.
 
     Returns True if it passed.
@@ -188,7 +189,7 @@ def run(linter, files, root, fix):
     return passed
 
 
-def report(name, passed):
+def report(name: str, passed: bool) -> None:
     """Print one line saying whether a linter passed.
 
     It is colored for a person at a terminal, unless they set NO_COLOR.
@@ -199,7 +200,7 @@ def report(name, passed):
     print(line)
 
 
-def repo_root():
+def repo_root() -> Path:
     """The top of the git repository the command was run in."""
     toplevel = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
@@ -216,7 +217,7 @@ def repo_root():
     return Path(toplevel.stdout.strip())
 
 
-def repo_files(root):
+def repo_files(root: Path) -> list[str]:
     """Every file git tracks, plus new files it has not been told to ignore.
 
     Paths are relative to the root. A file deleted but not yet committed is
@@ -233,12 +234,12 @@ def repo_files(root):
     return [f for f in listing.stdout.split("\0") if (root / f).is_file()]
 
 
-def tool(name):
+def tool(name: str) -> str:
     """The path of a linter's program."""
     return str(Path(tools_directory()) / name)
 
 
-def tools_directory():
+def tools_directory() -> str:
     """Where the linters are: next to the interpreter (see pyproject.toml)."""
     return sysconfig.get_path("scripts")
 

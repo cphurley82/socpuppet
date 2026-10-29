@@ -275,7 +275,12 @@ def packed(files: dict[str, bytes | None]) -> bytes:
     """
     archive = bytearray()
 
-    def add(name: str, mode: int, data: bytes = b"", device=(0, 0)) -> None:
+    def add(
+        name: str,
+        mode: int,
+        data: bytes = b"",
+        device: tuple[int, int] = (0, 0),
+    ) -> None:
         fields = [
             len(archive),  # inode: any number, each its own
             mode,
