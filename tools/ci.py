@@ -64,8 +64,9 @@ class Tier(enum.Enum):
     """A tier of CI's jobs, by the workflow that runs it.
 
     The quick tier runs on every push and pull request, and leaves out what
-    takes longest. The nightly tier is every job but test-quick, on every
-    machine, and is what a run here runs unless asked otherwise.
+    takes longest. The nightly tier is every job but the quick tier's own,
+    test-quick and qbox-quick, on every machine, and is what a run here runs
+    unless asked otherwise.
     """
 
     QUICK = "ci.yml"

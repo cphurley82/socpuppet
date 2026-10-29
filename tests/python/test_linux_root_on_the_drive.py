@@ -47,9 +47,10 @@ def linux_on_the_drive(firmware):
 
 
 @pytest.mark.platform(scope="class")
+@pytest.mark.representative("linux-on-the-drive")
 class TestWhenLinuxBootsWithItsRootOnTheDrive:
-    # 💡 One boot for the class: its tests look at the same booted board.
-    @pytest.mark.representative("linux-on-the-drive")
+    # 💡 One boot for the class: its tests look at the same booted board, so
+    # the push that boots it for the area runs them all.
     def test_its_root_is_the_drives_first_partition_writable(
         self, linux_on_the_drive
     ):
