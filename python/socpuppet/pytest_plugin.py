@@ -14,12 +14,13 @@ process instead, so that a class-scoped fixture, a board booted once, is
 made once for all of them (a marked test outside a class still has one of
 its own). Tests of the class with different parameters, as a parametrized
 class fixture gives them, have a process for each. The first of them to run
-starts the process for every one of the class that the session selected, and
-each reports in its turn. Under pytest-xdist, hand the tests out with
-``--dist loadgroup``: the plugin makes a group of the tests that share a
-process, which goes to one worker, and the rest are handed out one at a
-time. (``--dist loadscope`` works too, but keeps every class on one worker,
-so that a class whose tests each boot boots them one after another.)
+starts the process for every one of the class that the session selected with
+the same parameters, and each reports in its turn. Under pytest-xdist, hand
+the tests out with ``--dist loadgroup``: the plugin makes a group of the
+tests that share a process, which goes to one worker, and the rest are
+handed out one at a time. (``--dist loadscope`` works too, but keeps every
+class on one worker, so that a class whose tests each boot boots them one
+after another.)
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
 seconds is stopped and fails, and so is a class's process, with what it
@@ -108,17 +109,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         item.stash[_collected_as] = item.nodeid
         if _shares_its_classs_process(item):
-            # ⚠️ No brackets: xdist takes a name ending in one for a
-            # parameter's id, and the test for one with no group.
-            its_class, parameters = _process_shared_by(item)
-            assert its_class is not None
-            item.add_marker(
-                pytest.mark.xdist_group(f"{its_class.nodeid} {parameters}")
-            )
+            item.add_marker(pytest.mark.xdist_group(_process_shared_by(item)))
 
 
 def _collected_id(item: pytest.Item) -> str:
-    return item.stash.get(_collected_as, item.nodeid)
+    return item.stash[_collected_as]
 
 
 def pytest_runtest_protocol(
@@ -164,9 +159,9 @@ def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
     together = [
         each
         for each in item.session.items
-        if _process_shared_by(each) == _process_shared_by(item)
-        and _shares_its_classs_process(each)
+        if _shares_its_classs_process(each)
         and _runs_in_a_process(each)
+        and _process_shared_by(each) == _process_shared_by(item)
     ]
     reports = _run_in_child_process(together)
     waiting.update(reports)
@@ -192,14 +187,20 @@ def _shares_its_classs_process(item: pytest.Item) -> bool:
     )
 
 
-def _process_shared_by(item: pytest.Item) -> tuple[pytest.Class | None, str]:
-    """Which tests share a class's process: its class's, with its parameters.
+def _process_shared_by(item: pytest.Item) -> str:
+    """The process a test of a sharing class shares: its class's, by name.
 
     A class-scoped fixture with parameters is made once for each, and each
-    would be a platform of its own, so each has a process of its own.
+    would be a platform of its own, so each has a process of its own. All
+    of a test's parameters count, its method's own too.
+
+    ⚠️ No ``]`` anywhere in the name: xdist takes one after the ``@`` it
+    adds for a parameter's id, and the test for one with no group.
     """
+    its_class = item.getparent(pytest.Class)
+    assert its_class is not None, "only a class's tests share a process"
     callspec = getattr(item, "callspec", None)
-    return item.getparent(pytest.Class), callspec.id if callspec else ""
+    return f"{its_class.nodeid} {callspec.id}" if callspec else its_class.nodeid
 
 
 class _ChildReporter:
