@@ -1,11 +1,11 @@
 """.github/workflows, held to the jobs tools/ci.py runs.
 
-Each workflow is written by hand, and each of its jobs is a thin wrapper:
-GitHub's plumbing (a checkout, then .github/actions/setup's packages,
-caches and artifacts) around a step that runs `uv run python tools/ci.py
-run JOB`. A tier's workflow has its own jobs and calls the workflows both
-tiers share. These tests keep the two to the same jobs, so that what a
-developer runs here is what CI runs.
+Each workflow is written by hand, and each of its jobs but the quick
+tier's CI passed check is a thin wrapper: GitHub's plumbing (a checkout,
+then .github/actions/setup's packages, caches and artifacts) around a step
+that runs `uv run python tools/ci.py run JOB`. A tier's workflow has its
+own jobs and calls the workflows both tiers share. These tests keep the two
+to the same jobs, so that what a developer runs here is what CI runs.
 """
 
 import importlib.util
@@ -70,12 +70,23 @@ PACKAGE_SETS = set(
         re.MULTILINE,
     )
 )
+# The quick tier's CI passed check, which runs nothing of the runner's:
+# GitHub reports a job as a check by the job's name.
+CI_PASSED = "CI passed"
+# Each workflow's jobs, by its file's name, less the CI passed check: those
+# that run the runner's, and those that call a workflow.
+WRAPPING_JOBS = {
+    file: {
+        name: job for name, job in jobs.items() if job.get("name") != CI_PASSED
+    }
+    for file, jobs in WORKFLOW_FILES.items()
+}
 # Each job as it is written, in the workflow it is written in, by its name,
 # less the jobs that call a workflow; and every one of them, with where it
 # is, as file: job.
 DEFINED = {
     file: {name: job for name, job in jobs.items() if "uses" not in job}
-    for file, jobs in WORKFLOW_FILES.items()
+    for file, jobs in WRAPPING_JOBS.items()
 }
 DEFINED_JOBS = [
     (f"{file}: {name}", file, name, job)
@@ -179,6 +190,16 @@ def test_neither_tier_queues_behind_the_other():
     nightly = fixed_part_of_group(TIER.NIGHTLY)
     assert not quick.startswith(nightly)
     assert not nightly.startswith(quick)
+
+
+def test_the_quick_tier_has_a_ci_passed_check_that_needs_every_other_job():
+    # So that a job added to the tier blocks a merge until it passes, with
+    # no change to the ruleset.
+    jobs = WORKFLOW_FILES[TIER.QUICK.value]
+    (passed,) = [
+        name for name, job in jobs.items() if job.get("name") == CI_PASSED
+    ]
+    assert set(needs_of(jobs[passed])) == set(jobs) - {passed}
 
 
 def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
@@ -387,7 +408,7 @@ def jobs_of(tier):
     """Every job a tier's workflow runs, by its name: its own, and those of
     each workflow it calls, made with the machines it hands that one."""
     jobs = {}
-    for name, job in WORKFLOW_FILES[tier.value].items():
+    for name, job in WRAPPING_JOBS[tier.value].items():
         if "uses" in job:
             machines = json.loads(job["with"]["os"])
             called = WORKFLOW_FILES[job["uses"].removeprefix(CALLED)]

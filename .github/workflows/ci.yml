@@ -8,17 +8,19 @@ name: CI
 # devcontainer, on every machine CI has. On a developer's machine,
 # `uv run python tools/ci.py` runs that, and `--quick` runs this.
 #
-# Every job here is a thin wrapper around tools/ci.py, which holds each
-# job's steps: what is left is GitHub's plumbing, the checkout, then the
-# setup every job takes from .github/actions/setup (the packages, the caches
-# and the artifacts). A job's log opens with the command that runs the same
-# job on a developer's machine. The jobs this tier shares with nightly.yml
-# are in the workflows both call, firmware.yml, checks.yml and
-# qbox-build.yml, each given the machines this tier runs it on.
+# Every job here but the last is a thin wrapper around tools/ci.py, which
+# holds each job's steps: what is left is GitHub's plumbing, the checkout,
+# then the setup every job takes from .github/actions/setup (the packages,
+# the caches and the artifacts). A job's log opens with the command that
+# runs the same job on a developer's machine. The jobs this tier shares
+# with nightly.yml are in the workflows both call, firmware.yml, checks.yml
+# and qbox-build.yml, each given the machines this tier runs it on.
 # tests/tooling/test_ci_workflow.py keeps the workflows to the jobs
-# tools/ci.py runs.
+# tools/ci.py runs. The last job, CI passed, waits for all the others and
+# runs nothing of its own: it is the one check main's ruleset requires.
 #
-# Nothing waits for lint: a job waits only for a job whose output it reads.
+# Nothing waits for lint but CI passed: a job waits only for a job whose
+# output it reads.
 #
 # The one Mac here is Apple silicon, macos-latest, which runs the whole
 # test job in about half the time an Intel Mac takes. The Intel Macs were
@@ -103,3 +105,13 @@ jobs:
           qbox: true
           compiler-cache: qbox-dev
       - run: uv run python tools/ci.py run qbox-quick
+
+  ci-passed:
+    # The one check main's ruleset requires, so that a pull request can
+    # merge itself once it is green: it needs every other job here, and
+    # stands for them all.
+    name: CI passed
+    needs: [checks, firmware, test-quick, qbox-build, qbox-quick]
+    runs-on: ubuntu-26.04
+    steps:
+      - run: "true"
