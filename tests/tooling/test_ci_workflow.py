@@ -11,6 +11,7 @@ to the same jobs, so that what a developer runs here is what CI runs.
 import importlib.util
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -205,6 +206,13 @@ def test_the_ci_passed_check_runs_whatever_the_jobs_it_needs_did():
     # not !cancelled()).
     check = WORKFLOW_FILES[TIER.QUICK.value][ci_passed()]
     assert condition_of(check) == "always()"
+
+
+def test_the_ci_passed_check_fails_when_a_job_it_needs_failed_or_was_cancelled():
+    # A job skipped by its own condition passes, as GitHub counts it.
+    assert not ci_passed_fails(["success", "skipped"])
+    assert ci_passed_fails(["success", "failure"])
+    assert ci_passed_fails(["success", "cancelled"])
 
 
 def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
@@ -419,8 +427,32 @@ def ci_passed():
     return name
 
 
+def ci_passed_fails(results):
+    """Whether the CI passed check fails when the jobs it needs end with
+    these results: a step of it whose condition holds exits non-zero.
+    GitHub runs no step after one that fails, nor does any()."""
+    check = WORKFLOW_FILES[TIER.QUICK.value][ci_passed()]
+    return any(
+        holds(condition_of(step), results)
+        and subprocess.run(["bash", "-c", step["run"]]).returncode != 0
+        for step in check["steps"]
+    )
+
+
+def holds(condition, results):
+    """Whether a condition on the results of a job's needs holds: the two
+    of GitHub's expressions the CI passed check is written in, contains()
+    and ||, made Python. Anything else raises."""
+    python = re.sub(
+        r"contains\(needs\.\*\.result, '(\w+)'\)",
+        r"('\1' in results)",
+        condition,
+    ).replace("||", " or ")
+    return eval(python, {"__builtins__": {}}, {"results": results})
+
+
 def condition_of(job):
-    """A job's if, less the ${{ }} GitHub lets it be wrapped in."""
+    """A job's or a step's if, less the ${{ }} GitHub lets it be wrapped in."""
     condition = job.get("if", "")
     return condition.removeprefix("${{").removesuffix("}}").strip()
 
