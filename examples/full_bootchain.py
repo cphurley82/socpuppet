@@ -51,17 +51,15 @@ To debug all three at once, give each CPU a `gdb_port`
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
+from socpuppet.run import firmware_directory
 
-IMAGES = pathlib.Path(
-    os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
-)
+IMAGES = firmware_directory()
 MANAGER_IMAGE = IMAGES / "iomgr_socpuppet_iomgr.elf"
 HOST_IMAGE = IMAGES / "disk_access_socpuppet_host.elf"
 SSD_IMAGE = IMAGES / "ssd_socpuppet_ssd.elf"

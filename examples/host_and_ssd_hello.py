@@ -39,16 +39,14 @@ Each firmware sees a board of its own. To see them:
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd
+from socpuppet.run import firmware_directory
 
-IMAGES = pathlib.Path(
-    os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
-)
+IMAGES = firmware_directory()
 HOST_IMAGE = IMAGES / "disk_access_socpuppet_host.elf"
 SSD_IMAGE = IMAGES / "ssd_socpuppet_ssd.elf"
 #: What Zephyr's test framework ends with, when no test failed and when

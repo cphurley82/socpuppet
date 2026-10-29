@@ -24,17 +24,14 @@ missing image is a failure.
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.scripted_host import bring_up_the_drive
 from socpuppet.boards.ssd import ssd
+from socpuppet.run import firmware_directory
 
-IMAGE = (
-    pathlib.Path(os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware"))
-    / "ssd_socpuppet_ssd.elf"
-)
+IMAGE = firmware_directory() / "ssd_socpuppet_ssd.elf"
 MESSAGE = b"Hello from the host, by way of PCIe, Zephyr and a page of NAND."
 
 # What the host's script learns along the way, for printing at the end.
