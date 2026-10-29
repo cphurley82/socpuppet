@@ -20,7 +20,9 @@ the tests out with ``--dist loadgroup``: the plugin makes a group of the
 tests that share a process, which goes to one worker, and the rest are
 handed out one at a time. (``--dist loadscope`` works too, but keeps every
 class on one worker, so that a class whose tests each boot boots them one
-after another.)
+after another.) Handed out xdist's default way, ``--dist load``, or with
+``worksteal``, a class's tests would reach several workers and each would
+boot it again, so they fail at setup instead and say so.
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
 seconds is stopped and fails, and so is a class's process, with what it
@@ -43,7 +45,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 
@@ -91,6 +93,41 @@ def pytest_configure(config: pytest.Config) -> None:
     report_file = os.environ.get(_REPORT_FILE_ENV)
     if report_file:
         config.pluginmanager.register(_ChildReporter(config, report_file))
+
+
+# What the session tells each xdist worker about how the tests are handed
+# out, which the worker cannot see for itself: xdist sets a worker's
+# ``--dist`` option to ``no`` (xdist/remote.py, setup_config), so a worker
+# that asked would be told the tests are not being handed out at all.
+_DIST_KEY = "socpuppet_dist"
+
+# xdist's ways of handing tests out that give a class's tests to whichever
+# worker is free, so that a class sharing one process would be booted by
+# every worker that got one. ``loadgroup``, ``loadscope`` and ``loadfile``
+# keep it on one worker, and ``--dist each`` gives every worker the whole
+# class.
+_SPLITS_A_CLASS = ("load", "worksteal")
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node: Any) -> None:
+    """Tell an xdist worker how the tests are handed out (xdist's hook).
+
+    ``node`` is xdist's controller of the worker, untyped: xdist ships no
+    types. Optional, so that the plugin loads where xdist is not installed.
+    """
+    node.workerinput[_DIST_KEY] = node.config.getoption("dist")
+
+
+def _dist_that_splits_a_class(config: pytest.Config) -> str | None:
+    """The ``--dist`` way xdist is handing the tests out, if it splits a class.
+
+    None in a session without xdist, and under a way that keeps a class on
+    one worker.
+    """
+    workerinput: dict[str, Any] | None = getattr(config, "workerinput", None)
+    dist = (workerinput or {}).get(_DIST_KEY)
+    return dist if dist in _SPLITS_A_CLASS else None
 
 
 # A test's node id as it was collected, before xdist's --dist loadgroup
@@ -156,6 +193,18 @@ def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
         return waiting.pop(_collected_id(item))
     if not _shares_its_classs_process(item):
         return _run_in_child_process([item])[_collected_id(item)]
+    splits = _dist_that_splits_a_class(item.config)
+    if splits is not None:
+        return [
+            _unfinished_report(
+                item,
+                f"Not run: --dist {splits} hands the tests of a class that "
+                "shares one process out to several workers, and each would "
+                "boot it again. Run with --dist loadgroup, which keeps them "
+                "on one worker.",
+                phases_reported=set(),
+            )
+        ]
     together = [
         each
         for each in item.session.items
@@ -327,7 +376,7 @@ def _report_from_json(config: pytest.Config, line: str) -> pytest.TestReport:
 def _unfinished_report(
     item: pytest.Item, why: str, phases_reported: set[str]
 ) -> pytest.TestReport:
-    """A failed report for a child process that did not finish its test."""
+    """A failed report for a test its process did not finish, or never ran."""
     # Blame the first phase that never reported, so the test is counted once.
     # If every phase reported, the process died afterwards, on the way out.
     when: _Phase = next(

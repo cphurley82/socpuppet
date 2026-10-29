@@ -428,6 +428,31 @@ class TestWhenAPlatformClassSharesOneProcess:
         result.assert_outcomes(passed=3)
         assert len(made_in.read_text().split()) == 1
 
+    @pytest.mark.parametrize(
+        "handed_out",
+        [[], ["--dist", "worksteal"]],
+        ids=["load, the default", "worksteal"],
+    )
+    def test_under_xdists_load_or_worksteal_its_tests_fail_at_setup_and_say_to_use_loadgroup(
+        self, session_with_socpuppet, handed_out
+    ):
+        # 💡 Both give a class's tests to whichever worker is free, and
+        # each worker would boot the class again.
+        made_in = a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_eggs="pass",
+            test_ham="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess(
+            "-n", "2", *handed_out
+        )
+
+        result.assert_outcomes(errors=3)
+        assert not made_in.exists()
+        result.stdout.fnmatch_lines(["*--dist loadgroup*"])
+
     def test_its_tests_share_a_process_for_each_parameter_of_its_fixture(
         self, session_with_socpuppet
     ):
