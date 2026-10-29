@@ -93,6 +93,14 @@ LINTERS = [
         fix=("python", str(TOOLS / "address_map_docs.py"), "write"),
     ),
     Linter(
+        "shield-overlays",
+        # The overlays of the Zephyr shields that are parts of the host
+        # board, generated from it (tools/shield_overlays.py).
+        patterns=("python/socpuppet/zephyr_module/boards/shields/*.overlay",),
+        check=("python", str(TOOLS / "shield_overlays.py"), "check"),
+        fix=("python", str(TOOLS / "shield_overlays.py"), "write"),
+    ),
+    Linter(
         "rumdl",
         patterns=("*.md",),
         check=("rumdl", "check", "--quiet", "--no-cache"),

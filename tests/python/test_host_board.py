@@ -497,8 +497,8 @@ class TestTheZephyrShieldForTheHostsDrive:
             / "boards/shields/socpuppet_host_drive/socpuppet_host_drive.overlay"
         )
 
-        # When this fails, the docstring of `drive_overlay` has the command
-        # that writes the file again.
+        # When this fails, `uv run python tools/lint.py --fix` writes the
+        # file again.
         assert checked_in.read_text() == drive_overlay()
 
     def test_its_overlay_is_the_same_with_the_ssd_as_with_the_stand_in(self):
@@ -1202,8 +1202,8 @@ class TestTheHostsVirtioSlots:
             / "boards/shields/socpuppet_host_virtio/socpuppet_host_virtio.overlay"
         )
 
-        # When this fails, the docstring of `virtio_overlay` has the command
-        # that writes the file again.
+        # When this fails, `uv run python tools/lint.py --fix` writes the
+        # file again.
         assert checked_in.read_text() == virtio_overlay()
 
     @needs_dtc
