@@ -321,6 +321,141 @@ class TestWhenNobodySetsTheTimeout:
         result.assert_outcomes(passed=1)
 
 
+class TestWhenAPlatformClassSharesOneProcess:
+    def test_its_tests_share_one_class_fixture(self, session_with_socpuppet):
+        made_in = a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_eggs="pass",
+            test_ham="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=3)
+        assert len(made_in.read_text().split()) == 1
+
+    def test_a_failure_is_reported_for_its_own_test_alone(
+        self, session_with_socpuppet
+    ):
+        a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_that_fails='assert "puppet" == "muppet"',
+            test_eggs="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess("-v")
+
+        result.assert_outcomes(passed=2, failed=1)
+        result.stdout.fnmatch_lines(["*test_that_fails FAILED*"])
+
+    def test_a_test_of_it_left_out_of_the_session_does_not_run(
+        self, session_with_socpuppet
+    ):
+        ran = session_with_socpuppet.path / "left_out_ran"
+        a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_left_out=f"open({str(ran)!r}, 'w').close()",
+            test_eggs="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess(
+            "-k", "not test_left_out"
+        )
+
+        result.assert_outcomes(passed=2, deselected=1)
+        assert not ran.exists()
+
+    def test_a_crash_fails_its_test_and_errs_the_ones_it_never_started(
+        self, session_with_socpuppet
+    ):
+        a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_before_the_crash="pass",
+            test_that_crashes="os.abort()",
+            test_never_started="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess("-v")
+
+        result.assert_outcomes(passed=1, failed=1, errors=1)
+        result.stdout.fnmatch_lines(
+            [
+                "*test_before_the_crash PASSED*",
+                "*test_that_crashes FAILED*",
+                "*test_never_started ERROR*",
+            ]
+        )
+        result.stdout.fnmatch_lines(
+            ["*Never ran: the class's process died during*test_that_crashes*"]
+        )
+
+    def test_under_xdist_its_tests_still_share_one_process(
+        self, session_with_socpuppet
+    ):
+        made_in = a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_eggs="pass",
+            test_ham="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess(
+            "-n", "2", "--dist", "loadscope"
+        )
+
+        result.assert_outcomes(passed=3)
+        assert len(made_in.read_text().split()) == 1
+
+    def test_the_ordinary_tests_after_it_still_run(
+        self, session_with_socpuppet
+    ):
+        a_class_sharing_one_process(
+            session_with_socpuppet, test_spam="pass", test_eggs="pass"
+        )
+        session_with_socpuppet.makepyfile(
+            test_after="def test_ordinary_after_the_class():\n    pass\n"
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=3)
+
+
+def a_class_sharing_one_process(session, **bodies):
+    """A class of `platform(scope="class")` tests: a body for each name.
+
+    Its class fixture writes the id of the process it is made in to a file
+    of the session's, which this gives back.
+    """
+    made_in = session.path / "made_in"
+    tests = "".join(
+        f"""
+    def {name}(self, board):
+        {body}
+"""
+        for name, body in bodies.items()
+    )
+    session.makepyfile(
+        f"""
+import os
+import pytest
+
+@pytest.fixture(scope="class")
+def board():
+    with open({str(made_in)!r}, "a") as log:
+        log.write(f"{{os.getpid()}}\\n")
+
+@pytest.mark.platform(scope="class")
+class TestSharingOneProcess:
+{tests}
+"""
+    )
+    return made_in
+
+
 class TestWhenAPlatformTestsProcessDiesOfASignalPythonHasNoNameFor:
     def test_the_status_is_reported_as_the_bare_number(self):
         # Linux's real-time signals are the case: only the first and the
