@@ -214,6 +214,33 @@ class TestWhenAPlatformTestIsTheLastOneInItsClass:
         result.assert_outcomes(passed=3)
 
 
+class TestWhenTheEnvironmentsOptionsAddATestFileToEveryRun:
+    def test_the_added_test_is_reported_once(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        # ⚠️ PYTEST_ADDOPTS reaches the process a platform test runs in, so
+        # that process runs the added file as well, and reports it; counted
+        # twice, the run would say 3 passed.
+        session_with_socpuppet.makepyfile(
+            test_platform="""
+            import pytest
+
+            @pytest.mark.platform
+            def test_on_a_platform():
+                pass
+            """,
+            test_added="""
+            def test_added():
+                pass
+            """,
+        )
+        monkeypatch.setenv("PYTEST_ADDOPTS", "test_added.py")
+
+        result = session_with_socpuppet.runpytest_subprocess("test_platform.py")
+
+        result.assert_outcomes(passed=2)
+
+
 class TestWhenAPlatformTestAsksForATemporaryDirectory:
     def test_it_is_inside_the_sessions_own(self, session_with_socpuppet):
         # Its process then has a temporary directory of its own to clear
