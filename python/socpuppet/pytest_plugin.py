@@ -328,7 +328,13 @@ def _run_in_child_process(
         }
         for line in report_file:
             report = _report_from_json(config, line)
-            reports[report.nodeid].append(report)
+            # ⚠️ The options added to every run, PYTEST_ADDOPTS and addopts
+            # in the configuration, reach the child too, so it can run and
+            # report more than it was asked: a test file named there. The
+            # session runs and reports those itself, so what the child says
+            # of them is left out.
+            if report.nodeid in reports:
+                reports[report.nodeid].append(report)
     if unfinished is not None:
         # Each test that did not get as far as its teardown was cut short.
         # If every one did, the process died on its way out, after the last.
