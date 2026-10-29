@@ -27,19 +27,19 @@
 /* How the last command went. Giving the next command forgets it. */
 #define DMA_ENGINE_STATUS       0x04U
 /* The command was carried out. */
-#define DMA_ENGINE_STATUS_DONE  (1U << 0)
+#define DMA_ENGINE_STATUS_DONE  (1U << 0U)
 /* The command was not carried out, or not all of it. */
-#define DMA_ENGINE_STATUS_ERROR (1U << 1)
+#define DMA_ENGINE_STATUS_ERROR (1U << 1U)
 /*
  * A command has been given and is not yet carried out. No other is taken
  * meanwhile.
  */
-#define DMA_ENGINE_STATUS_BUSY  (1U << 2)
+#define DMA_ENGINE_STATUS_BUSY  (1U << 2U)
 
 /* Which bits of `STATUS` raise the interrupt line while they are set. */
 #define DMA_ENGINE_INTERRUPT_ENABLE       0x08U
-#define DMA_ENGINE_INTERRUPT_ENABLE_DONE  (1U << 0)
-#define DMA_ENGINE_INTERRUPT_ENABLE_ERROR (1U << 1)
+#define DMA_ENGINE_INTERRUPT_ENABLE_DONE  (1U << 0U)
+#define DMA_ENGINE_INTERRUPT_ENABLE_ERROR (1U << 1U)
 
 /* Where in the host's memory, the low 32 bits. */
 #define DMA_ENGINE_HOST_ADDRESS_LOW 0x0CU

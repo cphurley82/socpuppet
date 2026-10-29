@@ -107,9 +107,9 @@ def test_the_c_header_has_each_registers_offset_its_bits_and_what_it_is_told(
         /* How it went. */
         #define SPAM_STATUS      0x04U
         /* It was done. */
-        #define SPAM_STATUS_DONE (1U << 0)
+        #define SPAM_STATUS_DONE (1U << 0U)
         /* It is being done. */
-        #define SPAM_STATUS_BUSY (1U << 2)
+        #define SPAM_STATUS_BUSY (1U << 2U)
 
         /* How much there is. */
         #define SPAM_LIMITS              0x0CU

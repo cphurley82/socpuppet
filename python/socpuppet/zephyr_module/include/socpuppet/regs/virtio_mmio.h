@@ -87,7 +87,7 @@
  * queue's size and addresses are set, and a zero to take the queue away.
  */
 #define VIRTIO_MMIO_QUEUE_READY       0x044U
-#define VIRTIO_MMIO_QUEUE_READY_READY (1U << 0)
+#define VIRTIO_MMIO_QUEUE_READY_READY (1U << 0U)
 
 /*
  * The doorbell: the driver writes the number of a virtqueue it has put
@@ -101,9 +101,9 @@
  */
 #define VIRTIO_MMIO_INTERRUPT_STATUS               0x060U
 /* The device used a buffer in some virtqueue. */
-#define VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER   (1U << 0)
+#define VIRTIO_MMIO_INTERRUPT_STATUS_USED_BUFFER   (1U << 0U)
 /* The device's configuration changed. */
-#define VIRTIO_MMIO_INTERRUPT_STATUS_CONFIG_CHANGE (1U << 1)
+#define VIRTIO_MMIO_INTERRUPT_STATUS_CONFIG_CHANGE (1U << 1U)
 
 /*
  * Acknowledges interrupts: writing a one to a bit clears that bit of
@@ -111,9 +111,9 @@
  */
 #define VIRTIO_MMIO_INTERRUPT_ACK               0x064U
 /* Clears `USED_BUFFER`. */
-#define VIRTIO_MMIO_INTERRUPT_ACK_USED_BUFFER   (1U << 0)
+#define VIRTIO_MMIO_INTERRUPT_ACK_USED_BUFFER   (1U << 0U)
 /* Clears `CONFIG_CHANGE`. */
-#define VIRTIO_MMIO_INTERRUPT_ACK_CONFIG_CHANGE (1U << 1)
+#define VIRTIO_MMIO_INTERRUPT_ACK_CONFIG_CHANGE (1U << 1U)
 
 /*
  * How far the driver has got with the device. It sets the bits one after
@@ -121,20 +121,20 @@
  */
 #define VIRTIO_MMIO_STATUS                    0x070U
 /* The driver has seen the device. */
-#define VIRTIO_MMIO_STATUS_ACKNOWLEDGE        (1U << 0)
+#define VIRTIO_MMIO_STATUS_ACKNOWLEDGE        (1U << 0U)
 /* The driver knows how to drive it. */
-#define VIRTIO_MMIO_STATUS_DRIVER             (1U << 1)
+#define VIRTIO_MMIO_STATUS_DRIVER             (1U << 1U)
 /* The driver is set up and the device may use its queues. */
-#define VIRTIO_MMIO_STATUS_DRIVER_OK          (1U << 2)
+#define VIRTIO_MMIO_STATUS_DRIVER_OK          (1U << 2U)
 /*
  * The driver has written its features. The device keeps the bit only if it
  * can live with them; the driver reads it back to find out.
  */
-#define VIRTIO_MMIO_STATUS_FEATURES_OK        (1U << 3)
+#define VIRTIO_MMIO_STATUS_FEATURES_OK        (1U << 3U)
 /* The device has hit an error it cannot recover from and wants a reset. */
-#define VIRTIO_MMIO_STATUS_DEVICE_NEEDS_RESET (1U << 6)
+#define VIRTIO_MMIO_STATUS_DEVICE_NEEDS_RESET (1U << 6U)
 /* The driver has given up on the device. */
-#define VIRTIO_MMIO_STATUS_FAILED             (1U << 7)
+#define VIRTIO_MMIO_STATUS_FAILED             (1U << 7U)
 
 /*
  * The low 32 bits of the address of the selected virtqueue's descriptor

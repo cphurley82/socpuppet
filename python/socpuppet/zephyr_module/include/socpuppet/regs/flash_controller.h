@@ -34,19 +34,19 @@
 /* How the last command went. Giving the next command forgets it. */
 #define FLASH_CONTROLLER_STATUS       0x04U
 /* The command was carried out. */
-#define FLASH_CONTROLLER_STATUS_DONE  (1U << 0)
+#define FLASH_CONTROLLER_STATUS_DONE  (1U << 0U)
 /* The command was not carried out, or not all of it. */
-#define FLASH_CONTROLLER_STATUS_ERROR (1U << 1)
+#define FLASH_CONTROLLER_STATUS_ERROR (1U << 1U)
 /*
  * A command has been given and is not yet carried out. No other is taken
  * meanwhile.
  */
-#define FLASH_CONTROLLER_STATUS_BUSY  (1U << 2)
+#define FLASH_CONTROLLER_STATUS_BUSY  (1U << 2U)
 
 /* Which bits of `STATUS` raise the interrupt line while they are set. */
 #define FLASH_CONTROLLER_INTERRUPT_ENABLE       0x08U
-#define FLASH_CONTROLLER_INTERRUPT_ENABLE_DONE  (1U << 0)
-#define FLASH_CONTROLLER_INTERRUPT_ENABLE_ERROR (1U << 1)
+#define FLASH_CONTROLLER_INTERRUPT_ENABLE_DONE  (1U << 0U)
+#define FLASH_CONTROLLER_INTERRUPT_ENABLE_ERROR (1U << 1U)
 
 /* Which block of the chip. */
 #define FLASH_CONTROLLER_BLOCK 0x0CU

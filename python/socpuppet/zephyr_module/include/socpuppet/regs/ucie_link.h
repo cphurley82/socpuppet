@@ -53,25 +53,25 @@
  */
 #define UCIE_LINK_CONTROL                0x10U
 /* Start link training. */
-#define UCIE_LINK_CONTROL_START_TRAINING (1U << 0)
+#define UCIE_LINK_CONTROL_START_TRAINING (1U << 0U)
 /* Retrain the link, from reset. */
-#define UCIE_LINK_CONTROL_RETRAIN        (1U << 1)
+#define UCIE_LINK_CONTROL_RETRAIN        (1U << 1U)
 
 /* UCIe's link status. */
 #define UCIE_LINK_STATUS                     0x14U
 /* The link is up. */
-#define UCIE_LINK_STATUS_UP                  (1U << 0)
+#define UCIE_LINK_STATUS_UP                  (1U << 0U)
 /* The link is being trained. */
-#define UCIE_LINK_STATUS_TRAINING            (1U << 1)
+#define UCIE_LINK_STATUS_TRAINING            (1U << 1U)
 /* The link has gone up or come down since this was cleared. */
-#define UCIE_LINK_STATUS_CHANGED             (1U << 2)
+#define UCIE_LINK_STATUS_CHANGED             (1U << 2U)
 /* The other die has reported an error nothing can be done about. */
-#define UCIE_LINK_STATUS_UNCORRECTABLE_FATAL (1U << 3)
+#define UCIE_LINK_STATUS_UNCORRECTABLE_FATAL (1U << 3U)
 
 /* UCIe's link event notification: what raises `irq`. */
 #define UCIE_LINK_EVENT_NOTIFICATION                0x18U
 /* Interrupt while the status says the link has changed. */
-#define UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED (1U << 0)
+#define UCIE_LINK_EVENT_NOTIFICATION_STATUS_CHANGED (1U << 0U)
 
 /*
  * The register locator: where the block of the link's own registers is. ⚠️
@@ -112,12 +112,12 @@
  * The die is held in reset. The other die lets it go by writing a zero here,
  * through its mailbox.
  */
-#define UCIE_LINK_DIE_RESET_ASSERTED (1U << 0)
+#define UCIE_LINK_DIE_RESET_ASSERTED (1U << 0U)
 
 /* A way to break the link on purpose. Reads as zero. */
 #define UCIE_LINK_FAULT_INJECTION       0x28U
 /* Write a one to break the link. */
-#define UCIE_LINK_FAULT_INJECTION_BREAK (1U << 0)
+#define UCIE_LINK_FAULT_INJECTION_BREAK (1U << 0U)
 
 /* What the next access to the other end is to be. */
 #define UCIE_LINK_MAILBOX_OPCODE                       0x40U
@@ -138,7 +138,7 @@
 /* Sends the access. Reads as zero. */
 #define UCIE_LINK_MAILBOX_TRIGGER    0x58U
 /* Write a one to send it. */
-#define UCIE_LINK_MAILBOX_TRIGGER_GO (1U << 0)
+#define UCIE_LINK_MAILBOX_TRIGGER_GO (1U << 0U)
 
 /* How the last access went, and whether one is still on its way. */
 #define UCIE_LINK_MAILBOX_STATUS                          0x5CU
@@ -150,6 +150,6 @@
 /* There is no such register at the other end, or it cannot be written. */
 #define UCIE_LINK_MAILBOX_STATUS_CODE_UNSUPPORTED_REQUEST 2U
 /* An access has been sent and not yet answered. */
-#define UCIE_LINK_MAILBOX_STATUS_BUSY                     (1U << 8)
+#define UCIE_LINK_MAILBOX_STATUS_BUSY                     (1U << 8U)
 
 #endif /* SOCPUPPET_REGS_UCIE_LINK_H_ */

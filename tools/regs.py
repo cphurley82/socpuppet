@@ -442,7 +442,7 @@ def number(value: int) -> Value:
 
 def bit(position: int) -> Value:
     """The number with only the bit at `position` set."""
-    return Value(f"(1U << {position})", f"1 << {position}")
+    return Value(f"(1U << {position}U)", f"1 << {position}")
 
 
 def preamble(block: Block) -> list[str]:

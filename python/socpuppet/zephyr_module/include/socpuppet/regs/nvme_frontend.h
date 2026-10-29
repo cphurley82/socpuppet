@@ -20,33 +20,33 @@
  * The firmware is ready for the host's commands. The host sees it as
  * `CSTS.RDY`.
  */
-#define NVME_FRONTEND_CONTROL_READY (1U << 0)
+#define NVME_FRONTEND_CONTROL_READY (1U << 0U)
 
 /* What the host has done, and whether a command is waiting. */
 #define NVME_FRONTEND_STATUS                 0x04U
 /* The host has enabled the controller. */
-#define NVME_FRONTEND_STATUS_ENABLED         (1U << 0)
+#define NVME_FRONTEND_STATUS_ENABLED         (1U << 0U)
 /*
  * The host has disabled the controller, which is a reset. Writing the one
  * says the firmware holds nothing from before it.
  */
-#define NVME_FRONTEND_STATUS_DISABLED        (1U << 1)
+#define NVME_FRONTEND_STATUS_DISABLED        (1U << 1U)
 /* A command is waiting. Set for exactly as long as one is. */
-#define NVME_FRONTEND_STATUS_COMMAND_WAITING (1U << 2)
+#define NVME_FRONTEND_STATUS_COMMAND_WAITING (1U << 2U)
 /*
  * The host has asked the controller to shut down (`CC.SHN`), as it does
  * before the power goes, and sees the shutdown under way (`CSTS.SHST`).
  * Writing the one says the firmware has kept what must outlive the power: the
  * host then sees the shutdown complete.
  */
-#define NVME_FRONTEND_STATUS_SHUTDOWN        (1U << 3)
+#define NVME_FRONTEND_STATUS_SHUTDOWN        (1U << 3U)
 
 /* Which bits of `STATUS` raise `cpu_irq` while they are set. */
 #define NVME_FRONTEND_INTERRUPT_ENABLE                 0x08U
-#define NVME_FRONTEND_INTERRUPT_ENABLE_ENABLED         (1U << 0)
-#define NVME_FRONTEND_INTERRUPT_ENABLE_DISABLED        (1U << 1)
-#define NVME_FRONTEND_INTERRUPT_ENABLE_COMMAND_WAITING (1U << 2)
-#define NVME_FRONTEND_INTERRUPT_ENABLE_SHUTDOWN        (1U << 3)
+#define NVME_FRONTEND_INTERRUPT_ENABLE_ENABLED         (1U << 0U)
+#define NVME_FRONTEND_INTERRUPT_ENABLE_DISABLED        (1U << 1U)
+#define NVME_FRONTEND_INTERRUPT_ENABLE_COMMAND_WAITING (1U << 2U)
+#define NVME_FRONTEND_INTERRUPT_ENABLE_SHUTDOWN        (1U << 3U)
 
 /* What the frontend has, for the firmware to tell the host. */
 #define NVME_FRONTEND_LIMITS                      0x0CU
@@ -83,7 +83,7 @@
 /* Has the completion of the waiting command posted. Reads as zero. */
 #define NVME_FRONTEND_COMPLETION_POST     0x1CU
 /* Write a one, and nothing else, to post it. */
-#define NVME_FRONTEND_COMPLETION_POST_NOW (1U << 0)
+#define NVME_FRONTEND_COMPLETION_POST_NOW (1U << 0U)
 
 /* Which queue to create: its identifier, from 1 up. */
 #define NVME_FRONTEND_QUEUE_ID 0x20U
