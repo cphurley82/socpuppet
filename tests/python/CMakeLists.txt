@@ -6,7 +6,8 @@
 # (CMakePresets.json): `pytest`, the tests that take well under a second,
 # which every preset runs; `pytest_boots`, one boot of real firmware for each
 # area (tests/python/conftest.py, the `representative` marker), which every
-# push runs; and `pytest_long`, every other boot, which runs every night.
+# push runs; and `pytest_long`, every other boot, labelled `nightly`, when it
+# runs.
 #
 # pytest-xdist runs them on every core. --dist loadscope keeps the tests of
 # a class, or of a module of functions, on one worker, so that a fixture
@@ -23,7 +24,7 @@ function(socpuppet_add_pytest name marks label)
 endfunction()
 socpuppet_add_pytest(pytest "not long" python)
 socpuppet_add_pytest(pytest_boots representative boots)
-socpuppet_add_pytest(pytest_long "long and not representative" long)
+socpuppet_add_pytest(pytest_long "long and not representative" nightly)
 
 # The examples are documentation that runs. Keep them running.
 add_test(NAME example_passthrough_hello
@@ -108,15 +109,15 @@ set_tests_properties(
 # the two that stay at the console carry the label `qbox` and run on that
 # hart alone: the dev and quick test presets leave them out, and the qbox
 # test preset, which sets SOCPUPPET_CPU=qbox_cpu, runs them (tools/ci.py,
-# the `qbox` job). The one with a cable carries `long`, as the pytest marker
-# of that name means the same, and runs on the interpreter in the nightly
-# run of the dev preset (the `test` job). It carries `interpreter` too, which
-# the qbox test preset leaves out: under the pump, QBox's hart runs ahead of
-# the clock and dropbear closes every ssh at the key exchange
+# the `qbox` job). The one with a cable carries `nightly`, as the long tests
+# the quick test preset leaves out do, and runs on the interpreter in the
+# nightly run of the dev preset (the `test` job). It carries `interpreter`
+# too, which the qbox test preset leaves out: under the pump, QBox's hart
+# runs ahead of the clock and dropbear closes every ssh at the key exchange
 # (docs/roadmap.md, the loose ends).
 set(label_linux_hello qbox)
 set(label_linux_on_the_drive qbox)
-set(label_linux_cable "long;interpreter")
+set(label_linux_cable "nightly;interpreter")
 foreach(example linux_hello linux_on_the_drive linux_cable)
   add_test(NAME example_${example}
     COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python

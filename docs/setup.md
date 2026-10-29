@@ -98,8 +98,8 @@ git clone https://github.com/cphurley82/socpuppet && cd socpuppet
 uv sync                                  # Python 3.13 and the tools
 uv run cmake --preset dev                # fetch and configure the dependencies, about 100 s
 uv run cmake --build --preset dev        # build, about 1 minute here
-uv run ctest --preset dev                # every test, about 80 s
-uv run ctest --preset fast               # the inner loop, in seconds (development.md has the tiers)
+uv run ctest --preset fast               # the inner loop, about 25 s (development.md has the tiers)
+uv run ctest --preset dev                # every test, every boot: about 5 minutes
 ```
 
 ⚠️ The first configure and build take a few minutes, because SystemC, SCC, the CPU model and the parts of Boost they need are compiled from source. After that, builds are incremental.

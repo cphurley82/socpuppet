@@ -90,12 +90,12 @@
     {
       "name": "quick",
       "inherits": "dev",
-      "filter": { "exclude": { "label": "long|qbox" } }
+      "filter": { "exclude": { "label": "nightly|qbox" } }
     },
     {
       "name": "quick-without-boots",
       "inherits": "quick",
-      "filter": { "exclude": { "label": "long|qbox|boots" } }
+      "filter": { "exclude": { "label": "nightly|qbox|boots" } }
     },
     {
       "name": "asan",

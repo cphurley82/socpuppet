@@ -96,7 +96,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers",
-        "representative(area): the one long test that boots for its area "
+        "representative(area): a long test that boots for its area "
         "(linux, uefi, ...) on every push, as the quick test preset runs "
         "them with `-m representative`; the rest of the long tests run "
         "every night (CMakePresets.json).",
