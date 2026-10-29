@@ -17,7 +17,7 @@ def firmware_directory(pytestconfig):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def firmware(pytestconfig):
     """Find a firmware image that `firmware/build.py` built, by file name.
 

@@ -45,15 +45,26 @@ pytestmark = [needs_dtc, pytest.mark.long]
 
 #: What the kernel says first, with its version: "Linux version 6.18.57".
 BANNER = re.compile(r"Linux version (\d+\.\d+\.\d+)")
+#: Linux's address on 🎭 the virtio network device, and Python's at the far
+#: end of its wire: the documentation's own range, as Zephyr's test uses it.
+ITS_ADDRESS = ethernet.ipv4("192.0.2.1")
+ME = ethernet.mac("02:00:00:00:00:02")
+MY_ADDRESS = ethernet.ipv4("192.0.2.2")
+#: An answer to a frame comes within a moment of the CPU's time; a second
+#: still ends a wait for one that never comes.
+ANSWERS_A_FRAME_WITHIN = sp.ms(1000)
+#: How Linux mounts 🎭 the 9P transport's share, by the tag the host gives
+#: it (`Virtio().tag`), in the dialect `socpuppet.ninep` serves.
+MOUNT = "mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt"
 
 
-@pytest.fixture
-def shared(tmp_path):
+@pytest.fixture(scope="class")
+def shared(tmp_path_factory):
     """The directory of this machine the host shares with Linux."""
-    return tmp_path
+    return tmp_path_factory.mktemp("shared")
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_at_its_prompt(firmware, shared):
     """A host that has booted OpenSBI and Linux the quick way, to the prompt.
 
@@ -69,9 +80,11 @@ def linux_at_its_prompt(firmware, shared):
     return board
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 @pytest.mark.representative("linux")
 class TestWhenLinuxBootsTheQuickWay:
+    # 💡 One boot for the class: each test types at the same shell, and
+    # none leaves it changed in a way another looks at.
     def test_it_says_its_version_through_opensbi_and_prompts_on_its_console(
         self, linux_at_its_prompt
     ):
@@ -85,9 +98,6 @@ class TestWhenLinuxBootsTheQuickWay:
         assert BANNER.search(early), f"No version. OpenSBI's console:\n{early}"
         assert PROMPT.search(console), f"No prompt. The console:\n{console}"
 
-
-@pytest.mark.platform
-class TestWhenPythonTypesAtLinuxsShell:
     def test_uname_names_linux_and_the_version_it_booted_saying(
         self, linux_at_its_prompt
     ):
@@ -101,32 +111,6 @@ class TestWhenPythonTypesAtLinuxsShell:
         assert answer.startswith(f"Linux socpuppet {booted} ")
         assert " riscv64 Linux" in answer
 
-
-@pytest.mark.platform
-class TestWhenPythonTypesPoweroff:
-    def test_the_system_controller_switches_the_cpu_off(
-        self, linux_at_its_prompt
-    ):
-        # 🎓 `poweroff` goes to the kernel's `syscon-poweroff` driver, which
-        # writes the system controller's register, as OpenSBI's test payload
-        # did by asking OpenSBI.
-        board = linux_at_its_prompt
-        board.virtio.console.write("poweroff\n")
-
-        gone = board.platform.run_until(
-            lambda: switched_off(board), timeout=SWITCHES_OFF_WITHIN
-        )
-
-        # ⚠️ Not the kernel's own last line, "reboot: Power down": 🎭 the
-        # system controller switches the CPU off the moment the register
-        # is written, before the virtio console's queue has carried it.
-        assert gone, (
-            f"Not switched off. The console:\n{plain(board.virtio.console.output)}"
-        )
-
-
-@pytest.mark.platform
-class TestWhenLinuxReadsTheVirtioEntropy:
     def test_dev_hwrng_is_the_virtio_device_and_gives_the_seeded_stream(
         self, linux_at_its_prompt
     ):
@@ -144,19 +128,6 @@ class TestWhenLinuxReadsTheVirtioEntropy:
         assert source.strip() == "virtio_rng.0"
         assert bytes.fromhex(read.strip()) in stream(Virtio().seed, 1 << 20)
 
-
-#: Linux's address on 🎭 the virtio network device, and Python's at the far
-#: end of its wire: the documentation's own range, as Zephyr's test uses it.
-ITS_ADDRESS = ethernet.ipv4("192.0.2.1")
-ME = ethernet.mac("02:00:00:00:00:02")
-MY_ADDRESS = ethernet.ipv4("192.0.2.2")
-#: An answer to a frame comes within a moment of the CPU's time; a second
-#: still ends a wait for one that never comes.
-ANSWERS_A_FRAME_WITHIN = sp.ms(1000)
-
-
-@pytest.mark.platform
-class TestWhenPythonPingsLinux:
     def test_linux_answers_the_arp_request_and_then_the_echo(
         self, linux_at_its_prompt
     ):
@@ -191,14 +162,6 @@ class TestWhenPythonPingsLinux:
 
         assert ethernet.echo_replies(net.received) == [b"spam and eggs"]
 
-
-#: How Linux mounts 🎭 the 9P transport's share, by the tag the host gives
-#: it (`Virtio().tag`), in the dialect `socpuppet.ninep` serves.
-MOUNT = "mount -t 9p -o trans=virtio,version=9p2000.L socpuppet /mnt"
-
-
-@pytest.mark.platform
-class TestWhenLinuxMountsTheSharedDirectory:
     def test_it_reads_pythons_file_and_python_reads_the_one_it_writes(
         self, linux_at_its_prompt, shared
     ):
@@ -212,6 +175,29 @@ class TestWhenLinuxMountsTheSharedDirectory:
         assert mounted == ""
         assert read.strip() == "spam, spam, spam"
         assert (shared / "eggs.txt").read_text() == "eggs\n"
+
+
+@pytest.mark.platform
+class TestWhenPythonTypesPoweroff:
+    def test_the_system_controller_switches_the_cpu_off(
+        self, linux_at_its_prompt
+    ):
+        # 🎓 `poweroff` goes to the kernel's `syscon-poweroff` driver, which
+        # writes the system controller's register, as OpenSBI's test payload
+        # did by asking OpenSBI.
+        board = linux_at_its_prompt
+        board.virtio.console.write("poweroff\n")
+
+        gone = board.platform.run_until(
+            lambda: switched_off(board), timeout=SWITCHES_OFF_WITHIN
+        )
+
+        # ⚠️ Not the kernel's own last line, "reboot: Power down": 🎭 the
+        # system controller switches the CPU off the moment the register
+        # is written, before the virtio console's queue has carried it.
+        assert gone, (
+            f"Not switched off. The console:\n{plain(board.virtio.console.output)}"
+        )
 
 
 #: What the kernel says once it has found UEFI's tables, which its EFI stub
