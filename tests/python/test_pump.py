@@ -47,7 +47,8 @@ class Pipe:
         self._read, self._write = os.pipe()
         self.events: list[str] = []
         self.looked_at: list[float] = []
-        self.written_at: float | None = None
+        self._writer: threading.Timer | None = None
+        self._write_times: tuple[float, float] | None = None
         self.serviced_at: float | None = None
 
     def fileno(self) -> int | None:
@@ -67,7 +68,19 @@ class Pipe:
 
     def write_after(self, seconds: float) -> None:
         """Write a byte to the pipe `seconds` from now."""
-        threading.Timer(seconds, self._write_a_byte).start()
+        self._writer = threading.Timer(seconds, self._write_a_byte)
+        self._writer.start()
+
+    def write_times(self) -> tuple[float, float]:
+        """On the wall, just before the byte was written and just after.
+
+        ⚠️ The pump can service the byte before the timer's thread gets
+        round to its second stamp, so this waits for the thread.
+        """
+        assert self._writer is not None
+        self._writer.join(PATIENCE)
+        assert self._write_times is not None
+        return self._write_times
 
     def was_refreshed_after_its_service(self) -> bool:
         return self.events[-2:] == ["service", "refresh"]
@@ -77,21 +90,20 @@ class Pipe:
 
         None, or the one that found it.
         """
-        assert self.written_at is not None
+        _, written_at = self.write_times()
         assert self.serviced_at is not None
-        return sum(
-            self.written_at < at < self.serviced_at for at in self.looked_at
-        )
+        return sum(written_at < at < self.serviced_at for at in self.looked_at)
 
     def close(self) -> None:
         os.close(self._read)
         os.close(self._write)
 
     def _write_a_byte(self) -> None:
+        # No look can find the byte before the first stamp, and a look
+        # after the second could have.
+        before = time.monotonic()
         os.write(self._write, b"x")
-        # Once it is there to be read: a look between the stamp and the
-        # write would be one that could not have found it.
-        self.written_at = time.monotonic()
+        self._write_times = (before, time.monotonic())
 
 
 #: How far ahead of now, in seconds on the wall, an alarm is due: much
@@ -144,7 +156,8 @@ class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuSleeps:
 
         assert pumped_until(platform, pipe, lambda: "service" in pipe.events)
         assert platform.time <= s(time.monotonic() - started)
-        assert platform.time >= s(pipe.written_at - started) - s(SLACK)
+        written, _ = pipe.write_times()
+        assert platform.time >= s(written - started) - s(SLACK)
 
 
 class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuWorks:
@@ -158,7 +171,8 @@ class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuWorks:
         # taken 0.12 s from the write to the service. So, as for a due far
         # end below, the bound is half the longest wait: a pump that looked
         # only once that was up would fail it.
-        assert pipe.serviced_at - pipe.written_at < LONGEST_WAIT / 2
+        written, _ = pipe.write_times()
+        assert pipe.serviced_at - written < LONGEST_WAIT / 2
 
 
 class TestWhenAFarEndHasBeenServiced:
