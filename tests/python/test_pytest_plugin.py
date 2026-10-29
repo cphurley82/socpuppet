@@ -409,6 +409,37 @@ class TestWhenAPlatformClassSharesOneProcess:
         result.assert_outcomes(passed=3)
         assert len(made_in.read_text().split()) == 1
 
+    def test_its_tests_share_a_process_for_each_parameter_of_its_fixture(
+        self, session_with_socpuppet
+    ):
+        made_in = session_with_socpuppet.path / "made_in"
+        session_with_socpuppet.makepyfile(
+            f"""
+import os
+import pytest
+
+@pytest.fixture(scope="class", params=["spam", "eggs"])
+def board(request):
+    with open({str(made_in)!r}, "a") as log:
+        log.write(f"{{request.param}} {{os.getpid()}}\\n")
+
+@pytest.mark.platform(scope="class")
+class TestSharingOneProcessForEachBoard:
+    def test_one(self, board):
+        pass
+
+    def test_another(self, board):
+        pass
+"""
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=4)
+        made = [line.split() for line in made_in.read_text().splitlines()]
+        assert sorted(param for param, _ in made) == ["eggs", "spam"]
+        assert len({pid for _, pid in made}) == 2
+
     def test_the_ordinary_tests_after_it_still_run(
         self, session_with_socpuppet
     ):

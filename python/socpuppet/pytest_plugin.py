@@ -12,10 +12,11 @@ marked test.
 Marked ``@pytest.mark.platform(scope="class")``, a class's tests share one
 process instead, so that a class-scoped fixture, a board booted once, is
 made once for all of them (a marked test outside a class still has one of
-its own). The first of them to run starts the process for every one of
-the class that the session selected, and each reports in its turn. Under
-pytest-xdist, hand the tests out with ``--dist loadscope``, which keeps a
-class on one worker.
+its own). Tests of the class with different parameters, as a parametrized
+class fixture gives them, have a process for each. The first of them to run
+starts the process for every one of the class that the session selected, and
+each reports in its turn. Under pytest-xdist, hand the tests out with
+``--dist loadscope``, which keeps a class on one worker.
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
 seconds is stopped and fails, and so is a class's process, with what it
@@ -126,11 +127,10 @@ def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
         return waiting.pop(item.nodeid)
     if not _shares_its_classs_process(item):
         return _run_in_child_process([item])[item.nodeid]
-    its_class = item.getparent(pytest.Class)
     together = [
         each
         for each in item.session.items
-        if each.getparent(pytest.Class) is its_class
+        if _process_shared_by(each) == _process_shared_by(item)
         and _shares_its_classs_process(each)
         and _runs_in_a_process(each)
     ]
@@ -156,6 +156,16 @@ def _shares_its_classs_process(item: pytest.Item) -> bool:
         and marker.kwargs.get("scope") == "class"
         and item.getparent(pytest.Class) is not None
     )
+
+
+def _process_shared_by(item: pytest.Item) -> tuple[object, str]:
+    """Which tests share a class's process: its class's, with its parameters.
+
+    A class-scoped fixture with parameters is made once for each, and each
+    would be a platform of its own, so each has a process of its own.
+    """
+    callspec = getattr(item, "callspec", None)
+    return item.getparent(pytest.Class), callspec.id if callspec else ""
 
 
 class _ChildReporter:
