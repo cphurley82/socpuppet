@@ -52,7 +52,7 @@ TEST(WhenTheRegisterLocatorIsRead, ItSaysWhereTheLinksOwnBlockIs) {
   // The first register of the block it points at is where the link says
   // which training state it is in.
   const std::uint64_t block =
-      Read32(registers, UCIE_LINK_REGISTER_LOCATOR) >> 8;
+      Read32(registers, UCIE_LINK_REGISTER_LOCATOR) >> 8U;
   EXPECT_EQ(Read32(registers, block),
             static_cast<std::uint32_t>(LinkTrainingState::kSbinit));
 }

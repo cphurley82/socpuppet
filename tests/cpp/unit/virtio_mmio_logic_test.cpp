@@ -31,7 +31,7 @@ class FakeDevice : public VirtioDevice {
  public:
   static constexpr std::uint32_t kId = 0x5A;
   // Two features of its own, by their bits.
-  static constexpr std::uint64_t kFeatures = (1U << 1) | (1U << 5);
+  static constexpr std::uint64_t kFeatures = (1U << 1U) | (1U << 5U);
 
   static constexpr std::uint16_t kQueues = 2;
 
@@ -92,7 +92,7 @@ struct Rig {
     Write32(VIRTIO_MMIO_DRIVER_FEATURES, static_cast<std::uint32_t>(features));
     Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
     Write32(VIRTIO_MMIO_DRIVER_FEATURES,
-            static_cast<std::uint32_t>(features >> 32));
+            static_cast<std::uint32_t>(features >> 32U));
   }
   // Sets queue `number` up, as the driver does: its size, where its three
   // parts are, and that it is ready.
@@ -102,15 +102,15 @@ struct Rig {
     Write32(VIRTIO_MMIO_QUEUE_DESC_LOW,
             static_cast<std::uint32_t>(layout.desc));
     Write32(VIRTIO_MMIO_QUEUE_DESC_HIGH,
-            static_cast<std::uint32_t>(layout.desc >> 32));
+            static_cast<std::uint32_t>(layout.desc >> 32U));
     Write32(VIRTIO_MMIO_QUEUE_DRIVER_LOW,
             static_cast<std::uint32_t>(layout.avail));
     Write32(VIRTIO_MMIO_QUEUE_DRIVER_HIGH,
-            static_cast<std::uint32_t>(layout.avail >> 32));
+            static_cast<std::uint32_t>(layout.avail >> 32U));
     Write32(VIRTIO_MMIO_QUEUE_DEVICE_LOW,
             static_cast<std::uint32_t>(layout.used));
     Write32(VIRTIO_MMIO_QUEUE_DEVICE_HIGH,
-            static_cast<std::uint32_t>(layout.used >> 32));
+            static_cast<std::uint32_t>(layout.used >> 32U));
     Write32(VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_READY_READY);
   }
   // The bytes do not start out as zeros, so that a register the transport
@@ -134,7 +134,7 @@ TEST(WhenTheDriverReadsTheFirstFourRegistersOfAVirtioDevice,
 }
 
 // The transport's own feature bit: the modern layout (virtio 1.2, section 6).
-constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
+constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32U;
 
 // 🐧 Linux's transport reads the generation before and after the device's
 // configuration, to know the words it read belong together. No device here
@@ -154,7 +154,7 @@ TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
   rig.Write32(VIRTIO_MMIO_DEVICE_FEATURES_SEL, 1);
   const std::uint32_t high = rig.Read32(VIRTIO_MMIO_DEVICE_FEATURES);
 
-  EXPECT_EQ((std::uint64_t{high} << 32) | low,
+  EXPECT_EQ((std::uint64_t{high} << 32U) | low,
             FakeDevice::kFeatures | kVersion1);
 }
 
@@ -162,7 +162,7 @@ TEST(WhenTheDriverReadsTheDeviceFeaturesInBothHalves,
 // reads a half back to set one bit of it, as QEMU's device allows.
 TEST(WhenTheDriverReadsBackTheFeaturesItAccepted, ItGetsTheHalfItSelected) {
   Rig rig;
-  rig.AcceptFeatures((std::uint64_t{0x5555'0000} << 32) | 0x0000'AAAA);
+  rig.AcceptFeatures((std::uint64_t{0x5555'0000} << 32U) | 0x0000'AAAAU);
 
   rig.Write32(VIRTIO_MMIO_DRIVER_FEATURES_SEL, 0);
   const std::uint32_t low = rig.Read32(VIRTIO_MMIO_DRIVER_FEATURES);
@@ -191,7 +191,7 @@ TEST(WhenTheDriverAcceptsWhatWasOfferedAndVersionOneAndSaysFeaturesOk,
 TEST(WhenTheDriverAcceptsAFeatureThatWasNotOfferedAndSaysFeaturesOk,
      TheTransportDoesNotKeepFeaturesOk) {
   Rig rig;
-  rig.AcceptFeatures(FakeDevice::kFeatures | (1U << 7) | kVersion1);
+  rig.AcceptFeatures(FakeDevice::kFeatures | (1U << 7U) | kVersion1);
 
   rig.Write32(VIRTIO_MMIO_STATUS,
               kSeenAndDriven | VIRTIO_MMIO_STATUS_FEATURES_OK);

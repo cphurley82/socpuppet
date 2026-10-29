@@ -80,7 +80,7 @@ TEST(WhenAStoreIsAskedHowManyBlocksItHolds, ItSaysWhatItWasMadeWith) {
 // A terabyte: more than the machine has, and nothing like what the store
 // takes, because only what has been written is kept.
 TEST(WhenADriveIsLargerThanTheMachinesMemory, ItsLastBlockCanBeWritten) {
-  constexpr std::uint64_t kBlocks = std::uint64_t{1} << 31;
+  constexpr std::uint64_t kBlocks = std::uint64_t{1} << 31U;
   RamBlockStore store{kBlocks};
   const std::vector<std::uint8_t> written = SomeBlocks(1);
 

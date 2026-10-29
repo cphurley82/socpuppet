@@ -35,7 +35,7 @@ enum HostRegister : std::uint64_t {
 // CSTS the shutdown's status is (bits 3:2), with what it says: nothing yet,
 // under way, and complete.
 constexpr std::uint32_t kEnable = 1U;
-constexpr std::uint32_t kNormalShutdown = 1U << 14;
+constexpr std::uint32_t kNormalShutdown = 1U << 14U;
 constexpr std::uint32_t kShutdownStatusShift = 2;
 constexpr std::uint32_t kNoShutdown = 0;
 constexpr std::uint32_t kShutdownUnderWay = 1;
@@ -141,7 +141,7 @@ struct Rig {
   // where its admin queues are, of four entries each, and sets CC.EN, or
   // clears it.
   void HostEnables() {
-    HostWrite32(kAqa, 3U << 16 | 3U);
+    HostWrite32(kAqa, 3U << 16U | 3U);
     HostWrite64(kAsq, kAdminSubmissionQueue);
     HostWrite64(kAcq, kAdminCompletionQueue);
     HostWrite32(kCc, 1);
@@ -195,7 +195,7 @@ struct Rig {
     CpuWrite32(NVME_FRONTEND_QUEUE_ID, queue_id);
     CpuWrite32(NVME_FRONTEND_QUEUE_BASE_LOW, static_cast<std::uint32_t>(base));
     CpuWrite32(NVME_FRONTEND_QUEUE_BASE_HIGH,
-               static_cast<std::uint32_t>(base >> 32));
+               static_cast<std::uint32_t>(base >> 32U));
     CpuWrite32(NVME_FRONTEND_QUEUE_LAST, kLastSlot);
     CpuWrite32(NVME_FRONTEND_QUEUE_LINK, link);
     return CpuWrite32(NVME_FRONTEND_QUEUE_CREATE, kind);
@@ -232,7 +232,7 @@ struct Rig {
     std::array<std::uint8_t, 16> bytes{};
     EXPECT_TRUE(memory.Read(queue + (slot * bytes.size()), bytes));
     const std::span<const std::uint8_t> entry{bytes};
-    const auto phase_and_status =
+    const std::uint32_t phase_and_status =
         LoadLittleEndian<std::uint16_t>(entry.subspan(14));
     return {
         .result = LoadLittleEndian<std::uint32_t>(entry),
@@ -240,9 +240,9 @@ struct Rig {
         .submission_head = LoadLittleEndian<std::uint16_t>(entry.subspan(8)),
         .command_id = LoadLittleEndian<std::uint16_t>(entry.subspan(12)),
         .phase = (phase_and_status & 1U) != 0,
-        .status = static_cast<std::uint8_t>(phase_and_status >> 1),
+        .status = static_cast<std::uint8_t>(phase_and_status >> 1U),
         .status_type =
-            static_cast<std::uint8_t>((phase_and_status >> 9) & 0x7)};
+            static_cast<std::uint8_t>((phase_and_status >> 9U) & 0x7U)};
   }
 
   // Whether a bit of the status register is set, as the CPU reads it.
@@ -263,7 +263,7 @@ TEST(WhenTheHostReadsWhatAnNvmeFrontendCanDo,
      ItIsToldToWaitUpToASecondForReady) {
   const Rig rig;
 
-  const std::uint64_t ready_timeout = (rig.HostRead64(kCap) >> 24) & 0xFF;
+  const std::uint64_t ready_timeout = (rig.HostRead64(kCap) >> 24U) & 0xFFU;
 
   EXPECT_EQ(ready_timeout, 2U);
 }
@@ -521,7 +521,7 @@ TEST(WhenTheCpuPostsAStatusFromTheCommandsOwnList,
   rig.frontend.Step();
 
   rig.CpuPosts(/*status=*/1U << NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT |
-               0x01);
+               0x01U);
   rig.frontend.Step();
 
   const Completion posted = rig.HostReadsCompletion(kAdminCompletionQueue, 0);

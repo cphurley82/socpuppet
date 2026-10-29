@@ -19,8 +19,8 @@ namespace {
 // The address of the device the tests talk to, seven bits.
 constexpr std::uint8_t kAddress = 0x51;
 // 🎓 The byte after a start: the address, and the direction in bit 0.
-constexpr std::uint8_t kWriteToTheDevice = kAddress << 1;
-constexpr std::uint8_t kReadFromTheDevice = kAddress << 1 | 1;
+constexpr std::uint8_t kWriteToTheDevice = kAddress << 1U;
+constexpr std::uint8_t kReadFromTheDevice = kWriteToTheDevice | 1U;
 // A byte of data.
 constexpr std::uint8_t kByte = 0xA5;
 
@@ -195,7 +195,7 @@ TEST(AStartWithAnAddressNoDeviceHas, IsNotAcknowledged) {
   RecordingDevice device;
   OnTheBus bus{device};
 
-  const std::uint32_t status = bus.Start((kAddress + 1) << 1);
+  const std::uint32_t status = bus.Start((kAddress + 1U) << 1U);
 
   EXPECT_TRUE(device.calls.empty());
   EXPECT_TRUE(status & I2C_CONTROLLER_STATUS_NO_ACK);

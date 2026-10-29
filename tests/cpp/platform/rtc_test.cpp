@@ -46,13 +46,13 @@ struct Rig {
 std::uint64_t ReadTime(BusDriver& bus) {
   const std::uint64_t low = bus.Read32(RTC_TIME_LOW);
   const std::uint64_t high = bus.Read32(RTC_TIME_HIGH);
-  return high << 32 | low;
+  return high << 32U | low;
 }
 
 // Sets the alarm as Linux's rtc-goldfish does: the high half first, since
 // writing the low half sets it.
 void SetAlarm(BusDriver& bus, std::uint64_t at) {
-  bus.Write32(RTC_ALARM_HIGH, static_cast<std::uint32_t>(at >> 32));
+  bus.Write32(RTC_ALARM_HIGH, static_cast<std::uint32_t>(at >> 32U));
   bus.Write32(RTC_ALARM_LOW, static_cast<std::uint32_t>(at));
 }
 

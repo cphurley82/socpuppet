@@ -42,7 +42,7 @@ void Write32(RtcLogic& rtc, std::uint64_t offset, std::uint32_t value,
 
 // A time, from the low and high halves of a register pair.
 std::uint64_t Joined(std::uint32_t low, std::uint32_t high) {
-  return static_cast<std::uint64_t>(high) << 32 | low;
+  return static_cast<std::uint64_t>(high) << 32U | low;
 }
 
 // The time, as Linux's rtc-goldfish reads it: the low half, and then the
@@ -59,13 +59,13 @@ std::uint64_t ReadAlarm(RtcLogic& rtc, Picoseconds now) {
 
 // Sets the time, as rtc-goldfish does: the high half, and then the low.
 void SetTime(RtcLogic& rtc, std::uint64_t time, Picoseconds now) {
-  Write32(rtc, RTC_TIME_HIGH, static_cast<std::uint32_t>(time >> 32), now);
+  Write32(rtc, RTC_TIME_HIGH, static_cast<std::uint32_t>(time >> 32U), now);
   Write32(rtc, RTC_TIME_LOW, static_cast<std::uint32_t>(time), now);
 }
 
 // Sets the alarm, as rtc-goldfish does: the high half, and then the low.
 void SetAlarm(RtcLogic& rtc, std::uint64_t time, Picoseconds now) {
-  Write32(rtc, RTC_ALARM_HIGH, static_cast<std::uint32_t>(time >> 32), now);
+  Write32(rtc, RTC_ALARM_HIGH, static_cast<std::uint32_t>(time >> 32U), now);
   Write32(rtc, RTC_ALARM_LOW, static_cast<std::uint32_t>(time), now);
 }
 

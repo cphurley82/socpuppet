@@ -247,7 +247,7 @@ TEST(WhenTheDriverLooksAtTheBlockDevice, ItIsKindTwoWithOneQueueAndFlush) {
 
   EXPECT_EQ(device.DeviceId(), 2U);
   EXPECT_EQ(device.QueueCount(), 1);
-  EXPECT_EQ(device.Features(), std::uint64_t{1} << 9);
+  EXPECT_EQ(device.Features(), std::uint64_t{1} << 9U);
 }
 
 }  // namespace

@@ -80,7 +80,7 @@ struct Rig {
     Write32(DMA_ENGINE_HOST_ADDRESS_LOW,
             static_cast<std::uint32_t>(host_address));
     Write32(DMA_ENGINE_HOST_ADDRESS_HIGH,
-            static_cast<std::uint32_t>(host_address >> 32));
+            static_cast<std::uint32_t>(host_address >> 32U));
     Write32(DMA_ENGINE_LOCAL_ADDRESS,
             static_cast<std::uint32_t>(local_address));
     Write32(DMA_ENGINE_LENGTH, length);

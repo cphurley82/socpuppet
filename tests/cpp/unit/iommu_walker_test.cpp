@@ -72,11 +72,11 @@ enum class FirstStage : std::uint64_t {
 // The fsc of a device context whose first stage is `mode`, with its root
 // page table at `root`.
 std::uint64_t Fsc(FirstStage mode, std::uint64_t root = 0) {
-  return (static_cast<std::uint64_t>(mode) << 60) | (root >> 12);
+  return (static_cast<std::uint64_t>(mode) << 60U) | (root >> 12U);
 }
 
 // A non-leaf entry of a device directory, pointing at the table below.
-std::uint64_t Ddte(std::uint64_t next) { return ((next >> 12) << 10) | kV; }
+std::uint64_t Ddte(std::uint64_t next) { return ((next >> 12U) << 10U) | kV; }
 
 // Puts `entry` at entry `index` of a non-leaf table at `table`.
 void PutDdte(Memory& memory, std::uint64_t table, std::uint64_t index,
@@ -99,11 +99,11 @@ constexpr std::uint32_t kDdi2 = 0x7C;
 
 // A device ID made of its indexes into a directory's levels.
 constexpr std::uint32_t DeviceId(std::uint32_t ddi1, std::uint32_t ddi0) {
-  return (ddi1 << 7) | ddi0;
+  return (ddi1 << 7U) | ddi0;
 }
 constexpr std::uint32_t DeviceId(std::uint32_t ddi2, std::uint32_t ddi1,
                                  std::uint32_t ddi0) {
-  return (ddi2 << 16) | DeviceId(ddi1, ddi0);
+  return (ddi2 << 16U) | DeviceId(ddi1, ddi0);
 }
 
 // A read by some device of some address, for the tests where neither
@@ -120,14 +120,14 @@ constexpr iommu_request SomeReadBy(std::uint32_t device_id) {
 
 // Sv39's page-table entries: the page they name in bits 53:10, and what
 // they allow in the bits below.
-constexpr std::uint64_t kR = 1U << 1;  // read
-constexpr std::uint64_t kW = 1U << 2;  // write
-constexpr std::uint64_t kX = 1U << 3;  // execute
-constexpr std::uint64_t kU = 1U << 4;  // by user mode, which a device is
-constexpr std::uint64_t kA = 1U << 6;  // accessed
-constexpr std::uint64_t kD = 1U << 7;  // dirty
+constexpr std::uint64_t kR = 1U << 1U;  // read
+constexpr std::uint64_t kW = 1U << 2U;  // write
+constexpr std::uint64_t kX = 1U << 3U;  // execute
+constexpr std::uint64_t kU = 1U << 4U;  // by user mode, which a device is
+constexpr std::uint64_t kA = 1U << 6U;  // accessed
+constexpr std::uint64_t kD = 1U << 7U;  // dirty
 std::uint64_t Pte(std::uint64_t page, std::uint64_t flags) {
-  return ((page >> 12) << 10) | flags;
+  return ((page >> 12U) << 10U) | flags;
 }
 // A page a device may read and write, already accessed and dirty, as
 // Linux's IOMMU driver makes one.
@@ -152,7 +152,7 @@ constexpr std::uint64_t kVpn1 = 0x0C5;
 constexpr std::uint64_t kVpn0 = 0x1E3;
 constexpr std::uint64_t kOffset = 0x234;
 constexpr std::uint64_t kIova =
-    (kVpn2 << 30) | (kVpn1 << 21) | (kVpn0 << 12) | kOffset;
+    (kVpn2 << 30U) | (kVpn1 << 21U) | (kVpn0 << 12U) | kOffset;
 
 // A one-level directory at kRoot, and a device with a context in it whose
 // first stage is Sv39, with its root table at kLevel2; and a read by it of
@@ -300,7 +300,7 @@ TEST(WhenNothingAnswersWhereADirectoryEntryShouldBe,
 TEST(WhenADirectoryEntryHasAReservedBitSet,
      ItsRequestIsRefusedAsDdtMisconfigured) {
   // Bits 9:1 of a non-leaf entry are reserved.
-  constexpr std::uint64_t kReserved = 1U << 1;
+  constexpr std::uint64_t kReserved = 1U << 1U;
   Memory memory;
   PutDdte(memory, kRoot, kDdi1, Ddte(kLeaf) | kReserved);
   PutDeviceContext(memory, kLeaf, kDdi0, {.tc = kV});
@@ -317,7 +317,7 @@ TEST(WhenADirectoryEntryHasAReservedBitSet,
 TEST(WhenADevicesContextAsksForAts, ItsRequestIsRefusedAsDdtMisconfigured) {
   // tc.EN_ATS: the device may ask for translations ahead of time, which
   // this IOMMU does not offer.
-  constexpr std::uint64_t kEnableAts = 1U << 1;
+  constexpr std::uint64_t kEnableAts = 1U << 1U;
   Memory memory;
   PutDeviceContext(memory, kRoot, kSomeRead.device_id, {.tc = kV | kEnableAts});
   const iommu_walker walker{memory.Loader()};
@@ -333,7 +333,7 @@ TEST(WhenADevicesContextAsksForASecondStage,
      ItsRequestIsRefusedAsDdtMisconfigured) {
   // iohgatp.MODE = Sv39x4, a guest's physical addresses translated again,
   // in bits 63:60. This IOMMU has one stage.
-  constexpr std::uint64_t kSv39x4 = std::uint64_t{8} << 60;
+  constexpr std::uint64_t kSv39x4 = std::uint64_t{8} << 60U;
   Memory memory;
   PutDeviceContext(memory, kRoot, kSomeRead.device_id,
                    {.tc = kV, .iohgatp = kSv39x4});
@@ -390,7 +390,7 @@ TEST(WhenAnSv39TableMapsA2MibPageForADevice,
       walker.translate(kOneLevel, kTranslatedRead);
 
   EXPECT_EQ(translation.fault, std::nullopt);
-  EXPECT_EQ(translation.pa, kPage + (kVpn0 << 12) + kOffset);
+  EXPECT_EQ(translation.pa, kPage + (kVpn0 << 12U) + kOffset);
 }
 
 TEST(WhenAnSv39TableMapsA1GibPageForADevice,
@@ -407,7 +407,7 @@ TEST(WhenAnSv39TableMapsA1GibPageForADevice,
       walker.translate(kOneLevel, kTranslatedRead);
 
   EXPECT_EQ(translation.fault, std::nullopt);
-  EXPECT_EQ(translation.pa, kPage + (kVpn1 << 21) + (kVpn0 << 12) + kOffset);
+  EXPECT_EQ(translation.pa, kPage + (kVpn1 << 21U) + (kVpn0 << 12U) + kOffset);
 }
 
 TEST(WhenTheEntryForAPageIsNotValid, AReadOfItIsRefusedAsAReadPageFault) {
@@ -528,7 +528,7 @@ TEST(WhenA2MibPageIsNotAlignedTo2Mib, AReadOfItIsRefusedAsAReadPageFault) {
 
 TEST(WhenAnAddressIsNotOneSv39CanMap, AReadOfItIsRefusedAsAReadPageFault) {
   // Sv39 maps 39 bits: bits 63:39 must all be copies of bit 38.
-  constexpr std::uint64_t kBeyondSv39 = kIova | (std::uint64_t{1} << 39);
+  constexpr std::uint64_t kBeyondSv39 = kIova | (std::uint64_t{1} << 39U);
   Memory memory;
   PutTranslatedDevice(memory);
   PutPage(memory, Pte(kSomePage, kReadWrite));
@@ -588,7 +588,7 @@ TEST(WhenTheLastLevelOfATablePointsAtAnotherTable,
 TEST(WhenAPageTableEntryHasAReservedBitSet, AReadIsRefusedAsAReadPageFault) {
   // Bits 63:54 are for extensions (memory types, contiguous pages) that
   // this IOMMU does not have; bit 62 would be Svpbmt's.
-  constexpr std::uint64_t kReserved = std::uint64_t{1} << 62;
+  constexpr std::uint64_t kReserved = std::uint64_t{1} << 62U;
   Memory memory;
   PutTranslatedDevice(memory);
   PutPage(memory, Pte(kSomePage, kReadWrite) | kReserved);
@@ -606,7 +606,7 @@ TEST(WhenAnSv39TableMapsAPageInTheUpperHalf,
   // first of its entries for the upper half.
   constexpr std::uint64_t kUpperHalfOfTheRoot = 0x100;
   constexpr std::uint64_t kUpperIova =
-      (~std::uint64_t{0} << 38) | (kVpn1 << 21) | (kVpn0 << 12) | kOffset;
+      (~std::uint64_t{0} << 38U) | (kVpn1 << 21U) | (kVpn0 << 12U) | kOffset;
   Memory memory;
   PutTranslatedDevice(memory);
   PutPte(memory, kLevel2, kUpperHalfOfTheRoot, Pte(kLevel1, kV));

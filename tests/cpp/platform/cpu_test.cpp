@@ -1170,7 +1170,7 @@ void PrintTo(const InterruptsOnTop& interrupts, std::ostream* out) {
 // bits 27 to 16. The priority in the bits below is the hart's own affair:
 // OpenSBI and Linux read the number alone.
 riscv::Word NumberIn(std::uint32_t top) {
-  return (top >> riscv::kTopInterruptShift) & 0xFFF;
+  return (top >> riscv::kTopInterruptShift) & 0xFFFU;
 }
 
 // 🎓 Interrupts arrive at a hart as bits in `mip`, and more than one can be
@@ -1338,7 +1338,7 @@ struct CpuPlatformWithPages {
   // the bigger the page.
   void MapTheRamWhereItIs() {
     WriteEntry(
-        kFirstTable, kRamBase >> 30,
+        kFirstTable, kRamBase >> 30U,
         riscv::PageTableEntry(kRamBase, kCode | kData | riscv::kPteValid));
   }
 
@@ -1693,7 +1693,7 @@ TEST(WhenUserModeMakesASystemCallThatIsHandedDownToSupervisorMode,
   // The program stores the cause with one added, and zero for no trap.
   const std::uint64_t why = with_pages.Result(0);
   const bool came_from_supervisor_mode =
-      ((with_pages.Result(1) >> riscv::kSupervisorPreviousMode) & 1) != 0;
+      ((with_pages.Result(1) >> riscv::kSupervisorPreviousMode) & 1U) != 0;
   const std::uint64_t the_user_ran_on = with_pages.Result(2);
   EXPECT_EQ(why, riscv::kEcallFromUserMode + 1);
   EXPECT_FALSE(came_from_supervisor_mode);
@@ -1882,7 +1882,7 @@ TEST(WhenMachineModeReturnsToSupervisorModeWithMprvSet,
   const std::uint64_t why_machine_mode_was_entered = with_pages.Result(0);
   ASSERT_EQ(why_machine_mode_was_entered, riscv::kEcallFromSupervisorMode + 1);
   const bool mprv =
-      ((with_pages.Result(1) >> riscv::kModifyPrivilege) & 1) != 0;
+      ((with_pages.Result(1) >> riscv::kModifyPrivilege) & 1U) != 0;
   EXPECT_FALSE(mprv);
 }
 
@@ -2734,7 +2734,7 @@ TEST(WhenAnInstructionLiesAcrossTwoPagesThatAreNotNeighboursInTheRam,
   // t0 = 0x123, a half of it in each page, and then a return.
   const riscv::Word across = riscv::Addi(riscv::kT0, riscv::kZero, 0x123);
   const auto first_half = static_cast<std::uint16_t>(across);
-  const auto second_half = static_cast<std::uint16_t>(across >> 16);
+  const auto second_half = static_cast<std::uint16_t>(across >> 16U);
   with_pages.Put(CpuPlatformWithPages::kFirstSparePage + kTwoBytesBeforeTheEnd,
                  first_half);
   with_pages.Put(CpuPlatformWithPages::kSecondSparePage, second_half);
