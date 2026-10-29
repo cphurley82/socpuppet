@@ -1493,7 +1493,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: `package-lock.cmake`, the `libqemu` entry, from commit `0e4bdfd1` ("Adjust for new libqemu", 2026-10-05) on.
 - **What is wrong**: it pins `GIT_TAG libqemu-v11.0.50-v0.1`, and [qualcomm/qemu](https://github.com/qualcomm/qemu) has no such tag (its newest in that series is `libqemu-v11.0-v0.15`). A clean build from the head of `main` cannot fetch QEMU.
 - **How to see it**: `cmake --preset gcc` at that commit ends with `fatal: invalid reference: libqemu-v11.0.50-v0.1`, before anything is compiled.
-- **What we do**: build the commit before it, `4d63017c`, whose tag is there. The ISS spike's recipe (`spikes/iss/qbox/build.sh`) names a later commit and would fail the same way today.
+- **What we do**: build the commit before it, `4d63017c`, whose tag is there. The ISS spike's recipe ([iss-spike.md](history/iss-spike.md)) named a later commit, and would fail the same way today.
 - **Upstream fix**: publish the tag, or pin one that is published.
 - **Kind**: build.
 - **When it lands**: `tools/build_qbox.py` can move to the head again.

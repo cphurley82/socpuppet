@@ -177,6 +177,7 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - Two flakes in CI: one pytest failure inside ctest's eight jobs that was never explained, and the keyboard-interrupt test's timeout, which was coverage.py taking a lock in two Python calls ([upstream.md](../upstream.md#coveragepy)).
 - **A wall-clock test starts its clock before what it times, not at its echo**: `sleep 2` came in 2 ms short, the shell asleep before the test had read the line back.
 - **A module of boots must be all boots**: long tests are handed out in the order they are collected, so a milestone's Linux tests among its quick Zephyr ones put a quick test before a boot module's.
+- **Measure what sets the wall before cutting the work.** On a 24-core machine the suite took five minutes, and the obvious cost was some 35 boots of Linux; but the tooling tests took 225 s on their own, because `--dist loadscope` kept a module's 45 runs of `tools/ci.py` on one worker, and the long tests' pace was set by classes whose tests each boot, which `loadscope` also ran one after another. `--dist load` for the tooling and `--dist loadgroup` for the Python tests, with groups only where a class shares a boot, did more for the wall than sharing the boots did: 5 min 13 s to 3 min 22 s, against 59 to 51 minutes of CPU. The per-test durations (`pytest --durations`) and ctest's label summary say which is which; the sum of the parts does not.
 
 ## Building and machines
 
