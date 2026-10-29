@@ -463,8 +463,9 @@ JOBS = [
         steps=(
             *DEV_BUILD,
             # The quick preset leaves out the long tests but one boot for
-            # each area. An Intel Mac leaves those out too: a boot of Linux
-            # takes minutes there, and Ubuntu runs them on both harts.
+            # each area. An Intel Mac leaves those out too, a developer's
+            # running --quick: a boot of Linux takes minutes there. CI's
+            # quick tier runs them on Linux and on an Apple silicon Mac.
             Step(
                 "ctest",
                 (
