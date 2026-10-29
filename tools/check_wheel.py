@@ -5,9 +5,10 @@ Usage: python tools/check_wheel.py WHEEL [WHEEL ...]
 
 import sys
 import zipfile
+from collections.abc import Iterator, Sequence
 
 
-def problems_with(names):
+def problems_with(names: Sequence[str]) -> Iterator[str]:
     """Yield what is wrong with a wheel holding the files `names`."""
     # _core.pyi sits next to the extension and describes it to type checkers.
     extensions = [
@@ -67,7 +68,7 @@ def problems_with(names):
             yield f"unexpected file outside the package: {name}"
 
 
-def main(wheel_paths):
+def main(wheel_paths: Sequence[str]) -> int:
     """Print the verdict on each wheel in `wheel_paths`.
 
     Returns the exit status, which is 1 if any wheel is wrong.

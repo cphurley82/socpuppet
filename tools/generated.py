@@ -14,9 +14,13 @@ goes in a place has so far always been a table, and the messages say so.
 """
 
 import re
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 
 
-def pages(paths, known):
+def pages(
+    paths: Iterable[Path], known: Mapping[str, str]
+) -> tuple[dict[Path, str], dict[str, Path], list[str]]:
     """What each page should hold, once its marked places are filled.
 
     `known` is what goes in each place, by the place's name. Returns three
@@ -32,7 +36,9 @@ def pages(paths, known):
     name that has no place, is its own business.
     """
     kinds = {name.partition(":")[0] for name in known}
-    wanted, placed, problems = {}, {}, []
+    wanted: dict[Path, str] = {}
+    placed: dict[str, Path] = {}
+    problems: list[str] = []
     for path in paths:
         text = path.read_text()
         whole = [place["name"] for place in _marked(known).finditer(text)]
@@ -56,7 +62,7 @@ def pages(paths, known):
     return wanted, placed, problems
 
 
-def settle(command, wanted, source):
+def settle(command: str, wanted: Mapping[Path, str], source: str) -> int:
     """Write the files, or check that they are written. Returns the status.
 
     `wanted` is what each file should hold, by its path, and `command` is
@@ -79,7 +85,7 @@ def settle(command, wanted, source):
     return status
 
 
-def markdown_table(header, rows):
+def markdown_table(header: Sequence[str], rows: Iterable[Sequence[str]]) -> str:
     """A table in Markdown, with no line after the last."""
     return "\n".join(
         "|" + "".join(f" {cell} |" if cell else " |" for cell in cells)
@@ -87,7 +93,7 @@ def markdown_table(header, rows):
     )
 
 
-def _starts(text, kinds):
+def _starts(text: str, kinds: Iterable[str]) -> list[str]:
     """The names of the places a page's text marks the start of, in order.
 
     Only those of the `kinds` named: another generator's are its own.
@@ -96,7 +102,7 @@ def _starts(text, kinds):
     return re.findall(rf"^<!-- ((?:{kind}):\S+) start -->$", text, re.MULTILINE)
 
 
-def _marked(known):
+def _marked(known: Iterable[str]) -> re.Pattern[str]:
     """What matches a whole marked place with one of the names in `known`."""
     name = "|".join(re.escape(name) for name in known)
     return re.compile(

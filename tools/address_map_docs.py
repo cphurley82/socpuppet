@@ -16,6 +16,7 @@ what `write` would leave. tools/lint.py runs `check`, or `write` with
 import argparse
 import functools
 import sys
+from collections.abc import Container, Iterable
 from pathlib import Path
 
 import generated
@@ -26,12 +27,18 @@ REPO = Path(__file__).resolve().parents[1]
 # needs none of the simulator.
 sys.path.insert(0, str(REPO / "python"))
 
-from socpuppet.address_map import format_address, format_size  # noqa: E402
+from socpuppet.address_map import (  # noqa: E402
+    MapEntry,
+    format_address,
+    format_size,
+)
 from socpuppet.boards import host, io_manager, manager, ssd  # noqa: E402
 from socpuppet.boards.virtio import Virtio  # noqa: E402
+from socpuppet.interrupt_map import InterruptEntry  # noqa: E402
+from socpuppet.platform import Platform  # noqa: E402
 
 
-def main():
+def main() -> int:
     """Check or write the tables of the pages named. Returns the exit status."""
     parser = argparse.ArgumentParser(
         description=__doc__,
@@ -55,7 +62,7 @@ def main():
     return 1 if problems else status
 
 
-def tables():
+def tables() -> dict[str, str]:
     """Each table a page can ask for, by the name in its markers."""
     host_board = host.platform
     # How big the drive is changes nothing in a map.
@@ -79,7 +86,7 @@ def tables():
     ssd_board = ssd.platform
     io_board = io_manager.platform
 
-    def seen_from(platform, view):
+    def seen_from(platform: Platform, view: str) -> list[MapEntry]:
         return platform.address_map(platform.port(view))
 
     return {
@@ -124,12 +131,12 @@ def tables():
     }
 
 
-def only_in(entries, others):
+def only_in[T](entries: Iterable[T], others: Container[T]) -> list[T]:
     """The entries that are not among the others, in the order they were in."""
     return [entry for entry in entries if entry not in others]
 
 
-def address_table(entries):
+def address_table(entries: Iterable[MapEntry]) -> str:
     """An address map as a Markdown table."""
     return generated.markdown_table(
         ("Address", "Size", "What answers", "Its model", "Through"),
@@ -151,7 +158,7 @@ def address_table(entries):
     )
 
 
-def interrupt_table(entries):
+def interrupt_table(entries: Iterable[InterruptEntry]) -> str:
     """An interrupt map as a Markdown table."""
     return generated.markdown_table(
         ("Controller", "Number", "Line"),
@@ -162,7 +169,7 @@ def interrupt_table(entries):
     )
 
 
-def model_link(implementation):
+def model_link(implementation: str) -> str:
     """A link to a model's page in docs/models, with the page's own title.
 
     A page is named after the model. The two ends of a link share the

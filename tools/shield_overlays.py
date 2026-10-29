@@ -37,7 +37,7 @@ OVERLAYS = {
 }
 
 
-def main():
+def main() -> int:
     """Check or write the overlays named. Returns the exit status."""
     parser = argparse.ArgumentParser(
         description=__doc__,
