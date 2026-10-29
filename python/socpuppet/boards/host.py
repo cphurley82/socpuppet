@@ -839,8 +839,8 @@ def drive_overlay(board: Host[Any] | None = None) -> str:
     stand-in drive. The overlay is what the host's CPU sees, which is the
     same with the SSD on the link, so there is one shield for both.
 
-    The shield's copy is checked in, and a test holds it to this. To write
-    the file again, print what this returns into it, with no newline added.
+    The shield's copy is checked in, and `uv run python tools/lint.py
+    --fix` writes it again (tools/shield_overlays.py).
     """
     if board is None:
         # The devicetree does not say how big the drive is, so any size
@@ -877,9 +877,8 @@ def spi_loopback_overlay() -> str:
     SPI bus at chip select 1, where 🧵 Python's `socpuppet.spi.Loopback`
     answers each byte with itself. The fast one is as fast as the bus goes.
 
-    The shield's copy is checked in, and a test holds it to this. To write
-    the file again, print what this returns into it, with no newline added,
-    as for `drive_overlay`.
+    The shield's copy is checked in, and `uv run python tools/lint.py
+    --fix` writes it again, as for `drive_overlay`.
     """
     flash = devicetree.label(host().boot_flash.path)
     fastest = SpiFlash.FASTEST_HZ
@@ -910,9 +909,8 @@ def gpio_loopback_overlay() -> str:
     the test's two pins on the GPIO, the one it drives and the one it
     reads, which 🧵 a wire of Python's joins (`host(gpio_wires=...)`).
 
-    The shield's copy is checked in, and a test holds it to this. To write
-    the file again, print what this returns into it, with no newline added,
-    as for `drive_overlay`.
+    The shield's copy is checked in, and `uv run python tools/lint.py
+    --fix` writes it again, as for `drive_overlay`.
     """
     gpio = devicetree.label(host().gpio.path)
     return textwrap.dedent(
@@ -936,9 +934,8 @@ def i2c_ram_overlay() -> str:
     RAM (`socpuppet.i2c.Ram`) is on, at `I2C_RAM_ADDRESS`, which the test
     knows already.
 
-    The shield's copy is checked in, and a test holds it to this. To write
-    the file again, print what this returns into it, with no newline added,
-    as for `drive_overlay`.
+    The shield's copy is checked in, and `uv run python tools/lint.py
+    --fix` writes it again, as for `drive_overlay`.
     """
     i2c = devicetree.label(host().i2c.path)
     return textwrap.dedent(
@@ -962,9 +959,9 @@ def iommu_overlay(board: Host[Any] | None = None) -> str:
     before the one for the root complex.
 
     `board` is a host with a drive and an IOMMU, and by default the host
-    with 🎭 the stand-in drive. The shield's copy is checked in, and a test
-    holds it to this. To write the file again, print what this returns into
-    it, with no newline added, as for `drive_overlay`.
+    with 🎭 the stand-in drive. The shield's copy is checked in, and
+    `uv run python tools/lint.py --fix` writes it again, as for
+    `drive_overlay`.
     """
     if board is None:
         board = host(drive_blocks=1, iommu=True)
@@ -993,9 +990,8 @@ def virtio_overlay(board: Host[Any] | None = None) -> str:
     say of them.
 
     `board` is a host with its slots, and by default the host with them as
-    they come. The shield's copy is checked in, and a test holds it to
-    this. To write the file again, print what this returns into it, with
-    no newline added, as for `drive_overlay`.
+    they come. The shield's copy is checked in, and `uv run python tools/lint.py
+    --fix` writes it again, as for `drive_overlay`.
     """
     if board is None:
         board = host(virtio=Virtio())
