@@ -23,9 +23,9 @@ uv run ctest --preset dev                # everything, every boot: about 5 minut
 |---|---|---|---|
 | The inner loop | `fast` | the C++ tests (`cpp`), and the Python tests that are not marked `long` (`python`, the `pytest` entry) | every few minutes, and at each step of `/tdd` |
 | Every push | `quick` | `fast`, and lint and the tooling tests (`tooling`), the examples that take seconds (`example`), and one boot of real firmware for each area (`boots`, the `pytest_boots` entry: the tests marked `@pytest.mark.representative(area)`) | before a push, and in CI's quick tier, with `qbox-quick` beside it |
-| Every night | `dev` | everything: `quick`, and every other boot (`long`, the `pytest_long` entry) | in CI's nightly tier, and when a change touches a boot |
+| Every night | `dev` | everything: `quick`, and every other boot (`nightly`, the `pytest_long` entry) | in CI's nightly tier, and when a change touches a boot |
 
-`qbox-quick` and `qbox` are the same on QBox's hart ([below](#qbox-the-second-hart)). 💡 An area's one boot stands for the rest of its tests on a push: Linux the quick way and with its root on the drive, UEFI, OpenSBI, the IOMMU, Zephyr on the virtio devices, and ssh over the cable. The list is the marker's, in `tests/python/conftest.py`.
+`qbox-quick` and `qbox` are their counterparts on QBox's hart ([below](#qbox-the-second-hart)). 💡 An area's one boot stands for the rest of its tests on a push: Linux the quick way and with its root on the drive, UEFI, OpenSBI, the IOMMU, Zephyr on the virtio devices, and ssh over the cable. The list is the marker's, in `tests/python/conftest.py`.
 
 💡 Building formats the C++ and Python for you and treats compiler warnings in our code as errors, and `ctest` includes a lint check over the whole tree. [Style, and the tools that hold us to it](style.md) says what the rules are and why.
 
@@ -48,7 +48,7 @@ PYTHONPATH=python uv run python examples/passthrough_hello.py
 | `tests/cpp/platform/` | composed platforms | one process per test |
 | `tests/python/` | the Python API | `@pytest.mark.platform` tests get a process each |
 | `tests/tooling/` | the lint runner and the build-time checks | each makes a throwaway repository or CMake project |
-| `examples/` | documentation that runs: the shows the README and the 🧪 [labs](labs/README.md) point at | each as a ctest of its own, `example_<name>`, counted as skipped where its firmware is not built; the ones that boot Linux at the console carry the label `qbox` and run on QBox's hart alone, where a boot takes seconds: the `dev` and `quick` test presets leave them out, and the `qbox` test preset runs them, in the nightly `qbox` job; the one with a cable carries `long`, like the pytest marker, and runs on the interpreter in the nightly `test` job, since QBox's hart under the pump is a [loose end](roadmap.md#loose-ends) |
+| `examples/` | documentation that runs: the shows the README and the 🧪 [labs](labs/README.md) point at | each as a ctest of its own, `example_<name>`, counted as skipped where its firmware is not built; the ones that boot Linux at the console carry the label `qbox` and run on QBox's hart alone, where a boot takes seconds: the `dev` and `quick` test presets leave them out, and the `qbox` test preset runs them, in the nightly `qbox` job; the one with a cable carries `nightly` and `interpreter`, and runs on the interpreter in the nightly `test` job, since QBox's hart under the pump is a [loose end](roadmap.md#loose-ends) |
 | `python/socpuppet/zephyr_module/tests/`, `firmware/**/testcase.yaml` | ztest suites and applications that run inside Zephyr, on a board | by twister, with `firmware/twister.py`. Not part of `ctest` |
 | Zephyr's own `tests/` and `samples/` | the board-compliance run: Zephyr's suites on every board | by twister, with `uv run firmware/twister.py --suites`, and in CI's `twister` job |
 

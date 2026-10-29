@@ -1,5 +1,6 @@
 """Fixtures for the tests of the repo's own tooling."""
 
+import json
 import os
 import pty
 import shutil
@@ -87,7 +88,11 @@ def qbox_tree():
     there is none: `uv run cmake --preset qbox` configures it, once
     `tools/build_qbox.py` has built QBox.
     """
-    tree = REPO / "build/qbox-dev"
+    presets = json.loads((REPO / "CMakePresets.json").read_text())
+    (qbox,) = [
+        each for each in presets["configurePresets"] if each["name"] == "qbox"
+    ]
+    tree = Path(qbox["binaryDir"].replace("${sourceDir}", str(REPO)))
     if not (tree / "CTestTestfile.cmake").is_file():
         pytest.skip(
             f"There is no {tree}. `uv run tools/build_qbox.py && uv run "
