@@ -93,6 +93,11 @@
       "filter": { "exclude": { "label": "long|qbox" } }
     },
     {
+      "name": "quick-without-boots",
+      "inherits": "quick",
+      "filter": { "exclude": { "label": "long|qbox|boots" } }
+    },
+    {
       "name": "asan",
       "configurePreset": "asan",
       "output": { "outputOnFailure": true },

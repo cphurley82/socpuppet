@@ -600,9 +600,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu 24.04 too, the oldest we support: QBox links more of the
-        # system's libraries than anything else, and they differ most there.
-        # macos-26 builds it for qbox-tidy.
+        # Every night Ubuntu 24.04 too, the oldest we support: QBox links
+        # more of the system's libraries than anything else, and they differ
+        # most there. And macos-26, which builds it for qbox-tidy.
         os: [ubuntu-26.04, ubuntu-24.04, macos-15, macos-26, macos-26-intel]
     steps:
       - uses: actions/checkout@v7

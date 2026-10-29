@@ -77,8 +77,8 @@ PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
 
 # A job of the quick tier that runs some of what one of the nightly tier
 # runs, by the name of the nightly's: the quick tests are the dev tests
-# but the long ones.
-NIGHTLY_COUNTERPART = {"test-quick": "test"}
+# but most of the long ones, on either hart.
+NIGHTLY_COUNTERPART = {"test-quick": "test", "qbox-quick": "qbox"}
 
 
 def test_there_is_a_workflow_for_each_tier_and_no_other():

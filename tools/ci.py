@@ -449,16 +449,21 @@ JOBS = [
     ),
     Job(
         "test-quick",
-        "build the dev tree and run every test but the long ones",
+        "build the dev tree and run its quick tests, one boot for each area",
         tiers=(Tier.QUICK,),
         needs=FIRMWARE,
         uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         steps=(
             *DEV_BUILD,
-            # The quick preset leaves out the tests marked long.
+            # The quick preset leaves out the long tests but one boot for
+            # each area. An Intel Mac leaves those out too: a boot of Linux
+            # takes minutes there, and Ubuntu runs them on both harts.
             Step(
                 "ctest",
-                ("uv", "run", "ctest", "--preset", "quick"),
+                (
+                    *("uv", "run", "ctest", "--preset"),
+                    "quick-without-boots" if INTEL_MAC else "quick",
+                ),
                 env=REQUIRE_FIRMWARE,
             ),
         ),
@@ -555,10 +560,29 @@ JOBS = [
     Job(
         "qbox-build",
         "build QBox, QEMU in SystemC, for the second hart",
-        tiers=(Tier.NIGHTLY,),
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
         steps=(Step("build", ("uv", "run", "tools/build_qbox.py")),),
         uses=("build/qbox",),
         areas=("build", "qbox", "network"),
+    ),
+    Job(
+        "qbox-quick",
+        "the quick tests and one boot for each area, on QBox's CPU",
+        tiers=(Tier.QUICK,),
+        needs=(*FIRMWARE, "qbox-build"),
+        steps=(
+            Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
+            Step(
+                "build", ("uv", "run", "cmake", "--build", "--preset", "qbox")
+            ),
+            Step(
+                "ctest",
+                ("uv", "run", "ctest", "--preset", "qbox-quick"),
+                env=REQUIRE_FIRMWARE,
+            ),
+        ),
+        uses=("build/qbox-dev", "extension", TESTS_ON_EVERY_CORE),
+        areas=("build",),
     ),
     Job(
         "qbox-tidy",

@@ -352,6 +352,9 @@ def imports_needs_pciem(module: Path) -> bool:
     )
 
 
+@pytest.mark.skipif(
+    RUNNER_MODULE.INTEL_MAC, reason="an Intel Mac leaves the boots out"
+)
 def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_the_firmware(
     ci,
 ):
@@ -361,6 +364,34 @@ def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_
         ("uv run cmake --preset dev", {}),
         ("uv run cmake --build --preset dev", {}),
         ("uv run ctest --preset quick", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
+    ]
+
+
+@pytest.mark.skipif(not RUNNER_MODULE.INTEL_MAC, reason="for an Intel Mac")
+def test_run_test_quick_on_an_intel_mac_leaves_the_boots_out(ci):
+    # A boot of Linux there takes minutes, and the boots run on Ubuntu,
+    # on both harts: the Mac's part is that socpuppet builds and passes
+    # the rest there.
+    ci("run", "test-quick")
+
+    assert steps_and_their_env(ci)[-1] == (
+        "uv run ctest --preset quick-without-boots",
+        {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+    )
+
+
+def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring_the_firmware(
+    ci,
+):
+    ci("run", "qbox-quick")
+
+    assert steps_and_their_env(ci) == [
+        ("uv run cmake --preset qbox", {}),
+        ("uv run cmake --build --preset qbox", {}),
+        (
+            "uv run ctest --preset qbox-quick",
+            {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+        ),
     ]
 
 
@@ -584,6 +615,7 @@ def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
 ON_EVERY_CORE = [
     "test",
     "test-quick",
+    "qbox-quick",
     "on-demand",
     "coverage",
     "sanitizers",

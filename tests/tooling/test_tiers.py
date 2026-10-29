@@ -94,6 +94,16 @@ def test_quick_runs_what_fast_does_and_a_boot_of_each_area_lint_tooling_and_exam
     assert marks_chosen_by(quick["pytest_boots"][0]) == "representative"
 
 
+def test_quick_without_boots_runs_all_quick_does_but_the_boots(dev_tree):
+    # 💡 An Intel Mac runs it as its quick tier (tools/ci.py). A preset of
+    # its own, since ctest takes no -LE beside a preset's filter.
+    quick = selected_by("quick")
+    without_boots = selected_by("quick-without-boots")
+
+    assert quick.keys() - without_boots.keys() == {"pytest_boots"}
+    assert without_boots.keys() <= quick.keys()
+
+
 def test_dev_runs_what_quick_does_and_every_other_long_test(dev_tree):
     quick, dev = selected_by("quick"), selected_by("dev")
 
