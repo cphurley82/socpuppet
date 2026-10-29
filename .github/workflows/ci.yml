@@ -109,8 +109,12 @@ jobs:
   ci-passed:
     # The one check main's ruleset requires, so that a pull request can
     # merge itself once it is green: it needs every other job here, and
-    # stands for them all.
+    # stands for them all. It runs whatever they did, since a job whose
+    # needs failed is skipped, and GitHub counts a required check that was
+    # skipped as passed. Not !cancelled(): a run cancelled by hand would
+    # skip it too, and merge what it never tested.
     name: CI passed
+    if: always()
     needs: [checks, firmware, test-quick, qbox-build, qbox-quick]
     runs-on: ubuntu-26.04
     steps:
