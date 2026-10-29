@@ -1,12 +1,15 @@
 """.github/workflows, held to the jobs tools/ci.py runs.
 
 Each workflow is written by hand, and each of its jobs is a thin wrapper:
-GitHub's plumbing (a checkout, packages, caches, artifacts) around a step
-that runs `uv run python tools/ci.py run JOB`. These tests keep the two to
-the same jobs, so that what a developer runs here is what CI runs.
+GitHub's plumbing (a checkout, then .github/actions/setup's packages,
+caches and artifacts) around a step that runs `uv run python tools/ci.py
+run JOB`. A tier's workflow has its own jobs and calls the workflows both
+tiers share. These tests keep the two to the same jobs, so that what a
+developer runs here is what CI runs.
 """
 
 import importlib.util
+import json
 import re
 from pathlib import Path
 
@@ -34,6 +37,7 @@ def load_runner():
 RUNNER = load_runner()
 JOBS = {job.name: job for job in RUNNER.JOBS}
 TIER = RUNNER.Tier
+TIER_FILES = {tier.value for tier in TIER}
 # Each workflow, and its jobs, by its file's name.
 WORKFLOW_DEFINITIONS = {
     path.name: yaml.safe_load(path.read_text())
@@ -43,11 +47,49 @@ WORKFLOW_FILES = {
     file: definition["jobs"]
     for file, definition in WORKFLOW_DEFINITIONS.items()
 }
-# Every job of every workflow: where it is, as file: job, its name, and it.
-WORKFLOW_JOBS = [
-    (f"{file}: {name}", name, job)
+# How a job calls a workflow both tiers share, and what it hands it: the
+# machines, which the called workflow's matrices are made of.
+CALLED = "./.github/workflows/"
+MACHINES = "${{ fromJSON(inputs.os) }}"
+# The action every job takes its setup from, and what it does with what it
+# is given.
+SETUP = "./.github/actions/setup"
+SETUP_ACTION = yaml.safe_load(
+    (REPO / ".github" / "actions" / "setup" / "action.yml").read_text()
+)
+# The sets of packages the setup action installs, by name: the patterns of
+# its script's case.
+PACKAGE_SETS = set(
+    re.findall(
+        r"^ +(\w+)\)$",
+        next(
+            step["run"]
+            for step in SETUP_ACTION["runs"]["steps"]
+            if "PACKAGES" in step.get("env", {})
+        ),
+        re.MULTILINE,
+    )
+)
+# Each job as it is written, in the workflow it is written in, by its name,
+# less the jobs that call a workflow; and every one of them, with where it
+# is, as file: job.
+DEFINED = {
+    file: {name: job for name, job in jobs.items() if "uses" not in job}
     for file, jobs in WORKFLOW_FILES.items()
+}
+DEFINED_JOBS = [
+    (f"{file}: {name}", file, name, job)
+    for file, jobs in DEFINED.items()
     for name, job in jobs.items()
+]
+# Every step of every job, and of the setup action, with where it is.
+EVERY_STEP = [
+    *(
+        (where, step)
+        for where, _, _, job in DEFINED_JOBS
+        for step in job["steps"]
+    ),
+    *((SETUP, step) for step in SETUP_ACTION["runs"]["steps"]),
 ]
 
 # A job that builds QBox, or runs on what that built, is given three hours:
@@ -81,32 +123,38 @@ PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
 NIGHTLY_COUNTERPART = {"test-quick": "test", "qbox-quick": "qbox"}
 
 
-def test_there_is_a_workflow_for_each_tier_and_no_other():
+def test_each_workflow_is_a_tiers_or_one_that_both_tiers_call():
     assert sorted(path.name for path in WORKFLOWS.iterdir()) == sorted(
-        tier.value for tier in TIER
+        WORKFLOW_DEFINITIONS
     )
+    assert set(WORKFLOW_DEFINITIONS) >= TIER_FILES
+    for file in set(WORKFLOW_DEFINITIONS) - TIER_FILES:
+        assert set(triggers_in(file)) == {"workflow_call"}, file
+        for tier in TIER:
+            assert file in called_by(tier), f"{tier.value} calls no {file}"
 
 
 def test_each_workflow_has_a_job_for_each_job_of_its_tier_and_no_other():
     for tier in TIER:
-        assert set(WORKFLOW_FILES[tier.value]) == {
+        assert set(jobs_of(tier)) == {
             name for name, job in JOBS.items() if tier in job.tiers
         }, tier.value
 
 
-def test_a_job_in_both_tiers_is_the_same_in_both_workflows_but_for_its_machines():
-    # Word for word, comments too, so that the two copies cannot drift.
-    quick = WORKFLOW_FILES[TIER.QUICK.value]
-    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
-    for name in set(quick) & set(nightly):
-        assert without_its_machines(TIER.QUICK, name) == without_its_machines(
-            TIER.NIGHTLY, name
-        ), name
+def test_each_job_is_written_once_and_one_of_both_tiers_in_a_workflow_both_call():
+    # So that the two tiers' copies of a job cannot drift apart: there is
+    # one.
+    for name, job in JOBS.items():
+        (file,) = [file for file, jobs in DEFINED.items() if name in jobs]
+        if set(job.tiers) == set(TIER):
+            assert file not in TIER_FILES, name
+        else:
+            assert file in TIER_FILES, name
 
 
 def test_each_machine_the_quick_tier_runs_a_job_on_the_nightly_runs_it_on_too():
-    quick = WORKFLOW_FILES[TIER.QUICK.value]
-    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    quick = jobs_of(TIER.QUICK)
+    nightly = jobs_of(TIER.NIGHTLY)
     for name, job in quick.items():
         counterpart = nightly[NIGHTLY_COUNTERPART.get(name, name)]
         assert set(runners(job)) <= set(runners(counterpart)), name
@@ -133,33 +181,65 @@ def test_neither_tier_queues_behind_the_other():
     assert not nightly.startswith(quick)
 
 
-def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs():
-    for where, name, job in WORKFLOW_JOBS:
-        needs = job.get("needs", [])
-        needs = [needs] if isinstance(needs, str) else needs
-        assert set(needs) == set(JOBS[name].needs), where
+def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
+    # A job that needs any job of a workflow both tiers call waits for the
+    # whole of it, and for nothing it does not need.
+    for where, file, name, job in DEFINED_JOBS:
+        waits = {
+            need: called_jobs(WORKFLOW_FILES[file][need])
+            if "uses" in WORKFLOW_FILES[file][need]
+            else {need}
+            for need in needs_of(job)
+        }
+        assert set(JOBS[name].needs) <= set().union(*waits.values()), where
+        for need, jobs in waits.items():
+            assert jobs & RUNNER.needed_by(JOBS[name]), f"{where}: {need}"
 
 
 def test_each_job_of_a_workflow_ends_by_running_itself_with_the_runner():
-    for where, name, job in WORKFLOW_JOBS:
+    for where, _, name, job in DEFINED_JOBS:
         named = jobs_run(job)
         assert named, where
         assert named[-1] == name, where
 
 
 def test_each_job_of_a_workflow_runs_no_other_job_but_one_it_needs():
-    for where, name, job in WORKFLOW_JOBS:
+    for where, _, name, job in DEFINED_JOBS:
         assert set(jobs_run(job)[:-1]) <= RUNNER.needed_by(JOBS[name]), where
 
 
 def test_no_other_step_runs_what_a_job_of_the_runner_runs():
-    for where, _, job in WORKFLOW_JOBS:
-        for step in job["steps"]:
-            command = step.get("run", "")
-            if command.startswith(RUN):
-                continue
-            for program in PROGRAMS:
-                assert program not in command, f"{where}: {command}"
+    for where, step in EVERY_STEP:
+        command = step.get("run", "")
+        if command.startswith(RUN):
+            continue
+        for program in PROGRAMS:
+            assert program not in command, f"{where}: {command}"
+
+
+def test_each_job_sets_up_with_the_setup_action_alone():
+    # So that uv and the system's packages are set up in one place.
+    for where, step in EVERY_STEP:
+        if where != SETUP:
+            assert not step.get("uses", "").startswith("astral-sh/"), where
+            for installer in ("apt-get", "brew"):
+                assert installer not in step.get("run", ""), where
+
+
+def test_each_set_of_packages_a_job_asks_for_is_one_the_setup_action_has():
+    for where, _, _, job in DEFINED_JOBS:
+        for given in setups_in(job):
+            for name in given.get("packages", "").split():
+                assert name in PACKAGE_SETS, f"{where}: {name}"
+
+
+def test_the_setup_action_keeps_what_it_builds_for_the_machine_the_job_runs_on():
+    # A tree's dependencies and QBox's build are the runner's own, and a
+    # job on another runner would take them for its own.
+    for where, _, _, job in DEFINED_JOBS:
+        for given in setups_in(job):
+            if given.get("tree") or given.get("qbox"):
+                assert given.get("machine") == job["runs-on"], where
 
 
 def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
@@ -168,7 +248,8 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
         for name, job in JOBS.items()
         if name == "qbox-build" or "qbox-build" in RUNNER.needed_by(job)
     }
-    for file, jobs in WORKFLOW_FILES.items():
+    for tier in TIER:
+        jobs = jobs_of(tier)
         limits = {
             name: job["timeout-minutes"]
             for name, job in jobs.items()
@@ -176,11 +257,11 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
         }
         assert limits == dict.fromkeys(
             with_qbox & set(jobs), QBOX_TIME_LIMIT
-        ), file
+        ), tier.value
 
 
 def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
-    for where, _, job in WORKFLOW_JOBS:
+    for where, _, _, job in DEFINED_JOBS:
         if "matrix" in job.get("strategy", {}):
             assert job["strategy"]["fail-fast"] is False, where
 
@@ -196,7 +277,7 @@ def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldes
 
 
 def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default_every_night():
-    nightly = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    nightly = jobs_of(TIER.NIGHTLY)
     for name in ON_THE_OLDEST_UBUNTU_TOO:
         assert {DEFAULT_UBUNTU, OLDEST_UBUNTU} <= set(runners(nightly[name])), (
             name
@@ -215,9 +296,10 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
 
 
 def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
-    for file, jobs in WORKFLOW_FILES.items():
+    for tier in TIER:
+        file = tier.value
         seen = set()
-        for name, job in jobs.items():
+        for name, job in jobs_of(tier).items():
             for key in cache_keys(job):
                 cache = cache_named_by(key)
                 if cache in PORTABLE_CACHES:
@@ -249,7 +331,8 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
 
 
 def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
-    for file, jobs in WORKFLOW_FILES.items():
+    for tier in TIER:
+        file, jobs = tier.value, jobs_of(tier)
         kept = paths_kept_by(jobs["firmware-linux"])
         assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
         for paths in kept.values():
@@ -257,7 +340,8 @@ def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
 
 
 def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
-    for file, jobs in WORKFLOW_FILES.items():
+    for tier in TIER:
+        file, jobs = tier.value, jobs_of(tier)
         kept = paths_kept_by(jobs["firmware-edk2"])
         assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
         for paths in kept.values():
@@ -265,7 +349,8 @@ def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
 
 
 def test_a_change_to_what_the_initramfs_is_made_of_is_a_new_linux_cache():
-    for file, jobs in WORKFLOW_FILES.items():
+    for tier in TIER:
+        file, jobs = tier.value, jobs_of(tier)
         (key,) = keys_of_what_it_builds(jobs["firmware-linux"])
         assert "firmware/initramfs/**" in hashed_by(key), file
 
@@ -282,18 +367,67 @@ def test_the_devcontainers_image_is_the_default_ubuntu():
     assert set(base_images(dockerfile)) == {f"ubuntu:{version}"}
 
 
-def without_its_machines(tier, name):
-    """A job's text in a tier's workflow, less the line of its matrix's
-    machines."""
-    text = (WORKFLOWS / tier.value).read_text()
-    start = re.search(rf"^  {re.escape(name)}:$", text, re.MULTILINE).end()
-    following = re.compile(r"^  \S", re.MULTILINE).search(text, start)
-    block = text[start : following.start() if following else len(text)]
-    return [
-        line
-        for line in block.splitlines()
-        if not line.strip().startswith("os: ")
-    ]
+def jobs_of(tier):
+    """Every job a tier's workflow runs, by its name: its own, and those of
+    each workflow it calls, made with the machines it hands that one."""
+    jobs = {}
+    for name, job in WORKFLOW_FILES[tier.value].items():
+        if "uses" in job:
+            machines = json.loads(job["with"]["os"])
+            called = WORKFLOW_FILES[job["uses"].removeprefix(CALLED)]
+            jobs |= {
+                each: given_machines(called[each], machines) for each in called
+            }
+        else:
+            jobs[name] = job
+    return jobs
+
+
+def given_machines(job, machines):
+    """A job of a called workflow, its matrix made of the machines given."""
+    if job.get("strategy", {}).get("matrix", {}).get("os") != MACHINES:
+        return job
+    return {
+        **job,
+        "strategy": {
+            **job["strategy"],
+            "matrix": {**job["strategy"]["matrix"], "os": machines},
+        },
+    }
+
+
+def called_by(tier):
+    """The workflows a tier's workflow calls, by their files' names."""
+    return {
+        job["uses"].removeprefix(CALLED)
+        for job in WORKFLOW_FILES[tier.value].values()
+        if "uses" in job
+    }
+
+
+def called_jobs(job):
+    """The names of the jobs of the workflow a job calls."""
+    return set(WORKFLOW_FILES[job["uses"].removeprefix(CALLED)])
+
+
+def triggers_in(file):
+    """What starts a workflow: its `on`, which YAML reads as True."""
+    return WORKFLOW_DEFINITIONS[file][True]
+
+
+def needs_of(job):
+    """The jobs a job of a workflow names in its needs, as a list."""
+    needs = job.get("needs", [])
+    return [needs] if isinstance(needs, str) else needs
+
+
+def setups_in(job):
+    """What each of a job's steps hands the setup action."""
+    for step in job["steps"]:
+        if step.get("uses") == SETUP:
+            yield {
+                name: str(value) for name, value in step.get("with", {}).items()
+            }
 
 
 def fixed_part_of_group(tier):
@@ -303,8 +437,8 @@ def fixed_part_of_group(tier):
 
 
 def triggers_of(tier):
-    """What starts a tier's workflow: its `on`, which YAML reads as True."""
-    return WORKFLOW_DEFINITIONS[tier.value][True]
+    """What starts a tier's workflow."""
+    return triggers_in(tier.value)
 
 
 def base_images(dockerfile):
@@ -330,10 +464,28 @@ def ubuntus_in_cache_keys(job):
 
 
 def cache_keys(job):
-    """The key of each cache a job of the workflow keeps or restores."""
+    """The key of each cache a job of the workflow keeps or restores: its
+    steps', and the setup action's for what the job hands it."""
     for step in job["steps"]:
         if "key" in step.get("with", {}):
             yield step["with"]["key"]
+    for given in setups_in(job):
+        for step in SETUP_ACTION["runs"]["steps"]:
+            if "key" in step.get("with", {}) and runs_with(step, given):
+                yield re.sub(
+                    r"\$\{\{ inputs\.([\w-]+) \}\}",
+                    lambda m, given=given: given.get(m[1], ""),
+                    step["with"]["key"],
+                )
+
+
+def runs_with(step, given):
+    """Whether a step of the setup action runs for what a job hands it: it
+    does if each input its condition names was given, and is not false."""
+    return all(
+        given.get(name, "false") not in ("", "false")
+        for name in re.findall(r"inputs\.([\w-]+)", step.get("if", ""))
+    )
 
 
 def keys_of_what_it_builds(job):
@@ -416,3 +568,12 @@ PROGRAMS = {
     for mode in RUNNER.Mode
     for step in job.steps_for(mode)
 }
+
+
+# Every job each tier runs: where it is, as tier's file: job, its name, and
+# it, on the machines the tier runs it on.
+WORKFLOW_JOBS = [
+    (f"{tier.value}: {name}", name, job)
+    for tier in TIER
+    for name, job in jobs_of(tier).items()
+]

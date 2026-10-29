@@ -4,9 +4,9 @@
 # after, or on the branch by hand (gh workflow run nightly.yml --ref BRANCH).
 version: 2
 updates:
-  # The actions CI's workflows use.
+  # The actions CI's workflows use, and its setup action.
   - package-ecosystem: github-actions
-    directory: /
+    directories: ["/", "/.github/actions/*"]
     schedule:
       interval: weekly
     groups:
