@@ -57,7 +57,7 @@ class Plugged(NamedTuple):
     port: int
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_on_the_cable(firmware):
     """A host that has booted Linux to its prompt, with a cable plugged in.
 
@@ -77,9 +77,13 @@ def linux_on_the_cable(firmware):
         yield Plugged(board, cable, port)
 
 
+@pytest.mark.platform(scope="class")
 @pytest.mark.representative("cable")
-class TestWhenThisMachinesSshRunsUnameOnLinux:
-    def test_linux_answers_as_it_does_at_its_console(self, linux_on_the_cable):
+class TestWhenThisMachinesSshAndScpReachLinux:
+    # 💡 One boot for the class: both go over the same cable.
+    def test_ssh_runs_uname_and_linux_answers_as_at_its_console(
+        self, linux_on_the_cable
+    ):
         by_ssh = ssh(linux_on_the_cable, "uname -a")
 
         at_the_console = type_and_wait_for_the_prompt(
@@ -87,9 +91,7 @@ class TestWhenThisMachinesSshRunsUnameOnLinux:
         )
         assert by_ssh.strip() == at_the_console.strip()
 
-
-class TestWhenThisMachinesScpSendsAFileToLinux:
-    def test_the_shell_on_the_console_reads_it_back(
+    def test_scp_sends_a_file_and_the_shell_on_the_console_reads_it_back(
         self, linux_on_the_cable, tmp_path
     ):
         sent = tmp_path / "spam"

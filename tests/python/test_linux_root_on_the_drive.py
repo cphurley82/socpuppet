@@ -32,7 +32,7 @@ from socpuppet import ftl, gpt
 pytestmark = [needs_dtc, pytest.mark.long]
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_on_the_drive(firmware):
     """The full bootchain's board at Linux's prompt, its root on the drive."""
     board = a_host_with_its_root_on_the_drive(firmware)
@@ -46,8 +46,9 @@ def linux_on_the_drive(firmware):
     return board
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 class TestWhenLinuxBootsWithItsRootOnTheDrive:
+    # 💡 One boot for the class: its tests look at the same booted board.
     @pytest.mark.representative("linux-on-the-drive")
     def test_its_root_is_the_drives_first_partition_writable(
         self, linux_on_the_drive

@@ -34,7 +34,7 @@ DRIVE_BLOCKS = 4096
 ROOT = re.search(r"root=(\S+)", linux.BOOTARGS)[1]
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_with_the_drive(firmware):
     """A host with the stand-in drive, booted through the initramfs to
     Linux's prompt, its root on the virtio disk."""
@@ -64,8 +64,9 @@ class TestWhenLinuxBootsThroughTheInitramfs:
         assert f"{ROOT} / ext4 rw," in mounts
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 class TestWhenLinuxsNvmeDriverFindsTheDrive:
+    # 💡 One boot for the class: its tests look at the same booted board.
     def test_the_drive_is_nvme0n1_of_the_blocks_it_was_described_with(
         self, linux_with_the_drive
     ):

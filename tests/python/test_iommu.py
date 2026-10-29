@@ -247,7 +247,7 @@ def peek64(board, address):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_behind_an_iommu(firmware):
     """The full bootchain's board, its drive behind the IOMMU, at Linux's shell.
 
@@ -265,9 +265,10 @@ def linux_behind_an_iommu(firmware):
 
 
 @needs_dtc
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 @pytest.mark.long
 class TestWhenLinuxBootsWithItsRootOnTheDriveBehindTheIommu:
+    # 💡 One boot for the class: its tests look at the same booted board.
     def test_linuxs_driver_brings_the_iommu_up_on_its_wire(
         self, linux_behind_an_iommu
     ):
