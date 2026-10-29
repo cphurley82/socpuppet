@@ -22,7 +22,10 @@ namespace {
 
 // A small chip: 4 blocks of 8 pages, each page 16 bytes.
 constexpr NandGeometry kSmall{
-    .page_size = 16, .pages_per_block = 8, .blocks = 4};
+    .page_size = 16,
+    .pages_per_block = 8,
+    .blocks = 4,
+};
 // One past the end of that chip.
 constexpr std::uint32_t kNoSuchBlock = 4;
 
@@ -158,10 +161,12 @@ TEST(WhenAFlashControllerHasNotYetCarriedOutACommand,
 }
 
 TEST(WhenAFlashControllerHasCarriedOutACommand, ItsStatusSaysDoneAndNotBusy) {
-  for (const std::uint32_t command : {FLASH_CONTROLLER_COMMAND_READ_PAGE,
-                                      FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE,
-                                      FLASH_CONTROLLER_COMMAND_ERASE_BLOCK,
-                                      FLASH_CONTROLLER_COMMAND_IDENTIFY}) {
+  for (const std::uint32_t command : {
+           FLASH_CONTROLLER_COMMAND_READ_PAGE,
+           FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE,
+           FLASH_CONTROLLER_COMMAND_ERASE_BLOCK,
+           FLASH_CONTROLLER_COMMAND_IDENTIFY,
+       }) {
     Rig rig;
 
     rig.Do(command);
@@ -199,9 +204,11 @@ TEST(WhenAFlashControllerIsToldToEraseABlock, TheBlocksPagesReadAsAllOnes) {
 
 TEST(WhenTheChipRefusesWhatAFlashControllerAsksOfIt,
      TheStatusSaysErrorAndNotDone) {
-  for (const std::uint32_t command : {FLASH_CONTROLLER_COMMAND_READ_PAGE,
-                                      FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE,
-                                      FLASH_CONTROLLER_COMMAND_ERASE_BLOCK}) {
+  for (const std::uint32_t command : {
+           FLASH_CONTROLLER_COMMAND_READ_PAGE,
+           FLASH_CONTROLLER_COMMAND_PROGRAM_PAGE,
+           FLASH_CONTROLLER_COMMAND_ERASE_BLOCK,
+       }) {
     Rig rig;
     rig.Write32(FLASH_CONTROLLER_BLOCK, kNoSuchBlock);
 

@@ -151,8 +151,12 @@ struct SpiController::Model {
   sc_core::sc_signal<bool, sc_core::SC_UNCHECKED_WRITERS> interrupt_{
       "interrupt"};
   Pin clock_line_{"clock_line"};
-  std::array<Pin, 4> chip_selects_{Pin{"chip_select_0"}, Pin{"chip_select_1"},
-                                   Pin{"chip_select_2"}, Pin{"chip_select_3"}};
+  std::array<Pin, 4> chip_selects_{
+      Pin{"chip_select_0"},
+      Pin{"chip_select_1"},
+      Pin{"chip_select_2"},
+      Pin{"chip_select_3"},
+  };
   // Which chip select lines are low.
   std::array<bool, 4> selected_{};
   // Which chips have been let go and not yet told.

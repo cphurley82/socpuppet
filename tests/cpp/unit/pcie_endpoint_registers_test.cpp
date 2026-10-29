@@ -29,9 +29,11 @@ PcieEndpointRegisters PlacedAt(std::uint32_t base) {
       /*function_size=*/0x2000,
       /*vectors=*/2};
   const std::array<std::uint8_t, 4> place{
-      static_cast<std::uint8_t>(base), static_cast<std::uint8_t>(base >> 8U),
+      static_cast<std::uint8_t>(base),
+      static_cast<std::uint8_t>(base >> 8U),
       static_cast<std::uint8_t>(base >> 16U),
-      static_cast<std::uint8_t>(base >> 24U)};
+      static_cast<std::uint8_t>(base >> 24U),
+  };
   registers.WriteConfiguration(kBar0, place);
   // Memory decoding is bit 1 of the command register.
   registers.WriteConfiguration(kCommand, std::array<std::uint8_t, 2>{0x02, 0});

@@ -84,25 +84,29 @@ struct HostWithAnEndpoint {
       : platform{WithActors(actors, messages)} {
     platform.Add("host.driver", "host_driver");
     platform.Add("host.bus", "router",
-                 {{"inputs", 2},
-                  {"outputs", 4},
-                  {"out0.base", kMemoryBase},
-                  {"out0.size", kMemorySize},
-                  {"out1.base", kEcamBase},
-                  {"out1.size", kEcamSize},
-                  {"out2.base", kWindowBase},
-                  {"out2.size", kWindowSize},
-                  {"out3.base", kMessagesBase},
-                  {"out3.size", kMessagesSize}});
+                 {
+                     {"inputs", 2},
+                     {"outputs", 4},
+                     {"out0.base", kMemoryBase},
+                     {"out0.size", kMemorySize},
+                     {"out1.base", kEcamBase},
+                     {"out1.size", kEcamSize},
+                     {"out2.base", kWindowBase},
+                     {"out2.size", kWindowSize},
+                     {"out3.base", kMessagesBase},
+                     {"out3.size", kMessagesSize},
+                 });
     platform.Add("host.memory", "memory", {{"size", kMemorySize}});
     platform.Add("host.messages", "recorder");
     platform.Add("host.rc", "pcie_root_complex", {{"mmio_base", kWindowBase}});
     platform.Add("device.endpoint", "pcie_endpoint",
-                 {{"vendor_id", kVendorId},
-                  {"device_id", kDeviceId},
-                  {"class_code", kClassCode},
-                  {"function_size", kFunctionSize},
-                  {"vectors", kVectors}});
+                 {
+                     {"vendor_id", kVendorId},
+                     {"device_id", kDeviceId},
+                     {"class_code", kClassCode},
+                     {"function_size", kFunctionSize},
+                     {"vectors", kVectors},
+                 });
     platform.Add("device.registers", "memory", {{"size", kFunctionSize}});
     platform.Add("device.function", "function_driver");
     platform.Add("device.line", "line_driver");
@@ -263,11 +267,13 @@ struct AnEndpointOnItsOwn {
     platform.Add("link.host", "link_driver");
     platform.Add("link.up", "recorder");
     platform.Add("device.endpoint", "pcie_endpoint",
-                 {{"vendor_id", HostWithAnEndpoint::kVendorId},
-                  {"device_id", HostWithAnEndpoint::kDeviceId},
-                  {"class_code", HostWithAnEndpoint::kClassCode},
-                  {"function_size", HostWithAnEndpoint::kFunctionSize},
-                  {"vectors", HostWithAnEndpoint::kVectors}});
+                 {
+                     {"vendor_id", HostWithAnEndpoint::kVendorId},
+                     {"device_id", HostWithAnEndpoint::kDeviceId},
+                     {"class_code", HostWithAnEndpoint::kClassCode},
+                     {"function_size", HostWithAnEndpoint::kFunctionSize},
+                     {"vectors", HostWithAnEndpoint::kVectors},
+                 });
     platform.Add("device.registers", "memory",
                  {{"size", HostWithAnEndpoint::kFunctionSize}});
     platform.Add("device.function", "function_driver");
@@ -332,9 +338,9 @@ TEST(WhenTheHostReadsTheIdsOfTheEndpoint, ItGetsTheVendorAndTheDevice) {
 
 TEST(WhenTheHostReadsTheClassOfTheEndpoint, ItGetsTheClassCodeItWasGiven) {
   std::uint32_t class_code = 0;
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    class_code = host.ClassCodeOf(kEndpoint);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host = [&](PcieHost& host) { class_code = host.ClassCodeOf(kEndpoint); },
+  }};
 
   fixture.platform.Run();
 
@@ -364,10 +370,13 @@ TEST(WhenTheHostSizesBar0, ItIsAPowerOfTwoWithRoomForTheFunctionsRegisters) {
 
 TEST(WhenTheHostPlacesBar0, ItReadsBackTheAddressItChose) {
   std::uint64_t read_back = 0;
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    read_back = host.PlaceOfBar0(kEndpoint);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            read_back = host.PlaceOfBar0(kEndpoint);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -376,11 +385,14 @@ TEST(WhenTheHostPlacesBar0, ItReadsBackTheAddressItChose) {
 
 TEST(WhenBar0IsPlacedAndMemoryDecodingIsOn,
      AnAccessInsideItReachesTheFunctionAtItsOffset) {
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
-    host.Write(kPlace + 0x20, 0xC0FFEE);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            host.Command(kEndpoint, PcieHost::kMemoryDecoding);
+            host.Write(kPlace + 0x20, 0xC0FFEE);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -390,10 +402,13 @@ TEST(WhenBar0IsPlacedAndMemoryDecodingIsOn,
 TEST(WhenMemoryDecodingIsOff,
      AnAccessToWhereBar0PointsGetsAnAddressErrorAndDoesNotReachTheFunction) {
   PciAccess write;
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    write = host.Write(kPlace + 0x20, 0xC0FFEE);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            write = host.Write(kPlace + 0x20, 0xC0FFEE);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -403,11 +418,14 @@ TEST(WhenMemoryDecodingIsOff,
 
 TEST(WhenAnAccessInTheWindowIsOutsideBar0, ItGetsAnAddressError) {
   PciAccess read;
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
-    read = host.Read(HostWithAnEndpoint::kWindowBase);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            host.Command(kEndpoint, PcieHost::kMemoryDecoding);
+            read = host.Read(HostWithAnEndpoint::kWindowBase);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -417,16 +435,17 @@ TEST(WhenAnAccessInTheWindowIsOutsideBar0, ItGetsAnAddressError) {
 TEST(WhenTheFunctionWritesToHostMemoryAndIsABusMaster, TheWriteLandsThere) {
   constexpr std::uint64_t kSomewhere = HostWithAnEndpoint::kMemoryBase + 0x100;
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
-  HostWithAnEndpoint fixture{{.host =
-                                  [](PcieHost& host) {
-                                    host.Command(kEndpoint,
-                                                 PcieHost::kBusMastering);
-                                  },
-                              .function =
-                                  [&](BusDriver& function) {
-                                    function.WaitFor(DmaStartsAt());
-                                    function.Write(kSomewhere, written);
-                                  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            host.Command(kEndpoint, PcieHost::kBusMastering);
+          },
+      .function =
+          [&](BusDriver& function) {
+            function.WaitFor(DmaStartsAt());
+            function.Write(kSomewhere, written);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -435,16 +454,17 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsABusMaster, TheWriteLandsThere) {
 
 TEST(WhenTheFunctionWritesToTheHostsBus,
      TheWriteArrivesMarkedAsFromBus0Device0Function0) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             host.Command(kEndpoint, PcieHost::kBusMastering);
-           },
-       .function =
-           [](BusDriver& function) {
-             function.WaitFor(DmaStartsAt());
-             function.Write32(HostWithAnEndpoint::kMessagesBase, 0x1234);
-           }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            host.Command(kEndpoint, PcieHost::kBusMastering);
+          },
+      .function =
+          [](BusDriver& function) {
+            function.WaitFor(DmaStartsAt());
+            function.Write32(HostWithAnEndpoint::kMessagesBase, 0x1234);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -458,9 +478,12 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsNotABusMaster,
   constexpr std::uint64_t kSomewhere = HostWithAnEndpoint::kMemoryBase + 0x100;
   const std::array<std::uint8_t, 4> written{0x11, 0x22, 0x33, 0x44};
   tlm::tlm_response_status response = tlm::TLM_INCOMPLETE_RESPONSE;
-  HostWithAnEndpoint fixture{{.function = [&](BusDriver& function) {
-    response = function.Write(kSomewhere, written);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .function =
+          [&](BusDriver& function) {
+            response = function.Write(kSomewhere, written);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -471,11 +494,14 @@ TEST(WhenTheFunctionWritesToHostMemoryAndIsNotABusMaster,
 
 TEST(WhenTheHostLooksAtTheFunctionsRegistersByDebugAccess,
      ItSeesThemWhereBar0WasPlaced) {
-  HostWithAnEndpoint fixture{{.host = [](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    host.Command(kEndpoint, PcieHost::kMemoryDecoding);
-    host.Write(kPlace + 0x10, 0xC0FFEE);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            host.Command(kEndpoint, PcieHost::kMemoryDecoding);
+            host.Write(kPlace + 0x10, 0xC0FFEE);
+          },
+  }};
   fixture.platform.Run();
 
   EXPECT_EQ(fixture.HostLooksAt(kPlace + 0x10), 0xC0FFEEU);
@@ -502,10 +528,13 @@ TEST(WhenTheFunctionLooksAtHostMemoryByDebugAccess, ItSeesIt) {
 TEST(WhenTheHostWalksTheCapabilityList,
      ItFindsMsixWithOneVectorForEachInterruptLine) {
   std::optional<PcieHost::Msix> msix;
-  HostWithAnEndpoint fixture{{.host = [&](PcieHost& host) {
-    host.PlaceBar0(kEndpoint, kPlace);
-    msix = host.FindMsix(kEndpoint);
-  }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            host.PlaceBar0(kEndpoint, kPlace);
+            msix = host.FindMsix(kEndpoint);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -515,14 +544,15 @@ TEST(WhenTheHostWalksTheCapabilityList,
 
 TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
      ItsDataIsWrittenToItsAddressOnce) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -531,14 +561,15 @@ TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
 
 TEST(WhenAVectorIsSetUpAndItsInterruptLineRises,
      ItsMessageIsMarkedAsFromBus0Device0Function0) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -552,18 +583,19 @@ TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
   // Outside everything on the host's bus.
   constexpr std::uint64_t kNowhere = 0x5000'0000;
   std::uint16_t status = 0;
-  HostWithAnEndpoint fixture{
-      {.host =
-           [&](PcieHost& host) {
-             const PcieHost::Msix msix =
-                 SetUpVectorOne(host, {.address = kNowhere});
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             status = host.StatusOf(kEndpoint);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            const PcieHost::Msix msix =
+                SetUpVectorOne(host, {.address = kNowhere});
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            status = host.StatusOf(kEndpoint);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -571,21 +603,22 @@ TEST(WhenAMessageIsSentToAnAddressNothingAnswers,
 }
 
 TEST(WhenAnInterruptLineRisesASecondTime, ASecondMessageIsSent) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-           },
-       .line =
-           [](LineDriver& line) {
-             RaiseTheLineOnce(line);
-             line.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
-             line.Set(false);
-             line.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
-             line.Set(true);
-           }}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+          },
+      .line =
+          [](LineDriver& line) {
+            RaiseTheLineOnce(line);
+            line.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
+            line.Set(false);
+            line.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
+            line.Set(true);
+          },
+  }};
 
   fixture.platform.Run();
 
@@ -593,13 +626,14 @@ TEST(WhenAnInterruptLineRisesASecondTime, ASecondMessageIsSent) {
 }
 
 TEST(WhenMsixIsNotEnabled, ARisingInterruptLineSendsNothing) {
-  HostWithAnEndpoint fixture{{.host =
-                                  [](PcieHost& host) {
-                                    const PcieHost::Msix msix =
-                                        SetUpVectorOne(host);
-                                    host.MaskVector(msix, kVector, false);
-                                  },
-                              .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -607,15 +641,16 @@ TEST(WhenMsixIsNotEnabled, ARisingInterruptLineSendsNothing) {
 }
 
 TEST(WhenTheDeviceIsNotABusMaster, ARisingInterruptLineSendsNothing) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix =
-                 SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix =
+                SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -624,16 +659,17 @@ TEST(WhenTheDeviceIsNotABusMaster, ARisingInterruptLineSendsNothing) {
 
 TEST(WhenAVectorIsMasked, ItsRisingInterruptLineSendsNothingAndIsPending) {
   bool pending = false;
-  HostWithAnEndpoint fixture{
-      {.host =
-           [&](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             pending = host.IsPending(msix, kVector);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            pending = host.IsPending(msix, kVector);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -643,19 +679,20 @@ TEST(WhenAVectorIsMasked, ItsRisingInterruptLineSendsNothingAndIsPending) {
 
 TEST(WhenAPendingVectorIsUnmasked, ItsMessageIsSentAndItIsNoLongerPending) {
   bool pending = true;
-  HostWithAnEndpoint fixture{
-      {.host =
-           [&](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             host.MaskVector(msix, kVector, false);
-             // After the message has had time to go.
-             host.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
-             pending = host.IsPending(msix, kVector);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            host.MaskVector(msix, kVector, false);
+            // After the message has had time to go.
+            host.WaitFor(sc_core::sc_time{10, sc_core::SC_NS});
+            pending = host.IsPending(msix, kVector);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -664,16 +701,17 @@ TEST(WhenAPendingVectorIsUnmasked, ItsMessageIsSentAndItIsNoLongerPending) {
 }
 
 TEST(WhenEveryVectorIsMaskedAtOnce, ARisingInterruptLineSendsNothing) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(
-                 kEndpoint, msix,
-                 PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(
+                kEndpoint, msix,
+                PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -682,17 +720,18 @@ TEST(WhenEveryVectorIsMaskedAtOnce, ARisingInterruptLineSendsNothing) {
 
 TEST(WhenTheHostWritesToThePendingBits, APendingVectorStaysPending) {
   bool pending = false;
-  HostWithAnEndpoint fixture{
-      {.host =
-           [&](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             host.Write(msix.pending, 0);
-             pending = host.IsPending(msix, kVector);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [&](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            host.Write(msix.pending, 0);
+            pending = host.IsPending(msix, kVector);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -703,19 +742,20 @@ TEST(WhenEveryVectorIsUnmaskedAgain, AVectorThatRoseMeanwhileIsSent) {
   // A driver switches MSI-X on with every vector masked while it fills in
   // the table, and lets them all through at once when it is done. An
   // interrupt that came in between must not be lost.
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix = SetUpVectorOne(host);
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(
-                 kEndpoint, msix,
-                 PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix = SetUpVectorOne(host);
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(
+                kEndpoint, msix,
+                PcieHost::kMsixEnable | PcieHost::kMsixMaskEveryVector);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -723,18 +763,19 @@ TEST(WhenEveryVectorIsUnmaskedAgain, AVectorThatRoseMeanwhileIsSent) {
 }
 
 TEST(WhenTheDeviceBecomesABusMaster, AVectorThatRoseBeforeIsSent) {
-  HostWithAnEndpoint fixture{
-      {.host =
-           [](PcieHost& host) {
-             const PcieHost::Msix msix =
-                 SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
-             host.MaskVector(msix, kVector, false);
-             host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
-             // Until after the line has risen.
-             host.WaitFor(2 * LineRisesAt());
-             host.Command(kEndpoint, PcieHost::kBusMastering);
-           },
-       .line = RaiseTheLineOnce}};
+  HostWithAnEndpoint fixture{{
+      .host =
+          [](PcieHost& host) {
+            const PcieHost::Msix msix =
+                SetUpVectorOne(host, {.command = PcieHost::kMemoryDecoding});
+            host.MaskVector(msix, kVector, false);
+            host.MsixControl(kEndpoint, msix, PcieHost::kMsixEnable);
+            // Until after the line has risen.
+            host.WaitFor(2 * LineRisesAt());
+            host.Command(kEndpoint, PcieHost::kBusMastering);
+          },
+      .line = RaiseTheLineOnce,
+  }};
 
   fixture.platform.Run();
 
@@ -747,17 +788,18 @@ TEST(WhenTheEndpointIsSentAConfigurationWriteForBus2Device3Function1,
   constexpr std::uint16_t kBus2Device3Function1 = 0x0219;
   // Anywhere will do: everything that comes up the link is written down.
   constexpr std::uint64_t kAnywhere = 0x0;
-  AnEndpointOnItsOwn fixture{
-      {.link =
-           [](BusDriver& link) {
-             ConfigurationWrite(link, kBus2Device3Function1, PcieHost::kCommand,
-                                PcieHost::kBusMastering);
-           },
-       .function =
-           [](BusDriver& function) {
-             function.WaitFor(DmaStartsAt());
-             function.Write32(kAnywhere, 0x1234);
-           }}};
+  AnEndpointOnItsOwn fixture{{
+      .link =
+          [](BusDriver& link) {
+            ConfigurationWrite(link, kBus2Device3Function1, PcieHost::kCommand,
+                               PcieHost::kBusMastering);
+          },
+      .function =
+          [](BusDriver& function) {
+            function.WaitFor(DmaStartsAt());
+            function.Write32(kAnywhere, 0x1234);
+          },
+  }};
 
   fixture.platform.Run();
 

@@ -61,11 +61,13 @@ struct DriveOnAFakeMachine {
   DriveOnAFakeMachine() : platform{WithTheFake(machine)} {
     platform.Add("nvme", "behavioral_nvme", {{"blocks", 64}, {"vectors", 2}});
     platform.Add("host", "pciem_host_on_a_fake",
-                 {{"vendor_id", kVendorId},
-                  {"device_id", kDeviceId},
-                  {"class_code", kNvmeClass},
-                  {"function_size", kFunctionSize},
-                  {"vectors", 2}});
+                 {
+                     {"vendor_id", kVendorId},
+                     {"device_id", kDeviceId},
+                     {"class_code", kNvmeClass},
+                     {"function_size", kFunctionSize},
+                     {"vectors", 2},
+                 });
     platform.Bind("host.bar0", "nvme.bar0");
     platform.Bind("nvme.dma", "host.dma");
     platform.Bind("nvme.irq0", "host.irq0");
@@ -130,11 +132,13 @@ struct FunctionOnAFakeMachine {
       const Drive& line = [](LineDriver&) {})
       : platform{WithTheFunction(machine, function, line)} {
     platform.Add("host", "pciem_host_on_a_fake",
-                 {{"vendor_id", kVendorId},
-                  {"device_id", kDeviceId},
-                  {"class_code", kNvmeClass},
-                  {"function_size", kFunctionSize},
-                  {"vectors", 2}});
+                 {
+                     {"vendor_id", kVendorId},
+                     {"device_id", kDeviceId},
+                     {"class_code", kNvmeClass},
+                     {"function_size", kFunctionSize},
+                     {"vectors", 2},
+                 });
     platform.Add("registers", "memory", {{"size", kFunctionSize}});
     platform.Add("function", "function_driver");
     platform.Add("line", "line_driver");
@@ -184,8 +188,10 @@ TEST(WhenAPciemHostIsMade, ItsDeviceIsOpenedInTheShapeItsParametersSay) {
 
 TEST(WhenTheHostIsServiced, TheWritesPciemPostedAreMadeOnTheFunctionInOrder) {
   DriveOnAFakeMachine rig;
-  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
-                        {.offset = kAqa, .size = 4, .data = 0x0003'0003}};
+  rig.machine.posted = {
+      {.offset = kAqa, .size = 4, .data = 0x001F'001F},
+      {.offset = kAqa, .size = 4, .data = 0x0003'0003},
+  };
 
   rig.Host().Service();
   rig.LetTheHostMakeItsWrites();
@@ -196,8 +202,10 @@ TEST(WhenTheHostIsServiced, TheWritesPciemPostedAreMadeOnTheFunctionInOrder) {
 TEST(WhenTheFunctionRefusesAWrite, ItIsCountedAsRefused) {
   DriveOnAFakeMachine rig;
   // A doorbell, which a drive that is not enabled has no queue for.
-  rig.machine.posted = {{.offset = kAqa, .size = 4, .data = 0x001F'001F},
-                        {.offset = kAdminTailDoorbell, .size = 4, .data = 1}};
+  rig.machine.posted = {
+      {.offset = kAqa, .size = 4, .data = 0x001F'001F},
+      {.offset = kAdminTailDoorbell, .size = 4, .data = 1},
+  };
 
   rig.Host().Service();
   rig.LetTheHostMakeItsWrites();
@@ -253,7 +261,10 @@ TEST(WhenAnInterruptLineRises, ThatVectorIsSentToTheHost) {
 
 // The host acknowledging the first completion on the admin queue.
 constexpr HostWrite kAcknowledgeAnAdminCompletion{
-    .offset = kAdminHeadDoorbell, .size = 4, .data = 1};
+    .offset = kAdminHeadDoorbell,
+    .size = 4,
+    .data = 1,
+};
 
 // A function's line stays high while completions wait to be read, and
 // the host is sent a vector only when it rises.

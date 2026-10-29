@@ -69,23 +69,37 @@ constexpr SidebandMessage kSbinitDoneResponse{.code = 0x9A, .subcode = 0x01};
 // {MBINIT.PARAM configuration request}, which offers the other side what
 // this one can do on the mainband, and its answer.
 constexpr SidebandMessage kMbinitParamConfigurationRequest{
-    .code = 0xA5, .subcode = 0x00, .carries_data = true};
+    .code = 0xA5,
+    .subcode = 0x00,
+    .carries_data = true,
+};
 constexpr SidebandMessage kMbinitParamConfigurationResponse{
-    .code = 0xAA, .subcode = 0x00, .carries_data = true};
+    .code = 0xAA,
+    .subcode = 0x00,
+    .carries_data = true,
+};
 // {MBINIT.CAL Done request}, which says the mainband has been calibrated.
 constexpr SidebandMessage kMbinitCalDoneRequest{.code = 0xA5, .subcode = 0x02};
 constexpr SidebandMessage kMbinitCalDoneResponse{.code = 0xAA, .subcode = 0x02};
 // Link management, between the two dies' adapters: asking for the link to
 // be in use, saying it is, saying it has failed, and asking for it to be
 // trained again.
-constexpr SidebandMessage kLinkMgmtRdiRequestActive{.code = 0x01,
-                                                    .subcode = 0x01};
-constexpr SidebandMessage kLinkMgmtRdiResponseActive{.code = 0x02,
-                                                     .subcode = 0x01};
-constexpr SidebandMessage kLinkMgmtRdiRequestLinkError{.code = 0x01,
-                                                       .subcode = 0x0A};
-constexpr SidebandMessage kLinkMgmtRdiRequestRetrain{.code = 0x01,
-                                                     .subcode = 0x0B};
+constexpr SidebandMessage kLinkMgmtRdiRequestActive{
+    .code = 0x01,
+    .subcode = 0x01,
+};
+constexpr SidebandMessage kLinkMgmtRdiResponseActive{
+    .code = 0x02,
+    .subcode = 0x01,
+};
+constexpr SidebandMessage kLinkMgmtRdiRequestLinkError{
+    .code = 0x01,
+    .subcode = 0x0A,
+};
+constexpr SidebandMessage kLinkMgmtRdiRequestRetrain{
+    .code = 0x01,
+    .subcode = 0x0B,
+};
 // {ErrMsg Fatal}, which says the link has failed in a way nothing can be
 // done about without training it again.
 constexpr SidebandMessage kErrorMessageFatal{.code = 0x09, .subcode = 0x02};
@@ -233,14 +247,17 @@ inline std::optional<SidebandPacket> SidebandPacket::Decode(
       .msginfo = static_cast<std::uint16_t>(kMsginfo.In(header)),
       .control_parity = kControlParity.In(header) != 0,
       .data_parity = kDataParity.In(header) != 0,
-      .data = DataIn(bytes.subspan(kHeaderBytes, *data_bytes))};
+      .data = DataIn(bytes.subspan(kHeaderBytes, *data_bytes)),
+  };
 }
 
 // The message a packet carries, for comparing with the named ones above.
 inline SidebandMessage MessageIn(const SidebandPacket& packet) {
-  return {.code = packet.msgcode,
-          .subcode = packet.msgsubcode,
-          .carries_data = packet.opcode == SidebandOpcode::kMessageWith64bData};
+  return {
+      .code = packet.msgcode,
+      .subcode = packet.msgsubcode,
+      .carries_data = packet.opcode == SidebandOpcode::kMessageWith64bData,
+  };
 }
 
 // A register access on the other die, and its answer, use the same header
@@ -266,37 +283,43 @@ inline SidebandPacket RegisterAccessPacket(SidebandOpcode opcode,
                                            SidebandAgent from, SidebandAgent to,
                                            std::uint32_t data = 0) {
   const std::uint32_t fits = address & kLargestSidebandAddress;
-  return {.opcode = opcode,
-          .srcid = from,
-          .dstid = to,
-          .msgsubcode = static_cast<std::uint8_t>(fits),
-          .msginfo = static_cast<std::uint16_t>(fits >> 8U),
-          .data = data};
+  return {
+      .opcode = opcode,
+      .srcid = from,
+      .dstid = to,
+      .msgsubcode = static_cast<std::uint8_t>(fits),
+      .msginfo = static_cast<std::uint16_t>(fits >> 8U),
+      .data = data,
+  };
 }
 
 // The answer to one of those.
 inline SidebandPacket CompletionPacket(SidebandStatus status,
                                        std::optional<std::uint32_t> data,
                                        SidebandAgent from, SidebandAgent to) {
-  return {.opcode = data ? SidebandOpcode::kCompletionWith32bData
-                         : SidebandOpcode::kCompletionWithoutData,
-          .srcid = from,
-          .dstid = to,
-          .msgcode = static_cast<std::uint8_t>(status),
-          .data = data.value_or(0)};
+  return {
+      .opcode = data ? SidebandOpcode::kCompletionWith32bData
+                     : SidebandOpcode::kCompletionWithoutData,
+      .srcid = from,
+      .dstid = to,
+      .msgcode = static_cast<std::uint8_t>(status),
+      .data = data.value_or(0),
+  };
 }
 
 // The packet that carries `message` from one agent to another.
 inline SidebandPacket MessagePacket(const SidebandMessage& message,
                                     SidebandAgent from, SidebandAgent to,
                                     std::uint64_t data = 0) {
-  return {.opcode = message.carries_data ? SidebandOpcode::kMessageWith64bData
-                                         : SidebandOpcode::kMessageWithoutData,
-          .srcid = from,
-          .dstid = to,
-          .msgcode = message.code,
-          .msgsubcode = message.subcode,
-          .data = message.carries_data ? data : 0};
+  return {
+      .opcode = message.carries_data ? SidebandOpcode::kMessageWith64bData
+                                     : SidebandOpcode::kMessageWithoutData,
+      .srcid = from,
+      .dstid = to,
+      .msgcode = message.code,
+      .msgsubcode = message.subcode,
+      .data = message.carries_data ? data : 0,
+  };
 }
 
 }  // namespace socpuppet

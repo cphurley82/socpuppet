@@ -133,7 +133,8 @@ void Platform::Bind(const std::string& source, const std::string& sink,
             }
             reader->bind(WireDrivenBy(*driver, source));
           },
-          [&](auto, auto) { throw CannotBind(source, from, sink, to); }},
+          [&](auto, auto) { throw CannotBind(source, from, sink, to); },
+      },
       from.connector, to.connector);
   bound_.insert(ObjectOf(from));
   bound_.insert(ObjectOf(to));
@@ -243,25 +244,27 @@ void Platform::TieOffUnconnectedPorts() {
   for (auto& [path, instance] : instances_) {
     for (const Port& each : instance.ports) {
       if (bound_.contains(ObjectOf(each))) continue;
-      std::visit(Overloaded{[&](Port::Initiator initiator) {
-                              auto tie_off = std::make_unique<NothingThere>(
-                                  sc_core::sc_gen_unique_name("unconnected"));
-                              initiator->bind(tie_off->socket);
-                              tie_offs_.push_back(std::move(tie_off));
-                            },
-                            [&](Port::Target target) {
-                              auto tie_off = std::make_unique<NobodyThere>(
-                                  sc_core::sc_gen_unique_name("unconnected"));
-                              tie_off->socket.bind(*target);
-                              tie_offs_.push_back(std::move(tie_off));
-                            },
-                            // A wire output gets a wire that nobody reads.
-                            [&](Port::WireSource driver) {
-                              WireDrivenBy(*driver, path + "." + each.name);
-                            },
-                            // A wire input needs nothing here: its component
-                            // ties itself low (see WireSinkPort).
-                            [](Port::WireSink) {}},
+      std::visit(Overloaded{
+                     [&](Port::Initiator initiator) {
+                       auto tie_off = std::make_unique<NothingThere>(
+                           sc_core::sc_gen_unique_name("unconnected"));
+                       initiator->bind(tie_off->socket);
+                       tie_offs_.push_back(std::move(tie_off));
+                     },
+                     [&](Port::Target target) {
+                       auto tie_off = std::make_unique<NobodyThere>(
+                           sc_core::sc_gen_unique_name("unconnected"));
+                       tie_off->socket.bind(*target);
+                       tie_offs_.push_back(std::move(tie_off));
+                     },
+                     // A wire output gets a wire that nobody reads.
+                     [&](Port::WireSource driver) {
+                       WireDrivenBy(*driver, path + "." + each.name);
+                     },
+                     // A wire input needs nothing here: its component
+                     // ties itself low (see WireSinkPort).
+                     [](Port::WireSink) {},
+                 },
                  each.connector);
     }
   }

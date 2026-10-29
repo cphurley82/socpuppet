@@ -197,19 +197,24 @@ inline void AddPciemHost(Registry& registry, std::string implementation,
       std::move(implementation),
       [open = std::move(open)](const char* name, Parameters& parameters) {
         const PciemShape shape{
-            .identity = {.vendor_id = static_cast<std::uint16_t>(
-                             parameters.Required("vendor_id", kFitsIn16Bits)),
-                         .device_id = static_cast<std::uint16_t>(
-                             parameters.Required("device_id", kFitsIn16Bits)),
-                         .class_code = static_cast<std::uint32_t>(
-                             parameters.Required("class_code", kFitsIn24Bits))},
+            .identity{
+                .vendor_id = static_cast<std::uint16_t>(
+                    parameters.Required("vendor_id", kFitsIn16Bits)),
+                .device_id = static_cast<std::uint16_t>(
+                    parameters.Required("device_id", kFitsIn16Bits)),
+                .class_code = static_cast<std::uint32_t>(
+                    parameters.Required("class_code", kFitsIn24Bits)),
+            },
             .function_size = parameters.Required("function_size"),
             .vectors = static_cast<std::uint16_t>(
-                parameters.Required("vectors", kInterruptVectors))};
+                parameters.Required("vectors", kInterruptVectors)),
+        };
         auto module =
             std::make_unique<PciemHost>(name, shape.vectors, open(shape));
-        std::vector<Port> ports{InitiatorPort("bar0", module->bar0),
-                                TargetPort("dma", module->dma)};
+        std::vector<Port> ports{
+            InitiatorPort("bar0", module->bar0),
+            TargetPort("dma", module->dma),
+        };
         AddNumberedPorts(ports, "irq", 0, module->irq, WireSinkPort);
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });

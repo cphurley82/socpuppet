@@ -58,8 +58,10 @@ bool MsixTable::IsMasked(std::size_t vector) const {
 MsixTable::Message MsixTable::MessageOf(std::size_t vector) const {
   const std::span entry =
       std::span{entries_}.subspan(vector * kEntrySize, kEntrySize);
-  return {.address = LoadLittleEndian<std::uint64_t>(entry),
-          .data = LoadLittleEndian<std::uint32_t>(entry.subspan(kEntryData))};
+  return {
+      .address = LoadLittleEndian<std::uint64_t>(entry),
+      .data = LoadLittleEndian<std::uint32_t>(entry.subspan(kEntryData)),
+  };
 }
 
 }  // namespace socpuppet

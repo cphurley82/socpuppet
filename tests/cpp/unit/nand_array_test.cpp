@@ -13,7 +13,10 @@ namespace {
 
 // A small chip: 4 blocks of 8 pages, each page 16 bytes.
 constexpr NandGeometry kSmall{
-    .page_size = 16, .pages_per_block = 8, .blocks = 4};
+    .page_size = 16,
+    .pages_per_block = 8,
+    .blocks = 4,
+};
 
 // What the array holds in one page. The buffer does not start out as ones,
 // so that a page the array leaves untouched is not taken for an erased one.

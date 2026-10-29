@@ -54,9 +54,12 @@ bool WriteEnableLatch(SpiDevice& chip) {
 // The frame of a command that takes a three-byte address and nothing else.
 void SendWithAddress(SpiDevice& chip, std::uint8_t command,
                      std::size_t address) {
-  Frame(chip, {command, static_cast<std::uint8_t>(address >> 16U),
-               static_cast<std::uint8_t>(address >> 8U),
-               static_cast<std::uint8_t>(address)});
+  Frame(chip, {
+                  command,
+                  static_cast<std::uint8_t>(address >> 16U),
+                  static_cast<std::uint8_t>(address >> 8U),
+                  static_cast<std::uint8_t>(address),
+              });
 }
 
 // An erase command and the size of the block it erases.
@@ -69,7 +72,8 @@ struct Erase {
 constexpr std::array<Erase, 3> kBlockErases{
     Erase{.command = 0x20, .block = std::size_t{4} * 1024},
     Erase{.command = 0x52, .block = std::size_t{32} * 1024},
-    Erase{.command = 0xD8, .block = std::size_t{64} * 1024}};
+    Erase{.command = 0xD8, .block = std::size_t{64} * 1024},
+};
 
 // A row of kBlockErases by its command and its block: Command20Erases4KiB.
 std::string BlockEraseName(const ::testing::TestParamInfo<Erase>& row) {

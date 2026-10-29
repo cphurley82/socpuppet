@@ -89,21 +89,22 @@ class BusMasterContract : public ::testing::Test {
   void Build(const Scenario& scenario) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
     AddRecordingTarget(registry, "probe", probed_, scenario.probe_latency);
-    for (const auto& [implementation, body] :
-         {std::pair{"reset_driver", scenario.reset},
-          std::pair{"irq_driver", scenario.irq},
-          std::pair{"timer_irq_driver", scenario.timer_irq}}) {
+    for (const auto& [implementation, body] : {
+             std::pair{"reset_driver", scenario.reset},
+             std::pair{"irq_driver", scenario.irq},
+             std::pair{"timer_irq_driver", scenario.timer_irq},
+         }) {
       AddLineDriver(registry, implementation, body);
     }
     AddInterruptSource(registry, "interrupt_source", scenario.device);
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->SetQuantum(scenario.quantum);
     platform_->Add("cpu", Rig::Implementation(), Rig::Config());
-    socpuppet::Config bus{{"outputs", 2},
-                          {"out0.base", kProgramBase},
-                          {"out0.size", 0x1000},
-                          {"out1.base", kProbeBase},
-                          {"out1.size", 0x100}};
+    socpuppet::Config bus{
+        {"outputs", 2},        {"out0.base", kProgramBase},
+        {"out0.size", 0x1000}, {"out1.base", kProbeBase},
+        {"out1.size", 0x100},
+    };
     if (scenario.device) {
       bus["outputs"] = 4;
       bus["out2.base"] = kPlicBase;
@@ -161,12 +162,15 @@ TYPED_TEST_SUITE_P(BusMasterContract);
 
 TYPED_TEST_P(BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts) {
   const sc_core::sc_time released_at = this->Microseconds(5);
-  this->Build(
-      {.behavior = Behavior::kWriteToTheProbe, .reset = [&](LineDriver& reset) {
-         reset.Set(true);
-         reset.WaitFor(released_at);
-         reset.Set(false);
-       }});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbe,
+      .reset =
+          [&](LineDriver& reset) {
+            reset.Set(true);
+            reset.WaitFor(released_at);
+            reset.Set(false);
+          },
+  });
 
   this->RunToTheEnd();
 
@@ -178,14 +182,17 @@ TYPED_TEST_P(BusMasterContract, WhileResetIsHighTheMasterWaitsAndThenStarts) {
 TYPED_TEST_P(BusMasterContract, WhenResetIsRaisedAgainTheMasterStartsOver) {
   const sc_core::sc_time raised_again_at = this->Microseconds(20);
   const sc_core::sc_time released_again_at = this->Microseconds(25);
-  this->Build(
-      {.behavior = Behavior::kWriteToTheProbe, .reset = [&](LineDriver& reset) {
-         // By now the master has done what it was given to do.
-         reset.WaitFor(raised_again_at);
-         reset.Set(true);
-         reset.WaitFor(released_again_at - raised_again_at);
-         reset.Set(false);
-       }});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbe,
+      .reset =
+          [&](LineDriver& reset) {
+            // By now the master has done what it was given to do.
+            reset.WaitFor(raised_again_at);
+            reset.Set(true);
+            reset.WaitFor(released_again_at - raised_again_at);
+            reset.Set(false);
+          },
+  });
 
   this->RunToTheEnd();
 
@@ -228,8 +235,10 @@ TYPED_TEST_P(BusMasterContract, TimeATargetAddsDelaysTheMastersNextAccess) {
 }
 
 TYPED_TEST_P(BusMasterContract, WithNoQuantumEveryAccessArrivesWithNoDelay) {
-  this->Build({.behavior = Behavior::kWriteToTheProbeFourTimes,
-               .probe_latency = this->Microseconds(3)});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbeFourTimes,
+      .probe_latency = this->Microseconds(3),
+  });
 
   this->RunToTheEnd();
 
@@ -241,9 +250,11 @@ TYPED_TEST_P(BusMasterContract, WithNoQuantumEveryAccessArrivesWithNoDelay) {
 TYPED_TEST_P(BusMasterContract,
              WithAQuantumTheMasterRunsAheadOfTheClockButNoFurtherThanThat) {
   const sc_core::sc_time quantum = this->Microseconds(5);
-  this->Build({.behavior = Behavior::kWriteToTheProbeFourTimes,
-               .probe_latency = this->Microseconds(3),
-               .quantum = quantum});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbeFourTimes,
+      .probe_latency = this->Microseconds(3),
+      .quantum = quantum,
+  });
 
   this->RunToTheEnd();
 
@@ -262,16 +273,18 @@ TYPED_TEST_P(
   // of 50 us. Reset comes while the clock is still catching up.
   const sc_core::sc_time raised_at = this->Microseconds(2);
   const sc_core::sc_time released_at = this->Microseconds(4);
-  this->Build({.behavior = Behavior::kWriteToTheProbeTwice,
-               .reset =
-                   [&](LineDriver& reset) {
-                     reset.WaitFor(raised_at);
-                     reset.Set(true);
-                     reset.WaitFor(released_at - raised_at);
-                     reset.Set(false);
-                   },
-               .probe_latency = this->Microseconds(3),
-               .quantum = this->Microseconds(50)});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbeTwice,
+      .reset =
+          [&](LineDriver& reset) {
+            reset.WaitFor(raised_at);
+            reset.Set(true);
+            reset.WaitFor(released_at - raised_at);
+            reset.Set(false);
+          },
+      .probe_latency = this->Microseconds(3),
+      .quantum = this->Microseconds(50),
+  });
 
   this->RunToTheEnd();
 
@@ -284,11 +297,14 @@ TYPED_TEST_P(
 TYPED_TEST_P(BusMasterContract,
              AMasterWaitingForTheInterruptCarriesOnWhenTheLineRises) {
   const sc_core::sc_time raised_at = this->Microseconds(5);
-  this->Build({.behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
-               .irq = [&](LineDriver& irq) {
-                 irq.WaitFor(raised_at);
-                 irq.Set(true);
-               }});
+  this->Build({
+      .behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
+      .irq =
+          [&](LineDriver& irq) {
+            irq.WaitFor(raised_at);
+            irq.Set(true);
+          },
+  });
 
   this->RunToTheEnd();
 
@@ -303,18 +319,20 @@ TYPED_TEST_P(BusMasterContract,
   // the line is high before it starts to wait and does not move again.
   const sc_core::sc_time raised_at = this->Microseconds(2);
   const sc_core::sc_time released_at = this->Microseconds(5);
-  this->Build({.behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
-               .reset =
-                   [&](LineDriver& reset) {
-                     reset.Set(true);
-                     reset.WaitFor(released_at);
-                     reset.Set(false);
-                   },
-               .irq =
-                   [&](LineDriver& irq) {
-                     irq.WaitFor(raised_at);
-                     irq.Set(true);
-                   }});
+  this->Build({
+      .behavior = Behavior::kWaitForTheInterruptThenWriteToTheProbe,
+      .reset =
+          [&](LineDriver& reset) {
+            reset.Set(true);
+            reset.WaitFor(released_at);
+            reset.Set(false);
+          },
+      .irq =
+          [&](LineDriver& irq) {
+            irq.WaitFor(raised_at);
+            irq.Set(true);
+          },
+  });
 
   this->RunToTheEnd();
 
@@ -324,15 +342,18 @@ TYPED_TEST_P(BusMasterContract,
 TYPED_TEST_P(
     BusMasterContract,
     AMasterThatClaimsQuietsAndCompletesAtThePlicIsInterruptedOncePerInterrupt) {
-  this->Build({.behavior = Behavior::kTakeInterruptsThroughThePlic,
-               .device = [&](InterruptSource& device) {
-                 // Later than the master's setting up of the PLIC, and
-                 // later again than its handling of the first interrupt.
-                 device.WaitFor(this->Microseconds(5));
-                 device.Raise();
-                 device.WaitFor(this->Microseconds(5));
-                 device.Raise();
-               }});
+  this->Build({
+      .behavior = Behavior::kTakeInterruptsThroughThePlic,
+      .device =
+          [&](InterruptSource& device) {
+            // Later than the master's setting up of the PLIC, and
+            // later again than its handling of the first interrupt.
+            device.WaitFor(this->Microseconds(5));
+            device.Raise();
+            device.WaitFor(this->Microseconds(5));
+            device.Raise();
+          },
+  });
 
   this->RunToTheEnd();
 
@@ -343,11 +364,14 @@ TYPED_TEST_P(BusMasterContract,
              WithATimerConnectedToItsTimerInterruptInputTheMasterRuns) {
   // A master that takes no notice of the timer still has the input, so
   // that it fits wherever a CPU does.
-  this->Build({.behavior = Behavior::kWriteToTheProbe,
-               .timer_irq = [&](LineDriver& timer) {
-                 timer.WaitFor(this->Microseconds(5));
-                 timer.Set(true);
-               }});
+  this->Build({
+      .behavior = Behavior::kWriteToTheProbe,
+      .timer_irq =
+          [&](LineDriver& timer) {
+            timer.WaitFor(this->Microseconds(5));
+            timer.Set(true);
+          },
+  });
 
   this->RunToTheEnd();
 

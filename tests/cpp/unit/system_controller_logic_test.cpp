@@ -230,7 +230,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 // Half a register that would, whole, ask for a reset.
 constexpr std::array<std::uint8_t, 2> kHalfARequest{
-    SYSTEM_CONTROLLER_RESET_REQUEST_RESET, 0};
+    SYSTEM_CONTROLLER_RESET_REQUEST_RESET,
+    0,
+};
 
 TEST(WhenAnAccessToASystemControllerIsNot32BitsWide, ItIsRefused) {
   Rig rig;

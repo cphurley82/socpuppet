@@ -549,8 +549,11 @@ inline Program StoreTheTopInterrupts(Word handed_down, Word enabled,
   AppendSleepForEver(program);
   const auto handler_is = static_cast<std::int32_t>((program.size() - 1) * 4);
   program[2] = Addi(kT1, kT1, handler_is);
-  program.insert(program.end(), {Csrr(kT1, kMcause), Addi(kT1, kT1, 1),
-                                 Sw(kT1, kT3, kResultOffset + 8)});
+  program.insert(program.end(), {
+                                    Csrr(kT1, kMcause),
+                                    Addi(kT1, kT1, 1),
+                                    Sw(kT1, kT3, kResultOffset + 8),
+                                });
   AppendSleepForEver(program);
   return program;
 }
@@ -804,11 +807,20 @@ inline Program CountDownThenSleep(Word iterations) {
 // registers that have to, and drop to user mode at the instruction after
 // them. They use t1, and run wherever they are put.
 inline Program EnterUserModeAllowedToReadTime() {
-  return {Li(kT1, kMayReadTime), Csrw(kMcounteren, kT1), Csrw(kScounteren, kT1),
-          // The mode to return to is user mode: both bits clear.
-          Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-          // To the instruction after the return, four on from here.
-          Auipc(kT1, 0), Addi(kT1, kT1, 16), Csrw(kMepc, kT1), kMret};
+  return {
+      Li(kT1, kMayReadTime),
+      Csrw(kMcounteren, kT1),
+      Csrw(kScounteren, kT1),
+      // The mode to return to is user mode: both bits clear.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      // To the instruction after the return, four on from here.
+      Auipc(kT1, 0),
+      Addi(kT1, kT1, 16),
+      Csrw(kMepc, kT1),
+      kMret,
+  };
 }
 
 // A program that counts down from `iterations` (as for
@@ -1060,8 +1072,12 @@ inline Program HandleMessagesInSupervisorModeThroughAnImsic(Word identity) {
       Jal(kZero, -16),
   };
   return InSupervisorMode(kSupervisorExternalInterrupt, listen_then_sleep,
-                          {Csrrw(kT0, kStopei, kZero), Srli(kT0, kT0, 16),
-                           Addi(kT4, kT4, 1), kSret});
+                          {
+                              Csrrw(kT0, kStopei, kZero),
+                              Srli(kT0, kT0, 16),
+                              Addi(kT4, kT4, 1),
+                              kSret,
+                          });
 }
 
 // A program that, in machine mode, writes `for_machine_mode` to `miselect`
@@ -1107,12 +1123,17 @@ struct Pages {
 inline void AppendEnterSupervisorModeUnderPaging(Assembler& program,
                                                  const Pages& at) {
   program.Load(kT1, SatpForSv39(at.root_table));
-  program.Emit({Csrw(kSatp, kT1),
-                // The mode to return to is supervisor, as InSupervisorMode
-                // sets it.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
-                Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kSatp, kT1),
+      // The mode to return to is supervisor, as InSupervisorMode
+      // sets it.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   const Assembler::Constant entry = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
   program.Set(entry, at.code + program.Here());
@@ -1150,13 +1171,18 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
   const Assembler::Constant supervisor_handler = program.Load(kT1);
   program.Emit(Csrw(kStvec, kT1));
   program.Load(kT1, delegated);
-  program.Emit({Csrw(kMedeleg, kT1),
-                // The mode to return to is user mode: both bits clear.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                // And the last trap to supervisor mode is said to have come
-                // from supervisor mode, so that one from user mode has to
-                // say otherwise.
-                Li(kT1, 1U << kSupervisorPreviousMode), Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kMedeleg, kT1),
+      // The mode to return to is user mode: both bits clear.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      // And the last trap to supervisor mode is said to have come
+      // from supervisor mode, so that one from user mode has to
+      // say otherwise.
+      Li(kT1, 1U << kSupervisorPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   const Assembler::Constant users_code = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
@@ -1169,8 +1195,15 @@ inline Program RunInUserMode(const Pages& at, std::uint64_t delegated,
   program.Set(supervisor_handler, at.code + program.Here());
   program.Emit({Csrr(kT1, kScause), Addi(kT1, kT1, 1)});
   program.Load(kT4, at.result);
-  program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kSstatus), Sd(kT1, kT4, 8),
-                Csrr(kT1, kSepc), Addi(kT1, kT1, 4), Csrw(kSepc, kT1), kSret});
+  program.Emit({
+      Sd(kT1, kT4, 0),
+      Csrr(kT1, kSstatus),
+      Sd(kT1, kT4, 8),
+      Csrr(kT1, kSepc),
+      Addi(kT1, kT1, 4),
+      Csrw(kSepc, kT1),
+      kSret,
+  });
 
   program.Set(machine_handler, at.code + program.Here());
   program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
@@ -1204,22 +1237,33 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
   const Assembler::Constant machine_handler = program.Load(kT1);
   program.Emit(Csrw(kMtvec, kT1));
   const Assembler::Constant supervisor_handler = program.Load(kT1);
-  program.Emit({Csrw(kStvec, kT1), Li(kT1, 1),
-                Slli(kT1, kT1, kSupervisorExternalInterrupt),
-                Csrs(kMideleg, kT1), Csrs(kSie, kT1),
-                // The mode to return to is supervisor, as InSupervisorMode
-                // sets it.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
-                Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kStvec, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kSupervisorExternalInterrupt),
+      Csrs(kMideleg, kT1),
+      Csrs(kSie, kT1),
+      // The mode to return to is supervisor, as InSupervisorMode
+      // sets it.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   const Assembler::Constant supervisors_code = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
   program.Set(supervisors_code, at.code + program.Here());
   program.Load(kT2, at.result);
   const Assembler::Constant the_ecall = program.Load(kT0);
-  program.Emit({Sd(kT0, kT2, 16), kWfi, Li(kT3, 1U << kSupervisorInterruptsOn),
-                Csrs(kSstatus, kT3)});
+  program.Emit({
+      Sd(kT0, kT2, 16),
+      kWfi,
+      Li(kT3, 1U << kSupervisorInterruptsOn),
+      Csrs(kSstatus, kT3),
+  });
   program.Set(the_ecall, at.code + program.Here());
   program.Emit({kEcall, Li(kT0, 1), Sd(kT0, kT2, 24)});
   AppendSleepForEver(program);
@@ -1227,8 +1271,14 @@ inline Program TakeAnInterruptAtAnEcallFromSupervisorMode(
   program.Set(machine_handler, at.code + program.Here());
   program.Emit({Csrr(kT1, kMcause), Addi(kT1, kT1, 1)});
   program.Load(kT4, at.result);
-  program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMepc), Sd(kT1, kT4, 8),
-                Addi(kT1, kT1, 4), Csrw(kMepc, kT1), kMret});
+  program.Emit({
+      Sd(kT1, kT4, 0),
+      Csrr(kT1, kMepc),
+      Sd(kT1, kT4, 8),
+      Addi(kT1, kT1, 4),
+      Csrw(kMepc, kT1),
+      kMret,
+  });
 
   program.Set(supervisor_handler, at.code + program.Here());
   program.Load(kT5, device);
@@ -1251,12 +1301,17 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
                                         const Program& supervisors_code) {
   Assembler program;
   const Assembler::Constant machine_handler = program.Load(kT1);
-  program.Emit({Csrw(kMtvec, kT1),
-                // The mode to return to is supervisor, as InSupervisorMode
-                // sets it.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
-                Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kMtvec, kT1),
+      // The mode to return to is supervisor, as InSupervisorMode
+      // sets it.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   for (const Word instruction : machine_modes_setup) program.Emit(instruction);
   const Assembler::Constant supervisor = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
@@ -1272,8 +1327,13 @@ inline Program RunInSupervisorModeAfter(const Pages& at,
   program.Load(kT4, at.result);
   program.Emit({Sd(kT1, kT4, 0), Csrr(kT1, kMstatus), Sd(kT1, kT4, 8)});
   program.Load(kT5, its_first_instruction);
-  program.Emit({Csrr(kT1, kMepc), Sub(kT1, kT1, kT5), Sd(kT1, kT4, 24),
-                Csrr(kT1, kMtval), Sd(kT1, kT4, 32)});
+  program.Emit({
+      Csrr(kT1, kMepc),
+      Sub(kT1, kT1, kT5),
+      Sd(kT1, kT4, 24),
+      Csrr(kT1, kMtval),
+      Sd(kT1, kT4, 32),
+  });
   AppendSleepForEver(program);
   return program.Assemble();
 }
@@ -1289,14 +1349,20 @@ inline Program ReadACounterIn(Word mode, const Pages& at, Word counter,
                               Word mcounteren, Word scounteren) {
   Assembler program;
   const Assembler::Constant machine_handler = program.Load(kT1);
-  program.Emit(
-      {Csrw(kMtvec, kT1), Li(kT1, static_cast<std::int32_t>(mcounteren)),
-       Csrw(kMcounteren, kT1), Li(kT1, static_cast<std::int32_t>(scounteren)),
-       Csrw(kScounteren, kT1),
-       // The mode to return to: clear both bits of the field, then set it.
-       Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-       Li(kT1, static_cast<std::int32_t>(mode)), Slli(kT1, kT1, kPreviousMode),
-       Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kMtvec, kT1),
+      Li(kT1, static_cast<std::int32_t>(mcounteren)),
+      Csrw(kMcounteren, kT1),
+      Li(kT1, static_cast<std::int32_t>(scounteren)),
+      Csrw(kScounteren, kT1),
+      // The mode to return to: clear both bits of the field, then set it.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, static_cast<std::int32_t>(mode)),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   const Assembler::Constant below = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
@@ -1321,11 +1387,16 @@ inline Program StoreWhatTheCounterEnablesReadAsAfterWriting(
     Word mcounteren, Word scounteren, std::uint64_t result) {
   Assembler program;
   program.Load(kT2, result);
-  program.Emit({Li(kT1, static_cast<std::int32_t>(mcounteren)),
-                Csrw(kMcounteren, kT1),
-                Li(kT1, static_cast<std::int32_t>(scounteren)),
-                Csrw(kScounteren, kT1), Csrr(kT0, kMcounteren), Sd(kT0, kT2, 0),
-                Csrr(kT0, kScounteren), Sd(kT0, kT2, 8)});
+  program.Emit({
+      Li(kT1, static_cast<std::int32_t>(mcounteren)),
+      Csrw(kMcounteren, kT1),
+      Li(kT1, static_cast<std::int32_t>(scounteren)),
+      Csrw(kScounteren, kT1),
+      Csrr(kT0, kMcounteren),
+      Sd(kT0, kT2, 0),
+      Csrr(kT0, kScounteren),
+      Sd(kT0, kT2, 8),
+  });
   AppendSleepForEver(program);
   return program.Assemble();
 }
@@ -1346,9 +1417,12 @@ inline Program RunTheCodeAtAnAddressInUserModeUnderPaging(
   program.Emit(Csrw(kMedeleg, kT1));
   AppendEnterSupervisorModeUnderPaging(program, at);
   const Assembler::Constant handler = program.Load(kT1);
-  program.Emit({Csrw(kStvec, kT1),
-                // The mode to return to is user mode.
-                Li(kT1, 1U << kSupervisorPreviousMode), Csrc(kSstatus, kT1)});
+  program.Emit({
+      Csrw(kStvec, kT1),
+      // The mode to return to is user mode.
+      Li(kT1, 1U << kSupervisorPreviousMode),
+      Csrc(kSstatus, kT1),
+  });
   program.Load(kT1, users_code);
   program.Emit({Csrw(kSepc, kT1), kSret});
 
@@ -1443,19 +1517,31 @@ inline Program LoadChangeAnEntryAndLoadAgain(const Pages& at,
 inline Program TakeAnInterruptAtALoadThatWalksThePageTables(
     const Pages& at, std::uint64_t address, std::uint64_t device) {
   Assembler program;
-  program.Emit({Li(kT1, 1), Slli(kT1, kT1, kSupervisorExternalInterrupt),
-                Csrs(kMideleg, kT1)});
+  program.Emit({
+      Li(kT1, 1),
+      Slli(kT1, kT1, kSupervisorExternalInterrupt),
+      Csrs(kMideleg, kT1),
+  });
   AppendEnterSupervisorModeUnderPaging(program, at);
   const Assembler::Constant handler = program.Load(kT1);
-  program.Emit({Csrw(kStvec, kT1), Li(kT1, 1),
-                Slli(kT1, kT1, kSupervisorExternalInterrupt), Csrs(kSie, kT1)});
+  program.Emit({
+      Csrw(kStvec, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kSupervisorExternalInterrupt),
+      Csrs(kSie, kT1),
+  });
   program.Load(kT1, address);
   program.Load(kT2, at.result);
-  program.Emit({kWfi, Li(kT3, 1U << kSupervisorInterruptsOn),
-                // What the load would leave untouched, if it did not
-                // happen.
-                Li(kT0, 0), Csrs(kSstatus, kT3), Ld(kT0, kT1, 0),
-                Sd(kT0, kT2, 0)});
+  program.Emit({
+      kWfi,
+      Li(kT3, 1U << kSupervisorInterruptsOn),
+      // What the load would leave untouched, if it did not
+      // happen.
+      Li(kT0, 0),
+      Csrs(kSstatus, kT3),
+      Ld(kT0, kT1, 0),
+      Sd(kT0, kT2, 0),
+  });
   AppendSleepForEver(program);
 
   program.Set(handler, at.code + program.Here());
@@ -1511,9 +1597,10 @@ inline Program RunWithACell(std::uint64_t cell, std::uint64_t result,
 // stores the low 32 bits of t0 a byte at a time at the address the trap
 // says, which it has in t5. It uses t6.
 inline Program StoreTheWordInT0AByteAtATimeAtT5() {
-  return {Sb(kT0, kT5, 0),    Srli(kT6, kT0, 8), Sb(kT6, kT5, 1),
-          Srli(kT6, kT0, 16), Sb(kT6, kT5, 2),   Srli(kT6, kT0, 24),
-          Sb(kT6, kT5, 3)};
+  return {
+      Sb(kT0, kT5, 0), Srli(kT6, kT0, 8),  Sb(kT6, kT5, 1), Srli(kT6, kT0, 16),
+      Sb(kT6, kT5, 2), Srli(kT6, kT0, 24), Sb(kT6, kT5, 3),
+  };
 }
 
 // A program that, in supervisor mode with paging off and misaligned loads
@@ -1528,15 +1615,22 @@ inline Program TakeAMisalignedAccessInSupervisorMode(
     const Pages& at, std::uint64_t address, Word access,
     const Program& then_the_handler = {}, std::uint64_t t0 = 0) {
   Assembler program;
-  program.Emit({Li(kT1, (1U << kMisalignedLoad) | (1U << kMisalignedStore)),
-                Csrw(kMedeleg, kT1)});
+  program.Emit({
+      Li(kT1, (1U << kMisalignedLoad) | (1U << kMisalignedStore)),
+      Csrw(kMedeleg, kT1),
+  });
   const Assembler::Constant handler = program.Load(kT1);
-  program.Emit({Csrw(kStvec, kT1),
-                // The mode to return to is supervisor, as InSupervisorMode
-                // sets it.
-                Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode),
-                Csrs(kMstatus, kT1)});
+  program.Emit({
+      Csrw(kStvec, kT1),
+      // The mode to return to is supervisor, as InSupervisorMode
+      // sets it.
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+  });
   const Assembler::Constant supervisor = program.Load(kT1);
   program.Emit({Csrw(kMepc, kT1), kMret});
 
@@ -1548,8 +1642,13 @@ inline Program TakeAMisalignedAccessInSupervisorMode(
   AppendSleepForEver(program);
 
   program.Set(handler, at.code + program.Here());
-  program.Emit({Csrr(kT4, kScause), Addi(kT4, kT4, 1), Sd(kT4, kT2, 0),
-                Csrr(kT5, kStval), Sd(kT5, kT2, 8)});
+  program.Emit({
+      Csrr(kT4, kScause),
+      Addi(kT4, kT4, 1),
+      Sd(kT4, kT2, 0),
+      Csrr(kT5, kStval),
+      Sd(kT5, kT2, 8),
+  });
   program.Emit(then_the_handler);
   program.Emit({Csrr(kT4, kSepc), Addi(kT4, kT4, 4), Csrw(kSepc, kT4), kSret});
   return program.Assemble();
@@ -1625,10 +1724,19 @@ inline Program CountDownUnderPagingStoringEachCount(const Pages& at,
 inline Program TurnPagingOnInSupervisorModeThenStoreWhereItRuns(
     const Pages& at) {
   Assembler program;
-  program.Emit({Li(kT1, 3), Slli(kT1, kT1, kPreviousMode), Csrc(kMstatus, kT1),
-                Li(kT1, 1), Slli(kT1, kT1, kPreviousMode), Csrs(kMstatus, kT1),
-                // To the instruction after the return, four on from here.
-                Auipc(kT1, 0), Addi(kT1, kT1, 16), Csrw(kMepc, kT1), kMret});
+  program.Emit({
+      Li(kT1, 3),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrc(kMstatus, kT1),
+      Li(kT1, 1),
+      Slli(kT1, kT1, kPreviousMode),
+      Csrs(kMstatus, kT1),
+      // To the instruction after the return, four on from here.
+      Auipc(kT1, 0),
+      Addi(kT1, kT1, 16),
+      Csrw(kMepc, kT1),
+      kMret,
+  });
   program.Load(kT1, SatpForSv39(at.root_table));
   program.Emit(Csrw(kSatp, kT1));
   const Assembler::Constant up_there = program.Load(kT1);
@@ -1703,11 +1811,16 @@ inline Program StoreSieThenSipOnTheSupervisorExternalInterrupt(
     std::uint64_t device) {
   Program sleep;
   AppendSleepForEver(sleep);
-  return InSupervisorMode(
-      kSupervisorExternalInterrupt, sleep,
-      {Csrr(kT1, kSie), Sw(kT1, kT3, kResultOffset), Csrr(kT1, kSip),
-       Sw(kT1, kT3, kResultOffset + 4),
-       Lui(kT0, static_cast<Word>(device >> 12U)), Sw(kZero, kT0, 0), kSret});
+  return InSupervisorMode(kSupervisorExternalInterrupt, sleep,
+                          {
+                              Csrr(kT1, kSie),
+                              Sw(kT1, kT3, kResultOffset),
+                              Csrr(kT1, kSip),
+                              Sw(kT1, kT3, kResultOffset + 4),
+                              Lui(kT0, static_cast<Word>(device >> 12U)),
+                              Sw(kZero, kT0, 0),
+                              kSret,
+                          });
 }
 
 // A program that, with only the supervisor external interrupt handed down
@@ -1735,11 +1848,15 @@ inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
       Csrs(kSip, kT1),
   };
   AppendSleepForEver(ask_then_sleep);
-  return InSupervisorMode(
-      kSupervisorSoftwareInterrupt, ask_then_sleep,
-      {Li(kT1, 1U << kSupervisorSoftwareInterrupt), Csrc(kSip, kT1),
-       Lw(kT4, kT3, kResultOffset), Addi(kT4, kT4, 1),
-       Sw(kT4, kT3, kResultOffset), kSret});
+  return InSupervisorMode(kSupervisorSoftwareInterrupt, ask_then_sleep,
+                          {
+                              Li(kT1, 1U << kSupervisorSoftwareInterrupt),
+                              Csrc(kSip, kT1),
+                              Lw(kT4, kT3, kResultOffset),
+                              Addi(kT4, kT4, 1),
+                              Sw(kT4, kT3, kResultOffset),
+                              kSret,
+                          });
 }
 
 // A program that asks the machine timer for one interrupt and takes it.

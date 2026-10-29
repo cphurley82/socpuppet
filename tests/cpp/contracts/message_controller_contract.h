@@ -92,10 +92,13 @@ class MessageControllerContract : public ::testing::Test {
   // Runs `body` in a simulation thread wired to the controller as its
   // hart is, to completion, and then lets what it set in motion settle.
   void AsTheHart(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"hart", [&](BusDriver& hart) {
-                       body(hart);
-                       Settle();
-                     }};
+    BusDriver driver{
+        "hart",
+        [&](BusDriver& hart) {
+          body(hart);
+          Settle();
+        },
+    };
     driver.socket.bind(controller_.csr);
     sc_core::sc_start();
   }
@@ -159,14 +162,18 @@ class MessageControllerContract : public ::testing::Test {
   sc_core::sc_signal<bool> interrupt_{"interrupt"};
   sc_core::sc_signal<bool> supervisor_interrupt_{"supervisor_interrupt"};
 
-  const File machine_mode_{.window = socpuppet::kMireg,
-                           .top = socpuppet::kMtopei,
-                           .devices = machines_devices_,
-                           .line = interrupt_};
-  const File supervisor_mode_{.window = socpuppet::kSireg,
-                              .top = socpuppet::kStopei,
-                              .devices = supervisors_devices_,
-                              .line = supervisor_interrupt_};
+  const File machine_mode_{
+      .window = socpuppet::kMireg,
+      .top = socpuppet::kMtopei,
+      .devices = machines_devices_,
+      .line = interrupt_,
+  };
+  const File supervisor_mode_{
+      .window = socpuppet::kSireg,
+      .top = socpuppet::kStopei,
+      .devices = supervisors_devices_,
+      .line = supervisor_interrupt_,
+  };
 };
 
 TYPED_TEST_SUITE_P(MessageControllerContract);

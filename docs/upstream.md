@@ -646,6 +646,20 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: the backend's row in the report changes.
 
+## clang-tidy
+
+[LLVM's clang-tidy](https://clang.llvm.org/extra/clang-tidy/), pinned at 23.1.3 in `pyproject.toml`.
+
+### `readability-trailing-comma` takes the comma after an empty `{}` for a trailing one
+
+- **Where**: `clang-tools-extra/clang-tidy/readability/TrailingCommaCheck.cpp`, new in LLVM 23.
+- **What is wrong**: an empty braced list for a struct with a default member initializer, as one argument among several, such as the `{}` in `Take(1, {}, 2)`, is reported as "initializer list should not have a trailing comma", and the fix-it deletes the comma that separates it from the next argument, which no longer compiles. `Extras{}` misfires the same way; `Extras()` does not. 🎓 The default member initializer is what matters: it gives the empty list an implicit element, so the check seems to look for a comma after an element that is not in the source.
+- **How to see it**: `clang-tidy -checks='-*,readability-trailing-comma' r.cpp -- -std=c++20` on a file with `struct Extras { int spam = 0; }; void Take(int, Extras, int); void F() { Take(1, {}, 2); }`.
+- **What we do**: no patch. `tests/cpp/platform/cpu_test.cpp` writes `DbtRiseCpuExtras()` where it meant `{}`, with a comment saying why.
+- **Upstream fix**: an empty list has no last element, so the check should skip it.
+- **Kind**: bug.
+- **When it lands**: put the `{}` back.
+
 ## LLVM, as Debian and Ubuntu package it
 
 ### LLVM's CMake package uses `pkg_check_modules` without loading it

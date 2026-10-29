@@ -90,7 +90,8 @@ class VirtqueueDriver {
     return {
         .id = socpuppet::LoadLittleEndian<std::uint32_t>(fields.subspan(0, 4)),
         .length =
-            socpuppet::LoadLittleEndian<std::uint32_t>(fields.subspan(4, 4))};
+            socpuppet::LoadLittleEndian<std::uint32_t>(fields.subspan(4, 4)),
+    };
   }
 
  private:

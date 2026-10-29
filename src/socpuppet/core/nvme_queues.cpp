@@ -38,7 +38,10 @@ void NvmeQueues::CreateCompletionQueue(std::size_t queue_id, const Ring& ring,
 void NvmeQueues::CreateSubmissionQueue(std::size_t queue_id, const Ring& ring,
                                        std::uint16_t completion_queue) {
   submissions_[queue_id] = {
-      .exists = true, .ring = ring, .completion_queue = completion_queue};
+      .exists = true,
+      .ring = ring,
+      .completion_queue = completion_queue,
+  };
 }
 
 void NvmeQueues::RemoveAll() {

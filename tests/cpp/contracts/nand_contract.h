@@ -77,7 +77,10 @@ class NandContract : public ::testing::Test {
  protected:
   // A small chip: 4 blocks of 8 pages, each page 16 bytes.
   static constexpr socpuppet::NandGeometry kGeometry{
-      .page_size = 16, .pages_per_block = 8, .blocks = 4};
+      .page_size = 16,
+      .pages_per_block = 8,
+      .blocks = 4,
+  };
 
   // Runs `body` in a simulation thread wired to the chip, to completion.
   // The body talks to the chip through the driver's socket.
@@ -204,10 +207,12 @@ TYPED_TEST_P(NandContract, DataThatIsNotOnePageLongGetsABurstError) {
   std::vector<tlm::tlm_response_status> responses;
 
   this->AsItsController([&](BusDriver& controller) {
-    responses = {nand_contract::ReadPage(controller, 0, 0, too_short),
-                 nand_contract::ReadPage(controller, 0, 0, too_long),
-                 nand_contract::ProgramPage(controller, 0, 0, too_short),
-                 nand_contract::ProgramPage(controller, 0, 0, too_long)};
+    responses = {
+        nand_contract::ReadPage(controller, 0, 0, too_short),
+        nand_contract::ReadPage(controller, 0, 0, too_long),
+        nand_contract::ProgramPage(controller, 0, 0, too_short),
+        nand_contract::ProgramPage(controller, 0, 0, too_long),
+    };
     nand_contract::ReadPage(controller, 0, 0, afterwards);
   });
 

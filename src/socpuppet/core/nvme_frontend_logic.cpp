@@ -247,8 +247,10 @@ bool NvmeFrontendLogic::CreateQueue(std::uint32_t kind) {
       queue_.last > kLongestQueuesLastSlot) {
     return false;
   }
-  const NvmeQueues::Ring ring{.base = queue_.base,
-                              .last = static_cast<std::uint16_t>(queue_.last)};
+  const NvmeQueues::Ring ring{
+      .base = queue_.base,
+      .last = static_cast<std::uint16_t>(queue_.last),
+  };
   switch (kind) {
     case NVME_FRONTEND_QUEUE_CREATE_COMPLETION_QUEUE:
       // Its completions are announced on an interrupt vector, which has to
@@ -280,15 +282,18 @@ bool NvmeFrontendLogic::Step() {
   if (ResetIsPending()) return false;
   bool did_something = false;
   if (posting_ && command_) {
-    queues_.Post(
-        *command_,
-        {.status = static_cast<std::uint8_t>(
-             (completion_status_ & NVME_FRONTEND_COMPLETION_STATUS_CODE_MASK) >>
-             NVME_FRONTEND_COMPLETION_STATUS_CODE_SHIFT),
-         .status_type = static_cast<std::uint8_t>(
-             (completion_status_ & NVME_FRONTEND_COMPLETION_STATUS_TYPE_MASK) >>
-             NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT),
-         .result = completion_result_});
+    queues_.Post(*command_,
+                 {
+                     .status = static_cast<std::uint8_t>(
+                         (completion_status_ &
+                          NVME_FRONTEND_COMPLETION_STATUS_CODE_MASK) >>
+                         NVME_FRONTEND_COMPLETION_STATUS_CODE_SHIFT),
+                     .status_type = static_cast<std::uint8_t>(
+                         (completion_status_ &
+                          NVME_FRONTEND_COMPLETION_STATUS_TYPE_MASK) >>
+                         NVME_FRONTEND_COMPLETION_STATUS_TYPE_SHIFT),
+                     .result = completion_result_,
+                 });
     command_.reset();
     posting_ = false;
     did_something = true;

@@ -47,15 +47,16 @@ class RecordingTarget : public sc_core::sc_module {
   void b_transport(tlm::tlm_generic_payload& transaction,
                    sc_core::sc_time& delay) {
     const std::uint8_t* data = transaction.get_data_ptr();
-    record_.push_back(
-        {.address = transaction.get_address(),
-         .delay = delay,
-         .kernel_time = sc_core::sc_time_stamp(),
-         .written = transaction.is_write()
-                        ? std::vector<std::uint8_t>(
-                              data, data + transaction.get_data_length())
-                        : std::vector<std::uint8_t>{},
-         .requester_id = socpuppet::RequesterIdOf(transaction)});
+    record_.push_back({
+        .address = transaction.get_address(),
+        .delay = delay,
+        .kernel_time = sc_core::sc_time_stamp(),
+        .written = transaction.is_write()
+                       ? std::vector<std::uint8_t>(
+                             data, data + transaction.get_data_length())
+                       : std::vector<std::uint8_t>{},
+        .requester_id = socpuppet::RequesterIdOf(transaction),
+    });
     delay += latency_;
     transaction.set_response_status(tlm::TLM_OK_RESPONSE);
   }

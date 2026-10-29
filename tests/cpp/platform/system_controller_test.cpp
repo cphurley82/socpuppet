@@ -81,11 +81,13 @@ struct CpuUnderASystemController {
     platform.SetQuantum(quantum);
     platform.Add("cpu", "dbt_rise_cpu", {{"xlen", 64}, {"reset_vector", kRam}});
     platform.Add("bus", "router",
-                 {{"outputs", 2},
-                  {"out0.base", kRam},
-                  {"out0.size", 0x1000},
-                  {"out1.base", kController},
-                  {"out1.size", SYSTEM_CONTROLLER_SIZE}});
+                 {
+                     {"outputs", 2},
+                     {"out0.base", kRam},
+                     {"out0.size", 0x1000},
+                     {"out1.base", kController},
+                     {"out1.size", SYSTEM_CONTROLLER_SIZE},
+                 });
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Add("syscon", "system_controller",
                  {{"die", kDie}, {"boot_address", kBootAddress}});
@@ -338,7 +340,8 @@ TEST(ADebugAccessToASystemController, ReadsARegisterAndResetsNothing) {
     read = bus.DebugRead(SYSTEM_CONTROLLER_BOOT_ADDRESS, seen);
     written = bus.DebugWrite(SYSTEM_CONTROLLER_RESET_REQUEST,
                              socpuppet::LittleEndianBytes(std::uint32_t{
-                                 SYSTEM_CONTROLLER_RESET_REQUEST_RESET}));
+                                 SYSTEM_CONTROLLER_RESET_REQUEST_RESET,
+                             }));
     Rig::LetItSettle();
     reset_after = lines.reset.read();
   }};

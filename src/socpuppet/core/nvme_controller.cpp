@@ -80,11 +80,13 @@ bool NvmeController::ReadRegister(std::uint64_t offset,
   // shutdown is complete as soon as it is asked for.
   return registers_.Read(
       offset, out,
-      {.ready_timeout = kReadyTimeout,
-       .ready = registers_.Enabled(),
-       .shutdown = registers_.Enabled() && registers_.ShutdownAsked()
-                       ? NvmeHostRegisters::Shutdown::kComplete
-                       : NvmeHostRegisters::Shutdown::kNone});
+      {
+          .ready_timeout = kReadyTimeout,
+          .ready = registers_.Enabled(),
+          .shutdown = registers_.Enabled() && registers_.ShutdownAsked()
+                          ? NvmeHostRegisters::Shutdown::kComplete
+                          : NvmeHostRegisters::Shutdown::kNone,
+      });
 }
 
 bool NvmeController::WriteRegister(std::uint64_t offset,
@@ -171,9 +173,11 @@ NvmeController::Outcome NvmeController::CreateIoCompletionQueue(
   }
   queues_.CreateCompletionQueue(
       queue_id,
-      {.base = command.dptr.prp.prp1,
-       .last =
-           static_cast<std::uint16_t>(command.cdw10_bits.create_io_q.qsize)},
+      {
+          .base = command.dptr.prp.prp1,
+          .last =
+              static_cast<std::uint16_t>(command.cdw10_bits.create_io_q.qsize),
+      },
       static_cast<std::uint16_t>(command.cdw11_bits.create_io_cq.iv));
   return {};
 }
@@ -196,9 +200,11 @@ NvmeController::Outcome NvmeController::CreateIoSubmissionQueue(
     return CommandSpecific(SPDK_NVME_SC_COMPLETION_QUEUE_INVALID);
   }
   queues_.CreateSubmissionQueue(queue_id,
-                                {.base = command.dptr.prp.prp1,
-                                 .last = static_cast<std::uint16_t>(
-                                     command.cdw10_bits.create_io_q.qsize)},
+                                {
+                                    .base = command.dptr.prp.prp1,
+                                    .last = static_cast<std::uint16_t>(
+                                        command.cdw10_bits.create_io_q.qsize),
+                                },
                                 static_cast<std::uint16_t>(completion_queue));
   return {};
 }

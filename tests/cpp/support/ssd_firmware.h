@@ -615,9 +615,12 @@ inline void AddSsdFirmware(socpuppet::Registry& registry,
                  auto module = std::make_unique<SsdFirmware>(name, map);
                  std::vector<socpuppet::Port> ports{
                      socpuppet::InitiatorPort("socket", module->socket),
-                     socpuppet::WireSinkPort("irq", module->irq)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::WireSinkPort("irq", module->irq),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 

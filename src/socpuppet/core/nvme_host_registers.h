@@ -28,7 +28,7 @@ class NvmeHostRegisters {
   enum class Shutdown : std::uint8_t {
     kNone = 0,
     kUnderWay = 1,
-    kComplete = 2
+    kComplete = 2,
   };
 
   // What a controller says for itself in the registers the host only

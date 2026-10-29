@@ -35,12 +35,22 @@ static_assert(static_cast<int>(NvmeHostRegisters::Shutdown::kComplete) ==
 
 // CAP, VS and CSTS, where SPDK's layout has them.
 constexpr std::array<NvmeHostRegisters::Register, 3>
-    kRegistersTheControllerSays{{{.offset = offsetof(spdk_nvme_registers, cap),
-                                  .size = sizeof(spdk_nvme_registers::cap)},
-                                 {.offset = offsetof(spdk_nvme_registers, vs),
-                                  .size = sizeof(spdk_nvme_registers::vs)},
-                                 {.offset = offsetof(spdk_nvme_registers, csts),
-                                  .size = sizeof(spdk_nvme_registers::csts)}}};
+    kRegistersTheControllerSays{
+        {
+            {
+                .offset = offsetof(spdk_nvme_registers, cap),
+                .size = sizeof(spdk_nvme_registers::cap),
+            },
+            {
+                .offset = offsetof(spdk_nvme_registers, vs),
+                .size = sizeof(spdk_nvme_registers::vs),
+            },
+            {
+                .offset = offsetof(spdk_nvme_registers, csts),
+                .size = sizeof(spdk_nvme_registers::csts),
+            },
+        },
+};
 
 bool Fits(std::uint64_t offset, std::size_t length) {
   return offset <= kControllerRegistersSize &&
@@ -147,13 +157,17 @@ void NvmeHostRegisters::CreateAdminQueues(NvmeQueues& queues) const {
   sizes.raw = admin_queue_sizes_;
   queues.CreateCompletionQueue(
       0,
-      {.base = admin_completion_queue_,
-       .last = static_cast<std::uint16_t>(sizes.bits.acqs)},
+      {
+          .base = admin_completion_queue_,
+          .last = static_cast<std::uint16_t>(sizes.bits.acqs),
+      },
       /*vector=*/0);
   queues.CreateSubmissionQueue(
       0,
-      {.base = admin_submission_queue_,
-       .last = static_cast<std::uint16_t>(sizes.bits.asqs)},
+      {
+          .base = admin_submission_queue_,
+          .last = static_cast<std::uint16_t>(sizes.bits.asqs),
+      },
       /*completion_queue=*/0);
 }
 

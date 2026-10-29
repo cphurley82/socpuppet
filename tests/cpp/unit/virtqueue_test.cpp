@@ -38,10 +38,12 @@ std::vector<std::uint8_t> SomeBytes(std::size_t length) {
 // side and the device's side of it.
 struct Rig {
   static constexpr std::uint16_t kSize = 8;
-  static constexpr Virtqueue::Layout kLayout{.desc = kMemory + 0x1000,
-                                             .avail = kMemory + 0x2000,
-                                             .used = kMemory + 0x3000,
-                                             .size = kSize};
+  static constexpr Virtqueue::Layout kLayout{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = kSize,
+  };
 
   MemoryAt memory{kMemory};
   VirtqueueDriver driver{memory, kLayout, kMemory + 0x4000};

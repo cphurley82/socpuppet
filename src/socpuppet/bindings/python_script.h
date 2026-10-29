@@ -80,8 +80,10 @@ class PythonScript {
     };
     if (kind == "read32") return Read32{number(1)};
     if (kind == "write32") {
-      return Write32{.address = number(1),
-                     .value = static_cast<std::uint32_t>(number(2))};
+      return Write32{
+          .address = number(1),
+          .value = static_cast<std::uint32_t>(number(2)),
+      };
     }
     if (kind == "read") {
       return Read{.address = number(1), .length = number(2)};
@@ -91,8 +93,10 @@ class PythonScript {
       return Write{.address = number(1), .data = {data.begin(), data.end()}};
     }
     if (kind == "expect32") {
-      return Expect32{.address = number(1),
-                      .value = static_cast<std::uint32_t>(number(2))};
+      return Expect32{
+          .address = number(1),
+          .value = static_cast<std::uint32_t>(number(2)),
+      };
     }
     if (kind == "wait") return Wait{Picoseconds{number(1)}};
     if (kind == "wait_irq") return WaitIrq{};

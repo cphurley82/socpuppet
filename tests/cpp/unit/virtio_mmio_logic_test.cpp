@@ -225,10 +225,12 @@ TEST(WhenTheDriverAsksHowBigAQueueCanBe,
 
 // A queue of eight entries, laid out in the memory the way the
 // specification lays it out, and its buffers after it.
-constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
-                                   .avail = kMemory + 0x2000,
-                                   .used = kMemory + 0x3000,
-                                   .size = 8};
+constexpr Virtqueue::Layout kQueue{
+    .desc = kMemory + 0x1000,
+    .avail = kMemory + 0x2000,
+    .used = kMemory + 0x3000,
+    .size = 8,
+};
 constexpr std::uint64_t kBuffers = kMemory + 0x4000;
 
 TEST(WhenTheDriverHasSetOneQueueUp,
@@ -281,8 +283,10 @@ TEST(WhenTheDriverRingsTheDoorbellOfAQueueWithTwoChainsAvailable,
   rig.Write32(VIRTIO_MMIO_QUEUE_NOTIFY, 0);
   rig.transport.CarryOut();
 
-  const std::vector<std::pair<std::uint16_t, std::uint16_t>> both = {{0, 0},
-                                                                     {0, 1}};
+  const std::vector<std::pair<std::uint16_t, std::uint16_t>> both = {
+      {0, 0},
+      {0, 1},
+  };
   EXPECT_EQ(rig.device.handled, both);
 }
 

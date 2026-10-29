@@ -21,10 +21,12 @@ constexpr std::uint64_t kMemory = 0x8000'0000;
 // The entropy device's one queue, with the driver's side and the device's
 // side of it, and the device itself.
 struct Rig {
-  static constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
-                                            .avail = kMemory + 0x2000,
-                                            .used = kMemory + 0x3000,
-                                            .size = 8};
+  static constexpr Virtqueue::Layout kQueue{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = 8,
+  };
 
   explicit Rig(std::uint64_t seed) : rng(seed) {}
 

@@ -345,7 +345,11 @@ TEST(WhenADebuggerLooksAtARegisterOfAnNvmeFrontendsCpu, ItSeesWhatTheCpuWould) {
 // status acknowledged, would be something the firmware never did.
 TEST(WhenADebuggerWritesToARegisterOfAnNvmeFrontendsCpu, TheWriteIsDeclined) {
   const std::array<std::uint8_t, 4> acknowledgement{
-      NVME_FRONTEND_STATUS_ENABLED, 0, 0, 0};
+      NVME_FRONTEND_STATUS_ENABLED,
+      0,
+      0,
+      0,
+  };
   HostAndCpuWithAnNvmeFrontend fixture{
       [](BusDriver& host) { host.Write32(kCc, 1); }, [](BusDriver&) {}};
   fixture.platform.Run();

@@ -203,11 +203,13 @@ TEST(WhenACpuIsAskedForSupervisorModeWithoutFloatingPoint,
 TEST(WhenACpuIsAskedForABackendItsBuildHasNoCoreFor,
      ItIsRefusedAndTheErrorNamesItAndTheOnesTheBuildHas) {
   const auto make_a_cpu_with_backend_spam = [] {
+    // The extras are DbtRiseCpuExtras() and not {}: clang-tidy 23 takes the
+    // comma after an empty {} for a trailing one (docs/upstream.md).
     const socpuppet::DbtRiseCpu cpu{"cpu",
                                     /*xlen=*/64,
                                     /*reset_vector=*/0,
                                     /*gdb_port=*/0,
-                                    /*extras=*/{},
+                                    socpuppet::DbtRiseCpuExtras(),
                                     /*backend=*/"spam"};
   };
 
@@ -236,7 +238,7 @@ TEST(WhenNothingSaysWhichBackend, TheCoreWithMemoryProtectionRunsInterpreted) {
                                   /*xlen=*/32,
                                   /*reset_vector=*/0,
                                   /*gdb_port=*/0,
-                                  /*extras=*/{},
+                                  socpuppet::DbtRiseCpuExtras(),
                                   /*backend=*/std::nullopt};
 
   EXPECT_EQ(cpu.Backend(), "interp");
@@ -275,15 +277,18 @@ struct CpuPlatformWithAProbe {
 
   static socpuppet::Registry WithAProbe() {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    registry.Add(
-        "counting_probe", [](const char* name, socpuppet::Parameters&) {
-          auto module = std::make_unique<CountingProbe>(name);
-          std::vector<socpuppet::Port> ports{
-              socpuppet::TargetPort("target", module->target),
-              socpuppet::InitiatorPort("initiator", module->initiator)};
-          return socpuppet::Instance{.module = std::move(module),
-                                     .ports = std::move(ports)};
-        });
+    registry.Add("counting_probe",
+                 [](const char* name, socpuppet::Parameters&) {
+                   auto module = std::make_unique<CountingProbe>(name);
+                   std::vector<socpuppet::Port> ports{
+                       socpuppet::TargetPort("target", module->target),
+                       socpuppet::InitiatorPort("initiator", module->initiator),
+                   };
+                   return socpuppet::Instance{
+                       .module = std::move(module),
+                       .ports = std::move(ports),
+                   };
+                 });
     return registry;
   }
 
@@ -428,11 +433,13 @@ struct CpuPlatformWithAnInterruptSource {
     more.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     AddTheCpu(platform, "cpu", more);
     platform.Add("bus", "router",
-                 {{"outputs", 2},
-                  {"out0.base", kRamBase},
-                  {"out0.size", 0x1000},
-                  {"out1.base", kDeviceBase},
-                  {"out1.size", 0x100}});
+                 {
+                     {"outputs", 2},
+                     {"out0.base", kRamBase},
+                     {"out0.size", 0x1000},
+                     {"out1.base", kDeviceBase},
+                     {"out1.size", 0x100},
+                 });
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Add("device", "interrupt_source");
     platform.Bind("cpu.socket", "bus.target");
@@ -712,13 +719,15 @@ TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
   platform.SetQuantum(quantum);
   AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
   platform.Add("bus", "router",
-               {{"outputs", 3},
-                {"out0.base", kRamBase},
-                {"out0.size", 0x1000},
-                {"out1.base", kTimerBase},
-                {"out1.size", 0x1'0000},
-                {"out2.base", kProbeBase},
-                {"out2.size", 0x100}});
+               {
+                   {"outputs", 3},
+                   {"out0.base", kRamBase},
+                   {"out0.size", 0x1000},
+                   {"out1.base", kTimerBase},
+                   {"out1.size", 0x1'0000},
+                   {"out2.base", kProbeBase},
+                   {"out2.size", 0x100},
+               });
   platform.Add("ram", "memory", {{"size", 0x1000}});
   platform.Add("timer", "machine_timer", {{"frequency_hz", 10'000'000}});
   platform.Add("probe", "probe");
@@ -763,11 +772,13 @@ struct CpuPlatformWithATimer {
     more.insert({{"xlen", xlen}, {"reset_vector", kRamBase}});
     AddTheCpu(platform, "cpu", more);
     platform.Add("bus", "router",
-                 {{"outputs", 2},
-                  {"out0.base", kRamBase},
-                  {"out0.size", 0x1000},
-                  {"out1.base", kTimerBase},
-                  {"out1.size", 0x1'0000}});
+                 {
+                     {"outputs", 2},
+                     {"out0.base", kRamBase},
+                     {"out0.size", 0x1000},
+                     {"out1.base", kTimerBase},
+                     {"out1.size", 0x1'0000},
+                 });
     platform.Add("ram", "memory", {{"size", 0x1000}});
     // The timer counts once for each instruction the CPU executes: both
     // go at 10 MHz.
@@ -931,14 +942,16 @@ struct CpuPlatformWithAnImsic {
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     AddTheCpu(platform, "cpu", cpu);
     platform.Add("bus", "router",
-                 {{"inputs", 2},
-                  {"outputs", 3},
-                  {"out0.base", kRamBase},
-                  {"out0.size", 0x1000},
-                  {"out1.base", kMessagePage},
-                  {"out1.size", 0x1000},
-                  {"out2.base", kSupervisorsMessagePage},
-                  {"out2.size", 0x1000}});
+                 {
+                     {"inputs", 2},
+                     {"outputs", 3},
+                     {"out0.base", kRamBase},
+                     {"out0.size", 0x1000},
+                     {"out1.base", kMessagePage},
+                     {"out1.size", 0x1000},
+                     {"out2.base", kSupervisorsMessagePage},
+                     {"out2.size", 0x1000},
+                 });
     platform.Add("ram", "memory", {{"size", 0x1000}});
     platform.Add("imsic", "imsic", {{"identities", 63}});
     platform.Add("device", "device");
@@ -1035,9 +1048,10 @@ TEST(WhenAMessageArrivesAtTheSupervisorsPageOfTheImsicOfACpuThatListensThere,
 // the platform a turn before the supervisor's returns.
 TEST(WhenAMessageArrivesAtTheSupervisorsPageOfACpuThatRunsAheadOfTheClock,
      TheSupervisorsHandlerStillRunsOnce) {
-  CpuPlatformWithAnImsic with_imsic{
-      {.quantum = sc_core::sc_time{100, sc_core::SC_US},
-       .to_the_supervisors_page = true}};
+  CpuPlatformWithAnImsic with_imsic{{
+      .quantum = sc_core::sc_time{100, sc_core::SC_US},
+      .to_the_supervisors_page = true,
+  }};
   with_imsic.Load(riscv::HandleMessagesInSupervisorModeThroughAnImsic(
       CpuPlatformWithAnImsic::kIdentity));
 
@@ -1274,10 +1288,16 @@ struct CpuPlatformWithPages {
                                          riscv::kPteAccessed | riscv::kPteDirty;
   // Where the program's page and the result's are mapped.
   static constexpr riscv::Pages kPages{
-      .root_table = kFirstTable, .code = kTopHalf, .result = kTopHalf + 0x1000};
+      .root_table = kFirstTable,
+      .code = kTopHalf,
+      .result = kTopHalf + 0x1000,
+  };
   // The same for a program that leaves paging off: where the RAM has them.
   static constexpr riscv::Pages kWithPagingOff{
-      .root_table = kFirstTable, .code = kProgramPage, .result = kResultPage};
+      .root_table = kFirstTable,
+      .code = kProgramPage,
+      .result = kResultPage,
+  };
 
   // `interrupts` is what the device does. Left out, it never interrupts.
   explicit CpuPlatformWithPages(
@@ -1288,11 +1308,13 @@ struct CpuPlatformWithPages {
     cpu.insert({{"xlen", 64}, {"reset_vector", kRamBase}});
     AddTheCpu(platform, "cpu", cpu);
     platform.Add("bus", "router",
-                 {{"outputs", 2},
-                  {"out0.base", kRamBase},
-                  {"out0.size", 0x1'0000},
-                  {"out1.base", kDevice},
-                  {"out1.size", 0x1000}});
+                 {
+                     {"outputs", 2},
+                     {"out0.base", kRamBase},
+                     {"out0.size", 0x1'0000},
+                     {"out1.base", kDevice},
+                     {"out1.size", 0x1000},
+                 });
     platform.Add("ram", "memory", {{"size", 0x1'0000}});
     platform.Add("probe", "counting_probe");
     platform.Add("device", "interrupt_source");
@@ -1442,7 +1464,8 @@ TEST(WhenSupervisorModeTurnsPagingOnWithItsRamMappedWhereItIsByABigPage,
   constexpr riscv::Pages kWithTheResultWhereItIs{
       .root_table = CpuPlatformWithPages::kFirstTable,
       .code = CpuPlatformWithPages::kPages.code,
-      .result = CpuPlatformWithPages::kResultPage};
+      .result = CpuPlatformWithPages::kResultPage,
+  };
   CpuPlatformWithPages with_pages;
   with_pages.MapTheRamWhereItIs();
   with_pages.Load(riscv::TurnPagingOnInSupervisorModeThenStoreWhereItRuns(
@@ -2042,8 +2065,11 @@ riscv::Program Then(std::initializer_list<riscv::Program> parts) {
 // Supervisor mode stores `sstatus` as the third word of its result, and
 // calls machine mode, which stores `mstatus` as the second.
 riscv::Program StoreSstatusThenCallMachineMode() {
-  return {riscv::Csrr(riscv::kT0, riscv::kSstatus),
-          riscv::Sd(riscv::kT0, riscv::kT2, 16), riscv::kEcall};
+  return {
+      riscv::Csrr(riscv::kT0, riscv::kSstatus),
+      riscv::Sd(riscv::kT0, riscv::kT2, 16),
+      riscv::kEcall,
+  };
 }
 
 // 🎓 `sstatus` is supervisor mode's view of `mstatus`: the same register,
@@ -2055,9 +2081,11 @@ TEST(WhenSupervisorModeSetsTheStateOfTheFloatingPointRegistersInSstatus,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      Then({riscv::SetFloatingPointState(riscv::kSstatus,
-                                         riscv::kFloatingPointClean),
-            StoreSstatusThenCallMachineMode()})));
+      Then({
+          riscv::SetFloatingPointState(riscv::kSstatus,
+                                       riscv::kFloatingPointClean),
+          StoreSstatusThenCallMachineMode(),
+      })));
 
   with_pages.RunUntilAsleep();
 
@@ -2135,10 +2163,12 @@ TEST_P(WhenSupervisorModeHasFloatingPointOnAndChangesItsState,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      Then({riscv::SetFloatingPointState(riscv::kSstatus,
-                                         GetParam().state_before),
-            {GetParam().instruction},
-            StoreSstatusThenCallMachineMode()})));
+      Then({
+          riscv::SetFloatingPointState(riscv::kSstatus,
+                                       GetParam().state_before),
+          {GetParam().instruction},
+          StoreSstatusThenCallMachineMode(),
+      })));
 
   with_pages.RunUntilAsleep();
 
@@ -2174,10 +2204,12 @@ TEST(WhenSupervisorModeMarksDirtyFloatingPointStateClean,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      Then({riscv::SetFloatingPointState(riscv::kSstatus,
-                                         riscv::kFloatingPointDirty),
-            riscv::MarkDirtyFloatingPointStateClean(riscv::kSstatus),
-            StoreSstatusThenCallMachineMode()})));
+      Then({
+          riscv::SetFloatingPointState(riscv::kSstatus,
+                                       riscv::kFloatingPointDirty),
+          riscv::MarkDirtyFloatingPointStateClean(riscv::kSstatus),
+          StoreSstatusThenCallMachineMode(),
+      })));
 
   with_pages.RunUntilAsleep();
 
@@ -2239,8 +2271,10 @@ TEST(WhenSupervisorModeSetsBitsOfMachineModesOwnInSstatus,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      Then({riscv::SetBits(riscv::kSstatus, kMachineModesOwnBits, riscv::kT0),
-            {riscv::kEcall}})));
+      Then({
+          riscv::SetBits(riscv::kSstatus, kMachineModesOwnBits, riscv::kT0),
+          {riscv::kEcall},
+      })));
 
   with_pages.RunUntilAsleep();
 
@@ -2453,8 +2487,11 @@ TEST_P(WhenAProgramUsesAnAtomicMemoryOperation,
 
 // An operation on t1's cell and t3 whose answer, in t0, is the result.
 riscv::Program WithT3(std::int32_t given, riscv::Word operation) {
-  return {riscv::Li(riscv::kT3, given), operation,
-          riscv::Sd(riscv::kT0, riscv::kT2, 0)};
+  return {
+      riscv::Li(riscv::kT3, given),
+      operation,
+      riscv::Sd(riscv::kT0, riscv::kT2, 0),
+  };
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -2495,17 +2532,25 @@ void PrintTo(const MisalignedUse& use, std::ostream* out) { *out << use.name; }
 // An atomic is a load and a store in one, and is refused as a store: a
 // handler that makes misaligned loads on a program's behalf must not
 // take one for a load, since it could only make half of it.
-constexpr std::array<MisalignedUse, 3> kEachMisalignedUse{{
-    {.name = "a load",
-     .instruction = riscv::Lw(riscv::kT0, riscv::kT1, 0),
-     .cause = riscv::kMisalignedLoad},
-    {.name = "a store",
-     .instruction = riscv::Sw(riscv::kT0, riscv::kT1, 0),
-     .cause = riscv::kMisalignedStore},
-    {.name = "an atomic sum",
-     .instruction = riscv::AmoaddW(riscv::kT0, riscv::kT1, riscv::kT3),
-     .cause = riscv::kMisalignedStore},
-}};
+constexpr std::array<MisalignedUse, 3> kEachMisalignedUse{
+    {
+        {
+            .name = "a load",
+            .instruction = riscv::Lw(riscv::kT0, riscv::kT1, 0),
+            .cause = riscv::kMisalignedLoad,
+        },
+        {
+            .name = "a store",
+            .instruction = riscv::Sw(riscv::kT0, riscv::kT1, 0),
+            .cause = riscv::kMisalignedStore,
+        },
+        {
+            .name = "an atomic sum",
+            .instruction = riscv::AmoaddW(riscv::kT0, riscv::kT1, riscv::kT3),
+            .cause = riscv::kMisalignedStore,
+        },
+    },
+};
 
 // An address in the RAM that is one past a multiple of four.
 constexpr std::uint64_t kOddAddress =
@@ -2527,8 +2572,10 @@ TEST_P(WhenSupervisorModeUsesAWordAtAnOddAddress,
   CpuPlatformWithPages with_pages;
   with_pages.Load(riscv::RunInSupervisorModeAfter(
       CpuPlatformWithPages::kWithPagingOff, {},
-      {riscv::Addi(riscv::kT1, riscv::kT2, kOddOffsetFromTheResult),
-       GetParam().instruction}));
+      {
+          riscv::Addi(riscv::kT1, riscv::kT2, kOddOffsetFromTheResult),
+          GetParam().instruction,
+      }));
 
   with_pages.RunUntilAsleep();
 
@@ -2784,13 +2831,15 @@ TEST(WhenADeviceInterruptsACpuThroughThePlic, ItsHandlerRunsOncePerInterrupt) {
   platform.SetQuantum(sc_core::sc_time{100, sc_core::SC_US});
   AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
   platform.Add("bus", "router",
-               {{"outputs", 3},
-                {"out0.base", kRamBase},
-                {"out0.size", 0x1000},
-                {"out1.base", kPlicBase},
-                {"out1.size", 0x400'0000},
-                {"out2.base", kDeviceBase},
-                {"out2.size", 0x100}});
+               {
+                   {"outputs", 3},
+                   {"out0.base", kRamBase},
+                   {"out0.size", 0x1000},
+                   {"out1.base", kPlicBase},
+                   {"out1.size", 0x400'0000},
+                   {"out2.base", kDeviceBase},
+                   {"out2.size", 0x100},
+               });
   platform.Add("ram", "memory", {{"size", 0x1000}});
   platform.Add("plic", "plic");
   platform.Add("device", "interrupt_source");

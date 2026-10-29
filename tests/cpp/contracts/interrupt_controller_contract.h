@@ -53,10 +53,13 @@ class InterruptControllerContract : public ::testing::Test {
   // Runs `body` in a simulation thread wired to the controller, to
   // completion, and then lets what it set in motion settle.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"driver", [&](BusDriver& bus) {
-                       body(bus);
-                       Settle(bus);
-                     }};
+    BusDriver driver{
+        "driver",
+        [&](BusDriver& bus) {
+          body(bus);
+          Settle(bus);
+        },
+    };
     driver.socket.bind(controller_.socket);
     sc_core::sc_start();
   }

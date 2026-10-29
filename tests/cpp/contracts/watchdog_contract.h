@@ -68,10 +68,13 @@ class WatchdogContract : public ::testing::Test {
   // when the body does: a watchdog left counting would otherwise keep the
   // simulation going.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"driver", [&](BusDriver& bus) {
-                       body(bus);
-                       sc_core::sc_stop();
-                     }};
+    BusDriver driver{
+        "driver",
+        [&](BusDriver& bus) {
+          body(bus);
+          sc_core::sc_stop();
+        },
+    };
     driver.socket.bind(watchdog_.socket);
     sc_core::sc_start();
   }

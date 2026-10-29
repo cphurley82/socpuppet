@@ -25,12 +25,20 @@ std::vector<std::pair<std::uint64_t, std::string>> AddressesAndText(
     const ElfImage& image);
 
 TEST(WhenAnElfImageIsRead, EachLoadableSegmentComesWithItsPhysicalAddress) {
-  const ElfFile file{.segments = {{.physical_address = 0x8000'0000,
-                                   .virtual_address = 0xC000'0000,
-                                   .bytes = "first segment"},
-                                  {.physical_address = 0x8000'1000,
-                                   .virtual_address = 0xC000'1000,
-                                   .bytes = "second"}}};
+  const ElfFile file{
+      .segments{
+          {
+              .physical_address = 0x8000'0000,
+              .virtual_address = 0xC000'0000,
+              .bytes = "first segment",
+          },
+          {
+              .physical_address = 0x8000'1000,
+              .virtual_address = 0xC000'1000,
+              .bytes = "second",
+          },
+      },
+  };
 
   const ElfImage image = ReadElfImage(file.Write());
 
@@ -40,13 +48,21 @@ TEST(WhenAnElfImageIsRead, EachLoadableSegmentComesWithItsPhysicalAddress) {
 }
 
 TEST(WhenAnElfImageIsRead, ASegmentThatIsNotLoadableIsLeftOut) {
-  const ElfFile file{.segments = {{.physical_address = 0x8000'0000,
-                                   .virtual_address = 0x8000'0000,
-                                   .bytes = "program"},
-                                  {.physical_address = 0,
-                                   .virtual_address = 0,
-                                   .bytes = "a note",
-                                   .loadable = false}}};
+  const ElfFile file{
+      .segments{
+          {
+              .physical_address = 0x8000'0000,
+              .virtual_address = 0x8000'0000,
+              .bytes = "program",
+          },
+          {
+              .physical_address = 0,
+              .virtual_address = 0,
+              .bytes = "a note",
+              .loadable = false,
+          },
+      },
+  };
 
   const ElfImage image = ReadElfImage(file.Write());
 
@@ -55,12 +71,20 @@ TEST(WhenAnElfImageIsRead, ASegmentThatIsNotLoadableIsLeftOut) {
 }
 
 TEST(WhenAnElfImageIsRead, ALoadableSegmentWithNoBytesInTheFileIsLeftOut) {
-  const ElfFile file{.segments = {{.physical_address = 0x8000'0000,
-                                   .virtual_address = 0x8000'0000,
-                                   .bytes = "program"},
-                                  {.physical_address = 0x8000'2000,
-                                   .virtual_address = 0x8000'2000,
-                                   .bytes = ""}}};
+  const ElfFile file{
+      .segments{
+          {
+              .physical_address = 0x8000'0000,
+              .virtual_address = 0x8000'0000,
+              .bytes = "program",
+          },
+          {
+              .physical_address = 0x8000'2000,
+              .virtual_address = 0x8000'2000,
+              .bytes = "",
+          },
+      },
+  };
 
   const ElfImage image = ReadElfImage(file.Write());
 
@@ -94,9 +118,15 @@ TEST(WhenAFileIsNotAnElfImage, ReadingItIsRefusedAndTheErrorNamesTheFile) {
 }
 
 TEST(WhenAnElfImageHasLostItsEnd, ReadingItIsRefusedAndTheErrorNamesTheFile) {
-  const ElfFile file{.segments = {{.physical_address = 0x8000'0000,
-                                   .virtual_address = 0x8000'0000,
-                                   .bytes = std::string(4096, 'x')}}};
+  const ElfFile file{
+      .segments{
+          {
+              .physical_address = 0x8000'0000,
+              .virtual_address = 0x8000'0000,
+              .bytes = std::string(4096, 'x'),
+          },
+      },
+  };
   const std::string path = file.Write();
   // Cut the file off part of the way through its only segment.
   std::string contents;

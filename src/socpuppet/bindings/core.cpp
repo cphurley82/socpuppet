@@ -284,7 +284,8 @@ PYBIND11_MODULE(_core, m) {
           "far_end_output",
           [](NativePlatform& self, const std::string& path, std::size_t since) {
             const std::string_view output{
-                self.platform.ModuleAt<socpuppet::FarEnd>(path).Output()};
+                self.platform.ModuleAt<socpuppet::FarEnd>(path).Output(),
+            };
             return py::bytes(output.substr(std::min(since, output.size())));
           })
       // Hands the serial transport at `path` bytes to receive, as if they

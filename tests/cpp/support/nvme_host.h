@@ -220,12 +220,14 @@ class NvmeHost {
       std::uint16_t entries = kQueueEntries) {
     // Physically contiguous, with interrupts enabled, on `vector`. The
     // size is counted from zero.
-    return Complete(
-        admin_, {.opcode = kCreateIoCompletionQueue,
-                 .data = memory,
-                 .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
-                 .dword11 = std::uint32_t{vector} << 16U | kInterruptsEnabled |
-                            kContiguous});
+    return Complete(admin_,
+                    {
+                        .opcode = kCreateIoCompletionQueue,
+                        .data = memory,
+                        .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
+                        .dword11 = std::uint32_t{vector} << 16U |
+                                   kInterruptsEnabled | kContiguous,
+                    });
   }
 
   std::optional<Completion> CreateIoSubmissionQueue(
@@ -234,10 +236,12 @@ class NvmeHost {
     // Physically contiguous, completing into `completion_queue`.
     return Complete(
         admin_,
-        {.opcode = kCreateIoSubmissionQueue,
-         .data = memory,
-         .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
-         .dword11 = std::uint32_t{completion_queue} << 16U | kContiguous});
+        {
+            .opcode = kCreateIoSubmissionQueue,
+            .data = memory,
+            .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
+            .dword11 = std::uint32_t{completion_queue} << 16U | kContiguous,
+        });
   }
 
   // The I/O queues, which exist once CreateIoQueues() has made them.
@@ -292,7 +296,8 @@ class NvmeHost {
             .status = static_cast<std::uint16_t>((status >> 1U) & 0x7FFU),
             .submission_queue_head = socpuppet::LoadLittleEndian<std::uint16_t>(
                 std::span{entry}.subspan(8)),
-            .result = socpuppet::LoadLittleEndian<std::uint32_t>(entry)};
+            .result = socpuppet::LoadLittleEndian<std::uint32_t>(entry),
+        };
       }
       if (waited >= Patience()) return std::nullopt;
       bus_.WaitFor(Pause());
@@ -399,10 +404,12 @@ class NvmeHost {
   // Sends the Identify for a namespace, and returns what the controller
   // said about it in place of the description.
   std::optional<Completion> TryToIdentifyNamespace(std::uint32_t namespace_id) {
-    return Complete(admin_, {.opcode = kIdentify,
-                             .namespace_id = namespace_id,
-                             .data = Allocate(1),
-                             .dword10 = kDescribeNamespace});
+    return Complete(admin_, {
+                                .opcode = kIdentify,
+                                .namespace_id = namespace_id,
+                                .data = Allocate(1),
+                                .dword10 = kDescribeNamespace,
+                            });
   }
 
   std::optional<Namespace> IdentifyNamespace(std::uint32_t namespace_id) {
@@ -423,7 +430,8 @@ class NvmeHost {
         .blocks = socpuppet::LoadLittleEndian<std::uint64_t>(bytes),
         .capacity =
             socpuppet::LoadLittleEndian<std::uint64_t>(bytes.subspan(8)),
-        .block_size = std::uint32_t{1} << block_size_shift};
+        .block_size = std::uint32_t{1} << block_size_shift,
+    };
   }
 
   // The identifiers of the namespaces in use, in the order given.
@@ -449,9 +457,11 @@ class NvmeHost {
     // completion queues in the high half.
     const auto wanted = static_cast<std::uint32_t>(pairs - 1);
     const std::optional<Completion> completion =
-        Complete(admin_, {.opcode = kSetFeatures,
-                          .dword10 = kNumberOfQueues,
-                          .dword11 = wanted << 16U | wanted});
+        Complete(admin_, {
+                             .opcode = kSetFeatures,
+                             .dword10 = kNumberOfQueues,
+                             .dword11 = wanted << 16U | wanted,
+                         });
     if (!completion || completion->status != 0) return std::nullopt;
     return std::min(completion->result & 0xFFFFU, completion->result >> 16U) +
            1;
@@ -609,15 +619,18 @@ class NvmeHost {
         WriteMemory(more_data + ((page - 1) * entry.size()), entry);
       }
     }
-    return Complete(io_, {.opcode = opcode,
-                          .namespace_id = namespace_id,
-                          .data = pages[0],
-                          .more_data = more_data,
-                          // The starting block in dwords 10 and 11, and the
-                          // number of blocks, counted from zero, in dword 12.
-                          .dword10 = static_cast<std::uint32_t>(first),
-                          .dword11 = static_cast<std::uint32_t>(first >> 32U),
-                          .dword12 = blocks - 1});
+    return Complete(io_,
+                    {
+                        .opcode = opcode,
+                        .namespace_id = namespace_id,
+                        .data = pages[0],
+                        .more_data = more_data,
+                        // The starting block in dwords 10 and 11, and the
+                        // number of blocks, counted from zero, in dword 12.
+                        .dword10 = static_cast<std::uint32_t>(first),
+                        .dword11 = static_cast<std::uint32_t>(first >> 32U),
+                        .dword12 = blocks - 1,
+                    });
   }
 
   // Sends an Identify command and returns the page it fills.
@@ -625,10 +638,12 @@ class NvmeHost {
       std::uint32_t what, std::uint32_t namespace_id) {
     const std::uint64_t page = Allocate(1);
     const std::optional<Completion> completion =
-        Complete(admin_, {.opcode = kIdentify,
-                          .namespace_id = namespace_id,
-                          .data = page,
-                          .dword10 = what});
+        Complete(admin_, {
+                             .opcode = kIdentify,
+                             .namespace_id = namespace_id,
+                             .data = page,
+                             .dword10 = what,
+                         });
     if (!completion || completion->status != 0) return std::nullopt;
     std::array<std::uint8_t, kPageSize> bytes{};
     ReadMemory(page, bytes);

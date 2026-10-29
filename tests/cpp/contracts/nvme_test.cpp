@@ -53,10 +53,12 @@ struct SsdRig {
 
   // The SSD's own address map, which only the firmware and the two devices
   // that move data see.
-  static constexpr SsdMap kMap{.frontend = 0x1001'0000,
-                               .dma = 0x1002'0000,
-                               .flash = 0x1003'0000,
-                               .buffer = 0x4000'0000};
+  static constexpr SsdMap kMap{
+      .frontend = 0x1001'0000,
+      .dma = 0x1002'0000,
+      .flash = 0x1003'0000,
+      .buffer = 0x4000'0000,
+  };
   static constexpr std::uint64_t kBufferSize = 0x1'0000;
   // The uplink passes an address on unchanged. It does so for the lower
   // half of all the addresses 64 bits can say, which is far more than any
@@ -71,29 +73,35 @@ struct SsdRig {
   static void Add(socpuppet::Platform& platform) {
     platform.Add("ssd.cpu", "ssd_firmware");
     platform.Add("ssd.bus", "router",
-                 {{"inputs", 3},
-                  {"outputs", 4},
-                  {"out0.base", kMap.frontend},
-                  {"out0.size", 0x80},
-                  {"out1.base", kMap.dma},
-                  {"out1.size", 0x20},
-                  {"out2.base", kMap.flash},
-                  {"out2.size", 0x30},
-                  {"out3.base", kMap.buffer},
-                  {"out3.size", kBufferSize}});
+                 {
+                     {"inputs", 3},
+                     {"outputs", 4},
+                     {"out0.base", kMap.frontend},
+                     {"out0.size", 0x80},
+                     {"out1.base", kMap.dma},
+                     {"out1.size", 0x20},
+                     {"out2.base", kMap.flash},
+                     {"out2.size", 0x30},
+                     {"out3.base", kMap.buffer},
+                     {"out3.size", kBufferSize},
+                 });
     platform.Add("ssd.frontend", "nvme_frontend", {{"vectors", kVectors}});
     platform.Add("ssd.dma", "dma_engine");
     platform.Add("ssd.flash", "flash_controller");
     platform.Add("ssd.nand", "ideal_nand",
-                 {{"blocks", 1},
-                  {"pages_per_block", kNandPages},
-                  {"page_size", kNandPageSize}});
+                 {
+                     {"blocks", 1},
+                     {"pages_per_block", kNandPages},
+                     {"page_size", kNandPageSize},
+                 });
     platform.Add("ssd.buffer", "memory", {{"size", kBufferSize}});
     platform.Add("ssd.uplink", "router",
-                 {{"inputs", 2},
-                  {"outputs", 1},
-                  {"out0.base", 0},
-                  {"out0.size", kAddressesTheUplinkPassesOn}});
+                 {
+                     {"inputs", 2},
+                     {"outputs", 1},
+                     {"out0.base", 0},
+                     {"out0.size", kAddressesTheUplinkPassesOn},
+                 });
     // The firmware's bus.
     platform.Bind("ssd.cpu.socket", "ssd.bus.target");
     platform.Bind("ssd.bus.out0", "ssd.frontend.cpu");
