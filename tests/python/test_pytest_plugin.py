@@ -295,12 +295,10 @@ class TestWhenAPlatformTestRunsAfterOneThatWroteToItsTemporaryDirectory:
 class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     @pytest.fixture
     def result(self, session_with_socpuppet):
-        # The clock starts with the child's interpreter, so the limit has to
-        # leave room for it to start. That takes a fifth of a second here,
-        # and has taken more than a second on a machine busy with a whole CI
-        # run, which stopped the child before it reached the test.
+        # The clock starts with the test, not with its process, so the
+        # shortest limit will do however slowly the process starts.
         session_with_socpuppet.makeini(
-            "[pytest]\nsocpuppet_platform_timeout = 5\n"
+            "[pytest]\nsocpuppet_platform_timeout = 1\n"
         )
         session_with_socpuppet.makepyfile(
             """
@@ -322,11 +320,53 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
 
     def test_the_failure_names_the_setting_that_raises_the_limit(self, result):
         result.stdout.fnmatch_lines(
-            ["*longer than 5 seconds*socpuppet_platform_timeout*"]
+            ["*longer than 1 second *socpuppet_platform_timeout*"]
         )
 
     def test_the_failure_shows_where_the_test_was(self, result):
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+class TestWhenAPlatformTestsProcessIsSlowToStart:
+    def test_the_test_still_has_the_whole_limit(self, session_with_socpuppet):
+        # A machine busy with a whole CI run can take seconds to start an
+        # interpreter and collect, and none of that is the test's. Starting
+        # takes longer than the whole limit here, and the test is instant,
+        # so it passes only if the clock starts with the test.
+        a_session_slow_to_start(session_with_socpuppet, seconds=3)
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 2\n"
+        )
+        session_with_socpuppet.makepyfile(
+            """
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_is_quick():
+                pass
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=1)
+
+
+def a_session_slow_to_start(session, seconds):
+    """Every pytest started in the session spends `seconds` collecting.
+
+    The session's own pytest too, not only a test's process, so the test
+    pays the wait twice.
+    """
+    session.makeconftest(
+        f"""
+        import time
+
+        pytest_plugins = ["socpuppet.pytest_plugin"]
+
+        time.sleep({seconds})
+        """
+    )
 
 
 class TestWhenNobodySetsTheTimeout:
@@ -394,6 +434,23 @@ class TestWhenAPlatformClassSharesOneProcess:
 
         result.assert_outcomes(passed=2, deselected=1)
         assert not ran.exists()
+
+    def test_each_of_its_tests_has_the_limit_of_its_own(
+        self, session_with_socpuppet
+    ):
+        # Together they run past the limit; each alone stays well inside it.
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 3\n"
+        )
+        a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="import time; time.sleep(2)",
+            test_eggs="import time; time.sleep(2)",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.assert_outcomes(passed=2)
 
     def test_a_crash_fails_its_test_and_errs_the_ones_it_never_started(
         self, session_with_socpuppet

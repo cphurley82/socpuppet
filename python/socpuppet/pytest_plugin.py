@@ -25,9 +25,11 @@ after another.) Handed out xdist's default way, ``--dist load``, or with
 boot it again, so they fail at setup instead and say so.
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
-seconds is stopped and fails, and so is a class's process, with what it
-had not finished. The limit is a setting in pytest's configuration, 900
-unless set, and 0 means no limit::
+seconds is stopped and fails, and in a class's process, the tests after it
+fail as never run. The clock starts when the test does: starting the
+process and collecting do not count, and each test of a class's process has
+the whole limit of its own. The limit is a setting in pytest's
+configuration, 900 unless set, and 0 means no limit::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -45,13 +47,18 @@ import signal
 import subprocess
 import sys
 import tempfile
-from typing import Any, Literal
+import time
+from typing import IO, Any, Literal
 
 import pytest
 
 # Name of the environment variable that tells a child process where to write
 # its test reports. A process that has it set is a child.
 _REPORT_FILE_ENV = "SOCPUPPET_PYTEST_REPORT_FILE"
+
+# The key of the line a child writes there when a test starts, which is when
+# the parent starts the test's clock. No report of pytest's has it.
+_STARTED = "started"
 
 # pytest's own exit statuses for "all passed" and "some tests failed". Any
 # other status means the process did not get to finish normally.
@@ -259,10 +266,17 @@ class _ChildReporter:
         self._config = config
         self._report_file = report_file
 
+    def pytest_runtest_logstart(self, nodeid: str) -> None:
+        self._write({_STARTED: nodeid})
+
     def pytest_runtest_logreport(self, report: pytest.TestReport) -> None:
-        data = self._config.hook.pytest_report_to_serializable(
-            config=self._config, report=report
+        self._write(
+            self._config.hook.pytest_report_to_serializable(
+                config=self._config, report=report
+            )
         )
+
+    def _write(self, data: dict[str, Any]) -> None:
         with open(self._report_file, "a") as out:
             out.write(json.dumps(data) + "\n")
 
@@ -284,7 +298,7 @@ def _run_in_child_process(
         config._tmp_path_factory  # type: ignore[attr-defined]
     )
     basetemp = tmp_path_factory.mktemp("platform")
-    with tempfile.NamedTemporaryFile(mode="r", suffix=".jsonl") as report_file:
+    with tempfile.NamedTemporaryFile(mode="rb", suffix=".jsonl") as report_file:
         child = subprocess.Popen(
             # A node id is relative to the rootdir, so anchor it there. The
             # child keeps our working directory, as an unmarked test would.
@@ -303,31 +317,33 @@ def _run_in_child_process(
             stderr=subprocess.PIPE,
             text=True,
         )
-        try:
-            stdout, stderr = child.communicate(timeout=timeout or None)
-            unfinished = (
-                None
-                if child.returncode in _FINISHED
-                else (
-                    "The test's process exited with status "
-                    f"{describe_exit_status(child.returncode)} instead of "
-                    "finishing."
-                )
-            )
-        except subprocess.TimeoutExpired:
-            stdout, stderr = _stop(child)
+        stdout, stderr, timed_out = _wait_for_child(child, report_file, timeout)
+        if timed_out:
             unfinished = (
                 f"The test ran for longer than {_seconds(timeout)} and was "
                 "stopped. A script or a firmware that loops for ever is the "
                 "usual cause. If the test needs longer, raise "
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
+        elif child.returncode not in _FINISHED:
+            unfinished = (
+                "The test's process exited with status "
+                f"{describe_exit_status(child.returncode)} instead of "
+                "finishing."
+            )
+        else:
+            unfinished = None
         output = stdout + stderr
         reports: dict[str, list[pytest.TestReport]] = {
             _collected_id(item): [] for item in items
         }
+        report_file.seek(0)
         for line in report_file:
-            report = _report_from_json(config, line)
+            data = json.loads(line)
+            if _STARTED in data:
+                # Only the clock needed it.
+                continue
+            report = _report_from_json(config, data)
             # ⚠️ The options added to every run, PYTEST_ADDOPTS and addopts
             # in the configuration, reach the child too, so it can run and
             # report more than it was asked: a test file named there. The
@@ -364,13 +380,63 @@ def _run_in_child_process(
     return reports
 
 
-def _report_from_json(config: pytest.Config, line: str) -> pytest.TestReport:
+# How often the parent looks for a test that has started, while it waits.
+_POLL_SECONDS = 0.1
+
+
+def _wait_for_child(
+    child: subprocess.Popen[str], report_file: IO[bytes], timeout: float
+) -> tuple[str, str, bool]:
+    """Wait for a child to end, and stop it if a test runs out of time.
+
+    Each test has ``timeout`` seconds from the line in ``report_file`` that
+    says it started, and 0 is no limit. Returns what the child wrote to
+    stdout and stderr, and whether it was stopped.
+    """
+    # ⚠️ No limit until the first test starts. The session collected the
+    # same files with the same conftests before it started the child, so a
+    # collection that never ends has held the session up already.
+    deadline = float("inf")
+    while True:
+        try:
+            stdout, stderr = child.communicate(timeout=_POLL_SECONDS)
+            return stdout, stderr, False
+        except subprocess.TimeoutExpired:
+            # Nothing the child wrote is lost: the next call carries on.
+            pass
+        if timeout and _a_test_started(report_file):
+            deadline = time.monotonic() + timeout
+        if time.monotonic() > deadline:
+            stdout, stderr = _stop(child)
+            return stdout, stderr, True
+
+
+def _a_test_started(report_file: IO[bytes]) -> bool:
+    """Whether the child has started a test since the last time it was asked.
+
+    Reads the lines the child has finished writing, and leaves a line it is
+    still in the middle of for the next time: the file is binary, so that
+    ``tell`` and ``seek`` count bytes and a half-written line can be read
+    again.
+    """
+    started = False
+    while True:
+        at = report_file.tell()
+        line = report_file.readline()
+        if not line.endswith(b"\n"):
+            report_file.seek(at)
+            return started
+        started = started or _STARTED in json.loads(line)
+
+
+def _report_from_json(
+    config: pytest.Config, data: dict[str, Any]
+) -> pytest.TestReport:
     """A report the child wrote, as pytest gave it there.
 
     ⚠️ A skip's reason is a tuple of where and why, which JSON brings back
     as a list, and pytest's summary of skips takes only a tuple.
     """
-    data = json.loads(line)
     if data.get("outcome") == "skipped" and isinstance(data["longrepr"], list):
         data["longrepr"] = tuple(data["longrepr"])
     report: pytest.TestReport = config.hook.pytest_report_from_serializable(
