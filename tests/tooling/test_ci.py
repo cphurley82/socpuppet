@@ -411,21 +411,6 @@ def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring
     ]
 
 
-def test_run_on_demand_builds_the_dev_tree_then_runs_the_on_demand_tests_requiring_the_firmware(
-    ci,
-):
-    ci("run", "on-demand")
-
-    assert steps_and_their_env(ci) == [
-        ("uv run cmake --preset dev", {}),
-        ("uv run cmake --build --preset dev", {}),
-        (
-            "uv run pytest -m on_demand",
-            {"SOCPUPPET_REQUIRE_FIRMWARE": "1", "SOCPUPPET_ON_DEMAND": "1"},
-        ),
-    ]
-
-
 def test_run_stops_a_job_at_the_step_that_fails_and_says_which(ci):
     result, lines = ci("run", "test", FAIL_ON="--build")
 
@@ -632,7 +617,6 @@ ON_EVERY_CORE = [
     "test",
     "test-quick",
     "qbox-quick",
-    "on-demand",
     "coverage",
     "sanitizers",
     "twister",

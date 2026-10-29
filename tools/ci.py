@@ -476,24 +476,6 @@ JOBS = [
         areas=("build", "cable"),
     ),
     Job(
-        "on-demand",
-        "build the dev tree and run the tests too long for every run",
-        tiers=(Tier.NIGHTLY,),
-        needs=FIRMWARE,
-        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
-        steps=(
-            *DEV_BUILD,
-            # -m picks out the tests marked on_demand, and
-            # SOCPUPPET_ON_DEMAND=1 stops socpuppet's plugin skipping them.
-            Step(
-                "pytest",
-                ("uv", "run", "pytest", "-m", "on_demand"),
-                env={**REQUIRE_FIRMWARE, "SOCPUPPET_ON_DEMAND": "1"},
-            ),
-        ),
-        areas=("build",),
-    ),
-    Job(
         "tidy",
         "clang-tidy over our C++, and each header compiled on its own",
         tiers=(Tier.QUICK, Tier.NIGHTLY),

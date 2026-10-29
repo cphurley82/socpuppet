@@ -1,11 +1,11 @@
 name: CI
 
 # The quick tier, on every push to main and every pull request: lint, the
-# firmware, the tests but the long ones on Linux and on an Intel Mac, and
-# clang-tidy, coverage and the sanitizers on Linux. It answers in about half
-# an hour. The rest is nightly.yml's: the long tests and the on-demand
-# ones, twister, QBox, the wheels and the devcontainer, on every machine CI
-# has. On a developer's machine, `uv run python tools/ci.py` runs that, and
+# firmware, the quick tests on Linux, with one boot of each area on both
+# harts, and on an Intel Mac without the boots, and clang-tidy, coverage
+# and the sanitizers on Linux. It answers in about half an hour. The rest
+# is nightly.yml's: every other boot, twister, QBox, the wheels and the
+# devcontainer, on every machine CI has. On a developer's machine, `uv run python tools/ci.py` runs that, and
 # `--quick` runs this.
 #
 # Every job here is a thin wrapper around tools/ci.py, which holds each

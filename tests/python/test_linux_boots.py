@@ -8,10 +8,9 @@ six virtio devices. Its console is the virtio console and its root
 filesystem is the virtio disk, with Alpine's mini root on it and an
 inittab of ours that puts a shell on the console (`firmware/rootfs`).
 
-It boots the quick way, with Python as the stage before OpenSBI. On
-demand (`SOCPUPPET_ON_DEMAND=1`) it also boots the server's way: UEFI
-finds the kernel on a disk cut up as a server's, the quick way and from
-the flash.
+It boots the quick way, with Python as the stage before OpenSBI, and the
+server's way: UEFI finds the kernel on a disk cut up as a server's, the
+quick way and from the flash.
 
 🧵 Python is the keyboard at the console, as at UEFI's shell
 (test_uefi_boots.py).
@@ -220,7 +219,6 @@ class TestWhenLinuxMountsTheSharedDirectory:
 FOUND_UEFI = re.compile(r"efi: EFI v[\d.]+ by EDK II")
 
 
-@pytest.mark.on_demand("Linux booted the server's way, through UEFI")
 @pytest.mark.platform
 @pytest.mark.parametrize("boot", [loaded_by_python, in_the_flash])
 class TestWhenUefiBootsTheKernelFromTheDisk:

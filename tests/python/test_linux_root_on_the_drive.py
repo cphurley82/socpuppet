@@ -118,7 +118,6 @@ class TestWhenLinuxWritesAFileAndSwitchesOff:
         assert not re.search(r"nvme\S*: .*shutdown", said, re.I), said
 
 
-@pytest.mark.on_demand("Linux booted the server's way, from the drive")
 @pytest.mark.platform
 class TestWhenUefiBootsTheKernelFromTheDrive:
     def test_uefis_own_nvme_driver_finds_it_and_linux_mounts_its_root(
