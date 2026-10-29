@@ -1,5 +1,10 @@
 # clang-tidy's checks for our C++. Run them with the build's `tidy` target:
 #   uv run cmake --build --preset dev --target tidy
+#
+# A new clang-tidy's new checks are adopted: the code changes to pass them,
+# and a check is switched off only with its reason written beside its name,
+# as below. The net grows over time. 🚧 Families not yet on, the candidates
+# for more: cert-*, cppcoreguidelines-*, misc-*, concurrency-*.
 Checks:
   - bugprone-*
   - clang-analyzer-*
