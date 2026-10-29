@@ -3,7 +3,10 @@ description: >-
   What a job of CI's needs before it runs tools/ci.py: uv, the system's
   packages, and what earlier jobs and runs kept for it. Every job of the
   workflows takes its setup from here, after its checkout, so that each
-  piece of it is written once.
+  piece of it is written once. What a build keeps for the next run, its
+  fetched dependencies and its compiler cache, is saved by main's runs
+  alone, and a branch's run reads main's: GitHub keeps 10 GB of caches for
+  a repository, and each pull request saving its own copies took half.
 
 inputs:
   packages:
@@ -21,6 +24,11 @@ inputs:
       The build tree under build/ whose fetched dependencies are restored
       and kept: dev, qbox-dev or pciem-dev.
     default: ""
+  compiler-cache:
+    description: >-
+      The name of the compiler cache (ccache) the job's build compiles
+      through, one for each set of flags: dev, coverage, asan, qbox-dev.
+    default: ""
   firmware:
     description: >-
       The firmware jobs' artifacts to take, by name or by a pattern:
@@ -37,14 +45,19 @@ runs:
   using: composite
   steps:
     - name: Install the system's packages
-      if: inputs.packages != ''
+      if: inputs.packages != '' || inputs.compiler-cache != ''
       shell: bash
       env:
         PACKAGES: ${{ inputs.packages }}
+        COMPILER_CACHE: ${{ inputs.compiler-cache }}
       # Each set, for Ubuntu and for a Mac.
       run: |
         ubuntu=()
         mac=()
+        if [[ -n $COMPILER_CACHE ]]; then
+          ubuntu+=(ccache)
+          mac+=(ccache)
+        fi
         for set in $PACKAGES; do
           case $set in
             # socpuppet's build. zlib is for SCC's trace writer, and dtc
@@ -101,19 +114,62 @@ runs:
               ;;
           esac
         done
-        if [[ $RUNNER_OS == Linux ]]; then
+        if [[ $RUNNER_OS == Linux && ${#ubuntu[@]} -gt 0 ]]; then
           sudo apt-get update
           sudo apt-get install -y "${ubuntu[@]}"
         elif [[ ${#mac[@]} -gt 0 ]]; then
           brew install "${mac[@]}"
         fi
     - uses: astral-sh/setup-uv@v7
+    # What FetchContent fetched, for configuring without the network's
+    # minutes. Not what it built there: the build tree is new, so ninja has
+    # no record of it and builds it again, and the compiler cache is what
+    # saves that.
     - name: Cache fetched dependencies
-      if: inputs.tree != ''
+      if: inputs.tree != '' && github.ref == 'refs/heads/main'
       uses: actions/cache@v6
       with:
-        path: build/${{ inputs.tree }}/_deps
+        path: |
+          build/${{ inputs.tree }}/_deps
+          !build/${{ inputs.tree }}/_deps/*-build
         key: deps-${{ inputs.tree }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+    - name: Restore fetched dependencies
+      if: inputs.tree != '' && github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          build/${{ inputs.tree }}/_deps
+          !build/${{ inputs.tree }}/_deps/*-build
+        key: deps-${{ inputs.tree }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
+    # Each configure here is a first, and CMake takes the compiler launcher
+    # from the environment then. The cache is kept for a week and for a set
+    # of dependencies: most of a build is them, and a week's changes to our
+    # own files are few.
+    - name: Compile through ccache
+      if: inputs.compiler-cache != ''
+      shell: bash
+      run: |
+        {
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          echo "CCACHE_DIR=$GITHUB_WORKSPACE/build/ccache"
+          echo "CCACHE_MAXSIZE=500M"
+          echo "CCACHE_WEEK=$(date -u +%G-%V)"
+        } >> "$GITHUB_ENV"
+    - name: Cache what was compiled
+      if: inputs.compiler-cache != '' && github.ref == 'refs/heads/main'
+      uses: actions/cache@v6
+      with:
+        path: build/ccache
+        key: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-${{ env.CCACHE_WEEK }}
+        restore-keys: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
+    - name: Restore what was compiled
+      if: inputs.compiler-cache != '' && github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@v6
+      with:
+        path: build/ccache
+        key: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-${{ env.CCACHE_WEEK }}
+        restore-keys: ccache-${{ inputs.compiler-cache }}-${{ inputs.machine }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}-
     - name: Restore the Zephyr SDK
       if: inputs.zephyr == 'true'
       uses: actions/cache/restore@v6

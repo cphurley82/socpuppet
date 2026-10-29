@@ -69,6 +69,7 @@ jobs:
           machine: ${{ matrix.os }}
           tree: dev
           firmware: firmware-*
+          compiler-cache: dev
       - run: uv run python tools/ci.py run test-quick
 
   qbox-build:
@@ -98,4 +99,5 @@ jobs:
           tree: qbox-dev
           firmware: firmware-*
           qbox: true
+          compiler-cache: qbox-dev
       - run: uv run python tools/ci.py run qbox-quick

@@ -234,12 +234,28 @@ def test_each_set_of_packages_a_job_asks_for_is_one_the_setup_action_has():
 
 
 def test_the_setup_action_keeps_what_it_builds_for_the_machine_the_job_runs_on():
-    # A tree's dependencies and QBox's build are the runner's own, and a
-    # job on another runner would take them for its own.
+    # A tree's dependencies, its compiled files and QBox's build are the
+    # runner's own, and a job on another runner would take them for its
+    # own.
     for where, _, _, job in DEFINED_JOBS:
         for given in setups_in(job):
-            if given.get("tree") or given.get("qbox"):
+            if any(
+                given.get(each) for each in ("tree", "qbox", "compiler-cache")
+            ):
                 assert given.get("machine") == job["runs-on"], where
+
+
+def test_what_a_build_keeps_for_the_next_run_is_saved_by_mains_runs_alone():
+    # GitHub keeps 10 GB of caches for a repository, and each pull request
+    # saving its own copies of a build's took half of it.
+    saving = [
+        step
+        for step in SETUP_ACTION["runs"]["steps"]
+        if step.get("uses", "").startswith("actions/cache@")
+    ]
+    assert saving
+    for step in saving:
+        assert "github.ref == 'refs/heads/main'" in step["if"], step["name"]
 
 
 def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():

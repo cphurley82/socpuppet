@@ -56,6 +56,7 @@ jobs:
           packages: build cable
           machine: ubuntu-26.04
           tree: dev
+          compiler-cache: coverage
       - run: uv run python tools/ci.py run coverage
       - name: Show the figures on the job's page
         if: always()
@@ -86,4 +87,5 @@ jobs:
           packages: build
           machine: ubuntu-26.04
           tree: dev
+          compiler-cache: asan
       - run: uv run python tools/ci.py run sanitizers
