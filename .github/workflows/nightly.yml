@@ -1,8 +1,8 @@
 name: Nightly
 
 # Every night, every job of the nightly tier, on every machine CI has: the
-# whole suite, the long tests and the on-demand ones too, which the quick
-# tier (ci.yml) leaves out to answer a push in half an hour. Each job is a
+# whole suite, every boot of firmware, which the quick tier (ci.yml) runs
+# one of for each area to answer a push in half an hour. Each job is a
 # thin wrapper around tools/ci.py, which holds its steps, and its log opens
 # with the command that runs it on a developer's machine;
 # `uv run python tools/ci.py` runs every job of this tier that can run
@@ -417,29 +417,6 @@ jobs:
           merge-multiple: true
           path: build/firmware
       - run: uv run python tools/ci.py run test
-
-  on-demand:
-    # The tests marked on_demand, too long for every run. On one Linux.
-    name: The on-demand tests
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
-      - run: uv run python tools/ci.py run on-demand
 
   tidy:
     # clang-tidy over our own C++, and each of our headers compiled on its

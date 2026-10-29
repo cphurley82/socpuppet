@@ -1,5 +1,4 @@
 import importlib.metadata
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -316,66 +315,6 @@ class TestWhenNobodySetsTheTimeout:
                 assert float(limit) == 15 * 60
             """
         )
-
-        result = session_with_socpuppet.runpytest_subprocess()
-
-        result.assert_outcomes(passed=1)
-
-
-ON_DEMAND = """
-    import pytest
-
-    @pytest.mark.on_demand("it takes the long way round")
-    @pytest.mark.platform
-    def test_that_is_on_demand():
-        pass
-"""
-
-
-class TestWhenATestIsOnDemand:
-    def test_it_is_skipped_and_the_reason_names_the_variable(
-        self, session_with_socpuppet, monkeypatch
-    ):
-        monkeypatch.delenv("SOCPUPPET_ON_DEMAND", raising=False)
-        session_with_socpuppet.makepyfile(ON_DEMAND)
-
-        result = session_with_socpuppet.runpytest_subprocess("-rs")
-
-        result.assert_outcomes(skipped=1)
-        result.stdout.fnmatch_lines(
-            ["*it takes the long way round*SOCPUPPET_ON_DEMAND=1*"]
-        )
-
-    def test_no_process_is_started_to_skip_it(
-        self, session_with_socpuppet, monkeypatch
-    ):
-        # The module is imported again in a platform test's own process,
-        # where the plugin has set the variable it reports through.
-        monkeypatch.delenv("SOCPUPPET_ON_DEMAND", raising=False)
-        started = session_with_socpuppet.path / "started"
-        session_with_socpuppet.makepyfile(
-            textwrap.dedent(
-                f"""
-                import os
-                import pathlib
-
-                if "SOCPUPPET_PYTEST_REPORT_FILE" in os.environ:
-                    pathlib.Path({str(started)!r}).touch()
-                """
-            )
-            + textwrap.dedent(ON_DEMAND)
-        )
-
-        result = session_with_socpuppet.runpytest_subprocess()
-
-        result.assert_outcomes(skipped=1)
-        assert not started.exists()
-
-    def test_it_runs_when_the_variable_asks_for_it(
-        self, session_with_socpuppet, monkeypatch
-    ):
-        monkeypatch.setenv("SOCPUPPET_ON_DEMAND", "1")
-        session_with_socpuppet.makepyfile(ON_DEMAND)
 
         result = session_with_socpuppet.runpytest_subprocess()
 
