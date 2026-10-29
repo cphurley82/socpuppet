@@ -355,7 +355,7 @@ def imports_needs_pciem(module: Path) -> bool:
 @pytest.mark.skipif(
     RUNNER_MODULE.INTEL_MAC, reason="an Intel Mac leaves the boots out"
 )
-def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_the_firmware(
+def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_the_firmware_and_cable(
     ci,
 ):
     ci("run", "test-quick")
@@ -363,7 +363,13 @@ def test_run_test_quick_builds_the_dev_tree_then_runs_the_quick_tests_requiring_
     assert steps_and_their_env(ci) == [
         ("uv run cmake --preset dev", {}),
         ("uv run cmake --build --preset dev", {}),
-        ("uv run ctest --preset quick", {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}),
+        (
+            "uv run ctest --preset quick",
+            {
+                "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+                "SOCPUPPET_REQUIRE_CABLE": "1",
+            },
+        ),
     ]
 
 
@@ -374,13 +380,20 @@ def test_run_test_quick_on_an_intel_mac_leaves_the_boots_out(ci):
     # the rest there.
     ci("run", "test-quick")
 
-    assert steps_and_their_env(ci)[-1] == (
-        "uv run ctest --preset quick-without-boots",
-        {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
-    )
+    assert steps_and_their_env(ci) == [
+        ("uv run cmake --preset dev", {}),
+        ("uv run cmake --build --preset dev", {}),
+        (
+            "uv run ctest --preset quick-without-boots",
+            {
+                "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+                "SOCPUPPET_REQUIRE_CABLE": "1",
+            },
+        ),
+    ]
 
 
-def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring_the_firmware(
+def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring_the_firmware_and_cable(
     ci,
 ):
     ci("run", "qbox-quick")
@@ -390,7 +403,10 @@ def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring
         ("uv run cmake --build --preset qbox", {}),
         (
             "uv run ctest --preset qbox-quick",
-            {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+            {
+                "SOCPUPPET_REQUIRE_FIRMWARE": "1",
+                "SOCPUPPET_REQUIRE_CABLE": "1",
+            },
         ),
     ]
 

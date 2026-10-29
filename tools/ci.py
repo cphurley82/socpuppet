@@ -197,6 +197,13 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
     )
 
 
+# Configure and build the qbox preset's tree, which links QBox.
+QBOX_BUILD = (
+    Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
+    Step("build", ("uv", "run", "cmake", "--build", "--preset", "qbox")),
+)
+
+
 def qbox_steps() -> tuple[Step, ...]:
     """Build and test the QBox tree, then run twister on the host board.
 
@@ -206,8 +213,7 @@ def qbox_steps() -> tuple[Step, ...]:
     Docker. So a run there stops after the tests.
     """
     steps = (
-        Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
-        Step("build", ("uv", "run", "cmake", "--build", "--preset", "qbox")),
+        *QBOX_BUILD,
         Step(
             "ctest",
             ("uv", "run", "ctest", "--preset", "qbox"),
@@ -464,10 +470,10 @@ JOBS = [
                     *("uv", "run", "ctest", "--preset"),
                     "quick-without-boots" if INTEL_MAC else "quick",
                 ),
-                env=REQUIRE_FIRMWARE,
+                env=REQUIRE_CABLE,
             ),
         ),
-        areas=("build",),
+        areas=("build", "cable"),
     ),
     Job(
         "on-demand",
@@ -571,18 +577,16 @@ JOBS = [
         tiers=(Tier.QUICK,),
         needs=(*FIRMWARE, "qbox-build"),
         steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "qbox")),
-            Step(
-                "build", ("uv", "run", "cmake", "--build", "--preset", "qbox")
-            ),
+            *QBOX_BUILD,
+            # The boot of the cable's area among them.
             Step(
                 "ctest",
                 ("uv", "run", "ctest", "--preset", "qbox-quick"),
-                env=REQUIRE_FIRMWARE,
+                env=REQUIRE_CABLE,
             ),
         ),
         uses=("build/qbox-dev", "extension", TESTS_ON_EVERY_CORE),
-        areas=("build",),
+        areas=("build", "cable"),
     ),
     Job(
         "qbox-tidy",
