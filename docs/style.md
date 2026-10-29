@@ -25,7 +25,8 @@ uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 | When you run | This happens |
 |---|---|
 | `uv run cmake --build --preset dev` | C++ and Python are formatted in place, then our code is compiled with warnings as errors. |
-| `uv run ctest --preset dev` | Every test, plus a `lint` test that runs all the linters, plus the tests of the tooling itself. |
+| `uv run ctest --preset fast` | The C++ tests and the Python tests that are not long: the inner loop. |
+| `uv run ctest --preset dev` | Every test, plus a `lint` test that runs all the linters, plus the tests of the tooling itself. `quick` is the same but most of the boots ([development.md](development.md#the-loop)). |
 | `uv run python tools/lint.py [--fix] [linter ...]` | The linters on their own. Nothing needs to be built first. Name linters to run only those. |
 | `uv run cmake --build --preset dev --target tidy` and `--target check_headers` | What CI checks that `ctest` does not: clang-tidy over our C++, and each header compiled on its own. [development.md](development.md#before-you-push) says what each catches. |
 

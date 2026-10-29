@@ -58,7 +58,7 @@ Add to it when something new keeps coming up.
 
 ## Workflow
 
-Changes are test-first, with the skills in `.claude/skills/`: `/tdd [specification]` drives a change through Canon TDD (agree the specifications, one failing test, make it pass, commit), running `/test-design-review` on each new test and `/software-design-review` on the code once it is green. Both reviews also run on their own against the working tree. `spikes/` is exploratory and not test-first, and nothing outside it may depend on it.
+Changes are test-first, with the skills in `.claude/skills/`: `/tdd [specification]` drives a change through Canon TDD (agree the specifications, one failing test, make it pass, commit), running `/test-design-review` on each new test and `/software-design-review` on the code once it is green. Both reviews also run on their own against the working tree. `spikes/` is exploratory and not test-first, and nothing outside it may depend on it. The tests come in three tiers ([docs/development.md](docs/development.md#the-loop)): `uv run ctest --preset fast` is the project's normal test command, the one `/tdd` runs at each step; `uv run ctest --preset quick` runs what CI runs on every push; `uv run ctest --preset dev` runs everything.
 
 Work goes on a branch, never straight onto `main`: a branch for each milestone or change, named for it (`linux-over-ssh`), cut from `main` unless the maintainer says otherwise, committed to and pushed as it goes, and merged by a pull request when the maintainer says so. Check the branch at the start of a session, and carry on with the one the work is on.
 

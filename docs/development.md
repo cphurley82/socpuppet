@@ -10,10 +10,22 @@ A C++20 compiler, [uv](https://docs.astral.sh/uv/), git, and a few system packag
 uv sync                                  # tools: Python, cmake, ninja, pytest, the linters
 uv run cmake --preset dev                # configure (fetches the dependencies the first time)
 uv run cmake --build --preset dev        # format, then build
-uv run ctest --preset dev                # every test: C++, Python, lint (eight at a time)
+uv run ctest --preset fast               # the inner loop: C++ and the Python tests that are not long, about 25 s
+uv run ctest --preset quick              # before a push: what CI runs on every push, about 2 minutes
+uv run ctest --preset dev                # everything, every boot: about 5 minutes
 ```
 
 ⚠️ The first build takes several minutes: SystemC, SCC and the parts of Boost that SCC needs are compiled from source. After that, builds are incremental.
+
+🎯 The tests come in three tiers, a test preset each, chosen by the label each `ctest` entry carries:
+
+| Tier | Test preset | What it runs | When |
+|---|---|---|---|
+| The inner loop | `fast` | the C++ tests (`cpp`), and the Python tests that are not marked `long` (`python`, the `pytest` entry) | every few minutes, and at each step of `/tdd` |
+| Every push | `quick` | `fast`, and lint and the tooling tests (`tooling`), the examples that take seconds (`example`), and one boot of real firmware for each area (`boots`, the `pytest_boots` entry: the tests marked `@pytest.mark.representative(area)`) | before a push, and in CI's quick tier, with `qbox-quick` beside it |
+| Every night | `dev` | everything: `quick`, and every other boot (`long`, the `pytest_long` entry) | in CI's nightly tier, and when a change touches a boot |
+
+`qbox-quick` and `qbox` are the same on QBox's hart ([below](#qbox-the-second-hart)). 💡 An area's one boot stands for the rest of its tests on a push: Linux the quick way and with its root on the drive, UEFI, OpenSBI, the IOMMU, Zephyr on the virtio devices, and ssh over the cable. The list is the marker's, in `tests/python/conftest.py`.
 
 💡 Building formats the C++ and Python for you and treats compiler warnings in our code as errors, and `ctest` includes a lint check over the whole tree. [Style, and the tools that hold us to it](style.md) says what the rules are and why.
 
@@ -93,7 +105,7 @@ tools/devcontainer.py --ubuntu 24.04 uv run ctest --preset linux   # the same on
 
 `tools/ci.py` holds the steps of every job CI runs, and CI's two workflows are thin wrappers around it: each of their jobs checks out the code, installs packages, restores caches, and then runs `uv run python tools/ci.py run JOB`. So the same command runs every job on this machine, and a push is not the first time they run.
 
-🌙 CI's jobs are in two tiers. The **quick tier**, `.github/workflows/ci.yml`, runs on every push to main and every pull request, and answers in about half an hour: lint, the firmware, `test-quick` (the tests but those marked `long`, the boots of OpenSBI, UEFI and Linux) on Linux and on an Intel Mac, and clang-tidy, coverage and the sanitizers on Linux. The **nightly tier**, `.github/workflows/nightly.yml`, runs every night and by hand (`gh workflow run nightly.yml`, with `--ref BRANCH` for a branch's): everything else, the long tests, the on-demand ones, twister, QBox, the wheels and the devcontainer on both Ubuntus, on every machine CI has. 💡 The quick tier is quick because GitHub runs only five Macs at a time for an account, and a run with fifteen Mac jobs spent most of its hours waiting for one. The README's two badges say how main's latest run of each went.
+🌙 CI's jobs are in two tiers. The **quick tier**, `.github/workflows/ci.yml`, runs on every push to main and every pull request, and answers in about half an hour: lint, the firmware, `test-quick` (the `quick` test preset) on Linux and on an Intel Mac, which leaves the boots out (the `quick-without-boots` preset), `qbox-quick` (the `qbox-quick` preset) on Linux, and clang-tidy, coverage and the sanitizers on Linux. The **nightly tier**, `.github/workflows/nightly.yml`, runs every night and by hand (`gh workflow run nightly.yml`, with `--ref BRANCH` for a branch's): everything else, every other boot, twister, QBox, the wheels and the devcontainer on both Ubuntus, on every machine CI has. 💡 The quick tier is quick because GitHub runs only five Macs at a time for an account, and a run with fifteen Mac jobs spent most of its hours waiting for one. The README's two badges say how main's latest run of each went.
 
 ```sh
 uv run python tools/ci.py                 # the nightly tier's jobs that can run here, three at a time
@@ -134,6 +146,7 @@ Configuring prints a note when the tree is in one of the two special modes.
 uv run tools/build_qbox.py               # QBox at its pin, with cmake/patches/qbox-* and libqemu-*, into build/qbox/install
 uv run cmake --preset qbox               # build/qbox-dev, with SOCPUPPET_QBOX_DIR=build/qbox/install
 uv run cmake --build --preset qbox
+uv run ctest --preset qbox-quick         # fast's tests and one boot for each area, with SOCPUPPET_CPU=qbox_cpu
 uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=qbox_cpu
 ```
 
