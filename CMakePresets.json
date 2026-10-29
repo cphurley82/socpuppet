@@ -116,8 +116,13 @@
       "configurePreset": "qbox",
       "output": { "outputOnFailure": true },
       "environment": { "SOCPUPPET_CPU": "qbox_cpu" },
-      "filter": { "exclude": { "label": "long" } },
+      "filter": { "exclude": { "label": "interpreter" } },
       "execution": { "jobs": 8 }
+    },
+    {
+      "name": "qbox-quick",
+      "inherits": "qbox",
+      "filter": { "include": { "label": "^(cpp|python|boots)$" } }
     },
     {
       "name": "pciem",

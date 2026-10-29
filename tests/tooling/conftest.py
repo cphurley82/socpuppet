@@ -80,6 +80,23 @@ def dev_tree():
 
 
 @pytest.fixture
+def qbox_tree():
+    """The qbox preset's build tree, configured.
+
+    A test that asks CTest what the qbox test presets run is skipped where
+    there is none: `uv run cmake --preset qbox` configures it, once
+    `tools/build_qbox.py` has built QBox.
+    """
+    tree = REPO / "build/qbox-dev"
+    if not (tree / "CTestTestfile.cmake").is_file():
+        pytest.skip(
+            f"There is no {tree}. `uv run tools/build_qbox.py && uv run "
+            "cmake --preset qbox` makes one."
+        )
+    return tree
+
+
+@pytest.fixture
 def repo(tmp_path):
     """A throwaway git repository carrying the real lint configuration."""
     _make_repo(tmp_path)
