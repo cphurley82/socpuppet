@@ -18,7 +18,7 @@ uv run python tools/lint.py          # every linter, over the whole tree
 uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 ```
 
-`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install.
+`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install. Dependabot offers to move the pins once a week ([development.md](development.md#keeping-the-tools-current)).
 
 ## What happens when
 
@@ -68,7 +68,7 @@ A literal in a shift or a mask carries `U`: `1U << 3U`, `value & 0xFFU`. 🎓 A 
 - **clang-format** lays the code out. Its settings are in `.clang-format`: Google's, plus the include order above.
 - **cpplint** is Google's own linter. It checks what clang-format cannot: header guards, `using namespace`, include paths. Its settings are in `CPPLINT.cfg`.
 - **The compiler** runs with `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, and a warning in our code fails the build. Warnings inside dependencies are not our business and are not shown.
-- **clang-tidy** looks for likely bugs, slow code and code that newer C++ can say more simply, and it is what enforces the naming table above. Its checks are listed in `.clang-tidy`, and every check that is switched off has its reason written next to it. When a new clang-tidy brings new checks, they are adopted, not switched off: the code is changed to pass them, and a check is turned off only for a reason that can be written next to its name. When a finding is wrong for one line, say so on that line:
+- **clang-tidy** looks for likely bugs, slow code and code that newer C++ can say more simply, and it is what enforces the naming table above. Its checks are listed in `.clang-tidy`, and every check that is switched off has its reason written next to it. When a new clang-tidy brings new checks, they are adopted, not switched off: the code is changed to pass them, and a check is turned off only for a reason that can be written next to its name ([development.md](development.md#keeping-the-tools-current)). When a finding is wrong for one line, say so on that line:
 
   ```cpp
   // pybind11 fixes the signature of a translator: it takes the pointer by value.
