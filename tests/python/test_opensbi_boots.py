@@ -40,10 +40,11 @@ LONG_ENOUGH = sp.ms(10_000)
 
 
 @pytest.fixture(
+    scope="class",
     params=[
         pytest.param(loaded_by_python, id="loaded by Python"),
         pytest.param(in_the_flash, id="from the flash"),
-    ]
+    ],
 )
 def opensbi_with_its_test_payload(request, firmware):
     """A host that has run OpenSBI's `fw_jump` and its test payload.
@@ -74,8 +75,9 @@ class TestWhenTheBootRomStartsOpenSbiFromTheFlash:
         )
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 class TestWhenOpenSbiBootsWithItsTestPayload:
+    # 💡 One boot for the class, each way: its tests read what it said.
     @pytest.mark.representative("opensbi")
     def test_it_prints_its_banner(self, opensbi_with_its_test_payload):
         board = opensbi_with_its_test_payload
@@ -156,10 +158,11 @@ ASKING = "payload: asking"
 
 
 @pytest.fixture(
+    scope="class",
     params=[
         pytest.param(loaded_by_python, id="loaded by Python"),
         pytest.param(in_the_flash, id="from the flash"),
-    ]
+    ],
 )
 def our_payload_on_opensbi(request, firmware):
     """A host that has run OpenSBI and our payload until it asked to reset.
@@ -174,7 +177,7 @@ def our_payload_on_opensbi(request, firmware):
     return board
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 class TestWhenOurPayloadRunsOnOpenSbi:
     """🎓 Our payload is the first program here that makes SBI's calls of its
     own accord, as a kernel will. Each line it says is one call or one
@@ -213,7 +216,7 @@ class TestWhenOurPayloadRunsOnOpenSbi:
         )
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def our_payload_rebooted_from_the_flash(firmware):
     """A host that has run OpenSBI and our payload from its flash, until the
     payload has asked for a reboot and then to be switched off."""
@@ -225,7 +228,7 @@ def our_payload_rebooted_from_the_flash(firmware):
     return board
 
 
-@pytest.mark.platform
+@pytest.mark.platform(scope="class")
 class TestWhenOurPayloadAsksOpenSbiForAColdRebootFromTheFlash:
     """🎓 SBI's reset call goes through OpenSBI's `syscon-reboot` to the
     system controller, which resets the CPU: the ROM starts again, copies
