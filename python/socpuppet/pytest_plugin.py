@@ -9,9 +9,18 @@ because forking is unsafe on macOS and a forked child inherits whatever
 kernel state the parent already has. The cost is one pytest startup per
 marked test.
 
+Marked ``@pytest.mark.platform(scope="class")``, a class's tests share one
+process instead, so that a class-scoped fixture, a board booted once, is
+made once for all of them (a marked test outside a class still has one of
+its own). The first of them to run starts the process for every one of
+the class that the session selected, and each reports in its turn. Under
+pytest-xdist, hand the tests out with ``--dist loadscope``, which keeps a
+class on one worker.
+
 A marked test that runs for longer than ``socpuppet_platform_timeout``
-seconds is stopped and fails. The limit is a setting in pytest's
-configuration, 900 unless set, and 0 means no limit::
+seconds is stopped and fails, and so is a class's process, with what it
+had not finished. The limit is a setting in pytest's configuration, 900
+unless set, and 0 means no limit::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -70,8 +79,9 @@ def pytest_configure(config: pytest.Config) -> None:
     """Register the markers, and in a child, report to the parent."""
     config.addinivalue_line(
         "markers",
-        "platform: builds a Platform, so the test runs in its own process "
-        "(one SystemC kernel per process)",
+        "platform(scope=None): builds a Platform, so the test runs in its "
+        "own process (one SystemC kernel per process); with "
+        "scope='class', a class's tests share one",
     )
     report_file = os.environ.get(_REPORT_FILE_ENV)
     if report_file:
@@ -82,11 +92,7 @@ def pytest_runtest_protocol(
     item: pytest.Item, nextitem: pytest.Item | None
 ) -> bool | None:
     """Run a `platform` test in a process of its own."""
-    if (
-        item.get_closest_marker("platform") is None
-        or item.get_closest_marker("skip") is not None
-        or _REPORT_FILE_ENV in os.environ
-    ):
+    if not _runs_in_a_process(item):
         # Run normally, in this process: a test that is skipped whatever
         # happens needs no process to skip.
         return None
@@ -94,7 +100,7 @@ def pytest_runtest_protocol(
     item.ihook.pytest_runtest_logstart(
         nodeid=item.nodeid, location=item.location
     )
-    for report in _run_in_child_process(item):
+    for report in _reports_of(item):
         item.ihook.pytest_runtest_logreport(report=report)
     # The test's own fixtures lived and died in the child. Here, pytest still
     # has to finish with any class or module it set up for earlier tests and
@@ -106,6 +112,50 @@ def pytest_runtest_protocol(
         nodeid=item.nodeid, location=item.location
     )
     return True
+
+
+# What a class's process reported for the tests of it still to report, by
+# node id: the first of them to run fills it in for the rest.
+_waiting = pytest.StashKey[dict[str, list[pytest.TestReport]]]()
+
+
+def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
+    """Run a `platform` test in a process of its own, or its class's."""
+    waiting = item.config.stash.setdefault(_waiting, {})
+    if item.nodeid in waiting:
+        return waiting.pop(item.nodeid)
+    if not _shares_its_classs_process(item):
+        return _run_in_child_process([item])[item.nodeid]
+    its_class = item.getparent(pytest.Class)
+    together = [
+        each
+        for each in item.session.items
+        if each.getparent(pytest.Class) is its_class
+        and _shares_its_classs_process(each)
+        and _runs_in_a_process(each)
+    ]
+    reports = _run_in_child_process(together)
+    waiting.update(reports)
+    return waiting.pop(item.nodeid)
+
+
+def _runs_in_a_process(item: pytest.Item) -> bool:
+    """Whether a test runs in a process apart from the session's."""
+    return (
+        item.get_closest_marker("platform") is not None
+        and item.get_closest_marker("skip") is None
+        and _REPORT_FILE_ENV not in os.environ
+    )
+
+
+def _shares_its_classs_process(item: pytest.Item) -> bool:
+    """Whether a test is of a class marked to share one process."""
+    marker = item.get_closest_marker("platform")
+    return (
+        marker is not None
+        and marker.kwargs.get("scope") == "class"
+        and item.getparent(pytest.Class) is not None
+    )
 
 
 class _ChildReporter:
@@ -123,9 +173,11 @@ class _ChildReporter:
             out.write(json.dumps(data) + "\n")
 
 
-def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
-    """Run one test in a fresh interpreter and return its reports."""
-    config = item.config
+def _run_in_child_process(
+    items: list[pytest.Item],
+) -> dict[str, list[pytest.TestReport]]:
+    """Run tests in one fresh interpreter, and return each one's reports."""
+    config = items[0].config
     timeout = float(config.getini(_TIMEOUT_SETTING))
     # The child's temporary directories go inside this session's. Left to
     # itself, the child would make one beside every other session's and, on
@@ -150,7 +202,7 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
                 str(config.rootpath),
                 "--basetemp",
                 str(basetemp),
-                str(config.rootpath / item.nodeid),
+                *(str(config.rootpath / item.nodeid) for item in items),
             ],
             env={**os.environ, _REPORT_FILE_ENV: report_file.name},
             stdout=subprocess.PIPE,
@@ -177,15 +229,38 @@ def _run_in_child_process(item: pytest.Item) -> list[pytest.TestReport]:
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
         output = stdout + stderr
-        reports = [_report_from_json(config, line) for line in report_file]
+        reports: dict[str, list[pytest.TestReport]] = {
+            item.nodeid: [] for item in items
+        }
+        for line in report_file:
+            report = _report_from_json(config, line)
+            reports[report.nodeid].append(report)
     if unfinished is not None:
-        reports.append(
+        # Each test that did not get as far as its teardown was cut short.
+        # If every one did, the process died on its way out, after the last.
+        cut_short = [
+            item
+            for item in items
+            if "teardown" not in {r.when for r in reports[item.nodeid]}
+        ] or items[-1:]
+        # The first was the one running; the rest never started.
+        first, *never_started = cut_short
+        reports[first.nodeid].append(
             _unfinished_report(
-                item,
+                first,
                 f"{unfinished} Its output follows.\n\n{output}",
-                phases_reported={r.when for r in reports},
+                phases_reported={r.when for r in reports[first.nodeid]},
             )
         )
+        for item in never_started:
+            reports[item.nodeid].append(
+                _unfinished_report(
+                    item,
+                    "Never ran: the class's process died during "
+                    f"{first.nodeid}.",
+                    phases_reported=set(),
+                )
+            )
     return reports
 
 
