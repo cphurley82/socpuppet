@@ -81,7 +81,7 @@ void SwitchOn(BusDriver& bus, std::uint32_t control = 0) {
 
 // Gives the controller a start addressed to kAddress for a write.
 void GiveAStart(BusDriver& bus) {
-  bus.Write32(I2C_CONTROLLER_TRANSMIT, kAddress << 1);
+  bus.Write32(I2C_CONTROLLER_TRANSMIT, kAddress << 1U);
   bus.Write32(I2C_CONTROLLER_COMMAND,
               I2C_CONTROLLER_COMMAND_START | I2C_CONTROLLER_COMMAND_WRITE);
 }

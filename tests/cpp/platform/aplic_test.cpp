@@ -28,8 +28,8 @@ TEST(WhenASourceBeyondTheAplicsLastIsSetUpToAskWhileItsLineIsLow,
   aplic.msi.bind(harts_page.socket);
   std::uint32_t mode = kLevelLow;
   BusDriver driver{"driver", [&](BusDriver& bus) {
-                     bus.Write32(0x1BC0, 0x24000);  // where messages go
-                     bus.Write32(0x0000, 1U << 8);  // interrupts on
+                     bus.Write32(0x1BC0, 0x24000);   // where messages go
+                     bus.Write32(0x0000, 1U << 8U);  // interrupts on
                      bus.Write32(kItsMode, kLevelLow);
                      bus.Write32(kItsTarget, 40);
                      bus.Write32(0x1EDC, kBeyondTheLast);  // enable it
@@ -81,7 +81,7 @@ TEST(WhenAnAplicIsBuiltKnowingWhereItsMessagesGo,
   RecordingTarget harts_page{"harts_page", messages, sc_core::SC_ZERO_TIME};
   aplic.msi.bind(harts_page.socket);
   BusDriver driver{"driver", [&](BusDriver& bus) {
-                     bus.Write32(0x0000, 1U << 8);  // interrupts on
+                     bus.Write32(0x0000, 1U << 8U);  // interrupts on
                      bus.Write32(std::uint64_t{4} * kSource, kLevelHigh);
                      bus.Write32(0x3000 + (std::uint64_t{4} * kSource), 33);
                      bus.Write32(0x1EDC, kSource);  // enable it
@@ -101,7 +101,7 @@ TEST(WhenAnAplicIsBuiltKnowingWhereItsMessagesGo,
 // of its number in both registers.
 TEST(WhenAnAplicIsBuiltKnowingWhereItsMessagesGo,
      TheRegistersThatSayWhereReadAsThatPagesNumber) {
-  constexpr std::uint64_t kHighPage = (std::uint64_t{1} << 48) | 0x2800'0000;
+  constexpr std::uint64_t kHighPage = (std::uint64_t{1} << 48U) | 0x2800'0000U;
   socpuppet::Aplic aplic{"aplic", kHighPage};
   std::vector<RecordedAccess> messages;
   RecordingTarget harts_page{"harts_page", messages, sc_core::SC_ZERO_TIME};
@@ -118,6 +118,6 @@ TEST(WhenAnAplicIsBuiltKnowingWhereItsMessagesGo,
 
   // The page's number is its address without the low twelve bits: its
   // low 32 bits in one register, and the rest in the other's lowest field.
-  EXPECT_EQ(low, static_cast<std::uint32_t>(kHighPage >> 12));
-  EXPECT_EQ(high, kHighPage >> 44);
+  EXPECT_EQ(low, static_cast<std::uint32_t>(kHighPage >> 12U));
+  EXPECT_EQ(high, kHighPage >> 44U);
 }

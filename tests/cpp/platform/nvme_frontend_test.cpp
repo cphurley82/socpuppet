@@ -129,7 +129,7 @@ struct HostAndCpuWithAnNvmeFrontend {
   int StatusOfTheFirstCompletion() {
     return LoadLittleEndian<std::uint16_t>(
                HostMemoryAt(kAdminCompletionQueue + 14, 2)) >>
-           1;
+           1U;
   }
 
   // A register of the CPU's block as a debugger sees it, or nothing if the
@@ -159,7 +159,7 @@ struct HostAndCpuWithAnNvmeFrontend {
 // What a host does to enable the controller: it says where its admin
 // queues are, sets CC.EN, and waits for the controller to say it is ready.
 bool HostEnables(BusDriver& host) {
-  host.Write32(kAqa, 3U << 16 | 3U);
+  host.Write32(kAqa, 3U << 16U | 3U);
   host.Write64(kAsq, kAdminSubmissionQueue);
   host.Write64(kAcq, kAdminCompletionQueue);
   host.Write32(kCc, 1);

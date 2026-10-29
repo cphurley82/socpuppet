@@ -486,7 +486,7 @@ TEST(WhenTheHostLooksAtConfigurationSpaceByDebugAccess, ItSeesTheIds) {
   fixture.platform.Run();
 
   EXPECT_EQ(fixture.HostLooksAt(HostWithAnEndpoint::kEcamBase + kIds),
-            (std::uint32_t{HostWithAnEndpoint::kDeviceId} << 16) |
+            (std::uint32_t{HostWithAnEndpoint::kDeviceId} << 16U) |
                 HostWithAnEndpoint::kVendorId);
 }
 

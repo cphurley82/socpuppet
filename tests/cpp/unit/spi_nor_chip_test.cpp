@@ -46,7 +46,7 @@ std::vector<std::uint8_t> Frame(SpiDevice& chip,
 // Whether the chip's status register says writes are enabled. 🎓 Bit 1 of
 // status register 1, which RDSR (0x05) reads, is the write enable latch.
 bool WriteEnableLatch(SpiDevice& chip) {
-  constexpr std::uint8_t kWriteEnableLatch = 1 << 1;
+  constexpr std::uint8_t kWriteEnableLatch = 1U << 1U;
   const std::vector<std::uint8_t> received = Frame(chip, {0x05, 0});
   return (received.back() & kWriteEnableLatch) != 0;
 }
@@ -54,8 +54,8 @@ bool WriteEnableLatch(SpiDevice& chip) {
 // The frame of a command that takes a three-byte address and nothing else.
 void SendWithAddress(SpiDevice& chip, std::uint8_t command,
                      std::size_t address) {
-  Frame(chip, {command, static_cast<std::uint8_t>(address >> 16),
-               static_cast<std::uint8_t>(address >> 8),
+  Frame(chip, {command, static_cast<std::uint8_t>(address >> 16U),
+               static_cast<std::uint8_t>(address >> 8U),
                static_cast<std::uint8_t>(address)});
 }
 

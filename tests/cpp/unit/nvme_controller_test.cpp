@@ -33,7 +33,7 @@ void EnableWithFourEntryAdminQueues(NvmeController& controller) {
 TEST(WhenADriveIsFarLargerThanTheMachinesMemory, AControllerForItIsStillMade) {
   NoHostMemory memory;
 
-  EXPECT_NO_THROW((NvmeController{memory, /*blocks=*/std::uint64_t{1} << 40,
+  EXPECT_NO_THROW((NvmeController{memory, /*blocks=*/std::uint64_t{1} << 40U,
                                   /*vectors=*/1}));
 }
 

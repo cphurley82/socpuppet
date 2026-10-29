@@ -227,7 +227,7 @@ TEST(WhenTheDriverLooksAtTheNetworkDevice,
 
   EXPECT_EQ(net.DeviceId(), 1U);
   EXPECT_EQ(net.QueueCount(), 2);
-  EXPECT_EQ(net.Features(), std::uint64_t{1} << 5);
+  EXPECT_EQ(net.Features(), std::uint64_t{1} << 5U);
 }
 
 }  // namespace

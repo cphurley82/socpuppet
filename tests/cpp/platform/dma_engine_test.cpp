@@ -114,7 +114,7 @@ void Copy(BusDriver& cpu, std::uint32_t command, std::uint64_t host_address,
   cpu.Write32(DMA_ENGINE_HOST_ADDRESS_LOW,
               static_cast<std::uint32_t>(host_address));
   cpu.Write32(DMA_ENGINE_HOST_ADDRESS_HIGH,
-              static_cast<std::uint32_t>(host_address >> 32));
+              static_cast<std::uint32_t>(host_address >> 32U));
   cpu.Write32(DMA_ENGINE_LOCAL_ADDRESS, local_address);
   cpu.Write32(DMA_ENGINE_LENGTH, length);
   cpu.Write32(DMA_ENGINE_COMMAND, command);

@@ -110,7 +110,7 @@ TEST(WhenTheDriverLooksAtThe9pDevice,
 
   EXPECT_EQ(ninep.DeviceId(), 9U);
   EXPECT_EQ(ninep.QueueCount(), 1);
-  EXPECT_EQ(ninep.Features(), 1U << 0);
+  EXPECT_EQ(ninep.Features(), 1U << 0U);
 }
 
 }  // namespace
