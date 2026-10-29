@@ -31,6 +31,8 @@ struct PassThroughRig {
   static std::string Initiator(const char* die) {
     return Endpoint(die) + ".initiator";
   }
+  // The contract's Control returns a std::string, which the other rigs build.
+  // NOLINTNEXTLINE(modernize-use-string-view)
   static std::string Control(const char*) { return ""; }
   static void BringUp(BusDriver&) {}
   static void WaitUntilUp(BusDriver&) {}

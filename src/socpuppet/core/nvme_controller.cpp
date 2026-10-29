@@ -245,19 +245,16 @@ NvmeController::Outcome NvmeController::Identify(const spdk_nvme_cmd& command) {
 // changes is how many I/O queues it would like.
 NvmeController::Outcome NvmeController::SetFeatures(
     const spdk_nvme_cmd& command) {
-  switch (command.cdw10_bits.set_features.fid) {
-    case SPDK_NVME_FEAT_NUMBER_OF_QUEUES: {
-      // The answer is how many queues the controller has, whatever the
-      // host asked for, and the host uses the smaller number. Both counts
-      // are from zero: submission queues, then completion queues.
-      spdk_nvme_feat_number_of_queues granted{};
-      granted.bits.nsqr = NvmeQueues::kIoQueuePairs - 1U;
-      granted.bits.ncqr = NvmeQueues::kIoQueuePairs - 1U;
-      return {.result = granted.raw};
-    }
-    default:
-      return {.status = SPDK_NVME_SC_INVALID_FIELD};
+  if (command.cdw10_bits.set_features.fid != SPDK_NVME_FEAT_NUMBER_OF_QUEUES) {
+    return {.status = SPDK_NVME_SC_INVALID_FIELD};
   }
+  // The answer is how many queues the controller has, whatever the host
+  // asked for, and the host uses the smaller number. Both counts are from
+  // zero: submission queues, then completion queues.
+  spdk_nvme_feat_number_of_queues granted{};
+  granted.bits.nsqr = NvmeQueues::kIoQueuePairs - 1U;
+  granted.bits.ncqr = NvmeQueues::kIoQueuePairs - 1U;
+  return {.result = granted.raw};
 }
 
 NvmeController::Outcome NvmeController::CarryOutIo(
