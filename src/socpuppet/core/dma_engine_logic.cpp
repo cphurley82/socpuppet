@@ -86,10 +86,12 @@ bool DmaEngineLogic::WriteRegister(std::uint64_t offset,
                              value != DMA_ENGINE_COMMAND_TO_HOST)) {
         return false;
       }
-      job_ = Job{.command = value,
-                 .host_address = host_address_,
-                 .local_address = local_address_,
-                 .length = length_};
+      job_ = Job{
+          .command = value,
+          .host_address = host_address_,
+          .local_address = local_address_,
+          .length = length_,
+      };
       status_.Start();
       break;
     case DMA_ENGINE_STATUS:

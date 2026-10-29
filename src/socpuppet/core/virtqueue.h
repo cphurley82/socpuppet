@@ -161,10 +161,12 @@ class Virtqueue {
     std::array<std::uint8_t, kDescriptorBytes> bytes{};
     memory_.Read(layout_.desc + (kDescriptorBytes * index), bytes);
     const std::span<const std::uint8_t> fields = bytes;
-    return {.address = LoadLittleEndian<std::uint64_t>(fields.subspan(0, 8)),
-            .length = LoadLittleEndian<std::uint32_t>(fields.subspan(8, 4)),
-            .flags = LoadLittleEndian<std::uint16_t>(fields.subspan(12, 2)),
-            .next = LoadLittleEndian<std::uint16_t>(fields.subspan(14, 2))};
+    return {
+        .address = LoadLittleEndian<std::uint64_t>(fields.subspan(0, 8)),
+        .length = LoadLittleEndian<std::uint32_t>(fields.subspan(8, 4)),
+        .flags = LoadLittleEndian<std::uint16_t>(fields.subspan(12, 2)),
+        .next = LoadLittleEndian<std::uint16_t>(fields.subspan(14, 2)),
+    };
   }
 
   std::uint16_t Load16(std::uint64_t address) {

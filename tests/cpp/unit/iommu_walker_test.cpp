@@ -109,7 +109,10 @@ constexpr std::uint32_t DeviceId(std::uint32_t ddi2, std::uint32_t ddi1,
 // A read by some device of some address, for the tests where neither
 // matters.
 constexpr iommu_request kSomeRead{
-    .device_id = 0x21, .iova = 0x8000'1234, .is_write = false};
+    .device_id = 0x21,
+    .iova = 0x8000'1234,
+    .is_write = false,
+};
 
 // The same read, by `device_id`.
 constexpr iommu_request SomeReadBy(std::uint32_t device_id) {
@@ -157,14 +160,22 @@ constexpr std::uint64_t kIova =
 // A one-level directory at kRoot, and a device with a context in it whose
 // first stage is Sv39, with its root table at kLevel2; and a read by it of
 // kIova. PutTranslatedDevice puts the context where kOneLevel finds it.
-constexpr iommu_device_directory kOneLevel{.mode = iommu_ddt_mode::one_level,
-                                           .root = kRoot};
+constexpr iommu_device_directory kOneLevel{
+    .mode = iommu_ddt_mode::one_level,
+    .root = kRoot,
+};
 constexpr std::uint32_t kTranslatedDevice = kDdi0;
 constexpr iommu_request kTranslatedRead{
-    .device_id = kTranslatedDevice, .iova = kIova, .is_write = false};
+    .device_id = kTranslatedDevice,
+    .iova = kIova,
+    .is_write = false,
+};
 // And a write.
 constexpr iommu_request kTranslatedWrite{
-    .device_id = kTranslatedDevice, .iova = kIova, .is_write = true};
+    .device_id = kTranslatedDevice,
+    .iova = kIova,
+    .is_write = true,
+};
 void PutTranslatedDevice(Memory& memory) {
   PutDeviceContext(memory, kRoot, kTranslatedDevice,
                    {.tc = kV, .fsc = Fsc(FirstStage::kSv39, kLevel2)});

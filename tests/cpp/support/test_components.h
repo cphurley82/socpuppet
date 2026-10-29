@@ -36,9 +36,12 @@ inline void AddBusDriver(socpuppet::Registry& registry,
                [body](const char* name, socpuppet::Parameters&) {
                  auto module = std::make_unique<BusDriver>(name, body);
                  std::vector<socpuppet::Port> ports{
-                     socpuppet::InitiatorPort("socket", module->socket)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::InitiatorPort("socket", module->socket),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 
@@ -49,9 +52,12 @@ inline void AddLineDriver(socpuppet::Registry& registry,
                [body](const char* name, socpuppet::Parameters&) {
                  auto module = std::make_unique<LineDriver>(name, body);
                  std::vector<socpuppet::Port> ports{
-                     socpuppet::WireSourcePort("line", module->line)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::WireSourcePort("line", module->line),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 
@@ -62,9 +68,12 @@ inline void AddLineWatcher(socpuppet::Registry& registry,
                [](const char* name, socpuppet::Parameters&) {
                  auto module = std::make_unique<LineWatcher>(name);
                  std::vector<socpuppet::Port> ports{
-                     socpuppet::WireSinkPort("line", module->line)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::WireSinkPort("line", module->line),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 
@@ -78,9 +87,12 @@ inline void AddInterruptSource(
                  auto module = std::make_unique<InterruptSource>(name, body);
                  std::vector<socpuppet::Port> ports{
                      socpuppet::TargetPort("socket", module->socket),
-                     socpuppet::WireSourcePort("line", module->line)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::WireSourcePort("line", module->line),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 
@@ -95,9 +107,12 @@ inline void AddRecordingTarget(
                  auto module =
                      std::make_unique<RecordingTarget>(name, accesses, latency);
                  std::vector<socpuppet::Port> ports{
-                     socpuppet::TargetPort("socket", module->socket)};
-                 return socpuppet::Instance{.module = std::move(module),
-                                            .ports = std::move(ports)};
+                     socpuppet::TargetPort("socket", module->socket),
+                 };
+                 return socpuppet::Instance{
+                     .module = std::move(module),
+                     .ports = std::move(ports),
+                 };
                });
 }
 

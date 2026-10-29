@@ -87,12 +87,14 @@ class NvmeContract : public ::testing::Test {
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->Add("host.driver", "driver");
     platform_->Add("host.bus", "router",
-                   {{"inputs", 2},
-                    {"outputs", 2},
-                    {"out0.base", kMemoryBase},
-                    {"out0.size", kMemorySize},
-                    {"out1.base", kRegistersBase},
-                    {"out1.size", kRegistersSize}});
+                   {
+                       {"inputs", 2},
+                       {"outputs", 2},
+                       {"out0.base", kMemoryBase},
+                       {"out0.size", kMemorySize},
+                       {"out1.base", kRegistersBase},
+                       {"out1.size", kRegistersSize},
+                   });
     platform_->Add("host.memory", "memory", {{"size", kMemorySize}});
     Rig::Add(*platform_);
     platform_->Bind("host.driver.socket", "host.bus.target");
@@ -463,9 +465,11 @@ TYPED_TEST_P(NvmeContract,
 
   this->OnTheHost([&](NvmeHost& host) {
     host.Enable();
-    host.Submit(host.Admin(), {.opcode = NvmeHost::kIdentify,
-                               .data = host.NewPage(),
-                               .dword10 = kNothingToDescribe});
+    host.Submit(host.Admin(), {
+                                  .opcode = NvmeHost::kIdentify,
+                                  .data = host.NewPage(),
+                                  .dword10 = kNothingToDescribe,
+                              });
     completion = host.WaitForCompletion(host.Admin());
   });
 

@@ -53,8 +53,10 @@ class PcieHost {
   };
   Identity IdsOf(PciAddress function) {
     const std::uint32_t ids = ReadConfig(function, 0x00).value;
-    return {.vendor = static_cast<std::uint16_t>(ids),
-            .device = static_cast<std::uint16_t>(ids >> 16U)};
+    return {
+        .vendor = static_cast<std::uint16_t>(ids),
+        .device = static_cast<std::uint16_t>(ids >> 16U),
+    };
   }
 
   // What kind of device it is: the three bytes above the revision, in the
@@ -160,7 +162,8 @@ class PcieHost {
             .vectors = ((header >> 16U) & 0x7FFU) + 1,
             .table = bar0 + (ReadConfig(function, capability + 4).value & ~7U),
             .pending =
-                bar0 + (ReadConfig(function, capability + 8).value & ~7U)};
+                bar0 + (ReadConfig(function, capability + 8).value & ~7U),
+        };
       }
       capability = (header >> 8U) & 0xFCU;
     }
@@ -203,8 +206,10 @@ class PcieHost {
   PciAccess Read(std::uint64_t address) {
     std::array<std::uint8_t, 4> bytes{};
     const tlm::tlm_response_status response = bus_.Read(address, bytes);
-    return {.response = response,
-            .value = socpuppet::LoadLittleEndian<std::uint32_t>(bytes)};
+    return {
+        .response = response,
+        .value = socpuppet::LoadLittleEndian<std::uint32_t>(bytes),
+    };
   }
 
   PciAccess Write(std::uint64_t address, std::uint32_t value) {

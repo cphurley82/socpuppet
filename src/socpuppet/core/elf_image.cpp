@@ -25,9 +25,10 @@ ElfImage ReadElfImage(const std::string& path) {
     if (segment->get_type() != ELFIO::PT_LOAD) continue;
     if (segment->get_file_size() == 0) continue;
     const auto* data = reinterpret_cast<const std::byte*>(segment->get_data());
-    image.segments.push_back(
-        {.address = segment->get_physical_address(),
-         .bytes = {data, data + segment->get_file_size()}});
+    image.segments.push_back({
+        .address = segment->get_physical_address(),
+        .bytes = {data, data + segment->get_file_size()},
+    });
   }
   return image;
 }

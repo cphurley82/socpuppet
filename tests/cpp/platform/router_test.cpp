@@ -32,12 +32,14 @@ struct RoutedPlatform {
       : platform{WithBusDrivers(body, second_body)} {
     platform.Add("cpu", "bus_driver");
     platform.Add("bus", "router",
-                 {{"inputs", second_body ? 2 : 1},
-                  {"outputs", 2},
-                  {"out0.base", kLowRamBase},
-                  {"out0.size", 0x100},
-                  {"out1.base", kHighRamBase},
-                  {"out1.size", 0x100}});
+                 {
+                     {"inputs", second_body ? 2 : 1},
+                     {"outputs", 2},
+                     {"out0.base", kLowRamBase},
+                     {"out0.size", 0x100},
+                     {"out1.base", kHighRamBase},
+                     {"out1.size", 0x100},
+                 });
     platform.Add("low_ram", "memory", {{"size", 0x100}});
     platform.Add("high_ram", "memory", {{"size", 0x100}});
     platform.Bind("cpu.socket", "bus.target");
@@ -62,9 +64,10 @@ struct RoutedPlatform {
       const std::function<void(BusDriver&)>& body,
       const std::function<void(BusDriver&)>& second_body) {
     socpuppet::Registry registry = socpuppet::BuiltinComponents();
-    for (const auto& [implementation, each] :
-         {std::pair{"bus_driver", body},
-          std::pair{"second_bus_driver", second_body}}) {
+    for (const auto& [implementation, each] : {
+             std::pair{"bus_driver", body},
+             std::pair{"second_bus_driver", second_body},
+         }) {
       AddBusDriver(registry, implementation, each);
     }
     return registry;

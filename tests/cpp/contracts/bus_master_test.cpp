@@ -106,8 +106,10 @@ void LoadProgram(socpuppet::Platform& platform, Behavior behavior) {
 struct DbtRiseRig {
   static const char* Implementation() { return "dbt_rise_cpu"; }
   static socpuppet::Config Config() {
-    return {{"xlen", 64},
-            {"reset_vector", BusMasterContract<DbtRiseRig>::kProgramBase}};
+    return {
+        {"xlen", 64},
+        {"reset_vector", BusMasterContract<DbtRiseRig>::kProgramBase},
+    };
   }
   static void Load(socpuppet::Platform& platform, Behavior behavior) {
     LoadProgram<DbtRiseRig>(platform, behavior);
@@ -146,9 +148,11 @@ class WhenAScriptEndsAheadOfTheClock : public BusMasterContract<ScriptedRig> {};
 
 TEST_F(WhenAScriptEndsAheadOfTheClock, TheClockCatchesUpBeforeTheRunEnds) {
   const sc_core::sc_time latency = Microseconds(3);
-  Build({.behavior = Behavior::kWriteToTheProbe,
-         .probe_latency = latency,
-         .quantum = Microseconds(50)});
+  Build({
+      .behavior = Behavior::kWriteToTheProbe,
+      .probe_latency = latency,
+      .quantum = Microseconds(50),
+  });
 
   platform_->Run();
 
@@ -161,9 +165,11 @@ class WhenAScriptWaitsWhileAheadOfTheClock
 TEST_F(WhenAScriptWaitsWhileAheadOfTheClock,
        TheWaitStartsFromWhereTheScriptHadGotTo) {
   const sc_core::sc_time latency = Microseconds(3);
-  Build({.behavior = Behavior::kWriteToTheProbe,
-         .probe_latency = latency,
-         .quantum = Microseconds(50)});
+  Build({
+      .behavior = Behavior::kWriteToTheProbe,
+      .probe_latency = latency,
+      .quantum = Microseconds(50),
+  });
   platform_->ModuleAt<socpuppet::ScriptedBusMaster>("cpu").SetScript(
       []() -> socpuppet::Script {
         co_await socpuppet::Write32(kProbeBase, 0);

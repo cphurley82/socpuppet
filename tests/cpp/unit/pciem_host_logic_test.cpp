@@ -18,7 +18,10 @@ TEST(WhenAHostWriteIsFourBytesWide, OnlyItsLowFourBytesGoOnTheBus) {
 
 TEST(WhenAHostWriteIsEightBytesWide, AllEightGoOnTheBusLowestFirst) {
   const HostWrite write{
-      .offset = 0x28, .size = 8, .data = 0x0123'4567'89AB'CDEF};
+      .offset = 0x28,
+      .size = 8,
+      .data = 0x0123'4567'89AB'CDEF,
+  };
 
   EXPECT_THAT(BytesOf(write),
               ElementsAre(0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01));

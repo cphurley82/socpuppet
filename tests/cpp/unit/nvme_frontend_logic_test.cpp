@@ -120,8 +120,9 @@ struct Rig {
   // so that a register the frontend leaves untouched is not taken for one
   // that reads as zero.
   std::uint64_t HostRead64(std::uint64_t offset) const {
-    std::array<std::uint8_t, 8> bytes{0xA5, 0xA5, 0xA5, 0xA5,
-                                      0xA5, 0xA5, 0xA5, 0xA5};
+    std::array<std::uint8_t, 8> bytes{
+        0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5, 0xA5,
+    };
     EXPECT_TRUE(frontend.ReadHostRegister(offset, bytes));
     return LoadLittleEndian<std::uint64_t>(bytes);
   }
@@ -242,7 +243,8 @@ struct Rig {
         .phase = (phase_and_status & 1U) != 0,
         .status = static_cast<std::uint8_t>(phase_and_status >> 1U),
         .status_type =
-            static_cast<std::uint8_t>((phase_and_status >> 9U) & 0x7U)};
+            static_cast<std::uint8_t>((phase_and_status >> 9U) & 0x7U),
+    };
   }
 
   // Whether a bit of the status register is set, as the CPU reads it.

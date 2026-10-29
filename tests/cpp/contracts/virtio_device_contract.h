@@ -60,7 +60,8 @@ class VirtioDeviceContract : public ::testing::Test {
       .desc = kMemoryBase + 0x1000,
       .avail = kMemoryBase + 0x2000,
       .used = kMemoryBase + 0x3000,
-      .size = 8};
+      .size = 8,
+  };
   static constexpr std::uint64_t kBuffers = kMemoryBase + 0x4000;
   // Long enough for a device that has been rung to answer.
   static sc_core::sc_time Patience() { return {1, sc_core::SC_US}; }
@@ -143,9 +144,12 @@ class VirtioDeviceContract : public ::testing::Test {
       std::vector<socpuppet::Port> ports{
           socpuppet::TargetPort("cpu", module->cpu),
           socpuppet::InitiatorPort("dma", module->dma),
-          socpuppet::WireSourcePort("irq", module->irq)};
-      return socpuppet::Instance{.module = std::move(module),
-                                 .ports = std::move(ports)};
+          socpuppet::WireSourcePort("irq", module->irq),
+      };
+      return socpuppet::Instance{
+          .module = std::move(module),
+          .ports = std::move(ports),
+      };
     });
     AddBusDriver(registry, "driver", [this, body](BusDriver& bus) {
       Driver driver{bus};
@@ -156,12 +160,14 @@ class VirtioDeviceContract : public ::testing::Test {
     platform_ = std::make_unique<socpuppet::Platform>(std::move(registry));
     platform_->Add("driver", "driver");
     platform_->Add("bus", "router",
-                   {{"inputs", 2},
-                    {"outputs", 2},
-                    {"out0.base", kMemoryBase},
-                    {"out0.size", kMemorySize},
-                    {"out1.base", kRegisters},
-                    {"out1.size", VIRTIO_MMIO_SIZE}});
+                   {
+                       {"inputs", 2},
+                       {"outputs", 2},
+                       {"out0.base", kMemoryBase},
+                       {"out0.size", kMemorySize},
+                       {"out1.base", kRegisters},
+                       {"out1.size", VIRTIO_MMIO_SIZE},
+                   });
     platform_->Add("memory", "memory", {{"size", kMemorySize}});
     platform_->Add("device", "device");
     platform_->Add("line", "line_watcher");

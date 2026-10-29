@@ -202,8 +202,10 @@ class IommuContract : public ::testing::Test {
   static constexpr Command FenceThatWrites(std::uint32_t data,
                                            std::uint64_t address) {
     constexpr std::uint64_t kAv = 1U << 10U;
-    return {.first = kFence.first | kAv | (std::uint64_t{data} << 32U),
-            .second = address >> 2U};
+    return {
+        .first = kFence.first | kAv | (std::uint64_t{data} << 32U),
+        .second = address >> 2U,
+    };
   }
   // And one this IOMMU does not have: ATS.INVAL, for a device that caches
   // translations, which needs ATS.
@@ -252,8 +254,10 @@ class IommuContract : public ::testing::Test {
   };
   static constexpr FaultRecord Record(std::uint64_t cause, std::uint64_t type,
                                       std::uint64_t address) {
-    return {.header = cause | (type << 34U) | (std::uint64_t{kDevice} << 40U),
-            .address = address};
+    return {
+        .header = cause | (type << 34U) | (std::uint64_t{kDevice} << 40U),
+        .address = address,
+    };
   }
   // The record at entry `index` of the fault queue.
   FaultRecord RecordAt(std::uint64_t index) {
@@ -329,10 +333,13 @@ class IommuContract : public ::testing::Test {
   void Run(const std::function<void(BusDriver&)>& firmware,
            const std::function<void(BusDriver&)>& device) {
     BusDriver firmware_driver{"firmware", firmware};
-    BusDriver device_driver{"device", [&](BusDriver& bus) {
-                              bus.WaitFor(DeviceStartsAt());
-                              device(bus);
-                            }};
+    BusDriver device_driver{
+        "device",
+        [&](BusDriver& bus) {
+          bus.WaitFor(DeviceStartsAt());
+          device(bus);
+        },
+    };
     firmware_driver.socket.bind(iommu_.socket);
     device_driver.socket.bind(iommu_.target);
     sc_core::sc_start();
@@ -655,8 +662,11 @@ TYPED_TEST_P(IommuContract, TheCommandQueuesTailIsOnlyAsWideAsTheQueue) {
 }
 
 TYPED_TEST_P(IommuContract, ACommandQueueThatIsOnRunsItsCommandsToTheTail) {
-  this->PlantCommands({this->kInvalidatePageTables,
-                       this->kInvalidateTheDirectory, this->kFence});
+  this->PlantCommands({
+      this->kInvalidatePageTables,
+      this->kInvalidateTheDirectory,
+      this->kFence,
+  });
   std::uint32_t head = 0;
   this->Run(
       [&](BusDriver& firmware) {

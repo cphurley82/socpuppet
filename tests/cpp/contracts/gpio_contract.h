@@ -78,11 +78,14 @@ class GpioContract : public ::testing::Test {
   // Runs `body` in a simulation thread wired to the GPIO. The run ends a
   // delta cycle after the body does, for what the GPIO does a delta on.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"driver", [&](BusDriver& bus) {
-                       body(bus);
-                       sc_core::wait(sc_core::SC_ZERO_TIME);
-                       sc_core::sc_stop();
-                     }};
+    BusDriver driver{
+        "driver",
+        [&](BusDriver& bus) {
+          body(bus);
+          sc_core::wait(sc_core::SC_ZERO_TIME);
+          sc_core::sc_stop();
+        },
+    };
     driver.socket.bind(gpio_.socket);
     sc_core::sc_start();
   }

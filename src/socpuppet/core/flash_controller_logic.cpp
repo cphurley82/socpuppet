@@ -79,10 +79,12 @@ bool FlashControllerLogic::WriteRegister(std::uint64_t offset,
   switch (offset) {
     case FLASH_CONTROLLER_COMMAND:
       if (status_.Busy() || !IsACommand(value)) return false;
-      job_ = Job{.command = value,
-                 .block = block_,
-                 .page = page_,
-                 .local_address = local_address_};
+      job_ = Job{
+          .command = value,
+          .block = block_,
+          .page = page_,
+          .local_address = local_address_,
+      };
       status_.Start();
       break;
     case FLASH_CONTROLLER_STATUS:

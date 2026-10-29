@@ -42,14 +42,18 @@ std::vector<std::uint8_t> WithAHeader(std::string_view frame) {
 // device's side of each, and the device, whose address is
 // 02:00:5e:00:53:01.
 struct Rig {
-  static constexpr Virtqueue::Layout kReceive{.desc = kMemory + 0x1000,
-                                              .avail = kMemory + 0x2000,
-                                              .used = kMemory + 0x3000,
-                                              .size = 8};
-  static constexpr Virtqueue::Layout kTransmit{.desc = kMemory + 0x5000,
-                                               .avail = kMemory + 0x6000,
-                                               .used = kMemory + 0x7000,
-                                               .size = 8};
+  static constexpr Virtqueue::Layout kReceive{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = 8,
+  };
+  static constexpr Virtqueue::Layout kTransmit{
+      .desc = kMemory + 0x5000,
+      .avail = kMemory + 0x6000,
+      .used = kMemory + 0x7000,
+      .size = 8,
+  };
   static constexpr std::uint64_t kMac = 0x0200'5E00'5301;
 
   // Has the driver send `frame` with its header in one buffer, as

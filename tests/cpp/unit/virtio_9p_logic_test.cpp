@@ -27,10 +27,12 @@ std::vector<std::uint8_t> Bytes(std::string_view text) {
 // side, and the device, whose answerer answers each message with "eggs:"
 // and the message.
 struct Rig {
-  static constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
-                                            .avail = kMemory + 0x2000,
-                                            .used = kMemory + 0x3000,
-                                            .size = 8};
+  static constexpr Virtqueue::Layout kQueue{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = 8,
+  };
 
   Rig() {
     ninep.SetAnswerer([this](std::span<const std::uint8_t> message) {

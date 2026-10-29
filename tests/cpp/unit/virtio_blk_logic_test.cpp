@@ -44,10 +44,12 @@ struct Answer {
 // sends it requests the way EDK2's and Linux's do: a header, the data, and
 // a status byte, each in a descriptor of its own.
 struct Rig {
-  static constexpr Virtqueue::Layout kQueue{.desc = kMemory + 0x1000,
-                                            .avail = kMemory + 0x2000,
-                                            .used = kMemory + 0x3000,
-                                            .size = 16};
+  static constexpr Virtqueue::Layout kQueue{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = 16,
+  };
   static constexpr std::uint64_t kSectors = 8;
 
   // Sends a request of `type` at `sector`. `out` is data the device reads
@@ -79,10 +81,12 @@ struct Rig {
     driver.Describe(status_at, 1, VirtqueueDriver::kWrite);
     driver.Fill(status_at, std::vector<std::uint8_t>{0xEE});
     HandOver();
-    return {.used_length = driver.UsedAt(0).length,
-            .status = driver.Contents(status_at, 1)[0],
-            .data = in_length > 0 ? driver.Contents(1, in_length)
-                                  : std::vector<std::uint8_t>{}};
+    return {
+        .used_length = driver.UsedAt(0).length,
+        .status = driver.Contents(status_at, 1)[0],
+        .data = in_length > 0 ? driver.Contents(1, in_length)
+                              : std::vector<std::uint8_t>{},
+    };
   }
 
   // Makes the chain that starts at descriptor 0 available and hands it to
@@ -233,8 +237,9 @@ TEST(WhenTheDriverWritesTheCapacity, ItIsLeftAsItWas) {
   // The capacity is read-only (section 5.2.4): the disk is as large as it
   // was built.
   VirtioBlkLogic device{Rig::kSectors};
-  const std::array<std::uint8_t, 8> huge{0xFF, 0xFF, 0xFF, 0xFF,
-                                         0xFF, 0xFF, 0xFF, 0xFF};
+  const std::array<std::uint8_t, 8> huge{
+      0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  };
 
   device.WriteConfig(0, huge);
 

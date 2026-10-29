@@ -91,10 +91,13 @@ class AplicContract : public ::testing::Test {
   // Runs `body` in a simulation thread wired to the APLIC, to completion,
   // and then lets what it set in motion settle.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"driver", [&](BusDriver& bus) {
-                       body(bus);
-                       Settle(bus);
-                     }};
+    BusDriver driver{
+        "driver",
+        [&](BusDriver& bus) {
+          body(bus);
+          Settle(bus);
+        },
+    };
     driver.socket.bind(aplic_.socket);
     sc_core::sc_start();
   }

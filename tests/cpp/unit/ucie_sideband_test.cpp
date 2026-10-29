@@ -15,15 +15,17 @@ namespace socpuppet {
 // A packet with a different value in each field, so that a field encoded
 // into the wrong place shows up.
 SidebandPacket ADistinctivePacket() {
-  return {.opcode = SidebandOpcode::kMessageWith64bData,
-          .srcid = SidebandAgent::kD2dAdapter,
-          .dstid = SidebandAgent::kPhysicalLayer,
-          .msgcode = 0xA5,
-          .msgsubcode = 0x02,
-          .msginfo = 0x1234,
-          .control_parity = true,
-          .data_parity = false,
-          .data = 0x0123'4567'89AB'CDEF};
+  return {
+      .opcode = SidebandOpcode::kMessageWith64bData,
+      .srcid = SidebandAgent::kD2dAdapter,
+      .dstid = SidebandAgent::kPhysicalLayer,
+      .msgcode = 0xA5,
+      .msgsubcode = 0x02,
+      .msginfo = 0x1234,
+      .control_parity = true,
+      .data_parity = false,
+      .data = 0x0123'4567'89AB'CDEF,
+  };
 }
 
 TEST(WhenASidebandPacketIsEncoded, EachFieldIsWhereUcieHasIt) {

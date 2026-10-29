@@ -40,105 +40,136 @@ inline constexpr std::string_view kAtomicsSpin =
 
 inline constexpr std::array kQboxFates{
     QboxFate{.tests = "WhenXlenIs32.*", .reason = k64BitOnly},
-    QboxFate{.tests = "WhenA32BitCpusTimeIsConnectedToItsTimer.*",
-             .reason = k64BitOnly},
+    QboxFate{
+        .tests = "WhenA32BitCpusTimeIsConnectedToItsTimer.*",
+        .reason = k64BitOnly,
+    },
     QboxFate{
         .tests =
             "WhenA32BitCpuAheadOfTheClockSetsItsCompareValueInThreeWrites.*",
-        .reason = k64BitOnly},
-    QboxFate{.tests = "WhenA64BitAndA32BitCpuShareASimulation.*",
-             .reason = k64BitOnly},
-    QboxFate{.tests = "WhenACpusTimeIsConnectedToItsTimer."
-                      "TheTimeRegisterReadsOneTickBehind*",
-             .reason = k128NanosecondsAnInstruction},
-    QboxFate{.tests = "WhenAMemoryWithdrawsDirectAccess.*",
-             .reason = k128NanosecondsAnInstruction},
+        .reason = k64BitOnly,
+    },
+    QboxFate{
+        .tests = "WhenA64BitAndA32BitCpuShareASimulation.*",
+        .reason = k64BitOnly,
+    },
+    QboxFate{
+        .tests = "WhenACpusTimeIsConnectedToItsTimer."
+                 "TheTimeRegisterReadsOneTickBehind*",
+        .reason = k128NanosecondsAnInstruction,
+    },
+    QboxFate{
+        .tests = "WhenAMemoryWithdrawsDirectAccess.*",
+        .reason = k128NanosecondsAnInstruction,
+    },
     QboxFate{
         .tests =
             "WhenUserModeIsAllowedTheTimeRegisterOnACpuConnectedToItsTimer.*",
         .reason =
             "the program sleeps in user mode, where QEMU makes wfi an "
             "illegal instruction, as the specification allows a hart with "
-            "supervisor mode to"},
+            "supervisor mode to",
+    },
     QboxFate{
         .tests = "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddress.*/ALoad",
-        .reason = kMisalignedInHardware},
+        .reason = kMisalignedInHardware,
+    },
     QboxFate{
         .tests = "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddress.*/AStore",
-        .reason = kMisalignedInHardware},
-    QboxFate{.tests =
-                 "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
+        .reason = kMisalignedInHardware,
+    },
+    QboxFate{
+        .tests = "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
                  "HandedDown.*/ALoad",
-             .reason = kMisalignedInHardware},
-    QboxFate{.tests =
-                 "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
+        .reason = kMisalignedInHardware,
+    },
+    QboxFate{
+        .tests = "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
                  "HandedDown.*/AStore",
-             .reason = kMisalignedInHardware},
+        .reason = kMisalignedInHardware,
+    },
     QboxFate{
         .tests = "WhenAHandlerMakesTheStoreThatAHartRefusedAtAnOddAddress.*",
-        .reason = kMisalignedInHardware},
+        .reason = kMisalignedInHardware,
+    },
     QboxFate{
         .tests =
             "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddress.*/AnAtomicSum",
-        .reason = kMisalignedAtomic},
-    QboxFate{.tests =
-                 "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
+        .reason = kMisalignedAtomic,
+    },
+    QboxFate{
+        .tests = "EachUse/WhenSupervisorModeUsesAWordAtAnOddAddressAndTheTrapIs"
                  "HandedDown.*/AnAtomicSum",
-             .reason = kMisalignedAtomic},
+        .reason = kMisalignedAtomic,
+    },
     QboxFate{
         .tests =
             "EachWay/WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow."
             "*/ALoadFromAPageNotMarkedAccessed",
-        .reason = kAccessedAndDirtyInHardware},
+        .reason = kAccessedAndDirtyInHardware,
+    },
     QboxFate{
         .tests =
             "EachWay/WhenSupervisorModeUsesAPageInAWayItsEntryDoesNotAllow."
             "*/AStoreToAPageNotMarkedDirty",
-        .reason = kAccessedAndDirtyInHardware},
-    QboxFate{.tests =
-                 "WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJust"
+        .reason = kAccessedAndDirtyInHardware,
+    },
+    QboxFate{
+        .tests = "WhenSupervisorModeStoresToAPageNotMarkedDirtyThatItHasJust"
                  "LoadedFrom.*",
-             .reason = kAccessedAndDirtyInHardware},
-    QboxFate{.tests = "WhenSatpIsWrittenWithAnAddressSpaceIdentifier.*",
-             .reason = kQemusPaging},
+        .reason = kAccessedAndDirtyInHardware,
+    },
+    QboxFate{
+        .tests = "WhenSatpIsWrittenWithAnAddressSpaceIdentifier.*",
+        .reason = kQemusPaging,
+    },
     QboxFate{
         .tests =
             "EachKind/WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot.*/Sv48",
-        .reason = kQemusPaging},
+        .reason = kQemusPaging,
+    },
     QboxFate{
         .tests =
             "EachKind/WhenSatpIsWrittenWithAKindOfPagingTheHartHasNot.*/Sv57",
-        .reason = kQemusPaging},
-    QboxFate{.tests =
-                 "EitherWay/WhenAStoreConditionalFollowsALoadReservedOfItsCell."
+        .reason = kQemusPaging,
+    },
+    QboxFate{
+        .tests = "EitherWay/WhenAStoreConditionalFollowsALoadReservedOfItsCell."
                  "*OverTheBus",
-             .reason = kAtomicsSpin},
-    QboxFate{.tests =
-                 "EachReason/WhenAStoreConditionalFindsNoReservationOnItsCell."
+        .reason = kAtomicsSpin,
+    },
+    QboxFate{
+        .tests = "EachReason/WhenAStoreConditionalFindsNoReservationOnItsCell."
                  "*OverTheBus",
-             .reason = kAtomicsSpin},
-    QboxFate{.tests = "EachOperation/WhenAProgramUsesAnAtomicMemoryOperation."
-                      "*OverTheBus",
-             .reason = kAtomicsSpin},
-    QboxFate{.tests =
-                 "TheThreeOfEachMode/WhenACpuWithNoImsicWritesARegisterAnImsic"
+        .reason = kAtomicsSpin,
+    },
+    QboxFate{
+        .tests = "EachOperation/WhenAProgramUsesAnAtomicMemoryOperation."
+                 "*OverTheBus",
+        .reason = kAtomicsSpin,
+    },
+    QboxFate{
+        .tests = "TheThreeOfEachMode/WhenACpuWithNoImsicWritesARegisterAnImsic"
                  "WouldAnswer.*/Miselect",
-             .reason =
-                 "QEMU keeps miselect itself whenever it has the registers of "
-                 "the Advanced Interrupt Architecture, which a qbox_cpu always "
-                 "asks for"},
-    QboxFate{.tests =
-                 "TheThreeOfEachMode/WhenACpuWithNoImsicWritesARegisterAnImsic"
+        .reason =
+            "QEMU keeps miselect itself whenever it has the registers of "
+            "the Advanced Interrupt Architecture, which a qbox_cpu always "
+            "asks for",
+    },
+    QboxFate{
+        .tests = "TheThreeOfEachMode/WhenACpuWithNoImsicWritesARegisterAnImsic"
                  "WouldAnswer.*/Siselect",
-             .reason =
-                 "QEMU keeps siselect itself whenever it has the registers of "
-                 "the Advanced Interrupt Architecture, which a qbox_cpu always "
-                 "asks for"},
+        .reason =
+            "QEMU keeps siselect itself whenever it has the registers of "
+            "the Advanced Interrupt Architecture, which a qbox_cpu always "
+            "asks for",
+    },
     QboxFate{
         .tests =
             "TheThree/WhenACpuWithAnImsicAndNoSupervisorModeWritesARegister"
             "OfThatModes.*",
-        .reason = "QBox's CPU always has supervisor mode"},
+        .reason = "QBox's CPU always has supervisor mode",
+    },
 };
 
 // Whether `name` is matched by `pattern`, in which each "*" stands for any

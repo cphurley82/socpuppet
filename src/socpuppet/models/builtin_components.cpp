@@ -89,13 +89,15 @@ namespace {
 // them.
 template <typename Hart>
 std::vector<Port> HartPorts(Hart& hart) {
-  return {InitiatorPort("socket", hart.socket),
-          InitiatorPort("time", hart.time, /*required=*/false),
-          InitiatorPort("csr", hart.csr, /*required=*/false),
-          WireSinkPort("irq", hart.irq),
-          WireSinkPort("timer_irq", hart.timer_irq),
-          WireSinkPort("supervisor_irq", hart.supervisor_irq),
-          WireSinkPort("reset", hart.reset)};
+  return {
+      InitiatorPort("socket", hart.socket),
+      InitiatorPort("time", hart.time, /*required=*/false),
+      InitiatorPort("csr", hart.csr, /*required=*/false),
+      WireSinkPort("irq", hart.irq),
+      WireSinkPort("timer_irq", hart.timer_irq),
+      WireSinkPort("supervisor_irq", hart.supervisor_irq),
+      WireSinkPort("reset", hart.reset),
+  };
 }
 
 // The highest interrupt identity an IMSIC's files may have. The AIA
@@ -119,7 +121,9 @@ constexpr std::uint64_t kVirtioNetMac = 0x0200'5E00'5301;
 // How many 512-byte sectors a virtio disk may have: at least one, and no
 // more than the bytes of them can be counted in 64 bits.
 constexpr Within kDiskSectors{
-    .least = 1, .most = std::numeric_limits<std::uint64_t>::max() / 512};
+    .least = 1,
+    .most = std::numeric_limits<std::uint64_t>::max() / 512,
+};
 
 // What a NAND chip's geometry is made of: counts that a controller reads
 // from 32-bit registers, and none of which can be nothing.
@@ -136,8 +140,10 @@ Registry BuiltinComponents() {
   registry.Add("aplic", [](const char* name, Parameters& parameters) {
     auto module =
         std::make_unique<Aplic>(name, parameters.Optional("messages_to", 0));
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            InitiatorPort("msi", module->msi)};
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        InitiatorPort("msi", module->msi),
+    };
     AddNumberedPorts(ports, "source", 1, module->sources, WireSinkPort);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
@@ -146,8 +152,10 @@ Registry BuiltinComponents() {
         parameters.Required("vectors", kInterruptVectors);
     auto module = std::make_unique<BehavioralNvme>(
         name, parameters.Required("blocks"), vectors);
-    std::vector<Port> ports{TargetPort("bar0", module->bar0),
-                            InitiatorPort("dma", module->dma)};
+    std::vector<Port> ports{
+        TargetPort("bar0", module->bar0),
+        InitiatorPort("dma", module->dma),
+    };
     // A host need not use every vector, so a line may be left unconnected.
     AddNumberedPorts(ports, "irq", 0, module->irq,
                      [](std::string port, sc_core::sc_out<bool>& line) {
@@ -166,7 +174,8 @@ Registry BuiltinComponents() {
             parameters.Optional("gdb_port", 0, kFitsIn16Bits)),
         DbtRiseCpuExtras{
             .floating_point = parameters.Optional("floating_point", 0) != 0,
-            .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0},
+            .supervisor_mode = parameters.Optional("supervisor_mode", 0) != 0,
+        },
         /*backend=*/std::nullopt);
     std::vector<Port> ports = HartPorts(*module);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
@@ -206,23 +215,27 @@ Registry BuiltinComponents() {
 #endif
   registry.Add("dma_engine", [](const char* name, Parameters&) {
     auto module = std::make_unique<DmaEngine>(name);
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("host", module->host),
-                            InitiatorPort("local", module->local),
-                            // Firmware may poll the status and leave the
-                            // line alone.
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("host", module->host),
+        InitiatorPort("local", module->local),
+        // Firmware may poll the status and leave the
+        // line alone.
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("flash_controller", [](const char* name, Parameters&) {
     auto module = std::make_unique<FlashController>(name);
     std::vector<Port> ports{
-        TargetPort("cpu", module->cpu), InitiatorPort("local", module->local),
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("local", module->local),
         InitiatorPort("nand", module->nand),
         // Firmware may poll the status and leave the line alone.
         WireSourcePort("irq", module->irq,
-                       /*required=*/false)};
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("i2c_controller", [](const char* name, Parameters& parameters) {
@@ -231,18 +244,20 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         TargetPort("cpu", module->cpu),
         // Firmware may poll the status and leave the line alone.
-        WireSourcePort("irq", module->irq, /*required=*/false)};
+        WireSourcePort("irq", module->irq, /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("ideal_nand", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<IdealNand>(
-        name,
-        NandGeometry{.page_size = static_cast<std::uint32_t>(
-                         parameters.Required("page_size", kNandCount)),
-                     .pages_per_block = static_cast<std::uint32_t>(
-                         parameters.Required("pages_per_block", kNandCount)),
-                     .blocks = static_cast<std::uint32_t>(
-                         parameters.Required("blocks", kNandCount))});
+        name, NandGeometry{
+                  .page_size = static_cast<std::uint32_t>(
+                      parameters.Required("page_size", kNandCount)),
+                  .pages_per_block = static_cast<std::uint32_t>(
+                      parameters.Required("pages_per_block", kNandCount)),
+                  .blocks = static_cast<std::uint32_t>(
+                      parameters.Required("blocks", kNandCount)),
+              });
     std::vector<Port> ports{TargetPort("socket", module->socket)};
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
@@ -252,7 +267,8 @@ Registry BuiltinComponents() {
         TargetPort("socket", module->socket),
         TargetPort("target", module->target),
         InitiatorPort("initiator", module->initiator),
-        WireSourcePort("irq", module->irq, /*required=*/false)};
+        WireSourcePort("irq", module->irq, /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("imsic", [](const char* name, Parameters& parameters) {
@@ -266,20 +282,24 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         TargetPort("machine", module->machine),
         TargetPort("supervisor", module->supervisor, /*required=*/false),
-        TargetPort("csr", module->csr), WireSourcePort("irq", module->irq),
+        TargetPort("csr", module->csr),
+        WireSourcePort("irq", module->irq),
         WireSourcePort("supervisor_irq", module->supervisor_irq,
-                       /*required=*/false)};
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("machine_timer", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<MachineTimer>(
         name, parameters.Required("frequency_hz", {.least = 1}));
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            // A hart that never reads `time` has no use
-                            // for it.
-                            TargetPort("time", module->time,
-                                       /*required=*/false),
-                            WireSourcePort("irq", module->irq)};
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        // A hart that never reads `time` has no use
+        // for it.
+        TargetPort("time", module->time,
+                   /*required=*/false),
+        WireSourcePort("irq", module->irq),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("memory", [](const char* name, Parameters& parameters) {
@@ -289,29 +309,35 @@ Registry BuiltinComponents() {
   });
   registry.Add("msi_receiver", [](const char* name, Parameters&) {
     auto module = std::make_unique<MsiReceiver>(name);
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            WireSourcePort("irq", module->irq)};
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        WireSourcePort("irq", module->irq),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("ns16550", [](const char* name, Parameters&) {
     auto module = std::make_unique<Ns16550>(name);
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            // A console that is polled leaves the line
-                            // alone.
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        // A console that is polled leaves the line
+        // alone.
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("nvme_frontend", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<NvmeFrontend>(
         name, parameters.Required("vectors", kInterruptVectors));
-    std::vector<Port> ports{TargetPort("bar0", module->bar0),
-                            InitiatorPort("dma", module->dma),
-                            TargetPort("cpu", module->cpu),
-                            // Firmware may poll the status and leave the
-                            // line alone.
-                            WireSourcePort("cpu_irq", module->cpu_irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("bar0", module->bar0),
+        InitiatorPort("dma", module->dma),
+        TargetPort("cpu", module->cpu),
+        // Firmware may poll the status and leave the
+        // line alone.
+        WireSourcePort("cpu_irq", module->cpu_irq,
+                       /*required=*/false),
+    };
     // A host need not use every vector, so a line may be left unconnected.
     AddNumberedPorts(ports, "irq", 0, module->irq,
                      [](std::string port, sc_core::sc_out<bool>& line) {
@@ -328,7 +354,8 @@ Registry BuiltinComponents() {
         TargetPort("target", module->target, /*required=*/false),
         InitiatorPort("initiator", module->initiator, /*required=*/false),
         InitiatorPort("peer_initiator", module->peer_initiator),
-        TargetPort("peer_target", module->peer_target)};
+        TargetPort("peer_target", module->peer_target),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // One end of the real link. Its mainband and sideband peer sides must
@@ -351,7 +378,8 @@ Registry BuiltinComponents() {
                           module->sideband_peer_initiator),
             TargetPort("sideband_peer_target", module->sideband_peer_target),
             WireSourcePort("reset", module->reset, /*required=*/false),
-            WireSourcePort("irq", module->irq, /*required=*/false)};
+            WireSourcePort("irq", module->irq, /*required=*/false),
+        };
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
   registry.Add("pcie_endpoint", [](const char* name, Parameters& parameters) {
@@ -365,12 +393,15 @@ Registry BuiltinComponents() {
             .device_id = static_cast<std::uint16_t>(
                 parameters.Required("device_id", kFitsIn16Bits)),
             .class_code = static_cast<std::uint32_t>(
-                parameters.Required("class_code", kFitsIn24Bits))},
+                parameters.Required("class_code", kFitsIn24Bits)),
+        },
         parameters.Required("function_size"), vectors);
-    std::vector<Port> ports{TargetPort("from_host", module->from_host),
-                            InitiatorPort("to_host", module->to_host),
-                            InitiatorPort("bar0", module->bar0),
-                            TargetPort("dma", module->dma)};
+    std::vector<Port> ports{
+        TargetPort("from_host", module->from_host),
+        InitiatorPort("to_host", module->to_host),
+        InitiatorPort("bar0", module->bar0),
+        TargetPort("dma", module->dma),
+    };
     AddNumberedPorts(ports, "irq", 0, module->irq, WireSinkPort);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
@@ -378,19 +409,23 @@ Registry BuiltinComponents() {
       "pcie_root_complex", [](const char* name, Parameters& parameters) {
         auto module = std::make_unique<PcieRootComplex>(
             name, parameters.Required("mmio_base"));
-        std::vector<Port> ports{TargetPort("ecam", module->ecam),
-                                TargetPort("mmio", module->mmio),
-                                InitiatorPort("dma", module->dma),
-                                InitiatorPort("to_device", module->to_device),
-                                TargetPort("from_device", module->from_device)};
+        std::vector<Port> ports{
+            TargetPort("ecam", module->ecam),
+            TargetPort("mmio", module->mmio),
+            InitiatorPort("dma", module->dma),
+            InitiatorPort("to_device", module->to_device),
+            TargetPort("from_device", module->from_device),
+        };
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
   // Its sources are ports "source1" to "source31", numbered as the PLIC
   // numbers them.
   registry.Add("plic", [](const char* name, Parameters&) {
     auto module = std::make_unique<Plic>(name);
-    std::vector<Port> ports{TargetPort("socket", module->socket),
-                            WireSourcePort("irq", module->irq)};
+    std::vector<Port> ports{
+        TargetPort("socket", module->socket),
+        WireSourcePort("irq", module->irq),
+    };
     AddNumberedPorts(ports, "source", 1, module->sources, WireSinkPort);
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
@@ -401,10 +436,12 @@ Registry BuiltinComponents() {
   });
   registry.Add("scripted_bus_master", [](const char* name, Parameters&) {
     auto module = std::make_unique<ScriptedBusMaster>(name);
-    std::vector<Port> ports{InitiatorPort("socket", module->socket),
-                            WireSinkPort("irq", module->irq),
-                            WireSinkPort("timer_irq", module->timer_irq),
-                            WireSinkPort("reset", module->reset)};
+    std::vector<Port> ports{
+        InitiatorPort("socket", module->socket),
+        WireSinkPort("irq", module->irq),
+        WireSinkPort("timer_irq", module->timer_irq),
+        WireSinkPort("reset", module->reset),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add(
@@ -415,10 +452,12 @@ Registry BuiltinComponents() {
                 parameters.Optional("die", 0, kFitsIn32Bits)),
             static_cast<std::uint32_t>(
                 parameters.Optional("boot_address", 0, kFitsIn32Bits)));
-        std::vector<Port> ports{TargetPort("socket", module->socket),
-                                WireSinkPort("hold", module->hold),
-                                WireSinkPort("bite", module->bite),
-                                WireSourcePort("reset", module->reset)};
+        std::vector<Port> ports{
+            TargetPort("socket", module->socket),
+            WireSinkPort("hold", module->hold),
+            WireSinkPort("bite", module->bite),
+            WireSourcePort("reset", module->reset),
+        };
         return Instance{.module = std::move(module), .ports = std::move(ports)};
       });
   registry.Add("spi_flash", [](const char* name, Parameters& parameters) {
@@ -430,60 +469,73 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         TargetPort("socket", module->socket, /*required=*/false),
         TargetPort("xip", module->xip),
-        WireSourcePort("irq", module->irq, /*required=*/false)};
+        WireSourcePort("irq", module->irq, /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_blk", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<VirtioBlk>(
         name, parameters.Required("blocks", kDiskSectors));
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_console", [](const char* name, Parameters&) {
     auto module = std::make_unique<VirtioConsole>(name);
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_9p", [](const char* name, Parameters&) {
     auto module = std::make_unique<Virtio9p>(name);
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_fs", [](const char* name, Parameters&) {
     auto module = std::make_unique<VirtioFs>(name);
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_net", [](const char* name, Parameters& parameters) {
     auto module = std::make_unique<VirtioNet>(
         name, parameters.Optional("mac", kVirtioNetMac, kMacAddresses));
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("virtio_rng", [](const char* name, Parameters& parameters) {
     auto module =
         std::make_unique<VirtioRng>(name, parameters.Optional("seed", 1));
-    std::vector<Port> ports{TargetPort("cpu", module->cpu),
-                            InitiatorPort("dma", module->dma),
-                            // A driver may poll the used ring and leave
-                            // the line alone.
-                            WireSourcePort("irq", module->irq,
-                                           /*required=*/false)};
+    std::vector<Port> ports{
+        TargetPort("cpu", module->cpu),
+        InitiatorPort("dma", module->dma),
+        // A driver may poll the used ring and leave
+        // the line alone.
+        WireSourcePort("irq", module->irq,
+                       /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("gpio", [](const char* name, Parameters&) {
@@ -502,7 +554,8 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         TargetPort("cpu", module->cpu),
         // Firmware that sets no alarm needs no line.
-        WireSourcePort("irq", module->irq, /*required=*/false)};
+        WireSourcePort("irq", module->irq, /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   registry.Add("watchdog", [](const char* name, Parameters&) {
@@ -510,7 +563,8 @@ Registry BuiltinComponents() {
     std::vector<Port> ports{
         TargetPort("socket", module->socket),
         WireSourcePort("irq", module->irq, /*required=*/false),
-        WireSourcePort("bite", module->bite, /*required=*/false)};
+        WireSourcePort("bite", module->bite, /*required=*/false),
+    };
     return Instance{.module = std::move(module), .ports = std::move(ports)};
   });
   // The router is SCC's (Minres SystemC-Components), not ours. This adapter

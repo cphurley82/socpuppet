@@ -198,11 +198,13 @@ void PrintTo(const OutOfRange& out_of_range, std::ostream* out) {
 
 socpuppet::Config PcieEndpointWith(const std::string& parameter,
                                    std::uint64_t value) {
-  socpuppet::Config config{{"vendor_id", 0x1B36},
-                           {"device_id", 0x0010},
-                           {"class_code", 0x01'08'02},
-                           {"function_size", 0x4000},
-                           {"vectors", 2}};
+  socpuppet::Config config{
+      {"vendor_id", 0x1B36},
+      {"device_id", 0x0010},
+      {"class_code", 0x01'08'02},
+      {"function_size", 0x4000},
+      {"vectors", 2},
+  };
   config[parameter] = value;
   return config;
 }
@@ -433,9 +435,12 @@ socpuppet::Registry WithSpamThatDrivesItsLineFromTwoProcesses() {
   registry.Add("spam", [](const char* name, socpuppet::Parameters&) {
     auto module = std::make_unique<TwoHanded>(name);
     std::vector<socpuppet::Port> ports{
-        socpuppet::WireSourcePort("line", module->line, /*required=*/false)};
-    return socpuppet::Instance{.module = std::move(module),
-                               .ports = std::move(ports)};
+        socpuppet::WireSourcePort("line", module->line, /*required=*/false),
+    };
+    return socpuppet::Instance{
+        .module = std::move(module),
+        .ports = std::move(ports),
+    };
   });
   return registry;
 }
@@ -447,9 +452,12 @@ socpuppet::Registry WithSpamThatHasAnOptionalWireOutput() {
   registry.Add("spam", [](const char* name, socpuppet::Parameters&) {
     auto module = std::make_unique<LineDriver>(name, [](LineDriver&) {});
     std::vector<socpuppet::Port> ports{
-        socpuppet::WireSourcePort("line", module->line, /*required=*/false)};
-    return socpuppet::Instance{.module = std::move(module),
-                               .ports = std::move(ports)};
+        socpuppet::WireSourcePort("line", module->line, /*required=*/false),
+    };
+    return socpuppet::Instance{
+        .module = std::move(module),
+        .ports = std::move(ports),
+    };
   });
   return registry;
 }

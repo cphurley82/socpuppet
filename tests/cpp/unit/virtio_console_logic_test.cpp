@@ -27,14 +27,18 @@ std::vector<std::uint8_t> Bytes(std::string_view text) {
 // The console's two queues, each with the driver's side and the device's
 // side, and the device itself.
 struct Rig {
-  static constexpr Virtqueue::Layout kReceive{.desc = kMemory + 0x1000,
-                                              .avail = kMemory + 0x2000,
-                                              .used = kMemory + 0x3000,
-                                              .size = 8};
-  static constexpr Virtqueue::Layout kTransmit{.desc = kMemory + 0x5000,
-                                               .avail = kMemory + 0x6000,
-                                               .used = kMemory + 0x7000,
-                                               .size = 8};
+  static constexpr Virtqueue::Layout kReceive{
+      .desc = kMemory + 0x1000,
+      .avail = kMemory + 0x2000,
+      .used = kMemory + 0x3000,
+      .size = 8,
+  };
+  static constexpr Virtqueue::Layout kTransmit{
+      .desc = kMemory + 0x5000,
+      .avail = kMemory + 0x6000,
+      .used = kMemory + 0x7000,
+      .size = 8,
+  };
 
   // Hands the device `text` to put out: a readable chain on the transmit
   // queue, as descriptor `index`.

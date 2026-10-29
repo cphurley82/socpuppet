@@ -89,11 +89,14 @@ class SpiControllerContract : public ::testing::Test {
   // ends a delta cycle after the body does: the controller tells a chip it
   // is let go a delta cycle on.
   void OnTheBus(const std::function<void(BusDriver&)>& body) {
-    BusDriver driver{"driver", [&](BusDriver& bus) {
-                       body(bus);
-                       sc_core::wait(sc_core::SC_ZERO_TIME);
-                       sc_core::sc_stop();
-                     }};
+    BusDriver driver{
+        "driver",
+        [&](BusDriver& bus) {
+          body(bus);
+          sc_core::wait(sc_core::SC_ZERO_TIME);
+          sc_core::sc_stop();
+        },
+    };
     driver.socket.bind(controller_.socket);
     sc_core::sc_start();
   }

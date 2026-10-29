@@ -100,7 +100,8 @@ inline NandGeometry LoadNandGeometry(std::span<const std::uint8_t> answer) {
   return NandGeometry{
       .page_size = LoadLittleEndian<std::uint32_t>(answer.subspan(0)),
       .pages_per_block = LoadLittleEndian<std::uint32_t>(answer.subspan(4)),
-      .blocks = LoadLittleEndian<std::uint32_t>(answer.subspan(8))};
+      .blocks = LoadLittleEndian<std::uint32_t>(answer.subspan(8)),
+  };
 }
 
 // Which of TLM's commands carries an operation.

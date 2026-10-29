@@ -126,9 +126,11 @@ class LinkContract : public ::testing::Test {
   void AddDie(const char* die) {
     const std::string group{die};
     const std::string control = Rig::Control(die);
-    socpuppet::Config bus{{"outputs", control.empty() ? 1 : 2},
-                          {"out0.base", 0},
-                          {"out0.size", kWindowSize}};
+    socpuppet::Config bus{
+        {"outputs", control.empty() ? 1 : 2},
+        {"out0.base", 0},
+        {"out0.size", kWindowSize},
+    };
     if (!control.empty()) {
       bus["out1.base"] = kLinkControlBase;
       bus["out1.size"] = kLinkControlSize;

@@ -36,8 +36,10 @@ TEST(WhenACommandsDataTakesMoreThanTwoPages,
      TheSecondEntryPointsToAListOfThePagesAfterTheFirst) {
   // Three pages of data. The list is at 0x9000 and names the second and
   // third pages.
-  const std::map<std::uint64_t, std::uint64_t> lists{{0x9000, 0x5000},
-                                                     {0x9008, 0x3000}};
+  const std::map<std::uint64_t, std::uint64_t> lists{
+      {0x9000, 0x5000},
+      {0x9008, 0x3000},
+  };
 
   EXPECT_THAT(
       PrpExtents(/*prp1=*/0x1000, /*prp2=*/0x9000, /*length=*/3 * kPage,

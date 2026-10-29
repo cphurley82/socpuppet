@@ -115,15 +115,19 @@ class TwoDiesOnALink {
   void AddDie(const std::string& die) {
     platform_->Add(die + ".driver", "driver_on_" + die);
     platform_->Add(die + ".bus", "router",
-                   {{"outputs", 2},
-                    {"out0.base", 0},
-                    {"out0.size", kWindowSize},
-                    {"out1.base", kSideband},
-                    {"out1.size", UCIE_LINK_SIZE}});
+                   {
+                       {"outputs", 2},
+                       {"out0.base", 0},
+                       {"out0.size", kWindowSize},
+                       {"out1.base", kSideband},
+                       {"out1.size", UCIE_LINK_SIZE},
+                   });
     platform_->Add(die + ".link", "d2d_link_endpoint",
-                   {{"latency_ns", kLatencyNs},
-                    {"bytes_per_ns", kBytesPerNs},
-                    {"training_ns", kTrainingNs}});
+                   {
+                       {"latency_ns", kLatencyNs},
+                       {"bytes_per_ns", kBytesPerNs},
+                       {"training_ns", kTrainingNs},
+                   });
     platform_->Add(die + ".arrivals", "arrivals_on_" + die);
     platform_->Add(die + ".reset_watcher", "line_watcher");
     platform_->Add(die + ".irq_watcher", "line_watcher");
@@ -131,11 +135,13 @@ class TwoDiesOnALink {
     platform_->Bind(die + ".bus.out0", die + ".link.target");
     platform_->Bind(die + ".bus.out1", die + ".link.sideband");
     platform_->Add(die + ".in", "router",
-                   {{"outputs", 2},
-                    {"out0.base", kMemoryOnTheOtherDie},
-                    {"out0.size", kBlockSize},
-                    {"out1.base", kEarsOnTheOtherDie},
-                    {"out1.size", kBlockSize}});
+                   {
+                       {"outputs", 2},
+                       {"out0.base", kMemoryOnTheOtherDie},
+                       {"out0.size", kBlockSize},
+                       {"out1.base", kEarsOnTheOtherDie},
+                       {"out1.size", kBlockSize},
+                   });
     platform_->Add(die + ".memory", "memory", {{"size", kBlockSize}});
     platform_->Bind(die + ".link.initiator", die + ".in.target");
     platform_->Bind(die + ".in.out0", die + ".memory.socket");
