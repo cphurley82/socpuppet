@@ -4,7 +4,7 @@
 
 [![Nightly](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml) [![CI](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml)
 
-🌙 Every push runs the quick tests, one boot of each area on both harts, on Linux, and builds and tests the rest on an Intel Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
+🌙 Every push runs the quick tests, one boot of each area included, on Linux on both harts and on an Apple silicon Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
 
 > 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). Next on stage, Ethernet ([the roadmap](docs/roadmap.md)).
 
