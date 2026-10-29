@@ -16,7 +16,7 @@ namespace {
 constexpr std::size_t kRegisterBytes = 4;
 
 constexpr std::uint64_t Joined(std::uint32_t high, std::uint32_t low) {
-  return static_cast<std::uint64_t>(high) << 32 | low;
+  return static_cast<std::uint64_t>(high) << 32U | low;
 }
 
 }  // namespace
@@ -28,7 +28,7 @@ bool RtcLogic::ReadRegister(std::uint64_t offset, std::span<std::uint8_t> out,
   switch (offset) {
     case RTC_TIME_LOW: {
       const std::uint64_t time = TimeOfDay(now);
-      time_high_ = static_cast<std::uint32_t>(time >> 32);
+      time_high_ = static_cast<std::uint32_t>(time >> 32U);
       value = static_cast<std::uint32_t>(time);
       break;
     }

@@ -75,7 +75,7 @@ class InterruptFile {
   // that number, as for Read.
   bool Write(std::uint32_t reg, std::uint64_t value) {
     if (reg == kEidelivery) {
-      delivering_ = (value & 1) != 0;
+      delivering_ = (value & 1U) != 0;
     } else if (reg == kEithreshold) {
       threshold_ = value;
     } else if (IsReserved(reg)) {

@@ -27,7 +27,7 @@ class VirtioMmioLogic {
   static constexpr std::uint32_t kVendorId = 0x5350;
   // The transport's own feature bit (section 6): the device speaks the
   // modern layout and nothing of the legacy one.
-  static constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32;
+  static constexpr std::uint64_t kVersion1 = std::uint64_t{1} << 32U;
   // The most entries a virtqueue may have, which is what QEMU's devices
   // allow too (section 2.7: at most 32768).
   static constexpr std::uint32_t kQueueSizeMax = 256;

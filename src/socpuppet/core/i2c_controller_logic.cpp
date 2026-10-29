@@ -88,7 +88,7 @@ bool I2cControllerLogic::WriteRegister(std::uint64_t offset,
 std::uint64_t I2cControllerLogic::CommandCycles() const {
   if (!CommandWaiting()) return 0;
   const std::uint64_t prescale =
-      static_cast<std::uint64_t>(prescale_high_) << 8 | prescale_low_;
+      static_cast<std::uint64_t>(prescale_high_) << 8U | prescale_low_;
   return kClocksOfAByte * kPrescaledClocksOfABusClock * (prescale + 1);
 }
 
@@ -97,7 +97,7 @@ bool I2cControllerLogic::CarryOut() {
   command_ = 0;
   if (command == 0) return false;
   if ((command & I2C_CONTROLLER_COMMAND_START) != 0) {
-    I2cDevice* device = devices_[transmit_ >> 1];
+    I2cDevice* device = devices_[transmit_ >> 1U];
     const bool read = (transmit_ & kRead) != 0;
     busy_ = true;
     addressed_ = device != nullptr && device->Start(read) ? device : nullptr;

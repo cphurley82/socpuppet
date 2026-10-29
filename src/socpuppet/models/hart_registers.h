@@ -63,12 +63,12 @@ inline constexpr std::uint32_t kWidestSelection = 0xFFF;
 constexpr std::uint64_t HartRegisterAddress(std::uint32_t csr,
                                             std::uint32_t selected = 0) {
   assert(selected <= kWidestSelection);
-  return (std::uint64_t{csr} << 12) | selected;
+  return (std::uint64_t{csr} << 12U) | selected;
 }
 
 // The two parts of such an address.
 constexpr std::uint32_t CsrOf(std::uint64_t address) {
-  return static_cast<std::uint32_t>(address >> 12);
+  return static_cast<std::uint32_t>(address >> 12U);
 }
 constexpr std::uint32_t SelectedBy(std::uint64_t address) {
   return static_cast<std::uint32_t>(address & kWidestSelection);

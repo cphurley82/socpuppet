@@ -20,11 +20,11 @@ constexpr std::uint64_t kPage = 0x1000;
 constexpr std::size_t kVendorId = 0x00;
 constexpr std::size_t kDeviceId = 0x02;
 constexpr std::size_t kCommand = 0x04;
-constexpr std::uint16_t kMemoryDecoding = 1U << 1;
-constexpr std::uint16_t kBusMastering = 1U << 2;
+constexpr std::uint16_t kMemoryDecoding = 1U << 1U;
+constexpr std::uint16_t kBusMastering = 1U << 2U;
 constexpr std::size_t kStatus = 0x06;
-constexpr std::uint16_t kHasCapabilities = 1U << 4;
-constexpr std::uint16_t kReceivedMasterAbort = 1U << 13;
+constexpr std::uint16_t kHasCapabilities = 1U << 4U;
+constexpr std::uint16_t kReceivedMasterAbort = 1U << 13U;
 constexpr std::size_t kRevisionAndClass = 0x08;
 constexpr std::size_t kBar0 = 0x10;
 constexpr std::uint64_t kBarKindBits = 0xF;
@@ -41,8 +41,8 @@ constexpr std::size_t kNextCapability = 1;
 // from its start.
 constexpr std::uint8_t kMsixIdentifier = 0x11;
 constexpr std::size_t kMsixControl = 2;
-constexpr std::uint16_t kMsixEveryVectorMasked = 1U << 14;
-constexpr std::uint16_t kMsixEnabled = 1U << 15;
+constexpr std::uint16_t kMsixEveryVectorMasked = 1U << 14U;
+constexpr std::uint16_t kMsixEnabled = 1U << 15U;
 constexpr std::size_t kMsixTable = 4;
 constexpr std::size_t kMsixPending = 8;
 // How long it is without its header.
@@ -71,7 +71,7 @@ PcieEndpointRegisters::PcieEndpointRegisters(const Identity& identity,
   Store(kVendorId, identity.vendor_id);
   Store(kDeviceId, identity.device_id);
   // The class code is the three bytes above the revision.
-  Store(kRevisionAndClass, identity.class_code << 8);
+  Store(kRevisionAndClass, identity.class_code << 8U);
   // The host may switch memory decoding and bus mastering on and off.
   LetTheHostWrite(kCommand, std::uint16_t{kMemoryDecoding | kBusMastering});
   // BAR0 is 64 bits wide, in two registers. Its low four bits say what
@@ -142,7 +142,7 @@ void PcieEndpointRegisters::WriteConfiguration(
   for (std::size_t index = 0;
        index < in.size() && offset + index < configuration_.size(); ++index) {
     std::uint8_t& byte = configuration_[offset + index];
-    const std::uint8_t writable = writable_[offset + index];
+    const std::uint32_t writable = writable_[offset + index];
     byte =
         static_cast<std::uint8_t>((byte & ~writable) | (in[index] & writable));
   }

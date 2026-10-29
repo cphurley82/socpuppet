@@ -124,8 +124,8 @@ private:
     // the first stage: Sv39's three levels of page tables from the table at root
     iommu_translation translate_sv39(uint64_t root, iommu_request const& request) const {
         // Sv39 maps 39 bits, and bits 63:39 copy bit 38
-        uint64_t const top = request.iova >> 38;
-        if(top != 0 && top != (~uint64_t(0) >> 38))
+        uint64_t const top = request.iova >> 38U;
+        if(top != 0 && top != (~uint64_t(0) >> 38U))
             return {0, page_fault(request)};
         uint64_t table = root;
         for(unsigned level = sv39_levels; level-- > 0;) {
@@ -169,17 +169,17 @@ private:
     // Sv39's levels; an address's index into the table at a level, where level 0 is the last; and the bits of an
     // address that are its offset into a page mapped at a level
     static constexpr unsigned sv39_levels = 3;
-    static uint64_t vpn(uint64_t iova, unsigned level) { return (iova >> (12 + 9 * level)) & 0x1ff; }
+    static uint64_t vpn(uint64_t iova, unsigned level) { return (iova >> (12 + 9 * level)) & 0x1ffU; }
     static uint64_t page_offset_mask(unsigned level) { return (uint64_t(1) << (12 + 9 * level)) - 1; }
     // a page-table entry's V, what it allows (R, W, X, U), A and D, and bits 63:54, which Sv39 reserves without
     // extensions
-    static constexpr uint64_t pte_v = 1 << 0;
-    static constexpr uint64_t pte_r = 1 << 1;
-    static constexpr uint64_t pte_w = 1 << 2;
-    static constexpr uint64_t pte_x = 1 << 3;
-    static constexpr uint64_t pte_u = 1 << 4;
-    static constexpr uint64_t pte_a = 1 << 6;
-    static constexpr uint64_t pte_d = 1 << 7;
+    static constexpr uint64_t pte_v = 1U << 0U;
+    static constexpr uint64_t pte_r = 1U << 1U;
+    static constexpr uint64_t pte_w = 1U << 2U;
+    static constexpr uint64_t pte_x = 1U << 3U;
+    static constexpr uint64_t pte_u = 1U << 4U;
+    static constexpr uint64_t pte_a = 1U << 6U;
+    static constexpr uint64_t pte_d = 1U << 7U;
     static constexpr uint64_t pte_reserved = 0xffc0'0000'0000'0000ULL;
 
     // a non-leaf entry of the directory's V, and its reserved bits: 9:1 and 63:54
@@ -190,11 +190,11 @@ private:
     static constexpr unsigned device_context_words = 4;
     static constexpr uint64_t tc_v = 1;
     // the MODE field of iohgatp or fsc, bits 63:60, and the modes it may have here
-    static uint64_t mode_of(uint64_t atp) { return atp >> 60; }
+    static uint64_t mode_of(uint64_t atp) { return atp >> 60U; }
     static constexpr uint64_t atp_mode_bare = 0;
     static constexpr uint64_t atp_mode_sv39 = 8;
     // the root table that the PPN field of iohgatp or fsc, bits 43:0, names
-    static uint64_t atp_root(uint64_t atp) { return (atp & ((uint64_t(1) << 44) - 1)) << 12; }
+    static uint64_t atp_root(uint64_t atp) { return (atp & ((uint64_t(1) << 44U) - 1)) << 12U; }
 
     // how wide a device ID a directory of one, two and three levels indexes
     static constexpr unsigned device_id_bits[] = {7, 16, 24};
@@ -204,16 +204,16 @@ private:
     static uint64_t ddi(uint32_t device_id, unsigned level) {
         switch(level) {
         case 0:
-            return device_id & 0x7f;
+            return device_id & 0x7fU;
         case 1:
-            return (device_id >> 7) & 0x1ff;
+            return (device_id >> 7U) & 0x1ffU;
         default:
-            return (device_id >> 16) & 0xff;
+            return (device_id >> 16U) & 0xffU;
         }
     }
 
     // the page that the PPN field of a directory entry or a page-table entry, bits 53:10, names
-    static uint64_t page_of(uint64_t entry) { return ((entry >> 10) & ((uint64_t(1) << 44) - 1)) << 12; }
+    static uint64_t page_of(uint64_t entry) { return ((entry >> 10U) & ((uint64_t(1) << 44U) - 1)) << 12U; }
 
     load_fn load;
 };

@@ -33,7 +33,7 @@ class Virtio9pLogic : public VirtioDevice {
   static constexpr std::uint16_t kRequestQueue = 0;
   // VIRTIO_9P_MOUNT_TAG: the configuration holds a tag. Linux's driver
   // will not take a device without it.
-  static constexpr std::uint64_t kMountTag = 1U << 0;
+  static constexpr std::uint64_t kMountTag = 1U << 0U;
 
   // What serves the share: given a T-message's bytes, it gives the
   // R-message's.

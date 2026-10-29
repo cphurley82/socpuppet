@@ -42,7 +42,7 @@ class VirtioBlkLogic : public VirtioDevice {
   // safe once one is answered. Offered because a flush is answered; with
   // no CONFIG_WCE beside it, Linux takes the disk for one with a
   // write-back cache and sends a flush where it needs one.
-  static constexpr std::uint64_t kFeatureFlush = std::uint64_t{1} << 9;
+  static constexpr std::uint64_t kFeatureFlush = std::uint64_t{1} << 9U;
   // What GET_ID answers, in the 20 bytes the specification gives the
   // identity, padded with zeros. Every disk gives the same one, so two
   // disks under one Linux would share a name in /dev/disk/by-id.

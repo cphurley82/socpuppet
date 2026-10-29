@@ -17,7 +17,7 @@ namespace {
 constexpr std::size_t kEntrySize = 16;
 constexpr std::size_t kEntryData = 8;
 constexpr std::size_t kEntryControl = 12;
-constexpr std::uint8_t kEntryMasked = 1U << 0;
+constexpr std::uint8_t kEntryMasked = 1U << 0U;
 
 }  // namespace
 

@@ -55,7 +55,7 @@ protected:
     static constexpr uint64_t command_iotinval_vma = 1;
     static constexpr uint64_t command_iofence_c = 2;
     static constexpr uint64_t command_iodir_inval_ddt = 3;
-    static constexpr uint64_t iofence_av = uint64_t(1) << 10;
+    static constexpr uint64_t iofence_av = uint64_t(1) << 10U;
     // how big a command and a fault record are
     static constexpr size_t command_size = 16;
     static constexpr size_t record_size = 32;

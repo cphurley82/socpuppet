@@ -29,7 +29,7 @@ constexpr std::uint8_t kChipEraseC7 = 0xC7;
 constexpr std::uint8_t kBlockErase64 = 0xD8;
 
 // Status register 1's write enable latch: writes are enabled.
-constexpr std::uint8_t kWriteEnableLatch = 1 << 1;
+constexpr std::uint8_t kWriteEnableLatch = 1U << 1U;
 
 // What an erased byte of NOR flash reads as: every bit a one.
 constexpr std::uint8_t kErased = 0xFF;
@@ -125,7 +125,7 @@ void SpiNorChip::TakeCommand(std::uint8_t command) {
 }
 
 void SpiNorChip::TakeAddressByte(std::uint8_t sent, std::size_t position) {
-  address_ = (address_ << 8) | sent;
+  address_ = (address_ << 8U) | sent;
   // 🎓 A real chip erases when the select goes high after the address,
   // and not at all if more bytes come first; this one erases as the
   // address's last byte arrives, as QEMU's m25p80 does. Neither Linux's

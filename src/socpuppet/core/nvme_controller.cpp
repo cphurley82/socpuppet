@@ -306,8 +306,8 @@ std::optional<NvmeController::BlockRange> NvmeController::BlocksOf(
   // dwords 10 and 11. The number of blocks is the low half of dword 12,
   // counted from zero.
   const std::uint64_t first =
-      std::uint64_t{command.cdw11} << 32 | command.cdw10;
-  const std::uint64_t count = (command.cdw12 & 0xFFFF) + std::uint64_t{1};
+      std::uint64_t{command.cdw11} << 32U | command.cdw10;
+  const std::uint64_t count = (command.cdw12 & 0xFFFFU) + std::uint64_t{1};
   // Checked in blocks, before anything is turned into bytes: a block
   // number can be large enough to wrap around as a byte offset.
   const std::uint64_t blocks = drive_->Blocks();
