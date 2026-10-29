@@ -110,12 +110,13 @@ set_tests_properties(
 # test preset, which sets SOCPUPPET_CPU=qbox_cpu, runs them (tools/ci.py,
 # the `qbox` job). The one with a cable carries `long`, as the pytest marker
 # of that name means the same, and runs on the interpreter in the nightly
-# run of the dev preset (the `test` job): under the pump, QBox's hart runs
-# ahead of the clock and dropbear closes every ssh at the key exchange
+# run of the dev preset (the `test` job). It carries `interpreter` too, which
+# the qbox test preset leaves out: under the pump, QBox's hart runs ahead of
+# the clock and dropbear closes every ssh at the key exchange
 # (docs/roadmap.md, the loose ends).
 set(label_linux_hello qbox)
 set(label_linux_on_the_drive qbox)
-set(label_linux_cable long)
+set(label_linux_cable "long;interpreter")
 foreach(example linux_hello linux_on_the_drive linux_cable)
   add_test(NAME example_${example}
     COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
@@ -123,5 +124,5 @@ foreach(example linux_hello linux_on_the_drive linux_cable)
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   set_tests_properties(example_${example}
                        PROPERTIES SKIP_RETURN_CODE 77
-                                  LABELS ${label_${example}})
+                                  LABELS "${label_${example}}")
 endforeach()
