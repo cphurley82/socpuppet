@@ -19,18 +19,18 @@
 /* How the last command went. Giving the next command forgets it. */
 #define COMMAND_DEVICE_STATUS       0x04U
 /* The command was carried out. */
-#define COMMAND_DEVICE_STATUS_DONE  (1U << 0)
+#define COMMAND_DEVICE_STATUS_DONE  (1U << 0U)
 /* The command was not carried out, or not all of it. */
-#define COMMAND_DEVICE_STATUS_ERROR (1U << 1)
+#define COMMAND_DEVICE_STATUS_ERROR (1U << 1U)
 /*
  * A command has been given and is not yet carried out. No other is taken
  * meanwhile.
  */
-#define COMMAND_DEVICE_STATUS_BUSY  (1U << 2)
+#define COMMAND_DEVICE_STATUS_BUSY  (1U << 2U)
 
 /* Which bits of `STATUS` raise the interrupt line while they are set. */
 #define COMMAND_DEVICE_INTERRUPT_ENABLE       0x08U
-#define COMMAND_DEVICE_INTERRUPT_ENABLE_DONE  (1U << 0)
-#define COMMAND_DEVICE_INTERRUPT_ENABLE_ERROR (1U << 1)
+#define COMMAND_DEVICE_INTERRUPT_ENABLE_DONE  (1U << 0U)
+#define COMMAND_DEVICE_INTERRUPT_ENABLE_ERROR (1U << 1U)
 
 #endif /* SOCPUPPET_REGS_COMMAND_DEVICE_H_ */

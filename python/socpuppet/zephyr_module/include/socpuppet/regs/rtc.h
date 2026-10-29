@@ -37,14 +37,14 @@
 
 /* Whether the alarm, when it goes off, raises the interrupt. */
 #define RTC_IRQ_ENABLED         0x010U
-#define RTC_IRQ_ENABLED_ENABLED (1U << 0)
+#define RTC_IRQ_ENABLED_ENABLED (1U << 0U)
 
 /* Writing anything takes the alarm off. */
 #define RTC_CLEAR_ALARM 0x014U
 
 /* Whether the alarm is set and has not gone off. */
 #define RTC_ALARM_STATUS     0x018U
-#define RTC_ALARM_STATUS_SET (1U << 0)
+#define RTC_ALARM_STATUS_SET (1U << 0U)
 
 /* Writing anything clears the interrupt the alarm raised. */
 #define RTC_CLEAR_INTERRUPT 0x01CU

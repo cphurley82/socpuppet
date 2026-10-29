@@ -32,9 +32,9 @@
 /* Switches the controller on, and its interrupt. */
 #define I2C_CONTROLLER_CONTROL                  0x008U
 /* The interrupt is raised when a command is done. */
-#define I2C_CONTROLLER_CONTROL_INTERRUPT_ENABLE (1U << 6)
+#define I2C_CONTROLLER_CONTROL_INTERRUPT_ENABLE (1U << 6U)
 /* The controller is on: commands are carried out. */
-#define I2C_CONTROLLER_CONTROL_ENABLE           (1U << 7)
+#define I2C_CONTROLLER_CONTROL_ENABLE           (1U << 7U)
 
 /*
  * The next byte to send: an address, with the direction in bit 0 (1 is a
@@ -52,29 +52,29 @@
 /* What the controller is to do next. Reads as status. */
 #define I2C_CONTROLLER_COMMAND                 0x010U
 /* Clears the interrupt. */
-#define I2C_CONTROLLER_COMMAND_CLEAR_INTERRUPT (1U << 0)
+#define I2C_CONTROLLER_COMMAND_CLEAR_INTERRUPT (1U << 0U)
 /* With a read: do not acknowledge the byte, which ends the read. */
-#define I2C_CONTROLLER_COMMAND_NACK            (1U << 3)
+#define I2C_CONTROLLER_COMMAND_NACK            (1U << 3U)
 /* Send the byte in `TRANSMIT`. */
-#define I2C_CONTROLLER_COMMAND_WRITE           (1U << 4)
+#define I2C_CONTROLLER_COMMAND_WRITE           (1U << 4U)
 /* Receive a byte into `RECEIVE`. */
-#define I2C_CONTROLLER_COMMAND_READ            (1U << 5)
+#define I2C_CONTROLLER_COMMAND_READ            (1U << 5U)
 /* After the byte, end the transfer. */
-#define I2C_CONTROLLER_COMMAND_STOP            (1U << 6)
+#define I2C_CONTROLLER_COMMAND_STOP            (1U << 6U)
 /* Before the byte, start a transfer, or start again. */
-#define I2C_CONTROLLER_COMMAND_START           (1U << 7)
+#define I2C_CONTROLLER_COMMAND_START           (1U << 7U)
 
 /* What the controller is doing, and what came of its last command. */
 #define I2C_CONTROLLER_STATUS                      0x010U
 /* A command is done, and the interrupt not cleared. */
-#define I2C_CONTROLLER_STATUS_INTERRUPT            (1U << 0)
+#define I2C_CONTROLLER_STATUS_INTERRUPT            (1U << 0U)
 /* A command is being carried out. */
-#define I2C_CONTROLLER_STATUS_TRANSFER_IN_PROGRESS (1U << 1)
+#define I2C_CONTROLLER_STATUS_TRANSFER_IN_PROGRESS (1U << 1U)
 /* Another controller won the bus. Never set: this one is alone on it. */
-#define I2C_CONTROLLER_STATUS_ARBITRATION_LOST     (1U << 5)
+#define I2C_CONTROLLER_STATUS_ARBITRATION_LOST     (1U << 5U)
 /* Between a start and a stop. */
-#define I2C_CONTROLLER_STATUS_BUSY                 (1U << 6)
+#define I2C_CONTROLLER_STATUS_BUSY                 (1U << 6U)
 /* The last byte sent was not acknowledged. */
-#define I2C_CONTROLLER_STATUS_NO_ACK               (1U << 7)
+#define I2C_CONTROLLER_STATUS_NO_ACK               (1U << 7U)
 
 #endif /* SOCPUPPET_REGS_I2C_CONTROLLER_H_ */
