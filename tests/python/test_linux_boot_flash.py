@@ -33,7 +33,7 @@ LINUXS_BLOCK = 0x1000
 WHAT_LINUX_WROTE = b"eggs"
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_with_bytes_in_the_flash(firmware):
     """A host booted to Linux's prompt with `WHAT_PYTHON_PUT` in its flash."""
     board = a_host_with_linux(firmware)
@@ -47,7 +47,9 @@ def linux_with_bytes_in_the_flash(firmware):
     return board
 
 
+@pytest.mark.platform(scope="class")
 class TestWhenLinuxDrivesTheHostsBootFlash:
+    # 💡 One boot for the class: its tests look at the same booted board.
     def test_spi_nor_names_the_chip_and_shows_the_whole_flash(
         self, linux_with_bytes_in_the_flash
     ):

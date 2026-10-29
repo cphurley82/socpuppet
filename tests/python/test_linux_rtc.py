@@ -32,7 +32,7 @@ GIVEN = datetime.datetime(2026, 10, 26, tzinfo=datetime.UTC)
 ROUNDING = 1
 
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def linux_at_its_prompt(firmware):
     """A host whose clock was given GIVEN, booted to Linux's prompt."""
     board = a_host_with_linux(firmware, rtc_time=GIVEN)
@@ -45,7 +45,9 @@ def linux_at_its_prompt(firmware):
     return board
 
 
+@pytest.mark.platform(scope="class")
 class TestWhenLinuxBootsOnAHostWhoseClockWasGivenATime:
+    # 💡 One boot for the class: its tests look at the same booted board.
     def test_rtc_goldfish_takes_the_clock_as_rtc0(self, linux_at_its_prompt):
         name = type_and_wait_for_the_prompt(
             linux_at_its_prompt, "cat /sys/class/rtc/rtc0/name"
