@@ -119,7 +119,7 @@ test-requires = [
     "setuptools<81",
 ]
 # On every core, as ctest runs them (tests/python/CMakeLists.txt says why).
-test-command = "pytest -n auto --dist loadscope --no-loadscope-reorder tests/python"
+test-command = "pytest -n auto --dist loadgroup --no-loadscope-reorder tests/python"
 
 [tool.cibuildwheel.linux]
 # SCC's trace writer needs zlib's headers. The library itself is part of

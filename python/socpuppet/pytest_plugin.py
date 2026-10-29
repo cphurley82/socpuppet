@@ -16,7 +16,10 @@ its own). Tests of the class with different parameters, as a parametrized
 class fixture gives them, have a process for each. The first of them to run
 starts the process for every one of the class that the session selected, and
 each reports in its turn. Under pytest-xdist, hand the tests out with
-``--dist loadscope``, which keeps a class on one worker.
+``--dist loadgroup``: the plugin makes a group of the tests that share a
+process, which goes to one worker, and the rest are handed out one at a
+time. (``--dist loadscope`` works too, but keeps every class on one worker,
+so that a class whose tests each boot boots them one after another.)
 
 A marked test that runs for longer than ``socpuppet_platform_timeout``
 seconds is stopped and fails, and so is a class's process, with what it
@@ -89,6 +92,35 @@ def pytest_configure(config: pytest.Config) -> None:
         config.pluginmanager.register(_ChildReporter(config, report_file))
 
 
+# A test's node id as it was collected, before xdist's --dist loadgroup
+# renamed it after its group: the name the test's own process knows it by.
+_collected_as = pytest.StashKey[str]()
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Group the tests that share a class's process, for xdist's loadgroup.
+
+    Before xdist's own hook, which reads the groups. Under ``--dist
+    loadgroup`` a group goes to one worker and every other test is handed
+    out alone, so that a class whose tests each boot spreads its boots out.
+    """
+    for item in items:
+        item.stash[_collected_as] = item.nodeid
+        if _shares_its_classs_process(item):
+            # ⚠️ No brackets: xdist takes a name ending in one for a
+            # parameter's id, and the test for one with no group.
+            its_class, parameters = _process_shared_by(item)
+            assert its_class is not None
+            item.add_marker(
+                pytest.mark.xdist_group(f"{its_class.nodeid} {parameters}")
+            )
+
+
+def _collected_id(item: pytest.Item) -> str:
+    return item.stash.get(_collected_as, item.nodeid)
+
+
 def pytest_runtest_protocol(
     item: pytest.Item, nextitem: pytest.Item | None
 ) -> bool | None:
@@ -102,6 +134,8 @@ def pytest_runtest_protocol(
         nodeid=item.nodeid, location=item.location
     )
     for report in _reports_of(item):
+        # As the session knows the test, which xdist may have renamed.
+        report.nodeid = item.nodeid
         item.ihook.pytest_runtest_logreport(report=report)
     # The test's own fixtures lived and died in the child. Here, pytest still
     # has to finish with any class or module it set up for earlier tests and
@@ -123,10 +157,10 @@ _waiting = pytest.StashKey[dict[str, list[pytest.TestReport]]]()
 def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
     """Run a `platform` test in a process of its own, or its class's."""
     waiting = item.config.stash.setdefault(_waiting, {})
-    if item.nodeid in waiting:
-        return waiting.pop(item.nodeid)
+    if _collected_id(item) in waiting:
+        return waiting.pop(_collected_id(item))
     if not _shares_its_classs_process(item):
-        return _run_in_child_process([item])[item.nodeid]
+        return _run_in_child_process([item])[_collected_id(item)]
     together = [
         each
         for each in item.session.items
@@ -136,7 +170,7 @@ def _reports_of(item: pytest.Item) -> list[pytest.TestReport]:
     ]
     reports = _run_in_child_process(together)
     waiting.update(reports)
-    return waiting.pop(item.nodeid)
+    return waiting.pop(_collected_id(item))
 
 
 def _runs_in_a_process(item: pytest.Item) -> bool:
@@ -158,7 +192,7 @@ def _shares_its_classs_process(item: pytest.Item) -> bool:
     )
 
 
-def _process_shared_by(item: pytest.Item) -> tuple[object, str]:
+def _process_shared_by(item: pytest.Item) -> tuple[pytest.Class | None, str]:
     """Which tests share a class's process: its class's, with its parameters.
 
     A class-scoped fixture with parameters is made once for each, and each
@@ -212,7 +246,7 @@ def _run_in_child_process(
                 str(config.rootpath),
                 "--basetemp",
                 str(basetemp),
-                *(str(config.rootpath / item.nodeid) for item in items),
+                *(str(config.rootpath / _collected_id(item)) for item in items),
             ],
             env={**os.environ, _REPORT_FILE_ENV: report_file.name},
             stdout=subprocess.PIPE,
@@ -240,7 +274,7 @@ def _run_in_child_process(
             )
         output = stdout + stderr
         reports: dict[str, list[pytest.TestReport]] = {
-            item.nodeid: [] for item in items
+            _collected_id(item): [] for item in items
         }
         for line in report_file:
             report = _report_from_json(config, line)
@@ -251,19 +285,19 @@ def _run_in_child_process(
         cut_short = [
             item
             for item in items
-            if "teardown" not in {r.when for r in reports[item.nodeid]}
+            if "teardown" not in {r.when for r in reports[_collected_id(item)]}
         ] or items[-1:]
         # The first was the one running; the rest never started.
         first, *never_started = cut_short
-        reports[first.nodeid].append(
+        reports[_collected_id(first)].append(
             _unfinished_report(
                 first,
                 f"{unfinished} Its output follows.\n\n{output}",
-                phases_reported={r.when for r in reports[first.nodeid]},
+                phases_reported={r.when for r in reports[_collected_id(first)]},
             )
         )
         for item in never_started:
-            reports[item.nodeid].append(
+            reports[_collected_id(item)].append(
                 _unfinished_report(
                     item,
                     "Never ran: the class's process died during "

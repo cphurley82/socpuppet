@@ -9,16 +9,16 @@
 # push runs; and `pytest_long`, every other boot, labelled `nightly`, when it
 # runs.
 #
-# pytest-xdist runs them on every core. --dist loadscope keeps the tests of
-# a class, or of a module of functions, on one worker, so that a fixture
-# shared by the class is made once and not once on each worker. Without
-# --no-loadscope-reorder it hands out the classes with the most tests
-# first, and the boots of firmware, each a class of one long test, would
-# start last (tests/python/conftest.py puts them first).
+# pytest-xdist runs them on every core. --dist loadgroup hands them out a
+# test at a time, but for the groups socpuppet's plugin makes of a class
+# whose tests share one process and one boot, platform(scope="class"),
+# which go to one worker together. Without --no-loadscope-reorder it hands
+# out the biggest groups first, and the other boots would start last
+# (tests/python/conftest.py puts them first).
 function(socpuppet_add_pytest name marks label)
   add_test(NAME ${name}
     COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest -m ${marks}
-            -n auto --dist loadscope --no-loadscope-reorder
+            -n auto --dist loadgroup --no-loadscope-reorder
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
   set_tests_properties(${name} PROPERTIES LABELS ${label})
 endfunction()

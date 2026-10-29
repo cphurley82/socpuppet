@@ -24,7 +24,7 @@ with (REPOSITORY / "pyproject.toml").open("rb") as _pyproject:
     TEST_PACKAGES = tuple(
         tomllib.load(_pyproject)["tool"]["cibuildwheel"]["test-requires"]
     )
-ON_EVERY_CORE = ("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder")
+ON_EVERY_CORE = ("-n", "auto", "--dist", "loadgroup", "--no-loadscope-reorder")
 
 
 def main() -> int:

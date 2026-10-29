@@ -409,6 +409,25 @@ class TestWhenAPlatformClassSharesOneProcess:
         result.assert_outcomes(passed=3)
         assert len(made_in.read_text().split()) == 1
 
+    def test_under_xdists_loadgroup_its_tests_still_share_one_process(
+        self, session_with_socpuppet
+    ):
+        # 💡 Grouped by the plugin, so that the tests of other classes,
+        # each a boot of its own, are handed out one at a time.
+        made_in = a_class_sharing_one_process(
+            session_with_socpuppet,
+            test_spam="pass",
+            test_eggs="pass",
+            test_ham="pass",
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess(
+            "-n", "2", "--dist", "loadgroup"
+        )
+
+        result.assert_outcomes(passed=3)
+        assert len(made_in.read_text().split()) == 1
+
     def test_its_tests_share_a_process_for_each_parameter_of_its_fixture(
         self, session_with_socpuppet
     ):
