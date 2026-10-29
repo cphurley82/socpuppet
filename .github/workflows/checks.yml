@@ -1,0 +1,89 @@
+name: Checks
+
+# The checks both tiers run that no other job waits for: lint, clang-tidy,
+# coverage and the sanitizers. ci.yml and nightly.yml each call this, so
+# each job here is written once.
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: The machines clang-tidy runs on, as a JSON list.
+        type: string
+        required: true
+
+jobs:
+  lint:
+    # Formatting and static checks on every file, with nothing to build
+    # first. ctest runs the same thing; this job says so in seconds.
+    name: Lint
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: uv run python tools/ci.py run lint
+
+  tidy:
+    # clang-tidy over our own C++, and each of our headers compiled on its
+    # own. Nothing else is built: clang-tidy reads the sources and the
+    # compile commands that configuring writes, which are GCC's on Linux
+    # and Apple clang's on a Mac, each with its own standard library, so a
+    # system's leg checks our code the way that system compiles it.
+    name: clang-tidy and header check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build
+          machine: ${{ matrix.os }}
+          tree: dev
+      - run: uv run python tools/ci.py run tidy
+
+  coverage:
+    # Which lines of our own C++ and Python the tests run. The job fails if
+    # either falls below its floor (CMakePresets.json).
+    name: Test coverage
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build cable
+          machine: ubuntu-26.04
+          tree: dev
+      - run: uv run python tools/ci.py run coverage
+      - name: Show the figures on the job's page
+        if: always()
+        run: |
+          {
+            cat build/dev/coverage/cpp.md
+            echo
+            echo "# Python coverage"
+            echo
+            uv run python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the line-by-line reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: build/dev/coverage
+
+  sanitizers:
+    # The C++ tests again, built so that a memory error or undefined
+    # behavior stops the program instead of passing unnoticed.
+    name: C++ tests under sanitizers
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build
+          machine: ubuntu-26.04
+          tree: dev
+      - run: uv run python tools/ci.py run sanitizers

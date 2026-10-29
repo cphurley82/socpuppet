@@ -5,16 +5,18 @@ name: CI
 # harts, and on an Intel Mac without the boots, and clang-tidy, coverage
 # and the sanitizers on Linux. It answers in about half an hour. The rest
 # is nightly.yml's: every other boot, twister, QBox, the wheels and the
-# devcontainer, on every machine CI has. On a developer's machine, `uv run python tools/ci.py` runs that, and
-# `--quick` runs this.
+# devcontainer, on every machine CI has. On a developer's machine,
+# `uv run python tools/ci.py` runs that, and `--quick` runs this.
 #
 # Every job here is a thin wrapper around tools/ci.py, which holds each
-# job's steps: what is left in this file is GitHub's plumbing, the checkout,
-# the packages, the caches and the artifacts. A job's log opens with the
-# command that runs the same job on a developer's machine.
-# tests/tooling/test_ci_workflow.py keeps the two to the same jobs, and a
-# job this file shares with nightly.yml to the same definition, but for the
-# machines it runs on.
+# job's steps: what is left is GitHub's plumbing, the checkout, then the
+# setup every job takes from .github/actions/setup (the packages, the caches
+# and the artifacts). A job's log opens with the command that runs the same
+# job on a developer's machine. The jobs this tier shares with nightly.yml
+# are in the workflows both call, firmware.yml, checks.yml and
+# qbox-build.yml, each given the machines this tier runs it on.
+# tests/tooling/test_ci_workflow.py keeps the workflows to the jobs
+# tools/ci.py runs.
 #
 # Nothing waits for lint: a job waits only for a job whose output it reads.
 #
@@ -36,339 +38,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  lint:
-    # Formatting and static checks on every file, with nothing to build
-    # first. ctest runs the same thing; this job says so in seconds.
-    name: Lint
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
-      - run: uv run python tools/ci.py run lint
+  checks:
+    name: Checks
+    uses: ./.github/workflows/checks.yml
+    with:
+      os: '["ubuntu-26.04"]'
 
-  fetch-sdk:
-    # The Zephyr SDK's RISC-V toolchain, for the machine it runs on, kept
-    # in a cache keyed on its version, and fetched only when that changes.
-    # The jobs that build with it restore it from there. Its tools are
-    # prebuilt to run on any Linux, so the key names the runner's system
-    # and processor and not its Ubuntu: one copy serves 24.04 and 26.04.
-    name: Zephyr SDK (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Look for it in the cache
-        id: cache
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          lookup-only: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.cache.outputs.cache-hit != 'true'
-      - if: steps.cache.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run fetch-sdk
-      - name: Keep it
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-
-  fetch-llvm:
-    # The SDK's LLVM, which builds OpenSBI and EDK2: two gigabytes, so
-    # kept apart from the SDK, and cached as it is.
-    name: Zephyr SDK's LLVM
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Look for it in the cache
-        id: cache
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/llvm-*
-          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          lookup-only: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.cache.outputs.cache-hit != 'true'
-      - if: steps.cache.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run fetch-llvm
-      - name: Keep it
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: build/firmware/*/llvm-*
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-
-  fetch-zephyr:
-    # Zephyr itself, at its tag, and a venv with what its build scripts and
-    # twister import, whose Python is a program for the runner's system and
-    # processor: uv's own, which runs on any Ubuntu, with packages that are
-    # manylinux wheels, which do too. Cached as the SDK is.
-    name: Zephyr (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Look for it in the cache
-        id: cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/*/python
-            build/firmware/*/venv
-            build/firmware/zephyr
-          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
-          lookup-only: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.cache.outputs.cache-hit != 'true'
-      - if: steps.cache.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run fetch-zephyr
-      - name: Keep it
-        if: steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/*/python
-            build/firmware/*/venv
-            build/firmware/zephyr
-          key: ${{ steps.cache.outputs.cache-primary-key }}
-
-  firmware-rom:
-    # The boot ROMs, and sbi_payload, built with the SDK's compiler. An ELF
-    # image is the same file whatever machine the simulator runs on, so
-    # each part of the firmware is built once, here, and handed to the
-    # jobs that boot it. Each is cached on what it is built from.
-    name: Firmware (the boot ROMs)
-    needs: fetch-sdk
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache the images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: |
-            build/firmware/rom_*.bin
-            build/firmware/rom_*.elf
-            build/firmware/sbi_payload.bin
-            build/firmware/sbi_payload.elf
-          key: firmware-rom-${{ hashFiles('firmware/rom/**', 'firmware/sbi_payload/**', 'python/socpuppet/zephyr_module/include/**', 'firmware/build.py', 'firmware/versions.toml') }}
-      - name: Restore the Zephyr SDK
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.images.outputs.cache-hit != 'true'
-      - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware-rom
-      - uses: actions/upload-artifact@v7
-        with:
-          name: firmware-rom
-          path: |
-            build/firmware/rom_*.bin
-            build/firmware/rom_*.elf
-            build/firmware/sbi_payload.bin
-            build/firmware/sbi_payload.elf
-          if-no-files-found: error
-
-  firmware-opensbi:
-    # OpenSBI for the host, built with the SDK's LLVM, and patched.
-    name: Firmware (OpenSBI)
-    needs: fetch-llvm
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache the images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: |
-            build/firmware/fw_jump.bin
-            build/firmware/fw_jump.elf
-            build/firmware/test_payload.bin
-            build/firmware/test_payload.elf
-          key: firmware-opensbi-${{ hashFiles('cmake/patches/opensbi-*', 'firmware/build.py', 'firmware/versions.toml') }}
-      - name: Restore the SDK's LLVM
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/llvm-*
-          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.images.outputs.cache-hit != 'true'
-      - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware-opensbi
-      - uses: actions/upload-artifact@v7
-        with:
-          name: firmware-opensbi
-          path: |
-            build/firmware/fw_jump.bin
-            build/firmware/fw_jump.elf
-            build/firmware/test_payload.bin
-            build/firmware/test_payload.elf
-          if-no-files-found: error
-
-  firmware-zephyr:
-    # Zephyr's images, for the boards. The board an image is built for is
-    # part of what it is. What twister is run from builds no image: its
-    # script, its lists, and what it reads of each application.
-    name: Firmware (Zephyr's images)
-    needs: [fetch-sdk, fetch-zephyr]
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache the images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: |
-            build/firmware/*_qemu_riscv*.elf
-            build/firmware/*_qemu_riscv*.bin
-            build/firmware/*_qemu_riscv*.opcodes.txt
-            build/firmware/*_socpuppet_*.elf
-            build/firmware/*_socpuppet_*.bin
-            build/firmware/*_socpuppet_*.opcodes.txt
-          key: firmware-zephyr-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**') }}
-      - name: Restore the Zephyr SDK
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/zephyr-sdk-*
-          key: sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - name: Restore Zephyr and its venv
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            build/firmware/.west
-            build/firmware/*/python
-            build/firmware/*/venv
-            build/firmware/zephyr
-          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
-          fail-on-cache-miss: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.images.outputs.cache-hit != 'true'
-      - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware-zephyr
-      - uses: actions/upload-artifact@v7
-        with:
-          name: firmware-zephyr
-          path: |
-            build/firmware/*_qemu_riscv*.elf
-            build/firmware/*_qemu_riscv*.bin
-            build/firmware/*_qemu_riscv*.opcodes.txt
-            build/firmware/*_socpuppet_*.elf
-            build/firmware/*_socpuppet_*.bin
-            build/firmware/*_socpuppet_*.opcodes.txt
-          if-no-files-found: error
-
-  firmware-edk2:
-    # EDK2, UEFI, for the host, built with the SDK's LLVM, and patched.
-    name: Firmware (EDK2)
-    needs: fetch-llvm
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache the images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: |
-            build/firmware/uefi.fd
-            build/firmware/uefi_shell.efi
-          key: firmware-edk2-${{ hashFiles('cmake/patches/edk2-*', 'firmware/build.py', 'firmware/versions.toml') }}
-      # EDK2's BaseTools are built with the runner's own gcc, and want
-      # libuuid's header; and EDK2 compiles ACPI tables with iasl.
-      - name: Install system packages
-        if: steps.images.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y uuid-dev acpica-tools
-      - name: Restore the SDK's LLVM
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/llvm-*
-          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.images.outputs.cache-hit != 'true'
-      - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware-edk2
-      - uses: actions/upload-artifact@v7
-        with:
-          name: firmware-edk2
-          path: |
-            build/firmware/uefi.fd
-            build/firmware/uefi_shell.efi
-          if-no-files-found: error
-
-  firmware-linux:
-    # Linux, a stock defconfig kernel for the host, built with the SDK's
-    # LLVM from the release tarball its pin names, its root filesystem, and
-    # the initramfs that loads its NVMe modules.
-    name: Firmware (Linux)
-    needs: fetch-llvm
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Cache the images
-        id: images
-        uses: actions/cache@v6
-        with:
-          path: |
-            build/firmware/linux.bin
-            build/firmware/linux.elf
-            build/firmware/linux.map
-            build/firmware/rootfs.ext4
-            build/firmware/initramfs.cpio
-          key: firmware-linux-${{ hashFiles('firmware/rootfs/**', 'firmware/initramfs/**', 'firmware/build.py', 'firmware/versions.toml') }}
-      # The kernel's build generates its parsers with flex and bison and
-      # does its arithmetic with bc; its host tools are built with the
-      # runner's own gcc; and its root filesystem is made by mkfs.ext4.
-      - name: Install system packages
-        if: steps.images.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y flex bison bc e2fsprogs
-      - name: Restore the SDK's LLVM
-        if: steps.images.outputs.cache-hit != 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: build/firmware/*/llvm-*
-          key: llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml') }}
-          fail-on-cache-miss: true
-      - uses: astral-sh/setup-uv@v7
-        if: steps.images.outputs.cache-hit != 'true'
-      - if: steps.images.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run firmware-linux
-      - uses: actions/upload-artifact@v7
-        with:
-          name: firmware-linux
-          path: |
-            build/firmware/linux.bin
-            build/firmware/linux.elf
-            build/firmware/linux.map
-            build/firmware/rootfs.ext4
-            build/firmware/initramfs.cpio
-          if-no-files-found: error
+  firmware:
+    name: Firmware
+    uses: ./.github/workflows/firmware.yml
+    with:
+      os: '["ubuntu-26.04"]'
 
   test-quick:
     # The dev tree's build and its quick tests: all but the long ones, and
     # one boot for each area (the quick test preset). The Intel Mac leaves
     # the boots out (tools/ci.py); the rest of the boots are nightly.yml's.
     name: Build and quick tests (${{ matrix.os }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux]
+    needs: firmware
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -376,97 +63,26 @@ jobs:
         os: [ubuntu-26.04, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
-      - name: Install system packages
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev
-      - name: Install the devicetree compiler and libslirp
-        if: runner.os == 'macOS'
-        run: brew install dtc libslirp
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
+      - uses: ./.github/actions/setup
         with:
-          path: build/dev/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
+          packages: build cable
+          machine: ${{ matrix.os }}
+          tree: dev
+          firmware: firmware-*
       - run: uv run python tools/ci.py run test-quick
 
   qbox-build:
-    # QBox, Qualcomm's QEMU in SystemC, which the qbox_cpu is built on. It
-    # is GPL-2.0 and built from source, which takes a quarter of an hour on
-    # CI's Linux runner, so what it installs is cached, keyed on QBox's pin
-    # and its patches, and this job builds it only when those change. The
-    # system's libraries it links are the runner's, so the key names the
-    # runner too.
-    #
-    # The jobs that build on QBox take it from this job, as an artifact of
-    # the run, not from the cache: GitHub drops the least recently used
-    # entries when a repository's caches pass 10 GB, and QBox was dropped
-    # once between this job finding it and the next one restoring it.
-    name: QBox (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        # Every night Ubuntu 24.04 too, the oldest we support: QBox links
-        # more of the system's libraries than anything else, and they differ
-        # most there. And macos-26, which builds it for qbox-tidy.
-        os: [ubuntu-26.04]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Restore QBox
-        id: qbox
-        uses: actions/cache/restore@v6
-        with:
-          path: build/qbox/install
-          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
-      - name: Install QBox's packages
-        # As the devcontainer's image has them (.devcontainer/Dockerfile).
-        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
-            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev libslirp-dev \
-            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
-            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
-      - name: Install QBox's packages
-        # As docs/setup.md lists them for a Mac.
-        if: steps.qbox.outputs.cache-hit != 'true' && runner.os == 'macOS'
-        run: |
-          brew install asio glib jpeg-turbo libelf libslirp libzip meson \
-            ninja pixman pkgconf sdl2
-      - uses: astral-sh/setup-uv@v7
-        if: steps.qbox.outputs.cache-hit != 'true'
-      - if: steps.qbox.outputs.cache-hit != 'true'
-        run: uv run python tools/ci.py run qbox-build
-      - name: Keep QBox
-        if: steps.qbox.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: build/qbox/install
-          key: ${{ steps.qbox.outputs.cache-primary-key }}
-      - name: Pack QBox
-        # In a tarball, which keeps the links between its libraries; an
-        # artifact on its own would make copies of them.
-        run: tar -czf qbox-install.tar.gz build/qbox/install
-      - uses: actions/upload-artifact@v7
-        with:
-          name: qbox-${{ matrix.os }}
-          path: qbox-install.tar.gz
+    name: QBox
+    uses: ./.github/workflows/qbox-build.yml
+    with:
+      os: '["ubuntu-26.04"]'
 
   qbox-quick:
     # The quick preset's second opinion: the quick tests and one boot for
     # each area on QBox's CPU (docs/models/qbox-cpu.md), where a boot of
     # Linux takes seconds. Every boot on both harts is nightly.yml's.
     name: Quick tests with QBox's CPU (${{ matrix.os }})
-    needs: [firmware-rom, firmware-opensbi, firmware-zephyr, firmware-edk2, firmware-linux, qbox-build]
+    needs: [firmware, qbox-build]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -475,107 +91,11 @@ jobs:
         os: [ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
-      - name: Install system packages
-        # socpuppet's and the firmware's, and QBox's
-        # (.devcontainer/Dockerfile).
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev \
-            bison flex libasio-dev libelf-dev libepoxy-dev libglib2.0-dev \
-            libjpeg-turbo8-dev libpixman-1-dev libsdl2-dev \
-            libvirglrenderer-dev libzip-dev lld llvm meson ninja-build \
-            ocl-icd-opencl-dev pkg-config python3-dev python3-pip python3-venv
-      - uses: astral-sh/setup-uv@v7
-      - name: Take QBox from qbox-build
-        uses: actions/download-artifact@v8
+      - uses: ./.github/actions/setup
         with:
-          name: qbox-${{ matrix.os }}
-      - run: tar -xzf qbox-install.tar.gz
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/qbox-dev/_deps
-          key: deps-qbox-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - name: Take the firmware the firmware jobs built
-        uses: actions/download-artifact@v8
-        with:
-          pattern: firmware-*
-          merge-multiple: true
-          path: build/firmware
+          packages: build cable qbox
+          machine: ${{ matrix.os }}
+          tree: qbox-dev
+          firmware: firmware-*
+          qbox: true
       - run: uv run python tools/ci.py run qbox-quick
-
-  tidy:
-    # clang-tidy over our own C++, and each of our headers compiled on its
-    # own. Nothing else is built: clang-tidy reads the sources and the
-    # compile commands that configuring writes, which are GCC's on Linux
-    # and Apple clang's on a Mac, each with its own standard library, so a
-    # system's leg checks our code the way that system compiles it.
-    name: clang-tidy and header check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04]
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv run python tools/ci.py run tidy
-
-  coverage:
-    # Which lines of our own C++ and Python the tests run. The job fails if
-    # either falls below its floor (CMakePresets.json).
-    name: Test coverage
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler libslirp-dev
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv run python tools/ci.py run coverage
-      - name: Show the figures on the job's page
-        if: always()
-        run: |
-          {
-            cat build/dev/coverage/cpp.md
-            echo
-            echo "# Python coverage"
-            echo
-            uv run python -m coverage report --format=markdown
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep the line-by-line reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: build/dev/coverage
-
-  sanitizers:
-    # The C++ tests again, built so that a memory error or undefined
-    # behavior stops the program instead of passing unnoticed.
-    name: C++ tests under sanitizers
-    runs-on: ubuntu-26.04
-    steps:
-      - uses: actions/checkout@v7
-      - name: Install system packages
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev device-tree-compiler
-      - uses: astral-sh/setup-uv@v7
-      - name: Cache fetched dependencies
-        uses: actions/cache@v6
-        with:
-          path: build/dev/_deps
-          key: deps-ubuntu-26.04-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**') }}
-      - run: uv run python tools/ci.py run sanitizers
-
