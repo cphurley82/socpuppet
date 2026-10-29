@@ -38,7 +38,6 @@ are:
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
@@ -46,10 +45,9 @@ from socpuppet import boot_image, transcript
 from socpuppet.boards.boot import from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, BOOT_FLASH_SIZE
 from socpuppet.boards.host import IO_BASE, host
+from socpuppet.run import firmware_directory
 
-IMAGES = pathlib.Path(
-    os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
-)
+IMAGES = firmware_directory()
 #: The boot ROM's program, built for the host's 64-bit CPU.
 ROM = IMAGES / "rom_rv64.elf"
 FIRMWARE = IMAGES / "watchdog_socpuppet_host.elf"

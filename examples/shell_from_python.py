@@ -21,16 +21,13 @@ missing image is a failure.
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import IMSIC_BASE, UART_SOURCE, host
+from socpuppet.run import firmware_directory
 
-IMAGE = (
-    pathlib.Path(os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware"))
-    / "shell_module_socpuppet_host.elf"
-)
+IMAGE = firmware_directory() / "shell_module_socpuppet_host.elf"
 PROMPT = "uart:~$ "
 #: What to type, and something each answer has in it.
 COMMANDS = (

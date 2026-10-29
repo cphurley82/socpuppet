@@ -44,7 +44,6 @@ is a failure.
 import argparse
 import functools
 import os
-import pathlib
 import sys
 import time
 
@@ -53,10 +52,9 @@ from socpuppet import linux
 from socpuppet.boards.host import switched_off
 from socpuppet.boards.manager import add_manager, scripted_manager
 from socpuppet.boards.ssd import add_ssd, scripted_firmware
+from socpuppet.run import firmware_directory
 
-IMAGES = pathlib.Path(
-    os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
-)
+IMAGES = firmware_directory()
 #: How long the kernel may take to prompt, in simulated time.
 PROMPTS_WITHIN = sp.ms(400_000)
 #: How long `poweroff` may take to reach the system controller.

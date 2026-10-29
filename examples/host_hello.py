@@ -15,16 +15,13 @@ missing image is a failure.
 """
 
 import os
-import pathlib
 import sys
 
 import socpuppet as sp
 from socpuppet.boards.host import host
+from socpuppet.run import firmware_directory
 
-IMAGE = (
-    pathlib.Path(os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware"))
-    / "hello_world_socpuppet_host.elf"
-)
+IMAGE = firmware_directory() / "hello_world_socpuppet_host.elf"
 
 if __name__ == "__main__":
     if not IMAGE.exists():
