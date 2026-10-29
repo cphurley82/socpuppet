@@ -77,6 +77,7 @@ def linux_on_the_cable(firmware):
         yield Plugged(board, cable, port)
 
 
+@pytest.mark.representative("cable")
 class TestWhenThisMachinesSshRunsUnameOnLinux:
     def test_linux_answers_as_it_does_at_its_console(self, linux_on_the_cable):
         by_ssh = ssh(linux_on_the_cable, "uname -a")

@@ -115,6 +115,7 @@ class TestWhenZephyrsDiskTestRunsWithTheDriveUntranslated:
 @pytest.mark.platform
 @pytest.mark.long
 class TestWhenZephyrsDiskTestRunsWithTheDriveThroughPageTables:
+    @pytest.mark.representative("iommu")
     def test_its_read_and_write_tests_pass(self, host_behind_an_iommu):
         board = host_behind_an_iommu(PAGED)
 

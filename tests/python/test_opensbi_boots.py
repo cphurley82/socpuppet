@@ -76,6 +76,7 @@ class TestWhenTheBootRomStartsOpenSbiFromTheFlash:
 
 @pytest.mark.platform
 class TestWhenOpenSbiBootsWithItsTestPayload:
+    @pytest.mark.representative("opensbi")
     def test_it_prints_its_banner(self, opensbi_with_its_test_payload):
         board = opensbi_with_its_test_payload
 

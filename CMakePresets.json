@@ -83,9 +83,13 @@
       "execution": { "jobs": 8 }
     },
     {
+      "name": "fast",
+      "inherits": "dev",
+      "filter": { "include": { "label": "^(cpp|python)$" } }
+    },
+    {
       "name": "quick",
       "inherits": "dev",
-      "environment": { "SOCPUPPET_SKIP_LONG": "1" },
       "filter": { "exclude": { "label": "long|qbox" } }
     },
     {
