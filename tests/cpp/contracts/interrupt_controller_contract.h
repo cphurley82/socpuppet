@@ -347,7 +347,7 @@ TYPED_TEST_P(InterruptControllerContract,
   this->OnTheBus([&](BusDriver& bus) {
     bus.Write32(this->Priority(3), 1);
     this->RaiseWithoutSettling(bus, 3);
-    bus.Write32(this->kEnable, std::uint32_t{1} << 3);
+    bus.Write32(this->kEnable, std::uint32_t{1} << 3U);
   });
 
   EXPECT_TRUE(this->interrupt_.read());

@@ -105,15 +105,15 @@ class VirtioDeviceContract : public ::testing::Test {
       Write32(VIRTIO_MMIO_QUEUE_DESC_LOW,
               static_cast<std::uint32_t>(kQueue.desc));
       Write32(VIRTIO_MMIO_QUEUE_DESC_HIGH,
-              static_cast<std::uint32_t>(kQueue.desc >> 32));
+              static_cast<std::uint32_t>(kQueue.desc >> 32U));
       Write32(VIRTIO_MMIO_QUEUE_DRIVER_LOW,
               static_cast<std::uint32_t>(kQueue.avail));
       Write32(VIRTIO_MMIO_QUEUE_DRIVER_HIGH,
-              static_cast<std::uint32_t>(kQueue.avail >> 32));
+              static_cast<std::uint32_t>(kQueue.avail >> 32U));
       Write32(VIRTIO_MMIO_QUEUE_DEVICE_LOW,
               static_cast<std::uint32_t>(kQueue.used));
       Write32(VIRTIO_MMIO_QUEUE_DEVICE_HIGH,
-              static_cast<std::uint32_t>(kQueue.used >> 32));
+              static_cast<std::uint32_t>(kQueue.used >> 32U));
       Write32(VIRTIO_MMIO_QUEUE_READY, VIRTIO_MMIO_QUEUE_READY_READY);
       Write32(VIRTIO_MMIO_STATUS, VIRTIO_MMIO_STATUS_ACKNOWLEDGE |
                                       VIRTIO_MMIO_STATUS_DRIVER |

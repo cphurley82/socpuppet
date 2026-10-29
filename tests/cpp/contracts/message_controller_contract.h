@@ -144,10 +144,10 @@ class MessageControllerContract : public ::testing::Test {
   // register has the identity in bits 26 to 16.
   static std::uint32_t Claim(BusDriver& hart, const File& file) {
     const std::uint64_t address = socpuppet::HartRegisterAddress(file.top);
-    const auto top = static_cast<std::uint32_t>(hart.Read64(address) >> 16);
+    const auto top = static_cast<std::uint32_t>(hart.Read64(address) >> 16U);
     hart.Write64(address, 0);
     Settle();
-    return top & 0x7FF;
+    return top & 0x7FFU;
   }
 
   ControllerType controller_{"controller", kIdentities};
@@ -279,7 +279,7 @@ TYPED_TEST_P(MessageControllerContract,
     second = hart.Read64(top);
   });
 
-  EXPECT_EQ(first, (std::uint64_t{5} << 16) | 5);
+  EXPECT_EQ(first, (std::uint64_t{5} << 16U) | 5U);
   EXPECT_EQ(second, first);
   EXPECT_TRUE(this->machine_mode_.line.read());
 }

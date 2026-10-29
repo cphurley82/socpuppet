@@ -54,13 +54,13 @@ class PcieHost {
   Identity IdsOf(PciAddress function) {
     const std::uint32_t ids = ReadConfig(function, 0x00).value;
     return {.vendor = static_cast<std::uint16_t>(ids),
-            .device = static_cast<std::uint16_t>(ids >> 16)};
+            .device = static_cast<std::uint16_t>(ids >> 16U)};
   }
 
   // What kind of device it is: the three bytes above the revision, in the
   // word at 0x08.
   std::uint32_t ClassCodeOf(PciAddress function) {
-    return ReadConfig(function, 0x08).value >> 8;
+    return ReadConfig(function, 0x08).value >> 8U;
   }
 
   PciAccess WriteConfig(PciAddress function, std::uint64_t offset,
@@ -71,10 +71,10 @@ class PcieHost {
   // The status register: the upper half of the word whose lower half is
   // the command register. This bit of it says that an access the function
   // started was answered by nobody (a master abort).
-  static constexpr std::uint16_t kReceivedMasterAbort = 1U << 13;
+  static constexpr std::uint16_t kReceivedMasterAbort = 1U << 13U;
   std::uint16_t StatusOf(PciAddress function) {
     return static_cast<std::uint16_t>(ReadConfig(function, kCommand).value >>
-                                      16);
+                                      16U);
   }
 
   // The first base address register (BAR0), as a host uses it. A BAR is
@@ -85,7 +85,7 @@ class PcieHost {
   // What kind of BAR it is: the low four bits, which the host cannot
   // change. 0x4 there means a 64-bit memory BAR.
   std::uint32_t KindOfBar0(PciAddress function) {
-    return ReadConfig(function, kBar0).value & 0xF;
+    return ReadConfig(function, kBar0).value & 0xFU;
   }
 
   // How much address space the function wants. The host finds out by
@@ -100,7 +100,8 @@ class PcieHost {
   // Says where on the host's bus the function's registers are to be.
   void PlaceBar0(PciAddress function, std::uint64_t address) {
     WriteConfig(function, kBar0, static_cast<std::uint32_t>(address));
-    WriteConfig(function, kBar0 + 4, static_cast<std::uint32_t>(address >> 32));
+    WriteConfig(function, kBar0 + 4,
+                static_cast<std::uint32_t>(address >> 32U));
   }
 
   // Where the function says they are, without the low bits that say what
@@ -111,13 +112,13 @@ class PcieHost {
 
   // Sets bits in the command register. Nothing behind a BAR answers until
   // memory decoding is switched on there.
-  static constexpr std::uint32_t kMemoryDecoding = 1U << 1;
+  static constexpr std::uint32_t kMemoryDecoding = 1U << 1U;
   // And the function may not start accesses of its own (DMA, interrupt
   // messages) until the host lets it be a bus master.
-  static constexpr std::uint32_t kBusMastering = 1U << 2;
+  static constexpr std::uint32_t kBusMastering = 1U << 2U;
   void Command(PciAddress function, std::uint32_t bits) {
     WriteConfig(function, kCommand,
-                (ReadConfig(function, kCommand).value & 0xFFFF) | bits);
+                (ReadConfig(function, kCommand).value & 0xFFFFU) | bits);
   }
 
   // MSI-X: how a PCIe function interrupts. There is no wire. The function
@@ -144,10 +145,11 @@ class PcieHost {
     if ((StatusOf(function) & kHasCapabilities) == 0) {
       return std::nullopt;
     }
-    std::uint64_t capability = ReadConfig(function, kCapabilities).value & 0xFC;
+    std::uint64_t capability =
+        ReadConfig(function, kCapabilities).value & 0xFCU;
     while (capability != 0) {
       const std::uint32_t header = ReadConfig(function, capability).value;
-      if ((header & 0xFF) == kMsixCapability) {
+      if ((header & 0xFFU) == kMsixCapability) {
         // The table's size, counted from zero, is in the low 11 bits of
         // the upper half. The two registers after it say which BAR the
         // table and the pending bits are behind (the low three bits; here
@@ -155,12 +157,12 @@ class PcieHost {
         const std::uint64_t bar0 = PlaceOfBar0(function);
         return Msix{
             .capability = capability,
-            .vectors = ((header >> 16) & 0x7FF) + 1,
+            .vectors = ((header >> 16U) & 0x7FFU) + 1,
             .table = bar0 + (ReadConfig(function, capability + 4).value & ~7U),
             .pending =
                 bar0 + (ReadConfig(function, capability + 8).value & ~7U)};
       }
-      capability = (header >> 8) & 0xFC;
+      capability = (header >> 8U) & 0xFCU;
     }
     return std::nullopt;
   }
@@ -172,7 +174,7 @@ class PcieHost {
                    std::uint64_t address, std::uint32_t data) {
     const std::uint64_t entry = msix.table + (vector * kMsixEntrySize);
     Write(entry, static_cast<std::uint32_t>(address));
-    Write(entry + 4, static_cast<std::uint32_t>(address >> 32));
+    Write(entry + 4, static_cast<std::uint32_t>(address >> 32U));
     Write(entry + 8, data);
   }
 
@@ -184,13 +186,13 @@ class PcieHost {
   // Whether a vector fired while it could not be sent, and is waiting.
   bool IsPending(const Msix& msix, std::uint32_t vector) {
     const std::uint64_t word = msix.pending + (std::uint64_t{vector / 32} * 4);
-    return ((Read(word).value >> (vector % 32)) & 1) != 0;
+    return ((Read(word).value >> (vector % 32)) & 1U) != 0;
   }
 
   // Writes the MSI-X capability's control register, which is the upper
   // half of its first word: these bits are set and the others cleared.
-  static constexpr std::uint32_t kMsixEnable = 1U << 31;
-  static constexpr std::uint32_t kMsixMaskEveryVector = 1U << 30;
+  static constexpr std::uint32_t kMsixEnable = 1U << 31U;
+  static constexpr std::uint32_t kMsixMaskEveryVector = 1U << 30U;
   void MsixControl(PciAddress function, const Msix& msix, std::uint32_t bits) {
     WriteConfig(function, msix.capability, bits);
   }
@@ -216,7 +218,7 @@ class PcieHost {
   // Offsets in configuration space.
   // The bit of the status register that says the function has a list of
   // capabilities.
-  static constexpr std::uint16_t kHasCapabilities = 1U << 4;
+  static constexpr std::uint16_t kHasCapabilities = 1U << 4U;
   static constexpr std::uint64_t kBar0 = 0x10;
   static constexpr std::uint64_t kCapabilities = 0x34;
   static constexpr std::uint32_t kMsixCapability = 0x11;
@@ -224,13 +226,13 @@ class PcieHost {
 
   std::uint64_t Bar0(PciAddress function) {
     return ReadConfig(function, kBar0).value |
-           std::uint64_t{ReadConfig(function, kBar0 + 4).value} << 32;
+           std::uint64_t{ReadConfig(function, kBar0 + 4).value} << 32U;
   }
 
   std::uint64_t Config(PciAddress function, std::uint64_t offset) const {
-    return ecam_ + (std::uint64_t{function.bus} << 20) +
-           (std::uint64_t{function.device} << 15) +
-           (std::uint64_t{function.function} << 12) + offset;
+    return ecam_ + (std::uint64_t{function.bus} << 20U) +
+           (std::uint64_t{function.device} << 15U) +
+           (std::uint64_t{function.function} << 12U) + offset;
   }
 
   BusDriver& bus_;

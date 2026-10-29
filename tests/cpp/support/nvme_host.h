@@ -135,18 +135,18 @@ class NvmeHost {
   // How many entries an I/O queue may have at most (CAP.MQES, which counts
   // from zero). The admin queues have a limit of their own.
   std::uint32_t LargestIoQueueSize() {
-    return static_cast<std::uint32_t>(Capabilities() & 0xFFFF) + 1;
+    return static_cast<std::uint32_t>(Capabilities() & 0xFFFFU) + 1;
   }
 
   // Whether the controller says it takes the NVM command set: CAP.CSS,
   // bit 0, which is bit 37 of CAP. UEFI's driver will not use one that
   // does not.
-  bool SaysItTakesNvmCommands() { return ((Capabilities() >> 37) & 1U) != 0; }
+  bool SaysItTakesNvmCommands() { return ((Capabilities() >> 37U) & 1U) != 0; }
 
   // How long the controller says it may take to become ready, or to stop
   // being ready: CAP.TO, which counts in 500 ms.
   sc_core::sc_time ReadyTimeout() {
-    return static_cast<double>((Capabilities() >> 24) & 0xFF) *
+    return static_cast<double>((Capabilities() >> 24U) & 0xFFU) *
            sc_core::sc_time{500, sc_core::SC_MS};
   }
 
@@ -155,7 +155,7 @@ class NvmeHost {
   // take.
   void Enable() {
     Write32(kAdminQueueAttributes,
-            std::uint32_t{kQueueEntries - 1} << 16 | (kQueueEntries - 1));
+            std::uint32_t{kQueueEntries - 1U} << 16U | (kQueueEntries - 1U));
     Write64(kAdminSubmissionQueue, admin_.submissions_);
     Write64(kAdminCompletionQueue, admin_.completions_);
     Write32(kConfiguration, kCommandSizes | kEnable);
@@ -220,22 +220,24 @@ class NvmeHost {
       std::uint16_t entries = kQueueEntries) {
     // Physically contiguous, with interrupts enabled, on `vector`. The
     // size is counted from zero.
-    return Complete(admin_, {.opcode = kCreateIoCompletionQueue,
-                             .data = memory,
-                             .dword10 = (std::uint32_t{entries} - 1) << 16 | id,
-                             .dword11 = std::uint32_t{vector} << 16 |
-                                        kInterruptsEnabled | kContiguous});
+    return Complete(
+        admin_, {.opcode = kCreateIoCompletionQueue,
+                 .data = memory,
+                 .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
+                 .dword11 = std::uint32_t{vector} << 16U | kInterruptsEnabled |
+                            kContiguous});
   }
 
   std::optional<Completion> CreateIoSubmissionQueue(
       std::uint16_t id, std::uint64_t memory, std::uint16_t completion_queue,
       std::uint16_t entries = kQueueEntries) {
     // Physically contiguous, completing into `completion_queue`.
-    return Complete(admin_, {.opcode = kCreateIoSubmissionQueue,
-                             .data = memory,
-                             .dword10 = (std::uint32_t{entries} - 1) << 16 | id,
-                             .dword11 = std::uint32_t{completion_queue} << 16 |
-                                        kContiguous});
+    return Complete(
+        admin_,
+        {.opcode = kCreateIoSubmissionQueue,
+         .data = memory,
+         .dword10 = (std::uint32_t{entries} - 1) << 16U | id,
+         .dword11 = std::uint32_t{completion_queue} << 16U | kContiguous});
   }
 
   // The I/O queues, which exist once CreateIoQueues() has made them.
@@ -275,10 +277,10 @@ class NvmeHost {
     for (sc_core::sc_time waited = sc_core::SC_ZERO_TIME;; waited += Pause()) {
       std::array<std::uint8_t, kCompletionSize> entry{};
       ReadMemory(queue.completions_ + (queue.head_ * kCompletionSize), entry);
-      const auto status = socpuppet::LoadLittleEndian<std::uint16_t>(
+      const std::uint32_t status = socpuppet::LoadLittleEndian<std::uint16_t>(
           std::span{entry}.subspan(14));
       // A new entry is one whose phase bit is the one expected.
-      if ((status & 1) == (queue.phase_ ? 1 : 0)) {
+      if ((status & 1U) == (queue.phase_ ? 1 : 0)) {
         queue.head_ = static_cast<std::uint16_t>(queue.head_ + 1);
         if (queue.head_ == queue.entries_) {
           queue.head_ = 0;
@@ -287,7 +289,7 @@ class NvmeHost {
         return Completion{
             .command_id = socpuppet::LoadLittleEndian<std::uint16_t>(
                 std::span{entry}.subspan(12)),
-            .status = static_cast<std::uint16_t>((status >> 1) & 0x7FF),
+            .status = static_cast<std::uint16_t>((status >> 1U) & 0x7FFU),
             .submission_queue_head = socpuppet::LoadLittleEndian<std::uint16_t>(
                 std::span{entry}.subspan(8)),
             .result = socpuppet::LoadLittleEndian<std::uint32_t>(entry)};
@@ -378,7 +380,7 @@ class NvmeHost {
     ReadMemory(queue.completions_ + (queue.head_ * kCompletionSize), entry);
     const auto status = socpuppet::LoadLittleEndian<std::uint16_t>(
         std::span{entry}.subspan(14));
-    return (status & 1) == (queue.phase_ ? 1 : 0);
+    return (status & 1U) == (queue.phase_ ? 1 : 0);
   }
 
   // The Identify command asks the controller to describe itself or what it
@@ -412,11 +414,11 @@ class NvmeHost {
     // four bits). A format gives the block size as a power of two, in its
     // bits 23 to 16 (LBADS). NSZE, the size in blocks, is 64 bits at byte 0,
     // and NCAP, the capacity, the 64 bits after it.
-    const std::size_t format = bytes[26] & 0xF;
+    const std::size_t format = bytes[26] & 0xFU;
     const auto block_size_shift = (socpuppet::LoadLittleEndian<std::uint32_t>(
                                        bytes.subspan(128 + (4 * format))) >>
-                                   16) &
-                                  0xFF;
+                                   16U) &
+                                  0xFFU;
     return Namespace{
         .blocks = socpuppet::LoadLittleEndian<std::uint64_t>(bytes),
         .capacity =
@@ -449,9 +451,10 @@ class NvmeHost {
     const std::optional<Completion> completion =
         Complete(admin_, {.opcode = kSetFeatures,
                           .dword10 = kNumberOfQueues,
-                          .dword11 = wanted << 16 | wanted});
+                          .dword11 = wanted << 16U | wanted});
     if (!completion || completion->status != 0) return std::nullopt;
-    return std::min(completion->result & 0xFFFF, completion->result >> 16) + 1;
+    return std::min(completion->result & 0xFFFFU, completion->result >> 16U) +
+           1;
   }
 
   // A page of the host's memory that nothing else uses, for a command's
@@ -501,15 +504,15 @@ class NvmeHost {
   // Register offsets, and the bits used in them.
   static constexpr std::uint64_t kCapabilities = 0x00;
   static constexpr std::uint64_t kConfiguration = 0x14;
-  static constexpr std::uint32_t kEnable = 1U << 0;
+  static constexpr std::uint32_t kEnable = 1U << 0U;
   // CC.IOSQES and CC.IOCQES: commands are 2^6 bytes, completions 2^4.
-  static constexpr std::uint32_t kCommandSizes = 6U << 16 | 4U << 20;
+  static constexpr std::uint32_t kCommandSizes = 6U << 16U | 4U << 20U;
   static constexpr std::uint64_t kStatus = 0x1C;
-  static constexpr std::uint32_t kReady = 1U << 0;
+  static constexpr std::uint32_t kReady = 1U << 0U;
   // CC.SHN, a normal shutdown, and CSTS.SHST, the shutdown complete.
-  static constexpr std::uint32_t kNormalShutdown = 1U << 14;
-  static constexpr std::uint32_t kShutdownStatus = 3U << 2;
-  static constexpr std::uint32_t kShutdownComplete = 2U << 2;
+  static constexpr std::uint32_t kNormalShutdown = 1U << 14U;
+  static constexpr std::uint32_t kShutdownStatus = 3U << 2U;
+  static constexpr std::uint32_t kShutdownComplete = 2U << 2U;
   static constexpr std::uint64_t kAdminQueueAttributes = 0x24;
   static constexpr std::uint64_t kAdminSubmissionQueue = 0x28;
   static constexpr std::uint64_t kAdminCompletionQueue = 0x30;
@@ -522,8 +525,8 @@ class NvmeHost {
   // The block size the contract asks of a namespace.
   static constexpr std::size_t kBlockSize = socpuppet::BlockStore::kBlockSize;
   // Bits of dword 11 in the two commands that create a queue.
-  static constexpr std::uint32_t kContiguous = 1U << 0;
-  static constexpr std::uint32_t kInterruptsEnabled = 1U << 1;
+  static constexpr std::uint32_t kContiguous = 1U << 0U;
+  static constexpr std::uint32_t kInterruptsEnabled = 1U << 1U;
   // What an Identify command can be asked to describe (its CNS value).
   static constexpr std::uint32_t kDescribeNamespace = 0;
   static constexpr std::uint32_t kDescribeController = 1;
@@ -613,7 +616,7 @@ class NvmeHost {
                           // The starting block in dwords 10 and 11, and the
                           // number of blocks, counted from zero, in dword 12.
                           .dword10 = static_cast<std::uint32_t>(first),
-                          .dword11 = static_cast<std::uint32_t>(first >> 32),
+                          .dword11 = static_cast<std::uint32_t>(first >> 32U),
                           .dword12 = blocks - 1});
   }
 
@@ -636,7 +639,7 @@ class NvmeHost {
   // queue after queue. CAP.DSTRD says how far apart they are.
   std::uint64_t Doorbell(std::uint16_t queue, bool completion) {
     const std::uint64_t stride = std::uint64_t{4}
-                                 << ((Capabilities() >> 32) & 0xF);
+                                 << ((Capabilities() >> 32U) & 0xFU);
     return kDoorbells +
            (((2 * std::uint64_t{queue}) + (completion ? 1 : 0)) * stride);
   }
@@ -658,7 +661,7 @@ class NvmeHost {
   std::uint64_t Capabilities() {
     // A 64-bit register may be read as two halves, low half first.
     return Read32(kCapabilities) | std::uint64_t{Read32(kCapabilities + 4)}
-                                       << 32;
+                                       << 32U;
   }
 
   std::uint32_t Read32(std::uint64_t offset) {
@@ -680,7 +683,7 @@ class NvmeHost {
   // A 64-bit register may be written as two halves, low half first.
   void Write64(std::uint64_t offset, std::uint64_t value) {
     Write32(offset, static_cast<std::uint32_t>(value));
-    Write32(offset + 4, static_cast<std::uint32_t>(value >> 32));
+    Write32(offset + 4, static_cast<std::uint32_t>(value >> 32U));
   }
 
   void ReadMemory(std::uint64_t address, std::span<std::uint8_t> data) {

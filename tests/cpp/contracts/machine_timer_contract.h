@@ -271,7 +271,7 @@ TYPED_TEST_P(MachineTimerContract,
         bus.WaitFor(this->Microseconds(5));
         // To the writer it is 7 us.
         the_writers_time_afterwards = bus.Write64Ahead(
-            this->kMtimecmp, std::uint64_t{1} << 62, this->Microseconds(2));
+            this->kMtimecmp, std::uint64_t{1} << 62U, this->Microseconds(2));
       },
       this->Microseconds(20));
 
@@ -283,7 +283,7 @@ TYPED_TEST_P(MachineTimerContract, ACompareValueTooFarOffToEverComeIsAccepted) {
       [&](BusDriver& bus) {
         bus.WaitFor(this->Microseconds(1));
         // Thousands of years ahead: more than simulated time can count to.
-        bus.Write64(this->kMtimecmp, std::uint64_t{1} << 62);
+        bus.Write64(this->kMtimecmp, std::uint64_t{1} << 62U);
       },
       this->Microseconds(1000));
 

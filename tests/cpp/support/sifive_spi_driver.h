@@ -32,16 +32,16 @@ struct SifiveSpiDriver {
   static constexpr std::uint32_t kHold = 2;
   static constexpr std::uint32_t kOff = 3;
   // Set in the receive register when the receive FIFO had nothing in it.
-  static constexpr std::uint32_t kReceiveEmpty = 1U << 31;
+  static constexpr std::uint32_t kReceiveEmpty = 1U << 31U;
   // The frame format: eight bits to a frame, in its length field, and
   // whether a transfer only transmits, so that nothing it gets back is kept.
-  static constexpr std::uint32_t kEightBits = 8U << 16;
-  static constexpr std::uint32_t kTransmitOnly = 1U << 3;
+  static constexpr std::uint32_t kEightBits = 8U << 16U;
+  static constexpr std::uint32_t kTransmitOnly = 1U << 3U;
   // The watermarks, bits of the interrupt registers. The transmit
   // watermark is pending while the transmit FIFO holds fewer bytes than its
   // mark, and the receive watermark while the receive FIFO holds more.
-  static constexpr std::uint32_t kTransmitWatermark = 1U << 0;
-  static constexpr std::uint32_t kReceiveWatermark = 1U << 1;
+  static constexpr std::uint32_t kTransmitWatermark = 1U << 0U;
+  static constexpr std::uint32_t kReceiveWatermark = 1U << 1U;
 
   // Selects the chip at `chip_select`: its id, then its line held low from
   // the first byte until the mode changes.
