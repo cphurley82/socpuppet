@@ -33,11 +33,11 @@ The build puts the Python extension next to the Python sources, so the package r
 
 ```sh
 uv run pytest                            # just the Python tests
-uv run pytest -n auto --dist loadscope --no-loadscope-reorder   # the same, on every core
+uv run pytest -n auto --dist loadgroup --no-loadscope-reorder   # the same, on every core
 PYTHONPATH=python uv run python examples/passthrough_hello.py
 ```
 
-💡 `ctest` runs the Python tests on every core with [pytest-xdist](https://pytest-xdist.readthedocs.io), which takes about a minute where one core takes six. `--dist loadscope` keeps the tests of one class on one worker, so a board the class shares is built once. The boots of OpenSBI and UEFI take most of a minute each, so they are marked `@pytest.mark.long` and handed out first: started last, one would keep the whole run waiting while every other core sat idle. `--no-loadscope-reorder` stops xdist from putting the classes with the most tests first instead.
+💡 `ctest` runs the Python tests on every core with [pytest-xdist](https://pytest-xdist.readthedocs.io), which takes about a minute where one core takes six. `--dist loadgroup` hands the tests out one at a time, but for a class marked `@pytest.mark.platform(scope="class")`, whose tests share one process and so one board booted once: socpuppet's plugin makes a group of it, which goes to one worker. The boots of OpenSBI and UEFI take most of a minute each, so they are marked `@pytest.mark.long` and handed out first: started last, one would keep the whole run waiting while every other core sat idle. `--no-loadscope-reorder` stops xdist from putting the classes with the most tests first instead.
 
 ## The tests
 

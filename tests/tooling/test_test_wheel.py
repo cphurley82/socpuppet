@@ -133,7 +133,7 @@ def test_the_python_tests_run_on_every_core_long_ones_first(
     assert "pytest-xdist" in install
     (tests,) = [c["args"] for c in calls if c["args"][:2] == ["-m", "pytest"]]
     assert tests[2:] == [
-        *("-n", "auto", "--dist", "loadscope", "--no-loadscope-reorder"),
+        *("-n", "auto", "--dist", "loadgroup", "--no-loadscope-reorder"),
         "tests",
     ]
 
