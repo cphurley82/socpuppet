@@ -268,3 +268,24 @@ DBT-RISE-RISCV, the CPU model, is built by its own CMake as a static library, wi
 🎓 **Making a patch when others are stacked on the same file.** The patches of one project are applied in the order `cmake/Dependencies.cmake` lists them, each to what the ones before it left, so a new one is a diff against exactly that. Work in a build tree's copy (`build/dev/_deps/<dependency>-src`), which is a git checkout with every patch applied and nothing committed. To get the diff of yours alone, put the earlier patches in that checkout's index and compare the working tree with it: `git reset -q`, then `git apply --cached` each earlier patch in order, then `git diff > cmake/patches/<project>-<what>.patch`. ⚠️ Three things go wrong otherwise. A diff against the checkout's `HEAD` has every earlier patch in it. An index that still holds a draft of your own patch gives you only what changed since the draft. And to change a patch that has later ones stacked on it, take those out of the working tree first (`git apply -R`, last one first) and put them back afterwards. Then delete the dependency from the build tree and configure again, so that the whole list is applied from scratch, which is the test that it can be.
 
 📮 A change to someone else's code is a `git apply` file in `cmake/patches/`, and the same commit adds an entry to [upstream.md](upstream.md) saying what is wrong, how to see it and what to propose. That page is the list to work from when the fixes are sent upstream.
+
+## Keeping the tools current
+
+Dependabot is GitHub's bot for stale pins. Once a week it looks at the versions this repository has pinned, and where a newer one is out it opens a pull request that moves the pin, with the release notes in its description. Its orders are in `.github/dependabot.yml`. It watches two things here, and bundles each into one pull request a week, so that there is one to read and not twelve:
+
+- **`actions`**: the GitHub Actions that the workflows and `.github/actions/setup` use.
+- **`tools`**: the developer tools in `uv.lock`, which are the linters, cmake, pytest, gcovr and cibuildwheel, and the exact `==` pins in `pyproject.toml`, such as clang-format's and clang-tidy's.
+
+It does not touch `cmake/Dependencies.cmake`, `firmware/versions.toml`, or the pins in `tools/build_qbox.py` and `tools/build_pciem.py`. Those are the models and the firmware, and moving one is a decision with tests behind it, made by hand.
+
+A bot's pull request is handled like anyone's. CI's quick tier runs on it, and if it is green, merge it; `uv sync` then picks the new versions up. If it is red, a tool's new version has changed its mind about something, most often clang-tidy with a new check, or a renamed one that a wildcard in `.clang-tidy` now reaches. New checks are adopted, not switched off ([style.md](style.md#the-c-tools)), so:
+
+1. Cut a branch of our own from `main`.
+2. Cherry-pick the bot's one commit onto it and `uv sync`, so the new versions are what you work with.
+3. Fix the code, in commits of their own.
+4. Before pushing, put the bot's commit last, so that every commit before it passes with the old versions too.
+5. Land the branch the usual way. Dependabot sees that `main` has the versions and closes its own pull request.
+
+⚠️ Do not leave a red one open and wait. Next week the bot closes it and opens a fresh one with the same failure and more besides: the `tools` pull request sat red from 2026-10-18 until clang-tidy 23 was adopted on 2026-10-29.
+
+💡 A version the bot must not take has an `ignore` entry in `.github/dependabot.yml`, with its reason beside it, like the cap on setuptools ([upstream.md](upstream.md#pyfatfs)). The `wheel` job, which is cibuildwheel's, runs only in the nightly tier, so a cibuildwheel bump is proven the night after it lands, or before, with `gh workflow run nightly.yml --ref BRANCH`.
