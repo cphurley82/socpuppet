@@ -54,8 +54,9 @@ WarningsAsErrors: '*'
 # The register maps' headers are left alone. They are generated
 # (tools/regs.py), and they are C, because the Zephyr drivers include the
 # same files: nothing but #define, which is what these checks would have
-# us replace. So is what is under src/vpvper/, which is written in MINRES's
-# style for VPV-Peripherals, to be offered upstream.
+# us replace. So are the headers under src/vpvper/, which are written in
+# MINRES's style for VPV-Peripherals, to be offered upstream; its one source
+# file, rvi/iommu.cpp, is in the tidy target with ours.
 ExcludeHeaderFilterRegex: '.*/zephyr_module/include/socpuppet/regs/.*|.*/src/vpvper/.*'
 
 CheckOptions:
