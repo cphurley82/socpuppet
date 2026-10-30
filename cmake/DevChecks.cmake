@@ -98,7 +98,14 @@ if(SOCPUPPET_COVERAGE)
   # gcov is the tool that reads the counters an instrumented program leaves
   # behind. Each compiler has its own.
   if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-    set(_socpuppet_gcov "xcrun llvm-cov gcov")
+    # Found once, here: gcovr gives gcov 30 s to answer, and xcrun has taken
+    # longer than that to find it on a Mac with a test on every core.
+    execute_process(
+      COMMAND xcrun --find llvm-cov
+      OUTPUT_VARIABLE _socpuppet_llvm_cov
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      COMMAND_ERROR_IS_FATAL ANY)
+    set(_socpuppet_gcov "${_socpuppet_llvm_cov} gcov")
   elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(_socpuppet_gcov gcov)
   else()
