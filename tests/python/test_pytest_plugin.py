@@ -1,4 +1,5 @@
 import importlib.metadata
+import platform
 from pathlib import Path
 
 import pytest
@@ -370,22 +371,27 @@ def a_session_slow_to_start(session, seconds):
 
 
 class TestWhenNobodySetsTheTimeout:
-    def test_the_platform_limit_is_fifteen_minutes(
-        self, session_with_socpuppet
+    @pytest.mark.parametrize(
+        ("system", "machine", "minutes"),
+        [
+            ("Linux", "x86_64", 15),
+            ("Darwin", "arm64", 15),
+            ("Darwin", "x86_64", 45),
+        ],
+    )
+    def test_the_platform_limit_is_fifteen_minutes_and_three_times_that_on_an_intel_mac(
+        self, pytester, monkeypatch, system, machine, minutes
     ):
-        # A boot to a prompt takes about 90 s on a free Intel Mac, and more
-        # than 300 on one building besides with a test worker on every core.
-        session_with_socpuppet.makepyfile(
-            """
-            def test_the_limit(pytestconfig):
-                limit = pytestconfig.getini("socpuppet_platform_timeout")
-                assert float(limit) == 15 * 60
-            """
-        )
+        # A boot to a prompt takes about 90 s on a free Intel Mac, more than
+        # 300 on one building besides with a test worker on every core, and
+        # more than 900 on GitHub's, whose boots run four at once.
+        monkeypatch.setattr(platform, "system", lambda: system)
+        monkeypatch.setattr(platform, "machine", lambda: machine)
 
-        result = session_with_socpuppet.runpytest_subprocess()
+        config = pytester.parseconfig("-p", "socpuppet.pytest_plugin")
 
-        result.assert_outcomes(passed=1)
+        limit = config.getini("socpuppet_platform_timeout")
+        assert float(limit) == minutes * 60
 
 
 class TestWhenAPlatformClassSharesOneProcess:

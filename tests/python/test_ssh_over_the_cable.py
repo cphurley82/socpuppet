@@ -34,6 +34,7 @@ from linux_shell import (
 from sockets import a_free_port
 from socpuppet.boards.host import Host
 from socpuppet.pump import pump
+from socpuppet.pytest_plugin import patience_factor
 
 #: A boot of Linux takes seconds on QBox's hart and minutes on the
 #: interpreter, so the tests are handed out first.
@@ -43,7 +44,7 @@ pytestmark = [needs_cable, needs_dtc, pytest.mark.long]
 #: asks again 20 s of the CPU's time after its last try, the keys of a
 #: connection are made on the simulated CPU, and dropbear makes its own
 #: host key at the first connection.
-SSH_PATIENCE = 300.0
+SSH_PATIENCE = 300.0 * patience_factor()
 #: The file scp sends: as many bytes as take TCP through many windows.
 FILE_SIZE = 256 * 1024
 

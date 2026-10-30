@@ -29,7 +29,7 @@ seconds is stopped and fails, and in a class's process, the tests after it
 fail as never run. The clock starts when the test does: starting the
 process and collecting do not count, and each test of a class's process has
 the whole limit of its own. The limit is a setting in pytest's
-configuration, 900 unless set, and 0 means no limit::
+configuration, 900 unless set (2700 on an Intel Mac), and 0 means no limit::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -43,6 +43,7 @@ package is imported straight from a source tree, enable it from a
 
 import json
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -79,13 +80,24 @@ _TIMEOUT_SETTING = "socpuppet_platform_timeout"
 _DEFAULT_TIMEOUT_SECONDS = 900.0
 
 
+def patience_factor() -> int:
+    """How many times longer than usual to wait on this machine, on the wall.
+
+    Three on an Intel Mac, whose boots on the interpreter take up to three
+    times as long as anywhere else with a test worker on every core, and one
+    elsewhere.
+    """
+    intel_mac = (platform.system(), platform.machine()) == ("Darwin", "x86_64")
+    return 3 if intel_mac else 1
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add the setting for how long a `platform` test may run."""
     parser.addini(
         _TIMEOUT_SETTING,
         "How many seconds a test marked `platform` may run before it is "
         "stopped and fails. 0 means no limit.",
-        default=str(_DEFAULT_TIMEOUT_SECONDS),
+        default=str(_DEFAULT_TIMEOUT_SECONDS * patience_factor()),
     )
 
 
