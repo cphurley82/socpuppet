@@ -374,17 +374,18 @@ class TestWhenNobodySetsTheTimeout:
     @pytest.mark.parametrize(
         ("system", "machine", "minutes"),
         [
-            ("Linux", "x86_64", 15),
-            ("Darwin", "arm64", 15),
-            ("Darwin", "x86_64", 45),
+            ("Linux", "x86_64", 30),
+            ("Darwin", "arm64", 30),
+            ("Darwin", "x86_64", 90),
         ],
     )
-    def test_the_platform_limit_is_fifteen_minutes_and_three_times_that_on_an_intel_mac(
+    def test_the_platform_limit_is_thirty_minutes_and_three_times_that_on_an_intel_mac(
         self, pytester, monkeypatch, system, machine, minutes
     ):
-        # A boot to a prompt takes about 90 s on a free Intel Mac, more than
-        # 300 on one building besides with a test worker on every core, and
-        # more than 900 on GitHub's, whose boots run four at once.
+        # A boot through UEFI to a prompt takes two minutes on the
+        # interpreter on a free machine, up to 770 s on GitHub's Linux
+        # runners with a test on every core (one ran past 900), and more
+        # than 1600 s on its Intel Macs.
         monkeypatch.setattr(platform, "system", lambda: system)
         monkeypatch.setattr(platform, "machine", lambda: machine)
 

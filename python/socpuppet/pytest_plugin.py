@@ -29,7 +29,7 @@ seconds is stopped and fails, and in a class's process, the tests after it
 fail as never run. The clock starts when the test does: starting the
 process and collecting do not count, and each test of a class's process has
 the whole limit of its own. The limit is a setting in pytest's
-configuration, 900 unless set (2700 on an Intel Mac), and 0 means no limit::
+configuration, 1800 unless set (5400 on an Intel Mac), and 0 means no limit::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -77,7 +77,7 @@ _BEFORE_TEARDOWN: tuple[_Phase, ...] = ("setup", "call")
 # set well past the slowest honest boot; and it is the default, not a setting
 # in socpuppet's own configuration, since the wheel's tests run without that.
 _TIMEOUT_SETTING = "socpuppet_platform_timeout"
-_DEFAULT_TIMEOUT_SECONDS = 900.0
+_DEFAULT_TIMEOUT_SECONDS = 1800.0
 
 
 def patience_factor() -> int:
