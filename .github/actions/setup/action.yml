@@ -196,7 +196,7 @@ runs:
           build/firmware/*/python
           build/firmware/*/venv
           build/firmware/zephyr
-        key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+        key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt', 'cmake/patches/zephyr-*.patch') }}
         fail-on-cache-miss: true
     - name: Take QBox from qbox-build
       if: inputs.qbox == 'true'

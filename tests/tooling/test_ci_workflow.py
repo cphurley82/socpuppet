@@ -366,6 +366,21 @@ def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
         assert seen == PORTABLE_CACHES, file
 
 
+def test_what_is_kept_of_zephyrs_tree_is_keyed_on_zephyrs_patches():
+    # A tree restored from a cache keeps the patches it was saved with, so a
+    # new patch has to make a new cache, and the images built from the tree
+    # with it.
+    seen = set()
+    for where, _, job in WORKFLOW_JOBS:
+        for key in cache_keys(job):
+            if key.startswith(("zephyr-", "firmware-zephyr-")):
+                seen.add(key.split("-${{")[0])
+                assert "cmake/patches/zephyr-*.patch" in hashed_by(key), (
+                    f"{where}: {key}"
+                )
+    assert seen == {"zephyr", "firmware-zephyr"}
+
+
 def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_on():
     # A key that names only the system, or ubuntu-latest, is the same on
     # each Ubuntu runner, 24.04 and 26.04, Intel and Arm, and each leg would

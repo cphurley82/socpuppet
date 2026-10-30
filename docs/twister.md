@@ -239,6 +239,8 @@ Start with the scenario's `handler.log`. ⚠️ A run that stops with no verdict
 
 The `twister` job of `.github/workflows/nightly.yml` does the same every night, once on Linux and once on a Mac (`ubuntu-26.04` and `macos-15`): it restores Zephyr, the SDK and their venv from a cache (or fetches them with `firmware/build.py`), takes the boot ROMs from the `firmware` job, builds socpuppet as the `test` job does, and runs `uv run firmware/twister.py --suites`. A scenario that fails fails the job, and the verdicts and every console are kept as an artifact for each, `twister-ubuntu-26.04` and `twister-macos-15`. `uv run python tools/ci.py firmware twister` runs the same job here, and the `qbox` job does the same on the host board with QBox's CPU.
 
+⚠️ The cache of Zephyr is keyed on `firmware/versions.toml`, `firmware/twister-requirements.txt` and `cmake/patches/zephyr-*.patch`. Twister does not patch the tree it is given, only `firmware/build.py zephyr-tree` does, so a tree saved before a patch would stay unpatched for as long as it was found.
+
 💡 The Mac is there because its runner is Apple silicon, which is the one place twister runs on macOS itself. An Intel Mac runs it in a Linux container, so without this leg nothing would say that the scripts had stopped working on a Mac's own tools.
 
 It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites, the quarantine list and our own suites' `testcase.yaml` files to twister's own schemas.

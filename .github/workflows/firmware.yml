@@ -96,7 +96,7 @@ jobs:
             build/firmware/*/python
             build/firmware/*/venv
             build/firmware/zephyr
-          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt') }}
+          key: zephyr-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('firmware/versions.toml', 'firmware/twister-requirements.txt', 'cmake/patches/zephyr-*.patch') }}
           lookup-only: true
       - if: steps.cache.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
@@ -212,7 +212,7 @@ jobs:
             build/firmware/*_socpuppet_*.elf
             build/firmware/*_socpuppet_*.bin
             build/firmware/*_socpuppet_*.opcodes.txt
-          key: firmware-zephyr-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**') }}
+          key: firmware-zephyr-${{ hashFiles('firmware/**', '!firmware/twister*', '!firmware/**/testcase.yaml', 'python/socpuppet/zephyr_module/**', 'cmake/patches/zephyr-*.patch') }}
       - if: steps.images.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
         with:
