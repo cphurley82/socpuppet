@@ -1402,6 +1402,20 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: build.
 - **When it lands**: the pin, the Dependabot ignore and the silenced warnings go.
 
+## pytest-xdist
+
+[pytest-dev/pytest-xdist](https://github.com/pytest-dev/pytest-xdist), version `3.8.0` in `uv.lock`. Not part of socpuppet: it is how the Python tests run on every core, and `--dist loadgroup` is how the tests of a class that shares one boot stay in one process.
+
+### `--dist loadgroup` groups nothing under pytest 9.2
+
+- **Where**: `xdist/remote.py`, `WorkerInteractor.pytest_collection_modifyitems`, which assigns `item._nodeid` to add the group's `@name`.
+- **What is wrong**: pytest 9.2 made node IDs structured (pytest #14758), so the assignment no longer changes the ID the controller groups by. `--dist loadgroup` hands out tests one at a time, with no error, and a class that shares one boot boots again in each worker it lands on.
+- **How to see it**: in a venv with the wheel, `pytest==9.2.0` and `pytest-xdist==3.8.0`, run `tests/python/test_pytest_plugin.py -k loadgroup`: the class boots in two processes where the test wants one, and its fixture fails with the plugin's message to use `loadgroup`.
+- **What we do**: hold pytest below 9.2 in `pyproject.toml`'s dev group and the wheels' `test-requires`, and `.github/dependabot.yml` ignores pytest 9.2 and later so that its weekly pull request does not lift the cap. `tests/tooling/test_test_wheel.py` keeps the three alike.
+- **Upstream fix**: already made: pytest-xdist issue #1386, fixed by pull request #1388, merged on 2026-10-07 and not in a release when this was written.
+- **Kind**: bug.
+- **When it lands**: a release after 3.8.0 goes in `uv.lock` and `pytest-xdist`'s lower bound, and the cap and the Dependabot ignore go.
+
 ## libslirp
 
 [libslirp](https://gitlab.freedesktop.org/slirp/libslirp), the system's own, 4.9.1 where it was written (Ubuntu 24.04 has 4.7.0). QEMU's user-mode network as a library; `sp.EthernetCable` plugs a network card into this machine's network with it ([models/ethernet-cable.md](models/ethernet-cable.md)), through ctypes glue of ours, `python/socpuppet/slirp.py`, held to `tests/python/test_slirp_contract.py`.

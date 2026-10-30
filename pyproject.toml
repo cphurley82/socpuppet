@@ -62,7 +62,9 @@ dev = [
     # Makes the FAT disk images the virtio disk is booted with, and
     # reads back what firmware wrote to them.
     "pyfatfs>=1.1",
-    "pytest>=9",
+    # pytest-xdist's loadgroup groups nothing under pytest 9.2
+    # (docs/upstream.md).
+    "pytest>=9,<9.2",
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
     "ruff>=0.16",
@@ -109,9 +111,10 @@ build = ["cp312-*", "cp313-*", "cp314-*"]
 skip = ["*-musllinux_*"]
 test-sources = ["tests/python"]
 # The tests' own libraries too: the FAT images and Ethernet frames the
-# virtio tests make (pyfatfs needs setuptools<81, docs/upstream.md).
+# virtio tests make (pyfatfs needs setuptools<81, and pytest-xdist's loadgroup
+# pytest<9.2, docs/upstream.md).
 test-requires = [
-    "pytest",
+    "pytest<9.2",
     "pytest-xdist",
     "dpkt>=1.9",
     "ext4>=1.4",

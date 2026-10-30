@@ -25,3 +25,6 @@ updates:
     ignore:
       - dependency-name: setuptools
         versions: [">=81"]
+      # pytest-xdist 3.8.0's loadgroup groups nothing under pytest 9.2.
+      - dependency-name: pytest
+        versions: [">=9.2"]
