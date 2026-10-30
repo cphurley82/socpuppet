@@ -635,4 +635,4 @@ class TestWhenSocpuppetIsInstalledAndNoConftestNamesThePlugin:
 
         result = pytester.runpytest_subprocess("--markers")
 
-        result.stdout.fnmatch_lines(["@pytest.mark.platform:*"])
+        result.stdout.fnmatch_lines(["@pytest.mark.platform(scope=None):*"])

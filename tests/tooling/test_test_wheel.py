@@ -14,6 +14,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "test_wheel.py"
@@ -83,7 +84,7 @@ def test_with_uv_the_wheel_and_pytest_are_installed_by_uv_into_a_new_venv(
         if c["name"] == "uv" and c["args"][:2] == ["pip", "install"]
     ]
     assert str(test_wheel.wheel) in install
-    assert "pytest" in install
+    assert "pytest<9.2" in install
 
 
 def test_with_pip_the_wheel_and_pytest_are_installed_by_the_venvs_own_pip(
@@ -99,7 +100,7 @@ def test_with_pip_the_wheel_and_pytest_are_installed_by_the_venvs_own_pip(
         if c["name"] == "python" and c["args"][:3] == ["-m", "pip", "install"]
     ]
     assert str(test_wheel.wheel) in install
-    assert "pytest" in install
+    assert "pytest<9.2" in install
 
 
 @pytest.mark.parametrize("installer", ["uv", "pip"])
@@ -152,6 +153,38 @@ def test_the_tests_get_every_package_cibuildwheel_is_told_they_require(
 
     (install,) = [c["args"] for c in calls if "install" in c["args"]]
     assert set(required) <= set(install)
+
+
+def test_the_cap_on_pytest_is_the_same_for_wheels_dev_tools_and_dependabot():
+    # pytest-xdist's loadgroup groups nothing above the cap
+    # (docs/upstream.md), and the wheel's tests take the newest pytest they
+    # are allowed.
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        project = tomllib.load(pyproject)
+    dependabot = yaml.safe_load((REPO / ".github/dependabot.yml").read_text())
+
+    (for_the_wheels,) = [
+        each
+        for each in project["tool"]["cibuildwheel"]["test-requires"]
+        if each.startswith("pytest") and "xdist" not in each
+    ]
+    (for_the_dev_tools,) = [
+        each
+        for each in project["dependency-groups"]["dev"]
+        if isinstance(each, str)
+        and each.startswith("pytest")
+        and "xdist" not in each
+    ]
+    (ignored,) = [
+        each["versions"]
+        for update in dependabot["updates"]
+        for each in update.get("ignore", [])
+        if each["dependency-name"] == "pytest"
+    ]
+
+    assert for_the_wheels == "pytest<9.2"
+    assert for_the_dev_tools == "pytest>=9,<9.2"
+    assert ignored == [">=9.2"]
 
 
 def test_an_unknown_installer_is_refused_with_the_usage(test_wheel):
