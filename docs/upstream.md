@@ -1730,7 +1730,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 - **Where**: QEMU's `system/runstate.c` and `gdbstub/`, as libqemu carries them, and `qemu-components/common/include/cpu.h`'s `prepare_run_cpu` in `COROUTINE` mode.
 - **What is wrong**: QEMU's GDB server stops the machine on QEMU's own main thread, at a breakpoint, when a debugger attaches, and when it pauses the CPU, and starts it again at its continue. QBox's CPU loop only sees that the CPU cannot run, which is also what a CPU asleep in `wfi` looks like, and nothing it waits on keeps the kernel waiting. So while the debugger has the CPU, simulated time moves on for the rest of the platform, or a run with nothing else to do ends, CPU still stopped. A breakpoint is the worst case: the CPU stops on SystemC's thread and only asks the main loop to stop the machine, so the machine still reads as running for a while. And a stop the debugger makes of a CPU asleep wakes nothing on SystemC's side.
-- **How to see it**: `tests/python/test_gdb.py`'s `test_the_run_waits_while_it_is_stopped_and_ends_once_it_goes_on` under `ctest --preset qbox`, without the patches: the run of ten microseconds is over while the CPU sits at its breakpoint, and QBox says `icount sleep disabled and no active timers`.
+- **How to see it**: `tests/python/test_gdb.py`'s `test_the_run_waits_while_it_is_stopped_and_ends_once_it_goes_on` under `ctest --preset qbox`, without the patches: the run of ten microseconds is over while the CPU sits at its breakpoint.
 - **What we do**: `cmake/patches/libqemu-vm-stop-state.patch` exports `vm_is_stopped`, which is true while the machine is stopped and while a stop is asked for that the main loop has yet to make, and, once the GDB server is up, has every stop of the machine kick every CPU, as a continue already does. `cmake/patches/qbox-cpu-machine-state.patch` gives libqemu-cxx `vm_is_stopped()`, and has `QemuCpu`'s coroutine loop read it with `can_run()` in one hold of the big lock and tell a callback, `set_machine_state_callback`, each time it changes, on SystemC's thread. `src/socpuppet/models/qbox_cpu.cpp` holds the clock and keeps the kernel waiting from there, where it used to take the CPU's first bus access for the debugger's first continue.
 - **Upstream fix**: the same, as an event of `QemuCpu`'s that a platform can wait on: "the machine stopped" is what any platform with a clock of its own needs to hear.
 - **Kind**: missing feature.
@@ -1749,6 +1749,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 ## QEMU
 
 [qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite and not entries here (docs/models/qbox-cpu.md).
+
+### An idle CPU with no timers of QEMU's draws a warning, when QEMU's main loop happens to look
+
+- **Where**: `accel/tcg/icount-common.c`, `icount_start_warp_timer`, called from QEMU's main loop.
+- **What is wrong**: with `sleep=off`, which is how QBox runs icount, QEMU warns once with `icount sleep disabled and no active timers` when every CPU is idle and nothing is armed on its virtual clock. On a platform whose clock is SystemC's that is the normal way to be idle: SystemC owns time and wakes the CPU, and `qbox-coroutine-quantum-deadline.patch` deletes the deadline timer while the CPU is halted. Whether the main loop, a host thread, looks at that moment is a race, so the same run prints it on one machine and not on another, on the stderr of a program whose user did nothing wrong.
+- **How to see it**: `tests/python/test_run_command.py`'s tests of what `socpuppet run` has to say, which want an empty stderr, under `ctest --preset qbox`: on GitHub's `macos-26-intel` runner, without the patch, they had this line. No other machine has shown it, so nothing here shows it on demand.
+- **What we do**: `cmake/patches/libqemu-icount-no-active-timers.patch` removes the warning.
+- **Upstream fix**: a warning is right for QEMU's own machines, which nothing else wakes, so propose it as an option of libqemu's that says something outside QEMU owns time.
+- **Kind**: a surprise more than a bug.
+- **When it lands**: delete the patch file.
 
 ### An atomic at a misaligned address raises a load's cause
 
