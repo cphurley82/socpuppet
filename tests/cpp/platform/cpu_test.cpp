@@ -150,6 +150,9 @@ TEST(WhenSomethingElseWritesOverCodeAndTheProgramExecutesFenceI,
   program.push_back(riscv::Li(riscv::kT1, 1));
   program.push_back(return_to_caller);
   with_cpu.Load(program);
+  // The program never sleeps: it calls the function and stores its answer
+  // for the whole millisecond, so each run's result is the function's last
+  // answer, and the second run's is given by what the function is by then.
   with_cpu.RunUntilAsleep();
   const std::uint32_t before = with_cpu.ResultWord();
 

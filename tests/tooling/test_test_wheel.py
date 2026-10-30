@@ -19,6 +19,17 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "test_wheel.py"
 PYTHON = (REPO / ".python-version").read_text().strip()
+# The pytest the wheels' tests take, as pyproject.toml tells cibuildwheel and
+# the tool alike: under a cap while pytest-xdist's loadgroup needs one
+# (docs/upstream.md).
+with (REPO / "pyproject.toml").open("rb") as _pyproject:
+    (PYTEST,) = [
+        each
+        for each in tomllib.load(_pyproject)["tool"]["cibuildwheel"][
+            "test-requires"
+        ]
+        if each.startswith("pytest") and "xdist" not in each
+    ]
 
 # uv and a venv's python. `uv venv DIR` makes DIR/bin/python, which is this
 # same script. Each logs its name, arguments and directory, and whether
@@ -84,7 +95,7 @@ def test_with_uv_the_wheel_and_pytest_are_installed_by_uv_into_a_new_venv(
         if c["name"] == "uv" and c["args"][:2] == ["pip", "install"]
     ]
     assert str(test_wheel.wheel) in install
-    assert "pytest<9.2" in install
+    assert PYTEST in install
 
 
 def test_with_pip_the_wheel_and_pytest_are_installed_by_the_venvs_own_pip(
@@ -100,7 +111,7 @@ def test_with_pip_the_wheel_and_pytest_are_installed_by_the_venvs_own_pip(
         if c["name"] == "python" and c["args"][:3] == ["-m", "pip", "install"]
     ]
     assert str(test_wheel.wheel) in install
-    assert "pytest<9.2" in install
+    assert PYTEST in install
 
 
 @pytest.mark.parametrize("installer", ["uv", "pip"])
@@ -163,11 +174,6 @@ def test_the_cap_on_pytest_is_the_same_for_wheels_dev_tools_and_dependabot():
         project = tomllib.load(pyproject)
     dependabot = yaml.safe_load((REPO / ".github/dependabot.yml").read_text())
 
-    (for_the_wheels,) = [
-        each
-        for each in project["tool"]["cibuildwheel"]["test-requires"]
-        if each.startswith("pytest") and "xdist" not in each
-    ]
     (for_the_dev_tools,) = [
         each
         for each in project["dependency-groups"]["dev"]
@@ -182,7 +188,7 @@ def test_the_cap_on_pytest_is_the_same_for_wheels_dev_tools_and_dependabot():
         if each["dependency-name"] == "pytest"
     ]
 
-    assert for_the_wheels == "pytest<9.2"
+    assert PYTEST == "pytest<9.2"
     assert for_the_dev_tools == "pytest>=9,<9.2"
     assert ignored == [">=9.2"]
 
