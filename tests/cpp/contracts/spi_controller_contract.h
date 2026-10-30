@@ -271,6 +271,35 @@ TYPED_TEST_P(SpiControllerContract,
   EXPECT_THAT(taken, ::testing::Each(::testing::Optional(::testing::_)));
 }
 
+// Linux's driver queues a transfer's bytes before it raises the mark, so an
+// answer may be in under the old mark by then, and pending under it. What it
+// reads after raising the mark must be about the new mark: a CPU running
+// ahead of the clock reads it before any process of the controller's has run.
+TYPED_TEST_P(SpiControllerContract,
+             AWatermarkPendingUnderAnOldMarkIsNotPendingOnceTheMarkIsRaised) {
+  bool pending_under_the_old_mark = false;
+  bool pending_under_the_new_mark = true;
+
+  this->OnTheBus([&](BusDriver& bus) {
+    const SifiveSpiDriver spi{bus};
+    spi.Select(1);
+    spi.Format(/*transmit_only=*/false);
+    spi.SetReceiveMark(0);
+    for (const std::uint8_t byte :
+         {std::uint8_t{0x11}, std::uint8_t{0x22}, std::uint8_t{0x33}}) {
+      spi.Queue(byte);
+    }
+    pending_under_the_old_mark =
+        spi.WaitFor(SifiveSpiDriver::kReceiveWatermark);
+    spi.SetReceiveMark(2);
+    pending_under_the_new_mark =
+        spi.Pending(SifiveSpiDriver::kReceiveWatermark);
+  });
+
+  EXPECT_TRUE(pending_under_the_old_mark);
+  EXPECT_FALSE(pending_under_the_new_mark);
+}
+
 // Linux's driver, at a slow enough clock, sleeps on the interrupt: it
 // enables the watermark it waits for, and its handler disables it again.
 TYPED_TEST_P(
@@ -376,6 +405,7 @@ REGISTER_TYPED_TEST_SUITE_P(
     APendingWatermarkOfOneIsNoLongerPendingAsSoonAsAByteIsQueued,
     AnswersToBytesSentTransmitOnlyAreNotKeptForTheNextTransfer,
     AReceiveWatermarkOfTwoIsPendingOnceThreeAnswersAreIn,
+    AWatermarkPendingUnderAnOldMarkIsNotPendingOnceTheMarkIsRaised,
     TheInterruptIsUpWhileAnEnabledWatermarkIsPendingAndDownOnceDisabled,
     AChipIsCalledOnlyFromTheControllersOwnProcesses,
     AChipLetGoAndSelectedAgainAtOnceSeesTwoFramesInOrder,
