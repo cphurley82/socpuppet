@@ -130,6 +130,39 @@ TEST(WhenAPlatformWithACpuIsRun, TheCpuExecutesTheProgramAtItsResetVector) {
   EXPECT_EQ(with_cpu.Result(), 0x5A);
 }
 
+// A disk's controller reads a program into a page of RAM that held another
+// program, and the kernel executes fence.i before it runs it: the CPU must
+// run what is there now. A CPU that keeps a translation of what it has
+// executed cannot see such a write coming, since it is not the CPU's.
+TEST(WhenSomethingElseWritesOverCodeAndTheProgramExecutesFenceI,
+     TheProgramRunsWhatWasWritten) {
+  constexpr std::int32_t kFunction = 0x40;
+  const riscv::Word return_to_caller = riscv::Jalr(0, riscv::kRa, 0);
+  CpuPlatform with_cpu{64};
+  riscv::Program program{
+      riscv::Auipc(riscv::kT0, 0),
+      riscv::kFenceI,
+      riscv::Jal(riscv::kRa, kFunction - 8),
+      riscv::Sw(riscv::kT1, riscv::kT0, riscv::kResultOffset),
+      riscv::Jal(0, -12),
+  };
+  program.resize(kFunction / sizeof(riscv::Word));
+  program.push_back(riscv::Li(riscv::kT1, 1));
+  program.push_back(return_to_caller);
+  with_cpu.Load(program);
+  with_cpu.RunUntilAsleep();
+  const std::uint32_t before = with_cpu.ResultWord();
+
+  const std::array<riscv::Word, 1> written_over{riscv::Li(riscv::kT1, 2)};
+  with_cpu.platform.DebugWrite("cpu.socket",
+                               CpuPlatform::kResetVector + kFunction,
+                               std::as_bytes(std::span{written_over}));
+  with_cpu.RunUntilAsleep();
+
+  EXPECT_EQ(before, 1U);
+  EXPECT_EQ(with_cpu.ResultWord(), 2U);
+}
+
 TEST(WhenXlenIs32, TheCpusRegistersAre32BitsWide) {
   CpuPlatform with_cpu{/*xlen=*/32};
   with_cpu.Load(riscv::StoreAllOnesShiftedRightThenSleep(28));

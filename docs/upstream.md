@@ -1760,6 +1760,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: a surprise more than a bug.
 - **When it lands**: delete the patch file.
 
+### `fence.i` does not make a device's writes what the CPU runs
+
+- **Where**: `target/riscv/insn_trans/trans_rvi.c.inc`, `trans_fence_i`.
+- **What is wrong**: QEMU translates code a block at a time, keeps the blocks by physical address, and treats `fence.i` as doing nothing: it sees the CPU's own writes to code, and on QEMU's own machines the writes of its devices too, and throws away what it had translated from there. With guest RAM shared with a platform outside QEMU, as QBox has it, a device's write goes straight to the RAM and QEMU never hears of it. So after a disk's controller reads a program into a page that once held other code, and the kernel executes the `fence.i` the specification asks for, the CPU goes on running the old code.
+- **How to see it**: `WhenSomethingElseWritesOverCodeAndTheProgramExecutesFenceI.TheProgramRunsWhatWasWritten` in `tests/cpp/platform/cpu_test.cpp`, with `SOCPUPPET_CPU=qbox_cpu`, without the patch: the program still runs the function it had. A likely sighting, not proved to be this: `dropbear` dying of a segfault inside a freshly loaded `libz` on one nightly's `macos-26-intel`, and on no other run.
+- **What we do**: `cmake/patches/libqemu-riscv-fence-i-flushes.patch` has `fence.i` queue a flush of everything translated, and end its block so that the flush comes before the next instruction.
+- **Upstream fix**: QEMU's own machines do not need it, so the fit is for QBox: tell QEMU what a device wrote (`tb_invalidate_phys_range` is exported, and QBox calls it only from its tests), which keeps the translations of everything else. That needs every write to guest RAM from outside to be seen, including one through a device's own direct pointer.
+- **Kind**: bug.
+- **When it lands**: delete the patch file.
+
 ### An atomic at a misaligned address raises a load's cause
 
 - **Where**: `target/riscv`, the translation of the AMOs, which take the address-misaligned exception of a load.

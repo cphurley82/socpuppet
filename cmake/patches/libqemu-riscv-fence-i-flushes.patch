@@ -1,0 +1,56 @@
+diff --git a/target/riscv/helper.h b/target/riscv/helper.h
+index 09025c2..a52de17 100644
+--- a/target/riscv/helper.h
++++ b/target/riscv/helper.h
+@@ -136,6 +136,7 @@ DEF_HELPER_1(mnret, tl, env)
+ DEF_HELPER_1(ctr_clear, void, env)
+ DEF_HELPER_1(wfi, void, env)
+ DEF_HELPER_1(wrs_nto, void, env)
++DEF_HELPER_1(fence_i, void, env)
+ DEF_HELPER_1(tlb_flush, void, env)
+ DEF_HELPER_1(tlb_flush_all, void, env)
+ DEF_HELPER_4(ctr_add_entry, void, env, tl, tl, tl)
+diff --git a/target/riscv/insn_trans/trans_rvi.c.inc b/target/riscv/insn_trans/trans_rvi.c.inc
+index 54b9b4f..cf47caf 100644
+--- a/target/riscv/insn_trans/trans_rvi.c.inc
++++ b/target/riscv/insn_trans/trans_rvi.c.inc
+@@ -958,10 +958,13 @@ static bool trans_fence_i(DisasContext *ctx, arg_fence_i *a)
+     }
+ 
+     /*
+-     * FENCE_I is a no-op in QEMU,
+-     * however we need to end the translation block
++     * What the CPU itself writes QEMU sees, and invalidates what it had
++     * translated from there. What a device writes it does not, when guest
++     * RAM is shared with a platform outside QEMU, so forget it all here,
++     * and end the translation block.
+      */
+     gen_update_pc(ctx, ctx->cur_insn_len);
++    gen_helper_fence_i(tcg_env);
+     exit_tb(ctx);
+     ctx->base.is_jmp = DISAS_NORETURN;
+     return true;
+diff --git a/target/riscv/op_helper.c b/target/riscv/op_helper.c
+index 6ccc127..12444c9 100644
+--- a/target/riscv/op_helper.c
++++ b/target/riscv/op_helper.c
+@@ -25,6 +25,7 @@
+ #include "accel/tcg/cpu-ldst.h"
+ #include "accel/tcg/probe.h"
+ #include "exec/helper-proto.h"
++#include "exec/tb-flush.h"
+ #include "exec/tlb-flags.h"
+ #include "trace.h"
+ 
+@@ -569,6 +570,11 @@ void helper_wrs_nto(CPURISCVState *env)
+     }
+ }
+ 
++void helper_fence_i(CPURISCVState *env)
++{
++    queue_tb_flush(env_cpu(env));
++}
++
+ void helper_tlb_flush(CPURISCVState *env)
+ {
+     CPUState *cs = env_cpu(env);

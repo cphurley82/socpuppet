@@ -434,6 +434,8 @@ inline constexpr Word kMret = 0x3020'0073;
 inline constexpr Word kSret = 0x1020'0073;
 // Wait for an interrupt.
 inline constexpr Word kWfi = 0x1050'0073;
+// Make what was written to memory what is fetched from it from now on.
+inline constexpr Word kFenceI = 0x0000'100F;
 
 // How far past its first instruction a program leaves its result.
 inline constexpr std::int32_t kResultOffset = 0x200;
