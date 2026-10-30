@@ -121,8 +121,10 @@ struct DbtRiseRig {
 struct QboxRig {
   static const char* Implementation() { return "qbox_cpu"; }
   static socpuppet::Config Config() {
-    return {{"xlen", 64},
-            {"reset_vector", BusMasterContract<QboxRig>::kProgramBase}};
+    return {
+        {"xlen", 64},
+        {"reset_vector", BusMasterContract<QboxRig>::kProgramBase},
+    };
   }
   static void Load(socpuppet::Platform& platform, Behavior behavior) {
     LoadProgram<QboxRig>(platform, behavior);
