@@ -1,0 +1,14 @@
+diff --git a/accel/tcg/icount-common.c b/accel/tcg/icount-common.c
+index b1b6c00..2362099 100644
+--- a/accel/tcg/icount-common.c
++++ b/accel/tcg/icount-common.c
+@@ -336,9 +336,6 @@ void icount_start_warp_timer(void)
+     deadline = qemu_clock_deadline_ns_all(QEMU_CLOCK_VIRTUAL,
+                                           ~QEMU_TIMER_ATTR_EXTERNAL);
+     if (deadline < 0) {
+-        if (!icount_sleep) {
+-            warn_report_once("icount sleep disabled and no active timers");
+-        }
+         return;
+     }
+ 
