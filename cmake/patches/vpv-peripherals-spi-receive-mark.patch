@@ -1,0 +1,20 @@
+diff --git a/sifive/spi.cpp b/sifive/spi.cpp
+index 3d83344..1175777 100644
+--- a/sifive/spi.cpp
++++ b/sifive/spi.cpp
+@@ -100,6 +100,15 @@ spi::spi(sc_core::sc_module_name nm)
+         reg.put(data);
+         return true;
+     });
++    regs->rxmark.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
++        reg.put(data);
++        // At once: a CPU running ahead of the clock reads the watermark
++        // before any process here runs, and an answer may be in under the
++        // old mark.
++        if(!this->regs->in_reset())
++            update_irq();
++        return true;
++    });
+     regs->ie.set_write_cb([this](scc::sc_register<uint32_t>& reg, uint32_t data, sc_core::sc_time d) -> bool {
+         reg.put(data);
+         update_irq_evt.notify(sc_core::SC_ZERO_TIME);

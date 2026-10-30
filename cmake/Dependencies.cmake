@@ -550,6 +550,9 @@ FetchContent_Declare(vpv_peripherals
   # spi-receive-fifo-full: the SiFive SPI dropped an answer with its receive
   # FIFO full, which a CPU running ahead of the clock lets happen, and a
   # driver then waits for ever for it.
+  # spi-receive-mark: the SiFive SPI's receive watermark was not worked out
+  # again when the mark was written, so a CPU running ahead of the clock saw
+  # it pending under the old mark, and read answers that had not come yet.
   # gpio-pull-up: the SiFive GPIO ignored a pin that nothing drives, which
   # kept reading what was last driven on it, and its pull-up did nothing.
   # gpio-interrupts: the SiFive GPIO had its interrupt registers and nothing
@@ -569,6 +572,7 @@ FetchContent_Declare(vpv_peripherals
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-watermark.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-transmit-only.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-receive-fifo-full.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-spi-receive-mark.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-gpio-pull-up.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/vpv-peripherals-gpio-interrupts.patch
   UPDATE_DISCONNECTED TRUE

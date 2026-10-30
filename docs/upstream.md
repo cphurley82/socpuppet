@@ -922,6 +922,16 @@ Read in `sifive/spi.cpp` and `sifive/gen/spi_regs.h` and not acted on, since nei
 - `fmt.len`, `fmt.proto` and `fmt.endian` are kept and ignored: every frame is eight bits, on one data line, most significant bit first. And with `bit_true_transfer` off, the default, only a byte's top bit goes on `mosi_o`.
 - `fctrl` and `ffmt`, the memory-mapped flash mode, are kept and ignored. socpuppet's flash maps its chip into memory itself.
 
+### The SiFive SPI's receive watermark does not hear its mark change
+
+- **Where**: `sifive/spi.cpp`: nothing is called when `rxmark` is written. `ip.rxwm` is worked out again only by `update_irq`, which runs when a FIFO moves.
+- **What is wrong**: 🎓 the FE310's manual has `rxwm` pending while the receive FIFO holds more entries than `rxmark`, which a chip works out continuously. Linux's `spi-sifive` queues a transfer's bytes first, then raises the mark to one below their count, then polls `ip`. If an answer comes in before the mark is raised, `rxwm` is pending under the old mark of zero and stays so: a CPU running ahead of the clock reads it before any process of the controller's runs, and takes all its answers with only the first in. It reads the rest as empty (`WARNING` at `spi-sifive.c`, `sifive_spi_rx`, once a boot), and the answers that come later stay in the FIFO for good, so every later read starts with the last byte of the one before it.
+- **How to see it**: `SpiControllerContract.AWatermarkPendingUnderAnOldMarkIsNotPendingOnceTheMarkIsRaised` in `tests/cpp/contracts/spi_controller_contract.h`, with the patch taken out. In Linux it takes a kernel image whose quantum falls between the bytes and the mark: `test_linux_boot_flash.py` read `00 73 70 61 6d ...`, on QBox's CPU, with the image of one build and not of another.
+- **What we do**: `cmake/patches/vpv-peripherals-spi-receive-mark.patch` gives `rxmark` a write callback that calls `update_irq` at once.
+- **Upstream fix**: the same. `txmark` has the same gap, which nothing here reaches: Linux and Zephyr set it once, with the transmit FIFO empty.
+- **Kind**: bug.
+- **When it lands**: drop the patch.
+
 ### The SiFive GPIO ignores a pin nothing drives, and its pull-up does nothing
 
 - **Where**: `sifive/gpio.cpp`, `pin_input`, whose `default:` case drops a value of Z, high impedance, which is a pin nothing drives; the `pue` register, which nothing reads; and `value`, which is written only when an input pin is driven, so a pin that stops being an output keeps whatever it read before.
