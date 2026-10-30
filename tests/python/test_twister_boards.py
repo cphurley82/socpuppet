@@ -25,6 +25,7 @@ import pytest
 import processes
 from cast import ROM_FOR_A_32_BIT_CPU
 from riscv_program import a_program_that_says
+from socpuppet.pytest_plugin import patience_factor
 from zephyr_module import BOARDS, ZEPHYR_MODULE, ram_size
 
 jsonschema = pytest.importorskip("jsonschema")
@@ -191,7 +192,7 @@ class TestWhenTheRunTargetOfAnImagesBuildIsBuilt:
         with start_the_run_target_of(build) as running:
             listener = threading.Thread(target=listen, args=(running.stdout,))
             listener.start()
-            heard_while_it_ran = heard.wait(timeout=10)
+            heard_while_it_ran = heard.wait(timeout=10 * patience_factor())
             (build.directory / "told").touch()
             listener.join()
 
