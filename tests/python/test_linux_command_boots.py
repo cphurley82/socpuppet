@@ -17,6 +17,7 @@ from processes import ended_or_killed, run_socpuppet, start_socpuppet
 from pseudo_terminal import Terminal
 from sockets import a_free_port
 from socpuppet import linux
+from socpuppet.pytest_plugin import patience_factor
 
 pytestmark = [needs_dtc, pytest.mark.long]
 
@@ -181,7 +182,7 @@ def ssh_answer(port: int, command: str, terminal: Terminal) -> str:
 PROMPT = re.compile(linux.PROMPT.pattern.encode())
 #: Seconds on the wall for ssh to answer, once Linux has prompted: dropbear
 #: makes its host key at the first connection, on the simulated CPU.
-ANSWERS_WITHIN = 300
+ANSWERS_WITHIN = 300 * patience_factor()
 #: Seconds on the wall for Ctrl-C to bring the prompt back: far less than
 #: the `sleep 100` it has to stop.
 STOPS_WITHIN = 30
@@ -189,4 +190,4 @@ STOPS_WITHIN = 30
 #: two. Alone, the prompt comes in 75 to 100 s on the interpreter here;
 #: three boots at once, beside the other long tests, have taken 230 s, and
 #: four at once on CI's Intel Macs have gone past 600.
-BOOTS_WITHIN = 900
+BOOTS_WITHIN = 900 * patience_factor()
