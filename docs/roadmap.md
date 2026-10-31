@@ -1,10 +1,10 @@
 # The roadmap 🧦
 
-Where socpuppet is going, in phases and milestones, and where it is now. [vision.md](vision.md) is the compass this page is read by: it says why anything here is built and the rules that order it. How it got here is in [history/](history/README.md): the decisions, the lessons, and the spike reports. The step-by-step of a finished milestone is in its commits.
+Where socpuppet is going, in phases and milestones, and where it is now. [vision.md](vision.md) is the compass this page is read by: it says why anything here is built and the rules that order it. How it got here is in [history/](history/README.md): the decisions, the lessons and the spike reports. The step-by-step of a finished milestone is in its commits.
 
 ## Where we are
 
-Phases 1 to 4 are done: three Zephyr firmwares boot together on a chiplet host and an NVMe SSD, from a ROM and a flash if asked, with the interrupt architecture RISC-V servers use and Zephyr's own test suites running on every board. Phase 5, the road to Linux, is done too: the hart runs the way Linux runs it, OpenSBI and UEFI boot on both harts, and 🐧 a stock Linux kernel boots to a shell that Python, or you (`socpuppet linux`), can type at, with every 🎭 virtio stand-in under Linux's own driver, and its root filesystem on the real SSD, across the die-to-die link, with the SSD's own firmware ([linux.md](linux.md)). From here the real blocks take the rest of the stand-ins' places, one at a time. And the SSD has met a real host: 🐧 this machine's own Linux, through pciem, finds it on its PCIe bus, formats it, mounts it and writes to it, with the SSD's Zephyr firmware being the drive (`socpuppet drive`, [models/pciem-host.md](models/pciem-host.md)). 🔌 And Linux is on this machine's network, with no root, so `ssh -p 2222 root@localhost` reaches it from a second terminal ([linux.md](linux.md#over-ssh)). 🎓 And the drive can sit behind an [IOMMU](models/iommu.md): Zephyr's disk test runs through page tables its driver set up, a page taken away is a fault record and an interrupt, and Linux's own `riscv-iommu` driver brings it up under the root on the drive (`socpuppet linux --root drive --iommu`). And the host has the small parts every board has, each under Zephyr's own sample or test with 🧵 Python at the far end: its boot flash on SiFive's SPI controller, which Linux reads and writes through `spi-nor`, a [GPIO](models/gpio.md), an [I2C controller](models/i2c-controller.md) and a [real-time clock](models/rtc.md) Linux sets its clock from. **M19, the AI processor, is next**; M17, the first network card of real hardware's kind, waits until Linux asks for one.
+Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is next**, starting with M32: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. Phase 9, the memory, follows it, and M19 comes after both.
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -37,6 +37,14 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M17 | Ethernet | M13, M20, M29 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | deferred 2026-10-27 |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed, untranslated and through page tables; DMA to an unmapped page is a fault record and an interrupt; then the root on the drive in a context Linux's own IOMMU driver programmed (`test_iommu.py`, [models/iommu.md](models/iommu.md)) | ✅ |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers (`test_zephyr_peripheral_samples.py`, `test_linux_boot_flash.py`, `test_linux_rtc.py`, [models/spi-flash.md](models/spi-flash.md)) | ✅ |
+| M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`) | |
+| M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux, macOS and WSL, in CI | |
+| M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`; every link resolves, under lint; a stranger reaches a boot from the front door | |
+| M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
+| M37 | The container | M33, M36 | the release's image opens as a devcontainer in VS Code and in a Codespace, and `docker run` of it boots Linux on both harts with nothing fetched or built, in CI | |
+| M34 | Labs in twenty-minute sketches | M36, M37 | every lab states a measured length under twenty minutes and its Python steps run under ctest; the 🌱 first-rung lab needs nothing but one of the release's channels | |
+| M38 | The memory spike, a decision gate | M14, M5 | a report (`history/memory-spike.md`): which controller, who brings it up, where the DRAM lives, what Linux and Zephyr ask, which timed model is the tier later | |
+| M39 | The DRAM controller | M38 | the three firmwares boot from flash with the host's RAM behind a controller firmware brought up, a read before that a bus error on the trace, Linux's prompt unchanged (`test_ddr_controller.py`) | |
 | M19 | AI processor | M12, M13, M14, M15 | an inference whose weights are in flash, its data through the IOMMU, its completion a message, its answer checked from Python; then from Linux user space | |
 | M16 | SHRM and the two-socket board | M13 | two hosts in one simulation: one writes into memory the other's SHRM lent it, and the other reads it on its console | |
 | M9 | Realistic NAND and garbage collection | M4 | M4's and M6's tests pass under sustained writes | |
@@ -52,72 +60,97 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 5. **The road to Linux.** The hart and the board run the way Linux will run them, then OpenSBI, then UEFI, then the kernel. (M22 to M28, M20, M24)
 6. **Linux grows, and meets this machine.** A real host for the SSD, a cable to this machine, Ethernet, the IOMMU, the AI processor and the small parts, each under Linux's own driver. (M30, M31, M29, M17, M15, M19, M18)
 7. **The rest of the cast, and fidelity.** What nothing on the road to Linux needs. (M16, M9, M10, M11)
+8. **The first release.** Images fetched on first use, QBox in one command, the docs read by a stranger, the wheel on PyPI and a Homebrew tap with Windows through WSL, a container that opens in VS Code with both harts inside, and then the labs in twenty-minute sketches. (M32 to M37)
+9. **Memory.** Where the DRAM lives, and a DRAM controller firmware brings up. (M38, M39)
 
-## Dependencies
-
-```text
-M0 ─┬─ M1 (ISS gate) ── M3 host ──────────────┐
-    ├─ M2 (PCIe + behavioral NVMe) ── M4 SSD ─┼─ M6 ── M7 ── M8
-    └─ M5 IO manager (5a link, 5b firmware) ──┘
-```
-
-```text
-M8 ─┬─ M12 (NPU gate)
-    ├─ M13 AIA ─────────┬─ M21 twister ── M22 the hart ── M26 speed spike ── M27 QBox ── M23 OpenSBI ── M28 UEFI ── M25 virtio spike ── M20 Linux ─┬─ M24 rootfs on the drive ─┬─ M30 real-host spike ── M31 a real host ── M29 a cable to this machine ── M17 Ethernet
-    └─ M14 ROM, flash ──┘                                                                                                                          │                           └─ M15 IOMMU ── M19 NPU
-                                                                                                                                                   └─ M18 the small essentials
-```
-
-The chain through Phase 5 is stricter than the table's "Needs" column, on purpose. M22 could have run beside M21 and came after it so that every later milestone gets a board tested by Zephyr's own suites. M28 comes before M25 so that the spike's block device meets a driver nobody here wrote. M20 does not need UEFI: a kernel boots from `fw_jump` with nothing between, and UEFI is a second way to the same prompt, kept as a tier. After M20 the branches are independent, and the suggested order was M24, M29, M17, M15, M19, M18, then Phase 7 in any order; M24 is done. On 2026-10-22 the maintainer put M30 and M31 first, and M29 after them because both need the same thing: a loop that waits on the wall while the CPU sleeps and looks at a file descriptor meanwhile, which `interact` did for the keyboard and M31's pump now does for `/dev/pciem` too; M30, M31 and M29 are done. On 2026-10-27 the maintainer deferred M17 and took M15 next, since Linux asks for an IOMMU and not for a second network card ([history/decisions.md](history/decisions.md)); M15 is done. The same day the maintainer took M18 before M19; M18 is done. M29 came before M17 because `ssh` needs a bridge at the far end of a network card and not a card: the virtio card already answers Linux's `ping` under Linux's own driver, and the real card inherits the bridge. M9 could be pulled forward any time, and could have been since M4.
+Phases 8 and 9 come before the rest of 6 and 7 ([history/decisions.md](history/decisions.md), 2026-10-31). Where the order is stricter than the table's "Needs" column, it is on purpose: M22 came after M21 so that every later milestone gets a board tested by Zephyr's own suites; M28 before M25 so that the spike's block device met a driver nobody here wrote; M29 before M17 because `ssh` needs a bridge at the far end of a card, not a card; M36 after M35 because the README it ships must be true; M37 after M36 because the image is built from the release's wheel and images; M34 last, after both releases, because the channels a release ships through shape how every lab begins. The rest of the ordering, and why, is in [history/decisions.md](history/decisions.md).
 
 ## How a milestone is done
 
 - Its exit test is automated and runs in GitHub Actions. A spike's exit is a report and a recommendation, and the maintainer decides.
-- Every slot has one contract suite; a 🎭 stand-in and the full model both pass it before either is used in a boot. Stand-in configurations from earlier milestones stay in CI.
+- Every slot has one contract suite, which a 🎭 stand-in and the full model both pass before either is used in a boot ([vision.md](vision.md#what-socpuppet-does-differently)); stand-in configurations from earlier milestones stay in CI.
 - Model logic is plain C++, unit-tested without the SystemC kernel; a borrowed model is tested through its contract, behind its adapter.
-- Zephyr's own test suites run on every board under twister in CI (from M21), and Linux boots to its prompt in CI every night (from M20). Linux through UEFI from a server's disk, the quick way and from the flash, runs every night with the other boots.
+- Zephyr's own test suites run on every board under twister in CI, and every boot of Linux runs every night.
 
-A milestone's steps are planned when it starts, one `/tdd` session each, and live in its commits. When it is done its row above gets a ✅, what it decided goes to [history/decisions.md](history/decisions.md), what it taught to [history/lessons.md](history/lessons.md), and anything it left for later joins the loose ends below.
+A milestone's steps are planned when it starts, one `/tdd` session each, and live in its commits. When it is done its row gets a ✅, what it decided goes to [history/decisions.md](history/decisions.md), what it taught to [history/lessons.md](history/lessons.md), and what it left for later joins the loose ends.
 
 ## What is next
 
+What each milestone delivers, and why. How is planned when it starts.
+
+### M32: Images fetched on first use
+
+An installed wheel boots real firmware with nothing built: the images come from a release the first time they are needed. Aim 3 of [vision.md](vision.md#the-aims), a firmware team installs the wheel and boots, and *a newcomer builds it for free*.
+
+- Not inside the wheel, which stays small and MIT-only; the kernel stays stock.
+
+### M33: QBox in one command
+
+The second hart from a bare checkout in one command, on Linux, macOS and Windows under WSL. A second opinion is worth having only if a newcomer can get one.
+
+- 🦜 Never a QBox wheel: GPL stays out of what PyPI ships.
+
+### M35: The docs, read by a stranger
+
+Every page read as a stranger reads it: the project's own machines, people and dates out, what a contributor needs kept. The gate's front door, and the bottom rung's three rules ([vision.md](vision.md#who-it-is-for)).
+
+- 🌱 The gate's first rung is this milestone's: one page and one example that need nothing but Python, where the reader changes a line and the chip does something different. The labs build on it.
+
+### M36: The release: PyPI and the tap
+
+`pip install socpuppet` on Linux, macOS and WSL, a Homebrew tap on a Mac, and a release that builds, tests and publishes itself from a tag. Aim 2, deliver it with `pip install`; the release gate is its exit.
+
+- ⚠️ The maintainer's own hands: the PyPI account and name, the trusted publisher, the tap's repository.
+- After it, the post per act and the upstream track open ([vision.md](vision.md#the-release-gate)).
+
+### M37: The container
+
+The release as an image, with the wheel installed, the images fetched and QBox's hart built, that opens as a devcontainer in VS Code or a Codespace and runs with `docker run`. For a Windows machine with nothing set up, a classroom that wants every seat the same, and the second hart without the build: the one channel that can carry QBox, since GPL stays out of the wheel but not out of an image whose sources are offered.
+
+- The contributors' devcontainer stays what it is, a build environment.
+
+### M34: Labs in twenty-minute sketches
+
+The Linux tour split, and a lab for each thing socpuppet does: each a sketch of twenty minutes, in the ladder of the four readers, from 🌱 install and change a line to 🐧 a real host. Aim 1: a chip is learned one block at a time. Written after the releases, because how a reader installed is how every lab begins.
+
+### M38: The memory spike
+
+A report: which real controller the model stands for and how a real boot brings DRAM up; where the DRAM lives, the compute die as today or the IO die as a chiplet server's; what Linux and Zephyr ask of a controller; and which open timed model becomes the tier when a question asks. It settles the open decision on the DRAM's die, and looks before anything is written, by *borrow before building*.
+
+- Timing stays out of M39: *what a block does matters; how long it takes is a tier*.
+
+### M39: The DRAM controller
+
+The host's RAM behind a controller that firmware brings up before anything is loaded into it, 🎓 which is why a chip has SRAM and a boot ROM at all; a stand-in that is up from reset and the model, both kept. Aim 1, and *every block arrives the same way*.
+
+- It leaves the timed tier, ECC and file-backed contents as loose ends.
+
 ### M19: AI processor
 
-M12's gate chose 🎭 a behavioral NPU of ours, a simplified model on the compute die with its arithmetic in Python ([history/npu-spike.md](history/npu-spike.md)). What the host's firmware does is what it would do with any NPU: describe the work, ring a doorbell, wait for an interrupt.
+🎭 A behavioral NPU of ours, a simplified model on the compute die whose arithmetic is in Python, chosen by M12's gate ([history/npu-spike.md](history/npu-spike.md)). What the host's firmware does is what it would do with any NPU: describe the work, ring a doorbell, wait for an interrupt; then the same from Linux user space.
 
-- **The block**: a register map of ours, a queue of descriptors in memory, a handful of operations (matrix multiply, add, clamp at zero), its data moved by DMA through an IOMMU of its own, and its completion a message to the IMSIC. A Zephyr driver, and `firmware/mlp`, a small multi-layer perceptron on an input both sides know.
-- 🧵 **The arithmetic is a Python callable, and the library behind it is interchangeable**: numpy is what the default is written with, and torch is a different callable, not a C++ change. Planning M19 says where the callable is set and whether numpy is a dependency of the wheel or an extra.
-- 🦜 **Not QBox's Hexagon**, which the spike also ran; it stays a candidate for an optional, from-source component later, behind the same doorbell.
-
-Exit: an inference whose weights were read from flash, whose data went through the IOMMU, whose completion was an interrupt message, and whose answer Python checks against numpy's. Then the same inference from Linux user space, through a UIO driver written here.
+- 🧵 The arithmetic is a Python callable and the library behind it is interchangeable: numpy by default, torch a different callable and not a C++ change.
+- Its data goes through an IOMMU of its own and its completion is a message, which is why it waits for M13 and M15.
+- 🦜 Not QBox's Hexagon, which the spike also ran; a candidate for an optional, from-source component later, behind the same doorbell.
 
 ### M17: Ethernet
 
-The first network card of real hardware's kind, in the place of 🎭 the virtio network card M20's Linux answered `ping` on and M29 reached by `ssh`. VPV-Peripherals has an Ethernet MAC of the simplest kind: firmware pushes a frame into a register a word at a time and pulls a received one out the same way, with no descriptor rings and no DMA.
-
-- **The borrowed MAC behind an adapter, held to a contract written first**, as the UART, the timer and the PLIC were.
-- 🧵 **Python is the far end of the cable**: M29's `sp.EthernetCable`, which bridges a card to this machine and writes the capture, takes this card's frames too, unchanged: what it needs of a card is `received_since(n)` and `send(frame)`, as Python's own hands on the wire have.
-- **The driver is ours**, in socpuppet's Zephyr module, since none exists for this MAC; Zephyr's Stellaris driver is the nearest in shape. 📮 The Linux driver is written here too, since this comes after M20, and both are offered upstream.
-- **Its interrupt is a line to the APLIC**, which is why this waits for M13. SCC's library of interfaces has the sockets the MAC uses and is not linked yet.
-
-Exit: Zephyr's `echo_server` on the host answers a datagram Python sends down the cable, having answered Python's ARP request first, and the capture opens in Wireshark. Then, with the host running Linux, Linux answers Python's `ping`.
-
-**Deferred on 2026-10-27.** Linux does not ask for this card: the virtio card already answers `ping` and carries `ssh` under a driver nobody here wrote, and VPV-Peripherals' MAC has no driver in Zephyr or Linux, so both would be ours. Three roads were found, for whenever M17 starts: VPV's `ethmac` with drivers of ours; LiteX's LiteEth, the same simple kind of MAC, which both operating systems drive unchanged, as a model of ours; or a PCIe card, the shape a server has, after a spike. Which one is an open decision below.
+The first network card of real hardware's kind, in the place of 🎭 the virtio card that Linux answers `ping` on and `ssh` reaches. Deferred because Linux does not ask for it ([history/decisions.md](history/decisions.md), 2026-10-27); which card it is, is an open decision below.
 
 ### M16: SHRM and the two-socket board
 
-**SHRM** is the shared-memory subsystem: memory on one SoC that another on the same board can use as its own, which is how a server with several sockets, or a tray of accelerators, pools memory. Here it is a pool of memory on the IO die, decoders that put pieces of it into somebody's address map, a port to the other SoC, a mailbox between the two controllers, and a 32-bit core with its kit. It brings a second SoC into the simulation.
+**SHRM** is the shared-memory subsystem: memory on one SoC that another on the same board can use as its own, which is how a server with several sockets pools memory. Here it is a pool on the IO die, decoders that put pieces of it into somebody's address map, a port to the other SoC, a mailbox between the two controllers, and a 32-bit core with its kit. In three steps:
 
-- **a) One SoC's SHRM with 🎭 a script for its firmware** (`sp.ShrmFirmware`, as `sp.SsdFirmware` was for the SSD). The decoders have the shape of CXL's for host-managed device memory. Exit: the host maps a piece of its own pool and uses it.
-- **b) Two sockets over 🎭 the pass-through link.** `host()` becomes a function that adds a host under a name, as `add_ssd` and `add_manager` are, then `two_socket_board()` places two. Exit: one host writes into the piece it was lent, and the other reads it. ⚠️ A decoder must describe itself as one memory, so that the devicetree walk does not list everything behind it. Six to eight CPUs in one kernel: the quantum and the wall time are measured again here.
-- **c) The firmware and a link that has to be brought up**: `firmware/shrm` on `socpuppet_shrm`, lending over the mailbox, across `sp.D2dLink` with a board's latency. Exit: the message crosses the board with every CPU running its own firmware.
-- ⚠️ **No protocol is modelled between the sockets**: memory-mapped TLM, as on the die-to-die mainband. Whether it ever should be CXL is an open decision below.
+- **a) One SoC's SHRM with 🎭 a script for its firmware**: the host maps a piece of its own pool and uses it.
+- **b) Two sockets over 🎭 the pass-through link**: one host writes into the piece it was lent, and the other reads it. Six to eight CPUs in one kernel, so the quantum and the wall time are measured again.
+- **c) The firmware, and a link that has to be brought up**, with a board's latency.
+- ⚠️ No protocol is modelled between the sockets: memory-mapped TLM, as on the die-to-die mainband. Whether it should be CXL is an open decision below.
 
 ### M9, M10, M11
 
-- **M9, realistic NAND**: geometry, program and erase times, erase-before-write, file-backed storage, bad blocks and bit errors behind hooks, held to the NAND contract; the FTL gains garbage collection.
-- **M10, validation scenarios**: boot-sequencing variants and failures, the link down and retrained during I/O, cross-die data integrity, power loss, IOPS and latency figures. A scenario a Linux milestone needs is pulled forward and becomes that milestone's test.
-- **M11, power and telemetry** on the IO die, to be defined. 🦜 The Verilator RTL block this used to list went on 2026-10-12: no block of ours has RTL to put there.
+- **M9, realistic NAND**: geometry, program and erase times, erase-before-write, file-backed storage, bad blocks and bit errors behind hooks, held to the NAND contract; the FTL gains garbage collection. It could be pulled forward any time.
+- **M10, validation scenarios**: boot-sequencing variants and failures, the link down and retrained during I/O, cross-die data integrity, power loss, IOPS and latency figures.
+- **M11, power and telemetry** on the IO die, to be defined.
 
 ## Open decisions
 
@@ -127,58 +160,52 @@ Each has a date it must be settled by and what happens until then.
 |---|---|---|
 | A `native_sim` firmware tier | optional, any time | not built |
 | Which network card M17 is: VPV's `ethmac` with drivers of ours, LiteX's LiteEth as a model of ours under both operating systems' own drivers, or a PCIe card after a spike | when M17 starts | 🎭 the virtio card, under Linux's and Zephyr's own drivers |
-| Does the boot ROM check an image's signature, which is what makes a boot secure? | after M14, when somebody asks | a CRC and nothing more |
+| Does the boot ROM check an image's signature, which is what makes a boot secure? | when somebody asks | a CRC and nothing more |
 | A protocol between sockets, CXL or one like it, where M16 has memory-mapped TLM | after M16 | none |
-| A die of its own for the AI processor; the host's DRAM on the IO die | after M16 | one compute die a socket, with the DRAM and the NPU on it |
-| A self-hosted runner (the A51 box) for the tests a GitHub runner cannot run, and perhaps QBox's nightly build, faster. 💡 M31's real host needed none: its tests run in a QEMU guest on GitHub's runner, on KVM, as pciem's own CI does ([development.md](development.md#pciem-a-real-host)) | when a job needs one | every job on GitHub's runners |
-| Which CPU ships in the wheel, and whether a faster one is offered beside it | when a translating backend passes the hart's suite ([history/speed-spike.md](history/speed-spike.md)) | DBT-RISE's interpreter; QBox beside it, built from source, as a second opinion |
-| Should a board's hardware be written as data that Python loads? Asked by the maintainer on 2026-10-10: addresses, devices, buses, links and interrupt lines in a TOML, JSON or YAML file that `Platform.load(file)` turns into the same `add`, `map`, `connect` and `link` calls, so that `build()`, the devicetree generator, the address map and `to_json()` are untouched; variants as a file laid over another, as Zephyr lays a shield over a board. A flow where Python generates the description as JSON and the simulation or the devicetree tools read it back could be good, and might even replace SystemRDL. What gets awkward: a script in a CPU's place changes the hardware, so the SSD and the IO manager each split into several files, and the host converts cleanly while the other two would likely read worse than their one Python file. Doing everything in Python alone, with no conversion, must stay possible | when somebody wants it | boards are Python functions; if tried, the host alone first, with its checked-in `.dts` unchanged as the proof that nothing moved |
+| A die of its own for the AI processor; the host's DRAM on the IO die | in M38 | one compute die a socket, with the DRAM and the NPU on it |
+| A self-hosted runner for the tests a GitHub runner cannot run; 💡 M31's real host needed none, its tests run in a QEMU guest on GitHub's runner ([development.md](development.md#pciem-a-real-host)) | when a job needs one | every job on GitHub's runners |
+| Which CPU ships in the wheel, and whether a faster one is offered beside it | when a translating backend passes the hart's suite ([history/speed-spike.md](history/speed-spike.md)) | DBT-RISE's interpreter; QBox beside it, built from source, and in the container |
+| A board's hardware as data that Python loads: a TOML, JSON or YAML file that `Platform.load(file)` turns into the same `add`, `map`, `connect` and `link` calls, with variants laid over one another as Zephyr lays a shield over a board; everything in Python alone must stay possible | when somebody wants it | boards are Python functions; if tried, the host alone first, with its checked-in `.dts` unchanged as the proof that nothing moved |
+| conda-forge, and native Windows wheels | when somebody asks | PyPI and the tap; Windows through WSL |
 
 ## Loose ends
 
-Small things that are nobody's milestone. Each links to where its detail lives.
+Small things that are nobody's milestone, each with a link to where its detail lives.
 
-- Reserve the `socpuppet` name on PyPI before the first wheel is published (free as of 2026-10-04; needs the maintainer's account).
-- Send the fixes we carry upstream, smallest and clearest first; [upstream.md](upstream.md) is the list.
-- Run the C++ NVMe contract against the SSD with its Zephyr firmware. `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes; the firmware's share of the contract is held by `tests/python/test_ssd_firmware.py` until then.
-- Mend, or send, what QBox and QEMU get wrong: an atomic to memory without direct access never completes, and a misaligned atomic raises a load's cause ([models/qbox-cpu.md](models/qbox-cpu.md), [upstream.md](upstream.md)).
-- Make a translating backend pass the hart's suite, LLVM first: M22's fixes are in the interpreter, and each backend has its own copy of every instruction ([history/speed-spike.md](history/speed-spike.md), [upstream.md](upstream.md)).
-- Let whichever CPU is stopped in its debugger answer every debugger; today a debugger reads memory only while its own CPU is the one stopped ([history/gdb-spike.md](history/gdb-spike.md); the test to write first is in `tests/python/test_gdb.py`).
-- Give the CPU user mode behind a PMP, so Zephyr's `CONFIG_USERSPACE` suites can run: a core name and a PMP layer in `dbt_rise_cpu.cpp` ([twister.md](twister.md), [history/twister-spike.md](history/twister-spike.md)).
+- Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
+- Run the C++ NVMe contract against the SSD with its Zephyr firmware: `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes, and `tests/python/test_ssd_firmware.py` holds the firmware's share until then.
+- Mend, or send, what QBox and QEMU get wrong with atomics ([models/qbox-cpu.md](models/qbox-cpu.md), [upstream.md](upstream.md)).
+- Make a translating backend pass the hart's suite, LLVM first ([history/speed-spike.md](history/speed-spike.md), [upstream.md](upstream.md)).
+- Let whichever CPU is stopped in its debugger answer every debugger ([history/gdb-spike.md](history/gdb-spike.md); the test to write first is in `tests/python/test_gdb.py`).
+- Give the CPU user mode behind a PMP, so Zephyr's `CONFIG_USERSPACE` suites can run ([twister.md](twister.md), [history/twister-spike.md](history/twister-spike.md)).
 - Have `build()` refuse an address map that loops, as `Platform.address_map()` does; the test to write first is in `tests/python/test_platform.py`.
 - Teach `socpuppet run`, and so twister, the two virtio shields; until then the virtio images run from pytest only.
-- Ship the boot ROM images in the wheel, or say how they are built; and let `firmware/build.py` take its image list from `twister --build-only`.
-- The IOMMU caches nothing, so every access a device makes walks its tables across the die-to-die link, and it reads a device context as four doublewords: a translation cache, and the context in one read ([models/iommu.md](models/iommu.md)). DTF is refused for now, and a master with no PCIe has no device ID until M19 gives it one.
-- Translation under Linux: the DMA API has no IOMMU layer on RISC-V in 6.18, so Linux leaves a device untranslated; VFIO or iommufd would put one behind page tables Linux owns.
-- A second APLIC domain with delegation, the faithful step after the one domain Linux's driver takes ([models/aplic.md](models/aplic.md)).
-- The IO die's APLIC has no wire source left: 16 to 31 are taken, the RTC's at 31, and 32 up are the drive's identities. A next device with a wire needs the split moved, or a second APLIC ([address-map.md](address-map.md), `DRIVE_IDENTITIES` in `socpuppet/boards/host.py`).
-- 🐧 I2C under Linux: its driver for the controller, `i2c-ocores`, is not in the stock kernel, so Linux's tree has none; a config fragment is the maintainer's decision, against 2026-10-21's ([models/i2c-controller.md](models/i2c-controller.md)).
-- 🐧 A GPIO pin driven, and its interrupt taken, under Linux: Linux takes the GPIO with its four lines, and busybox has no tool to drive one ([models/gpio.md](models/gpio.md)).
-- The SPI controller's frame format and its memory-mapped mode: `fmt.len`, `fmt.proto` and `fctrl` are kept and ignored, so there are no dual or quad reads, and the window reads the chip whatever firmware set ([models/spi-flash.md](models/spi-flash.md)).
-- A shield's devices are a keyword of `host()` each (`boot_flash_devices`, `gpio_wires`, `i2c_devices`) and a branch in `socpuppet run`; a table from shield to keywords, at the next one.
-- Paging beyond Sv39, 2 MiB pages, ASIDs, `wfi` in user mode and the vector state: what no test has run on the hart yet ([models/dbt-rise-cpu.md](models/dbt-rise-cpu.md)).
+- The IOMMU caches nothing and reads a device context as four doublewords; DTF is refused; a master with no PCIe has no device ID until M19 ([models/iommu.md](models/iommu.md)).
+- Translation under Linux, whose DMA API has no IOMMU layer on RISC-V in 6.18 and leaves a device untranslated ([models/iommu.md](models/iommu.md)).
+- A second APLIC domain with delegation ([models/aplic.md](models/aplic.md)).
+- The IO die's APLIC has no wire source left for a next device: the split moved, or a second APLIC ([address-map.md](address-map.md)).
+- 🐧 I2C under Linux, whose driver is not in the stock kernel; a config fragment is the maintainer's decision ([models/i2c-controller.md](models/i2c-controller.md)).
+- 🐧 A GPIO pin driven, and its interrupt taken, under Linux ([models/gpio.md](models/gpio.md)).
+- The SPI controller's frame format and its memory-mapped mode ([models/spi-flash.md](models/spi-flash.md)).
+- A shield's devices are a keyword of `host()` each and a branch in `socpuppet run`; a table from shield to keywords, at the next one.
+- Paging beyond Sv39, 2 MiB pages, ASIDs, `wfi` in user mode and the vector state ([models/dbt-rise-cpu.md](models/dbt-rise-cpu.md)).
 - The sideband packet's layout lives twice, in C++ and in `socpuppet.ucie`, kept in step only by a decode test; and the reserved gaps in register maps are named by hand in each block's tests.
-- Linux's console on the 16550, the next hardware block to take a virtio stand-in's place under Linux, after the drive took the disk's (M24) and before M17 takes the network card's ([linux.md](linux.md)).
-- A boot flash big enough for a kernel: it is 16 MiB with the manager's image at its end, and a `defconfig` kernel is 26 MiB, so from the flash Linux comes through UEFI from the disk; a bigger flash is the maintainer's decision.
+- Linux's console on the 16550, the next hardware block to take a virtio stand-in's place ([linux.md](linux.md)).
+- A boot flash big enough for a kernel ([linux.md](linux.md)).
 - A Debian root beside Alpine's mini root, for a reader who wants `apt`.
-- The virtio console's size feature (`F_SIZE`), so that `socpuppet linux` tells Linux the terminal's size and its changes; until then `vi` and `top` assume 80 by 24 ([linux.md](linux.md)).
-- An instruction trace on the DBT-RISE CPU, whose `enable_disass` goes to its own logger; QBox's is QEMU's, through the debugger ([models/qbox-cpu.md](models/qbox-cpu.md)).
-- QBox's hart under the pump, on an Intel Mac: `socpuppet linux --cpu qbox_cpu` boots at the wall's pace, three to four minutes, where `examples/linux_hello.py` on the same hart prompts in 5 s, and `ssh` to it, from the command or from `examples/linux_cable.py`, is closed by dropbear at the key exchange every time, with either key exchange, while the interpreter's answers in half a minute. The pump takes a CPU whose next activity is further off than a quantum for a sleeping one, and QBox's hart, which runs ahead of the clock, reports its next activity hundreds of seconds off while it works, so the pump runs the simulation only as far as the wall moved between looks (`tests/python/test_ssh_over_the_cable.py` boots unpumped for the first reason). [linux.md](linux.md) and the command's own first line say seconds. Found by [the Linux lab](labs/linux-tour.md) on 2026-10-26.
-- A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today, for our own kernel.
-- Delete I/O Submission and Completion Queue on the drive: Linux sends both at every shutdown and reset, both firmwares and the behavioral drive answer Invalid Opcode, and Linux, which marks admin commands quiet, carries on and says nothing, on the simulated host and on this machine's ([models/ssd-firmware.md](models/ssd-firmware.md), [history/real-host-spike.md](history/real-host-spike.md)).
-- The drive's `VS` reads zero, so Linux takes NVMe 1.0's road; a version, with what a newer driver then sends (Identify's other CNS values, Get Log Page, asynchronous events), is the step after.
-- Several I/O queues under this machine's Linux: pciem's virtual bus gives the drive one legacy interrupt, so Linux makes one I/O queue; pciem's attach mode, which puts the device on an existing bus, is untried ([models/pciem-host.md](models/pciem-host.md)).
-- A recipe for pciem in a Linux VM on a Mac, for a real host where this machine is not Linux ([setup.md](setup.md#6-pciem-optional)).
-- Get Log Page, for the SMART log at least: Linux 7.0 on x86 asks for it at every probe, all three drives answer Invalid Opcode, and Linux says `Failed to read smart log` and carries on ([history/real-host-spike.md](history/real-host-spike.md)).
-- Power lost without a shutdown: the SSD's table is saved only when the host shuts the drive down, so a drive whose power just goes keeps the table it last saved. A table rebuilt from the pages, or saved as it goes, belongs with M10's power-loss scenarios.
-- The NVMe frontend's ztest (`zephyr_module/tests/drivers/nvme_frontend`) does not yet have its shield's host shut the drive down; the SSD's contract tests hold both firmwares to the shutdown.
-- The 9P messages `socpuppet.ninep` answers `EOPNOTSUPP`: `Tremove`, `Trename`, `Tlink`, locks and extended attributes ([models/virtio-9p.md](models/virtio-9p.md)).
+- The virtio console's size feature, so that `vi` and `top` learn the terminal's size ([linux.md](linux.md)).
+- An instruction trace on the DBT-RISE CPU; QBox's is QEMU's ([models/qbox-cpu.md](models/qbox-cpu.md)).
+- QBox's hart under the pump runs at the wall's pace, and `ssh` to it is closed at the key exchange ([models/qbox-cpu.md](models/qbox-cpu.md#what-it-leaves-out)).
+- A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today.
+- The admin commands Linux sends that every drive here answers Invalid Opcode to, Delete I/O Submission and Completion Queue and Get Log Page; and a version in `VS`, which reads zero so Linux takes NVMe 1.0's road ([models/ssd-firmware.md](models/ssd-firmware.md), [history/real-host-spike.md](history/real-host-spike.md)).
+- Several I/O queues under this machine's Linux, which pciem's one legacy interrupt keeps at one ([models/pciem-host.md](models/pciem-host.md)).
+- A recipe for pciem in a Linux VM on a Mac ([setup.md](setup.md#6-pciem-optional)).
+- Power lost without a shutdown, with M10's power-loss scenarios ([models/ssd-firmware.md](models/ssd-firmware.md)).
+- The NVMe frontend's ztest does not yet have its shield's host shut the drive down; the SSD's contract tests hold both firmwares to it.
+- The 9P messages `socpuppet.ninep` answers `EOPNOTSUPP` ([models/virtio-9p.md](models/virtio-9p.md)).
 
-Known bugs with no milestone:
-
-- **A debugger that detaches, or quits at a breakpoint, leaves its CPU stopped** and the simulation with it; the fix is a patch to DBT-RISE-Core, and until then [boot-your-firmware.md](boot-your-firmware.md) says to leave with `continue` ([upstream.md](upstream.md)).
-- **A debugger that attaches before the simulation runs is shown registers from before the CPU's reset**; the tests' client waits on a memory read first, and the docs start the run before GDB attaches ([upstream.md](upstream.md)).
+Known bugs with no milestone, both in the borrowed debugger server ([upstream.md](upstream.md)): a debugger that detaches, or quits at a breakpoint, leaves its CPU stopped, so [boot-your-firmware.md](boot-your-firmware.md) says to leave with `continue`; and one that attaches before the simulation runs is shown registers from before the CPU's reset, so the docs start the run first.
 
 ## Keeping this page
 
-This page replaced `docs/plan.md` on 2026-10-17, which had grown to half a megabyte of steps, findings and status; commit `5be2b90` is the last that holds it. What was worth keeping is in [history/](history/README.md). This page stays short: a phase a line, a milestone a row and, for the ones not yet done, a section of a screen; the rest goes to the history pages and the commits.
+This page replaced `docs/plan.md` on 2026-10-17; commit `5be2b90` is the last that holds it, and what was worth keeping is in [history/](history/README.md). A phase is a line, a milestone a row, an undone milestone a few lines of what and why; the how is in the history pages and the commits.
