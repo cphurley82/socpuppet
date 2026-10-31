@@ -27,11 +27,11 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.scripted_host import bring_up_the_drive
 from socpuppet.boards.ssd import ssd
-from socpuppet.run import firmware_directory
 
-IMAGE = firmware_directory() / "ssd_socpuppet_ssd.elf"
+IMAGE = images.directory() / "ssd_socpuppet_ssd.elf"
 MESSAGE = b"Hello from the host, by way of PCIe, Zephyr and a page of NAND."
 
 # What the host's script learns along the way, for printing at the end.

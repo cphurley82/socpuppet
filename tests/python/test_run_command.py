@@ -263,7 +263,8 @@ class TestWhenTheRunCommandIsToBootFromARomAndThereIsNoRomWhereItLooks:
         assert result.returncode != 0
         [line] = result.stderr.strip().splitlines()
         assert str(nothing_built / ROM_FOR_A_64_BIT_CPU) in line
-        assert "firmware/build.py" in line
+        assert "firmware/build.py rom" in line
+        assert "--boot ram" in line
 
 
 class TestWhenTheRunCommandLoadsZephyrsHelloWorldIntoTheHostsRam:

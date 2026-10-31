@@ -42,11 +42,11 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 from socpuppet.boards.ssd import add_ssd
-from socpuppet.run import firmware_directory
 
-IMAGES = firmware_directory()
+IMAGES = images.directory()
 HOST_IMAGE = IMAGES / "disk_access_socpuppet_host.elf"
 SSD_IMAGE = IMAGES / "ssd_socpuppet_ssd.elf"
 #: What Zephyr's test framework ends with, when no test failed and when

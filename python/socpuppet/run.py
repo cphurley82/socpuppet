@@ -1,13 +1,11 @@
 """`socpuppet run`: one firmware image run on one of socpuppet's boards."""
 
 import functools
-import os
-import pathlib
 import sys
 from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
-from socpuppet import boot_image, ztest
+from socpuppet import boot_image, images, ztest
 from socpuppet.boards import boot
 from socpuppet.boards.cpu_kit import CpuKit
 from socpuppet.boards.host import (
@@ -246,13 +244,12 @@ def run(
         )
     platform = stage.platform
     if from_rom:
-        rom_program = firmware_directory() / _ROMS[cpu.xlen]
-        if not rom_program.exists():
+        try:
+            rom_program = images.find(_ROMS[cpu.xlen])
+        except FileNotFoundError as missing:
             sys.exit(
-                f"There is no boot ROM at {rom_program}. Build it with "
-                "`uv run firmware/build.py`, say where it is with "
-                "SOCPUPPET_FIRMWARE_DIR, or load the image straight into "
-                "RAM with --boot ram."
+                f"{missing} Or say where it is with SOCPUPPET_FIRMWARE_DIR, "
+                "or load the image straight into RAM with --boot ram."
             )
         syscon = stage.syscon.component
         assert isinstance(syscon, SystemController)
@@ -334,13 +331,6 @@ def _build(platform: Platform) -> None:
         platform.build()
     except ValueError as refused:
         sys.exit(str(refused))
-
-
-def firmware_directory() -> pathlib.Path:
-    """Where `firmware/build.py` left what it built."""
-    return pathlib.Path(
-        os.environ.get("SOCPUPPET_FIRMWARE_DIR", "build/firmware")
-    )
 
 
 def _listed(names: tuple[str, ...]) -> str:

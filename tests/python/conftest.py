@@ -1,45 +1,40 @@
 import os
-import pathlib
 
 import pytest
 
-from socpuppet import _core
+from socpuppet import _core, images
 
 pytest_plugins = ["pytester", "socpuppet.pytest_plugin"]
 
 
 def firmware_directory(pytestconfig):
-    """Where `firmware/build.py` left what it built and what it fetched."""
-    return pathlib.Path(
-        os.environ.get(
-            "SOCPUPPET_FIRMWARE_DIR", pytestconfig.rootpath / "build/firmware"
-        )
-    )
+    """Where the images are: the build directory at the top of the repository.
+
+    Or else where `socpuppet.images` says.
+    """
+    built = pytestconfig.rootpath / "build/firmware"
+    if "SOCPUPPET_FIRMWARE_DIR" not in os.environ and built.is_dir():
+        return built
+    return images.directory()
 
 
 @pytest.fixture(scope="session")
 def firmware(pytestconfig):
-    """Find a firmware image that `firmware/build.py` built, by file name.
+    """Find a firmware image by file name.
 
-    The images are in SOCPUPPET_FIRMWARE_DIR, or in build/firmware at the
-    top of the repository when that is not set. A test whose image is missing is skipped, with the
-    command that builds it. Where the images must be there (in CI), set
-    SOCPUPPET_REQUIRE_FIRMWARE and the test fails instead.
+    The images are where `firmware_directory` says. A test whose image
+    cannot be had is skipped, with how to get it. Where the images must be
+    there (in CI), set SOCPUPPET_REQUIRE_FIRMWARE and the test fails instead.
     """
     directory = firmware_directory(pytestconfig)
 
     def find(name):
-        image = directory / name
-        if image.exists():
-            return image
-        missing = (
-            f"There is no {image}. Build the firmware with "
-            "`uv run firmware/build.py`, which takes a few minutes the "
-            "first time."
-        )
-        if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
-            pytest.fail(missing)
-        pytest.skip(missing)
+        try:
+            return images.find(name, directory)
+        except FileNotFoundError as missing:
+            if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
+                pytest.fail(str(missing))
+            pytest.skip(str(missing))
 
     return find
 

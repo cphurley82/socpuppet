@@ -6,7 +6,7 @@ machine: its own Linux, through pciem (`socpuppet.boards.real_host`).
 Linux's `nvme` driver binds it as it would a card in a slot, and `lsblk`
 lists it, for as long as its platform is pumped.
 
-    board = drive.on_this_machine(pathlib.Path("build/firmware"))
+    board = drive.on_this_machine()
     pump(board.platform, far_ends=[board.host], until=...)
 
 Once it is there, `socpuppet.boards.real_host.puppet_function` says where.
@@ -15,7 +15,7 @@ Once it is there, `socpuppet.boards.real_host.puppet_function` says where.
 import pathlib
 from typing import Literal
 
-from socpuppet import linux
+from socpuppet import images, linux
 from socpuppet.boards.real_host import (
     BehavioralDriveBoard,
     behavioral_drive,
@@ -32,16 +32,17 @@ BLOCKS = 131072
 
 
 def on_this_machine(
-    firmware_directory: pathlib.Path,
+    firmware_directory: pathlib.Path | None = None,
     *,
     firmware: Firmware = "zephyr",
     blocks: int = BLOCKS,
 ) -> RealHostSsdBoard | BehavioralDriveBoard:
     """The drive, built, with its firmware loaded, on this machine's bus.
 
-    `firmware_directory` is where `firmware/build.py` left the SSD's
-    firmware. An image that is not there is a FileNotFoundError that says
-    how to build it, before anything is described, and a build of
+    `firmware_directory` is where the SSD's firmware is, or with none,
+    wherever `images.find` looks. An image that cannot be had is a
+    FileNotFoundError that says how to get it, before anything is described,
+    and a build of
     socpuppet without pciem a ValueError that says how to get one.
     ⚠️ From here the platform has to be pumped, or Linux waits on a drive
     that does not answer.
@@ -51,7 +52,7 @@ def on_this_machine(
         board = behavioral_drive(blocks=blocks)
         board.platform.build()
     else:
-        image = linux.built(firmware_directory / linux.SSD_ELF)
+        image = images.find(linux.SSD_ELF, firmware_directory)
         board = ssd(host=this_machine, blocks=blocks)
         board.platform.build()
         board.platform.load_elf(image, via=board.ssd.cpu.socket)

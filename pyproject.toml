@@ -10,6 +10,8 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12"
+# Where a user's cache is, on each system, for the images it fetches.
+dependencies = ["platformdirs>=4"]
 authors = [{ name = "Chris Hurley" }]
 keywords = ["systemc", "tlm", "virtual platform", "risc-v", "simulation"]
 classifiers = [

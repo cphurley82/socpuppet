@@ -5,7 +5,7 @@ where `fw_jump` expects them, and QEMU's reset vector in the ROM, and the
 root filesystem on the virtio disk. The kernel's console is the virtio
 console, and its first words, before that is up, are on the UART.
 
-    board = linux.host_with_linux(pathlib.Path("build/firmware"))
+    board = linux.host_with_linux()
     console = board.virtio.console
     board.platform.run_until(
         lambda: linux.PROMPT.search(console.output), timeout=sp.ms(400_000)
@@ -25,7 +25,7 @@ import re
 from collections.abc import Sequence
 from typing import Any, Literal, overload
 
-from socpuppet import devicetree, ftl, gpt, opensbi
+from socpuppet import devicetree, ftl, gpt, images, opensbi
 from socpuppet.boards.boot import ROM_BASE, from_rom
 from socpuppet.boards.drive import BehavioralDrive
 from socpuppet.boards.host import (
@@ -77,20 +77,10 @@ ANSWERS_WITHIN = ms(10_000)
 #: Where the root filesystem can be: 🎭 the virtio disk, or the drive.
 type Root = Literal["virtio", "drive"]
 
-#: What each image is built by: the part of `firmware/build.py`.
-_BUILT_BY = {
-    opensbi.FW_JUMP_BIN: "opensbi linux",
-    LINUX_BIN: "opensbi linux",
-    ROOTFS_EXT4: "opensbi linux",
-    INITRAMFS_CPIO: "opensbi linux",
-    MANAGER_ELF: "zephyr",
-    SSD_ELF: "zephyr",
-}
-
 
 @overload
 def host_with_linux(
-    firmware: pathlib.Path,
+    firmware: pathlib.Path | None = None,
     *,
     cpu: HostCpu | None = None,
     share: str | os.PathLike[str] | None = None,
@@ -102,7 +92,7 @@ def host_with_linux(
 ) -> Host[BehavioralDrive]: ...
 @overload
 def host_with_linux(
-    firmware: pathlib.Path,
+    firmware: pathlib.Path | None = None,
     *,
     cpu: HostCpu | None = None,
     share: str | os.PathLike[str] | None = None,
@@ -115,7 +105,7 @@ def host_with_linux(
     rtc_time: datetime.datetime | int = 0,
 ) -> Host[Ssd]: ...
 def host_with_linux(
-    firmware: pathlib.Path,
+    firmware: pathlib.Path | None = None,
     *,
     cpu: HostCpu | None = None,
     share: str | os.PathLike[str] | None = None,
@@ -129,7 +119,8 @@ def host_with_linux(
 ) -> Host[Any]:
     """A host built with Linux in place, from the images in `firmware`.
 
-    `firmware` is the directory `firmware/build.py` left OpenSBI and Linux in.
+    `firmware` is the directory OpenSBI and Linux are in, or with none,
+    wherever `images.find` looks.
     `cpu` is the host's CPU, as `host()` takes it, so that with none it is the
     one SOCPUPPET_CPU names. `share` is a directory of this machine for Linux to
     mount (`mount -t 9p`), if any. With a `gdb_port`, the CPU waits for a
@@ -188,7 +179,7 @@ def host_with_linux(
 
 
 def _with_the_root_on_virtio(
-    firmware: pathlib.Path,
+    firmware: pathlib.Path | None,
     *,
     cpu: HostCpu | None,
     share: str | os.PathLike[str] | None,
@@ -198,7 +189,7 @@ def _with_the_root_on_virtio(
 ) -> Host[BehavioralDrive]:
     """The host alone, with Linux's root on 🎭 the virtio disk."""
     fw_jump, kernel, rootfs = (
-        _read(firmware / name)
+        images.find(name, firmware).read_bytes()
         for name in (opensbi.FW_JUMP_BIN, LINUX_BIN, ROOTFS_EXT4)
     )
     board = host(
@@ -231,7 +222,7 @@ def _with_the_root_on_virtio(
 
 
 def _with_the_root_on_the_drive(
-    firmware: pathlib.Path,
+    firmware: pathlib.Path | None,
     *,
     cpu: HostCpu | None,
     share: str | os.PathLike[str] | None,
@@ -250,7 +241,7 @@ def _with_the_root_on_the_drive(
     describe, and 🎭 a script in a CPU's place gets none.
     """
     fw_jump, kernel, rootfs, initramfs = (
-        _read(firmware / name)
+        images.find(name, firmware).read_bytes()
         for name in (
             opensbi.FW_JUMP_BIN,
             LINUX_BIN,
@@ -283,11 +274,15 @@ def _with_the_root_on_the_drive(
     # and before dtc is asked for, so that on a machine without dtc it is
     # still the missing image that is named.
     # 🎭 A script in a CPU's place needs none.
-    images = []
+    programs = []
     if board.manager.cpu_kit is not None:
-        images.append((built(firmware / MANAGER_ELF), board.manager.cpu.socket))
+        programs.append(
+            (images.find(MANAGER_ELF, firmware), board.manager.cpu.socket)
+        )
     if board.drive.ssd.cpu_kit is not None:
-        images.append((built(firmware / SSD_ELF), board.drive.ssd.cpu.socket))
+        programs.append(
+            (images.find(SSD_ELF, firmware), board.drive.ssd.cpu.socket)
+        )
     layout = opensbi.lay_out(
         fw_jump,
         kernel,
@@ -306,8 +301,8 @@ def _with_the_root_on_the_drive(
     board.platform.build()
     nand = board.drive.ssd.nand
     nand.load(ftl.nand_image(disk, nand.component))
-    for image, via in images:
-        board.platform.load_elf(image, via=via)
+    for program, via in programs:
+        board.platform.load_elf(program, via=via)
     opensbi.load(board.platform, layout, rom=ROM_BASE, via=board.cpu.socket)
     return board
 
@@ -326,24 +321,6 @@ def disk_for_the_drive(
     blocks = gpt.size_of(partitions)
     blocks += -blocks % DRIVE_BLOCKS_PER_NAND_BLOCK
     return blocks, gpt.make(partitions, sectors=blocks)
-
-
-def _read(image: pathlib.Path) -> bytes:
-    """The bytes of `image`, or why there are none and how to build it."""
-    return built(image).read_bytes()
-
-
-def built(image: pathlib.Path) -> pathlib.Path:
-    """`image`, if `firmware/build.py` has built it.
-
-    Or else a FileNotFoundError that says how to build it.
-    """
-    if not image.exists():
-        raise FileNotFoundError(
-            f"There is no {image}. Build it with `uv run firmware/build.py "
-            f"{_BUILT_BY[image.name]}`, which takes a while the first time."
-        )
-    return image
 
 
 def ask(board: Host[Any], command: str, *, within: int = ANSWERS_WITHIN) -> str:
