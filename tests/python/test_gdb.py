@@ -11,6 +11,7 @@ import functools
 import os
 import re
 import socket
+import sys
 import threading
 import time
 
@@ -145,8 +146,19 @@ def run_with_a_debugger(
     )[port]
 
 
+#: How many seconds of wall clock a debugger waits for the server, to open
+#: its port and for each answer. Free, this machine answers in well under a
+#: second; a CI runner with a test on every core has taken longer than ten,
+#: and a debugger that gives up leaves its CPU held, so the run never ends.
+ANSWERS_WITHIN = 60
+
+
 def run_with_debuggers(
-    platform, sessions, run=None, hang_up=GdbClient.close, timeout=10
+    platform,
+    sessions,
+    run=None,
+    hang_up=GdbClient.close,
+    timeout=ANSWERS_WITHIN,
 ):
     """Run `platform` with a debugger on each port, and return what each found.
 
@@ -160,6 +172,10 @@ def run_with_debuggers(
     microseconds, which is enough for the short program here once the
     debuggers let it go. `timeout` is how many seconds of wall clock a
     debugger waits for the server, to open its port and for each answer.
+
+    ⚠️ A debugger that never connects cannot tell its CPU to continue, so
+    the CPU stays held and the run does not end: that is said on stderr at
+    once, so a run stopped for running too long says why.
     """
     found = {}
     errors = []
@@ -169,6 +185,12 @@ def run_with_debuggers(
             debugger = GdbClient(port, timeout)
         except OSError as error:
             errors.append(error)
+            print(
+                f"The debugger on port {port} could not connect ({error}), "
+                "so its CPU stays held and the run will not end.",
+                file=sys.stderr,
+                flush=True,
+            )
             return
         try:
             debugger.wait_for_the_cpu_to_stop()
