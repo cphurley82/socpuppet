@@ -208,3 +208,14 @@ def venv_made(calls):
         c["args"] for c in calls if c["name"] == "uv" and c["args"][0] == "venv"
     ]
     return venv
+
+
+def test_the_test_cibuildwheel_runs_on_each_wheel_boots_no_firmware():
+    # A wheel for each Python on each machine, and a boot of everything on
+    # each would be hours. tools/test_wheel.py boots one wheel, installed.
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        cibuildwheel = tomllib.load(pyproject)["tool"]["cibuildwheel"]
+
+    assert "SOCPUPPET_FIRMWARE_DIR" in cibuildwheel["test-environment"]
+    # 💡 The test of a wheel with nothing built names no directory, and fetches.
+    assert '-m "not long"' in cibuildwheel["test-command"]

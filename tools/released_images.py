@@ -216,10 +216,12 @@ def pin(root: Path) -> str:
         "`uv run\npython tools/lint.py --fix` writes it again.\n"
         '"""\n'
         "\n"
+        "#: Where the sources are, and how the images can be built.\n"
+        f'REPOSITORY = "{repository}"\n'
         "#: The release's tag, which is named for the sources.\n"
         f'TAG = "{tag(root)}"\n'
         "#: Where the release's files are.\n"
-        f'URL = f"{repository}/releases/download/{{TAG}}"\n'
+        'URL = f"{REPOSITORY}/releases/download/{TAG}"\n'
     )
 
 

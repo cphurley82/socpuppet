@@ -293,6 +293,15 @@ def test_the_job_that_publishes_the_images_keeps_its_token_out_of_the_checkout()
     assert checkout["with"]["persist-credentials"] is False
 
 
+def test_the_wheel_job_takes_no_firmware_from_the_jobs_that_build_it():
+    # The images must come from the release: the checkout's own would prove
+    # nothing about a wheel alone.
+    wheel = WORKFLOW_FILES[TIER.NIGHTLY.value]["wheel"]
+
+    assert not needs_of(wheel)
+    assert all("firmware" not in setup for setup in setups_in(wheel))
+
+
 def test_each_job_sets_up_with_the_setup_action_alone():
     # So that uv and the system's packages are set up in one place.
     for where, step in EVERY_STEP:
