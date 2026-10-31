@@ -304,9 +304,7 @@ def _linux(
             "root on it: socpuppet linux --root drive --iommu."
         )
     try:
-        board = linux.host_with_linux(
-            run.firmware_directory(), cpu=cpu, root=root, iommu=iommu
-        )
+        board = linux.host_with_linux(cpu=cpu, root=root, iommu=iommu)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
     # Said on standard error: standard output is the machine's console.
@@ -403,9 +401,7 @@ def _drive(firmware: drive.Firmware, blocks: int) -> None:
     still on the bus ends the command with one line that says what to do.
     """
     try:
-        board = drive.on_this_machine(
-            run.firmware_directory(), firmware=firmware, blocks=blocks
-        )
+        board = drive.on_this_machine(firmware=firmware, blocks=blocks)
     except (OSError, ValueError) as refused:
         sys.exit(str(refused))
     try:

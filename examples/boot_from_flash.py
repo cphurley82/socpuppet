@@ -41,13 +41,12 @@ import os
 import sys
 
 import socpuppet as sp
-from socpuppet import boot_image, transcript
+from socpuppet import boot_image, images, transcript
 from socpuppet.boards.boot import from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, BOOT_FLASH_SIZE
 from socpuppet.boards.host import IO_BASE, host
-from socpuppet.run import firmware_directory
 
-IMAGES = firmware_directory()
+IMAGES = images.directory()
 #: The boot ROM's program, built for the host's 64-bit CPU.
 ROM = IMAGES / "rom_rv64.elf"
 FIRMWARE = IMAGES / "watchdog_socpuppet_host.elf"

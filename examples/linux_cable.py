@@ -38,13 +38,12 @@ import sys
 import time
 
 import socpuppet as sp
-from socpuppet import linux
+from socpuppet import images, linux
 from socpuppet.boards.host import switched_off
 from socpuppet.pump import pump
-from socpuppet.run import firmware_directory
 from socpuppet.slirp import Slirp
 
-IMAGES = firmware_directory()
+IMAGES = images.directory()
 CAPTURE = pathlib.Path("cable.pcap")
 #: How long the kernel may take to prompt, in simulated time.
 PROMPTS_WITHIN = sp.ms(400_000)

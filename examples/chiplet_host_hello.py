@@ -40,11 +40,11 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager, scripted_manager
-from socpuppet.run import firmware_directory
 
-IMAGE = firmware_directory() / "hello_world_socpuppet_host.elf"
+IMAGE = images.directory() / "hello_world_socpuppet_host.elf"
 
 # Describe the platform: the host, with a manager on its IO die, which is
 # what makes the link between the dies the real one. `add_manager` alone

@@ -24,10 +24,10 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import IMSIC_BASE, UART_SOURCE, host
-from socpuppet.run import firmware_directory
 
-IMAGE = firmware_directory() / "shell_module_socpuppet_host.elf"
+IMAGE = images.directory() / "shell_module_socpuppet_host.elf"
 PROMPT = "uart:~$ "
 #: What to type, and something each answer has in it.
 COMMANDS = (

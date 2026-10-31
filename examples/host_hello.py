@@ -18,10 +18,10 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
-from socpuppet.run import firmware_directory
 
-IMAGE = firmware_directory() / "hello_world_socpuppet_host.elf"
+IMAGE = images.directory() / "hello_world_socpuppet_host.elf"
 
 if __name__ == "__main__":
     if not IMAGE.exists():

@@ -36,11 +36,10 @@ import sys
 import time
 
 import socpuppet as sp
-from socpuppet import linux
+from socpuppet import images, linux
 from socpuppet.boards.host import switched_off
-from socpuppet.run import firmware_directory
 
-IMAGES = firmware_directory()
+IMAGES = images.directory()
 #: How long the kernel may take to prompt, in simulated time: it prompts
 #: at about 180 s of the CPU's time on one hart and 210 s on the other.
 PROMPTS_WITHIN = sp.ms(400_000)
