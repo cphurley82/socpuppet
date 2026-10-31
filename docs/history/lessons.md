@@ -188,6 +188,13 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **A linter's new major version can turn on checks no one asked for.** LLVM 23 renamed a `hicpp-*` check into `bugprone-*`, and the wildcard picked it up: seventeen hundred findings overnight, and Dependabot's weekly pull request sat red for ten days while the bot closed and reopened it. When a bump of a linter goes red, read the check names in the log before the sites; count the distinct lines, not the findings, since a header's finding repeats for every file that includes it; and look for the one cause behind many, here a generated macro expanded at every use. A fix-it is a suggestion: build after applying one, because this one deleted a comma the code needed.
 - ⚠️ **A cache of a patched tree is keyed on its patches.** Zephyr's cache hashed its version and nothing else, so Linux's copy stayed unpatched after `zephyr-gpio-sifive-pin-per-handler.patch` landed while the Mac's, saved later, had it, and the same commit built on one machine and not the other.
 
+## The images a wheel fetches
+
+- **A bulk rename of a constant reaches the prose too.** Renaming `ROM` to `rom` across an example changed what it printed and its comments ("the rom read the flash"), and only a review of the diff saw it. Rename a name with something that knows it is a name.
+- **A job a called workflow runs holds up everything that needs that workflow.** Publishing inside `firmware.yml` would have made every boot test wait on an upload, and published what no test had booted. So what publishes is a job of its own, after the tests.
+- **An environment variable that turns something off is off only until a test takes it away.** cibuildwheel's own test had no firmware because nothing named any, and once images could be fetched, the exit test, which clears the variable, would have booted on every wheel. Say what is left out in the command too (`-m "not long"`).
+- **A rehearsal needs no release.** `build/images` served by `python -m http.server`, with `SOCPUPPET_IMAGES_URL` pointed at it, is the whole path of a fetch, so a wheel can be proved before main has published anything.
+
 ## The platform and its description
 
 - **A fidelity tier is two description functions**, and the registry has no mechanism for one ([vision.md](../vision.md)). A master that needs a different view of memory needs a router of its own; the router takes several masters with one map.

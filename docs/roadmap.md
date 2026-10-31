@@ -173,6 +173,7 @@ Each has a date it must be settled by and what happens until then.
 Small things that are nobody's milestone, each with a link to where its detail lives.
 
 - Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
+- Delete the releases of images that no commit on main pins: a change under the firmware's sources makes a new one, even a comment's ([development.md](development.md)).
 - Run the C++ NVMe contract against the SSD with its Zephyr firmware: `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes, and `tests/python/test_ssd_firmware.py` holds the firmware's share until then.
 - Mend, or send, what QBox and QEMU get wrong with atomics ([models/qbox-cpu.md](models/qbox-cpu.md), [upstream.md](upstream.md)).
 - Make a translating backend pass the hart's suite, LLVM first ([history/speed-spike.md](history/speed-spike.md), [upstream.md](upstream.md)).

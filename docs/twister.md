@@ -67,11 +67,10 @@ flowchart LR
 3. **`socpuppet run`** describes the board, puts the image where the board's boot ROM will find it, and runs the simulation, printing each line of the console as it becomes whole.
 4. **Twister reads those lines.** For a ztest suite it waits for the verdict. For a sample it looks for the lines the sample's own `sample.yaml` says should appear. Then it ends the run.
 
-`firmware/twister.py` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, those three are all you need, and twister is run as for any other board. 🚧 The boot ROMs are not in the package yet, so the second line names where `firmware/build.py` built them in a checkout:
+`firmware/twister.py` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, the first two are all you need, and twister is run as for any other board: 🧦 the boot ROMs are not in the package, and are [fetched the first time a run needs one](boot-your-firmware.md#1-get-the-firmware):
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)
-export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are
 west twister -p socpuppet_host -T tests/kernel/sleep
 ```
 
@@ -187,13 +186,12 @@ Run it with twister, from a Zephyr workspace:
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)   # where the boards are
-export SOCPUPPET_FIRMWARE_DIR=/where/the/boot/roms/are    # 🚧 from firmware/build.py in a checkout
 west twister -p socpuppet_host -T my_test
 ```
 
 In a checkout of socpuppet, `uv run firmware/twister.py -p socpuppet_host -T /path/to/my_test` sets those up for you. Either way twister ends with how many cases passed, and each scenario's console is in `handler.log` under its output directory.
 
-💡 **While you are working on one test, skip twister.** Build the image once, as in [step 1](boot-your-firmware.md#1-build-the-firmware), and run it directly. It takes a second or two, the console is printed as it comes, and the command's exit status is the verdict:
+💡 **While you are working on one test, skip twister.** Build the image once, as in [step 1](boot-your-firmware.md#building-it-yourself), and run it directly. It takes a second or two, the console is printed as it comes, and the command's exit status is the verdict:
 
 ```sh
 socpuppet run build/zephyr/zephyr.elf --board socpuppet_host
