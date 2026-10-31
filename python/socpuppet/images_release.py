@@ -5,6 +5,6 @@ python tools/lint.py --fix` writes it again.
 """
 
 #: The release's tag, which is named for the sources.
-TAG = "images-2ba0fbf75857"
+TAG = "images-72eac0ab9de3"
 #: Where the release's files are.
 URL = f"https://github.com/cphurley82/socpuppet/releases/download/{TAG}"
