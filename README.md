@@ -40,7 +40,7 @@ print(board.uart.output)
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-`uv run firmware/build.py zephyr` builds that `zephyr.elf` (and every other image the tests boot) into `build/firmware`, and `examples/host_hello.py` is this show with the path filled in. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
+`uv run firmware/build.py zephyr` builds that `zephyr.elf` (and every other image the tests boot) into `build/firmware`, and `examples/host_hello.py` is this show with Zephyr's own hello world, which is fetched the first time it is asked for, so there is nothing to build. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
 
 ## A smaller show
 
@@ -138,7 +138,7 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
 
-🐧 To boot Linux and type at its shell yourself, build the firmware first (`uv run firmware/build.py`, which takes a while the first time), then:
+🐧 To boot Linux and type at its shell yourself (its images are fetched the first time, or built by `uv run firmware/build.py`):
 
 ```sh
 PYTHONPATH=python uv run python -m socpuppet linux

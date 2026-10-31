@@ -319,7 +319,7 @@ board.platform.run(sp.ms(100))
 print(board.uart.output)
 ```
 
-Nothing is built differently for it. The image is the one from [the host's first step](boot-your-firmware.md#1-build-the-firmware), and with `drive_blocks=` and `drive=` as well it is the one built with the shield. The host's firmware cannot tell which link it has: the devicetree its CPU sees is the same with either, and a test holds it so.
+Nothing is built differently for it. The image is the one from [the host's first step](boot-your-firmware.md#building-it-yourself), and with `drive_blocks=` and `drive=` as well it is the one built with the shield. The host's firmware cannot tell which link it has: the devicetree its CPU sees is the same with either, and a test holds it so.
 
 `examples/chiplet_host_hello.py` is that with Zephyr's `hello_world`. It prints the link's bring-up out of the trace, and then the host's console:
 
