@@ -76,6 +76,7 @@ The hart's suite runs on it with `ctest --preset qbox`, and what it does not pas
 - **A device's delay inside the quantum.** QBox keeps the CPU's time in QEMU's clock, which counts instructions, and forgets what a target adds to an access unless the CPU has to wait for SystemC there and then. ⚠️ At the boards' 100 µs a device that takes 3 µs costs this CPU nothing. Time a device against `dbt_rise_cpu` ([upstream.md](../upstream.md)).
 - **A no-quantum run that keeps time.** With no quantum, a CPU running from memory it reaches directly never waits for SystemC's clock, which then stands still while it runs. The boards set 100 µs. The speed spike's 1 ms for 33.5 million instructions was that.
 - **QEMU's threaded configuration**, a thread for each CPU with nothing to keep it in step. It hung in every environment the speed spike tried, and it would give up repeatability, which is the point of a second opinion.
+- **A run under the pump at the wall's pace.** The pump runs a CPU whose next activity is further off than a quantum only as far as the wall has moved, as it does for a sleeping one, and this CPU runs ahead of the clock and reports its next activity hundreds of seconds off while it works. So `socpuppet linux --cpu qbox_cpu` prompts in minutes, the boot's 243 s of CPU time at the wall's pace, where `examples/linux_hello.py` on the same hart prompts in seconds, and an `ssh` to it is closed by dropbear at the key exchange; the tests boot it unpumped (`tests/python/test_ssh_over_the_cable.py`).
 
 ## Where it comes from
 
