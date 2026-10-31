@@ -33,6 +33,14 @@ SLACK = 0.05
 #: How long, on the wall, a test waits for what it waits for, so that
 #: something that never comes fails the test and does not hang it.
 PATIENCE = 5.0
+#: How soon, on the wall, the pump must act on a far end for the test to
+#: know it was heeded: a pump that took no notice would look again only
+#: once the longest wait was up, a second, so anything short of that is
+#: proof; a tenth is kept back so that the bound is not the longest wait
+#: itself. The rest is room for a stalled machine: CI's Intel Macs, with a
+#: test on every core, have taken half a second to come back from a wait
+#: of 0.05.
+HEEDED_WITHIN = LONGEST_WAIT * 0.9
 
 
 class Pipe:
@@ -168,11 +176,10 @@ class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuWorks:
         assert pumped_until(platform, pipe, lambda: "service" in pipe.events)
         assert pipe.looks_between_the_write_and_its_service() <= 1
         # 💡 The looks come every LOOK_EVERY, but a busy Mac of CI's has
-        # taken 0.12 s from the write to the service. So, as for a due far
-        # end below, the bound is half the longest wait: a pump that looked
-        # only once that was up would fail it.
+        # taken far longer from the write to the service: HEEDED_WITHIN is
+        # the bound, as for a due far end below.
         written, _ = pipe.write_times()
-        assert pipe.serviced_at - written < LONGEST_WAIT / 2
+        assert pipe.serviced_at - written < HEEDED_WITHIN
 
 
 class TestWhenAFarEndHasBeenServiced:
@@ -192,10 +199,8 @@ class TestWhenAFarEndIsDueWhileTheCpuSleeps:
 
         assert pumped_until(platform, alarm, lambda: alarm.rang_at is not None)
         # 💡 A pump that took no notice of it would look again only once
-        # the longest wait was up, the CPU sleeping for longer. Half of it
-        # is room for a busy Mac of CI's, which has taken 0.18 s over a
-        # wait of 0.05.
-        assert alarm.rang_at - alarm.set_at < LONGEST_WAIT / 2
+        # the longest wait was up, the CPU sleeping for longer.
+        assert alarm.rang_at - alarm.set_at < HEEDED_WITHIN
 
 
 class TestWhenThereIsNoFarEnd:
