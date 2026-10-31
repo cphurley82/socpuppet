@@ -573,6 +573,18 @@ JOBS = [
         areas=("build", "cable"),
     ),
     Job(
+        "images",
+        "publish the images, the first time main passes with new sources",
+        tiers=(Tier.QUICK,),
+        needs=(*FIRMWARE, "test-quick", "qbox-quick"),
+        steps=(
+            Step(
+                "publish",
+                ("uv", "run", "python", "tools/released_images.py", "publish"),
+            ),
+        ),
+    ),
+    Job(
         "qbox-tidy",
         "clang-tidy over the QBox adapter, which the dev tree leaves out",
         tiers=(Tier.NIGHTLY,),

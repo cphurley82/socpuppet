@@ -22,6 +22,10 @@ WORKFLOWS = REPO / ".github" / "workflows"
 RUN = "uv run python tools/ci.py run "
 # A GitHub runner of Ubuntu, as a label names it.
 UBUNTU = re.compile(r"ubuntu-\d+\.\d+(?:-arm)?")
+# The job that publishes what the tests booted. It tests nothing, so the
+# nightly tier has no need of it, and waits for QBox's verdict without running
+# QBox.
+PUBLISHES_THE_IMAGES = "images"
 # The key of a cache kept under the key its restore step looked for.
 KEPT = re.compile(r"\$\{\{ steps\.\w+\.outputs\.cache-primary-key \}\}")
 
@@ -168,6 +172,8 @@ def test_each_machine_the_quick_tier_runs_a_job_on_the_nightly_runs_it_on_too():
     quick = jobs_of(TIER.QUICK)
     nightly = jobs_of(TIER.NIGHTLY)
     for name, job in quick.items():
+        if name == PUBLISHES_THE_IMAGES:
+            continue
         counterpart = nightly[NIGHTLY_COUNTERPART.get(name, name)]
         assert set(runners(job)) <= set(runners(counterpart)), name
 
@@ -251,6 +257,42 @@ def test_no_other_step_runs_what_a_job_of_the_runner_runs():
             assert program not in command, f"{where}: {command}"
 
 
+def test_only_the_job_that_publishes_the_images_may_write_to_the_repository():
+    writers = {
+        (file, name)
+        for file, jobs in WORKFLOW_FILES.items()
+        for name, job in jobs.items()
+        if job.get("permissions", {}).get("contents") == "write"
+    }
+
+    assert writers == {(TIER.QUICK.value, PUBLISHES_THE_IMAGES)}
+
+
+def test_the_job_that_publishes_the_images_runs_on_main_alone():
+    # A pull request's token never gets to write, and its packages, which
+    # nobody may have read yet, never run beside that token.
+    job = WORKFLOW_FILES[TIER.QUICK.value][PUBLISHES_THE_IMAGES]
+
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+
+
+def test_the_job_that_publishes_the_images_waits_for_the_tests_that_boot_them():
+    job = WORKFLOW_FILES[TIER.QUICK.value][PUBLISHES_THE_IMAGES]
+
+    assert {"test-quick", "qbox-quick"} <= set(needs_of(job))
+
+
+def test_the_job_that_publishes_the_images_keeps_its_token_out_of_the_checkout():
+    job = WORKFLOW_FILES[TIER.QUICK.value][PUBLISHES_THE_IMAGES]
+    [checkout] = [
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+
+    assert checkout["with"]["persist-credentials"] is False
+
+
 def test_each_job_sets_up_with_the_setup_action_alone():
     # So that uv and the system's packages are set up in one place.
     for where, step in EVERY_STEP:
@@ -296,7 +338,8 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
     with_qbox = {
         name
         for name, job in JOBS.items()
-        if name == "qbox-build" or "qbox-build" in RUNNER.needed_by(job)
+        if name != PUBLISHES_THE_IMAGES
+        and (name == "qbox-build" or "qbox-build" in RUNNER.needed_by(job))
     }
     for tier in TIER:
         jobs = jobs_of(tier)

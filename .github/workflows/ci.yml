@@ -20,7 +20,7 @@ name: CI
 # fails if one of them did: it is the one check main's ruleset requires.
 #
 # Nothing waits for lint but CI passed: a job waits only for a job whose
-# output it reads.
+# output it reads, or, for the release of the images, whose verdict it does.
 #
 # The one Mac here is Apple silicon, macos-latest, which runs the whole
 # test job in about half the time an Intel Mac takes. The Intel Macs were
@@ -106,6 +106,29 @@ jobs:
           compiler-cache: qbox-dev
       - run: uv run python tools/ci.py run qbox-quick
 
+  images:
+    # The release a wheel fetches its images from, named for what they are
+    # built from: published by main's first run to pass with new sources,
+    # so that what is published has been booted, and left alone after that.
+    # The one job that may write to the repository, and only on main: not on
+    # a pull request, whose packages nobody has read yet.
+    name: The images' release
+    if: github.ref == 'refs/heads/main'
+    needs: [firmware, test-quick, qbox-quick]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          firmware: firmware-*
+      - run: uv run python tools/ci.py run images
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   ci-passed:
     # The one check main's ruleset requires, so that a pull request can
     # merge itself once it is green: it needs every other job here, and
@@ -117,7 +140,7 @@ jobs:
     # own condition, as GitHub counts it.
     name: CI passed
     if: always()
-    needs: [checks, firmware, test-quick, qbox-build, qbox-quick]
+    needs: [checks, firmware, test-quick, qbox-build, qbox-quick, images]
     runs-on: ubuntu-26.04
     steps:
       - name: A job it needs failed or was cancelled (see the run's summary)
