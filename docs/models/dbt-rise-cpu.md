@@ -45,7 +45,7 @@ platform.run(sp.ms(100))
 
 **Temporal decoupling.** The core runs many instructions in one go and only then lets the rest of the platform catch up. How far ahead it may get is the platform's `quantum`, 100 µs by default. The price is that the core sees an interrupt up to a quantum late. On a loop of two million instructions the core ran at 9 million instructions a second with no quantum and 44 million with the default.
 
-A whole boot is slower than a loop. OpenSBI and UEFI to the shell, 550 million instructions with paging on for most of them, ran at 16 million a second on the A51 (an Intel Core Ultra 9 285K), 34 s on the wall ([speed-spike.md](../history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28)). EDK2 asks `satp` for Sv57, then Sv48, and keeps the Sv39 this hart has. 🐧 Linux to its prompt, 208 s of the CPU's time, took 75 s on the wall ([linux.md](../linux.md)).
+A whole boot is slower than a loop. OpenSBI and UEFI to the shell, 550 million instructions with paging on for most of them, ran at 16 million a second on an Intel Core Ultra 9 285K under Ubuntu 26.04, 34 s on the wall ([speed-spike.md](../history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28)). EDK2 asks `satp` for Sv57, then Sv48, and keeps the Sv39 this hart has. 🐧 Linux to its prompt, 208 s of the CPU's time, took 75 s on the wall ([linux.md](../linux.md)).
 
 ## What it leaves out
 

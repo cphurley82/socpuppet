@@ -1,1 +1,1 @@
-{"host": "Chris-MacBookAir16c12.local", "env": "native-macos-arm64", "commit": "32bc102", "cpu": "qbox", "mode": "deterministic", "status": "build-failed"}
+{"host": "macbook-air", "env": "native-macos-arm64", "commit": "32bc102", "cpu": "qbox", "mode": "deterministic", "status": "build-failed"}

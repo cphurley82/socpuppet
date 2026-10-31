@@ -173,7 +173,7 @@ What it measured, in its repeatable configuration (QEMU as a coroutine on the Sy
 
 ### Through the adapter (M27)
 
-The same loops, through socpuppet's own platform and the `qbox_cpu`'s adapter, at the boards' 100 µs, three runs each, on the machine M27 was done on: the A51, a Ubuntu 26.04 box with an Intel Core Ultra 9 285K (24 cores), natively, GCC 15. Not the Ubuntu box of the tables above, so DBT-RISE's interpreter was run beside it from the same build, and the two rows are the ones to set side by side. Millions of instructions a second:
+The same loops, through socpuppet's own platform and the `qbox_cpu`'s adapter, at the boards' 100 µs, three runs each, on the machine M27 was done on: an Ubuntu 26.04 desktop with an Intel Core Ultra 9 285K (24 cores), natively, GCC 15. Not the Ubuntu box of the tables above, so DBT-RISE's interpreter was run beside it from the same build, and the two rows are the ones to set side by side. Millions of instructions a second:
 
 | CPU | counted | walks | hits |
 |---|---|---|---|
@@ -217,7 +217,7 @@ A boot to the shell is 1849 million instructions (median of 6).
 
 ### A boot that ran: OpenSBI and UEFI, to the shell (M28)
 
-The first workload of any size to run on socpuppet's harts is EDK2's boot on OpenSBI to `Shell>` (M28), timed on the A51 on 2026-10-16, the quick way, built with both of its countdowns at zero so that the hart is never asleep waiting for a key. Neither CPU counts instructions, and each charges a fixed time for one, so a count is the CPU's time over that: 100 ns on the interpreter, 128 ns on QBox. The two counts agree to within one percent, which is the check that the method works.
+The first workload of any size to run on socpuppet's harts is EDK2's boot on OpenSBI to `Shell>` (M28), timed on the Core Ultra 9 285K desktop on 2026-10-16, the quick way, built with both of its countdowns at zero so that the hart is never asleep waiting for a key. Neither CPU counts instructions, and each charges a fixed time for one, so a count is the CPU's time over that: 100 ns on the interpreter, 128 ns on QBox. The two counts agree to within one percent, which is the check that the method works.
 
 | Phase | Instructions | Interpreter: CPU's time, wall | QBox: CPU's time, wall |
 |---|---|---|---|
@@ -227,7 +227,7 @@ The first workload of any size to run on socpuppet's harts is EDK2's boot on Ope
 | BDS and the shell, to `Shell>` | 84 million | 8.6 s, 6.4 s | 10.6 s, 0.3 s |
 | **The whole boot** | **550 million** | **55.3 s, 34.4 s** | **70.2 s, 1.6 s** |
 
-That is 16 million instructions a second on the interpreter, between its walking and hits rates on this machine (above), and 343 million on QBox, above its counted rate. 💡 Most of the boot is one tight loop, LZMA's decoder, which neither walks page tables nor fences, so it is QBox's best case. The interpreter at 16 million a second would take a kernel's 1849 million in about two minutes on the A51. As built, with a countdown of 5 s from each, the prompt comes at 66 s of the interpreter's time and 87 of QBox's: the countdowns cost more than their 10 s, because the shell paints its question again each second.
+That is 16 million instructions a second on the interpreter, between its walking and hits rates on that machine (above), and 343 million on QBox, above its counted rate. 💡 Most of the boot is one tight loop, LZMA's decoder, which neither walks page tables nor fences, so it is QBox's best case. The interpreter at 16 million a second would take a kernel's 1849 million in about two minutes there. As built, with a countdown of 5 s from each, the prompt comes at 66 s of the interpreter's time and 87 of QBox's: the countdowns cost more than their 10 s, because the shell paints its question again each second.
 
 ## Not exercised
 

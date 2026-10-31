@@ -35,7 +35,7 @@ What it took to get there, each a thing M21's recipe has to know:
 - ⚠️ **`exec` has to be on twister's own `PATH`**, not only ninja's: twister checks `shutil.which(exec)` before it runs anything, and a board whose emulator it cannot find is silently built and never run.
 - ⚠️ **A non-zero exit from the emulator is a failed configuration even when the harness passed**, if the process ended before twister had killed it. A sample never prints ztest's verdict, so the runner reaches its cap first. The runner therefore exits 0 at the cap and says so on standard error; a ztest suite that never gave a verdict fails by its silence either way.
 - ⚠️ **The runner's Python must outlive the container.** The Linux venv that `docs/development.md` describes for a second build tree had its interpreter in uv's cache inside a container that was gone. `firmware/build.sh` keeps Zephyr's venv alive with `UV_PYTHON_INSTALL_DIR` under `build/`, and the spike does the same; and since socpuppet has no Python dependencies, Zephyr's own venv (Python 3.13, the version the Linux `.so` is built for) runs the simulator with `PYTHONPATH=python`.
-- ⚠️ **A build tree whose Python is gone has to go too.** Configuring `build/linux` again without its cache made FetchContent apply the dependency patches a second time, which fails. A clean `build/linux` took ten minutes on this Intel Mac through Docker.
+- ⚠️ **A build tree whose Python is gone has to go too.** Configuring `build/linux` again without its cache made FetchContent apply the dependency patches a second time, which fails. A clean `build/linux` took ten minutes on an Intel Mac through Docker.
 - Twister wants `psutil`, `tabulate`, `natsort`, `anytree`, `junitparser`, `colorama`, `ply`, `pyserial`, `pytest`, `packaging` and `python-dotenv` on top of `requirements-base.txt`: a tenth of `requirements-build-test.txt` and `requirements-run-test.txt`, which pull in gcovr, mypy, opencv and pyocd.
 - Twister names the platform `socpuppet_host/socpuppet_rv64`, board and SoC, and passes `BOARD=socpuppet_host` to CMake, which is what `board.cmake` gives the runner.
 - The boot ROM names the image after its file, so every run begins `rom: zephyr: N bytes to 0x80000000, jumping to 0x80000000`. The ztest harness ignores it, and the two samples and `tests/arch/riscv/fatal`, which are judged by regular expressions on the console, passed with it there. A suite that insisted on its own first line being the console's first would not.
@@ -135,7 +135,7 @@ In the quick tier, with the image put in RAM by Python and no ROM, the same test
 
 ## 4. What it costs
 
-On this Intel Mac, with everything in the devcontainer's image and the repository reached through Docker's bind mount:
+On an Intel Mac, with everything in the devcontainer's image and the repository reached through Docker's bind mount:
 
 | What | Wall time |
 |---|---|
@@ -176,7 +176,7 @@ Added on 2026-10-11, after the first six, when the maintainer decided that twist
 | The same with ccache, warm (241 of 243 hits) | 44 s |
 | The same with `-j 4` in place of 14 | 62 s |
 
-Each figure is one run, on this Intel Mac with Docker Desktop given 14 CPUs and 32 GB. So:
+Each figure is one run, on an Intel Mac with Docker Desktop given 14 CPUs and 32 GB. So:
 
 - **The bind mount is the cost, and the volume removes it: ten times faster.** The compiler reading Zephyr's headers and the SDK through Docker's file sharing is where the minute went, not CMake's work and not the simulator. On a volume, a scenario is four seconds.
 - **One invocation instead of one a suite saves 40%** on the bind mount, where each invocation pays again for twister's start, the module copy and the socpuppet build check. The recipe runs every suite in one, and the `-K` ones apart.

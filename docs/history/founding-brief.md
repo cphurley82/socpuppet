@@ -1,8 +1,8 @@
-# Handoff: socpuppet — open-source SystemC/TLM virtual platform (chiplet host + NVMe SSD)
+# The founding brief 🧦
 
-**Date:** 2026-10-03 / **Source:** claude.ai conversation
+**Date:** 2026-10-03
 
-This is the founding brief, kept as it was written. What the project aims at now is in [vision.md](../vision.md), and where this brief and the roadmap disagree, [decisions.md](decisions.md) says what changed and when.
+This is the founding brief, kept as it was written but for this title and the line above. What the project aims at now is in [vision.md](../vision.md), and where this brief and the roadmap disagree, [decisions.md](decisions.md) says what changed and when.
 
 ## Goal
 
