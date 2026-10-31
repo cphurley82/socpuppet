@@ -259,7 +259,7 @@ The first two columns are the same Apple silicon laptop: Linux is Ubuntu 24.04 i
 
 ## QBox and the license question
 
-This is not legal advice. It sets out which licenses apply to what, and which judgements are Chris's.
+This is not legal advice. It sets out which licenses apply to what, and which judgements are the maintainer's.
 
 **Decided on 2026-10-04:** socpuppet stays MIT, and the rule becomes "the default wheel contains no GPL code". QBox may be an optional CPU tier that users build from source, with its glue kept in the repo as a supported, opt-in component. socpuppet distributes no QEMU code and no QEMU binaries. That is the third arrangement in the table below.
 
