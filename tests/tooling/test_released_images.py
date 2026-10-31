@@ -185,6 +185,7 @@ class TestThePin:
 
         pin = run_as_python(sources / PIN)
         assert pin["TAG"] == tag_of(sources)
+        assert pin["REPOSITORY"] == "https://example.com/spam/eggs"
         assert (
             pin["URL"]
             == f"https://example.com/spam/eggs/releases/download/{pin['TAG']}"

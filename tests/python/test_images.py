@@ -10,14 +10,20 @@ import gzip
 import hashlib
 import http.server
 import io
+import os
 import pathlib
+import random
 import threading
 import time
 
 import platformdirs
 import pytest
 
+from elf_files import elf_file
+from processes import run_socpuppet
+from riscv_program import a_program_that_says
 from socpuppet import images, linux, opensbi
+from socpuppet.boards import host
 from socpuppet.images_release import TAG
 
 
@@ -124,6 +130,11 @@ class TestFindingAnImage:
         assert "`uv run firmware/build.py`" in str(refused.value)
 
 
+#: How long an image takes to come, in seconds, so that the others ask while
+#: the first is still fetching it.
+ALL_ASK_WHILE_ONE_FETCHES = 0.2
+
+
 class AReleaseOfImages:
     """🎭 A stand-in for a release on GitHub: its files, over HTTP."""
 
@@ -134,11 +145,10 @@ class AReleaseOfImages:
         #: How long each image takes to come, in seconds.
         self.slowness = 0.0
 
-    def holds(self, **images: bytes) -> None:
+    def holds(self, images: dict[str, bytes]) -> None:
         """Publish images, gzipped, with their sums, as the release has them."""
         lines = []
         for name, image in images.items():
-            name = name.replace("__", ".")
             (self.directory / f"{name}.gz").write_bytes(gzip.compress(image))
             lines.append(f"{hashlib.sha256(image).hexdigest()}  {name}\n")
         (self.directory / "SHA256SUMS").write_text("".join(lines))
@@ -196,15 +206,14 @@ def in_the_cache():
 
 class TestFetchingAnImage:
     def test_a_missing_image_is_fetched_and_is_what_was_released(self, release):
-        release.holds(spam__elf=b"spam" * 1000)
+        release.holds({"spam.elf": b"spam" * 1000})
 
         found = images.find("spam.elf")
 
-        assert found == images.directory() / "spam.elf"
         assert found.read_bytes() == b"spam" * 1000
 
     def test_a_second_ask_fetches_nothing(self, release):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         images.find("spam.elf")
         release.asked.clear()
 
@@ -215,7 +224,7 @@ class TestFetchingAnImage:
     def test_only_the_image_asked_for_is_fetched_and_it_is_kept_unpacked(
         self, release
     ):
-        release.holds(spam__elf=b"spam", eggs__elf=b"eggs")
+        release.holds({"spam.elf": b"spam", "eggs.elf": b"eggs"})
 
         images.find("spam.elf")
 
@@ -224,7 +233,7 @@ class TestFetchingAnImage:
     def test_a_directory_asked_for_that_is_the_cache_is_fetched_into(
         self, release
     ):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
 
         found = images.find("spam.elf", images.directory())
 
@@ -233,7 +242,7 @@ class TestFetchingAnImage:
     def test_nothing_is_fetched_into_a_directory_that_is_not_the_cache(
         self, release, tmp_path
     ):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
 
         with pytest.raises(FileNotFoundError):
             images.find("spam.elf", tmp_path)
@@ -241,22 +250,18 @@ class TestFetchingAnImage:
         assert release.asked == []
 
     def test_nothing_is_fetched_into_the_build_directory_of_a_checkout(
-        self, release, nothing_said
+        self, release, a_checkout
     ):
-        release.holds(spam__elf=b"spam")
-        (nothing_said / "firmware").mkdir()
-        (nothing_said / "firmware/build.py").touch()
-        (nothing_said / "build/firmware").mkdir(parents=True)
+        release.holds({"spam.elf": b"spam"})
 
-        with pytest.raises(FileNotFoundError) as refused:
+        with pytest.raises(FileNotFoundError):
             images.find("spam.elf")
 
         assert release.asked == []
-        assert "uv run firmware/build.py" in str(refused.value)
 
     def test_several_asking_at_once_fetch_it_once_and_all_get_it(self, release):
-        release.holds(spam__elf=b"spam")
-        release.slowness = 0.2
+        release.holds({"spam.elf": b"spam"})
+        release.slowness = ALL_ASK_WHILE_ONE_FETCHES
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
             found = list(pool.map(lambda _: images.find("spam.elf"), range(4)))
@@ -269,16 +274,17 @@ class TestWhatAFetchSays:
     def test_it_says_one_line_naming_the_image_and_how_big_the_download_is(
         self, release, capsys
     ):
-        release.holds(spam__elf=b"spam" * 1_000_000)
+        # 💡 Bytes that gzip cannot shrink, so that it is the size it says.
+        release.holds({"spam.elf": random.Random(0).randbytes(2_000_000)})
 
         images.find("spam.elf")
 
         [line] = capsys.readouterr().err.splitlines()
-        assert line.startswith("🧦 Fetching spam.elf (")
-        assert " MB)" in line
+        assert "spam.elf" in line
+        assert "(2.0 MB)" in line
 
     def test_it_says_nothing_when_nothing_is_fetched(self, release, capsys):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         images.find("spam.elf")
         capsys.readouterr()
 
@@ -288,7 +294,7 @@ class TestWhatAFetchSays:
 
     def test_it_says_it_in_color_at_a_terminal(self, release, monkeypatch):
         monkeypatch.delenv("NO_COLOR", raising=False)
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         terminal = ATerminal()
 
         with contextlib.redirect_stderr(terminal):
@@ -300,7 +306,7 @@ class TestWhatAFetchSays:
         self, release, monkeypatch
     ):
         monkeypatch.setenv("NO_COLOR", "1")
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         terminal = ATerminal()
 
         with contextlib.redirect_stderr(terminal):
@@ -313,7 +319,7 @@ class TestWhatAFetchSays:
         self, release, monkeypatch, capsys
     ):
         monkeypatch.delenv("NO_COLOR", raising=False)
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
 
         images.find("spam.elf")
 
@@ -326,7 +332,7 @@ class TestWhenAnImageCannotBeFetched:
     def test_a_download_that_differs_from_its_sum_is_said_and_not_kept(
         self, release
     ):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         (release.directory / "spam.elf.gz").write_bytes(gzip.compress(b"eggs"))
 
         with pytest.raises(images.Unavailable) as refused:
@@ -334,10 +340,12 @@ class TestWhenAnImageCannotBeFetched:
 
         assert "SHA-256" in str(refused.value)
         assert in_the_cache() == set()
-        says_how_to_build(refused, "`uv run firmware/build.py`")
+        says_how_to_build(
+            refused, "`uv run firmware/build.py`", after="SHA-256"
+        )
 
     def test_a_download_that_is_not_gzip_is_said_and_not_kept(self, release):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         (release.directory / "spam.elf.gz").write_bytes(b"not gzip at all")
 
         with pytest.raises(images.Unavailable) as refused:
@@ -347,38 +355,82 @@ class TestWhenAnImageCannotBeFetched:
         assert in_the_cache() == set()
 
     def test_a_download_that_stopped_short_is_said_and_not_kept(self, release):
-        release.holds(spam__elf=b"spam" * 1000)
+        release.holds({"spam.elf": b"spam" * 1000})
         whole = (release.directory / "spam.elf.gz").read_bytes()
         (release.directory / "spam.elf.gz").write_bytes(
             whole[: len(whole) // 2]
         )
 
-        with pytest.raises(images.Unavailable):
+        with pytest.raises(images.Unavailable) as refused:
             images.find("spam.elf")
 
+        assert "gzip" in str(refused.value)
         assert in_the_cache() == set()
 
     def test_a_name_the_release_has_not_got_is_said_with_the_release(
         self, release
     ):
-        release.holds(eggs__elf=b"eggs")
+        release.holds({"eggs.elf": b"eggs"})
 
         with pytest.raises(images.Unavailable) as refused:
-            images.find("linux.bin")
+            images.find(linux.LINUX_BIN)
 
         assert TAG in str(refused.value)
-        assert "linux.bin" in str(refused.value)
-        says_how_to_build(refused, "`uv run firmware/build.py opensbi linux`")
+        assert linux.LINUX_BIN in str(refused.value)
+        says_how_to_build(
+            refused, "`uv run firmware/build.py opensbi linux`", after=TAG
+        )
 
-    def test_a_release_that_was_never_published_is_said(self, release):
+    def test_a_release_that_was_never_published_is_said(
+        self, release, monkeypatch
+    ):
+        # A release of the pin's own URL, and not a mirror of one.
+        monkeypatch.setattr(images, "URL", os.environ["SOCPUPPET_IMAGES_URL"])
+        monkeypatch.delenv("SOCPUPPET_IMAGES_URL")
+
         with pytest.raises(images.Unavailable) as refused:
             images.find("rom_rv64.elf")
 
         assert "never published" in str(refused.value)
-        says_how_to_build(refused, "`uv run firmware/build.py rom`")
+        says_how_to_build(
+            refused, "`uv run firmware/build.py rom`", after="published"
+        )
+
+    def test_a_mirror_with_no_release_says_it_answered_that(self, release):
+        # The release this is said of is in the stand-in's place, a mirror.
+        with pytest.raises(images.Unavailable) as refused:
+            images.find("spam.elf")
+
+        assert "SHA256SUMS" in str(refused.value)
+        assert "404" in str(refused.value)
+
+    def test_a_server_that_answers_with_anything_but_sums_is_said(
+        self, release
+    ):
+        # A login page on a guest network answers everything with itself.
+        (release.directory / "SHA256SUMS").write_text(
+            "<html>Please sign in to the Spam Hotel.</html>\n"
+        )
+
+        with pytest.raises(images.Unavailable) as refused:
+            images.find("spam.elf")
+
+        assert "SHA256SUMS" in str(refused.value)
+        assert "not a list" in str(refused.value)
+
+    def test_another_answer_about_the_sums_names_the_sums(
+        self, release, tmp_path
+    ):
+        # A directory where a file was asked for: the server's own trouble.
+        (release.directory / "SHA256SUMS").mkdir()
+
+        with pytest.raises(images.Unavailable) as refused:
+            images.find("spam.elf")
+
+        assert "SHA256SUMS" in str(refused.value)
 
     def test_a_file_the_release_lists_but_has_not_got_is_said(self, release):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         (release.directory / "spam.elf.gz").unlink()
 
         with pytest.raises(images.Unavailable) as refused:
@@ -398,12 +450,14 @@ class TestWhenAnImageCannotBeFetched:
 
         assert "connection" in str(refused.value)
         assert "SOCPUPPET_IMAGES_URL" in str(refused.value)
-        says_how_to_build(refused, "`uv run firmware/build.py edk2`")
+        says_how_to_build(
+            refused, "`uv run firmware/build.py edk2`", after="connection"
+        )
 
     def test_a_cache_that_cannot_be_written_says_how_to_move_it(
         self, release, monkeypatch, nothing_said
     ):
-        release.holds(spam__elf=b"spam")
+        release.holds({"spam.elf": b"spam"})
         (nothing_said / "a_file").touch()
         monkeypatch.setenv("SOCPUPPET_CACHE_DIR", str(nothing_said / "a_file"))
 
@@ -413,7 +467,7 @@ class TestWhenAnImageCannotBeFetched:
         assert "SOCPUPPET_CACHE_DIR" in str(refused.value)
 
     def test_it_is_said_in_one_line(self, release):
-        release.holds(eggs__elf=b"eggs")
+        release.holds({"eggs.elf": b"eggs"})
 
         with pytest.raises(images.Unavailable) as refused:
             images.find("spam.elf")
@@ -425,11 +479,105 @@ class TestWhenAnImageCannotBeFetched:
             images.find("spam.elf")
 
 
-def says_how_to_build(refused, command):
-    """What to do instead is the last thing an Unavailable says."""
+class TestWhenTheCommandLineAsksForAnImageByName:
+    def test_the_run_command_fetches_and_runs_it(self, release, tmp_path):
+        release.holds(
+            {
+                "spam_socpuppet_ssd.elf": a_program_that_says(
+                    "Spam!", tmp_path
+                ).read_bytes()
+            }
+        )
+
+        ran = run_socpuppet(
+            *("run", "spam_socpuppet_ssd.elf", "--board", "socpuppet_ssd"),
+            *("--boot", "ram", "--until", "1"),
+        )
+
+        assert "Spam!" in ran.stdout
+        assert "Fetching spam_socpuppet_ssd.elf" in ran.stderr
+
+    def test_a_file_of_that_name_here_is_run_and_nothing_is_fetched(
+        self, release, nothing_said
+    ):
+        program = a_program_that_says("Spam!", nothing_said)
+
+        ran = run_socpuppet(
+            *("run", program.name, "--board", "socpuppet_ssd"),
+            *("--boot", "ram", "--until", "1"),
+        )
+
+        assert "Spam!" in ran.stdout
+        assert release.asked == []
+
+    def test_a_path_is_never_fetched(self, release):
+        ran = run_socpuppet(
+            "run",
+            "elsewhere/spam.elf",
+            "--board",
+            "socpuppet_host",
+            check=False,
+        )
+
+        assert "elsewhere/spam.elf" in ran.stderr
+        assert release.asked == []
+
+    def test_a_name_with_no_such_file_here_says_that_first(self, release):
+        release.holds({"eggs.elf": b"eggs"})
+
+        ran = run_socpuppet(
+            *("run", "spam.elf", "--board", "socpuppet_host"), check=False
+        )
+
+        assert ran.returncode != 0
+        [line] = ran.stderr.strip().splitlines()
+        assert line.startswith("There is no file spam.elf here.")
+        assert "SOCPUPPET_FIRMWARE_DIR" in line
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            ("run", "spam_socpuppet_host.elf", "--board", "socpuppet_host"),
+            ("linux",),
+            ("drive",),
+        ],
+        ids=["run", "linux", "drive"],
+    )
+    def test_when_it_cannot_be_fetched_it_says_how_to_build_it_in_one_line(
+        self, release, command
+    ):
+        ran = run_socpuppet(*command, check=False)
+
+        assert ran.returncode != 0
+        [line] = ran.stderr.strip().splitlines()
+        assert "uv run firmware/build.py" in line
+        assert "SOCPUPPET_FIRMWARE_DIR" in line
+
+    def test_a_boot_rom_that_cannot_be_fetched_also_offers_boot_ram(
+        self, release, nothing_said
+    ):
+        program = elf_file(
+            nothing_said,
+            xlen=64,
+            entry=host.RAM_BASE,
+            segments=[(host.RAM_BASE, b"Spam, spam, spam")],
+        )
+
+        ran = run_socpuppet(
+            "run", str(program), "--board", "socpuppet_host", check=False
+        )
+
+        assert ran.returncode != 0
+        [line] = ran.stderr.strip().splitlines()
+        assert "uv run firmware/build.py rom" in line
+        assert "--boot ram" in line
+
+
+def says_how_to_build(refused, command, after):
+    """What to do instead comes after what went wrong, which is `after`."""
     said = str(refused.value)
     assert command in said
     assert "SOCPUPPET_FIRMWARE_DIR" in said
     assert "docs/boot-your-firmware.md" in said
     assert "github.com/" in said
-    assert said.index(command) > said.index(".")
+    assert said.index(command) > said.index(after)

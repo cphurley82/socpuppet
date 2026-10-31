@@ -25,6 +25,7 @@ import hashlib
 import http.client
 import os
 import pathlib
+import re
 import shutil
 import sys
 import urllib.error
@@ -34,7 +35,7 @@ from typing import IO, cast
 
 import platformdirs
 
-from socpuppet.images_release import TAG, URL
+from socpuppet.images_release import REPOSITORY, TAG, URL
 
 #: Where `firmware/build.py` builds, from the top of a checkout, and the
 #: script itself, which is what makes it a checkout of socpuppet and not
@@ -60,6 +61,8 @@ _BUILT_BY = {
 
 #: How long a server may say nothing, in seconds, before it is given up on.
 _PATIENCE = 60
+#: What a line of SHA256SUMS starts with.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 #: The bold cyan of a fetch's line, at a terminal.
 _COLOR, _RESET = "\x1b[1;36m", "\x1b[0m"
 
@@ -158,7 +161,7 @@ def _download(name: str, place: pathlib.Path) -> None:
         ) from error
     except urllib.error.HTTPError as error:
         raise _unavailable(
-            name, f"{release}/{name}.gz answered {error.code}: {error.reason}."
+            name, f"{error.url} answered {error.code}: {error.reason}."
         ) from error
     except (
         urllib.error.URLError,
@@ -182,25 +185,33 @@ def _sums(name: str, release: str) -> dict[str, str]:
     It is asked each time and not kept: what a server said once, such as a
     login page on a guest network, does not decide every later fetch.
     """
+    url = f"{release}/SHA256SUMS"
     try:
-        with urllib.request.urlopen(
-            f"{release}/SHA256SUMS", timeout=_PATIENCE
-        ) as response:
+        with urllib.request.urlopen(url, timeout=_PATIENCE) as response:
             listed = response.read().decode(errors="replace")
     except urllib.error.HTTPError as error:
-        if error.code != http.client.NOT_FOUND:
+        # 💡 A mirror's missing file says nothing of what main has published.
+        if release != URL or error.code != http.client.NOT_FOUND:
             raise
         raise _unavailable(
             name,
             f"Release {TAG} of the images was never published: it appears "
             "when main first passes with these firmware sources.",
         ) from error
-    return {
+    sums = {
         image: digest
         for digest, _, image in (
             line.partition("  ") for line in listed.splitlines()
         )
+        if _SHA256.fullmatch(digest)
     }
+    if not sums:
+        raise _unavailable(
+            name,
+            f"What {url} answered is not a list of sums, which a login page "
+            "on a guest network would explain.",
+        )
+    return sums
 
 
 def _say_fetching(name: str, size: int, release: str) -> None:
@@ -216,9 +227,8 @@ def _say_fetching(name: str, size: int, release: str) -> None:
 
 def _unavailable(name: str, what_went_wrong: str) -> Unavailable:
     """The error for an image: what went wrong, and how to build it instead."""
-    repository = URL.removesuffix(f"/releases/download/{TAG}")
     return Unavailable(
-        f"{what_went_wrong} To build it yourself, clone {repository}, run "
+        f"{what_went_wrong} To build it yourself, clone {REPOSITORY}, run "
         f"`{_build_command(name)}` there, and point SOCPUPPET_FIRMWARE_DIR "
         "at its build/firmware: docs/boot-your-firmware.md has the long form."
     )

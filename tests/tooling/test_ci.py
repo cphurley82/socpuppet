@@ -1207,7 +1207,7 @@ def test_wheel_here_leaves_the_containers_compiler_cache_for_anyone_to_remove(
     assert env["CCACHE_UMASK"] == "000"
 
 
-def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):
+def test_wheel_installs_must_boot_the_firmware_they_fetch_and_none_built(ci):
     ci("wheel", makes=ONE_WHEEL)
 
     installs = [
@@ -1215,10 +1215,7 @@ def test_wheel_installs_boot_the_firmware_in_build_firmware(ci):
     ]
     assert installs
     for install in installs:
-        assert install["env"] == {
-            "SOCPUPPET_REQUIRE_FIRMWARE": "1",
-            "SOCPUPPET_FIRMWARE_DIR": str(ci.root / "build" / "firmware"),
-        }
+        assert install["env"] == {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
 
 
 def test_wheel_in_ci_builds_every_wheel_in_place_checks_each_and_installs_ours(

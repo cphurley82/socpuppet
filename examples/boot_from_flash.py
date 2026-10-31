@@ -23,13 +23,13 @@ it. Each time it starts it reads why from the system controller, and each
 time the ROM has to load it again, because a reset leaves nothing in RAM
 that can be trusted.
 
-Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/boot_from_flash.py
 
-The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
-if that is set. With no image there the example says so and counts as
-not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where
-a missing image is a failure.
+The images are found as `socpuppet.images` finds any: in
+SOCPUPPET_FIRMWARE_DIR, in build/firmware in a checkout, or else fetched into
+your cache the first time. With one that cannot be had the example says so and
+counts as not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI,
+where that is a failure.
 
 To see where the ROM, the system controller, the watchdog and the flash
 are:
@@ -46,10 +46,9 @@ from socpuppet.boards.boot import from_rom
 from socpuppet.boards.cpu_kit import BOOT_FLASH_BASE, BOOT_FLASH_SIZE
 from socpuppet.boards.host import IO_BASE, host
 
-IMAGES = images.directory()
 #: The boot ROM's program, built for the host's 64-bit CPU.
-ROM = IMAGES / "rom_rv64.elf"
-FIRMWARE = IMAGES / "watchdog_socpuppet_host.elf"
+ROM = "rom_rv64.elf"
+FIRMWARE = "watchdog_socpuppet_host.elf"
 #: What the firmware says each time it starts, before why.
 RESET_CAUSE = "reset cause: "
 
@@ -77,29 +76,23 @@ def flash_bytes_read_across_the_link():
 
 
 if __name__ == "__main__":
-    missing = next(
-        (image for image in (ROM, FIRMWARE) if not image.exists()), None
-    )
-    if missing:
-        message = (
-            f"There is no {missing} yet. Build the firmware with "
-            "`uv run firmware/build.py`, which takes a few minutes the "
-            "first time."
-        )
+    try:
+        rom, firmware = (images.find(name) for name in (ROM, FIRMWARE))
+    except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
-            sys.exit(message)
-        print(message)
+            sys.exit(str(missing))
+        print(missing)
         # ctest's code for "could not be run here", which is not a failure.
         sys.exit(77)
 
     platform.build()
     # Two things are loaded, and neither into RAM. The ROM's own program
     # goes into the ROM: it is an ELF file that starts where the CPU does.
-    platform.load_elf(ROM, via=board.cpu.socket)
+    platform.load_elf(rom, via=board.cpu.socket)
     # And the firmware goes into the flash, wrapped: an image is the ELF
     # file's bytes behind a header a ROM can read (docs/models/boot-image.md).
     # The system controller's `boot_address` is where the ROM will look.
-    image = boot_image.from_elf(FIRMWARE)
+    image = boot_image.from_elf(firmware)
     platform.poke(
         board.syscon.component.boot_address,
         image.to_bytes(),

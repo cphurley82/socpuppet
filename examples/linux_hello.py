@@ -12,7 +12,6 @@ every Linux has a driver for. Python waits for the shell's prompt, types
 two commands and reads the answers, as a test would, then switches the
 host off.
 
-Build the firmware first:  uv run firmware/build.py
 Run it:                    python examples/linux_hello.py
 On QBox's hart:            SOCPUPPET_CPU=qbox_cpu python examples/linux_hello.py
 With a debugger waiting:   python examples/linux_hello.py --gdb 1234
@@ -24,10 +23,11 @@ most of it the kernel's own start-up, and in seconds on QBox's. With
 :1234`, `break start_kernel`, `continue` (docs/linux.md, "When it does
 not boot").
 
-The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
-if that is set. With an image missing the example says so and counts as
-not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
-missing image is a failure.
+The images are found as `socpuppet.images` finds any: in
+SOCPUPPET_FIRMWARE_DIR, in build/firmware in a checkout, or else fetched into
+your cache the first time. With one that cannot be had the example says so and
+counts as not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI,
+where that is a failure.
 """
 
 import argparse
@@ -36,10 +36,9 @@ import sys
 import time
 
 import socpuppet as sp
-from socpuppet import images, linux
+from socpuppet import linux
 from socpuppet.boards.host import switched_off
 
-IMAGES = images.directory()
 #: How long the kernel may take to prompt, in simulated time: it prompts
 #: at about 180 s of the CPU's time on one hart and 210 s on the other.
 PROMPTS_WITHIN = sp.ms(400_000)
@@ -59,7 +58,7 @@ if __name__ == "__main__":
     options = parser.parse_args()
 
     try:
-        board = linux.host_with_linux(IMAGES, gdb_port=options.gdb)
+        board = linux.host_with_linux(gdb_port=options.gdb)
     except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(str(missing))

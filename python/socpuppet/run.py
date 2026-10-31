@@ -1,6 +1,7 @@
 """`socpuppet run`: one firmware image run on one of socpuppet's boards."""
 
 import functools
+import pathlib
 import sys
 from collections.abc import Callable, Sequence
 from typing import NamedTuple
@@ -212,6 +213,7 @@ def run(
                 f"It takes {_listed(taken)}."
             )
     try:
+        image = _located(image)
         program = boot_image.from_elf(image)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
@@ -331,6 +333,22 @@ def _build(platform: Platform) -> None:
         platform.build()
     except ValueError as refused:
         sys.exit(str(refused))
+
+
+def _located(image: str) -> str:
+    """Where the image is: a file here, or else one known by that name.
+
+    A path is a file, or a mistake that `boot_image` says more about.
+    """
+    path = pathlib.Path(image)
+    if path.exists() or path.name != image:
+        return image
+    try:
+        return str(images.find(image))
+    except FileNotFoundError as missing:
+        raise FileNotFoundError(
+            f"There is no file {image} here. {missing}"
+        ) from missing
 
 
 def _listed(names: tuple[str, ...]) -> str:

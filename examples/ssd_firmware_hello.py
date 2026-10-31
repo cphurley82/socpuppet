@@ -14,13 +14,12 @@ application in firmware/ssd, built for the board `socpuppet_ssd`.
 🎭 The host is still a script, and it is ssd_hello.py's, unchanged. It
 cannot tell which firmware it got.
 
-Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/ssd_firmware_hello.py
 
-The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
-that is set. With no image there the example says so and counts as not
-run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
-missing image is a failure.
+The image is found as `socpuppet.images` finds any: in SOCPUPPET_FIRMWARE_DIR,
+in build/firmware in a checkout, or else fetched into your cache the first
+time. With none to be had the example says so and counts as not run, unless
+SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where that is a failure.
 """
 
 import os
@@ -31,7 +30,7 @@ from socpuppet import images
 from socpuppet.boards.scripted_host import bring_up_the_drive
 from socpuppet.boards.ssd import ssd
 
-IMAGE = images.directory() / "ssd_socpuppet_ssd.elf"
+IMAGE = "ssd_socpuppet_ssd.elf"
 MESSAGE = b"Hello from the host, by way of PCIe, Zephyr and a page of NAND."
 
 # What the host's script learns along the way, for printing at the end.
@@ -61,21 +60,18 @@ def host():
 board = ssd(host=host, blocks=4096)
 
 if __name__ == "__main__":
-    if not IMAGE.exists():
-        missing = (
-            f"There is no {IMAGE} yet. Build the firmware with "
-            "`uv run firmware/build.py`, which takes a few minutes the "
-            "first time."
-        )
+    try:
+        image = images.find(IMAGE)
+    except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
-            sys.exit(missing)
+            sys.exit(str(missing))
         print(missing)
         # ctest's code for "could not be run here", which is not a failure.
         sys.exit(77)
 
     board.platform.build()
     # ⚠️ There are two CPUs' worth of bus here, so say whose firmware it is.
-    board.platform.load_elf(IMAGE, via=board.ssd.cpu.socket)
+    board.platform.load_elf(image, via=board.ssd.cpu.socket)
 
     # A CPU never runs out of things to do, so the run ends when the host
     # has its block back, or after a second of simulated time, which is
