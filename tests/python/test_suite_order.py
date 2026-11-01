@@ -4,12 +4,19 @@ ctest runs the suite on every core with pytest-xdist, which hands the tests
 out in the order they were collected. A boot of real firmware takes most of
 a minute, so those tests go first: started last, one of them would keep the
 whole run waiting while every other core sat idle.
+
+⚠️ This test sees something only in a run of the whole suite. ctest's three
+entries each choose by marker, and none holds both this test and the boots, so
+there it is skipped, and in CI only the `wheel` job, which chooses nothing, can
+fail it (tools/test_wheel.py). So a new module of boots goes in BOOTS as it is
+written: nothing nearer will say so.
 """
 
 import pytest
 
 # The modules whose tests boot OpenSBI, UEFI and Linux, or Zephyr on virtio.
 BOOTS = {
+    "test_fetched_images",
     "test_linux_boot_flash",
     "test_linux_command_boots",
     "test_linux_gpio",
