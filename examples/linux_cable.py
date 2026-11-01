@@ -17,14 +17,14 @@ Every frame both ways is written to `cable.pcap` in the current
 directory, which Wireshark and `tcpdump -nr cable.pcap` open: DHCP, ARP,
 and the TCP of the ssh session.
 
-Build the firmware first:   uv run firmware/build.py
 Install libslirp:           uv run python tools/doctor.py cable
 Run it:                     python examples/linux_cable.py
 
-The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
-if that is set. With an image missing the example says so and counts as
-not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
-missing image is a failure; the same for libslirp and ssh, under
+The images are found as `socpuppet.images` finds any: in
+SOCPUPPET_FIRMWARE_DIR, in build/firmware in a checkout, or else fetched into
+your cache the first time. With one that cannot be had the example says so and
+counts as not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI,
+where that is a failure; the same for libslirp and ssh, under
 SOCPUPPET_REQUIRE_CABLE, as the cable's tests have it.
 """
 
@@ -41,10 +41,8 @@ import socpuppet as sp
 from socpuppet import linux
 from socpuppet.boards.host import switched_off
 from socpuppet.pump import pump
-from socpuppet.run import firmware_directory
 from socpuppet.slirp import Slirp
 
-IMAGES = firmware_directory()
 CAPTURE = pathlib.Path("cable.pcap")
 #: How long the kernel may take to prompt, in simulated time.
 PROMPTS_WITHIN = sp.ms(400_000)
@@ -155,7 +153,7 @@ if __name__ == "__main__":
     # The firmware is looked for first, as every example that boots some
     # does, so that where it is missing this one says so the same way.
     try:
-        board = linux.host_with_linux(IMAGES)
+        board = linux.host_with_linux()
     except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
             sys.exit(str(missing))

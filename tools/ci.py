@@ -266,7 +266,8 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
     machine and the Python the tools are pinned to, from a source
     distribution: given a directory, it copies all of it into its
     container, build/ too. Ours is then installed with uv and with pip,
-    away from the source tree, and boots the firmware.
+    away from the source tree, and boots the firmware it fetches, as a
+    user's would.
     """
     python = (REPO / ".python-version").read_text().strip()
     tag = "cp" + python.replace(".", "")
@@ -281,7 +282,7 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
         system = "manylinux" if ON_LINUX else "macosx"
         sdists = f"{WHEELHOUSE}/sdist"
         # test_wheel.py tests the same wheel below, with the firmware, which
-        # cibuildwheel's own test has not got.
+        # cibuildwheel's own test goes without (pyproject.toml).
         env = {"CIBW_TEST_SKIP": "*"}
         if ON_LINUX:
             # The container is thrown away after each build, and its compiler
@@ -305,10 +306,6 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
                 env=env,
             ),
         )
-    firmware = {
-        **REQUIRE_FIRMWARE,
-        "SOCPUPPET_FIRMWARE_DIR": str(REPO / "build" / "firmware"),
-    }
     ours = Glob(f"{WHEELHOUSE}/*-{tag}-*.whl")
     return (
         *build,
@@ -323,10 +320,14 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
             ),
         ),
         Step(
-            "test_wheel_uv", ("tools/test_wheel.py", "uv", ours), env=firmware
+            "test_wheel_uv",
+            ("tools/test_wheel.py", "uv", ours),
+            env=REQUIRE_FIRMWARE,
         ),
         Step(
-            "test_wheel_pip", ("tools/test_wheel.py", "pip", ours), env=firmware
+            "test_wheel_pip",
+            ("tools/test_wheel.py", "pip", ours),
+            env=REQUIRE_FIRMWARE,
         ),
     )
 
@@ -573,6 +574,18 @@ JOBS = [
         areas=("build", "cable"),
     ),
     Job(
+        "images",
+        "publish the images, the first time main passes with new sources",
+        tiers=(Tier.QUICK,),
+        needs=(*FIRMWARE, "test-quick", "qbox-quick"),
+        steps=(
+            Step(
+                "publish",
+                ("uv", "run", "python", "tools/released_images.py", "publish"),
+            ),
+        ),
+    ),
+    Job(
         "qbox-tidy",
         "clang-tidy over the QBox adapter, which the dev tree leaves out",
         tiers=(Tier.NIGHTLY,),
@@ -615,7 +628,6 @@ JOBS = [
         "wheel",
         "build the wheels a user installs, and test one installed two ways",
         tiers=(Tier.NIGHTLY,),
-        needs=FIRMWARE,
         steps=wheel_steps,
         uses=(TESTS_ON_EVERY_CORE,),
         fresh=(WHEELHOUSE,),

@@ -31,13 +31,13 @@ lines is not known, and they are printed in the order manager, ssd, host.
 None of the images was built for this. Each is the one that boots on its
 own board: socpuppet_iomgr, socpuppet_host with its drive, socpuppet_ssd.
 
-Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/full_bootchain.py
 
-The images are looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR
-if that is set. With an image missing the example says so and counts as
-not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
-missing image is a failure.
+The images are found as `socpuppet.images` finds any: in
+SOCPUPPET_FIRMWARE_DIR, in build/firmware in a checkout, or else fetched into
+your cache the first time. With one that cannot be had the example says so and
+counts as not run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI,
+where that is a failure.
 
 Each firmware sees a board of its own. To see them:
 
@@ -54,15 +54,14 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager
 from socpuppet.boards.ssd import add_ssd
-from socpuppet.run import firmware_directory
 
-IMAGES = firmware_directory()
-MANAGER_IMAGE = IMAGES / "iomgr_socpuppet_iomgr.elf"
-HOST_IMAGE = IMAGES / "disk_access_socpuppet_host.elf"
-SSD_IMAGE = IMAGES / "ssd_socpuppet_ssd.elf"
+MANAGER_IMAGE = "iomgr_socpuppet_iomgr.elf"
+HOST_IMAGE = "disk_access_socpuppet_host.elf"
+SSD_IMAGE = "ssd_socpuppet_ssd.elf"
 #: What Zephyr's test framework ends with, when no test failed and when
 #: one did.
 PASSED = "PROJECT EXECUTION SUCCESSFUL"
@@ -79,31 +78,22 @@ platform = board.platform
 
 
 if __name__ == "__main__":
-    missing = next(
-        (
-            image
-            for image in (MANAGER_IMAGE, HOST_IMAGE, SSD_IMAGE)
-            if not image.exists()
-        ),
-        None,
-    )
-    if missing:
-        message = (
-            f"There is no {missing} yet. Build the firmware with "
-            "`uv run firmware/build.py`, which takes a few minutes the "
-            "first time."
+    try:
+        manager_image, host_image, ssd_image = (
+            images.find(name) for name in (MANAGER_IMAGE, HOST_IMAGE, SSD_IMAGE)
         )
+    except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
-            sys.exit(message)
-        print(message)
+            sys.exit(str(missing))
+        print(missing)
         # ctest's code for "could not be run here", which is not a failure.
         sys.exit(77)
 
     platform.build()
     # ⚠️ There are three CPUs, so say whose firmware each image is.
-    platform.load_elf(MANAGER_IMAGE, via=board.manager.cpu.socket)
-    platform.load_elf(HOST_IMAGE, via=board.cpu.socket)
-    platform.load_elf(SSD_IMAGE, via=board.drive.ssd.cpu.socket)
+    platform.load_elf(manager_image, via=board.manager.cpu.socket)
+    platform.load_elf(host_image, via=board.cpu.socket)
+    platform.load_elf(ssd_image, via=board.drive.ssd.cpu.socket)
 
     # Who said what, and when: each whole line a console prints, noted
     # each time the run is about to move the clock on.

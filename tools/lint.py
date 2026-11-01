@@ -102,6 +102,14 @@ LINTERS = [
         fix=("python", str(TOOLS / "shield_overlays.py"), "write"),
     ),
     Linter(
+        "released-images",
+        # The pin of the release of images the package fetches, named for
+        # the firmware's sources (tools/released_images.py).
+        patterns=("python/socpuppet/images_release.py",),
+        check=("python", str(TOOLS / "released_images.py"), "check"),
+        fix=("python", str(TOOLS / "released_images.py"), "write"),
+    ),
+    Linter(
         "rumdl",
         patterns=("*.md",),
         check=("rumdl", "check", "--quiet", "--no-cache"),

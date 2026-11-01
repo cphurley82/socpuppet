@@ -10,6 +10,8 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12"
+# Where a user's cache is, on each system, for the images it fetches.
+dependencies = ["platformdirs>=4"]
 authors = [{ name = "Chris Hurley" }]
 keywords = ["systemc", "tlm", "virtual platform", "risc-v", "simulation"]
 classifiers = [
@@ -122,7 +124,12 @@ test-requires = [
     "setuptools<81",
 ]
 # On every core, as ctest runs them (tests/python/CMakeLists.txt says why).
-test-command = "pytest -n auto --dist loadgroup --no-loadscope-reorder tests/python"
+# Every wheel on every machine goes without firmware: the long tests are left
+# out, and for the rest a directory that is not there says so, and those that
+# boot are skipped. A boot of everything on each would take hours:
+# tools/test_wheel.py boots one wheel, as installed.
+test-command = "pytest -m \"not long\" -n auto --dist loadgroup --no-loadscope-reorder tests/python"
+test-environment = { SOCPUPPET_FIRMWARE_DIR = "no-firmware-here" }
 
 [tool.cibuildwheel.linux]
 # SCC's trace writer needs zlib's headers. The library itself is part of

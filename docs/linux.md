@@ -8,6 +8,8 @@ How to boot Linux on the host and type at its shell, yourself or from Python, sh
 
 ## The kernel and its root
 
+🧦 There is nothing you have to build: `socpuppet linux` fetches the images it needs the first time, about 13 MB ([boot-your-firmware.md](boot-your-firmware.md#1-get-the-firmware)). To build them yourself:
+
 ```sh
 uv run firmware/build.py linux
 ```
@@ -83,12 +85,10 @@ ssh -p 2222 root@localhost          # a shell of its own, beside the console
 `socpuppet.linux.host_with_linux` builds the host with Linux in place, the quick way: Python puts `fw_jump`, the kernel and the devicetree in RAM where `fw_jump` expects them, and the root filesystem on the virtio disk. Then Python waits for the prompt, types, and reads the answer.
 
 ```python
-import pathlib
-
 import socpuppet as sp
 from socpuppet import linux
 
-board = linux.host_with_linux(pathlib.Path("build/firmware"))
+board = linux.host_with_linux()
 console = board.virtio.console
 board.platform.run_until(
     lambda: linux.PROMPT.search(console.output), timeout=sp.ms(400_000)
@@ -157,7 +157,7 @@ The real drive can take 🎭 the virtio disk's place: the SSD with its own Zephy
 PYTHONPATH=python uv run python -m socpuppet linux --root drive
 ```
 
-From Python it is `linux.host_with_linux(firmware, root="drive")`, and `tests/python/test_linux_root_on_the_drive.py` is its test. It needs the IO manager's and the SSD's firmware too, which `uv run firmware/build.py zephyr` builds.
+From Python it is `linux.host_with_linux(root="drive")`, and `tests/python/test_linux_root_on_the_drive.py` is its test. It needs the IO manager's and the SSD's firmware too, which are fetched as the rest are, or built by `uv run firmware/build.py zephyr`.
 
 - **The disk is cut up as a server's**: a GUID partition table, `socpuppet.gpt`, with Alpine's root filesystem as its first partition, as big as the drive. `root=/dev/nvme0n1p1` on the command line.
 - 🧵 **Python is the factory.** A drive's blocks are not in its NAND as they are on the disk: the SSD's flash translation layer keeps a table of which NAND page holds each, and the table on the NAND itself ([ssd-firmware.md](models/ssd-firmware.md)). `socpuppet.ftl` lays the disk out that way and `nand.load` programs it, as a factory programs a drive before it ships.

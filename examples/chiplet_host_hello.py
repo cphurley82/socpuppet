@@ -21,13 +21,12 @@ every character of its greeting crosses the link to reach the UART.
 The firmware is `host_hello.py`'s, the same image. It cannot tell which
 link it has.
 
-Build the firmware first:      uv run firmware/build.py
 Run it:                        python examples/chiplet_host_hello.py
 
-The image is looked for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if
-that is set. With no image there the example says so and counts as not
-run, unless SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a
-missing image is a failure.
+The image is found as `socpuppet.images` finds any: in SOCPUPPET_FIRMWARE_DIR,
+in build/firmware in a checkout, or else fetched into your cache the first
+time. With none to be had the example says so and counts as not run, unless
+SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where that is a failure.
 
 The host's CPU and the manager each see a map of their own. To see them:
 
@@ -40,11 +39,11 @@ import os
 import sys
 
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 from socpuppet.boards.manager import add_manager, scripted_manager
-from socpuppet.run import firmware_directory
 
-IMAGE = firmware_directory() / "hello_world_socpuppet_host.elf"
+IMAGE = "hello_world_socpuppet_host.elf"
 
 # Describe the platform: the host, with a manager on its IO die, which is
 # what makes the link between the dies the real one. `add_manager` alone
@@ -59,14 +58,11 @@ platform = board.platform
 
 
 if __name__ == "__main__":
-    if not IMAGE.exists():
-        missing = (
-            f"There is no {IMAGE} yet. Build the firmware with "
-            "`uv run firmware/build.py`, which takes a few minutes the "
-            "first time."
-        )
+    try:
+        image = images.find(IMAGE)
+    except FileNotFoundError as missing:
         if os.environ.get("SOCPUPPET_REQUIRE_FIRMWARE"):
-            sys.exit(missing)
+            sys.exit(str(missing))
         print(missing)
         # ctest's code for "could not be run here", which is not a failure.
         sys.exit(77)
@@ -74,7 +70,7 @@ if __name__ == "__main__":
     platform.build()
     # With two bus masters, the platform has to be told whose firmware an
     # image is.
-    platform.load_elf(IMAGE, via=board.cpu.socket)
+    platform.load_elf(image, via=board.cpu.socket)
 
     print("🧦 the power is on. The link is in reset, and the host with it.")
     # Run until the greeting is out, or give up after 50 ms of simulated

@@ -29,16 +29,15 @@ little sooner. Linux boots the same either way, which is the point of a
 stand-in. The link is traced, so what crossed it is counted at the end,
 and the link's own bring-up is printed first, packet by packet.
 
-Build the firmware first:   uv run firmware/build.py
 Run it:                     python examples/linux_on_the_drive.py
 With stand-ins:             add --manager script --ssd script
 
 The prompt comes after a minute or two on the wall on the DBT-RISE CPU
-and in seconds on QBox's (SOCPUPPET_CPU=qbox_cpu). The images are looked
-for in build/firmware, or in SOCPUPPET_FIRMWARE_DIR if that is set. With
-an image missing the example says so and counts as not run, unless
-SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where a missing image
-is a failure.
+and in seconds on QBox's (SOCPUPPET_CPU=qbox_cpu). The images are found as
+`socpuppet.images` finds any: in SOCPUPPET_FIRMWARE_DIR, in build/firmware in
+a checkout, or else fetched into your cache the first time. With one that
+cannot be had the example says so and counts as not run, unless
+SOCPUPPET_REQUIRE_FIRMWARE is set, as it is in CI, where that is a failure.
 """
 
 import argparse
@@ -52,9 +51,7 @@ from socpuppet import linux
 from socpuppet.boards.host import switched_off
 from socpuppet.boards.manager import add_manager, scripted_manager
 from socpuppet.boards.ssd import add_ssd, scripted_firmware
-from socpuppet.run import firmware_directory
 
-IMAGES = firmware_directory()
 #: How long the kernel may take to prompt, in simulated time.
 PROMPTS_WITHIN = sp.ms(400_000)
 #: How long `poweroff` may take to reach the system controller.
@@ -91,7 +88,6 @@ if __name__ == "__main__":
     # script filled in. `host_with_linux` loads an image only into a CPU.
     try:
         board = linux.host_with_linux(
-            IMAGES,
             root="drive",
             drive=SSDS[options.ssd],
             manager=MANAGERS[options.manager],

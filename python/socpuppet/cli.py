@@ -26,6 +26,12 @@ from socpuppet.platform import Platform
 from socpuppet.pump import pump
 from socpuppet.time import ms
 
+#: Where an image is found (`socpuppet.images`), as the help says it.
+FOUND_HOW = (
+    "in SOCPUPPET_FIRMWARE_DIR, in build/firmware in a checkout, or else "
+    "fetched into your cache the first time it is needed"
+)
+
 #: The port of this machine's that `socpuppet linux` forwards to Linux's
 #: ssh, by default: 22 is this machine's own, and 2222 is the usual next.
 SSH_PORT = 2222
@@ -136,7 +142,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "what it says on its console."
         ),
     )
-    runner.add_argument("image", help="the firmware, as a linker wrote it")
+    runner.add_argument(
+        "image",
+        help=(
+            "the firmware, as a linker wrote it: a file, or the name of one "
+            "of socpuppet's images, found the way any image is: "
+            f"{FOUND_HOW}"
+        ),
+    )
     runner.add_argument(
         "--board",
         required=True,
@@ -157,9 +170,8 @@ def main(arguments: Sequence[str] | None = None) -> None:
         help=(
             "how the CPU gets the image: from its boot ROM, which finds it "
             "in the flash as silicon does (the default), or loaded straight "
-            "into RAM, which is quicker. The ROM's own program is one that "
-            "firmware/build.py builds, looked for in SOCPUPPET_FIRMWARE_DIR "
-            "or else in build/firmware"
+            "into RAM, which is quicker. The ROM's own program is found as "
+            f"any image is: {FOUND_HOW}"
         ),
     )
     _add_cpu(runner)
@@ -180,9 +192,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "Boot Linux on the host, the quick way, and put this terminal "
             "at its console: the boot scrolls by, and then its shell is "
             "yours. OpenSBI, the kernel and its root filesystem are the "
-            "ones firmware/build.py builds, looked for in "
-            "SOCPUPPET_FIRMWARE_DIR or else in build/firmware. Ctrl-] "
-            "leaves."
+            f"ones firmware/build.py builds, found {FOUND_HOW}. Ctrl-] leaves."
         ),
     )
     _add_cpu(linux_command, speed=", and which boots Linux ten times as fast")
@@ -226,9 +236,8 @@ def main(arguments: Sequence[str] | None = None) -> None:
             "lists it. It takes a build of socpuppet with pciem, on a "
             "machine whose Linux has pciem loaded (docs/setup.md, and "
             "`tools/doctor.py pciem`). The SSD's firmware is the one "
-            "firmware/build.py zephyr builds, looked for in "
-            "SOCPUPPET_FIRMWARE_DIR or else in build/firmware. Ctrl-C ends "
-            "it, once Linux has let go of the drive."
+            f"firmware/build.py zephyr builds, found {FOUND_HOW}. Ctrl-C "
+            "ends it, once Linux has let go of the drive."
         ),
     )
     drive_command.add_argument(
@@ -304,9 +313,7 @@ def _linux(
             "root on it: socpuppet linux --root drive --iommu."
         )
     try:
-        board = linux.host_with_linux(
-            run.firmware_directory(), cpu=cpu, root=root, iommu=iommu
-        )
+        board = linux.host_with_linux(cpu=cpu, root=root, iommu=iommu)
     except (FileNotFoundError, ValueError) as refused:
         sys.exit(str(refused))
     # Said on standard error: standard output is the machine's console.
@@ -403,9 +410,7 @@ def _drive(firmware: drive.Firmware, blocks: int) -> None:
     still on the bus ends the command with one line that says what to do.
     """
     try:
-        board = drive.on_this_machine(
-            run.firmware_directory(), firmware=firmware, blocks=blocks
-        )
+        board = drive.on_this_machine(firmware=firmware, blocks=blocks)
     except (OSError, ValueError) as refused:
         sys.exit(str(refused))
     try:

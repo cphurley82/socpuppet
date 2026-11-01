@@ -19,9 +19,19 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 
 💡 You do not have to copy this table anywhere. The board's **devicetree**, the description of the hardware that Zephyr is built against, is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. `socpuppet address-map python/socpuppet/boards/host.py` prints the map straight from that description, and [address-map.md](address-map.md) has every board's.
 
-## 1. Build the firmware
+## 1. Get the firmware
 
-The quick way builds every image the tests boot, Zephyr's hello world for this board among them, and fetches what builds them (the Zephyr SDK, Zephyr itself, a west workspace around it) into `build/firmware`. It takes a few minutes the first time:
+🧦 An image you have not built is fetched the first time it is asked for, so Zephyr's hello world is already one command away, here or from an installed socpuppet with no checkout at all:
+
+```sh
+socpuppet run hello_world_socpuppet_host.elf --board socpuppet_host --until 100
+```
+
+An image is a file of socpuppet's firmware, known by its name. They are not in the wheel, which stays small and MIT-only: each is fetched from a release on GitHub, unpacked, checked against the sums the release lists, and kept in your cache (`~/.cache/socpuppet` on Linux, `~/Library/Caches/socpuppet` on a Mac, or wherever `SOCPUPPET_CACHE_DIR` says). `socpuppet.images.find("hello_world_socpuppet_host.elf")` gives the same image to Python, and `SOCPUPPET_IMAGES_URL` names a mirror of the release, for a classroom or a machine with no way out. 💡 In a checkout with a `build/firmware`, or with `SOCPUPPET_FIRMWARE_DIR` set, that directory is the only place looked in, and nothing is fetched into it.
+
+### Building it yourself
+
+For an application of your own, or when an image cannot be fetched, build it. The quick way builds every image the tests boot, Zephyr's hello world for this board among them, and fetches what builds them (the Zephyr SDK, Zephyr itself, a west workspace around it) into `build/firmware`. It takes a few minutes the first time:
 
 ```sh
 uv run firmware/build.py zephyr
@@ -44,11 +54,12 @@ The image is `build/firmware/build/zephyr/zephyr.elf`. 💡 If you already have 
 
 ```python
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 
 board = host()                                      # 🧵 describe the platform
 board.platform.build()                              # create the simulation
-board.platform.load_elf("build/firmware/hello_world_socpuppet_host.elf")
+board.platform.load_elf(images.find("hello_world_socpuppet_host.elf"))
 
 board.platform.run(sp.ms(100))                      # 100 ms of simulated time
 print(board.uart.output)
