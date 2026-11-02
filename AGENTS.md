@@ -55,6 +55,7 @@ Add to it when something new keeps coming up.
 | 🐧 | Linux |
 | 🔌 | a cable to this machine's network: `sp.EthernetCable`, and libslirp behind it (`socpuppet.slirp`) |
 | 🧪 | a lab: a session of commands to run and things to look at (`docs/labs/`) |
+| 🌙 | the nightly tier: every test on every machine, every night |
 
 ## Workflow
 

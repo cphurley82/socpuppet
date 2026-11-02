@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-🎭 A stand-in (a simplified model) for an Ethernet port, with Python on the other end of the wire: QEMU's `virtio-net-device`. 🎓 Device 1 in the specification (section 5.1): a receive queue the driver keeps stocked with empty buffers, a transmit queue it sends frames on, and a 12-byte header in front of every frame both ways, for offloads this device offers none of.
+🎭 A stand-in (a simplified model) for an Ethernet port, with Python on the other end of the wire: QEMU's `virtio-net-device`. 🎓 Virtio is the family of devices made for virtual machines, which Linux, Zephyr and EDK2 all drive; the [transport](virtio-mmio.md) they share carries a driver's requests as *chains*, each one request's buffers in the host's memory, and the device writes its answer back into them. Device 1 in the specification (section 5.1): a receive queue the driver keeps stocked with empty buffers, a transmit queue it sends frames on, and a 12-byte header in front of every frame both ways, for offloads (work such as checksums that a card can do for its driver) this device offers none of.
 
 ## What it does
 
@@ -24,7 +24,7 @@ print(net.dropped)           # frames that were longer than the buffer for them
 ```
 
 - **Sends.** A chain on the transmit queue, less its header, is a frame on the wire, in `received`. A far end that keeps up with the wire asks `received_since` for the frames after those it has taken, and only those are copied. It may be one buffer, as Zephyr sends, or a header and a frame, as EDK2 does.
-- **Receives.** A frame Python sends waits until a buffer is held out, and goes in a delta cycle later, after a header whose `num_buffers` is 1. A buffer in two descriptors, as EDK2 gives them, takes the header in the first and the frame in the second.
+- **Receives.** A frame Python sends waits until a buffer is held out, and goes in a delta cycle later, after a header whose `num_buffers` is 1. A buffer in two descriptors (two queue entries), as EDK2 gives them, takes the header in the first and the frame in the second.
 - **Drops a frame longer than the buffer for it,** and counts it in `dropped`, as a card drops what it has no room for. The buffer waits for the next frame.
 - **Offers `F_MAC`** and has its address in its configuration: EDK2's driver will not bind without it, and Linux's takes its address from there.
 

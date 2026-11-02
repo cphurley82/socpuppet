@@ -48,7 +48,7 @@ platform.connect(rtc.irq, aplic.source31)
 ## What it leaves out
 
 - **A battery.** The clock reads what it was given each time the simulation starts, and nothing it was set to survives the run.
-- **The time a CPU running ahead sees.** A register is read at the time the access is made, which a CPU running a quantum ahead of the simulation's clock gives; the alarm goes off by the simulation's clock, up to a quantum later than such a CPU expected.
+- **The time a CPU running ahead sees.** A register is read at the time the access is made, which a CPU running a quantum ahead of the simulation's clock gives (🎓 the quantum is how far ahead of the rest of the platform a CPU may run, 100 µs by default); the alarm goes off by the simulation's clock, up to a quantum later than such a CPU expected.
 - **The alarm under Zephyr.** socpuppet's Zephyr driver sets and gets the time, and does not offer the alarm.
 
 ## In a devicetree

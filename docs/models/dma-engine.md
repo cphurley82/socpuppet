@@ -59,8 +59,8 @@ Each is 32 bits wide.
 
 ## What it leaves out
 
-- **Time.** A copy is immediate, however long. 🚧 This register block is where a transfer starts taking time, once a milestone wants a drive that is no faster than its link.
-- **A list of pieces.** Real engines take a chain of descriptors and walk it themselves, and many walk the host's PRP list too. Here firmware walks the list and asks for each piece, so that the walking is there to read.
+- **Time.** A copy is immediate, however long. 🚧 This register block is where a transfer starts taking time, when the work turns to a drive that is no faster than its link ([roadmap.md](../roadmap.md)).
+- **A list of pieces.** Real engines take a chain of descriptors (🎓 a descriptor is a small record in memory that says one piece of work: from where, to where, how many bytes) and walk it themselves, and many walk the host's PRP list too. Here firmware walks the list and asks for each piece, so that the walking is there to read.
 - **Checking.** No checksums, no protection information.
 - **Refusals as status.** ⚠️ A write the engine refuses (a command it does not have, any command while busy, an access that is not 32 bits wide or is beside a register) gets a bus error. Real hardware would more likely ignore it.
 - **A debugger's hands.** A debugger can read the registers and cannot write them.

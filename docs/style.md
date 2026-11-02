@@ -1,6 +1,6 @@
 # Style, and the tools that hold us to it
 
-socpuppet is meant to be read. A learner should be able to open any file and find it laid out like every other file, so the code follows published style guides and tools check it. Nobody has to remember the rules: most are applied for you when you build, and the rest are reported by one command.
+This page has the style rules socpuppet's C++, C, Python, Markdown and register maps follow, the reasons for them, and the tools that check them. socpuppet is meant to be read. A learner should be able to open any file and find it laid out like every other file, so the code follows published style guides and tools check it. Nobody has to remember the rules: most are applied for you when you build, and the rest are reported by one command.
 
 ## The short version
 
@@ -11,14 +11,14 @@ socpuppet is meant to be read. A learner should be able to open any file and fin
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
 | Markdown | one paragraph per line, read by a stranger | rumdl, and `tools/stranger.py`, which lint runs |
 | SystemRDL, for register maps | one block to a file, in `regs/` | `tools/regs.py`, which lint runs |
-| CI workflows, and the spikes' shell scripts | | actionlint, shellcheck |
+| CI workflows, and the shell scripts of the spikes ([development.md](development.md#spikes)) | | actionlint, shellcheck |
 
 ```sh
 uv run python tools/lint.py          # every linter, over the whole tree
 uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 ```
 
-`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install. Dependabot offers to move the pins once a week ([development.md](development.md#keeping-the-tools-current)).
+`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install. Dependabot, GitHub's bot for stale pins, offers to move them once a week ([development.md](development.md#keeping-the-tools-current)).
 
 ## What happens when
 
@@ -26,7 +26,7 @@ uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 |---|---|
 | `uv run cmake --build --preset dev` | C++ and Python are formatted in place, then our code is compiled with warnings as errors. |
 | `uv run ctest --preset fast` | The C++ tests and the Python tests that are not long: the inner loop. |
-| `uv run ctest --preset dev` | Every test, plus a `lint` test that runs all the linters, plus the tests of the tooling itself. `quick` is the same but most of the boots ([development.md](development.md#the-loop)). |
+| `uv run ctest --preset dev` | Every test, plus a `lint` test that runs all the linters, plus the tests of the tooling itself. `quick` is the same without most of the boots ([development.md](development.md#the-loop)). |
 | `uv run python tools/lint.py [--fix] [linter ...]` | The linters on their own. Nothing needs to be built first. Name linters to run only those. |
 | `uv run cmake --build --preset dev --target tidy` and `--target check_headers` | What CI checks that `ctest` does not: clang-tidy over our C++, and each header compiled on its own. [development.md](development.md#before-you-push) says what each catches. |
 
@@ -57,7 +57,7 @@ A literal in a shift or a mask carries `U`: `1U << 3U`, `value & 0xFFU`. 🎓 A 
 - **Source files end in `.cpp`,** not `.cc`.
 - **SystemC modules have public data members:** their sockets and ports. Binding is done from outside the module, and this is how every SystemC model is written.
 - **Some names are not ours to choose,** and keep the spelling their owner gave them:
-  - TLM-2.0's transport functions (`b_transport`, `transport_dbg`, `get_direct_mem_ptr`). 🎓 Anyone who has met TLM in another tool will look for these names.
+  - The transport functions of TLM-2.0 (transaction-level modeling, the SystemC standard by which blocks hand each other whole bus transactions as function calls): `b_transport`, `transport_dbg`, `get_direct_mem_ptr`. 🎓 Anyone who has met TLM in another tool will look for these names.
   - SystemC's callbacks, such as `before_end_of_elaboration`.
   - The functions the compiler calls on a coroutine (`await_transform`, `promise_type` and the rest, in `core/script.h`).
 - **No copyright line in each file.** The `LICENSE` file covers the repository.
@@ -97,7 +97,7 @@ The firmware in `firmware/` and the drivers in socpuppet's Zephyr module (`pytho
 
 ## Markdown
 
-**One paragraph is one line**, however long. Your editor wraps it for display. 💡 Hard-wrapped prose makes a one-word change look like a rewritten paragraph in a diff. rumdl checks the structure (heading levels, blank lines around lists and code blocks, a language on every code block) and has its line-length rule switched off in `.rumdl.toml`.
+**One paragraph is one line**, however long. Your editor wraps it for display. 💡 Hard-wrapped prose makes a one-word change look like a rewritten paragraph in a diff. rumdl, the Markdown linter, checks the structure (heading levels, blank lines around lists and code blocks, a language on every code block) and has its line-length rule switched off in `.rumdl.toml`.
 
 **A page is read by a stranger**, who has never met the project or the people behind it. So a page describes a machine by what it is (a 24-core Intel desktop, an Apple silicon laptop) and never by its name, and a person by their role; and a date on a page is a diary entry, so the dates live in [history/](history/README.md), in [upstream.md](upstream.md), the ledger, and in [roadmap.md](roadmap.md), which points into the history by date. `tools/stranger.py` holds every file to it, the licence and `pyproject.toml` excused, and lint runs it. 💡 A name a reader cannot look up tells them nothing, and a measurement is only as good as the machine it says it was taken on.
 

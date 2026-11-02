@@ -6,7 +6,7 @@
 
 🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
 
-The part of a host's interrupt controller that takes message-signalled interrupts. A PCIe device interrupts by writing a message to an address the host chose (see the [endpoint](pcie-endpoint.md)), and something at that address has to turn the write back into an interrupt for the CPU. On a RISC-V host that is an IMSIC (incoming message-signalled interrupt controller), and on a PC it is the local APIC.
+The part of a host's interrupt controller that takes message-signalled interrupts (MSIs). A PCIe device interrupts by writing a message to an address the host chose (see the [endpoint](pcie-endpoint.md)), and something at that address has to turn the write back into an interrupt for the CPU. On a RISC-V host that is an IMSIC (incoming message-signalled interrupt controller), and on a PC it is the local APIC.
 
 💡 This is for a host with no CPU and no interrupt controller: a script reads the register to learn which vector woke it. The host board, which runs real firmware, has an [IMSIC](imsic.md) in this place, which is the real thing: an interrupt controller that is sent messages.
 
@@ -22,7 +22,7 @@ It is one 32-bit register and one wire.
 
 | | |
 |---|---|
-| **A write** | is a message. Its data is the number of a vector, 0 to 31, and that vector is then waiting. |
+| **A write** | is a message. Its data is the number of a vector (🎓 an interrupt's number, as the host hands them out), 0 to 31, and that vector is then waiting. |
 | **`irq`** | is high while any vector is waiting. |
 | **A read** | returns the waiting vectors, one bit each, and none is waiting afterwards, so `irq` falls. |
 

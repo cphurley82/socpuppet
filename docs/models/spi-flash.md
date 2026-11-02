@@ -65,7 +65,7 @@ from socpuppet.spi import Loopback
 flash = sp.SpiFlash(size=16 * 1024 * 1024, devices={1: Loopback()})
 ```
 
-The host takes them as `host(boot_flash_devices={1: ...})`, and Zephyr's `spi_loopback` test runs with a loopback there (the `socpuppet_host_spi_loopback` shield). 💡 A device is called from the controller's own process, never from the CPU's, so a device of C++ may wait there in simulated time, and a Python one may take its time on the wall's clock.
+The host takes them as `host(boot_flash_devices={1: ...})`, and Zephyr's `spi_loopback` test runs with a loopback there (the `socpuppet_host_spi_loopback` shield; 🎓 a shield is Zephyr's word for a description of hardware plugged into a board). 💡 A device is called from the controller's own process, never from the CPU's, so a device of C++ may wait there in simulated time, and a Python one may take its time on the wall's clock.
 
 ### The controller's registers
 

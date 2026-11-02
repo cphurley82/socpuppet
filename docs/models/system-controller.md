@@ -4,13 +4,13 @@
 
 ## What it stands for
 
-The small block every SoC has that answers a CPU's questions about itself and owns its reset. 🎓 Vendors call it a system controller, a reset and clock controller, or a PMU, and it is usually the first thing a boot ROM reads: which chip is this, where do I boot from, and why am I starting?
+The small block every SoC has that answers a CPU's questions about itself and owns its reset. 🎓 Vendors call it a system controller, a reset and clock controller, or a PMU (a power management unit), and it is usually the first thing a boot ROM reads: which chip is this, where do I boot from, and why am I starting?
 
 ## What it does
 
 - **Answers three questions.** `DIE` and `BOOT_ADDRESS` read what the board gave the block, and `RESET_CAUSE` reads why the CPU last came out of reset.
 - **Owns the CPU's reset.** 🎓 A wire has one driver, and a CPU's reset has more than one reason to rise. So each reason is an input here, and `reset` is the one line to the CPU:
-  - `hold` keeps the CPU in reset for as long as it is high. A [die-to-die link](d2d-link.md) holds the other die's CPU this way until the link is trained.
+  - `hold` keeps the CPU in reset for as long as it is high. A [die-to-die link](d2d-link.md) holds the other die's CPU this way until the link is trained (🎓 a die is one piece of silicon; a chip can be built from several).
   - `bite` is a watchdog's line. When it rises, `reset` is pulsed and the cause reads `WATCHDOG`. A line that stays high is one bite.
   - Firmware asks by writing a one to `RESET_REQUEST`. `reset` is pulsed and the cause reads `SOFTWARE`.
   - Firmware switches the CPU off by writing a one to `POWER_OFF`, which is what OpenSBI's shutdown call does through the devicetree's `syscon-poweroff` node. `reset` rises and stays up for good, the register reads one, and the cause is left as it was: the CPU was not reset, and nothing here switches it on again.

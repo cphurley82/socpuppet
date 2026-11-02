@@ -2,7 +2,7 @@
 
 socpuppet simulates a system-on-chip in [SystemC](https://systemc.org) and lets you compose and drive it from Python. This page explains the parts, the words used for them, and why they are shaped the way they are.
 
-Today the whole cast is on stage: a chiplet host whose two dies are joined by a UCIe-style link that a manager CPU trains, an NVMe SSD with a CPU and firmware of its own, three Zephyr images booting in one simulation with a debugger on each CPU, a boot ROM and a flash, the interrupt architecture RISC-V servers use, OpenSBI and UEFI on the host, and 🎭 virtio stand-ins beside them. Linux is next: [roadmap.md](roadmap.md) says what comes after, and [vision.md](vision.md) why any of it is built. 🎭 Every stand-in is still there to be chosen, for when a part is not what you are working on.
+Today the whole cast is on stage: a chiplet host (one chip built from two *dies*, pieces of silicon in one package) whose dies are joined by a link in the style of UCIe, the open standard for joining dies, that a manager CPU trains; an NVMe SSD (a solid-state drive speaking NVMe, the protocol for storage over PCIe, the bus a computer's cards plug into) with a CPU and firmware of its own; three Zephyr images (Zephyr is a small open-source operating system for firmware) booting in one simulation with a debugger on each CPU; a boot ROM and a flash; the interrupt architecture RISC-V servers use; OpenSBI and UEFI on the host (the firmware a RISC-V operating system boots through, and the standard boot interface above it); and 🎭 virtio stand-ins beside them, simplified models of the devices a virtual machine's guest expects (virtio is the standard interface for those). 🐧 Linux boots on all of it ([linux.md](linux.md)); [roadmap.md](roadmap.md) says what comes next, and [vision.md](vision.md) why any of it is built. 🎭 Every stand-in is still there to be chosen, for when a part is not what you are working on.
 
 ## The picture
 
@@ -64,7 +64,7 @@ flowchart LR
     class link,nvme standin
 ```
 
-This is the host board, with the drive that `tests/python/test_nvme_over_pcie.py` plugs into its IO die. The boot ROM is there when the board is described with `boot=from_rom`: the CPU then starts in it, and its program finds the firmware in the boot flash on the other die ([boot-your-firmware.md](boards.md#booting-from-flash)). The system controller is the one driver of the CPU's reset, which it pulses when the watchdog bites or the firmware asks. The dotted lines are how the console interrupts: a wire as far as the APLIC beside it, and from there a message to the CPU's IMSIC, which is how the drive's interrupts go too. [pcie.md](pcie.md) follows the drive's path end to end, from the root complex to the function and back, and shows the other way to give it a host. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
+This is the host board, with the drive that `tests/python/test_nvme_over_pcie.py` plugs into its IO die. The boot ROM is there when the board is described with `boot=from_rom`: the CPU then starts in it, and its program finds the firmware in the boot flash on the other die ([boards.md](boards.md#booting-from-flash)). The system controller is the one driver of the CPU's reset, which it pulses when the watchdog bites or the firmware asks. The dotted lines are how the console interrupts: a wire as far as the APLIC beside it (the interrupt controller that takes wires, in RISC-V's Advanced Interrupt Architecture), and from there a message to the CPU's IMSIC (the controller that takes interrupt messages for a CPU), which is how the drive's interrupts go too. [pcie.md](pcie.md) follows the drive's path end to end, from the root complex to the function and back, and shows the other way to give it a host. The SSD that takes the stand-in drive's place has a picture of its own, below. The CPU runs real firmware. A script can take its place: the 🎭 scripted bus master, a stand-in that plays bus operations from a Python generator instead of executing instructions.
 
 The yellow blocks are 🎭 stand-ins. A stand-in holds a block's place on stage so that the rest of the cast can rehearse: it has the same connections as the real thing and does a simplified version of its job.
 
@@ -98,7 +98,7 @@ flowchart LR
     class nand standin
 ```
 
-🎓 A real SSD's controller is built this way round: hardware for what is the same every time, and firmware for what takes judgement. The [NVMe frontend](models/nvme-frontend.md) keeps the queues, fetches each command and posts its completion. The firmware reads the command and decides. The [DMA engine](models/dma-engine.md) copies a command's data between the host's memory and the SSD's buffer, and the [flash controller](models/flash-controller.md) moves pages between the buffer and the NAND. The host sees none of it: behind the endpoint is an NVMe drive, as the stand-in drive is.
+🎓 A real SSD's controller is built this way round: hardware for what is the same every time, and firmware for what takes judgement. The [NVMe frontend](models/nvme-frontend.md) keeps the queues, fetches each command and posts its completion. The firmware reads the command and decides. The [DMA engine](models/dma-engine.md) copies a command's data between the host's memory and the SSD's buffer, and the [flash controller](models/flash-controller.md) moves pages between the buffer and the NAND, the flash chips that keep the data. The host sees none of it: behind the endpoint is an NVMe drive, as the stand-in drive is.
 
 `socpuppet.boards.ssd` describes it. `examples/ssd_hello.py` runs it with 🎭 a script for its firmware, and `examples/ssd_firmware_hello.py` with the real thing, the Zephyr application in `firmware/ssd`. [The firmware's page](models/ssd-firmware.md) is about both.
 
@@ -215,7 +215,7 @@ The result is that a failed `expect32`, or an exception raised in your script, c
 
 ## The IO manager
 
-The host is two dies, and the link between them is not there when the power comes on. Something has to train it, and that something cannot be the compute die, whose CPU is held in reset until the link is up. So the IO die has a manager: a small CPU whose firmware trains the link, then lets the other die go by writing to a register at the far end of it, over the link's sideband.
+The host is two dies, and the link between them is not there when the power comes on. Something has to train it, and that something cannot be the compute die, whose CPU is held in reset until the link is up. So the IO die has a manager: a small CPU whose firmware trains the link, then lets the other die go by writing to a register at the far end of it, over the link's sideband, the narrow management channel that works before the link itself does.
 
 ```text
  compute die (🎭 a stand-in)          IO die
@@ -271,7 +271,7 @@ Every block in the final platform has a *slot*: a place that a stand-in fills fi
 | interrupt controller | `InterruptControllerContract` | `Plic` |
 | message controller | `MessageControllerContract` | `Imsic` |
 | APLIC | `AplicContract` | `Aplic` |
-| IOMMU | `IommuContract` | `Iommu`, socpuppet's own, written for VPV-Peripherals |
+| IOMMU (translates a device's addresses, as a CPU's MMU does its own) | `IommuContract` | `Iommu`, socpuppet's own, written for VPV-Peripherals |
 | watchdog | `WatchdogContract` | `Watchdog` |
 | SPI controller | `SpiControllerContract` | `SpiController` |
 | GPIO | `GpioContract` | `Gpio` |
@@ -287,11 +287,11 @@ The real die-to-die link passes `LinkContract` beside the stand-in, and the plat
 
 ## The models
 
-Each has a page saying what real hardware it stands for and what it leaves out.
+Each has a page saying what real hardware it stands for and what it leaves out. A page opens with the block's three names: its Python class (`sp.Memory`), its C++ class, and its **registry name** (`memory`), which is the name the Python class asks the C++ registry for when `build()` creates the block, and the name a board or `socpuppet run --cpu` picks an implementation by.
 
 - [Command device](models/command-device.md), which is what the DMA engine and the flash controller share
 - [CPU (DBT-RISE-RISCV)](models/dbt-rise-cpu.md)
-- [CPU (QBox)](models/qbox-cpu.md), QEMU's, in a build with QBox
+- [CPU (QBox)](models/qbox-cpu.md), QEMU's, in a build with QBox, which wraps QEMU's CPUs as SystemC models
 - [Die-to-die link](models/d2d-link.md)
 - [DMA engine](models/dma-engine.md)
 - 🔌 [Ethernet cable](models/ethernet-cable.md), a network card plugged into this machine's network through libslirp, which is no model but a far end
@@ -306,7 +306,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - [Memory](models/memory.md)
 - [NVMe frontend](models/nvme-frontend.md)
 - [PCIe endpoint](models/pcie-endpoint.md)
-- [PCIe host (this machine's, through pciem)](models/pciem-host.md), 🐧 this machine's own Linux as a drive's host, in a build with pciem
+- [PCIe host (this machine's, through pciem)](models/pciem-host.md), 🐧 this machine's own Linux as a drive's host, in a build with pciem, a Linux kernel module that lets a program be a PCIe device
 - [PCIe root complex](models/pcie-root-complex.md)
 - [Real-time clock](models/rtc.md)
 - [ROM](models/rom.md)
@@ -319,7 +319,7 @@ Each has a page saying what real hardware it stands for and what it leaves out.
 - 🎭 [Behavioral NVMe](models/behavioral-nvme.md)
 - 🎭 [Ideal NAND](models/ideal-nand.md)
 - 🎭 [IO-die manager](models/io-manager.md)
-- 🎭 [MSI receiver](models/msi-receiver.md)
+- 🎭 [MSI receiver](models/msi-receiver.md), one register that takes an interrupt sent as a write (an MSI, message-signalled interrupt)
 - 🎭 [NVMe host driver](models/nvme-host.md)
 - 🎭 [PCIe host](models/pcie-host.md)
 - 🎭 [Pass-through link](models/pass-through-link.md)

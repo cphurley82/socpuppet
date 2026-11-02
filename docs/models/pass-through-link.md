@@ -6,7 +6,7 @@
 
 🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
 
-The die-to-die (D2D) link of a chiplet design: the connection between two dies in one package, in the style of [UCIe](https://www.uciexpress.org). On real hardware it is a physical layer that has to be trained before use, a protocol on top, and a sideband channel for management.
+The die-to-die (D2D) link of a chiplet design: the connection between two dies in one package, in the style of [UCIe](https://www.uciexpress.org) (🎓 a die is one piece of silicon, and a chiplet design is one chip built from several). On real hardware it is a physical layer that has to be trained before use, a protocol on top, and a sideband channel for management.
 
 ## What it does
 
@@ -27,7 +27,7 @@ target ──────────▶ peer_initiator ════▶ peer_tar
 initiator ◀─────── peer_target    ◀════ peer_initiator ◀─── target
 ```
 
-Everything is passed on unchanged: transactions, debug accesses, and DMI.
+Everything is passed on unchanged: transactions, debug accesses, and DMI (the direct memory interface: a pointer to a memory's bytes, which lets a CPU skip the bus).
 
 ## What it leaves out
 

@@ -1,6 +1,6 @@
 # Setting up a machine for development
 
-This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want them) has QBox and pciem built and ready. It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 24-core Intel machine (a Core Ultra 9 285K).
+This page takes a fresh machine to one that builds socpuppet, passes every test, builds the firmware the tests boot, and (if you want them) has the two optional extras built and ready: QBox, which puts QEMU's faster CPU in the simulation (step 5), and pciem, a Linux kernel module that puts the simulated SSD on this machine's own PCIe bus (step 6). It was last walked through from a bare Ubuntu 26.04 install, and every timing below comes from that run, on a 24-core Intel machine (a Core Ultra 9 285K).
 
 🧦 Once it is done, [Building and testing](development.md) is the everyday page.
 
@@ -41,14 +41,14 @@ sudo apt-get update && sudo apt-get install -y \
 |---|---|
 | `build-essential` | GCC and make. socpuppet needs C++20, which GCC 13 (24.04) and GCC 15 (26.04) both have |
 | `git`, `curl`, `xz-utils` | fetching the dependencies at configure time, and the Zephyr SDK |
-| `zlib1g-dev` | SCC's FST trace writer, which waveform viewers such as GTKWave open, needs it |
-| `device-tree-compiler` | `dtc`, which checks the devicetrees socpuppet generates and compiles the one OpenSBI is handed. The tests that need it skip without it |
-| `uuid-dev`, `acpica-tools` | libuuid's header, which EDK2's `BaseTools` are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.py` |
+| `zlib1g-dev` | the FST trace writer of SCC (SystemC-Components, the library socpuppet's bus router and tracing come from), which waveform viewers such as GTKWave open, needs it |
+| `device-tree-compiler` | `dtc`, which checks the devicetrees (the files that describe a board's hardware to its firmware) socpuppet generates and compiles the one OpenSBI, the RISC-V boot firmware, is handed. The tests that need it skip without it |
+| `uuid-dev`, `acpica-tools` | libuuid's header, which the `BaseTools` of EDK2, the UEFI firmware, are built with, and `iasl`, which compiles EDK2's ACPI tables, both for `firmware/build.py` |
 | `flex`, `bison`, `bc`, `e2fsprogs` | what the Linux kernel's build generates its parsers and does its arithmetic with, and `mkfs.ext4`, which makes the kernel's root filesystem, all for `firmware/build.py` |
-| `gdb` | debugging the simulator. The firmware's own GDB comes with the Zephyr SDK |
-| `libslirp-dev`, `openssh-client` | 🐧 libslirp, QEMU's user-mode network, which plugs Linux's network card into this machine's network with no root, and `ssh` and `scp` to reach Linux over it. Optional: without them Linux boots with its card unplugged, and the tests that need them skip. The doctor's `cable` area checks for them |
+| `gdb` | debugging the simulator. The firmware's own GDB comes with the SDK of Zephyr, the small open-source operating system most of the test firmware runs on |
+| `libslirp-dev`, `openssh-client` | 🐧 libslirp, QEMU's user-mode network, which plugs Linux's network card into this machine's network with no root, and `ssh` and `scp` to reach Linux over it. Optional: without them Linux boots with its card unplugged, and the tests that need them skip. 🩺 The doctor, `tools/doctor.py` (step 2), checks for them in its `cable` area |
 
-For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer's image has for it (`.devcontainer/Dockerfile`):
+For QBox (step 5), add its build packages now, while you have `sudo` to hand. They are the ones the devcontainer, the Docker image of a ready-made Ubuntu development machine that VS Code can open the repository in and CI builds in, has for it (`.devcontainer/Dockerfile`):
 
 ```sh
 sudo apt-get install -y \
@@ -65,7 +65,7 @@ xcode-select --install       # Apple clang, git, make
 brew install dtc acpica libslirp
 ```
 
-⚠️ To build a Mac's wheel with `tools/ci.py`, which is optional, install python.org's CPython of the version in `.python-version` (the `.pkg` from [python.org/downloads/macos](https://www.python.org/downloads/macos/)): `cibuildwheel` builds with it, and outside of CI it will not install it for you, since it is a system-wide install that asks for your password. The doctor's `wheel` area checks for it, and `tools/ci.py` skips the wheel job, and says why, where it is missing.
+⚠️ To build a Mac's wheel (the installable Python package) with `tools/ci.py`, which is optional, install python.org's CPython of the version in `.python-version` (the `.pkg` from [python.org/downloads/macos](https://www.python.org/downloads/macos/)): `cibuildwheel`, the tool CI builds the wheels with, builds with it, and outside of CI it will not install it for you, since it is a system-wide install that asks for your password. The doctor's `wheel` area checks for it, and `tools/ci.py` skips the wheel job, and says why, where it is missing.
 
 For QBox (step 5), add its Homebrew packages, which are QBox's own list without the LLVM that only its tests use:
 
@@ -105,6 +105,8 @@ uv run ctest --preset dev                # every test, every boot: about 5 minut
 
 ⚠️ The first configure and build take a few minutes, because SystemC, SCC, the CPU model and the parts of Boost they need are compiled from source. After that, builds are incremental.
 
+💡 A preset is a named set of CMake or ctest settings, kept in `CMakePresets.json`: `--preset dev` is the everyday configure and build, and each `ctest` preset is one tier of the tests, from the inner loop (`fast`) to everything (`dev`). [development.md](development.md#the-loop) has the tiers.
+
 At this point the boot tests that want firmware are skipped, and each says so. The next step gives them their firmware.
 
 ## 4. Build the firmware
@@ -125,7 +127,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset dev
 
 ## 5. QBox (optional)
 
-🎓 [QBox](https://github.com/qualcomm/qbox) is Qualcomm's library for putting QEMU's CPUs inside a SystemC simulation. QEMU translates the guest's instructions into the host's instead of interpreting them, which makes it many times faster than socpuppet's default CPU. socpuppet has it as a second hart, the `qbox_cpu` ([models/qbox-cpu.md](models/qbox-cpu.md)), for telling a bug in a hart from a bug in the firmware.
+🎓 [QBox](https://github.com/qualcomm/qbox) is Qualcomm's library for putting QEMU's CPUs inside a SystemC simulation. QEMU translates the guest's instructions into the host's instead of interpreting them, which makes it many times faster than socpuppet's default CPU. socpuppet has it as a second hart (RISC-V's word for one hardware thread: a CPU core, as software sees it), the `qbox_cpu` ([models/qbox-cpu.md](models/qbox-cpu.md)), for telling a bug in a hart from a bug in the firmware.
 
 ⚠️ QEMU is GPL-2.0. QBox is always built from source beside socpuppet and never goes into the wheel.
 
@@ -148,11 +150,11 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset qbox
 
 💡 `uv run` is there to put uv's CMake on the path for the tool. QBox's tree is about 3 GB, in `build/qbox`. The `qbox` test preset runs everything with the hart's tests on QBox's CPU (`SOCPUPPET_CPU=qbox_cpu`).
 
-✅ You should see `100% tests passed`, with QBox's fates among the skipped, each saying why: what QBox's CPU does differently ([models/qbox-cpu.md](models/qbox-cpu.md)).
+✅ You should see `100% tests passed`, with QBox's fates among the skipped: a fate is a test skipped on QBox because its CPU does something differently, and each says why ([models/qbox-cpu.md](models/qbox-cpu.md)).
 
-⚠️ The Python extension is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
+⚠️ The Python extension (the compiled module the `socpuppet` package imports, `_core`) is copied into `python/socpuppet/` by whichever tree built last, so after building `qbox` the Python tests run against QBox's build until `dev` is built again.
 
-💡 The native build on a Mac takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)), and it works on both kinds. On an Apple silicon MacBook Air (M4, macOS 26) QBox took 5½ minutes, socpuppet 2 and the suite 1; on an Intel 2019 Mac Pro, 9 minutes for QBox and 4 for the suite. CI builds it natively on an Apple silicon runner and on an Intel one too.
+💡 The native build on a Mac takes four patches of socpuppet's to QBox and QEMU ([upstream.md](upstream.md)), and it works on both kinds of Mac, Intel and Apple silicon. On an Apple silicon MacBook Air (M4, macOS 26) QBox took 5½ minutes, socpuppet 2 and the suite 1; on an Intel 2019 Mac Pro, 9 minutes for QBox and 4 for the suite. CI builds it natively on an Apple silicon runner and on an Intel one too.
 
 On a Mac the same four commands can also run in the devcontainer's image, which is Linux with GCC, as CI builds, and has QBox's packages already. `tools/devcontainer.py` goes in front of each:
 
@@ -167,7 +169,7 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 tools/devcontainer.py uv run ctest --preset qbox
 
 ## 6. pciem (optional)
 
-🐧 [pciem](https://github.com/cakehonolulu/pciem) is a Linux kernel module that lets a program be a PCIe device on this machine's own bus. With it, this machine's Linux is the host of the puppet's SSD: its own `nvme` driver binds the drive, `lsblk` lists it, and `mkfs.ext4` and `mount` use it, while the drive runs in the simulation ([models/pciem-host.md](models/pciem-host.md)). It is Linux's alone, for a kernel of 6.6 or later.
+🐧 [pciem](https://github.com/cakehonolulu/pciem) is a Linux kernel module that lets a program be a PCIe device on this machine's own bus. With it, this machine's Linux is the host of the puppet's SSD, the simulated drive: its own `nvme` driver binds the drive, `lsblk` lists it, and `mkfs.ext4` and `mount` use it, while the drive runs in the simulation ([models/pciem-host.md](models/pciem-host.md)). It is Linux's alone, for a kernel of 6.6 or later.
 
 ⚠️ pciem is GPL-2.0-only. Like QBox, it is built from source beside socpuppet and never goes into the wheel.
 

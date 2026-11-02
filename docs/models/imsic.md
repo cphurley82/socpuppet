@@ -8,9 +8,9 @@ The interrupt controller a RISC-V CPU is sent messages at. 🎓 IMSIC is short f
 
 With a [PLIC](plic.md), every device has a wire to the controller. With an IMSIC there are no wires. A device interrupts by writing a number to an address, and that write is the whole interrupt. The number is called an interrupt identity, and it says which interrupt this is, as a PLIC's source number does.
 
-💡 This is what a die-to-die link wants. A link carries transactions and has nowhere for a wire to go down, and a write is a transaction like any other. A PCIe device's interrupt has always been such a message (MSI), so the host's drive interrupts with no translation at all.
+💡 This is what a die-to-die link wants. A link carries transactions and has nowhere for a wire to go down, and a write is a transaction like any other. A PCIe device's interrupt has always been such a message (an MSI, a message-signalled interrupt), so the host's drive interrupts with no translation at all.
 
-An IMSIC belongs to one hart, RISC-V's word for a CPU as software sees it. It keeps two **interrupt files**, one for machine mode and one for supervisor mode, so that an operating system and the monitor under it each have their own. A file is a set of pending bits, a set of enable bits and a threshold.
+An IMSIC belongs to one hart, RISC-V's word for a CPU as software sees it. It keeps two **interrupt files**, one for machine mode and one for supervisor mode, so that an operating system and the monitor under it (the firmware, OpenSBI here, that runs in machine mode beneath the operating system) each have their own. A file is a set of pending bits, a set of enable bits and a threshold.
 
 ## What it does
 

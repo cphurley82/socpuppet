@@ -67,7 +67,7 @@ flowchart LR
 3. **`socpuppet run`** describes the board, puts the image where the board's boot ROM will find it, and runs the simulation, printing each line of the console as it becomes whole.
 4. **Twister reads those lines.** For a ztest suite it waits for the verdict. For a sample it looks for the lines the sample's own `sample.yaml` says should appear. Then it ends the run.
 
-`firmware/twister.py` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, the first two are all you need, and twister is run as for any other board: 🧦 the boot ROMs are not in the package, and are [fetched the first time a run needs one](boot-your-firmware.md#1-get-the-firmware):
+`firmware/twister.py` is the rest: it puts a `socpuppet` on the `PATH`, points `ZEPHYR_EXTRA_MODULES` at socpuppet's Zephyr module, where the boards are, and says where the boot ROMs were built (`SOCPUPPET_FIRMWARE_DIR`). With an installed socpuppet and a Zephyr workspace of your own, the first two are all you need, and twister is run through `west`, Zephyr's build tool, as for any other board: 🧦 the boot ROMs are not in the package, and are [fetched the first time a run needs one](boot-your-firmware.md#1-get-the-firmware):
 
 ```sh
 export ZEPHYR_EXTRA_MODULES=$(socpuppet zephyr-module)
@@ -131,10 +131,10 @@ Two more lines of the list are directories of this repository, and every suite u
 | `dma_engine` | `socpuppet_ssd`, with a host | 6 | Copies to and from the host's memory, and what a copy that cannot be made returns |
 | `nvme_frontend` | `socpuppet_ssd`, with a host | 6 | The ready handshake, a command read whole and from which queue, a completion posted, a queue created |
 | `socpuppet_pcie` | `socpuppet_host`, with a drive | 7 | The scan finds the drive, where its registers are placed, and its interrupts as messages |
-| `imsic_irq` | `socpuppet_host` | 9 | `irq_enable` reaches the IMSIC, and the APLIC of the right die |
+| `imsic_irq` | `socpuppet_host` | 9 | `irq_enable` reaches the IMSIC, and the APLIC of the right die (the host's interrupt controllers: one IMSIC, and an APLIC on each of its two dies) |
 | `riscv_iommu` | `socpuppet_host`, with a drive behind an IOMMU | 3 | A sector read through the drive's page tables lands; one into a page taken away from the drive fails, and the fault record names the drive and the page; a page that allows nothing is refused |
 
-🎭 **"With a host" and "with a drive" are shields.** A driver's hardware often does nothing until something on the other side of it speaks, and under twister there is one board and one image. So the suite is built with a shield (`extra_args: SHIELD=...` in its `testcase.yaml`), twister passes the shield on, and `socpuppet run` puts a stand-in there:
+🎭 **"With a host" and "with a drive" are shields**, Zephyr's name for hardware plugged into a board. A driver's hardware often does nothing until something on the other side of it speaks, and under twister there is one board and one image. So the suite is built with a shield (`extra_args: SHIELD=...` in its `testcase.yaml`), twister passes the shield on, and `socpuppet run` puts a stand-in there:
 
 | Shield | Board | What `socpuppet run` puts beside the board |
 |---|---|---|
@@ -209,7 +209,7 @@ assert report.case("spam.test_the_answer_is_as_advertised").result == "PASS"
 
 ⚠️ **A test that needs something on the other side of the board's hardware** says so with a shield, as an image does. `socpuppet_host_drive` puts 🎭 a drive on the host's PCIe link. `socpuppet_ssd_host` puts 🎭 a host in front of the SSD that says a host's first words to a drive: it enables it, asks for its queues and how big it is, and writes one block. In a `testcase.yaml` that is `extra_args: SHIELD=socpuppet_ssd_host`, and twister passes it on to `socpuppet run`. socpuppet's own drivers are tested this way, in the module's `tests/drivers`, and they are examples to start from.
 
-A program with no test framework in it can be a suite too: `harness: console` in its `testcase.yaml`, and the lines it should print. [Run Zephyr's tests on the puppet](twister.md) has that, how twister comes to run socpuppet at all, and what Zephyr's own suites say of these boards.
+A program with no test framework in it can be a suite too: `harness: console` in its `testcase.yaml`, and the lines it should print, as [socpuppet's own suites](#socpuppets-own-suites) above do.
 
 ## What is left out, and why
 
@@ -219,7 +219,7 @@ A program with no test framework in it can be a suite too: `harness: console` in
 - **`arch.riscv64.fatal.*`, on the two 32-bit boards: it is a test for a 64-bit CPU.** It makes the kernel panic and matches the dump of registers digit for digit, sixteen digits to a register. A 32-bit CPU prints eight. On `socpuppet_host` all four scenarios pass.
 - **`libraries.libc.common.stdio.*`, on every board: they want a module socpuppet does not fetch.** These test `stdio` on a file system and include `ff.h` from FatFs, one of Zephyr's external modules. `firmware/build.py` fetches Zephyr alone, because nothing socpuppet builds needs a module, so they do not build. The rest of the C library's suite runs.
 
-🚧 Not in the list at all yet, because the CPU cannot run them: Zephyr's tests of user mode and memory protection (`tests/kernel/mem_protect`, `tests/arch/riscv/userspace`). They want a core with user mode behind a PMP, which is a loose end in [roadmap.md](roadmap.md#loose-ends).
+🚧 Not in the list at all yet, because the CPU cannot run them: Zephyr's tests of user mode and memory protection (`tests/kernel/mem_protect`, `tests/arch/riscv/userspace`). They want a core with user mode behind a PMP, RISC-V's physical memory protection, which is a loose end in [roadmap.md](roadmap.md#loose-ends).
 
 ## When a scenario fails
 
@@ -245,7 +245,7 @@ It also runs the tests that need Zephyr's tree and so are skipped everywhere els
 
 On a runner, with four cores where the figure above had sixteen, the job took twenty minutes the first time and thirty-three the second, both passing the same 113 scenarios as the run here. The first was two minutes to fetch Zephyr and its SDK, which the cache now has, five to build socpuppet, eleven for twister, and one to keep the logs. The second had a runner half as fast at everything: eight minutes to build socpuppet and nineteen for twister. ⚠️ That makes it one of the longest jobs of the workflow. If the list grows, twister's minutes grow with it, and a suite then has to earn its place.
 
-The Mac's leg first ran later the same day, and passed the same 113 scenarios in thirty-nine minutes, beside a Linux leg that took thirty-three. Its runner has three cores. Four of its minutes went on fetching Zephyr and its SDK, which its own cache now has, nine on building socpuppet, twenty-three on twister, and two on keeping the logs. So the four places twister has run, each with the same verdicts:
+The Mac's leg's first run passed the same 113 scenarios in thirty-nine minutes, beside a Linux leg that took thirty-three. Its runner has three cores. Four of its minutes went on fetching Zephyr and its SDK, which its own cache now has, nine on building socpuppet, twenty-three on twister, and two on keeping the logs. So the four places twister has run, each with the same verdicts:
 
 | Where | Cores | Building socpuppet | Twister, the whole list | Slowest scenario |
 |---|---|---|---|---|

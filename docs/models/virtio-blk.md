@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-🎭 A stand-in (a simplified model) for a disk: QEMU's `virtio-blk-device`, the disk a `virt` machine's kernel most often mounts its root on. 🎓 Device 2 in the specification (section 5.2): one queue, and each chain one request, a 16-byte header the device reads (the request's kind and its first sector), the data, and a status byte the device writes last.
+🎭 A stand-in (a simplified model) for a disk: QEMU's `virtio-blk-device`, the disk a `virt` machine's kernel most often mounts its root on. 🎓 Virtio is the family of devices made for virtual machines, which Linux, Zephyr and EDK2 all drive; the [transport](virtio-mmio.md) they share carries a driver's requests as *chains*, each one request's buffers in the host's memory, and the device writes its answer back into them. Device 2 in the specification (section 5.2): one queue, and each chain one request, a 16-byte header the device reads (the request's kind and its first sector), the data, and a status byte the device writes last.
 
 ## What it does
 

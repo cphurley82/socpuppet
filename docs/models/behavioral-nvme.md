@@ -57,12 +57,12 @@ platform.connect(nvme.irq0, cpu.irq)            # its interrupt
 
 A line is high while a completion queue on its vector holds a completion the host has not acknowledged. When the host acknowledges (by writing the completion queue's head doorbell) the line falls, and if completions are still waiting it rises again a delta cycle later.
 
-💡 Why fall and rise again? On a real PCIe device the line does not reach the host as a wire. Each rise becomes a message (MSI-X). A driver reads what it finds, acknowledges once and waits for the next message. If the line just stayed high for the completions still waiting, no message would come, and they would sit there like a parrot nailed to its perch.
+💡 Why fall and rise again? On a real PCIe device the line does not reach the host as a wire. Each rise becomes a message (🎓 an MSI-X, a message-signalled interrupt: a write into the host's memory that takes the wire's place). A driver reads what it finds, acknowledges once and waits for the next message. If the line just stayed high for the completions still waiting, no message would come, and they would sit there like a parrot nailed to its perch.
 
 ## What it leaves out
 
 - **PCIe.** No configuration space, no base address registers, no MSI-X table. That is the [PCIe endpoint](pcie-endpoint.md)'s job, and the two are connected port for port: `bar0`, `dma`, and each `irq`.
-- **Everything behind the registers of a real SSD**: a CPU, firmware, a flash translation layer, NAND flash, wear, garbage collection.
+- **Everything behind the registers of a real SSD**: a CPU, firmware, a flash translation layer (the firmware's map from the host's block numbers to places in the flash), NAND flash, wear, garbage collection.
 - **Time.** Nothing takes any. There is no latency, and the controller never falls behind or pushes back.
 - **Most of the command set.** No deleting queues, no Get Features or log pages, no asynchronous events, no Dataset Management (TRIM), no namespaces beyond the first, and block size is fixed at 512.
 - **Sharing a vector.** Each completion queue is expected to have a vector to itself.

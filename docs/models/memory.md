@@ -8,9 +8,9 @@ A block of RAM: DRAM on a host, SRAM in a controller. It is a flat array of byte
 
 ## What it does
 
-- **Reads and writes** through its TLM target socket. Addresses are offsets from the start of the memory; a router in front of it takes care of where it sits in the address map.
+- **Reads and writes** through its TLM target socket (🎓 TLM, transaction-level modeling, is how blocks here talk: a whole read or write handed over as one function call, and the target is the side that answers). Addresses are offsets from the start of the memory; a router in front of it takes care of where it sits in the address map.
 - **Address errors.** An access that runs past the end is answered with an address-error response and changes nothing.
-- **DMI.** It grants a direct memory interface to the whole memory, a pointer to its bytes, for reading and writing. 💡 This is what will let a CPU model run at full speed: after one request, the CPU reads and writes the bytes directly instead of making a transaction per access. Every bus access comes back with the DMI-allowed hint set, which is how a CPU model knows it is worth asking.
+- **DMI.** It grants a direct memory interface to the whole memory, a pointer to its bytes, for reading and writing. 💡 This is what lets a CPU model run at full speed: after one request, the CPU reads and writes the bytes directly instead of making a transaction per access. Every bus access comes back with the DMI-allowed hint set, which is how a CPU model knows it is worth asking.
 - **Debug transport.** `peek` and `poke` reach it without simulated time passing.
 
 ## What it leaves out

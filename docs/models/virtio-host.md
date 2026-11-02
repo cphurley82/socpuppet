@@ -6,7 +6,7 @@
 
 🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
 
-The driver of a virtio device, as a script: the code that finds the device, agrees on features, lays its virtqueues out in memory and hands it buffers. 🧵 It was each device's first driver here, before Zephyr's or EDK2's ran against it, and it is the shortest way to see what any of them does.
+The driver of a virtio device, as a script: the code that finds the device, agrees on features, lays its virtqueues out in memory and hands it buffers. 🎓 Virtio is the family of devices made for virtual machines, which Linux, Zephyr and EDK2 all drive ([virtio-mmio.md](virtio-mmio.md) is the transport they share here), and a virtqueue is the queue a driver and a device share in the driver's memory: a table of descriptors, each naming one buffer, an available ring the driver fills with chains of them, and a used ring the device fills with the ones it has finished with. 🧵 It was each device's first driver here, before Zephyr's or EDK2's ran against it, and it is the shortest way to see what any of them does.
 
 🎓 Every exchange is `submit(queue, readable, writable)`:
 

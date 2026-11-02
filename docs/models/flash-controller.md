@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The part of an SSD's controller chip that works the [NAND flash](ideal-nand.md). The SSD's CPU does not move data itself: it would be far too slow, and on a real chip the NAND's pins are not even connected to it. The firmware says *which page* and *where in memory*, and this block moves the page.
+The part of an SSD's controller chip that works the [NAND flash](ideal-nand.md). The SSD's CPU does not move data itself: it would be far too slow, and on a real chip the NAND's pins are not even connected to it. The firmware says *which page* and *where in memory*, and this block moves the page (🎓 a NAND page is the few kilobytes a flash chip reads or writes at once, and a block is the group of pages it erases together).
 
 ```text
               registers                         the chip
