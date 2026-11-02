@@ -30,6 +30,9 @@ from needs import Failed, not_installed
 REPOSITORY = Path(__file__).resolve().parents[1]
 PATCHES = REPOSITORY / "cmake" / "patches"
 QBOX_COMMIT = "4d63017c88a147839d49028d0c60666d691460cc"  # 2026-09-24
+#: The file of QBox's install that CMake finds it by (cmake/Dependencies.cmake),
+#: under the install's prefix: so an install that has it is built.
+PACKAGE = Path("lib/cmake/qbox-2.0/qboxConfig.cmake")
 
 # What QBox's build stops without: each program or library, as the name it
 # is looked for by, the Ubuntu package it comes in, and the Homebrew
@@ -77,12 +80,30 @@ def main() -> int:
     # Each line is shown as it is printed, before the output of what runs
     # next, in a log as at a terminal.
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+    root = args.root.resolve()
     try:
-        build(args.root.resolve(), args.jobs)
+        build(root, args.jobs)
     except Failed as failure:
         print(f"build_qbox.py: {failure}", file=sys.stderr)
         return 1
+    if root == REPOSITORY / "build" / "qbox":
+        print("Next: uv run cmake --preset qbox")
+    else:
+        print(
+            "Next: uv run cmake --preset qbox "
+            f"-DSOCPUPPET_QBOX_DIR={install_of(root)}"
+        )
     return 0
+
+
+def install_of(root: Path) -> Path:
+    """Where QBox is installed, built with `root` as the build's root."""
+    return root / "install"
+
+
+def built(root: Path) -> bool:
+    """Whether QBox is installed, built with `root` as the build's root."""
+    return (install_of(root) / PACKAGE).is_file()
 
 
 def build(root: Path, jobs: int) -> None:
@@ -106,7 +127,7 @@ def build(root: Path, jobs: int) -> None:
         apply(source, patch, root)
 
     tree = root / "build"
-    install = root / "install"
+    install = install_of(root)
     configure(source, tree, install)
     # QEMU is fetched while QBox is configured, and built after. Its
     # patches go in between.
@@ -118,12 +139,6 @@ def build(root: Path, jobs: int) -> None:
 
     took = round(time.monotonic() - started)
     print(f"✅ QBox is installed in {install}, in {took} s.")
-    if root == REPOSITORY / "build" / "qbox":
-        print("Next: uv run cmake --preset qbox")
-    else:
-        print(
-            f"Next: uv run cmake --preset qbox -DSOCPUPPET_QBOX_DIR={install}"
-        )
 
 
 def configure(source: Path, tree: Path, install: Path) -> None:

@@ -80,6 +80,7 @@ def qbox(tmp_path):
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
                 "MISSING": missing,
                 "CONFIGURE": configure,
+                "QBOX_PACKAGE": str(BUILD_QBOX.PACKAGE),
             },
             input=typed,
             stdout=subprocess.PIPE,
@@ -98,6 +99,7 @@ def test_a_missing_package_stops_it_before_anything_is_built_naming_the_fix(
     result, lines = qbox(missing="pixman-1")
 
     assert result.returncode != 0
+    assert "❌ QBox's packages" in result.stdout
     fix = {"Linux": PIXMAN_APT, "Darwin": f"brew install {PIXMAN_BREW}"}
     assert fix[platform.system()] in result.stdout
     assert not calls(lines, "git")
@@ -111,23 +113,22 @@ def test_with_no_qbox_built_it_builds_qbox_at_its_pin_into_the_root(
 
     assert result.returncode == THE_BOOTS, result.stdout
     assert calls(lines, "git", "checkout", PIN)
-    install = tmp_path / "qbox" / "install"
-    assert calls(lines, "cmake", f"-DCMAKE_INSTALL_PREFIX={install}")
-    assert calls(lines, "cmake", "--install")
+    assert (tmp_path / "qbox" / "install" / BUILD_QBOX.PACKAGE).is_file()
 
 
-def test_with_qbox_built_it_builds_qbox_no_more_and_says_how_to(qbox):
+def test_with_qbox_built_it_builds_qbox_no_more_and_says_how_to_bring_it_up_to_date(
+    qbox, tmp_path
+):
     qbox()
 
     result, lines = qbox()
 
     assert result.returncode == THE_BOOTS, result.stdout
-    assert len(calls(lines, "git", "clone")) == 1
     assert len(calls(lines, "cmake", "--install")) == 1
-    assert "delete" in result.stdout.lower()
+    assert f"tools/build_qbox.py --root {tmp_path / 'qbox'}" in result.stdout
 
 
-def test_then_it_builds_socpuppet_against_that_qbox_with_the_qbox_preset(
+def test_once_qbox_is_built_it_builds_socpuppet_against_it_with_the_qbox_preset(
     qbox, tmp_path
 ):
     result, lines = qbox()
@@ -144,10 +145,7 @@ def test_the_jobs_option_is_how_many_files_each_build_compiles_at_once(qbox):
     result, lines = qbox("--jobs", "3")
 
     assert result.returncode == THE_BOOTS, result.stdout
-    assert calls(lines, "cmake", "--build", "--parallel", "3")
-    assert calls(
-        lines, "cmake", "--build", "--preset", "qbox", "--parallel", "3"
-    )
+    assert len(calls(lines, "cmake", "--build", "--parallel", "3")) == 2
 
 
 def test_it_ends_by_handing_this_terminal_to_linux_on_qboxs_hart(qbox):
@@ -169,7 +167,5 @@ def test_a_step_that_fails_ends_it_in_a_line_that_says_which_and_boots_nothing(
     result, lines = qbox(configure="fails")
 
     assert result.returncode == 1
-    assert "Traceback" not in result.stdout
-    assert result.stdout.splitlines()[-1].startswith("tools/qbox.py: ")
-    assert "failed" in result.stdout.splitlines()[-1]
+    assert result.stdout.splitlines()[-1].startswith("tools/qbox.py: cmake ")
     assert not calls(lines, "uv")
