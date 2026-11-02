@@ -9,15 +9,15 @@ The story of how the platform was built, for anyone who wants it. What is on sta
 
 | Spike | For | Run | The question | The answer |
 |---|---|---|---|---|
-| [iss-spike.md](iss-spike.md) | M1 | 2026-10-03 to 04 | Which CPU model goes in the CPU slot? | DBT-RISE-RISCV, with QBox optional and from source |
-| [pcie-spike.md](pcie-spike.md) | M2 | 2026-10-05 | Borrow VCML's PCIe endpoint, or write our own? | Our own; VCML stays out of the build |
+| [iss-spike.md](iss-spike.md) | M1 | 2026-10-03 to 04 | Which CPU model goes in the CPU slot? | DBT-RISE-RISCV, with QBox (QEMU's CPUs as SystemC models) optional and from source |
+| [pcie-spike.md](pcie-spike.md) | M2 | 2026-10-05 | Borrow the PCIe endpoint of VCML, an open-source SystemC modelling library, or write our own? | Our own; VCML stays out of the build |
 | [gdb-spike.md](gdb-spike.md) | M8 | 2026-10-10 | Can each of three CPUs have a debugger at once? | Yes, by three patches; a stopped CPU stops the world, by design |
-| [npu-spike.md](npu-spike.md) | M12 | 2026-10-10 | A Hexagon from QBox, or a behavioral NPU of our own? | 🎭 A behavioral NPU of ours, its arithmetic in Python |
-| [aia-spike.md](aia-spike.md) | M13 | 2026-10-10 | Does Zephyr build for an IMSIC and no PLIC? | Yes, with glue the module supplies |
+| [npu-spike.md](npu-spike.md) | M12 | 2026-10-10 | A Hexagon from QBox, or a behavioral NPU (neural processing unit, an AI accelerator) of our own? | 🎭 A behavioral NPU of ours, its arithmetic in Python |
+| [aia-spike.md](aia-spike.md) | M13 | 2026-10-10 | Does Zephyr build for an IMSIC (RISC-V's interrupt controller for messages) and no PLIC (the classic one for wires)? | Yes, with glue the module supplies |
 | [boot-spike.md](boot-spike.md) | M14 | 2026-10-11 | Four questions before a CPU boots from flash | All four answered; no change of scope |
 | [twister-spike.md](twister-spike.md) | M21 | 2026-10-11 | Can Zephyr's test runner run Zephyr's own tests on the puppet? | Yes; it became `socpuppet run` and [twister.md](../twister.md) |
-| [speed-spike.md](speed-spike.md) | M26 | 2026-10-13 | Where to do the Linux work, and which CPU ships? | The interpreter ships, unchanged; QBox became the second hart |
+| [speed-spike.md](speed-spike.md) | M26 | 2026-10-13 | Where to do the Linux work, and which CPU ships? | The interpreter ships, unchanged; QBox became the second hart (CPU core) |
 | [virtio-spike.md](virtio-spike.md) | M25 | 2026-10-16 to 17 | What does it take to boot Linux on virtio's cast? | The virtio road to Linux first, on the host as it is |
-| [real-host-spike.md](real-host-spike.md) | M30 | 2026-10-22 | Can this machine's own Linux mount the puppet's SSD, through pciem? | Yes, all three drives; build M31 as planned, with corrections |
+| [real-host-spike.md](real-host-spike.md) | M30 | 2026-10-22 | Can this machine's own Linux mount the puppet's SSD, through pciem (a Linux kernel module that lets a program be a PCIe device)? | Yes, all three drives; build M31 as planned, with corrections |
 
 Two spikes still have code in the tree, behind the `spike` CMake preset: `spikes/npu`, which M19 keeps until it has rebuilt what the decision kept, and `spikes/speed`, which stays so that every later change to the core can be timed against its results ([development.md](../development.md#spikes)).

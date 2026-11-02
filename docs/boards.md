@@ -1,10 +1,10 @@
 # The boards, and the bigger shows 🧦
 
-socpuppet has three Zephyr boards, the host (`socpuppet_host`), the SSD's controller (`socpuppet_ssd`) and the IO die's manager (`socpuppet_iomgr`), and shows that put two or three of them on stage together. This page is how to run each. The steps are the host's, from [boot-your-firmware.md](boot-your-firmware.md), and each section says what differs. 🎭 A stand-in is a simplified model that holds a block's place so the rest can rehearse; every show here starts with one and says how to swap in the real thing.
+socpuppet has three Zephyr boards, the host (`socpuppet_host`), the SSD's controller (`socpuppet_ssd`) and the IO die's manager (`socpuppet_iomgr`), and shows that put two or three of them on stage together. This page is how to run each. 🎓 The host is two dies, two pieces of silicon in one package, a compute die with the CPU and an IO die with the devices, joined by a die-to-die link: a chip built that way is a chiplet design. The steps are the host's, from [boot-your-firmware.md](boot-your-firmware.md), and each section says what differs. 🎭 A stand-in is a simplified model that holds a block's place so the rest can rehearse; every show here starts with one and says how to swap in the real thing.
 
 ## With a drive
 
-The host can have an SSD on a PCIe link: 🎭 the [behavioral NVMe](models/behavioral-nvme.md) behind a [PCIe endpoint](models/pcie-endpoint.md). Zephyr finds it by scanning the bus and uses it through its own NVMe driver and its disk API (`disk_access_read` and friends, on the disk `nvme0n0`).
+The host can have an SSD on a PCIe link (PCIe is the bus a PC's expansion cards and SSDs plug into, and NVMe the protocol an SSD speaks over it): 🎭 the [behavioral NVMe](models/behavioral-nvme.md) behind a [PCIe endpoint](models/pcie-endpoint.md). Zephyr finds it by scanning the bus and uses it through its own NVMe driver and its disk API (`disk_access_read` and friends, on the disk `nvme0n0`).
 
 | What | Where | Zephyr driver |
 |---|---|---|
@@ -19,7 +19,7 @@ west build -b socpuppet_host --shield socpuppet_host_drive my_app -- \
     -DZEPHYR_EXTRA_MODULES="$(socpuppet zephyr-module)"
 ```
 
-The shield adds the devices to the devicetree and switches on PCIe and the NVMe driver. Your application adds `CONFIG_DISK_ACCESS=y`. Then describe the host with a drive, of as many 512-byte blocks as you like:
+The shield adds the devices to the devicetree, the description of the hardware that Zephyr is built against, and switches on PCIe and the NVMe driver. Your application adds `CONFIG_DISK_ACCESS=y`. Then describe the host with a drive, of as many 512-byte blocks as you like:
 
 ```python
 board = host(drive_blocks=4096)     # 2 MB
@@ -33,7 +33,7 @@ board.platform.load_elf("build/zephyr/zephyr.elf")
 
 ⚠️ Firmware built with the shield needs the drive. On a host described without one it stops before it prints anything: the first place it looks for the drive is an address where nothing answers.
 
-💡 A PCIe device interrupts with a message, and the board's interrupt controller is one that is sent messages, so the drive's interrupts go to it as they are: identities 32 and 33, written to `0x2400_0000`. [The IMSIC's page](models/imsic.md) has the rest.
+💡 A PCIe device interrupts with a message, and the board's interrupt controller, the IMSIC, is one that is sent messages, so the drive's interrupts go to it as they are: identities 32 and 33, written to `0x2400_0000`. [The IMSIC's page](models/imsic.md) has the rest.
 
 ### Behind an IOMMU
 
@@ -41,7 +41,7 @@ The host can have an [IOMMU](models/iommu.md) in front of its drive, which confi
 
 | What | Where | Zephyr driver |
 |---|---|---|
-| IOMMU | `0x100E_0000`, a page; its line at the IO die's APLIC, source 24 | `riscv,iommu`, from socpuppet's module |
+| IOMMU | `0x100E_0000`, a page; its line at the IO die's APLIC (the interrupt controller for wired devices), source 24 | `riscv,iommu`, from socpuppet's module |
 
 ```sh
 west build -b socpuppet_host --shield "socpuppet_host_drive;socpuppet_host_iommu" my_app -- \
@@ -52,7 +52,7 @@ The module's driver sets the IOMMU up and, before Zephyr scans the bus, lets the
 
 ## With the virtio slots
 
-🎭 The host can have six virtio devices on its IO die, a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, served twice, to Zephyr and EDK2 by the file system device and to Linux by the 9P transport, with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
+🎭 The host can have six virtio devices on its IO die (virtio is the family of simple devices a virtual machine offers its guest), a page apart from `0x1000_1000` where QEMU's `virt` machine has its slots: an entropy source, a console, a disk, a network card and a shared directory, served twice, to Zephyr and EDK2 (the UEFI firmware, [below](#booting-uefi)) by the file system device and to Linux by the 9P transport (9P is Plan 9's file protocol, which Linux speaks), with 🧵 Python at the far end of each. Every Linux has drivers for them, and so do Zephyr and EDK2. [virtio-spike.md](history/virtio-spike.md) says why they are there, and each has [a page](models/virtio-mmio.md).
 
 | Slot | What | Where | Zephyr driver binds to | Python's end |
 |---|---|---|---|---|
@@ -84,7 +84,7 @@ board.platform.run(sp.ms(100))
 print(board.virtio.console.output)
 ```
 
-`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, `tests/python/test_virtio_uefi.py` boots UEFI with them, and `tests/python/test_linux_boots.py` boots 🐧 Linux with every one under its own driver ([linux.md](linux.md)). 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, does not know the virtio shields yet: run such an image from Python.
+`tests/python/test_virtio_zephyr.py` runs four of Zephyr's own tests and samples against them, unchanged, `tests/python/test_virtio_uefi.py` boots UEFI with them, and `tests/python/test_linux_boots.py` boots 🐧 Linux with every one under its own driver ([linux.md](linux.md)). 💡 The slots are off unless asked for (`virtio=None`), so the host's devicetree and every image built without the shield are as they were. ⚠️ `socpuppet run`, and so twister, Zephyr's test runner ([twister.md](twister.md)), does not know the virtio shields yet: run such an image from Python.
 
 ## The SSD's controller
 
@@ -216,8 +216,8 @@ print(board.ssd.cpu_kit.uart.output)
 - ⚠️ **See to a reset before an enable**, and acknowledge it last. Acknowledging a reset is a promise that the firmware has let go of every queue and command from before it. [The frontend's page](models/nvme-frontend.md) has the handshake, and why.
 - ⚠️ **A write the hardware refuses is a bus fault.** Zephyr stops and prints the CPU's registers on the console, under `mcause: 7, Store/AMO access fault`. The line to read is `mtval`, which is the address that was refused: `10010034` is the frontend's `QUEUE_CREATE`. `nvme_frontend_create_queue` with a queue the frontend cannot keep is the usual one, so check what the host asked for first, as `firmware/ssd/src/admin.c` does.
 - **Data goes through the buffer.** The DMA engine and the flash controller are given addresses on the SSD's bus and do the copying themselves, so what they are pointed at has to be memory. The 4 MiB at `0x4000_0000` is there for it: `DT_NODELABEL(ssd_buffer)` in the devicetree. Zephyr does not manage it, so the firmware carves it up by hand.
-- **A NAND is written a page at a time** (`flash_get_write_block_size`), and read that way too when it is data: a read of whole pages goes straight from the chip to the memory you name. `flash_read` will fetch any bytes you like, as Zephyr asks of every flash driver, by way of a page the driver keeps. ⚠️ No more than 2 GiB of a NAND can be reached through Zephyr's flash API from a 32-bit CPU. [upstream.md](upstream.md) says why.
-- **The NAND is a little bigger than the drive.** Its first blocks are the reserve where the FTL keeps its table, one block of 256 KiB up to a NAND of 1008 blocks, and the drive is the rest, the size it was described as. `ftl_start` takes the table from there when it is this drive's, `ftl_save` puts it back, and a shutdown from the host is when (`STATUS_SHUTDOWN`). [ssd-firmware.md](models/ssd-firmware.md) has the layout, which `socpuppet.ftl` reads and writes from Python.
+- **A NAND, the flash chip an SSD keeps its data in, is written a page at a time** (`flash_get_write_block_size`), and read that way too when it is data: a read of whole pages goes straight from the chip to the memory you name. `flash_read` will fetch any bytes you like, as Zephyr asks of every flash driver, by way of a page the driver keeps. ⚠️ No more than 2 GiB of a NAND can be reached through Zephyr's flash API from a 32-bit CPU. [upstream.md](upstream.md) says why.
+- **The NAND is a little bigger than the drive.** Its first blocks are the reserve where the FTL, the flash translation layer that says which NAND page holds each block of the drive, keeps its table, one block of 256 KiB up to a NAND of 1008 blocks, and the drive is the rest, the size it was described as. `ftl_start` takes the table from there when it is this drive's, `ftl_save` puts it back, and a shutdown from the host is when (`STATUS_SHUTDOWN`). [ssd-firmware.md](models/ssd-firmware.md) has the layout, which `socpuppet.ftl` reads and writes from Python.
 - 💡 **Switch on the log** (`CONFIG_LOG=y` and `CONFIG_LOG_MODE_MINIMAL=y`). A driver that cannot start says why there, in a line that starts `E:`, and without it all firmware can find out is that the device is not ready.
 - **Hold it to the tests.** `tests/python/test_ssd_firmware.py` is what a host may expect of an SSD's firmware, a behaviour a test, and it runs whatever `ssd_socpuppet_ssd.elf` it finds in `SOCPUPPET_FIRMWARE_DIR`. Put your image there under that name and see how far it gets.
 - 🎭 **Or do without the CPU.** [`sp.SsdFirmware`](models/ssd-firmware.md) is the same firmware as a Python script, for when the SSD's firmware is not what you are working on.
@@ -336,7 +336,7 @@ Hello World! socpuppet_host/socpuppet_rv64
 ```
 
 - 🎭 **The manager is a script here.** `scripted_manager().script` is [`sp.IoManager`](models/io-manager.md) told where the link's registers are, and it does what the firmware of [the IO die's manager](#the-io-dies-manager) does, in the same order. That firmware, on a CPU of its own under this host, is [the whole cast](#the-whole-cast-three-firmwares) below.
-- ⚠️ **The host's first instruction is 5 ms late.** UCIe holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
+- ⚠️ **The host's first instruction is 5 ms late.** UCIe, the open standard for die-to-die links that this one follows, holds a link in reset for 4 ms after power-on, training takes this link a millisecond more, and only then does the manager let the host go. A time limit that was tight for the stand-in link is 5 ms too tight for this one.
 - ⚠️ **Say whose.** The manager's script is a bus master too, so `load_elf`, `peek32` and `devicetree` want `via=board.cpu.socket`, and say so if it is left out.
 - **Everything the host does on its IO die crosses the link**, a transaction at a time: every character it prints, every register of its drive, and coming back, every byte its drive moves in or out of the host's memory and every interrupt, which is a message. The host's own RAM, timer and interrupt controller are on its own die and cross nothing.
 - 💡 **Watch it cross.** `host(manager=..., trace=True)` records every crossing in `board.platform.trace`, each with the port it left by: `compute.d2d.peer_initiator` for what the compute die sent and `io.d2d.peer_initiator` for what came back. ⚠️ An address in a record is the receiving die's own. What the compute die sends has had the start of its window taken off, so the UART is at `0x0` there and not at `0x1000_0000`. `sp.render_sideband(board.platform.trace)` is the link's own management traffic as a table, and `ucie.sideband_packets` the packets themselves.
@@ -525,7 +525,7 @@ Nothing is built differently. The two ways show firmware the same devicetree, so
 
 ## Booting OpenSBI
 
-🧦 [OpenSBI](https://github.com/riscv-software-src/opensbi) is the machine-mode firmware a RISC-V kernel sits on, and the host boots it the way a server does. 🎓 SBI, the Supervisor Binary Interface, is how a program in supervisor mode asks machine mode for what only machine mode can do: set the timer, write to the console before it has a driver, reset the machine. OpenSBI's `fw_jump` is told two things as it starts, the hart's number in `a0` and the address of a devicetree in `a1`, and it jumps to whatever is 2 MiB into RAM. `firmware/build.py` builds it, with its own `test_payload` and one of ours, `sbi_payload`.
+🧦 [OpenSBI](https://github.com/riscv-software-src/opensbi) is the machine-mode firmware a RISC-V kernel sits on, and the host boots it the way a server does. 🎓 SBI, the Supervisor Binary Interface, is how a program in supervisor mode asks machine mode for what only machine mode can do: set the timer, write to the console before it has a driver, reset the machine. OpenSBI's `fw_jump` is told two things as it starts, the hart's number (a hart is RISC-V's word for a CPU core as software sees it) in `a0` and the address of a devicetree in `a1`, and it jumps to whatever is 2 MiB into RAM. `firmware/build.py` builds it, with its own `test_payload` and one of ours, `sbi_payload`.
 
 ```python
 import socpuppet as sp
@@ -637,14 +637,14 @@ Shell>
 
 What is different from booting OpenSBI's payloads:
 
-- **It takes a minute of the CPU's time.** About 66 s on the interpreter and 87 on QBox, which is 44 s and 2 s on the wall of a quick machine. Half of it is SEC unpacking the rest of EDK2, 6 MB compressed with LZMA, and 10 s of it is two countdowns of 5 s, the boot manager's and the shell's, each waiting for a key, asleep between the timer's interrupts. 550 million instructions in all: [speed-spike.md](history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28) has them by phase.
+- **It takes a minute of the CPU's time.** About 66 s on the interpreter (the [DBT-RISE CPU](models/dbt-rise-cpu.md), the default) and 87 on QBox ([QBox's CPU](models/qbox-cpu.md), QEMU's, in a build with QBox), which is 44 s and 2 s on the wall of a quick machine. Half of it is SEC unpacking the rest of EDK2, 6 MB compressed with LZMA, and 10 s of it is two countdowns of 5 s, the boot manager's and the shell's, each waiting for a key, asleep between the timer's interrupts. 550 million instructions in all: [speed-spike.md](history/speed-spike.md#a-boot-that-ran-opensbi-and-uefi-to-the-shell-m28) has them by phase.
 - **Paging goes on in the hart's biggest mode.** EDK2 writes Sv57, Sv48 and Sv39 to `satp` in turn and keeps the first that reads back: mode 8, Sv39, on DBT-RISE's hart, and mode 10, Sv57, on QBox's.
 - 🧵 **Type at it as at Zephyr's shell**, with `board.uart.write`, and Enter is `"\r"`. The console is a terminal, so `uart.output` has escape sequences in it for colour and the cursor, which the example takes out. `memmap` lists every region of the 64 MiB the devicetree gave, OpenSBI's own at the start marked reserved, and takes 22 s of the interpreter's time to print.
 - **`reset` reboots**, through SBI's reset call to the system controller. From the flash the ROM copies the image again and the boot starts over; the quick way does not come back, as with OpenSBI.
 - **From the flash** it is `opensbi.flash_image(layout)`, as with OpenSBI: `fw_jump`, the 2 MiB to where it jumps, the 2 MiB of EDK2 and the devicetree, 4.2 MB, which the ROM checks in about 9 s of the CPU's time. The boot flash is 16 MiB, so it fits before the manager's image.
 - **Its variables are kept in RAM** and forgotten at reset: there is no flash UEFI can write them to. The boot manager registers the shell as a boot option again at each boot, so nothing is lost that a test needs.
 - ⚠️ **A line of exclamation marks for most drivers it loads**, `Image Section Alignment(0x40) does not match Required Alignment (0x1000)`, is EDK2's own build for RISC-V, which links its modules with sections too close together to protect. The boot is unaffected ([upstream.md](upstream.md)).
-- **Nothing of the AIA.** EDK2 has no driver for the APLIC or the IMSIC, so its console is polled and its only interrupt is the timer's.
+- **Nothing of the AIA**, RISC-V's Advanced Interrupt Architecture, which the APLIC and the IMSIC belong to. EDK2 has no driver for either, so its console is polled and its only interrupt is the timer's.
 - `tests/python/test_uefi_boots.py` boots both ways, types `ver` and `memmap`, and resets from the flash.
 
 ## Booting Linux

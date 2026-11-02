@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-🎭 A stand-in (a simplified model) for a hardware random number generator, the block a kernel stirs into its entropy pool. 🎓 It is the smallest virtio device there is (device 4 in the specification, section 5.4): one virtqueue, no features and no configuration. The driver hands it empty buffers and it fills them with random bytes. QEMU calls it `virtio-rng-device`.
+🎭 A stand-in (a simplified model) for a hardware random number generator, the block a kernel stirs into its entropy pool. 🎓 Virtio is the family of devices made for virtual machines, which Linux, Zephyr and EDK2 all drive, and this is the smallest virtio device there is (device 4 in the specification, section 5.4): one virtqueue (the queue a driver and a device share, in the driver's memory), no features and no configuration. The driver hands it empty buffers and it fills them with random bytes. QEMU calls it `virtio-rng-device`.
 
 ## What it does
 
@@ -15,7 +15,7 @@ platform.connect(rng.dma, bus.add_input())       # how it reaches the driver's m
 platform.connect(rng.irq, aplic.source18)        # optional: a driver may poll
 ```
 
-- **Fills every buffer it is handed, whole,** and gives each back with its length, as soon as the doorbell rings.
+- **Fills every buffer it is handed, whole,** and gives each back with its length, as soon as the doorbell rings (the doorbell is the register a driver writes to say it has added to a queue).
 - **Is repeatable.** The bytes come from a generator (`std::mt19937_64`) seeded with `seed`: the same seed gives the same bytes, run after run, which is what a test wants and what a real generator is not. A reset does not start the sequence again.
 - **Is behind the virtio-mmio transport,** with its registers, interrupt and DMA as [that page](virtio-mmio.md) says.
 

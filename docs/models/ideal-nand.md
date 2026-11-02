@@ -24,7 +24,7 @@ A NAND flash chip, which is what an SSD keeps its data in.
 
 That last rule is why an SSD needs firmware at all. Something has to keep track of where each of the drive's blocks really is, write a changed one somewhere fresh, and tidy up afterwards. That something is the flash translation layer (FTL).
 
-🎭 This model is a stand-in for the chip. It has the pages, the blocks and the three operations, so a flash controller and an FTL can rehearse against it, but it is far easier to live with than the real thing: nothing takes any time, and a page can be programmed again without erasing its block. The realistic chip is a later milestone, and it will be held to the same contract.
+🎭 This model is a stand-in for the chip. It has the pages, the blocks and the three operations, so a flash controller and an FTL can rehearse against it, but it is far easier to live with than the real thing: nothing takes any time, and a page can be programmed again without erasing its block. 🚧 The realistic chip is not built yet ([roadmap.md](../roadmap.md)), and it will be held to the same contract.
 
 ## What it does
 
@@ -58,6 +58,6 @@ It has one port, `socket`, and it is not memory: it has no addresses to read and
 ## Under the hood
 
 - `src/socpuppet/core/nand_array.h` is the cells: pages kept by block, with no simulator in them.
-- `src/socpuppet/models/nand_link.h` is how a controller and a chip talk. 🎓 TLM lets a transaction carry extra information as an *extension*, and every transaction to a chip carries one saying which operation, which block and which page. The transaction's data is the page.
+- `src/socpuppet/models/nand_link.h` is how a controller and a chip talk. 🎓 TLM (transaction-level modeling, the way blocks here talk: a whole read or write handed over as one function call) lets a transaction carry extra information as an *extension*, and every transaction to a chip carries one saying which operation, which block and which page. The transaction's data is the page.
 - `src/socpuppet/models/ideal_nand.h` is the SystemC wrapper, which turns the chip's answers into TLM responses: an address error for a page it does not have, a burst error for data of the wrong length, a command error for an access with no command.
 - Every NAND chip must pass `NandContract` (`tests/cpp/contracts/nand_contract.h`).

@@ -4,11 +4,11 @@
 
 ## What it stands for
 
-The interrupt controller that speaks for devices that only have a wire, on a platform whose CPU is sent its interrupts as messages. 🎓 APLIC is short for advanced platform-level interrupt controller. It is the other half of RISC-V's Advanced Interrupt Architecture (AIA), beside the [IMSIC](imsic.md).
+The interrupt controller that speaks for devices that only have a wire, on a platform whose CPU is sent its interrupts as messages. 🎓 An interrupt is how a device asks the CPU to stop and see to it, and an interrupt controller collects the devices' requests and passes them to the CPU. APLIC is short for advanced platform-level interrupt controller. It is the other half of RISC-V's Advanced Interrupt Architecture (AIA), beside the [IMSIC](imsic.md).
 
 An IMSIC takes messages: a device interrupts by writing a number, an interrupt identity, to the IMSIC's page. A PCIe device can do that itself. A UART cannot. It has one interrupt line and no way to write to anything. The APLIC is where such lines go, and for each one that asks it does the writing.
 
-💡 This is what lets a console sit on another die than the CPU. A die-to-die link carries transactions and has nowhere for a wire to go down. So the UART's line stops at an APLIC on its own die, and what crosses the link is a write like any other.
+💡 This is what lets a console sit on another die than the CPU (🎓 a die is one piece of silicon; a chip can be built from several). A die-to-die link carries transactions and has nowhere for a wire to go down. So the UART's line stops at an APLIC on its own die, and what crosses the link is a write like any other.
 
 ## What it does
 
@@ -29,7 +29,7 @@ platform.connect(aplic.msi, up.add_input())   # a bus that leads to the IMSIC's 
 |---|---|
 | **Lines in** (`source1` to `source31`) | One for each device. A line left unconnected is low. |
 | **Registers on the bus** (`socket`) | Where firmware sets it up. 32 KiB, 32 bits each. |
-| **Messages out** (`msi`) | A 32-bit write of an interrupt identity, to the address firmware gave for the hart's page. Connect it to a bus the IMSIC's `machine` page is on, or to something that leads to one. |
+| **Messages out** (`msi`) | A 32-bit write of an interrupt identity, to the address firmware gave for the hart's page (🎓 a hart is RISC-V's word for one hardware thread: a CPU core, as software sees it). Connect it to a bus the IMSIC's `machine` page is on, or to something that leads to one. |
 
 ### What firmware does
 

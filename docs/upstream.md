@@ -22,14 +22,14 @@ Each entry says:
 
 ## SystemC-Components (SCC)
 
-[Minres/SystemC-Components](https://github.com/Minres/SystemC-Components), pinned at `42a9843e` ("2026.07") in `cmake/Dependencies.cmake`. socpuppet uses its TLM router and its logging.
+[Minres/SystemC-Components](https://github.com/Minres/SystemC-Components), pinned at `42a9843e` ("2026.07") in `cmake/Dependencies.cmake`. socpuppet uses its TLM router (TLM, transaction-level modeling, is the SystemC standard by which blocks hand each other whole bus transactions as function calls) and its logging.
 
 ### The stage-callback probe cannot see a SystemC built in the same tree
 
 - **Where**: `src/sysc/CMakeLists.txt`, the `try_compile` that decides `HAVE_STAGE_CALLBACKS`.
 - **What is wrong**: the probe passes `LINK_LIBRARIES SystemC::systemc`. 🎓 `try_compile` configures a small separate project, and a target that the enclosing build is about to compile does not exist there. So when SystemC comes from `FetchContent` or `add_subdirectory`, and not from an installed package, the probe cannot succeed.
 - **How to see it**: fetch SystemC 3.0.2 and SCC with `FetchContent` in one project and configure. The probe only compiles a source file to a static library, so it never needed to link.
-- **What we do**: `cmake/patches/scc-in-tree-systemc.patch` replaces the `LINK_LIBRARIES` line with `CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${SOCPUPPET_SYSTEMC_INCLUDE_DIR}"`. `cmake/Dependencies.cmake` sets that to the fetched SystemC's `src`, or, in a build with QBox, to the directory that holds QBox's SystemC headers and nothing else (see QBox's entries below).
+- **What we do**: `cmake/patches/scc-in-tree-systemc.patch` replaces the `LINK_LIBRARIES` line with `CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${SOCPUPPET_SYSTEMC_INCLUDE_DIR}"`. `cmake/Dependencies.cmake` sets that to the fetched SystemC's `src`, or, in a build with QBox (Qualcomm's library that puts QEMU's CPUs inside SystemC, socpuppet's optional second CPU), to the directory that holds QBox's SystemC headers and nothing else (see QBox's entries below).
 - **Upstream fix**: our patch names the fetched source directory, which is too specific to send as it is. Propose giving the probe SystemC's include directories instead of linking the target, read from the target's properties, so that both an installed and an in-tree SystemC work.
 - **Kind**: build.
 - **When it lands**: delete the patch file and its line in `PATCH_COMMAND`.
@@ -123,7 +123,7 @@ Each entry says:
 
 ## SystemC CCI
 
-[accellera-official/cci](https://github.com/accellera-official/cci). socpuppet gets it as the copy SCC bundles in `third_party/cci-1.0.1`, so the fix belongs to Accellera, and SCC would pick it up from there.
+[accellera-official/cci](https://github.com/accellera-official/cci), SystemC's configuration library (CCI), whose parameters a model reads as it is built. socpuppet gets it as the copy SCC bundles in `third_party/cci-1.0.1`, so the fix belongs to Accellera, and SCC would pick it up from there.
 
 ### Two protected constructors that should be `explicit`
 
@@ -137,7 +137,7 @@ Each entry says:
 
 ## DBT-RISE-Core
 
-[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model. How each of these was found is in [iss-spike.md](history/iss-spike.md), and for its GDB server in [gdb-spike.md](history/gdb-spike.md).
+[Minres/DBT-RISE-Core](https://github.com/Minres/DBT-RISE-Core), pinned at `29e97c0`. It is the engine under the CPU model, an instruction-set simulator (ISS). How each of these was found is in the ISS spike, which chose the CPU model ([iss-spike.md](history/iss-spike.md)), and for its GDB server in [gdb-spike.md](history/gdb-spike.md).
 
 ### asio names that Boost 1.87 removed
 
@@ -271,7 +271,7 @@ Each entry says:
 
 ## DBT-RISE-RISCV
 
-[Minres/DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV), pinned at `2ad3223`. It is the default CPU, wrapped by `src/socpuppet/models/dbt_rise_cpu.cpp`.
+[Minres/DBT-RISE-RISCV](https://github.com/Minres/DBT-RISE-RISCV), pinned at `2ad3223`. It is the default CPU, the model of a hart (RISC-V's word for one hardware thread: a CPU core, as software sees it), wrapped by `src/socpuppet/models/dbt_rise_cpu.cpp`.
 
 ### `offsetof` with a qualified member name
 
@@ -289,7 +289,7 @@ Each entry says:
 - **What is wrong**: reset held high from the start and then released works. Raised again later, three things go wrong.
   1. The run loop ends on any interruption and then stops the whole simulation, and a reset counts as an interruption.
   2. A core asleep in `wfi` wakes only for an interrupt, so it does not notice reset at all.
-  3. Reset sets the core's cycle count back to zero, but `last_sync_cycle`, which the quantum keeper measures progress from, keeps its old value. The difference comes out as an enormous number of cycles, and the core waits that long before its first instruction.
+  3. Reset sets the core's cycle count back to zero, but `last_sync_cycle`, which the quantum keeper (the quantum is how far ahead of the simulation's clock a core may run before it lets the rest catch up) measures progress from, keeps its old value. The difference comes out as an enormous number of cycles, and the core waits that long before its first instruction.
 - **How to see it**: a platform that raises `rst_i` on a running core. In socpuppet that is `BusMasterContract.WhenResetIsRaisedAgainTheMasterStartsOver` in `tests/cpp/contracts/bus_master_contract.h`, run for the CPU with the patch taken out.
 - **What we do**: `cmake/patches/dbt-rise-riscv-reset-restart.patch`, three edits. The loop condition becomes `while(!core->get_interrupt_execution() || rst_i.read())`. The reset callback also calls `vm->get_arch()->cancel_wait()`. And `last_sync_cycle` is set from the core's cycle count next to `quantum_keeper.reset(...)`.
 - **Upstream fix**: the same three edits, sent as one change with the scenario above as the test.
@@ -400,7 +400,7 @@ Each entry says:
 
 - **Where**: three places. `src/sysc/core_complex.cpp`, `read_mem` and `write_mem`: `auto incr = (local_time_post.value() - local_time_pre.value()) / curr_clk.read().value();`. `src/sysc/core2sc_adapter.h`, `notify_phase`: `if(cycle_incr > 1) this->instr_if.update_last_instr_cycles(cycle_incr);`. And `src/iss/arch/riscv_hart_common.h`, `update_last_instr_cycles`: `arch.cycle_offset += cycles - 1;`.
 - **What is wrong**: the delay a target adds to a transaction is turned into whole cycles of the core's clock by an integer division, which throws the remainder away, and those cycles then take the place of the instruction's own cycle where they should be added to it. So an access that is delayed by d costs `floor(d / period) - 1` cycles more than one that is not, and nothing at all below two cycles. With socpuppet's 100 ns clock a target that adds 20 ns, or 100 ns, or 199 ns, adds nothing however many times it is reached, and one that adds 300 ns adds 200. A loosely-timed model's latency below two cycles is invisible to the firmware's clock.
-- **How to see it**: by reading, a target that adds 150 ns to `delay` in `b_transport`, behind a core with a 100 ns clock, leaves the core's cycle count where a target that adds nothing leaves it. That has not been run on its own. What was run is Zephyr's disk test on the host across the die-to-die link, whose default is 20 ns a crossing, with a quantum of 0: the verdict comes exactly 5 ms later than with a link that adds nothing, which is the time before the host is let out of reset, after 4081 crossings. At 200 ns a crossing the run is 0.407 ms longer, which is 100 ns a crossing, and at 20 µs it is 81.0 ms longer, which is 199 parts in 200 of what the crossings come to. The figures are in [history/lessons.md](history/lessons.md#the-die-to-die-link).
+- **How to see it**: by reading, a target that adds 150 ns to `delay` in `b_transport`, behind a core with a 100 ns clock, leaves the core's cycle count where a target that adds nothing leaves it. That has not been run on its own. What was run is Zephyr's disk test on the host across the die-to-die link (a die is one piece of silicon; the host's two are joined by this link), whose default is 20 ns a crossing, with a quantum of 0: the verdict comes exactly 5 ms later than with a link that adds nothing, which is the time before the host is let out of reset, after 4081 crossings. At 200 ns a crossing the run is 0.407 ms longer, which is 100 ns a crossing, and at 20 µs it is 81.0 ms longer, which is 199 parts in 200 of what the crossings come to. The figures are in [history/lessons.md](history/lessons.md#the-die-to-die-link).
 - **What we do**: nothing. The link's trace records carry the time each crossing arrived, so the link's own timing can still be tested. No test of socpuppet's needs a CPU to feel a delay of less than two cycles.
 - **Upstream fix**: two changes, and the second may be as intended. Keep the remainder of the division and carry it into the next access, or account the delay as time on the quantum keeper and derive the cycles from that. And add an access's cycles to the instruction's own, unless an instruction is meant to take as long as its access and no longer, in which case only the lost remainder is the surprise.
 - **Kind**: bug, or at least a surprise.
@@ -1087,7 +1087,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: `include/zephyr/drivers/flash.h`: `flash_read`, `flash_write` and `flash_erase` take an `off_t`, and `struct flash_pages_info` holds one.
 - **What is wrong**: `off_t` is the C library's, and with the SDK's library for 32-bit RISC-V it is a `long`, 32 bits and signed. The last byte the flash API can name is just short of 2 GiB. `flash_get_size` gives a `uint64_t`, so a driver can say how big its flash is and a caller still cannot reach the far end of it. An SSD's NAND is that big as a matter of course, and its controller is very often a 32-bit CPU.
 - **How to see it**: `sizeof(off_t)` in an application for `socpuppet_ssd` is 4.
-- **What we do**: the firmware refuses the drive. `firmware/ssd/src/ftl.c` compares the NAND's size with what an `off_t` can name before it makes its table, says both numbers on the console, and stops. `tests/python/test_ssd_zephyr_firmware.py` holds it to that, at a drive of 3 GiB and at a NAND of exactly 2 GiB, whose drive is 9 blocks less: the FTL's reserve. 🎭 The Python stand-in for the firmware has no such limit, because it talks to the flash controller's registers, which count in pages.
+- **What we do**: the firmware refuses the drive. `firmware/ssd/src/ftl.c` compares the NAND's size with what an `off_t` can name before it makes its table, says both numbers on the console, and stops. `tests/python/test_ssd_zephyr_firmware.py` holds it to that, at a drive of 3 GiB and at a NAND of exactly 2 GiB, whose drive is 9 blocks less: the FTL's reserve. 🎭 The Python stand-in for the firmware, a simplified model of it, has no such limit, because it talks to the flash controller's registers, which count in pages.
 - **Upstream fix**: a 64-bit offset type for the flash API. That is a large change with every flash driver in its path, so the proposal to make first is the question of whether the flash class is meant for raw NAND at all. Zephyr has no NAND class to use in its place.
 - **Kind**: missing feature.
 - **When it lands**: the firmware's check goes, and a drive may be bigger than 2 GiB. socpuppet keeps the flash class either way ([history/decisions.md](history/decisions.md), 2026-10-09), so if the answer is that the class is not for raw NAND, the limit stays and this entry says so.
@@ -1105,7 +1105,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 ### The IMSIC driver turns its highest identity away, and enables the wrong register above 63
 
 - **Where**: `drivers/interrupt_controller/intc_riscv_imsic.c`: `.nr_irqs = MIN(DT_INST_PROP(inst, riscv_num_ids), CONFIG_NUM_IRQS)` with `if (irq >= cfg->nr_irqs)` in `imsic_mext_isr`, and `eiid_to_eie_index`, `*reg_index = eiid / __riscv_xlen`.
-- **What is wrong**: two things, both ⚠️ found by reading and neither run, since the host keeps clear of them. `riscv,num-ids` is the highest identity an IMSIC has, as the devicetree binding has it everywhere else (63, 127 and so on), and the handler treats it as one more than the highest: a message for identity 63 of a 63-identity IMSIC is reported as out of range. And on a 64-bit hart the registers of enable bits are numbered in twos, `eie0`, `eie2`, `eie4`, each of 64 bits, so identity N is in register `eie0 + 2 * (N / 64)`. The driver selects `eie0 + N / 64`, which for identities 64 to 127 is `eie1`: a register a 64-bit hart has not got, and an illegal instruction.
+- **What is wrong**: two things, both ⚠️ found by reading and neither run, since the host keeps clear of them. `riscv,num-ids` is the highest identity an IMSIC has, as the devicetree binding (the devicetree describes a board's hardware to its firmware; a binding says what each of its properties means) has it everywhere else (63, 127 and so on), and the handler treats it as one more than the highest: a message for identity 63 of a 63-identity IMSIC is reported as out of range. And on a 64-bit hart the registers of enable bits are numbered in twos, `eie0`, `eie2`, `eie4`, each of 64 bits, so identity N is in register `eie0 + 2 * (N / 64)`. The driver selects `eie0 + N / 64`, which for identities 64 to 127 is `eie1`: a register a 64-bit hart has not got, and an illegal instruction.
 - **How to see it**: by reading. For the second, `irq_enable` on identity 64 with an IMSIC of 127 on RV64. socpuppet's model refuses the register, as the specification has it (`MessageControllerContract.AHartRegisterTheControllerHasNotIsRefused`).
 - **What we do**: nothing in code. The host's IMSIC has 63 identities and hands out 32 and 33. `tests/python/test_zephyr_module.py` holds every identity the board gives a device to below the highest.
 - **Upstream fix**: `irq > num_ids` for the first, and `2 * (eiid / 64)` when `__riscv_xlen` is 64 for the second.
@@ -1166,7 +1166,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 - **Where**: `include/zephyr/drivers/spi.h`, `spi_transceive_cb` and `spi_transceive_signal`, which call `api->transceive_async` with `CONFIG_SPI_ASYNC` on; and `drivers/spi/spi_sifive.c`, whose API has none.
 - **What is wrong**: with `CONFIG_SPI_ASYNC=y`, an asynchronous transfer on a controller whose driver has no `transceive_async` jumps to address 0, where the call should say `-ENOTSUP`. Zephyr's own `tests/drivers/spi/spi_loopback` turns `CONFIG_SPI_ASYNC` on for every board.
-- **How to see it**: that test, built for `socpuppet_host` with the shield `socpuppet_host_spi_loopback` and `CONFIG_SPI_ASYNC=y`: `test_spi_async_call` ends in an instruction access fault at 0.
+- **How to see it**: that test, built for `socpuppet_host` with the shield (Zephyr's name for an add-on board, a devicetree overlay) `socpuppet_host_spi_loopback` and `CONFIG_SPI_ASYNC=y`: `test_spi_async_call` ends in an instruction access fault at 0.
 - **What we do**: the shield's `socpuppet_host_spi_loopback.conf` turns `CONFIG_SPI_ASYNC` off, as the test's own variants for drivers without it do, and the asynchronous cases skip themselves.
 - **Upstream fix**: return `-ENOTSUP` from both calls when `transceive_async` is null; or give `spi_sifive` an asynchronous transfer.
 - **Kind**: bug.
@@ -1175,7 +1175,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 ### The documented `run_custom` target does not depend on the image
 
 - **Where**: `doc/develop/test/twister.rst`, "Running tests on custom emulator", and `cmake/modules/kernel.cmake`, which includes a board's `board.cmake`.
-- **What is wrong**: the documentation's example ends `DEPENDS ${logical_target_for_zephyr_elf}`. A `board.cmake` is included before Zephyr's own directory is added, and the variable is first set there (`CMakeLists.txt`, exported with `PARENT_SCOPE`). So in a `board.cmake` it is empty, the `DEPENDS` names nothing, and `run` does not build the image first. Twister never notices, because it builds before it runs. `west build -t run` runs the image of the last build after an edit, and fails in a tree that has not been built.
+- **What is wrong**: the documentation's example ends `DEPENDS ${logical_target_for_zephyr_elf}`. A `board.cmake` is included before Zephyr's own directory is added, and the variable is first set there (`CMakeLists.txt`, exported with `PARENT_SCOPE`). So in a `board.cmake` it is empty, the `DEPENDS` names nothing, and `run` does not build the image first. Twister never notices, because it builds before it runs. `west build -t run` (west is Zephyr's command-line tool, which drives its build) runs the image of the last build after an edit, and fails in a tree that has not been built.
 - **How to see it**: follow the example for a board, configure an application, and look for `run_custom` in the build directory's `build.ninja`: it has no inputs. The test `test_the_image_is_built_first` in `tests/python/test_twister_boards.py` does the same with a stand-in for Zephyr's build that keeps Zephyr's order.
 - **What we do**: `boards/socpuppet/run_with_socpuppet.cmake` adds the dependency at the end of the configuration, with `cmake_language(DEFER CALL add_dependencies run_custom ${logical_target_for_zephyr_elf})`, when the variable has its value.
 - **Upstream fix**: the same line in the documentation's example, or the dependency added by Zephyr itself where it makes `run` depend on `run_custom`, which is after the variable is set and would mend every board that followed the example.
@@ -1278,7 +1278,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 ## VCML
 
-[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike (its UART) and in the PCIe spike (its PCI endpoint, [pcie-spike.md](history/pcie-spike.md)). 💡 socpuppet does not use VCML today. These are written down because they are what a project meets when it borrows one of VCML's models, and each has a test in the PCIe spike that shows it. 🦜 The spike has been deleted; the last commit that holds `spikes/pcie/` is `e10359f`, and the paths below are from there.
+[machineware-gmbh/vcml](https://github.com/machineware-gmbh/vcml), tried at `v2026.10.02` in the ISS spike (its UART; [iss-spike.md](history/iss-spike.md)) and in the PCIe spike (its PCI endpoint, [pcie-spike.md](history/pcie-spike.md)). 💡 socpuppet does not use VCML today. These are written down because they are what a project meets when it borrows one of VCML's models, and each has a test in the PCIe spike that shows it. 🦜 The spike has been deleted; the last commit that holds `spikes/pcie/` is `e10359f`, and the paths below are from there.
 
 ### Its support library is fetched without a pin
 
@@ -1376,7 +1376,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 ## actionlint
 
-[rhysd/actionlint](https://github.com/rhysd/actionlint), version `1.7.12` (the `actionlint-py` wheel in `uv.lock`). Not part of socpuppet: `tools/lint.py` checks the CI workflow with it.
+[rhysd/actionlint](https://github.com/rhysd/actionlint), version `1.7.12` (the `actionlint-py` wheel in `uv.lock`), a linter for GitHub Actions workflow files. Not part of socpuppet: `tools/lint.py` checks the CI workflow with it.
 
 ### GitHub's Ubuntu 26.04 runners are unknown labels
 
@@ -1407,7 +1407,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: `fs/__init__.py` and `fs/opener/__init__.py`, `__import__("pkg_resources").declare_namespace(__name__)`.
 - **What is wrong**: PyFilesystem2 declares its namespace packages the old way, through setuptools' `pkg_resources`, which setuptools deprecated and removed in version 81. In an environment with a newer setuptools, or none, `import fs` fails with `ModuleNotFoundError: No module named 'pkg_resources'`, and with it every import of pyfatfs. With an older one it imports, and warns three times.
 - **How to see it**: `uv run --no-project --with pyfatfs python -c "import pyfatfs.PyFatFS"`.
-- **What we do**: `pyproject.toml`'s dev group and the wheels' `test-requires` hold `setuptools<81`, `.github/dependabot.yml` ignores setuptools 81 and later so that its weekly pull request does not lift the cap, and `fat_image` imports pyfatfs with the warnings silenced.
+- **What we do**: `pyproject.toml`'s dev group and the wheels' `test-requires` hold `setuptools<81`, `.github/dependabot.yml` has Dependabot, GitHub's bot for stale pins, ignore setuptools 81 and later so that its weekly pull request does not lift the cap, and `fat_image` imports pyfatfs with the warnings silenced.
 - **Upstream fix**: implicit namespace packages (PEP 420): drop the two lines and the `__init__.py` files that hold only them. Whether it is reported there already has not been looked at.
 - **Kind**: build.
 - **When it lands**: the pin, the Dependabot ignore and the silenced warnings go.
@@ -1758,7 +1758,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 ## QEMU
 
-[qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite and not entries here (docs/models/qbox-cpu.md).
+[qemu/qemu](https://gitlab.com/qemu-project/qemu), as libqemu carries it (`libqemu-v11.0-v0.15`, QEMU 10.2.92), behind the `qbox_cpu`. Its differences from DBT-RISE that the RISC-V specification allows are fates of the hart's suite (tests skipped on QBox, each with its reason) and not entries here ([models/qbox-cpu.md](models/qbox-cpu.md)).
 
 ### An idle CPU with no timers of QEMU's draws a warning, when QEMU's main loop happens to look
 
@@ -1838,7 +1838,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 
 - **Where**: `kernel/framework/userspace.c` line 392, `Shared ring buffer full, dropping event for userspace`.
 - **What is wrong**: the ring has 256 slots, and a write that finds it full is lost, with a warning in the kernel's log and nothing for the program. A lost doorbell is a command that never runs, and the host times it out 30 s later.
-- **How to see it**: not seen. The most the spike found waiting was 16 writes; a program slower to drain than the host is to write would see it.
+- **How to see it**: not seen. The most the real-host spike found waiting was 16 writes; a program slower to drain than the host is to write would see it.
 - **What we do**: `sp.PciemHost` drains the ring whenever pciem says on its eventfd that it has posted, at the pump's next look (`python/socpuppet/pump.py`).
 - **Upstream fix**: hold the writing CPU until there is room, or count the lost writes where the program can read them.
 - **Kind**: limitation.

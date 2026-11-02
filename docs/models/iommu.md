@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-An IOMMU as the RISC-V IOMMU specification describes one, the kind QEMU's `riscv-iommu-sys` is. 🎓 IOMMU is short for input-output memory management unit, and it is to a device what the MMU is to a program. A device that does DMA writes wherever it is told to, and a driver with a bug, or a device with a bad firmware, can tell it to write anywhere. With an IOMMU in the way, every address a device uses goes through page tables the operating system owns, and an access that is not mapped is refused and reported.
+An IOMMU as the RISC-V IOMMU specification describes one, the kind QEMU's `riscv-iommu-sys` is. 🎓 IOMMU is short for input-output memory management unit, and it is to a device what the MMU (the memory management unit, which gives a program addresses of its own and checks each one) is to a program. A device that does DMA (direct memory access: reading and writing memory by itself) writes wherever it is told to, and a driver with a bug, or a device with a bad firmware, can tell it to write anywhere. With an IOMMU in the way, every address a device uses goes through page tables the operating system owns, and an access that is not mapped is refused and reported.
 
 It finds a device's page tables by the device's ID, which for a PCIe device is its *requester ID*, its bus, device and function numbers, which the [PCIe endpoint](pcie-endpoint.md) marks its accesses with. The ID indexes a *device directory* in memory, a small tree of tables whose leaves are *device contexts*: one for each device, saying whether it may do DMA at all and which page tables its addresses go through. Two rings in memory carry the rest: a *command queue* that software writes to, to say a table changed, and a *fault queue* the IOMMU writes a *fault record* to for every access it refuses.
 
@@ -36,7 +36,7 @@ platform.connect(iommu.irq, aplic.source24)
 
 ### What firmware does
 
-1. It reads **`capabilities`**: version 1.0, a first stage of Sv39, device contexts in the 32-byte base format, and wired interrupts.
+1. It reads **`capabilities`**: version 1.0, a first stage of Sv39 (RISC-V's page tables for 39-bit addresses), device contexts in the 32-byte base format, and wired interrupts.
 2. It puts the two queues in memory and says where, and how big, in **`cqb`** and **`fqb`**. It turns each on, with its interrupt, in **`cqcsr`** and **`fqcsr`**, and waits until they say they are on. Turning a queue on empties it: its head and tail go to 0, which Linux counts on, since it cannot write `cqh`.
 3. It builds a device directory and says where its root is, and how many levels it has, in **`ddtp`**. Out of reset the mode there is Off, and every access is refused. Bare lets every access through untranslated.
 4. For each device it fills in a device context. Its first stage is Bare, which lets the device's accesses through as they are, or Sv39, with the root of the device's page tables. A page a device may use has U set, since a device's access counts as user mode's, and A, and D for a write, since this IOMMU sets neither itself. ⚠️ A device's interrupt messages are its accesses too, and go through the same page tables: map the IMSIC's page (`0x2400_0000` on the host) at its own address, or every interrupt is a fault record. A Bare first stage, which is what Linux gives a device, lets them through by itself.
@@ -69,7 +69,7 @@ A debugger can read a register (`platform.peek`), and cannot write one: a write 
 - **Process contexts**, ATS, page requests and the remapping of interrupt messages. A context that asks for any is misconfigured, and their commands stop the command queue.
 - **A cache of what it walked.** Every access walks the directory and the page tables from the top, and on the host each of those reads crosses the link to the compute die. A real IOMMU caches translations, which is why the invalidation commands exist; here they have nothing to do. 🎓 It shows: Zephyr's disk test crosses the link 378 times with no IOMMU, 1,894 times with the drive behind one untranslated, since every access reads the drive's 32-byte context as four 8-byte reads, and 2,723 times through page tables (`tests/python/test_iommu.py`).
 - **The page tables' A and D**, which it checks and never sets, and DTF, which a context may not set yet.
-- **Device IDs for a device with no PCIe link behind it.** One is refused. 🚧 A device on no PCIe link, such as the coming AI processor, will need an ID given as a parameter.
+- **Device IDs for a device with no PCIe link behind it.** One is refused. 🚧 A device on no PCIe link, such as the AI processor on the [roadmap](../roadmap.md), will need an ID given as a parameter.
 - **The counters, the debug translation registers and the MSI configuration table**, which drivers need only with the features above.
 - **Timing.** The IOMMU takes no time of its own: a walk takes what its reads take.
 

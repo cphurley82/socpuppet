@@ -1,6 +1,6 @@
 # Lab: Linux, end to end 🧪
 
-🐧 Boot a stock Linux kernel on socpuppet's biggest show, type at its shell from your terminal and over `ssh`, then change the cast under it, one piece at a time, and watch what changes: the CPU that runs it, and the 🎭 stand-ins (simplified models that hold a block's place) that give way to the real models. Each step is a command and a few things to look at; the why is a link away. Plan on an hour, most of it waiting for boots on the interpreter.
+🐧 Boot a stock Linux kernel on socpuppet's biggest show, type at its shell from your terminal and over `ssh`, then change the cast under it, one piece at a time, and watch what changes: the CPU that runs it, and the 🎭 stand-ins (simplified models that hold a block's place) that give way to the real models. Each step is a command and a few things to look at; the why is a link away. Plan on an hour, most of it waiting for boots on the interpreter, the project's own CPU model, which executes instructions one by one.
 
 Every command is run from the top of a checkout. ⚠️ Every boot is its own process: the SystemC kernel cannot be restarted, so one run is one show ([architecture.md](../architecture.md#-one-platform-per-process)). The numbers on this page were measured on an Intel Mac; yours will differ, the comparisons will not.
 
@@ -12,8 +12,8 @@ uv run firmware/build.py                                         # every image, 
 uv run python tools/doctor.py cable qbox                         # what steps 3 and 5 need
 ```
 
-- The firmware build fetches OpenSBI, Linux and Alpine and builds them; on a Mac the kernel builds in a Docker image ([linux.md](../linux.md#the-kernel-and-its-root)).
-- 🩺 The doctor says what this machine lacks for the cable (libslirp, ssh) and for QBox, and how to get it ([setup.md](../setup.md)).
+- The firmware build fetches OpenSBI (the firmware a RISC-V operating system boots through), Linux and Alpine (a small Linux distribution, for the root filesystem) and builds them; on a Mac the kernel builds in a Docker image ([linux.md](../linux.md#the-kernel-and-its-root)).
+- 🩺 The doctor says what this machine lacks for the cable (libslirp, ssh) and for QBox (QEMU's CPU as a SystemC model, step 5), and how to get it ([setup.md](../setup.md)).
 
 ## 2. Boot Linux and type at it
 
@@ -26,8 +26,8 @@ OpenSBI's banner, then the kernel's messages, then a quiet minute, then `socpupp
 | Type | Look at |
 |---|---|
 | `uname -a` | A stock `6.18` kernel for `riscv64`, built from kernel.org's tree with its own `defconfig` |
-| `cat /proc/cpuinfo` | The hart: its ISA string, with `ssaia` for the interrupt architecture, `mmu : sv39` for paging with three levels of page table, and `mvendorid`, the maker's number. Remember that last one for step 5 |
-| `cat /proc/interrupts` | The timer comes to the hart directly (`RISC-V INTC`). Every other line is a 🎭 virtio device's wire into the APLIC, which turns it into a message to the IMSIC (`APLIC-MSI`). Type something and watch the console's count go up |
+| `cat /proc/cpuinfo` | The hart (RISC-V's word for one CPU core as software sees it): its ISA string, with `ssaia` for the interrupt architecture, `mmu : sv39` for paging with three levels of page table, and `mvendorid`, the maker's number. Remember that last one for step 5 |
+| `cat /proc/interrupts` | The timer comes to the hart directly (`RISC-V INTC`). Every other line is a 🎭 virtio device's wire (virtio is the standard interface a virtual machine's guest expects of a disk, a console or a network card) into the APLIC, the controller for wired interrupts, which turns it into a message to the IMSIC, the controller for interrupt messages (`APLIC-MSI`). Type something and watch the console's count go up |
 | `ls /sys/bus/virtio/devices` | 🎭 The cast under Linux, `virtio0` to `virtio5`: entropy source, console, disk, network card and the shared directory twice, each under Linux's own driver ([linux.md](../linux.md#the-virtio-cast-under-linux)) |
 | `cat /proc/iomem` | What Linux found where: six `virtio_mmio` blocks a page apart from `0x1000_1000`, the UART, the two interrupt controllers. Beside [address-map.md](../address-map.md#the-host): the same addresses, from the same Python description |
 | `dmesg \| head -40` | The kernel's first lines again. Where the `earlycon` lines stop is where 🎭 the virtio console took over from the UART |
@@ -69,7 +69,7 @@ SOCPUPPET_CPU=qbox_cpu PYTHONPATH=python uv run python examples/linux_hello.py
 PYTHONPATH=python uv run python examples/linux_hello.py    # the interpreter again, to compare
 ```
 
-⚠️ Both presets copy their extension into `python/socpuppet/`, so the one you built last is the one Python imports. To go back, build the `dev` preset again. The example boots as fast as the simulation goes, types `uname -a` and `cat /proc/cpuinfo`, and switches off:
+⚠️ Both CMake presets, `dev` and `qbox`, copy their extension into `python/socpuppet/`, so the one you built last is the one Python imports. To go back, build the `dev` preset again. The example boots as fast as the simulation goes, types `uname -a` and `cat /proc/cpuinfo`, and switches off:
 
 | Look at | DBT-RISE's hart | QBox's hart |
 |---|---|---|
@@ -85,7 +85,7 @@ PYTHONPATH=python uv run python examples/linux_hello.py    # the interpreter aga
 
 ## 6. The whole cast
 
-Linux's root filesystem on the real SSD: three CPUs, three firmwares, the real die-to-die link. The IO die's manager trains the link and lets the host out of reset; the SSD's own Zephyr firmware is the drive, across the link and over PCIe; Linux's own NVMe driver mounts it.
+Linux's root filesystem on the real SSD: three CPUs, three firmwares, the real die-to-die link (the host is two dies, pieces of silicon in one package, with a link between them). The IO die's manager trains the link and lets the host out of reset; the SSD's own Zephyr firmware is the drive, across the link and over PCIe; Linux's own NVMe driver mounts it.
 
 ```sh
 PYTHONPATH=python uv run python -m socpuppet linux --root drive
@@ -142,7 +142,7 @@ Where to look when you want to see the machinery, or when a boot stops:
   (gdb) monitor sysc print_time                                            # the simulated time, on DBT-RISE's hart
   ```
 
-  The kernel's symbols are virtual addresses, and both harts' GDB servers read memory through the CPU's translation, so they work as they are. ⚠️ Leave with `continue`, not `quit`: a stopped CPU stops the whole simulation ([boot-your-firmware.md](../boot-your-firmware.md#debugging-with-gdb), which also says where GDB is on an Intel Mac, whose SDK has none).
+  The kernel's symbols are virtual addresses, and both harts' GDB servers read memory through the CPU's translation, so they work as they are. ⚠️ Leave with `continue`, not `quit`: a stopped CPU stops the whole simulation ([boot-your-firmware.md](../boot-your-firmware.md#debugging-with-gdb), which also says where GDB is on an Intel Mac, whose Zephyr SDK has none).
 - **Every instruction**, on QBox's hart: through the same GDB, `monitor logfile /tmp/trace.log`, `monitor one-insn-per-tb on`, `monitor log exec,nochain`, `continue`; `socpuppet.qemu_trace.pcs` reads the addresses back ([qbox-cpu.md](../models/qbox-cpu.md#what-it-does)). Switch it on near the trouble: a whole boot is billions of lines.
 
 ## Where to go next

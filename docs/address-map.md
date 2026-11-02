@@ -1,8 +1,8 @@
 # The address map
 
-🎓 An *address map* says which device answers at which address. It is all a CPU has to go on: firmware prints a character by writing a byte to a number, and the map is what makes that number the UART.
+This page is the address map of each of socpuppet's boards, drawn and then as tables, with how to read them. 🎓 An *address map* says which device answers at which address. It is all a CPU has to go on: firmware prints a character by writing a byte to a number, and the map is what makes that number the UART.
 
-socpuppet has no file where the map is written down. It falls out of a board's Python description: each `bus.map(device.socket, base=...)` puts one device on one bus, and a link or a window carries a range of one bus onto another. The devicetree that firmware is built against is generated from the same description, so the firmware and the model cannot disagree about where the UART is.
+socpuppet has no file where the map is written down. It falls out of a board's Python description: each `bus.map(device.socket, base=...)` puts one device on one bus, and a link or a window carries a range of one bus onto another. The devicetree (the description of the hardware that firmware is built against) is generated from the same description, so the firmware and the model cannot disagree about where the UART is.
 
 Two things follow, and the rest of this page is pictures of them.
 
@@ -24,7 +24,7 @@ An interrupt table says which line is which number to the firmware. 🎓 The **C
 
 ## The host
 
-`socpuppet.boards.host` is a 64-bit RISC-V computer split over two dies, and the Zephyr board `socpuppet_host`. With `host(drive_blocks=...)` it has a 🎭 stand-in NVMe drive on a PCIe link as well, which is the board drawn here.
+`socpuppet.boards.host` is a 64-bit RISC-V computer split over two dies (two pieces of silicon in one package), and the Zephyr board `socpuppet_host` (Zephyr is the small open-source operating system its firmware runs). With `host(drive_blocks=...)` it has a 🎭 stand-in NVMe drive (a simplified model of an SSD) on a PCIe link (the bus a computer's cards plug into) as well, which is the board drawn here.
 
 ```mermaid
 flowchart LR
@@ -122,7 +122,7 @@ The interrupt lines of the board with no drive:
 
 <!-- interrupts:host end -->
 
-A drive adds no line. Its interrupts are messages: identities 32 and 33, one for each of its two vectors, written to `compute.imsic.machine` at `0x2400_0000`. ⚠️ So they are in no table here, which only has wires, and 32 and 33 are all that firmware knows them by. They are in the shield's devicetree, as `socpuppet,msi-identities`.
+A drive adds no line. Its interrupts are messages: identities 32 and 33, one for each of its two vectors, written to `compute.imsic.machine` at `0x2400_0000` (the IMSIC is the controller that takes interrupt messages for the CPU). ⚠️ So they are in no table here, which only has wires, and 32 and 33 are all that firmware knows them by. They are in the shield's devicetree, as `socpuppet,msi-identities`.
 
 With an [IOMMU](models/iommu.md) in front of the drive (`host(drive_blocks=..., iommu=True)`), its registers answer on the IO die, the page after the boot flash's controller:
 
@@ -134,7 +134,7 @@ With an [IOMMU](models/iommu.md) in front of the drive (`host(drive_blocks=..., 
 
 <!-- address-map:host-iommu end -->
 
-and it has a line to the IO die's APLIC, the number after the virtio slots':
+and it has a line to the IO die's APLIC (the interrupt controller that takes wires and turns each into a message), the number after the virtio slots':
 
 <!-- interrupts:host-iommu start -->
 
@@ -146,7 +146,7 @@ and it has a line to the IO die's APLIC, the number after the virtio slots':
 
 Everything the drive sends up, its DMA and its interrupt messages alike, goes through it on the way to the link, translated by the drive's page tables. Zephyr's images that use it are built with the shield `socpuppet_host_iommu` as well as `socpuppet_host_drive`.
 
-🎭 With its virtio slots (`host(virtio=Virtio())`, [boards/virtio.py](../python/socpuppet/boards/virtio.py)), five stand-ins answer on the IO die, a page apart from `0x1000_1000` as QEMU's `virt` has its own, each a [virtio-mmio](models/virtio-mmio.md) register block of 512 bytes:
+🎭 With its virtio slots (`host(virtio=Virtio())`, [boards/virtio.py](../python/socpuppet/boards/virtio.py); virtio is the standard interface a virtual machine offers its guest for a disk, a console, a network card and the like), six stand-ins answer on the IO die, a page apart from `0x1000_1000` as QEMU's `virt` has its own, each a [virtio-mmio](models/virtio-mmio.md) register block of 512 bytes:
 
 <!-- address-map:host-virtio start -->
 
@@ -303,7 +303,7 @@ The SSD's constants are at the top of `python/socpuppet/boards/ssd.py`, the ones
 - **The SSD's CPU (`ssd.cpu.socket`) sees exactly what it sees on its own board**: the first table under [The SSD](#the-ssd). Firmware built for `socpuppet_ssd` runs here unchanged.
 - ⚠️ **So every question about this board starts with "whose?"** `platform.load_elf`, `platform.peek32`, `platform.devicetree` and `socpuppet address-map` all take the CPU whose view you mean, as `via=` or `--via`.
 
-What is new is the interrupt lines side by side. There are two interrupt controllers, one for each CPU, and of two kinds: the host's is sent messages and has one line, to its CPU, and the SSD's has a line in from each of its devices:
+What is new is the interrupt lines side by side. There are two interrupt controllers, one for each CPU, and of two kinds: the host's (the IMSIC) is sent messages and has one line, to its CPU, and the SSD's (the PLIC, RISC-V's classic wired interrupt controller) has a line in from each of its devices:
 
 <!-- interrupts:host-ssd start -->
 
@@ -331,11 +331,11 @@ What is new is the interrupt lines side by side. There are two interrupt control
 <!-- interrupts:host-ssd end -->
 
 - **Nothing joins the two lists but the PCIe link.** The SSD interrupts its host by sending a message up the link, to the host's IMSIC, which raises `compute.imsic.irq`. The host gets the SSD's attention by writing a doorbell, which the frontend turns into `ssd.frontend.cpu_irq`. No wire runs between them.
-- 🎓 **Each CPU sees an interrupt up to one quantum late.** A command the host sends is seen by the SSD's firmware up to a quantum after the doorbell, and its completion is seen by the host up to a quantum after the message. That is temporal decoupling, the price of running each CPU for a stretch before the next has its turn.
+- 🎓 **Each CPU sees an interrupt up to one quantum late.** A *quantum* is the stretch of simulated time a CPU model runs ahead before the rest of the platform catches up ([architecture.md](architecture.md#words-you-will-meet)). A command the host sends is seen by the SSD's firmware up to a quantum after the doorbell, and its completion is seen by the host up to a quantum after the message. That is temporal decoupling, the price of running each CPU for a stretch before the next has its turn.
 
 ## The IO manager
 
-The third board, `socpuppet.boards.io_manager`, is the chiplet host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero. It can be done here because 🎭 this compute die has nothing of its own below its memory to be in the way.
+The third board, `socpuppet.boards.io_manager`, is the two-die host's IO die with the compute die 🎭 stood in for. Its two maps are nearly one map, because the window the compute die reaches the IO die through **does not translate**: an address below the compute die's own memory is the same address on the IO die, and the same address the manager's own firmware uses for it. That is the opposite of the host board above, whose window counts from zero. It can be done here because 🎭 this compute die has nothing of its own below its memory to be in the way.
 
 What the manager's CPU sees (`io.cpu.socket`):
 
@@ -428,7 +428,7 @@ The interrupt lines:
 
 - **That is the IO manager board's map without its scratch memory**, at the same addresses, with the link on the same interrupt source. So the firmware for it is the firmware built for `socpuppet_iomgr`, the same image: `platform.load_elf(file, via=board.manager.cpu.socket)`. The scratch was there for 🎭 a compute die to have something to reach, and here the compute die is the host's, which has the IO die's UART to reach, and with a drive the root complex's windows.
 - 🎓 **Why a bus of its own.** A manager on the bus the traffic goes through would see the root complex's memory window at `0x0120_0000`, where the host's CPU sees it at `0x1120_0000`, and a platform refuses to say where a port is when two bus masters find it at different addresses. The devicetree generated for the host would also gain a node for the link's registers, so there would be a second board to build firmware for. On a bus of its own the manager has nothing to disagree about, and the host's map has none of the link's registers in it. That is the usual arrangement in a chip, too: a management core sits on a small bus with what it manages, apart from the bus the traffic takes.
-- **The flash is the one thing both CPUs reach**, and they find it at the same address, `0x1020_0000`: the host's CPU through the link, and the manager through a small router in front of the flash, `io.boot_flash_bus`, which has an input for each. One flash holds both images, the host's at its start and the manager's in its last 2 MiB, 14 MiB in, and each CPU's system controller tells its boot ROM which. The host's image can be up to 14 MiB, and OpenSBI with UEFI comes to a little over 4.
+- **The flash is the one thing both CPUs reach**, and they find it at the same address, `0x1020_0000`: the host's CPU through the link, and the manager through a small router in front of the flash, `io.boot_flash_bus`, which has an input for each. One flash holds both images, the host's at its start and the manager's in its last 2 MiB, 14 MiB in, and each CPU's system controller tells its boot ROM which. The host's image can be up to 14 MiB, and OpenSBI with UEFI (the firmware Linux boots through, [boards.md](boards.md#booting-uefi)) comes to a little over 4.
 - **The window still translates**, which is the difference from the IO manager board. A window that keeps the other die's addresses has to start at address 0, and to reach as far as the IO die's bus does. The host's compute die has a timer and an interrupt controller of its own down there, at `0x0200_0000` and `0x0C00_0000`, and a router refuses two ranges that overlap. So each die's map stands on its own and the window is the only thing between them.
 - ⚠️ **The compute die's end of the link has registers that are in no map**, as on the IO manager board. The manager reaches them through the sideband mailbox, which is how it lets the host's CPU out of reset.
 - **The host's own interrupt lines are the ones in the tables above.** 🎭 A script has one interrupt input and it has no number, so the link's line to it is in no table. A manager with a CPU adds three lines of its own, the ones under [The IO manager](#the-io-manager) with `io.manager` where that board has `io`.

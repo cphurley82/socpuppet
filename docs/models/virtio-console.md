@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-🎭 A stand-in (a simplified model) for a serial port with no baud rate: the console QEMU gives a guest as `virtio-serial-device` with one port. 🎓 Device 3 in the specification (section 5.3): a receive queue the driver keeps stocked with empty buffers, and a transmit queue it puts bytes out on.
+🎭 A stand-in (a simplified model) for a serial port with no baud rate: the console QEMU gives a guest as `virtio-serial-device` with one port. 🎓 Virtio is the family of devices made for virtual machines, which Linux, Zephyr and EDK2 all drive; the [transport](virtio-mmio.md) they share carries a driver's requests as *chains*, each one request's buffers in the host's memory, and the device writes its answer back into them. Device 3 in the specification (section 5.3): a receive queue the driver keeps stocked with empty buffers, and a transmit queue it puts bytes out on.
 
 ## What it does
 
@@ -24,7 +24,7 @@ console.write("spam\n")     # typed at the other end
 
 - **Transmits.** Each chain on the transmit queue is read whole, added to `output`, and given back at once with nothing written.
 - **Receives.** An empty buffer on the receive queue is kept until something is typed. Typed bytes wait in the device until a buffer is there; each buffer takes as many as it holds. They go in a delta cycle after `write`, in a process of the device's own, since whoever types may be a script between two runs.
-- **Interrupts for a held buffer given back,** with no doorbell: the transport asks the device to deliver at every turn, and raises its line when any queue's used ring has moved.
+- **Interrupts for a held buffer given back,** with no doorbell (the register a driver writes to say it has added to a queue): the transport asks the device to deliver at every turn, and raises its line when any queue's used ring (its list of the buffers the device has given back) has moved.
 
 ## What it leaves out
 
@@ -32,8 +32,8 @@ Every feature: no size (`F_SIZE`), no multiple ports (`F_MULTIPORT`, so no contr
 
 ## In a devicetree
 
-`compatible = "virtio,mmio"` for its slot. In Zephyr's dialect a child, `virtio-console { compatible = "virtio,console"; }`, which Zephyr's console driver binds to. It is not `chosen` as Zephyr's console: the shield `socpuppet_host_virtio_console` says that, so that firmware is built to speak through it only when asked, and the 16550 stays the console otherwise.
+`compatible = "virtio,mmio"` for its slot. In Zephyr's dialect a child, `virtio-console { compatible = "virtio,console"; }`, which Zephyr's console driver binds to. It is not `chosen` as Zephyr's console: the shield `socpuppet_host_virtio_console` (🎓 a shield is Zephyr's word for a description of hardware plugged into a board) says that, so that firmware is built to speak through it only when asked, and the 16550 stays the console otherwise.
 
 ## Who has driven it
 
-🧵 `sp.VirtioConsoleHost`; Zephyr's `drivers/serial/uart_virtio_console.c`, through `samples/hello_world` with both shields. ⚠️ Zephyr's driver asks for queues of one entry, so each character after the first waits for the used-buffer interrupt to give its descriptor back. EDK2's image has no virtio console driver. 🐧 Linux's `virtio_console` (`VIRTIO_CONSOLE`, built in) is the kernel's console on the host (`console=hvc0`): the prompt comes on it and Python types at it (`tests/python/test_linux_boots.py`). 💡 The kernel's first words come through OpenSBI's console on the 16550 (`earlycon=sbi`), since this console exists only once the kernel has found it, and the kernel does not say them again here.
+🧵 `sp.VirtioConsoleHost`; Zephyr's `drivers/serial/uart_virtio_console.c`, through `samples/hello_world` with both shields. ⚠️ Zephyr's driver asks for queues of one entry, so each character after the first waits for the used-buffer interrupt to give its descriptor (the queue entry that names the buffer) back. EDK2's image has no virtio console driver. 🐧 Linux's `virtio_console` (`VIRTIO_CONSOLE`, built in) is the kernel's console on the host (`console=hvc0`): the prompt comes on it and Python types at it (`tests/python/test_linux_boots.py`). 💡 The kernel's first words come through OpenSBI's console on the 16550 (`earlycon=sbi`), since this console exists only once the kernel has found it, and the kernel does not say them again here.

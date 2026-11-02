@@ -6,7 +6,7 @@
 
 🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
 
-The management firmware of a chiplet host's IO die: the first thing that runs when the power comes on, and the thing that decides the rest of the chip may start.
+The management firmware of a chiplet host's IO die (🎓 a die is one piece of silicon, and a chiplet design is one chip built from several dies): the first thing that runs when the power comes on, and the thing that decides the rest of the chip may start.
 
 🎭 It is a stand-in, a Python script for a [scripted bus master](scripted-bus-master.md) in the place of the IO die's CPU, in the same shape as 🎭 [the SSD's firmware stand-in](ssd-firmware.md). The real thing is `firmware/iomgr`, a Zephyr application on the IO die's own RV32 core, which does the same four things.
 
@@ -21,7 +21,7 @@ Four steps, which is what firmware does and in the same order:
 
 1. Ask [the link](d2d-link.md) to interrupt when its status changes, and write *start link training*.
 2. Sleep until the link says it is up. Every wake is an interrupt, and each one acknowledges what the status says has happened, by writing a one back to it.
-3. Let the compute die go: a mailbox write of zero to the reset register at the *other* end of the link, which is the register that holds that die's CPU.
+3. Let the compute die go: a mailbox write (the link's way of reaching the other end's registers) of zero to the reset register at the *other* end of the link, which is the register that holds that die's CPU.
 4. Sleep. If the link goes down, write *retrain link* and wait for it again.
 
 💡 Step 3 is the whole reason a chiplet host has a manager die. The compute die's CPU cannot release itself, and nothing but the sideband can reach across a link that is not up yet.

@@ -31,7 +31,7 @@ platform.connect(i2c.irq, aplic.source30)
 
 🧵 Each device on the bus is a Python object with four methods (`socpuppet.i2c.I2cDevice`): `start(read)`, with its address, which returns whether it acknowledges; `write(byte)`, which does too; `read(last)`, which returns the byte, `last` saying the controller ends the read with it; and `stop()`. The controller calls them from its own process, never from the CPU's, so a device may take its time; time it takes is added to the transfer, as a real device holds the clock low until it is ready.
 
-`socpuppet.i2c.Ram(size=...)` is a memory of the shape Zephyr's `i2c_ram` test wants, an FRAM's or an EEPROM's: a write sends two bytes of address, high one first, and then the bytes to put there; a read goes on from where the last write or read left off. The host takes devices as `host(i2c_devices={0x51: Ram()})`, and the shield `socpuppet_host_i2c_ram` puts one at 0x51.
+`socpuppet.i2c.Ram(size=...)` is a memory of the shape Zephyr's `i2c_ram` test wants, an FRAM's or an EEPROM's (two kinds of small memory chip that keep their contents without power): a write sends two bytes of address, high one first, and then the bytes to put there; a read goes on from where the last write or read left off. The host takes devices as `host(i2c_devices={0x51: Ram()})`, and the shield `socpuppet_host_i2c_ram` (🎓 a shield is Zephyr's word for a description of hardware plugged into a board) puts one at 0x51.
 
 ### The registers
 

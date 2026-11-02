@@ -6,7 +6,7 @@
 
 The link between two dies in one package, in the style of [UCIe](https://www.uciexpress.org).
 
-🎓 A chiplet design is one chip built from several dies. The dies have to be joined, and UCIe (Universal Chiplet Interconnect Express) is the open standard for joining them. A UCIe link has two paths. The **mainband** is the wide one that carries the dies' traffic, and it does not work until it has been trained. The **sideband** is a narrow management channel that is up from the start: it is how the two dies agree to bring the mainband up, and how the firmware on one die reaches the other's registers before anything else works.
+🎓 A die is one piece of silicon, and a chiplet design is one chip built from several dies in one package. The dies have to be joined, and UCIe (Universal Chiplet Interconnect Express) is the open standard for joining them. A UCIe link has two paths. The **mainband** is the wide one that carries the dies' traffic, and it does not work until it has been trained. The **sideband** is a narrow management channel that is up from the start: it is how the two dies agree to bring the mainband up, and how the firmware on one die reaches the other's registers before anything else works.
 
 ```text
  compute die                                            IO die
@@ -60,7 +60,7 @@ UCIe's link training state machine, as far as this model has it:
 
 A link is held in RESET for at least 4 ms after power-on, which is UCIe's figure. The die whose firmware writes *start link training* then sends UCIe's requests, a state at a time, and the other die hears that it has left reset and walks the same states beside it, answering. Each of the four states takes a quarter of `training_ns`. A state nobody answers within 8 ms, UCIe's figure again, ends in TRAINERROR, and so does a fault; the far die is told, and nothing crosses the mainband until firmware asks for a retrain, which starts over from RESET.
 
-The sideband handshake, as a traced run shows it. `ucie.sideband_packets(platform.trace)` reads the packets back, `sp.render_sideband(platform.trace)` is a table of them, and `examples/io_manager_hello.py` prints it:
+The sideband handshake, as a traced run shows it. `socpuppet.ucie.sideband_packets(platform.trace)` reads the packets back, `sp.render_sideband(platform.trace)` is a table of them, and `examples/io_manager_hello.py` prints it:
 
 ```text
 ms     from         packet
@@ -111,16 +111,16 @@ The **mailbox** is how firmware reaches the other end's registers: fill in an op
 
 A crossing costs `latency_ns` plus the transaction's bytes at `bytes_per_ns`, and each direction is serialized on its own: a transaction handed to a busy link waits for the bytes ahead of it. 64 bytes on the default link arrive 24 ns after they leave.
 
-⚠️ A Python test cannot see 20 ns in `platform.time` after one write. A bus master may run up to a quantum (100 µs by default) ahead of the simulation's clock, and folds the delay into that. Measure through [the trace](tracer.md), whose records carry the arrival time, or set `platform.quantum = 0`. ⚠️ With a CPU for the bus master even that is not enough for a delay this short: the CPU counts in whole cycles of 100 ns, and a crossing of less than 200 ns adds nothing to its clock ([upstream.md](../upstream.md)). The trace always has it.
+⚠️ A Python test cannot see 20 ns in `platform.time` after one write. A bus master may run up to a quantum ahead of the simulation's clock (🎓 the quantum is how far ahead of the rest of the platform it is allowed to get, 100 µs by default), and folds the delay into that. Measure through [the trace](tracer.md), whose records carry the arrival time, or set `platform.quantum = 0`. ⚠️ With a CPU for the bus master even that is not enough for a delay this short: the CPU counts in whole cycles of 100 ns, and a crossing of less than 200 ns adds nothing to its clock ([upstream.md](../upstream.md)). The trace always has it.
 
 ### The Zephyr driver
 
-`socpuppet,ucie-link` in socpuppet's Zephyr module (`drivers/d2d/ucie_link.c`). It is a driver of Zephyr's **reset** class: the die at the other end is its one line, `UCIE_LINK_THE_OTHER_DIE`, and `reset_line_deassert()` is the mailbox write that lets it go. Training is functions of its own, in `<socpuppet/drivers/ucie_link.h>`: `ucie_link_train()`, `ucie_link_retrain()`, `ucie_link_is_up()` and `ucie_link_wait_until_down()`. [boot-your-firmware.md](../boards.md#the-io-dies-manager) has the board and the firmware that uses it.
+`socpuppet,ucie-link` in socpuppet's Zephyr module (`drivers/d2d/ucie_link.c`). It is a driver of Zephyr's **reset** class: the die at the other end is its one line, `UCIE_LINK_THE_OTHER_DIE`, and `reset_line_deassert()` is the mailbox write that lets it go. Training is functions of its own, in `<socpuppet/drivers/ucie_link.h>`: `ucie_link_train()`, `ucie_link_retrain()`, `ucie_link_is_up()` and `ucie_link_wait_until_down()`. [boards.md](../boards.md#the-io-dies-manager) has the board and the firmware that uses it.
 
 ## What it leaves out
 
 - **The physical layer.** No lanes, no clock, no speed negotiation, no repair of a broken lane. MBTRAIN is a state that takes time and does nothing.
-- **The protocol layers.** Mainband traffic is a TLM transaction passed on as it is. There is no flit, no CRC, no retry, no credit, and no PCIe or CXL layer on top: the mainband is raw memory-mapped access.
+- **The protocol layers.** Mainband traffic is a TLM transaction passed on as it is (🎓 TLM, transaction-level modeling, is how blocks talk here: a whole read or write handed over as one function call, not wires). There is no flit, no CRC, no retry, no credit, and no PCIe or CXL layer on top: the mainband is raw memory-mapped access.
 - **PHYRETRAIN.** A retrain here starts over from RESET, so the state UCIe has for retraining in place has nothing to do.
 - **Dropped and corrupted traffic.** A fault takes the whole link down; nothing can be injected finer than that. 🚧 Finer error injection is on the roadmap.
 - **Power states.** No L1, no L2.

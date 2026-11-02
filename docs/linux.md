@@ -2,7 +2,7 @@
 
 How to boot Linux on the host and type at its shell, yourself or from Python, share a directory with it, and find out why when it does not boot. 🧪 [The Linux lab](labs/linux-tour.md) is the same ground as a session at the keyboard.
 
-🧦 The kernel is a stock one: Linux's own `defconfig` for RISC-V, with nothing of socpuppet's in it. It runs in supervisor mode on [OpenSBI](boards.md#booting-opensbi), which the host boots the way a server does, and it finds its hardware in the devicetree the host writes. Its root filesystem is [Alpine's](https://alpinelinux.org) mini root, a real distribution's busybox and musl, with Alpine's SSH server added and one file of ours laid over it.
+🧦 The kernel is a stock one: Linux's own `defconfig` for RISC-V, with nothing of socpuppet's in it. It runs in supervisor mode on [OpenSBI](boards.md#booting-opensbi), which the host boots the way a server does, and it finds its hardware in the devicetree the host writes, the description of the hardware a kernel is handed as it starts. Its root filesystem is [Alpine's](https://alpinelinux.org) mini root, a real distribution's busybox and musl, with Alpine's SSH server added and one file of ours laid over it.
 
 🎭 Every device Linux talks to is a [virtio stand-in](boards.md#with-the-virtio-slots), a simplified model of the kind a virtual machine offers, which every Linux has drivers for: its console is the virtio console, its root is the virtio disk. The real blocks take the stand-ins' places one at a time, after this ([roadmap.md](roadmap.md)).
 
@@ -14,7 +14,7 @@ How to boot Linux on the host and type at its shell, yourself or from Python, sh
 uv run firmware/build.py linux
 ```
 
-This fetches Linux 6.18.57 from kernel.org, and Alpine's mini root and four of its packages (dropbear, the two libraries it needs, and OpenSSH's SFTP server, for `scp`), checks each against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves five files in `build/firmware`:
+This fetches Linux 6.18.57 from kernel.org, and Alpine's mini root and four of its packages (dropbear, a small SSH server, the two libraries it needs, and OpenSSH's SFTP server, for `scp`), checks each against the SHA-256 pinned in `firmware/versions.toml`, and builds with the Zephyr SDK's LLVM, which the other firmware parts use too. It leaves five files in `build/firmware`:
 
 | File | What it is |
 |---|---|
@@ -26,7 +26,7 @@ This fetches Linux 6.18.57 from kernel.org, and Alpine's mini root and four of i
 
 The kernel is the biggest thing built here, so the first build takes a while; CI keeps its images until a pin changes. The kernel's own tree and build are in `build/firmware/<machine>`, with the toolchains: the tree in a folder named for its version, so a kernel pinned anew is fetched beside the old one, which can then be deleted (on a Mac, where the folder is a Docker volume, from `tools/devcontainer.py bash`). On a Mac the `linux` part builds in the devcontainer's image by itself, with that folder a Docker volume, since the kernel's tree has files whose names differ only in their case ([development.md](development.md)). `firmware/rootfs` and `firmware/initramfs` are shaped as the guest's own trees: a file put there is in the root, or the initramfs, at the next build.
 
-🎓 `defconfig` builds the NVMe driver as modules, `nvme-core.ko` and `nvme.ko`, not into the kernel, as a distro's kernel does. A module lives on a disk, so a kernel whose root is on an NVMe drive cannot load the driver from that drive. An **initramfs** is the way out: a small root filesystem that the kernel unpacks into memory and runs `/init` from before it has any disk. Ours loads the two modules, waits for the drive the command line's `root=` names, mounts it, and hands over to the init on it with `switch_root`. The kernel's own `usr/gen_init_cpio` packs it.
+🎓 `defconfig` builds the NVMe driver (the one for a drive like the SSD's, which speaks NVMe over PCIe) as modules, `nvme-core.ko` and `nvme.ko`, not into the kernel, as a distro's kernel does. A module lives on a disk, so a kernel whose root is on an NVMe drive cannot load the driver from that drive. An **initramfs** is the way out: a small root filesystem that the kernel unpacks into memory and runs `/init` from before it has any disk. Ours loads the two modules, waits for the drive the command line's `root=` names, mounts it, and hands over to the init on it with `switch_root`. The kernel's own `usr/gen_init_cpio` packs it.
 
 ## At its shell yourself
 
@@ -57,7 +57,7 @@ socpuppet:~#
 ```
 
 - **Your keys go to Linux as you press them**, as they would down a serial line: Ctrl-C stops what the shell is running, Tab and the arrow keys are busybox's line editing, and what you type before the prompt waits for it. **Ctrl-] leaves**, as in telnet and `virsh console`, and `poweroff` switches the host off; either ends the command. ⚠️ Leaving ends the simulation too: a SystemC kernel cannot be restarted, so the next run boots afresh.
-- **The quiet spell** is the stock kernel's own start-up, the initialisation of everything `defconfig` builds in, the tracing subsystem's tens of seconds among it: on the interpreter, a minute on the wall with nothing said, and the prompt at about 80 s. `--cpu qbox_cpu` boots in half a minute, on a build with QBox, and `uv run tools/qbox.py` makes one and boots it ([qbox-cpu.md](models/qbox-cpu.md)).
+- **The quiet spell** is the stock kernel's own start-up, the initialisation of everything `defconfig` builds in, the tracing subsystem's tens of seconds among it: on the interpreter (the [DBT-RISE CPU](models/dbt-rise-cpu.md), the default, which interprets each instruction), a minute on the wall with nothing said, and the prompt at about 80 s. `--cpu qbox_cpu` boots in half a minute, on a build with QBox (QEMU's CPU inside SystemC), and `uv run tools/qbox.py` makes one and boots it ([qbox-cpu.md](models/qbox-cpu.md)).
 - 💡 **While Linux waits, its clock keeps to the wall's.** While the CPU works, the simulation runs as fast as it can; while it sleeps, waiting for a timer or a key, the simulated clock moves as the wall's does. So `sleep 3` takes three seconds, and a prompt nobody is typing at costs your machine almost nothing. 🎓 QEMU does the same with `-icount sleep=on`. The boot ran faster than its own clock, so `uptime` says two minutes where the wall says one and a half.
 - **Standard output is the machine's console and nothing else**; socpuppet's own lines go to standard error. So it can be scripted: `printf 'uname -a\npoweroff\n' | socpuppet linux` prints the boot and the answer, and ends when Linux switches the host off.
 - ⚠️ **Linux does not know your terminal's size**: 🎭 the virtio console is a stand-in without the size feature, so full-screen programs such as `vi` and `top` assume 80 columns by 24 lines, as on a real serial console. `stty rows 40 cols 120` at the prompt tells it otherwise.
@@ -75,7 +75,7 @@ ssh -p 2222 root@localhost          # a shell of its own, beside the console
 
 - **No password, and no key.** Root has none, as at the console, and only this machine can try: the port is listened on at 127.0.0.1 alone. ⚠️ So anyone who can log in to this machine can be root on the simulated Linux while it runs.
 - ⚠️ **Its host key is new at each boot**, made by dropbear at the first connection, so ssh warns that it has changed. `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` tells it not to keep or check one, as the tests do.
-- **A key exchange runs on the simulated CPU**: seconds on the interpreter, and less on QBox's hart. The first connection also makes the host key.
+- **A key exchange runs on the simulated CPU**: seconds on the interpreter, and less on QBox's hart (a hart is RISC-V's word for a CPU core as software sees it). The first connection also makes the host key.
 - **Another port**: `--ssh-port 2223`, as for a second Linux at once; `--ssh-port 0` leaves the cable out. Without libslirp, or with the port taken, Linux boots anyway, and a line says why ssh is off. 🩺 `uv run python tools/doctor.py cable` says what this machine lacks.
 - 💡 **Linux reaches out too**: the cable is a router onto this machine's network, so `wget` or `nc` from Linux's shell reaches what this machine reaches, and names resolve through this machine's own resolver. ping goes as far as the gateway, 10.0.2.2.
 - 🧵 **From Python**, `sp.EthernetCable(board.virtio.net, forward={port: 22})` is a far end to pump the platform with (`socpuppet.pump.pump`, or `interact`'s `far_ends`), and `capture="cable.pcap"` writes what goes over it for Wireshark. `examples/linux_cable.py` does both: this machine's `ssh` runs `uname -a` on Linux, and the capture is left behind.
@@ -107,7 +107,7 @@ Linux socpuppet 6.18.57 #3 SMP Mon Oct 19 21:10:53 PDT 2026 riscv64 Linux
 socpuppet:~#
 ```
 
-`examples/linux_hello.py` is this with the answers printed and the host switched off at the end: run it with `PYTHONPATH=python uv run python examples/linux_hello.py` from the checkout, and `SOCPUPPET_CPU=qbox_cpu` in front for QBox's hart, if your build has it ([qbox-cpu.md](models/qbox-cpu.md)). `socpuppet/linux.py` has the recipe, in a dozen lines.
+`examples/linux_hello.py` is this with the answers printed and the host switched off at the end: run it with `PYTHONPATH=python uv run python examples/linux_hello.py` from the checkout, and `SOCPUPPET_CPU=qbox_cpu` in front for QBox's hart, if your build has it ([qbox-cpu.md](models/qbox-cpu.md)). `python/socpuppet/linux.py` has the recipe, in a dozen lines.
 
 - **The command line** is the devicetree's `bootargs`, `linux.BOOTARGS`. `console=hvc0` makes the virtio console Linux's console; `earlycon=sbi` sends its first words through OpenSBI's console on the 16550, in `board.uart.output`, until the virtio console is up; `root=/dev/vda rw` is the virtio disk.
 - **The prompt comes at 243 s of the CPU's time on QBox's hart**, 26 s on the wall, **and at 171 s on the interpreter**, 75 to 100 s on the wall: the two harts count time a little differently. 64 MiB of RAM is enough.
@@ -151,7 +151,7 @@ The [I2C controller](models/i2c-controller.md) is not among them: its driver, `i
 
 ## Its root on the drive
 
-The real drive can take 🎭 the virtio disk's place: the SSD with its own Zephyr firmware, across the die-to-die link, on the board with all three firmwares ([boards.md](boards.md)). Linux finds it with its own NVMe driver, behind the root complex, which it reads as a generic ECAM host (`pci-host-ecam-generic`), and the drive's interrupts reach it as MSI-X messages to the IMSIC.
+The real drive can take 🎭 the virtio disk's place: the SSD with its own Zephyr firmware, across the die-to-die link, on the board with all three firmwares ([boards.md](boards.md)). Linux finds it with its own NVMe driver, behind the root complex, which it reads as a generic ECAM host (`pci-host-ecam-generic`: ECAM is PCIe's standard way of laying a device's configuration registers out in memory), and the drive's interrupts reach it as MSI-X messages (message-signalled interrupts, a write in place of a wire) to the IMSIC, the host's interrupt controller.
 
 ```sh
 PYTHONPATH=python uv run python -m socpuppet linux --root drive

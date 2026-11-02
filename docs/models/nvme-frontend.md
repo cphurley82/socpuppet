@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The part of an SSD's controller chip that speaks NVMe to the host. It is where an SSD stops being the [stand-in drive](behavioral-nvme.md), the simplified model that answers every command itself, and becomes hardware with firmware behind it.
+The part of an SSD's controller chip that speaks NVMe to the host (🎓 NVMe is the protocol a computer speaks to a modern SSD). It is where an SSD stops being the [stand-in drive](behavioral-nvme.md), the simplified model that answers every command itself, and becomes hardware with firmware behind it.
 
 🎓 A real controller splits the work between the two. Hardware does what has to be done the same way every time and fast: keeping track of the queues, fetching commands, writing completions, raising interrupts. Firmware does what takes judgement: what each command means, whether the host may have what it asks for, and where the data really is. The frontend is the hardware's half.
 
@@ -36,9 +36,9 @@ It has two faces.
 
 | Port | What it is |
 |---|---|
-| `bar0` | The host's register block, 8 KiB: an NVMe controller's registers, and the doorbells after them. Connect it to a [PCIe endpoint](pcie-endpoint.md), as the stand-in drive's is. |
-| `dma` | How it reads commands from the host's memory and writes completions to it. |
-| `irq0`, `irq1`, ... | One interrupt line to the host per vector. The admin queue uses `irq0`. A line may be left unconnected. |
+| `bar0` | The host's register block, 8 KiB: an NVMe controller's registers, and the doorbells after them (🎓 a doorbell is a register the host writes to say it has put a command in a queue). Connect it to a [PCIe endpoint](pcie-endpoint.md), as the stand-in drive's is. |
+| `dma` | How it reads commands from the host's memory and writes completions to it (🎓 DMA, direct memory access: the device reaching the host's memory itself). |
+| `irq0`, `irq1`, ... | One interrupt line to the host per vector (🎓 an interrupt vector is one of the numbered interrupts a device may raise). The admin queue uses `irq0`. A line may be left unconnected. |
 | `cpu` | The register block of the SSD's own CPU, 128 bytes. |
 | `cpu_irq` | High while the frontend has something to tell the CPU that the CPU asked to be told. Firmware that polls can leave it unconnected. |
 
@@ -117,7 +117,7 @@ When the host clears `CC.EN` the frontend does its part at once: every queue is 
 
 ### A shutdown
 
-🎓 Before a host switches the power off it asks the drive to shut down, by setting `CC.SHN`, and waits for `CSTS.SHST` to say the shutdown is complete: whatever the drive keeps only in RAM, its flash translation layer's table among it, has to reach the flash first. 🐧 Linux waits five seconds for a drive that does not say how long it takes, and then says the drive was not ready and switches off all the same.
+🎓 Before a host switches the power off it asks the drive to shut down, by setting `CC.SHN`, and waits for `CSTS.SHST` to say the shutdown is complete: whatever the drive keeps only in RAM, its flash translation layer's table (the map from the host's block numbers to places in the flash) among it, has to reach the flash first. 🐧 Linux waits five seconds for a drive that does not say how long it takes, and then says the drive was not ready and switches off all the same.
 
 ```text
  host: CC.SHN = 01 ──▶ frontend: SHUTDOWN set, CSTS.SHST = under way

@@ -6,7 +6,7 @@
 
 The timer every RISC-V system has, and the source of an operating system's tick. 🎓 It is two registers. `mtime` counts up at a steady rate, and `mtimecmp` holds a value to compare it with. The timer interrupts for as long as `mtime` is at or past `mtimecmp`. To be woken in 10 ms, the firmware reads `mtime`, adds 10 ms' worth of ticks and writes the sum to `mtimecmp`. Its handler moves `mtimecmp` on again, which ends the interrupt.
 
-The registers sit where SiFive's CLINT has them, which is the layout Zephyr's `riscv,machine-timer` driver and QEMU both use: `mtimecmp` at offset `0x4000` and `mtime` at `0xBFF8`, 64 bits each.
+The registers sit where SiFive's CLINT (the core-local interruptor, their block for a core's timer and software interrupts) has them, which is the layout Zephyr's `riscv,machine-timer` driver and QEMU both use: `mtimecmp` at offset `0x4000` and `mtime` at `0xBFF8`, 64 bits each.
 
 ## What it does
 
@@ -19,7 +19,7 @@ platform.connect(timer.irq, cpu.timer_irq)
 - **Counts simulated time.** `mtime` is the simulated time so far, in ticks of `1 / frequency_hz` seconds. Nothing counts tick by tick: the value is worked out when it is read.
 - **Interrupts on time.** `irq` rises at the moment `mtime` reaches `mtimecmp`, with no bus access needed to make it happen, and falls when `mtimecmp` is moved ahead.
 - **Takes its registers in halves.** A 32-bit CPU writes each 64-bit register as two words.
-- **Stays right when the CPU runs ahead.** 🎓 A CPU model runs ahead of simulated time by up to the platform's quantum. A read of `mtime` from a CPU that is 30 µs ahead gets the count as of 30 µs from now, so the firmware never sees time go backwards. A write of `mtimecmp` from that CPU first lets simulated time catch up with it, so the new value is compared with the count the CPU has just read, and the write costs the CPU no time of its own.
+- **Stays right when the CPU runs ahead.** 🎓 A CPU model runs ahead of simulated time by up to the platform's quantum, which is how far ahead of the rest of the platform it may get, 100 µs by default. A read of `mtime` from a CPU that is 30 µs ahead gets the count as of 30 µs from now, so the firmware never sees time go backwards. A write of `mtimecmp` from that CPU first lets simulated time catch up with it, so the new value is compared with the count the CPU has just read, and the write costs the CPU no time of its own.
 
 ## What it leaves out
 

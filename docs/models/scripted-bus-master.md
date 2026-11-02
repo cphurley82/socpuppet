@@ -60,9 +60,9 @@ There is no CPU behind the curtain:
 - **No instructions, registers or program counter.** Nothing is fetched or executed.
 - **No timing of its own.** An operation takes as long as the device it reaches says it takes, and no longer. Most devices here say "no time at all", so time only passes when the script waits.
 - **One interrupt line**, level-sensitive, with no controller, priorities or vectors.
-- **Every access gets a turn to take effect.** After each read or write the stand-in lets up to two delta cycles pass, as the real CPU does, so that a line the access lowered is seen low by whatever watches it before the script's next access. 💡 That is what lets a script claim an interrupt at a PLIC, quiet the device and complete the interrupt without being interrupted a second time: the PLIC sees the device go quiet before the completion arrives.
+- **Every access gets a turn to take effect.** After each read or write the stand-in lets up to two delta cycles pass (🎓 a delta cycle is SystemC's smallest step: one round of updates at a single instant of simulated time), as the real CPU does, so that a line the access lowered is seen low by whatever watches it before the script's next access. 💡 That is what lets a script claim an interrupt at a PLIC, quiet the device and complete the interrupt without being interrupted a second time: the PLIC sees the device go quiet before the completion arrives.
 - **Beats.** `read32` and `write32` are little-endian 32-bit accesses. `read` and `write` move any number of bytes in one transaction. A real CPU would need several accesses or a burst for anything wider than its bus. The stand-in sends it whole, which is how a loosely-timed model writes a burst, with no beat-by-beat timing. There are no byte enables.
-- **No DMI.** It makes a transaction for every access, where a CPU model would take a fast path.
+- **No DMI** (the direct memory interface: a pointer to a memory's bytes). It makes a transaction for every access, where a CPU model would take a fast path.
 
 ## What it shares with a real CPU
 

@@ -28,7 +28,7 @@ The host sees two windows in its address map.
 
 - **The configuration window, `ecam`.** Every function a bus could hold gets 4 KiB of it, laid out by bus, device and function number. 🎓 This layout is called ECAM, the enhanced configuration access mechanism. Reading the first register of each slot is how a host finds out what it has: an empty slot reads as all ones, with no error.
 - **The memory window, `mmio`.** The host places the device's registers somewhere inside it, by writing an address to the device's base address register. An access to the window goes down the link, and the device answers it if the address is one it was given.
-- **What comes up the link** goes out of `dma` onto the host's bus, untouched: the device's DMA into host memory, and its interrupts, which on PCIe are small writes too. What takes those is the [IMSIC](imsic.md) on a host that runs firmware, and the [MSI receiver](msi-receiver.md) on a scripted one.
+- **What comes up the link** goes out of `dma` onto the host's bus, untouched: the device's DMA into host memory (direct memory access: its own reads and writes of the host's memory), and its interrupts, which on PCIe are small writes too. What takes those is the [IMSIC](imsic.md) on a host that runs firmware, and the [MSI receiver](msi-receiver.md) on a scripted one.
 
 💡 The root complex has to know where the host sees the memory window, because a bus hands a target offsets into its window and the device compares addresses on the host's bus. It works that out from where `mmio` is mapped, through routers and links, so there is nothing to tell it. A description that leaves `mmio` unmapped is refused when it is built, before the simulation exists.
 
@@ -54,7 +54,7 @@ In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for
 
 ## What it leaves out
 
-- **The link itself.** No packets, lanes, training, flow control or errors. The link is a pair of ordinary TLM sockets, and a transaction on it is marked only with whether it is a configuration access and for which function, and, on its way up, with which function sent it (its requester ID).
+- **The link itself.** No packets, lanes, training, flow control or errors. The link is a pair of ordinary TLM sockets (🎓 TLM, transaction-level modeling, is how blocks here talk: a whole read or write handed over as one function call), and a transaction on it is marked only with whether it is a configuration access and for which function, and, on its way up, with which function sent it (its requester ID).
 - **A tree.** One device sits on the link, and it is function 0 of device 0 on bus 0. There are no root ports, bridges or switches, and no bus beyond the first.
 - **Checking who sent it.** What comes up the link names its sender, and the root complex passes it up untouched; confining a device to its own memory is the [IOMMU](iommu.md)'s job, behind `dma`.
 - **Translation.** An address means the same on the link as on the host's bus.
@@ -65,4 +65,4 @@ In Linux's dialect the compatible is `pci-host-ecam-generic`, Linux's driver for
 
 `src/socpuppet/models/pcie_root_complex.h`, and `src/socpuppet/models/pcie_link.h` for what a transaction on the link carries.
 
-⚠️ This is modelled from public sources: the PCI specifications are not free to read. The layouts follow what open drivers expect (Zephyr's `drivers/pcie`), and the model makes no claim to conform to the specifications. socpuppet looked at borrowing VCML's PCI model first and decided to write its own. [pcie-spike.md](../history/pcie-spike.md) says why.
+⚠️ This is modelled from public sources: the PCI specifications are not free to read. The layouts follow what open drivers expect (Zephyr's `drivers/pcie`), and the model makes no claim to conform to the specifications. socpuppet looked at borrowing the PCI model of VCML (MachineWare's SystemC modelling library) first and decided to write its own. [pcie-spike.md](../history/pcie-spike.md) says why.

@@ -4,7 +4,7 @@
 
 ## What it stands for
 
-The address decoder of a bus: the logic that looks at an address and decides which device the access is for. On real hardware this is part of an interconnect such as AXI.
+The address decoder of a bus: the logic that looks at an address and decides which device the access is for. On real hardware this is part of an interconnect such as Arm's AXI.
 
 ## What it does
 
@@ -19,7 +19,7 @@ bus.map(ram.socket, base=0x8000_0000)
 - **Takes several sources of accesses.** The first connects to `bus.target`. Each one after that gets an input of its own: `platform.connect(device.dma, bus.add_input())`. Every input sees the same address map. A device that does DMA (direct memory access: it reads and writes the host's memory itself, without the CPU copying anything) needs an input too.
 - **Refuses overlaps.** Two ranges that overlap are refused when you map the second, with a message naming both.
 - **Address errors.** An access that hits no range gets an address-error response, and a warning naming the address is logged.
-- **DMI and debug.** Both pass through, with addresses translated.
+- **DMI and debug.** Both pass through, with addresses translated (DMI is the direct memory interface: a pointer to a memory's bytes, which lets a CPU skip the bus).
 
 ## What it leaves out
 

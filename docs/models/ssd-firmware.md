@@ -125,7 +125,7 @@ After it, from the reserve's second page, the table: for each page of the drive,
 - **A CPU.** Nothing is executed. Each step of the script is one access on the SSD's bus.
 - **Time.** The firmware takes none. A real one takes most of the time a command takes.
 - **A table in the SSD's buffer.** It is kept in Python. It is read from the NAND's reserve at start and saved there at a shutdown, as Zephyr's is. A controller reset, which is the host's doing, loses nothing. 🚧 A reset of the SSD's own CPU is not something the board can do yet.
-- **Power lost without a shutdown.** ⚠️ Both firmwares save the table only when the host asks for a shutdown, so a drive whose power just goes keeps the table it was last shut down with, and what was written since is lost. A real SSD rebuilds its table from what each page says of itself, or saves it as it goes. 🚧 That comes with the power-loss scenarios on the roadmap.
+- **Power lost without a shutdown.** ⚠️ Both firmwares save the table only when the host asks for a shutdown, so a drive whose power just goes keeps the table it was last shut down with, and what was written since is lost. A real SSD rebuilds its table from what each page says of itself, or saves it as it goes. 🚧 That comes with the power-loss scenarios on the [roadmap](../roadmap.md).
 - **More than one thing at a time.** One command, one page of buffer.
 - **Garbage collection, wear levelling, bad blocks.** Everything a real FTL spends its life on.
 - **A write that fails half-way** has written the pages before the failure.
@@ -142,7 +142,7 @@ board.platform.load_elf("build/firmware/ssd_socpuppet_ssd.elf",
                         via=board.ssd.cpu.socket)
 ```
 
-`examples/ssd_firmware_hello.py` is that show, and [boot-your-firmware.md](../boards.md#bring-up-your-ssd-firmware) says how to build the image, or one of your own.
+`examples/ssd_firmware_hello.py` is that show, and [boards.md](../boards.md#bring-up-your-ssd-firmware) says how to build the image, or one of your own.
 
 A host cannot tell the two apart by what they answer. This is what differs behind the curtain:
 

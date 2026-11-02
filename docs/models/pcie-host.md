@@ -6,7 +6,7 @@
 
 🎭 A stand-in is a simplified model: it holds the real block's place on stage so that the rest of the cast can rehearse against it, and it says here what it leaves out.
 
-The part of a host's firmware that finds PCIe devices and sets them up, before any driver runs. On the finished platform that is Zephyr's PCIe code on the host CPU. 🚧 Until that boots, this stands in for it.
+The part of a host's firmware that finds PCIe devices and sets them up, before any driver runs. On the host board that is Zephyr's PCIe code on the host CPU ([boards.md](../boards.md#with-a-drive)); this stands in for it where a script wants no CPU at all.
 
 ## What it does
 
@@ -26,9 +26,9 @@ def script():
     yield from nvme.enable()
 ```
 
-- **`scan()`** reads the first register of every slot on the bus and returns what it finds as `sp.PcieFunction`s: where each is, and its vendor, device and class. 🎓 This is *enumeration*. Nothing tells a host what devices it has.
-- **`place(function, address)`** writes the address into the function's base address register and switches the function on: memory decoding, so that its registers answer, and bus mastering, so that it may do DMA and interrupt. An address the function cannot be at (not a multiple of its size) raises `sp.PcieError`.
-- **`route_interrupts(function, to=msi)`** finds the function's MSI-X table and fills it in, so that every vector's message goes where `msi` says, and then switches MSI-X on.
+- **`scan()`** reads the first register of every slot on the bus, through the configuration window `ecam` (🎓 ECAM, the enhanced configuration access mechanism: the host's view of every device's configuration space, laid out by slot), and returns what it finds as `sp.PcieFunction`s: where each is, and its vendor, device and class. 🎓 This is *enumeration*. Nothing tells a host what devices it has.
+- **`place(function, address)`** writes the address into the function's base address register (BAR) and switches the function on: memory decoding, so that its registers answer, and bus mastering, so that it may do DMA and interrupt. An address the function cannot be at (not a multiple of its size) raises `sp.PcieError`.
+- **`route_interrupts(function, to=msi)`** finds the function's MSI-X table (🎓 a PCIe device's interrupts are messages, writes to an address the host chose, and the MSI-X table is where the host says which address each vector's goes to) and fills it in, so that every vector's message goes where `msi` says, and then switches MSI-X on.
 - **`sp.MsiHost`** is the host's side of an [MSI receiver](msi-receiver.md): what a device is to be told to send, and `wait()`, which waits for the host's interrupt line and reads the receiver, which is what makes the line fall again.
 
 The whole show, from a bus with something on it to a block read back, is `examples/nvme_hello.py`.

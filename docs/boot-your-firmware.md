@@ -1,6 +1,6 @@
 # Boot your firmware here 🧦
 
-How to run a Zephyr application on socpuppet's host board, from a fresh checkout to Zephyr's hello world, then an application of your own, typing on its console, and a debugger on it. The other boards and the bigger shows, with two or three firmwares at once, are on [boards.md](boards.md); the steps there are these, and each section says what differs.
+How to run a Zephyr application on socpuppet's host board, a simulated RISC-V machine, from a fresh checkout to Zephyr's hello world, then an application of your own, typing on its console, and a debugger on it. Zephyr is an open-source real-time operating system for small devices, and the firmware on these pages is built on it. The other boards and the bigger shows, with two or three firmwares at once, are on [boards.md](boards.md); the steps there are these, and each section says what differs.
 
 🚧 socpuppet is not on PyPI yet, so "install" means building it from a checkout: [setup.md](setup.md) takes a bare machine to a built one in three commands, and [development.md](development.md) is the everyday page. Every command below is run from the checkout.
 
@@ -10,7 +10,7 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 
 | What | Where | Zephyr driver |
 |---|---|---|
-| CPU | RV64GC, with machine, supervisor and user mode. Starts at `0x8000_0000`, in machine mode, which is where Zephyr stays. ⚠️ No PMP | |
+| CPU | RV64GC, with machine, supervisor and user mode. Starts at `0x8000_0000`, in machine mode, which is where Zephyr stays. ⚠️ No PMP, RISC-V's physical memory protection | |
 | RAM | `0x8000_0000`, 64 MB | |
 | Interrupt controller ([IMSIC](models/imsic.md)) | `0x2400_0000` for machine mode's messages, `0x2800_0000` for the supervisor's. 63 identities | `riscv,imsic`, Zephyr's own, and socpuppet's module for `irq_enable` |
 | UART, the console | `0x1000_0000`. Its interrupt line is source 16 of the APLIC | `ns16550` |
@@ -27,17 +27,17 @@ The board is called `socpuppet_host`. It is a 64-bit RISC-V machine:
 socpuppet run hello_world_socpuppet_host.elf --board socpuppet_host --until 100
 ```
 
-An image is a file of socpuppet's firmware, known by its name. They are not in the wheel, which stays small and MIT-only: each is fetched from a release on GitHub, unpacked, checked against the sums the release lists, and kept in your cache (`~/.cache/socpuppet` on Linux, `~/Library/Caches/socpuppet` on a Mac, or wherever `SOCPUPPET_CACHE_DIR` says). `socpuppet.images.find("hello_world_socpuppet_host.elf")` gives the same image to Python, and `SOCPUPPET_IMAGES_URL` names a mirror of the release, for a classroom or a machine with no way out. 💡 In a checkout with a `build/firmware`, or with `SOCPUPPET_FIRMWARE_DIR` set, that directory is the only place looked in, and nothing is fetched into it.
+An image is a file of socpuppet's firmware, known by its name. They are not in the wheel, the installable Python package, which stays small and MIT-only: each is fetched from a release on GitHub, unpacked, checked against the sums the release lists, and kept in your cache (`~/.cache/socpuppet` on Linux, `~/Library/Caches/socpuppet` on a Mac, or wherever `SOCPUPPET_CACHE_DIR` says). `socpuppet.images.find("hello_world_socpuppet_host.elf")` gives the same image to Python, and `SOCPUPPET_IMAGES_URL` names a mirror of the release, for a classroom or a machine with no way out. 💡 In a checkout with a `build/firmware`, or with `SOCPUPPET_FIRMWARE_DIR` set, that directory is the only place looked in, and nothing is fetched into it.
 
 ### Building it yourself
 
-For an application of your own, or when an image cannot be fetched, build it. The quick way builds every image the tests boot, Zephyr's hello world for this board among them, and fetches what builds them (the Zephyr SDK, Zephyr itself, a west workspace around it) into `build/firmware`. It takes a few minutes the first time:
+For an application of your own, or when an image cannot be fetched, build it. The quick way builds every image the tests boot, Zephyr's hello world for this board among them, and fetches what builds them (the Zephyr SDK, Zephyr itself, and around it a workspace for `west`, Zephyr's build tool) into `build/firmware`. It takes a few minutes the first time:
 
 ```sh
 uv run firmware/build.py zephyr
 ```
 
-The image is `build/firmware/hello_world_socpuppet_host.elf`. To build an application of your own, or Zephyr's samples one at a time, use that workspace: it has `west`, Zephyr's build tool, in its own Python environment, and the board lives in a Zephyr module inside the socpuppet package, which one command locates.
+The image is `build/firmware/hello_world_socpuppet_host.elf`. To build an application of your own, or Zephyr's samples one at a time, use that workspace: it has `west` in its own Python environment, and the board lives in a Zephyr module inside the socpuppet package, which one command locates.
 
 ```sh
 cd build/firmware                                    # the west workspace firmware/build.py made
@@ -102,7 +102,7 @@ Zephyr version 4.4.2
 
 - 🧵 **Type before a run or between two.** What is typed waits in the UART until the firmware reads it, and arrives all at once: there is no baud rate. ⚠️ The UART loses none of it, but firmware may. Zephyr's shell reads into a buffer of 64 bytes and drops what does not fit, so type a line at a time.
 - 💡 **The shell is woken by the console's interrupt**, and Zephyr works that out for itself: the UART's node in the board's devicetree has an interrupt, so the shell asks to be interrupted and does not poll. With a UART that could not interrupt it would poll, and answer all the same.
-- 🎓 **The interrupt is a wire for an inch and a message from there.** The UART is on the IO die and the CPU on the compute die, and the link between them has nowhere for a wire to go. So the UART's line stops at the [APLIC](models/aplic.md) beside it, which writes the interrupt's identity across the link to the CPU's [IMSIC](models/imsic.md). Every interrupt on this board but the timer's arrives that way.
+- 🎓 **The interrupt is a wire for an inch and a message from there.** The host is two dies, two pieces of silicon in one package: the UART is on the IO die and the CPU on the compute die, and the link between them has nowhere for a wire to go. So the UART's line stops at the [APLIC](models/aplic.md) beside it, which writes the interrupt's identity across the link to the CPU's [IMSIC](models/imsic.md). Every interrupt on this board but the timer's arrives that way.
 - 💡 **`irq_enable` is all a driver calls.** Zephyr knows an interrupt by one number, and on this board a number from 16 to 31 is a source of the APLIC. socpuppet's module sets the source up when a driver enables it. Wire a device of your own to a free source in the platform description, and its node in the devicetree has the number.
 
 ## Waiting for something to happen
@@ -159,16 +159,16 @@ tools/devcontainer.py \
 
 ⚠️ Leave with `continue`, not `detach` or `quit`. A debugger that detaches leaves its CPU stopped, and quitting GDB at a breakpoint detaches. A stopped CPU stops the whole simulation, with no limit in simulated time able to end the run. So say `continue` and let the run finish, which hangs up on GDB, or stop the simulation yourself. If it is too late for that, attach to the same port again and say `continue`.
 
-⚠️ Start the run first and attach second, as here. With the DBT-RISE CPU the port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)); with QBox's CPU (`--cpu qbox_cpu`) the port opens when the run starts, and a debugger that attaches before is refused.
+⚠️ Start the run first and attach second, as here. The board's CPU is one of two models of the same core: the [DBT-RISE CPU](models/dbt-rise-cpu.md), the default, which interprets each instruction, or [QBox's CPU](models/qbox-cpu.md), QEMU's, which is faster and only in a build with QBox. With the DBT-RISE CPU the port is open as soon as the platform is built, and a debugger that attaches before `run` is shown registers from before the CPU's reset, a program counter of 0 among them ([upstream.md](upstream.md)); with QBox's CPU (`--cpu qbox_cpu`) the port opens when the run starts, and a debugger that attaches before is refused.
 
 Breakpoints, stepping, backtraces and reading memory all work as on hardware. Simulated time only moves while the CPU runs, so you can sit at a breakpoint for as long as you like and no timer will have fired when you come back.
 
-On a board with more than one CPU, give the port to the one whose firmware you are debugging: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. The other CPU runs without waiting for anybody, and while yours sits at a breakpoint it waits too, so it will not have given up on you when you continue.
+On a board with more than one CPU ([boards.md](boards.md#the-host-with-the-ssd) has them), give the port to the one whose firmware you are debugging: `host(gdb_port=1234, drive_blocks=4096, drive=add_ssd)` debugs the host's, and `drive=functools.partial(add_ssd, gdb_port=1234)` the SSD's. The other CPU runs without waiting for anybody, and while yours sits at a breakpoint it waits too, so it will not have given up on you when you continue.
 
 ## When it does not boot
 
 - **`load_elf` refuses the image.** It says why: the image was built for another word size, or it does not start at the CPU's reset vector. The second usually means it was built for a different board.
-- **Nothing is printed.** The firmware has most likely faulted before its console was up. Check that the image was built for `socpuppet_host`. A build for another board will touch devices that are not there. So will a build with the drive's shield on a host described with no drive.
+- **Nothing is printed.** The firmware has most likely faulted before its console was up. Check that the image was built for `socpuppet_host`. A build for another board will touch devices that are not there. So will a build with the drive's shield (a shield is Zephyr's name for hardware plugged into a board; [boards.md](boards.md#with-a-drive) has this one) on a host described with no drive.
 - **"Nothing took an access at address ..."** in the log. The firmware reached for a device the board does not have. The address says which.
 
 ## Changing the board
@@ -177,4 +177,4 @@ The board is a Python description: `python/socpuppet/boards/host.py`. To try a d
 
 ## More shows
 
-The host is one of three boards. [boards.md](boards.md) has the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI, UEFI, the watchdog, and a debugger on each of three CPUs. [linux.md](linux.md) boots 🐧 Linux and types at its shell. [twister.md](twister.md) runs Zephyr's own tests, and yours, on every board.
+The host is one of three boards. [boards.md](boards.md) has the SSD's controller and the IO die's manager, the host with the SSD and across the link, all three firmwares at once, booting from flash, OpenSBI and UEFI (the firmware a Linux or a server boots on), the watchdog, and a debugger on each of three CPUs. [linux.md](linux.md) boots 🐧 Linux and types at its shell. [twister.md](twister.md) runs Zephyr's own tests, and yours, on every board.

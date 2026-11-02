@@ -1,6 +1,6 @@
 # A PCIe device and its hosts
 
-socpuppet simulates a PCIe device, an NVMe SSD, and gives it a host: a Python script, Zephyr or 🐧 Linux on a simulated CPU beside it, or this machine's own Linux through pciem. This page is first what that lets you do, then how it works down to the SystemC calls, with a command to run at each step. The pages under [`models/`](architecture.md#the-models) take one block each.
+socpuppet simulates a PCIe device, an NVMe SSD, and gives it a host: a Python script, Zephyr (a small open-source operating system for firmware) or 🐧 Linux on a simulated CPU beside it, or this machine's own Linux through pciem, a Linux kernel module. This page is first what that lets you do, then how it works down to the SystemC calls, with a command to run at each step. The pages under [`models/`](architecture.md#the-models) take one block each.
 
 ## What it can do
 
@@ -74,7 +74,7 @@ flowchart LR
 
 🎓 If you have built a virtual platform of a server, this is the other way round: there the host is the subject and a device is a stub that satisfies the driver. Here the device is the subject, and the host is the part that swaps: a Python script, Zephyr or Linux on the simulated CPU, or this machine's own Linux. The function, and its tests, stay the same.
 
-Two functions play the drive, both with the three ports. 🎭 [The behavioral NVMe](models/behavioral-nvme.md) is a **stand-in**, a simplified model that answers every command itself, with no CPU or firmware. [The SSD](architecture.md#the-ssd) is the real thing in small: the [NVMe frontend](models/nvme-frontend.md) keeps the queues, a 32-bit RISC-V CPU runs Zephyr firmware that decides what each command means, and a [DMA engine](models/dma-engine.md), a [flash controller](models/flash-controller.md) and a NAND move the data. One contract suite, `tests/cpp/contracts/nvme_contract.h`, holds both to what an NVMe function must do.
+Two functions play the drive, both with the three ports. 🎭 [The behavioral NVMe](models/behavioral-nvme.md) is a **stand-in**, a simplified model that answers every command itself, with no CPU or firmware. [The SSD](architecture.md#the-ssd) is the real thing in small: the [NVMe frontend](models/nvme-frontend.md) keeps the queues, a 32-bit RISC-V CPU runs Zephyr firmware that decides what each command means, and a [DMA engine](models/dma-engine.md), a [flash controller](models/flash-controller.md) and a NAND (the flash chips that keep the data) move the data. One contract suite, `tests/cpp/contracts/nvme_contract.h`, holds both to what an NVMe function must do.
 
 ## Two ways to give it a host
 
@@ -152,7 +152,7 @@ flowchart LR
 |---|---|---|---|
 | 🎭 A Python script in the CPU's place | the script: `sp.PcieHost` finds and places the drive, `sp.NvmeHost` drives it | 🎭 [an MSI receiver](models/msi-receiver.md), one register | `examples/nvme_hello.py`, `tests/python/test_nvme_over_pcie.py` |
 | The host CPU, Zephyr | Zephyr's own PCIe and NVMe drivers, with socpuppet's root complex driver | the [IMSIC](models/imsic.md), the interrupt controller RISC-V servers use | `examples/host_and_ssd_hello.py`, [boards.md](boards.md#with-a-drive) |
-| The host CPU, 🐧 Linux | a stock kernel: `pci-host-ecam-generic` finds the root complex, `nvme` the drive | the IMSIC, by the devicetree's `msi-parent` | `tests/python/test_linux_nvme.py`, [linux.md](linux.md#its-root-on-the-drive) |
+| The host CPU, 🐧 Linux | a stock kernel: `pci-host-ecam-generic` finds the root complex, `nvme` the drive | the IMSIC, by `msi-parent` in the devicetree, the description of the hardware the kernel is given | `tests/python/test_linux_nvme.py`, [linux.md](linux.md#its-root-on-the-drive) |
 
 **Through pciem**, the host is the Linux you are running on. [pciem](https://github.com/cakehonolulu/pciem) is a kernel module that lets a program be a PCIe device on the machine's own bus: its kernel side plays configuration space, the BARs and the MSI-X table, and hands the program the rest. [`sp.PciemHost`](models/pciem-host.md) is the program's side, inside the SystemC kernel, with the function's three ports on its other face. Root complex, link and host CPU are gone, because this machine's are the real ones; the endpoint is in two halves, its registers in pciem and its three ports in `PciemHost`. The function cannot tell: `PcieEndpoint` and `PciemHost` are both a `PcieFunctionFront` in Python, with the same five parameters, and `connect_the_function` in `python/socpuppet/boards/drive.py` wires either to the function port for port.
 
@@ -163,7 +163,7 @@ flowchart LR
 | The link | two TLM sockets, down and up | none: pciem is in the kernel, and the host's writes land in its copy of BAR0 |
 | The endpoint | `PcieEndpoint`, ours: configuration space, BAR0, the MSI-X table and the three ports | in two halves: pciem's kernel side plays configuration space, the BARs and the MSI-X table, and `PciemHost`, ours, has the three ports, with `/dev/pciem` between them |
 | The function | the same block, on its three ports | the same block, on its three ports |
-| Time | one simulated clock for host and device | the host on the wall's clock, the device on the simulation's, kept together by the pump |
+| Time | one simulated clock for host and device | the host on the wall's clock, the device on the simulation's, kept together by the pump, a Python loop described below |
 | Needs | a `dev` build; firmware for the Zephyr and Linux hosts | a build with pciem, on Linux, the module loaded, root for the host's commands |
 | Proves | the device against a driver, deterministically, on every push | the device against a real OS's driver: `mkfs`, `mount`, a file written |
 
@@ -180,7 +180,7 @@ A real link carries packets, and a packet says which of the device's address spa
 - **A memory access**: an ordinary transaction at an address on the host's bus. Down, the host reaching the device's registers; up, the device's DMA or an interrupt message.
 - **A configuration access**: the same transaction carrying a TLM *extension*, `PcieConfigurationAccess`, for as long as it is on the link. Its address is an offset into configuration space.
 
-Whatever the device sends up, DMA and interrupt messages alike, carries a second extension, `PcieRequesterId`: the device's *requester ID*, its bus, device and function numbers packed as `bus << 8 | device << 3 | function`, which an [IOMMU](models/iommu.md) looks the device up by. The endpoint learns it as a real function does, from the configuration writes addressed to it: a configuration access says which function it is for, and the root complex takes that from where the access fell in the ECAM window, whose layout is the same packing. No packets, lanes, training or errors.
+Whatever the device sends up, DMA and interrupt messages alike, carries a second extension, `PcieRequesterId`: the device's *requester ID*, its bus, device and function numbers packed as `bus << 8 | device << 3 | function`, which an [IOMMU](models/iommu.md) looks the device up by. The endpoint learns it as a real function does, from the configuration writes addressed to it: a configuration access says which function it is for, and the root complex takes that from where the access fell in the configuration window (ECAM, next section), whose layout is the same packing. No packets, lanes, training or errors.
 
 ### The root complex: two windows down, one way up
 
@@ -270,7 +270,7 @@ Now the host is outside the simulation on the wall's clock, and the function ins
 
 pciem gives the program three things, which match the function's three ports but not one for one:
 
-- **BAR0 as shared memory, and a ring of the host's writes to it.** When Linux's driver writes a register, pciem lands the write in its copy of BAR0, posts it on a ring with its offset, size and data, and an eventfd becomes readable. ⚠️ The host's *reads* never reach the program: Linux reads pciem's copy. So a register the function changes on its own must be copied in before the host looks. For NVMe those are CAP, VS and CSTS.
+- **BAR0 as shared memory, and a ring of the host's writes to it.** When Linux's driver writes a register, pciem lands the write in its copy of BAR0, posts it on a ring with its offset, size and data, and an eventfd (a file descriptor Linux uses as a wake-up flag) becomes readable. ⚠️ The host's *reads* never reach the program: Linux reads pciem's copy. So a register the function changes on its own must be copied in before the host looks. For NVMe those are CAP, VS and CSTS.
 - **An ioctl for DMA**, a copy to or from this machine's memory.
 - **An ioctl for an interrupt**, which sends the host one vector.
 
@@ -417,7 +417,7 @@ uv run pytest tests/python/test_nvme_over_pcie.py tests/python/test_pcie.py     
 uv run ctest --preset dev -R 'Endpoint|Msix|Capability|Pciem'           # the C++ side: tests/cpp/platform/pcie_test.cpp and more
 ```
 
-**2. Zephyr finds it.** The host CPU runs Zephyr's own disk test, built with the shield `socpuppet_host_drive`, and the drive is the SSD with its 32-bit CPU running the Zephyr application in `firmware/ssd`. Zephyr's PCIe code scans, places and routes; its NVMe driver reads and writes; neither image was built for the other.
+**2. Zephyr finds it.** The host CPU runs Zephyr's own disk test, built with the shield `socpuppet_host_drive` (a shield is Zephyr's word for hardware plugged into a board, which it adds to the board's devicetree), and the drive is the SSD with its 32-bit CPU running the Zephyr application in `firmware/ssd`. Zephyr's PCIe code scans, places and routes; its NVMe driver reads and writes; neither image was built for the other.
 
 ```sh
 uv run firmware/build.py                                   # once: every image the tests boot, into build/firmware
@@ -434,7 +434,7 @@ PYTHONPATH=python uv run python examples/host_and_ssd_hello.py
 
 The two consoles print as one story, in simulated milliseconds. Leave `drive=` off `host()` and the same image passes against 🎭 the stand-in drive ([boards.md](boards.md#with-a-drive)).
 
-**3. Linux finds it.** A stock kernel on OpenSBI: `pci-host-ecam-generic` reads the root complex's devicetree node, enumerates, places the BAR and routes MSI-X to the IMSIC, and `nvme` loads from the initramfs and finds the drive. Nothing of socpuppet's runs on the host.
+**3. Linux finds it.** A stock kernel on OpenSBI (the firmware a RISC-V operating system boots through): `pci-host-ecam-generic` reads the root complex's devicetree node, enumerates, places the BAR and routes MSI-X to the IMSIC, and `nvme` loads from the initramfs and finds the drive. Nothing of socpuppet's runs on the host.
 
 ```sh
 uv run pytest tests/python/test_linux_nvme.py -rs                  # the stand-in drive, three tests, about four minutes
@@ -476,6 +476,6 @@ uv run tools/pciem_guest.py -- env SOCPUPPET_REQUIRE_PCIEM=1 .venv/bin/python -m
 ## Where to read next
 
 - The blocks, one page each: [root complex](models/pcie-root-complex.md), [endpoint](models/pcie-endpoint.md), [this machine as the host](models/pciem-host.md), 🎭 [the scripted host's PCIe steps](models/pcie-host.md), 🎭 [the behavioral NVMe](models/behavioral-nvme.md), [the NVMe frontend](models/nvme-frontend.md), 🎭 [the MSI receiver](models/msi-receiver.md), [the IMSIC](models/imsic.md).
-- Why the endpoint is socpuppet's own and not VCML's: [history/pcie-spike.md](history/pcie-spike.md).
+- Why the endpoint is socpuppet's own and not borrowed from VCML, an open-source SystemC modelling library: [history/pcie-spike.md](history/pcie-spike.md).
 - How a real host first mounted the puppet's SSD, with timings: [history/real-host-spike.md](history/real-host-spike.md).
 - Lessons in [lessons.md](history/lessons.md#pcie-and-nvme); what is owed upstream in [upstream.md](upstream.md#pciem); where the drive sits on each board in [address-map.md](address-map.md).
