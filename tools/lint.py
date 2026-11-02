@@ -126,6 +126,12 @@ LINTERS = [
         # gcc format: one line per finding, starting file:line:column.
         check=("shellcheck", "--format=gcc"),
     ),
+    Linter(
+        "stranger",
+        # Every file, read as a stranger reads it (tools/stranger.py).
+        patterns=("*",),
+        check=("python", str(TOOLS / "stranger.py")),
+    ),
 ]
 
 

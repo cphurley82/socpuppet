@@ -78,7 +78,7 @@ west twister -p socpuppet_host -T tests/kernel/sleep
 
 ## What is run, and what passes
 
-`firmware/twister-suites.txt` is the list. On 2026-10-11, with Zephyr 4.4.2, in scenarios passed of scenarios run (a suite has a scenario for each configuration it is built in, and twister runs some scenarios on one board of each architecture only):
+`firmware/twister-suites.txt` is the list. With Zephyr 4.4.2, in scenarios passed of scenarios run (a suite has a scenario for each configuration it is built in, and twister runs some scenarios on one board of each architecture only):
 
 | Suite | `socpuppet_host` | `socpuppet_ssd` | `socpuppet_iomgr` |
 |---|---|---|---|
@@ -243,7 +243,7 @@ The `twister` job of `.github/workflows/nightly.yml` does the same every night, 
 
 It also runs the tests that need Zephyr's tree and so are skipped everywhere else: the ones that hold the boards' platform files, the list of suites, the quarantine list and our own suites' `testcase.yaml` files to twister's own schemas.
 
-On a runner, with four cores where the figure above had sixteen, the job took twenty minutes the first time and thirty-three the second, both on 2026-10-12 and both passing the same 113 scenarios as the run here. The first was two minutes to fetch Zephyr and its SDK, which the cache now has, five to build socpuppet, eleven for twister, and one to keep the logs. The second had a runner half as fast at everything: eight minutes to build socpuppet and nineteen for twister. ⚠️ That makes it one of the longest jobs of the workflow. If the list grows, twister's minutes grow with it, and a suite then has to earn its place.
+On a runner, with four cores where the figure above had sixteen, the job took twenty minutes the first time and thirty-three the second, both passing the same 113 scenarios as the run here. The first was two minutes to fetch Zephyr and its SDK, which the cache now has, five to build socpuppet, eleven for twister, and one to keep the logs. The second had a runner half as fast at everything: eight minutes to build socpuppet and nineteen for twister. ⚠️ That makes it one of the longest jobs of the workflow. If the list grows, twister's minutes grow with it, and a suite then has to earn its place.
 
 The Mac's leg first ran later the same day, and passed the same 113 scenarios in thirty-nine minutes, beside a Linux leg that took thirty-three. Its runner has three cores. Four of its minutes went on fetching Zephyr and its SDK, which its own cache now has, nine on building socpuppet, twenty-three on twister, and two on keeping the logs. So the four places twister has run, each with the same verdicts:
 

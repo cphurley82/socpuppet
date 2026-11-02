@@ -86,7 +86,9 @@ tree="build/speed-$tag"
 results="spikes/speed/results/$tag.jsonl"
 mkdir -p spikes/speed/results
 
-host="$(uname -n)"
+# The kind of machine, not its name: the results are read by strangers
+# (tools/stranger.py), and the label and cpu_model say which machine it was.
+host="$(uname -s)-$(uname -m)"
 commit="$(git -c safe.directory='*' rev-parse --short HEAD)"
 if [[ -n "$(git -c safe.directory='*' status --porcelain --untracked-files=no)" ]]; then
   commit="$commit+dirty"

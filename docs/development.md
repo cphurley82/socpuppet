@@ -287,6 +287,6 @@ A bot's pull request is handled like anyone's. CI's quick tier runs on it, and i
 4. Before pushing, put the bot's commit last, so that every commit before it passes with the old versions too.
 5. Land the branch the usual way. Dependabot sees that `main` has the versions and closes its own pull request.
 
-⚠️ Do not leave a red one open and wait. Next week the bot closes it and opens a fresh one with the same failure and more besides: the `tools` pull request sat red from 2026-10-18 until clang-tidy 23 was adopted on 2026-10-29.
+⚠️ Do not leave a red one open and wait. Next week the bot closes it and opens a fresh one with the same failure and more besides: one `tools` pull request sat red for eleven days until clang-tidy 23 was adopted ([history/lessons.md](history/lessons.md#building-and-machines)).
 
 💡 A version the bot must not take has an `ignore` entry in `.github/dependabot.yml`, with its reason beside it, like the cap on setuptools ([upstream.md](upstream.md#pyfatfs)). The `wheel` job, which is cibuildwheel's, runs only in the nightly tier, so a cibuildwheel bump is proven the night after it lands, or before, with `gh workflow run nightly.yml --ref BRANCH`.
