@@ -6,11 +6,9 @@ names, as the boot tests do; the two 32-bit CPUs of the host's manager
 and SSD are DBT-RISE's whatever it says.
 """
 
-import contextlib
 import functools
 import os
 import re
-import socket
 import sys
 import threading
 import time
@@ -24,6 +22,7 @@ from disk_access import run_to_a_verdict
 from gdb_client import GdbClient
 from linux_shell import a_host_with_linux
 from manager_firmware import IMAGE as MANAGER_IMAGE
+from sockets import free_ports
 from socpuppet import qemu_trace, ztest
 from socpuppet.boards.cpu_kit import SRAM_BASE
 from socpuppet.boards.host import RAM_BASE, host
@@ -63,21 +62,6 @@ def free_port():
     """A TCP port nothing is listening on."""
     (port,) = free_ports(1)
     return port
-
-
-def free_ports(count):
-    """`count` TCP ports nothing is listening on, no two the same.
-
-    Each is held until all are found: one let go at once could be given
-    out again for the next.
-    """
-    with contextlib.ExitStack() as held:
-        ports = []
-        for _ in range(count):
-            probe = held.enter_context(socket.socket())
-            probe.bind(("127.0.0.1", 0))
-            ports.append(probe.getsockname()[1])
-        return ports
 
 
 def a_cpu(**described):
