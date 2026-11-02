@@ -111,3 +111,26 @@ def test_with_qbox_built_it_builds_qbox_no_more_and_says_how_to(qbox):
     assert len(calls(lines, "git", "clone")) == 1
     assert len(calls(lines, "cmake", "--install")) == 1
     assert "delete" in result.stdout.lower()
+
+
+def test_then_it_builds_socpuppet_against_that_qbox_with_the_qbox_preset(
+    qbox, tmp_path
+):
+    result, lines = qbox()
+
+    assert result.returncode == 0, result.stdout
+    install = tmp_path / "qbox" / "install"
+    assert calls(
+        lines, "cmake", "--preset", "qbox", f"-DSOCPUPPET_QBOX_DIR={install}"
+    )
+    assert calls(lines, "cmake", "--build", "--preset", "qbox")
+
+
+def test_the_jobs_option_is_how_many_files_each_build_compiles_at_once(qbox):
+    result, lines = qbox("--jobs", "3")
+
+    assert result.returncode == 0, result.stdout
+    assert calls(lines, "cmake", "--build", "--parallel", "3")
+    assert calls(
+        lines, "cmake", "--build", "--preset", "qbox", "--parallel", "3"
+    )
