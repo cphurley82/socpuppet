@@ -60,7 +60,8 @@ class PumpedFarEnd(Protocol):
 
         Something of its own that no descriptor will say, such as a timer
         of its own running out, or 0 once that is overdue. It is refreshed
-        by then. None when it has nothing due.
+        by then. None when it has nothing due. It is asked just before each
+        wait for a sleeping CPU, so "now" is when the wait begins.
         """
         ...
 
