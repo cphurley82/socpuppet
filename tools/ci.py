@@ -99,6 +99,8 @@ class Step:
     argv: tuple[str | Glob, ...]
     # Variables set for this step alone.
     env: Mapping[str, str] = field(default_factory=dict)
+    # What it is given on its standard input, or None for the runner's own.
+    typed: bytes | None = None
 
     def command(self) -> list[str]:
         """The command, with each pattern replaced by the files it matches.
@@ -607,6 +609,22 @@ JOBS = [
             "build/twister",
         ),
         areas=("build", "cable"),
+    ),
+    Job(
+        "qbox-one-command",
+        "Linux's prompt on QBox's hart from a bare checkout, in one command",
+        tiers=(Tier.NIGHTLY,),
+        # 🐧 Linux is typed at as a newcomer would, and its poweroff ends
+        # the command well: it ends otherwise only at Ctrl-].
+        steps=(
+            Step(
+                "qbox",
+                ("uv", "run", "tools/qbox.py"),
+                typed=b"uname -a\npoweroff\n",
+            ),
+        ),
+        uses=("build/qbox", "build/qbox-dev", "extension"),
+        areas=("build", "qbox", "network"),
     ),
     Job(
         "pciem-guest",
@@ -1232,12 +1250,15 @@ class Run:
                     command,
                     cwd=REPO,
                     env={**os.environ, **step.env},
+                    stdin=None if step.typed is None else subprocess.PIPE,
                     stdout=output,
                     stderr=subprocess.STDOUT,
                     start_new_session=True,
                 )
                 self.processes[job.name] = process
-        return process.wait() == 0
+        # It copes with a child that ends before it reads what it is typed.
+        process.communicate(step.typed)
+        return process.returncode == 0
 
     def restore_dev(self) -> None:
         """Configure build/dev for dev again, if a job configured it otherwise.
@@ -1380,7 +1401,12 @@ def run_in_ci(title: str, step: Step) -> bool:
     folded = os.environ.get("GITHUB_ACTIONS") == "true"
     print(f"::group::{title}" if folded else f"▶ {title}")
     started = time.monotonic()
-    finished = subprocess.run(command, cwd=REPO, env={**os.environ, **step.env})
+    finished = subprocess.run(
+        command,
+        cwd=REPO,
+        env={**os.environ, **step.env},
+        input=step.typed,
+    )
     if folded:
         print("::endgroup::")
     took = duration(time.monotonic() - started)

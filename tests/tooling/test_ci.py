@@ -68,11 +68,13 @@ for word, paths in json.loads(os.environ.get("MAKES", "{}")).items():
         for path in paths:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             open(path, "w").close()
+typed = sys.stdin.read()
 with open(os.environ["LOG"] + ".json", "a") as log:
     log.write(json.dumps({
         "command": command,
         "env": {k: v for k, v in os.environ.items()
                 if k.startswith(tuple(os.environ["RECORDED"].split()))},
+        "typed": typed,
         "start": started,
         "end": time.time(),
     }) + "\\n")
@@ -178,6 +180,8 @@ def ci(tmp_path):
         return subprocess.Popen(
             [sys.executable, str(root / "tools" / "ci.py"), *args],
             cwd=root,
+            # Nothing to read: what a step is typed is the runner's to give.
+            stdin=subprocess.DEVNULL,
             env={
                 **{
                     name: value
@@ -408,6 +412,18 @@ def test_run_qbox_quick_builds_the_qbox_tree_then_runs_its_quick_tests_requiring
                 "SOCPUPPET_REQUIRE_CABLE": "1",
             },
         ),
+    ]
+
+
+@pytest.mark.parametrize("where", [(), ("run",)], ids=["here", "in CI"])
+def test_qbox_one_command_runs_the_one_command_typing_uname_and_poweroff_at_linux(
+    ci, where
+):
+    result, _ = ci(*where, "qbox-one-command")
+
+    assert result.returncode == 0, result.stdout
+    assert [(c["command"], c["typed"]) for c in ci.commands()] == [
+        ("uv run tools/qbox.py", "uname -a\npoweroff\n"),
     ]
 
 
