@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is under way**: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. M32 is done, so an installed wheel boots Zephyr and Linux with nothing built, fetching each image the first time it is asked for ([boot-your-firmware.md](boot-your-firmware.md)); **M33, QBox in one command, is next**. Phase 9, the memory, follows it, and M19 comes after both.
+Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is under way**: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. M32 and M33 are done: an installed wheel boots Zephyr and Linux with nothing built, fetching each image the first time it is asked for ([boot-your-firmware.md](boot-your-firmware.md)), and one command on a bare checkout ends with Linux's prompt on QBox's hart ([models/qbox-cpu.md](models/qbox-cpu.md)). **M35, the docs read by a stranger, is next**. Phase 9, the memory, follows it, and M19 comes after both.
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -38,7 +38,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed, untranslated and through page tables; DMA to an unmapped page is a fault record and an interrupt; then the root on the drive in a context Linux's own IOMMU driver programmed (`test_iommu.py`, [models/iommu.md](models/iommu.md)) | ✅ |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers (`test_zephyr_peripheral_samples.py`, `test_linux_boot_flash.py`, `test_linux_rtc.py`, [models/spi-flash.md](models/spi-flash.md)) | ✅ |
 | M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`, [boot-your-firmware.md](boot-your-firmware.md)) | ✅ |
-| M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux and macOS, in CI (`tools/qbox.py`, the nightly `qbox-one-command`) | |
+| M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux and macOS, in CI (`tools/qbox.py`, the nightly `qbox-one-command`) | ✅ |
 | M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`; every link resolves, under lint; a stranger reaches a boot from the front door | |
 | M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
 | M37 | The container | M33, M36 | the release's image opens as a devcontainer in VS Code and in a Codespace, and `docker run` of it boots Linux on both harts with nothing fetched or built, in CI | |
@@ -77,14 +77,6 @@ A milestone's steps are planned when it starts, one `/tdd` session each, and liv
 ## What is next
 
 What each milestone delivers, and why. How is planned when it starts.
-
-### M33: QBox in one command
-
-The second hart from a bare checkout in one command, on Linux and macOS. A second opinion is worth having only if a newcomer can get one.
-
-- Windows under WSL is a loose end, not this milestone's exit ([history/decisions.md](history/decisions.md), 2026-11-02).
-
-- 🦜 Never a QBox wheel: GPL stays out of what PyPI ships.
 
 ### M35: The docs, read by a stranger
 
