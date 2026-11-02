@@ -1864,10 +1864,13 @@ inline Program TakeASupervisorSoftwareInterruptOfItsOwnAsking() {
 // A program that asks the machine timer for one interrupt and takes it.
 // The timer's `mtimecmp` register is at `mtimecmp` and the interrupt is
 // asked for when the timer has counted to `ticks` (below 2048). The handler
-// puts the compare value out of reach again, writes a word to `probe` and
-// goes back to sleep. Both addresses are as for StoreWordThenSleep.
+// puts the compare value out of reach again, counts down from
+// `work_iterations` (below 2048), two instructions an iteration, if it is
+// not 0, writes a word to `probe` and goes back to sleep. Both addresses are
+// as for StoreWordThenSleep.
 inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
-                                     std::uint64_t probe) {
+                                     std::uint64_t probe,
+                                     std::int32_t work_iterations = 0) {
   Program program;
   const std::size_t auipc_at = program.size();
   program.push_back(Auipc(kT2, 0));
@@ -1890,6 +1893,11 @@ inline Program TakeOneTimerInterrupt(std::uint64_t mtimecmp, std::int32_t ticks,
   const std::size_t handler_at = program.size();
   program.push_back(Li(kT1, -1));
   program.push_back(Sw(kT1, kT3, 4));
+  if (work_iterations != 0) {
+    program.push_back(Li(kT4, work_iterations));
+    program.push_back(Addi(kT4, kT4, -1));
+    program.push_back(Bne(kT4, kZero, -4));
+  }
   program.push_back(Lui(kT0, static_cast<Word>(probe >> 12U)));
   program.push_back(Sw(kZero, kT0, 0));
   program.push_back(kMret);

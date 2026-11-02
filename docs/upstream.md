@@ -1626,6 +1626,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: bug.
 - **When it lands**: delete the patch file.
 
+### As a coroutine, QEMU's clock stands still while the CPU waits for work, and the platform's then stands still while it works
+
+- **Where**: `qemu-components/common/include/cpu.h`, `QemuCpu::wait_for_work`, `sync_with_kernel`, `deadline_timer_cb` and `initiator_get_local_time`.
+- **What is wrong**: QBox works the CPU's lead over SystemC's clock out from QEMU's virtual clock, which with `icount` and sleep off counts instructions. While the CPU waits for work, in `wfi`, SystemC's clock moves on and the virtual clock stands still: the one timer that would warp it, the quantum's deadline, is armed only while the CPU runs (the entry above). So when the CPU wakes, the virtual clock is behind SystemC's by the time it waited, the lead works out as nothing, and the CPU runs quantum after quantum with the platform's clock standing still until the virtual clock has counted up to where SystemC's is. 🐧 After an idle, Linux's `uptime` falls behind and a busy wait that reads the `time` register spins for as long as the idle was.
+- **How to see it**: `WhenACpuSleepsUntilItsTimerAndThenWorks.ItsWorkMovesTheClockOn` in `tests/cpp/platform/cpu_test.cpp` with `SOCPUPPET_CPU=qbox_cpu` and without the patch: the CPU sleeps until its timer at 200 µs, then counts down 1,000 instructions before it writes to a probe, and the write arrives at 200 µs where it belongs at 300 µs or later.
+- **What we do**: `cmake/patches/qbox-wait-catches-up-with-the-clock.patch` keeps how far the virtual clock is behind the CPU's time, raises it after each wait for work so that the CPU's time is SystemC's at least, and works the lead out from the CPU's time everywhere the virtual clock was read for it. As a coroutine only, where the wait is SystemC's. ⚠️ The virtual clock itself still lags, so whatever inside QEMU reads it, a CPU's own timer or one of QEMU's devices, still sees the time before the wait: nothing here does, since socpuppet answers the `time` register from SystemC's timer with the CPU's lead (`qbox_cpu.cpp`).
+- **Upstream fix**: move QEMU's virtual clock on by the time waited, which fixes its own readers too; TCG's `icount` cannot be asked to do that from outside (`cpus_set_virtual_clock` does nothing under TCG), so the patch's way is the one that works without changing QEMU.
+- **Kind**: bug.
+- **When it lands**: delete the patch file.
+
 ### A RISC-V CPU's `time` register and its IMSIC's registers cannot be answered from outside QEMU
 
 - **Where**: QEMU's `riscv_cpu_set_rdtime_fn` and `riscv_cpu_set_aia_ireg_rmw_fn` (`target/riscv/cpu_helper.c`), which libqemu (`libqemu/exports.py`, at the tag QBox pins, `libqemu-v11.0-v0.15`) does not export, and QBox's `qemu::CpuRiscv`, which has no method for either.
