@@ -33,9 +33,12 @@ def load_build_qbox():
     return module
 
 
+BUILD_QBOX = load_build_qbox()
+#: The commit QBox is pinned to.
+PIN = BUILD_QBOX.QBOX_COMMIT
 #: pixman, a library QEMU is built against, as apt and Homebrew name it.
 _, PIXMAN_APT, PIXMAN_BREW = next(
-    each for each in load_build_qbox().LIBRARIES if each[0] == "pixman-1"
+    each for each in BUILD_QBOX.LIBRARIES if each[0] == "pixman-1"
 )
 
 
@@ -85,3 +88,15 @@ def test_a_missing_package_stops_it_before_anything_is_built_naming_the_fix(
     assert fix[platform.system()] in result.stdout
     assert not calls(lines, "git")
     assert not calls(lines, "cmake")
+
+
+def test_with_no_qbox_built_it_builds_qbox_at_its_pin_into_the_root(
+    qbox, tmp_path
+):
+    result, lines = qbox()
+
+    assert result.returncode == 0, result.stdout
+    assert calls(lines, "git", "checkout", PIN)
+    install = tmp_path / "qbox" / "install"
+    assert calls(lines, "cmake", f"-DCMAKE_INSTALL_PREFIX={install}")
+    assert calls(lines, "cmake", "--install")
