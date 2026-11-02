@@ -742,49 +742,99 @@ TEST(WhenAHandlerQuietsTheDeviceThatInterrupted, ItRunsOncePerInterrupt) {
   EXPECT_EQ(with_device.TimesTheHandlerRan(), 2);
 }
 
-TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
-  constexpr std::uint64_t kRamBase = 0x8000'0000;
-  constexpr std::uint64_t kTimerBase = 0x0200'0000;
-  constexpr std::uint64_t kProbeBase = 0x1000'0000;
-  std::vector<RecordedAccess> probed;
-  socpuppet::Registry registry = socpuppet::BuiltinComponents();
-  AddRecordingTarget(registry, "probe", probed);
-  socpuppet::Platform platform{std::move(registry)};
-  // The CPU runs up to 100 us ahead of the clock that the timer counts by.
+// A platform with a CPU, a RAM for its program, a machine timer whose
+// interrupt goes to the CPU, and a probe that records each write to it.
+// The CPU runs up to a quantum, 100 us, ahead of the clock the timer
+// counts by.
+struct CpuPlatformWithAMachineTimerAndAProbe {
+  static constexpr std::uint64_t kRamBase = 0x8000'0000;
+  static constexpr std::uint64_t kTimerBase = 0x0200'0000;
+  static constexpr std::uint64_t kMtimecmp = kTimerBase + 0x4000;
+  static constexpr std::uint64_t kProbeBase = 0x1000'0000;
+  static constexpr std::int32_t kTicksAMicrosecond = 10;
+
+  CpuPlatformWithAMachineTimerAndAProbe() : platform{Registry(probed)} {
+    platform.SetQuantum(quantum);
+    AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
+    platform.Add("bus", "router",
+                 {
+                     {"outputs", 3},
+                     {"out0.base", kRamBase},
+                     {"out0.size", 0x1000},
+                     {"out1.base", kTimerBase},
+                     {"out1.size", 0x1'0000},
+                     {"out2.base", kProbeBase},
+                     {"out2.size", 0x100},
+                 });
+    platform.Add("ram", "memory", {{"size", 0x1000}});
+    platform.Add("timer", "machine_timer",
+                 {{"frequency_hz", kTicksAMicrosecond * 1'000'000}});
+    platform.Add("probe", "probe");
+    platform.Bind("cpu.socket", "bus.target");
+    platform.Bind("bus.out0", "ram.socket");
+    platform.Bind("bus.out1", "timer.socket");
+    platform.Bind("bus.out2", "probe.socket");
+    platform.Bind("timer.irq", "cpu.timer_irq");
+    platform.Elaborate();
+  }
+
+  // What the timer has counted to after `microseconds`.
+  static std::int32_t TicksIn(std::int32_t microseconds) {
+    return microseconds * kTicksAMicrosecond;
+  }
+
+  void Load(const riscv::Program& program) {
+    platform.DebugWrite("cpu.socket", kRamBase,
+                        std::as_bytes(std::span{program}));
+  }
+
+  static socpuppet::Registry Registry(std::vector<RecordedAccess>& probed) {
+    socpuppet::Registry registry = socpuppet::BuiltinComponents();
+    AddRecordingTarget(registry, "probe", probed);
+    return registry;
+  }
+
   const sc_core::sc_time quantum{100, sc_core::SC_US};
-  platform.SetQuantum(quantum);
-  AddTheCpu(platform, "cpu", {{"xlen", 64}, {"reset_vector", kRamBase}});
-  platform.Add("bus", "router",
-               {
-                   {"outputs", 3},
-                   {"out0.base", kRamBase},
-                   {"out0.size", 0x1000},
-                   {"out1.base", kTimerBase},
-                   {"out1.size", 0x1'0000},
-                   {"out2.base", kProbeBase},
-                   {"out2.size", 0x100},
-               });
-  platform.Add("ram", "memory", {{"size", 0x1000}});
-  platform.Add("timer", "machine_timer", {{"frequency_hz", 10'000'000}});
-  platform.Add("probe", "probe");
-  platform.Bind("cpu.socket", "bus.target");
-  platform.Bind("bus.out0", "ram.socket");
-  platform.Bind("bus.out1", "timer.socket");
-  platform.Bind("bus.out2", "probe.socket");
-  platform.Bind("timer.irq", "cpu.timer_irq");
-  platform.Elaborate();
-  // 1,000 ticks at ten a microsecond: the interrupt is due at 100 us.
-  const riscv::Program program =
-      riscv::TakeOneTimerInterrupt(kTimerBase + 0x4000, 1000, kProbeBase);
-  platform.DebugWrite("cpu.socket", kRamBase,
-                      std::as_bytes(std::span{program}));
+  std::vector<RecordedAccess> probed;
+  socpuppet::Platform platform;
+};
 
-  platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+TEST(WhenACpuAsksTheMachineTimerForAnInterrupt, ItComesOnceAndOnTime) {
+  using Rig = CpuPlatformWithAMachineTimerAndAProbe;
+  Rig rig;
+  constexpr std::int32_t kDueInMicroseconds = 100;
+  rig.Load(riscv::TakeOneTimerInterrupt(
+      Rig::kMtimecmp, Rig::TicksIn(kDueInMicroseconds), Rig::kProbeBase));
 
-  ASSERT_THAT(probed, ::testing::SizeIs(1));
-  const sc_core::sc_time due{100, sc_core::SC_US};
-  EXPECT_GE(probed.front().Time(), due);
-  EXPECT_LE(probed.front().Time(), due + quantum);
+  rig.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  ASSERT_THAT(rig.probed, ::testing::SizeIs(1));
+  const sc_core::sc_time due{kDueInMicroseconds, sc_core::SC_US};
+  EXPECT_GE(rig.probed.front().Time(), due);
+  EXPECT_LE(rig.probed.front().Time(), due + rig.quantum);
+}
+
+TEST(WhenACpuSleepsUntilItsTimerAndThenWorks, ItsWorkMovesTheClockOn) {
+  // 🎓 A CPU asleep in `wfi` lets the clock run on without it; once
+  // woken, what it does takes the clock's time again, however long it
+  // slept. Here it sleeps 200 us, then counts down 500 times, two
+  // instructions each, before it writes to the probe.
+  using Rig = CpuPlatformWithAMachineTimerAndAProbe;
+  Rig rig;
+  constexpr std::int32_t kDueInMicroseconds = 200;
+  constexpr std::int32_t kIterations = 500;
+  rig.Load(riscv::TakeOneTimerInterrupt(Rig::kMtimecmp,
+                                        Rig::TicksIn(kDueInMicroseconds),
+                                        Rig::kProbeBase, kIterations));
+
+  rig.platform.Run(sc_core::sc_time{1, sc_core::SC_MS});
+
+  ASSERT_THAT(rig.probed, ::testing::SizeIs(1));
+  const sc_core::sc_time due{kDueInMicroseconds, sc_core::SC_US};
+  // At least 100 ns an instruction, the faster of the two CPUs.
+  const sc_core::sc_time an_instruction{100, sc_core::SC_NS};
+  EXPECT_GE(rig.probed.front().Time(),
+            due + an_instruction * (2 * kIterations));
 }
 
 // A platform with a CPU, a RAM for its program and a machine timer, whose
