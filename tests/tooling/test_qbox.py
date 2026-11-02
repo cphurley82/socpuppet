@@ -169,3 +169,15 @@ def test_a_step_that_fails_ends_it_in_a_line_that_says_which_and_boots_nothing(
     assert result.returncode == 1
     assert result.stdout.splitlines()[-1].startswith("tools/qbox.py: cmake ")
     assert not calls(lines, "uv")
+
+
+def test_linux_is_given_the_checkouts_package_ahead_of_whatever_pythonpath_had(
+    qbox, monkeypatch
+):
+    monkeypatch.setenv("PYTHONPATH", "/spam/eggs")
+
+    result, _ = qbox()
+
+    assert f"socpuppet from {REPO / 'python'}{os.pathsep}/spam/eggs" in (
+        result.stdout
+    )

@@ -64,18 +64,7 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=REPOSITORY / "build" / "qbox",
-        help="where QBox's source, build and install go (build/qbox)",
-    )
-    parser.add_argument(
-        "--jobs",
-        type=int,
-        default=os.cpu_count() or 4,
-        help="how many files to compile at once (default: every core)",
-    )
+    add_build_options(parser)
     args = parser.parse_args()
     # Each line is shown as it is printed, before the output of what runs
     # next, in a log as at a terminal.
@@ -94,6 +83,26 @@ def main() -> int:
             f"-DSOCPUPPET_QBOX_DIR={install_of(root)}"
         )
     return 0
+
+
+def add_build_options(parser: argparse.ArgumentParser) -> None:
+    """Add the options of QBox's build, `--root` and `--jobs`, to `parser`.
+
+    For this script and for those that build QBox through it (tools/qbox.py),
+    so that the two say the same.
+    """
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=REPOSITORY / "build" / "qbox",
+        help="where QBox's source, build and install go (build/qbox)",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count() or 4,
+        help="how many files a build compiles at once (default: every core)",
+    )
 
 
 def install_of(root: Path) -> Path:
