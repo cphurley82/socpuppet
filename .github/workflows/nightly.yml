@@ -18,9 +18,9 @@ name: Nightly
 # that is) and Intel (macos-26-intel and macos-15-intel). An Intel Mac runs
 # here what it runs natively, as tools/ci.py runs it there; what it builds
 # in the devcontainer's image, the firmware and twister, it does not, as
-# GitHub's Macs have no Docker. macos-26-intel runs test, qbox-build, qbox
-# and wheel; macos-15-intel, an older Xcode and SDK, and macos-latest run
-# only test.
+# GitHub's Macs have no Docker. macos-26-intel runs test, qbox-build, qbox,
+# qbox-one-command and wheel; macos-15-intel, an older Xcode and SDK, and
+# macos-latest run only test.
 #
 # The clang-tidy jobs run on one Linux and one Mac, the newest, macos-26,
 # where qbox-build builds QBox for qbox-tidy. That is enough: clang-tidy
@@ -206,6 +206,28 @@ jobs:
             build/twister/out/**/build.log
             build/twister/out/**/handler.log
             build/twister/out/**/handler_stderr.log
+
+  qbox-one-command:
+    # 🧦 M33's exit test: QBox's hart from a bare checkout in one command,
+    # as a newcomer runs it (docs/setup.md), to Linux's prompt, where it
+    # types `uname -a` and `poweroff`. Nothing is taken from another job or
+    # a cache: the system's packages, then tools/qbox.py builds QBox and
+    # socpuppet from nothing, and the images are fetched from the release
+    # main published. On Linux, an Apple silicon Mac and an Intel Mac.
+    name: QBox in one command (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, macos-26, macos-26-intel]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build qbox
+          machine: ${{ matrix.os }}
+      - run: uv run python tools/ci.py run qbox-one-command
 
   pciem-guest:
     # 🐧 A real host's tests. The runner's Linux cannot load pciem, which

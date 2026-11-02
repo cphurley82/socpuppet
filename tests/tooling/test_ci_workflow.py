@@ -302,6 +302,22 @@ def test_the_wheel_job_takes_no_firmware_from_the_jobs_that_build_it():
     assert all("firmware" not in setup for setup in setups_in(wheel))
 
 
+def test_qbox_in_one_command_starts_from_a_bare_checkout():
+    # Its packages, and nothing another job built or a cache kept: what a
+    # newcomer's machine has.
+    job = WORKFLOW_FILES[TIER.NIGHTLY.value]["qbox-one-command"]
+
+    assert not needs_of(job)
+    assert all(
+        set(setup) <= {"packages", "machine"} for setup in setups_in(job)
+    )
+    assert not [
+        step
+        for step in job["steps"]
+        if "cache" in step.get("uses", "") or "download" in step.get("uses", "")
+    ]
+
+
 def test_each_job_sets_up_with_the_setup_action_alone():
     # So that uv and the system's packages are set up in one place.
     for where, step in EVERY_STEP:
@@ -348,7 +364,8 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
         name
         for name, job in JOBS.items()
         if name != PUBLISHES_THE_IMAGES
-        and (name == "qbox-build" or "qbox-build" in RUNNER.needed_by(job))
+        # QBox's packages are what a job that builds it needs.
+        and ("qbox" in job.areas or "qbox-build" in RUNNER.needed_by(job))
     }
     for tier in TIER:
         jobs = jobs_of(tier)
