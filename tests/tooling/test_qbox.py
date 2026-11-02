@@ -66,7 +66,7 @@ def qbox(tmp_path):
     log = tmp_path / "log"
     put_in(bin_directory, log, {**PROGRAMS, "c++": "", "dtc": "", "uv": UV})
 
-    def run(*args, missing="", typed=""):
+    def run(*args, missing="", typed="", configure=""):
         result = subprocess.run(
             [
                 sys.executable,
@@ -79,6 +79,7 @@ def qbox(tmp_path):
                 **os.environ,
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
                 "MISSING": missing,
+                "CONFIGURE": configure,
             },
             input=typed,
             stdout=subprocess.PIPE,
@@ -160,3 +161,15 @@ def test_it_ends_by_handing_this_terminal_to_linux_on_qboxs_hart(qbox):
     assert f"socpuppet from {REPO / 'python'}" in result.stdout
     assert "typed: uname -a" in result.stdout
     assert result.returncode == THE_BOOTS
+
+
+def test_a_step_that_fails_ends_it_in_a_line_that_says_which_and_boots_nothing(
+    qbox,
+):
+    result, lines = qbox(configure="fails")
+
+    assert result.returncode == 1
+    assert "Traceback" not in result.stdout
+    assert result.stdout.splitlines()[-1].startswith("tools/qbox.py: ")
+    assert "failed" in result.stdout.splitlines()[-1]
+    assert not calls(lines, "uv")

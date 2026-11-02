@@ -73,19 +73,30 @@ def main() -> int:
             print(report.show())
         print("Install it, then run this again.")
         return 1
-    root = args.root.resolve()
+    # Each line is shown as it is printed, before the output of what runs
+    # next, in a log as at a terminal.
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+    try:
+        build(args.root.resolve(), args.jobs)
+    except Failed as failure:
+        print(f"tools/qbox.py: {failure}")
+        return 1
+    boot_linux()
+    return 0
+
+
+def build(root: Path, jobs: int) -> None:
+    """Build QBox into `root`, unless it is there, then socpuppet with it."""
     if (root / "install" / QBOX_PACKAGE).is_file():
         print(
             f"🧦 QBox is built already, in {root / 'install'}. "
             f"To build it again, delete {root} first."
         )
     else:
-        build_qbox.build(root, args.jobs)
+        build_qbox.build(root, jobs)
     install = f"-DSOCPUPPET_QBOX_DIR={root / 'install'}"
     run("cmake", "--preset", "qbox", install)
-    run("cmake", "--build", "--preset", "qbox", "--parallel", str(args.jobs))
-    boot_linux()
-    return 0
+    run("cmake", "--build", "--preset", "qbox", "--parallel", str(jobs))
 
 
 def boot_linux() -> None:
