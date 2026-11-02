@@ -37,18 +37,7 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument(
-        "--root",
-        type=Path,
-        default=REPOSITORY / "build" / "qbox",
-        help="where QBox's source, build and install go (build/qbox)",
-    )
-    parser.add_argument(
-        "--jobs",
-        type=int,
-        default=os.cpu_count() or 4,
-        help="how many files each build compiles at once (default: every core)",
-    )
+    build_qbox.add_build_options(parser)
     args = parser.parse_args()
     missing = [
         report
@@ -110,6 +99,10 @@ def boot_linux() -> None:
     The checkout's socpuppet, as the qbox tree built it, and the checkout's
     images if it has built them, or else those fetched into the cache.
     """
+    # The checkout's package first, ahead of whatever PYTHONPATH had.
+    path = os.pathsep.join(
+        filter(None, (str(REPOSITORY / "python"), os.environ.get("PYTHONPATH")))
+    )
     # What was printed goes first: nothing of this process is left after.
     sys.stdout.flush()
     os.execvpe(
@@ -118,7 +111,7 @@ def boot_linux() -> None:
             *("uv", "run", "python", "-m", "socpuppet"),
             *("linux", "--cpu", "qbox_cpu"),
         ],
-        {**os.environ, "PYTHONPATH": str(REPOSITORY / "python")},
+        {**os.environ, "PYTHONPATH": path},
     )
 
 
