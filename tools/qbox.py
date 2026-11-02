@@ -8,7 +8,10 @@ Usage:
 🩺 It asks the doctor first whether this machine has what socpuppet's build
 and QBox's need, and stops, saying what to install, if it has not. Then it
 builds QBox (tools/build_qbox.py), unless it is built already, and then
-socpuppet against it, in the qbox preset's tree (build/qbox-dev).
+socpuppet against it, in the qbox preset's tree (build/qbox-dev). And then
+it hands this terminal to 🐧 Linux on QBox's hart, as `socpuppet linux
+--cpu qbox_cpu`: what is typed, or piped in, goes to Linux's shell, Ctrl-]
+leaves, and the command ends as that does.
 """
 
 import argparse
@@ -81,7 +84,25 @@ def main() -> int:
     install = f"-DSOCPUPPET_QBOX_DIR={root / 'install'}"
     run("cmake", "--preset", "qbox", install)
     run("cmake", "--build", "--preset", "qbox", "--parallel", str(args.jobs))
+    boot_linux()
     return 0
+
+
+def boot_linux() -> None:
+    """Become `socpuppet linux` on QBox's hart, from the checkout.
+
+    The checkout's socpuppet, as the qbox tree built it, and the checkout's
+    images if it has built them, or else those fetched into the cache.
+    """
+    # What was printed goes first: nothing of this process is left after.
+    sys.stdout.flush()
+    os.chdir(REPOSITORY)
+    boot = ["uv", "run", "python", "-m", "socpuppet", "linux"]
+    os.execvpe(
+        "uv",
+        [*boot, "--cpu", "qbox_cpu"],
+        {**os.environ, "PYTHONPATH": str(REPOSITORY / "python")},
+    )
 
 
 def run(*argv: str) -> None:
