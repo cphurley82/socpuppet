@@ -16,6 +16,7 @@ This page takes a fresh machine to one that builds socpuppet, passes every test,
   firmware/build.py ─▶  the Zephyr SDK, Zephyr, Zephyr's Python,    (build/firmware)
                        OpenSBI, EDK2
   tools/build_qbox.py ▶ QBox and its QEMU                          (build/qbox)
+                       (tools/qbox.py: that, socpuppet with it, and Linux)
   tools/build_pciem.py ▶ pciem's kernel module, if you want         (build/pciem)
                        this machine's Linux as the SSD's host
   Docker Desktop  ──▶  the devcontainer's image: the firmware      (Docker's own disk)
@@ -128,7 +129,15 @@ SOCPUPPET_REQUIRE_FIRMWARE=1 uv run ctest --preset dev
 
 ⚠️ QEMU is GPL-2.0. QBox is always built from source beside socpuppet and never goes into the wheel.
 
-On Linux or a Mac, with the packages from step 1:
+🧦 One command does all of it, on Linux or a Mac with the packages from step 1. It asks 🩺 the doctor for what is missing, builds QBox and its QEMU, builds socpuppet against them, and boots 🐧 Linux on QBox's hart at this terminal:
+
+```sh
+uv run tools/qbox.py                  # QBox, socpuppet with it, then Linux's prompt: 6 to 15 minutes the first time
+```
+
+💡 From a fresh clone on a 24-core Linux machine it took 5½ minutes to Linux's prompt, and 5.7 GB under `build/`; a laptop takes longer, the Macs' times are below. Type at Linux's shell as at any other; `poweroff` or Ctrl-] ends it. Run it again and QBox is not built again, only socpuppet's build checked, so Linux prompts within a minute. It needs no firmware built: Linux's images are fetched the first time, as in [linux.md](linux.md). If QBox's pin or its patches change later, `uv run tools/build_qbox.py` brings it up to date, building only what changed.
+
+The same, step by step, with the whole suite on QBox's hart after it:
 
 ```sh
 uv run tools/build_qbox.py            # QBox and its QEMU, into build/qbox/install: about 5 to 10 minutes

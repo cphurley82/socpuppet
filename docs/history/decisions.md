@@ -4,6 +4,9 @@ Every decision that settled how socpuppet is built, dated, with its reason and w
 
 ## 2026-11-02
 
+- **QBox in one command is `tools/qbox.py`, in the checkout: never a wheel and never a subcommand of the package.** It asks the doctor, builds QBox with `tools/build_qbox.py` unless it is built, builds the `qbox` preset, and becomes `socpuppet linux --cpu qbox_cpu`. A subcommand would ship in the wheel, where QBox can never be (*GPL stays out of what PyPI ships*), and would need the build's tools; `tools/build_qbox.py` stays the one step CI's `qbox-build` runs. Its exit test is a nightly job, `qbox-one-command`, from a bare checkout on Linux and both Macs, typing `uname -a` and `poweroff` at Linux.
+- **Windows under WSL leaves M33's exit test, as a loose end.** GitHub has no WSL runner, and the WSL2 its Windows runners carry is not documented; the milestone's point, a newcomer's second opinion, stands on Linux and macOS. The release gate keeps WSL for `pip install` (M36).
+- **QBox's hart takes the clock's time for what it does after a sleep** (`qbox-wait-catches-up-with-the-clock.patch`): QEMU's clock stood still across a `wfi`, and the platform's then stood still while the CPU worked. Fixed in QBox's own code, by *borrow before building*, with a test of the hart's suite that the interpreter already passed.
 - **`examples/linux_cable.py` runs on both harts, and the `interpreter` label is gone.** Under the pump, QBox's hart runs ahead of the wall as it works, since the quantum's deadline (2026-10-27), and `ssh` through the cable answers it; the label kept the example off that hart for a fault that was already fixed. By *clarity and correctness first*: a test that pins the pace (`TestWhenTheBootIsPumped`) now says so. ↔ Reverses the part of the 2026-10-26 entry that kept `linux_cable` on the interpreter.
 
 ## 2026-10-31
