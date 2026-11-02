@@ -18,7 +18,6 @@ import argparse
 import dataclasses
 import os
 import platform
-import subprocess
 import sys
 from pathlib import Path
 
@@ -29,9 +28,6 @@ from needs import Failed
 REPOSITORY = Path(__file__).resolve().parents[1]
 #: What the one command needs of this machine, as the doctor's areas.
 AREAS = ("build", "qbox")
-#: The file in QBox's install that says it is built: what CMake finds QBox
-#: by (cmake/Dependencies.cmake).
-QBOX_PACKAGE = Path("lib/cmake/qbox-2.0/qboxConfig.cmake")
 
 
 def main() -> int:
@@ -76,10 +72,14 @@ def main() -> int:
     # Each line is shown as it is printed, before the output of what runs
     # next, in a log as at a terminal.
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+    # A --root relative to where this was run, then the checkout, where the
+    # presets and the images are.
+    root = args.root.resolve()
+    os.chdir(REPOSITORY)
     try:
-        build(args.root.resolve(), args.jobs)
+        build(root, args.jobs)
     except Failed as failure:
-        print(f"tools/qbox.py: {failure}")
+        print(f"tools/qbox.py: {failure}", file=sys.stderr)
         return 1
     boot_linux()
     return 0
@@ -87,39 +87,39 @@ def main() -> int:
 
 def build(root: Path, jobs: int) -> None:
     """Build QBox into `root`, unless it is there, then socpuppet with it."""
-    if (root / "install" / QBOX_PACKAGE).is_file():
+    install = build_qbox.install_of(root)
+    if build_qbox.built(root):
         print(
-            f"🧦 QBox is built already, in {root / 'install'}. "
-            f"To build it again, delete {root} first."
+            f"🧦 QBox is built already, in {install}. To bring it up to date "
+            "with its pin and its patches, which builds only what changed: "
+            f"uv run tools/build_qbox.py --root {root}"
         )
     else:
         build_qbox.build(root, jobs)
-    install = f"-DSOCPUPPET_QBOX_DIR={root / 'install'}"
-    run("cmake", "--preset", "qbox", install)
-    run("cmake", "--build", "--preset", "qbox", "--parallel", str(jobs))
+    build_qbox.command(
+        "cmake", "--preset", "qbox", f"-DSOCPUPPET_QBOX_DIR={install}"
+    )
+    build_qbox.command(
+        "cmake", "--build", "--preset", "qbox", "--parallel", str(jobs)
+    )
 
 
 def boot_linux() -> None:
-    """Become `socpuppet linux` on QBox's hart, from the checkout.
+    """Become `socpuppet linux` on QBox's hart, in the checkout.
 
     The checkout's socpuppet, as the qbox tree built it, and the checkout's
     images if it has built them, or else those fetched into the cache.
     """
     # What was printed goes first: nothing of this process is left after.
     sys.stdout.flush()
-    os.chdir(REPOSITORY)
-    boot = ["uv", "run", "python", "-m", "socpuppet", "linux"]
     os.execvpe(
         "uv",
-        [*boot, "--cpu", "qbox_cpu"],
+        [
+            *("uv", "run", "python", "-m", "socpuppet"),
+            *("linux", "--cpu", "qbox_cpu"),
+        ],
         {**os.environ, "PYTHONPATH": str(REPOSITORY / "python")},
     )
-
-
-def run(*argv: str) -> None:
-    """Run a command in the checkout, its output to the terminal."""
-    if subprocess.run(argv, cwd=REPOSITORY).returncode != 0:
-        raise Failed(f"{' '.join(argv)} failed")
 
 
 if __name__ == "__main__":
