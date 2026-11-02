@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is next**, starting with M32: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. Phase 9, the memory, follows it, and M19 comes after both.
+Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is under way**: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. M32 is done, so an installed wheel boots Zephyr and Linux with nothing built, fetching each image the first time it is asked for ([boot-your-firmware.md](boot-your-firmware.md)); **M33, QBox in one command, is next**. Phase 9, the memory, follows it, and M19 comes after both.
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -37,7 +37,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M17 | Ethernet | M13, M20, M29 | Zephyr's `echo_server` answers a datagram Python sends; Linux answers Python's `ping`; the capture opens in Wireshark | deferred 2026-10-27 |
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed, untranslated and through page tables; DMA to an unmapped page is a fault record and an interrupt; then the root on the drive in a context Linux's own IOMMU driver programmed (`test_iommu.py`, [models/iommu.md](models/iommu.md)) | ✅ |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers (`test_zephyr_peripheral_samples.py`, `test_linux_boot_flash.py`, `test_linux_rtc.py`, [models/spi-flash.md](models/spi-flash.md)) | ✅ |
-| M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`) | |
+| M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`, [boot-your-firmware.md](boot-your-firmware.md)) | ✅ |
 | M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux, macOS and WSL, in CI | |
 | M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`; every link resolves, under lint; a stranger reaches a boot from the front door | |
 | M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
@@ -77,12 +77,6 @@ A milestone's steps are planned when it starts, one `/tdd` session each, and liv
 ## What is next
 
 What each milestone delivers, and why. How is planned when it starts.
-
-### M32: Images fetched on first use
-
-An installed wheel boots real firmware with nothing built: the images come from a release the first time they are needed. Aim 3 of [vision.md](vision.md#the-aims), a firmware team installs the wheel and boots, and *a newcomer builds it for free*.
-
-- Not inside the wheel, which stays small and MIT-only; the kernel stays stock.
 
 ### M33: QBox in one command
 
@@ -174,6 +168,7 @@ Small things that are nobody's milestone, each with a link to where its detail l
 
 - Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
 - Delete the releases of images that no commit on main pins: a change under the firmware's sources makes a new one, even a comment's ([development.md](development.md)).
+- A fetch of an image tries again only when its server is out of reach; one cut off partway, or answered with a server's error, fails at once (`python/socpuppet/images.py`).
 - Run the C++ NVMe contract against the SSD with its Zephyr firmware: `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes, and `tests/python/test_ssd_firmware.py` holds the firmware's share until then.
 - Mend, or send, what QBox and QEMU get wrong with atomics ([models/qbox-cpu.md](models/qbox-cpu.md), [upstream.md](upstream.md)).
 - Make a translating backend pass the hart's suite, LLVM first ([history/speed-spike.md](history/speed-spike.md), [upstream.md](upstream.md)).
