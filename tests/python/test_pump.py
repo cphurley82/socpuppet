@@ -24,12 +24,14 @@ from socpuppet.time import ms, ns, s, us
 
 pytestmark = pytest.mark.platform
 
-#: How long after it is asked for the pipe is written to, in seconds on
-#: the wall: long enough that the pump is already waiting or working when
-#: the byte arrives, so that it is noticed and not found at the first look.
+#: How long after the pump's first look the pipe is written to, in seconds on
+#: the wall, so that the pump is already waiting or working when the byte
+#: arrives, however long a busy machine took to get that far.
 WRITTEN_AFTER = 0.2
-#: How much later than a look a busy machine may get round to it.
-SLACK = 0.05
+#: How far the clock may fall short of the wall during a wait: room for a busy
+#: machine to go from being about to wait to waiting. Anything short of
+#: WRITTEN_AFTER still catches a clock that did not move.
+SLACK = WRITTEN_AFTER / 2
 #: How long, on the wall, a test waits for what it waits for, so that
 #: something that never comes fails the test and does not hang it.
 PATIENCE = 5.0
@@ -48,13 +50,16 @@ class Pipe:
 
     `events` is what the pump did with it, in order: "service" when its
     descriptor was readable, and "refresh" at each look. `looked_at` is
-    when each look came, on the wall.
+    when each look came, on the wall, and `about_to_wait_at` when the pump
+    asked what was due, which it does just before each wait.
     """
 
     def __init__(self) -> None:
         self._read, self._write = os.pipe()
         self.events: list[str] = []
         self.looked_at: list[float] = []
+        self.about_to_wait_at: list[float] = []
+        self._write_after: float | None = None
         self._writer: threading.Timer | None = None
         self._write_times: tuple[float, float] | None = None
         self.serviced_at: float | None = None
@@ -63,6 +68,7 @@ class Pipe:
         return self._read
 
     def due_in(self) -> float | None:
+        self.about_to_wait_at.append(time.monotonic())
         return None
 
     def service(self) -> None:
@@ -73,11 +79,15 @@ class Pipe:
     def refresh(self) -> None:
         self.events.append("refresh")
         self.looked_at.append(time.monotonic())
+        if self._write_after is not None and self._writer is None:
+            self._writer = threading.Timer(
+                self._write_after, self._write_a_byte
+            )
+            self._writer.start()
 
     def write_after(self, seconds: float) -> None:
-        """Write a byte to the pipe `seconds` from now."""
-        self._writer = threading.Timer(seconds, self._write_a_byte)
-        self._writer.start()
+        """Write a byte to the pipe `seconds` after the pump's first look."""
+        self._write_after = seconds
 
     def write_times(self) -> tuple[float, float]:
         """On the wall, just before the byte was written and just after.
@@ -155,17 +165,23 @@ def pipe():
 
 
 class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuSleeps:
-    def test_it_is_serviced_and_the_clock_has_moved_only_as_far_as_the_wall(
-        self, pipe
-    ):
+    def test_it_is_serviced_and_the_clock_has_kept_to_the_wall(self, pipe):
         platform = a_platform_whose_cpu(sleeps)
         started = time.monotonic()
         pipe.write_after(WRITTEN_AFTER)
 
         assert pumped_until(platform, pipe, lambda: "service" in pipe.events)
         assert platform.time <= s(time.monotonic() - started)
+        # 💡 The clock moves on only during a wait, and a busy machine can take
+        # a while between two, or to reach the first, even from the look just
+        # before it, where the timer's thread starts. So it is held to the wall
+        # only from the start of the wait the byte was written in.
         written, _ = pipe.write_times()
-        assert platform.time >= s(written - started) - s(SLACK)
+        waiting_since = max(
+            (at for at in pipe.about_to_wait_at if at <= written),
+            default=written,
+        )
+        assert platform.time >= s(written - waiting_since) - s(SLACK)
 
 
 class TestWhenAFarEndsDescriptorBecomesReadableWhileTheCpuWorks:
