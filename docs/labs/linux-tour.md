@@ -64,8 +64,7 @@ time (printf 'uname -a\npoweroff\n' | PYTHONPATH=python uv run python -m socpupp
 The hart is DBT-RISE's interpreter. QBox puts QEMU's CPU in the same slot: the same board around it, devicetree and all, and nothing else changes. QEMU is GPL, so you build it yourself, once:
 
 ```sh
-uv run tools/build_qbox.py                                 # QBox and its QEMU: minutes
-uv run cmake --preset qbox && uv run cmake --build --preset qbox
+uv run tools/qbox.py                                       # QBox, socpuppet with it, and Linux's prompt: type poweroff
 SOCPUPPET_CPU=qbox_cpu PYTHONPATH=python uv run python examples/linux_hello.py
 PYTHONPATH=python uv run python examples/linux_hello.py    # the interpreter again, to compare
 ```

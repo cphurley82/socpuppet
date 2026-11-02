@@ -144,6 +144,12 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 PYTHONPATH=python uv run python -m socpuppet linux
 ```
 
+🧦 Or on the second hart, QEMU's CPU by way of QBox, which is GPL and so built here from source, in one command ([setup.md](docs/setup.md#5-qbox-optional) lists the packages it needs):
+
+```sh
+uv run tools/qbox.py
+```
+
 🐧 Or the other way round: with pciem, a Linux kernel module, `socpuppet drive` puts the puppet's SSD on this machine's own PCIe bus, and this machine's Linux formats and mounts it ([setup.md](docs/setup.md#6-pciem-optional)).
 
 🧪 [The labs](docs/labs/README.md) are sessions to run at the keyboard, and the first, [Linux end to end](docs/labs/linux-tour.md), is this boot with everything you can do to it: `ssh` in, swap the CPU for QEMU's, swap the 🎭 stand-ins for the real models, and watch what changes.

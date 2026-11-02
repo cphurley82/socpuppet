@@ -38,7 +38,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M15 | IOMMU | M24 | the disk test through a device context the firmware programmed, untranslated and through page tables; DMA to an unmapped page is a fault record and an interrupt; then the root on the drive in a context Linux's own IOMMU driver programmed (`test_iommu.py`, [models/iommu.md](models/iommu.md)) | ✅ |
 | M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers (`test_zephyr_peripheral_samples.py`, `test_linux_boot_flash.py`, `test_linux_rtc.py`, [models/spi-flash.md](models/spi-flash.md)) | ✅ |
 | M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`, [boot-your-firmware.md](boot-your-firmware.md)) | ✅ |
-| M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux, macOS and WSL, in CI | |
+| M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux and macOS, in CI (`tools/qbox.py`, the nightly `qbox-one-command`) | |
 | M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`; every link resolves, under lint; a stranger reaches a boot from the front door | |
 | M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
 | M37 | The container | M33, M36 | the release's image opens as a devcontainer in VS Code and in a Codespace, and `docker run` of it boots Linux on both harts with nothing fetched or built, in CI | |
@@ -80,7 +80,9 @@ What each milestone delivers, and why. How is planned when it starts.
 
 ### M33: QBox in one command
 
-The second hart from a bare checkout in one command, on Linux, macOS and Windows under WSL. A second opinion is worth having only if a newcomer can get one.
+The second hart from a bare checkout in one command, on Linux and macOS. A second opinion is worth having only if a newcomer can get one.
+
+- Windows under WSL is a loose end, not this milestone's exit ([history/decisions.md](history/decisions.md), 2026-11-02).
 
 - 🦜 Never a QBox wheel: GPL stays out of what PyPI ships.
 
@@ -167,6 +169,7 @@ Each has a date it must be settled by and what happens until then.
 Small things that are nobody's milestone, each with a link to where its detail lives.
 
 - Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
+- The one command for QBox's hart on Windows under WSL, in CI. GitHub has no WSL runner; its `windows-2025` runners carry WSL2, though GitHub does not document it. The checkout belongs inside WSL's own filesystem; the setup action has no Windows branch, and the doctor no fix for one.
 - Delete the releases of images that no commit on main pins: a change under the firmware's sources makes a new one, even a comment's ([development.md](development.md)).
 - A fetch of an image tries again only when its server is out of reach; one cut off partway, or answered with a server's error, fails at once (`python/socpuppet/images.py`).
 - Run the C++ NVMe contract against the SSD with its Zephyr firmware: `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes, and `tests/python/test_ssd_firmware.py` holds the firmware's share until then.
