@@ -6,7 +6,7 @@
 
 🌙 Every push runs the quick tests, one boot of each area included, on Linux on both harts and on an Apple silicon Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
 
-> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). Next on stage, Ethernet ([the roadmap](docs/roadmap.md)).
+> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). Next on stage, the first release: socpuppet on PyPI ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
 
@@ -23,15 +23,19 @@ The host boots [Zephyr](https://zephyrproject.org). It is a 64-bit RISC-V CPU wi
 
 ```python
 import socpuppet as sp
+from socpuppet import images
 from socpuppet.boards.host import host
 
 board = host()                                  # 🧵 describe the platform
 board.platform.build()                          # create the simulation
-board.platform.load_elf("zephyr.elf")           # firmware built for the board socpuppet_host
+board.platform.load_elf(                        # Zephyr's hello world, built for this board
+    images.find("hello_world_socpuppet_host.elf")
+)
 
 board.platform.run_until(
     lambda: "Hello World!" in board.uart.output, timeout=sp.ms(50)
 )
+board.platform.run(sp.ms(1))                    # let the line finish
 print(board.uart.output)
 ```
 
@@ -40,7 +44,7 @@ print(board.uart.output)
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-`uv run firmware/build.py zephyr` builds that `zephyr.elf` (and every other image the tests boot) into `build/firmware`, and `examples/host_hello.py` is this show with Zephyr's own hello world, which is fetched the first time it is asked for, so there is nothing to build. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
+The image is fetched the first time it is asked for, so there is nothing to build; `uv run firmware/build.py zephyr` builds it, and every other image the tests boot, into `build/firmware` if you would rather. Save the show as `my_show.py` and run it from the checkout with `PYTHONPATH=python uv run python my_show.py`, once socpuppet is built ([Try it](#try-it)); `examples/host_hello.py` is the same show with a tidier ending. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
 
 ## A smaller show
 

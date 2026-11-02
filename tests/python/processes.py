@@ -107,10 +107,15 @@ def ended_or_killed(process):
         process.wait()
 
 
-def run_file(path, **extra_environment):
-    """Run a Python file as a program, and return the finished process."""
+def run_file(path, *, cwd=None, **extra_environment):
+    """Run a Python file as a program, and return the finished process.
+
+    `cwd` is the directory the program runs in, so its relative paths
+    (`build/firmware`, say) are read against it; this process's, if none.
+    """
     return subprocess.run(
         [sys.executable, str(path)],
+        cwd=cwd,
         env=environment(**extra_environment),
         capture_output=True,
         text=True,
