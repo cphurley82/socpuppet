@@ -17,6 +17,7 @@ quick way and from the flash.
 """
 
 import re
+import time
 
 import pytest
 
@@ -30,6 +31,7 @@ from linux_shell import (
     SWITCHES_OFF_WITHIN,
     a_host_with_linux,
     a_host_with_uefi_and_linux,
+    prompted,
     run_to_the_prompt,
     type_and_wait_for_the_prompt,
 )
@@ -37,6 +39,8 @@ from mt19937_64 import stream
 from opensbi_boots import in_the_flash, loaded_by_python
 from socpuppet.boards.host import switched_off
 from socpuppet.boards.virtio import Virtio
+from socpuppet.pump import pump
+from socpuppet.pytest_plugin import patience_factor
 
 #: OpenSBI is handed the devicetree compiled, and dtc compiles it. A boot
 #: of Linux takes seconds on QBox's hart and minutes on the interpreter, so
@@ -71,8 +75,8 @@ def linux_at_its_prompt(firmware, shared):
     It shares `shared`, which Linux has not mounted.
     """
     board = a_host_with_linux(firmware, share=shared)
-    prompted = run_to_the_prompt(board)
-    assert prompted, (
+    reached = run_to_the_prompt(board)
+    assert reached, (
         "Linux never prompted. OpenSBI's console:\n"
         f"{plain(board.uart.output)[-3000:]}\nThe virtio console:\n"
         f"{plain(board.virtio.console.output)[-3000:]}"
@@ -200,6 +204,56 @@ class TestWhenPythonTypesPoweroff:
         )
 
 
+#: How long a pumped boot may take on the wall before the test gives up:
+#: seconds on QBox's hart, so two minutes is a boot gone wrong.
+PUMPED_PROMPT_WITHIN = 120.0 * patience_factor()
+#: How many times faster than the wall the clock runs to the prompt, at
+#: least: 17.6 times on a 24-core Linux machine (243 s of the clock in
+#: 13.8 s on the wall). A pump that held the clock to the wall would give
+#: about 1.
+OUTRUNS_THE_WALL_BY = 2
+
+
+@pytest.mark.platform
+@pytest.mark.only_on_qbox(
+    "the interpreter boots Linux at about the wall's pace, so only this "
+    "hart's clock can be expected to run well ahead of it"
+)
+class TestWhenTheBootIsPumped:
+    def test_the_clock_runs_well_ahead_of_the_wall_to_the_prompt(
+        self, firmware
+    ):
+        # 🎓 The pump (`socpuppet linux`'s) runs the platform flat out while
+        # the CPU works and keeps the clock to the wall's only while it
+        # sleeps. Linux's boot is mostly work, so its clock must outrun
+        # the wall: at the wall's pace, the CPU was taken for asleep.
+        board = a_host_with_linux(firmware)
+
+        took = pump_to_the_prompt(board)
+
+        assert prompted(board), (
+            f"No prompt in {took:.0f} s on the wall. The console:\n"
+            f"{plain(board.virtio.console.output)[-3000:]}"
+        )
+        assert board.platform.time > OUTRUNS_THE_WALL_BY * sp.s(took), (
+            f"{board.platform.time / sp.s(1):.0f} s of the clock in "
+            f"{took:.0f} s on the wall"
+        )
+
+
+def pump_to_the_prompt(board):
+    """Pump `board` until Linux's shell prompts, or `PUMPED_PROMPT_WITHIN`
+    runs out on the wall. Gives how many seconds it took on the wall."""
+    started = time.monotonic()
+    pump(
+        board.platform,
+        until=lambda: (
+            prompted(board) or time.monotonic() - started > PUMPED_PROMPT_WITHIN
+        ),
+    )
+    return time.monotonic() - started
+
+
 #: What the kernel says once it has found UEFI's tables, which its EFI stub
 #: hands it: "efi: EFI v2.7 by EDK II".
 FOUND_UEFI = re.compile(r"efi: EFI v[\d.]+ by EDK II")
@@ -217,8 +271,8 @@ class TestWhenUefiBootsTheKernelFromTheDisk:
         # partition.
         board = a_host_with_uefi_and_linux(firmware, boot)
 
-        prompted = run_to_the_prompt(board, within=LONG_ENOUGH_THROUGH_UEFI)
-        assert prompted, (
+        reached = run_to_the_prompt(board, within=LONG_ENOUGH_THROUGH_UEFI)
+        assert reached, (
             f"Linux never prompted. UEFI's console:\n"
             f"{plain(board.uart.output)[-3000:]}\nThe virtio console:\n"
             f"{plain(board.virtio.console.output)[-3000:]}"
