@@ -4,7 +4,7 @@ Where socpuppet is going, in phases and milestones, and where it is now. [vision
 
 ## Where we are
 
-Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is under way**: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. M32 and M33 are done: an installed wheel boots Zephyr and Linux with nothing built, fetching each image the first time it is asked for ([boot-your-firmware.md](boot-your-firmware.md)), and one command on a bare checkout ends with Linux's prompt on QBox's hart ([models/qbox-cpu.md](models/qbox-cpu.md)). **M35, the docs read by a stranger, is next**. Phase 9, the memory, follows it, and M19 comes after both.
+Phases 1 to 5 are done, and Phase 6 all but M19, the AI processor, and M17, Ethernet, which waits until Linux asks for a card. **Phase 8, the first release, is under way**: socpuppet is useful enough to put in strangers' hands, and the release gate in [vision.md](vision.md#the-release-gate) says what that takes. M32, M33 and M35 are done: an installed wheel boots Zephyr and Linux with nothing built, fetching each image the first time it is asked for ([boot-your-firmware.md](boot-your-firmware.md)); one command on a bare checkout ends with Linux's prompt on QBox's hart ([models/qbox-cpu.md](models/qbox-cpu.md)); and the docs read as a stranger reads them, with lint holding them to it, a front door, and 🌱 a first show that needs nothing but Python ([first-show.md](first-show.md)). **M36, the release, is next**. Phase 9, the memory, follows it, and M19 comes after both.
 
 A milestone is done when its exit test passes in CI. The table is in the order the milestones are done; the numbers are the order they were planned in, and a milestone keeps its number when it moves, so that nothing written about it changes its meaning.
 
@@ -39,7 +39,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M18 | The small essentials: GPIO, SPI, I2C, RTC | M13, M20 | Zephyr's sample or test for each, with Python at the far end of the pins; the boot flash and the RTC under Linux's drivers (`test_zephyr_peripheral_samples.py`, `test_linux_boot_flash.py`, `test_linux_rtc.py`, [models/spi-flash.md](models/spi-flash.md)) | ✅ |
 | M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`, [boot-your-firmware.md](boot-your-firmware.md)) | ✅ |
 | M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux and macOS, in CI (`tools/qbox.py`, the nightly `qbox-one-command`) | ✅ |
-| M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`; every link resolves, under lint; a stranger reaches a boot from the front door | |
+| M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`, and no date on a page outside the record, under lint (`tools/stranger.py`); every link resolves, under lint; a stranger reaches a boot from the front door: every program on the README and 🌱 [first-show.md](first-show.md) runs as pasted and prints what the page shows (`test_front_door.py`) | ✅ |
 | M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
 | M37 | The container | M33, M36 | the release's image opens as a devcontainer in VS Code and in a Codespace, and `docker run` of it boots Linux on both harts with nothing fetched or built, in CI | |
 | M34 | Labs in twenty-minute sketches | M36, M37 | every lab states a measured length under twenty minutes and its Python steps run under ctest; the 🌱 first-rung lab needs nothing but one of the release's channels | |
@@ -77,12 +77,6 @@ A milestone's steps are planned when it starts, one `/tdd` session each, and liv
 ## What is next
 
 What each milestone delivers, and why. How is planned when it starts.
-
-### M35: The docs, read by a stranger
-
-Every page read as a stranger reads it: the project's own machines, people and dates out, what a contributor needs kept. The gate's front door, and the bottom rung's three rules ([vision.md](vision.md#who-it-is-for)).
-
-- 🌱 The gate's first rung is this milestone's: one page and one example that need nothing but Python, where the reader changes a line and the chip does something different. The labs build on it.
 
 ### M36: The release: PyPI and the tap
 
@@ -161,6 +155,8 @@ Each has a date it must be settled by and what happens until then.
 Small things that are nobody's milestone, each with a link to where its detail lives.
 
 - Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
+- 🌱 Measure [first-show.md](first-show.md) and [boot-your-firmware.md](boot-your-firmware.md) on a real newcomer, which the release gate asks for ([vision.md](vision.md#the-release-gate)); the pages are written, the stopwatch is M36's.
+- What the reading pass left: "the host" (the board, not this machine) and "delta cycle" defined on each page that uses them; the 🎭 stand-in pages opening on what each stands in for before the sentence they share; and one name for the IO die's manager across [linux.md](linux.md) and [boards.md](boards.md).
 - The one command for QBox's hart on Windows under WSL, in CI. GitHub has no WSL runner; its `windows-2025` runners carry WSL2, though GitHub does not document it. The checkout belongs inside WSL's own filesystem; the setup action has no Windows branch, and the doctor no fix for one.
 - Delete the releases of images that no commit on main pins: a change under the firmware's sources makes a new one, even a comment's ([development.md](development.md)).
 - A fetch of an image tries again only when its server is out of reach; one cut off partway, or answered with a server's error, fails at once (`python/socpuppet/images.py`).

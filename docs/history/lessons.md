@@ -165,6 +165,7 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 
 ## Testing method
 
+- **An example is tested by pasting it.** The README's first show stopped the moment its greeting appeared and printed half a line, for weeks, and the first run as pasted found it (`tests/python/test_front_door.py`). What a page shows under a program is part of the example: Zephyr's shell colors its prompt, so the test strips the terminal's codes before it looks for the page's lines.
 - **A test that passes the first time has shown nothing yet.** Every such test is held by a one-line mutation of the code, and the mutations that survived earned their keep: the big-page test writing into the first 4 KiB, a watchdog told to reset that never interrupts, two real images whose length happened to be a whole number of words, a CRC held up by a leading zero, a fed stretch exactly one period long. Check a first-time pass with an image that would show the fault.
 - **What reviews find that mutation cannot**: tests that can only fail by crashing, a second message on a second write of a source's mode, a bit cleared by a one-byte write. Read what exists before designing glue: the devicetree already said what a planned property duplicated.
 - **Mutation gotchas**: a `.pyc` with the same mtime and size as the mutated source runs the mutation (`PYTHONDONTWRITEBYTECODE=1`), and a file moved back with its old time is not rebuilt, so touch it.
