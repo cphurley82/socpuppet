@@ -121,7 +121,6 @@
       "configurePreset": "qbox",
       "output": { "outputOnFailure": true },
       "environment": { "SOCPUPPET_CPU": "qbox_cpu" },
-      "filter": { "exclude": { "label": "interpreter" } },
       "execution": { "jobs": 8 }
     },
     {

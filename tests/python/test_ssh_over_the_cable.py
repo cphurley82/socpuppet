@@ -63,10 +63,9 @@ def linux_on_the_cable(firmware):
     """A host that has booted Linux to its prompt, with a cable plugged in.
 
     💡 Linux boots as fast as the simulation goes, and the cable is
-    plugged in at the prompt: a boot that is pumped keeps to the wall's
-    clock while the CPU sleeps, which on QBox's hart is minutes of a boot
-    that otherwise takes seconds. udhcpc, asking in the background, gets
-    its address at its next try.
+    plugged in at the prompt: nothing outside is needed before it, and a
+    boot that is pumped keeps to the wall's clock while the CPU sleeps.
+    udhcpc, asking in the background, gets its address at its next try.
     """
     board = a_host_with_linux(firmware)
     assert run_to_the_prompt(board), (

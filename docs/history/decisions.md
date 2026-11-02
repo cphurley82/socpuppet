@@ -2,6 +2,10 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-11-02
+
+- **`examples/linux_cable.py` runs on both harts, and the `interpreter` label is gone.** Under the pump, QBox's hart runs ahead of the wall as it works, since the quantum's deadline (2026-10-27), and `ssh` through the cable answers it; the label kept the example off that hart for a fault that was already fixed. By *clarity and correctness first*: a test that pins the pace (`TestWhenTheBootIsPumped`) now says so. ↔ Reverses the part of the 2026-10-26 entry that kept `linux_cable` on the interpreter.
+
 ## 2026-10-31
 
 - **The release of the images is named for the firmware's sources, and made by the first run of main to pass with them.** Its tag is a hash of what the firmware jobs' cache keys hash, the one list of what the images are built from, so a change that builds a new image asks for a new release with nobody deciding to. It waits for the tests, so what is published has been booted; a pull request never holds the write token, because its packages have not been read yet. The first build stays, since images are not built the same twice.

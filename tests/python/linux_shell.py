@@ -64,10 +64,12 @@ def run_to_the_prompt(board, *, within=LONG_ENOUGH):
 
     Gives whether it prompted.
     """
-    return board.platform.run_until(
-        lambda: PROMPT.search(plain(board.virtio.console.output)),
-        timeout=within,
-    )
+    return board.platform.run_until(lambda: prompted(board), timeout=within)
+
+
+def prompted(board):
+    """Whether Linux's shell has prompted on the virtio console."""
+    return PROMPT.search(plain(board.virtio.console.output)) is not None
 
 
 def type_and_wait_for_the_prompt(board, command):

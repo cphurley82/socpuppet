@@ -191,7 +191,6 @@ Small things that are nobody's milestone, each with a link to where its detail l
 - A Debian root beside Alpine's mini root, for a reader who wants `apt`.
 - The virtio console's size feature, so that `vi` and `top` learn the terminal's size ([linux.md](linux.md)).
 - An instruction trace on the DBT-RISE CPU; QBox's is QEMU's ([models/qbox-cpu.md](models/qbox-cpu.md)).
-- QBox's hart under the pump runs at the wall's pace, and `ssh` to it is closed at the key exchange ([models/qbox-cpu.md](models/qbox-cpu.md#what-it-leaves-out)).
 - A guard in `opensbi.lay_out` for a kernel too big for the gap before the devicetree's copy, which only `tests/python/test_linux_images.py` checks today.
 - The admin commands Linux sends that every drive here answers Invalid Opcode to, Delete I/O Submission and Completion Queue and Get Log Page; and a version in `VS`, which reads zero so Linux takes NVMe 1.0's road ([models/ssd-firmware.md](models/ssd-firmware.md), [history/real-host-spike.md](history/real-host-spike.md)).
 - Several I/O queues under this machine's Linux, which pciem's one legacy interrupt keeps at one ([models/pciem-host.md](models/pciem-host.md)).

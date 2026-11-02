@@ -128,14 +128,12 @@ def test_dev_runs_what_quick_does_and_every_other_long_test(dev_tree):
     assert set().union(*runs) == collected_by(dev["pytest"][0], "-m", "")
 
 
-def test_qbox_runs_what_dev_does_on_qboxs_hart_but_the_cable_example(
-    dev_tree, qbox_tree
-):
+def test_qbox_runs_everything_dev_does_on_qboxs_hart(dev_tree, qbox_tree):
     # A C++ test of what a build does without QBox's hart has no place in
     # a build with it, so the C++ tests are left out of the comparison.
     dev, qbox = (not_cpp(selected_by(preset)) for preset in ("dev", "qbox"))
 
-    assert dev - qbox == {"example_linux_cable"}
+    assert dev <= qbox
 
 
 def test_qbox_quick_runs_what_fast_does_and_a_boot_of_each_area_on_qboxs_hart(
