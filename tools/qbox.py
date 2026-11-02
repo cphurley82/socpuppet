@@ -3,21 +3,25 @@
 
 Usage:
   uv run tools/qbox.py
+  uv run tools/qbox.py --jobs N
 
 🩺 It asks the doctor first whether this machine has what socpuppet's build
 and QBox's need, and stops, saying what to install, if it has not. Then it
-builds QBox (tools/build_qbox.py), unless it is built already.
+builds QBox (tools/build_qbox.py), unless it is built already, and then
+socpuppet against it, in the qbox preset's tree (build/qbox-dev).
 """
 
 import argparse
 import dataclasses
 import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
 import build_qbox
 import doctor
+from needs import Failed
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 #: What the one command needs of this machine, as the doctor's areas.
@@ -39,6 +43,12 @@ def main() -> int:
         type=Path,
         default=REPOSITORY / "build" / "qbox",
         help="where QBox's source, build and install go (build/qbox)",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count() or 4,
+        help="how many files each build compiles at once (default: every core)",
     )
     args = parser.parse_args()
     missing = [
@@ -67,8 +77,17 @@ def main() -> int:
             f"To build it again, delete {root} first."
         )
     else:
-        build_qbox.build(root, os.cpu_count() or 4)
+        build_qbox.build(root, args.jobs)
+    install = f"-DSOCPUPPET_QBOX_DIR={root / 'install'}"
+    run("cmake", "--preset", "qbox", install)
+    run("cmake", "--build", "--preset", "qbox", "--parallel", str(args.jobs))
     return 0
+
+
+def run(*argv: str) -> None:
+    """Run a command in the checkout, its output to the terminal."""
+    if subprocess.run(argv, cwd=REPOSITORY).returncode != 0:
+        raise Failed(f"{' '.join(argv)} failed")
 
 
 if __name__ == "__main__":
