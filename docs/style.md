@@ -9,7 +9,7 @@ socpuppet is meant to be read. A learner should be able to open any file and fin
 | C++ | [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) | clang-format, cpplint, clang-tidy, the compiler's warnings |
 | C, for Zephyr | [Zephyr's coding style](https://docs.zephyrproject.org/latest/contribute/style/index.html) | clang-format, Zephyr's own build |
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
-| Markdown | one paragraph per line | rumdl |
+| Markdown | one paragraph per line, read by a stranger | rumdl, and `tools/stranger.py`, which lint runs |
 | SystemRDL, for register maps | one block to a file, in `regs/` | `tools/regs.py`, which lint runs |
 | CI workflows, and the spikes' shell scripts | | actionlint, shellcheck |
 
@@ -98,6 +98,8 @@ The firmware in `firmware/` and the drivers in socpuppet's Zephyr module (`pytho
 ## Markdown
 
 **One paragraph is one line**, however long. Your editor wraps it for display. 💡 Hard-wrapped prose makes a one-word change look like a rewritten paragraph in a diff. rumdl checks the structure (heading levels, blank lines around lists and code blocks, a language on every code block) and has its line-length rule switched off in `.rumdl.toml`.
+
+**A page is read by a stranger**, who has never met the project or the people behind it. So a page describes a machine by what it is (a 24-core Intel desktop, an Apple silicon laptop) and never by its name, and a person by their role; and a date on a page is a diary entry, so the dates live in [history/](history/README.md), in [upstream.md](upstream.md), the ledger, and in [roadmap.md](roadmap.md), which points into the history by date. `tools/stranger.py` holds every file to it, the licence and `pyproject.toml` excused, and lint runs it. 💡 A name a reader cannot look up tells them nothing, and a measurement is only as good as the machine it says it was taken on.
 
 ## SystemRDL
 

@@ -31,7 +31,9 @@ repository="$(cd "$here/../../.." && pwd)"
 command -v cmake > /dev/null 2>&1 ||
   export PATH="$repository/.venv/bin:$PATH"
 results="$repository/spikes/speed/results/$env_label-qbox.jsonl"
-host="$(uname -n)"
+# The kind of machine, not its name: the results are read by strangers
+# (tools/stranger.py), and the label says which machine it was.
+host="$(uname -s)-$(uname -m)"
 commit="$(git -C "$repository" -c safe.directory='*' rev-parse --short HEAD)"
 qbox="$repository/build/qbox"
 tree="$repository/build/speed-qbox"

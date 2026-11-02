@@ -2,7 +2,7 @@
 
 🐧 Boot a stock Linux kernel on socpuppet's biggest show, type at its shell from your terminal and over `ssh`, then change the cast under it, one piece at a time, and watch what changes: the CPU that runs it, and the 🎭 stand-ins (simplified models that hold a block's place) that give way to the real models. Each step is a command and a few things to look at; the why is a link away. Plan on an hour, most of it waiting for boots on the interpreter.
 
-Every command is run from the top of a checkout. ⚠️ Every boot is its own process: the SystemC kernel cannot be restarted, so one run is one show ([architecture.md](../architecture.md#-one-platform-per-process)). The numbers on this page were measured on an Intel Mac on 2026-10-26; yours will differ, the comparisons will not.
+Every command is run from the top of a checkout. ⚠️ Every boot is its own process: the SystemC kernel cannot be restarted, so one run is one show ([architecture.md](../architecture.md#-one-platform-per-process)). The numbers on this page were measured on an Intel Mac; yours will differ, the comparisons will not.
 
 ## 1. Before you start
 
