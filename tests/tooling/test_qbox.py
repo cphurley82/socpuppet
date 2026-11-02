@@ -100,3 +100,14 @@ def test_with_no_qbox_built_it_builds_qbox_at_its_pin_into_the_root(
     install = tmp_path / "qbox" / "install"
     assert calls(lines, "cmake", f"-DCMAKE_INSTALL_PREFIX={install}")
     assert calls(lines, "cmake", "--install")
+
+
+def test_with_qbox_built_it_builds_qbox_no_more_and_says_how_to(qbox):
+    qbox()
+
+    result, lines = qbox()
+
+    assert result.returncode == 0, result.stdout
+    assert len(calls(lines, "git", "clone")) == 1
+    assert len(calls(lines, "cmake", "--install")) == 1
+    assert "delete" in result.stdout.lower()
