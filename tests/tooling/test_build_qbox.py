@@ -1,9 +1,7 @@
 """tools/build_qbox.py, which builds QBox for the qbox_cpu.
 
 The script is run for real, with stand-ins for git, cmake and the rest on
-its path. Each stand-in writes the command it was given to a log, and git's
-keeps track of which patches it has applied, so the tests can say what the
-script asked for without fetching or building QEMU.
+its path (`qbox_stand_ins`).
 """
 
 import os
@@ -12,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from qbox_stand_ins import PROGRAMS, calls, put_in
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "tools" / "build_qbox.py"
@@ -26,78 +25,14 @@ QEMU_PATCHES = sorted(
     p.name for p in (REPO / "cmake/patches").glob("libqemu-*")
 )
 
-# A git that clones by making the directory, and applies a patch by noting
-# its name: `apply --check` passes for a patch not yet applied, and
-# `apply --reverse --check` for one that has been.
-GIT = """
-import os, sys
-from pathlib import Path
-args = sys.argv[1:]
-tree = Path.cwd()
-if args[0] == "-C":
-    tree, args = Path(args[1]), args[2:]
-if args[0] == "clone":
-    (Path(args[-1]) / ".git").mkdir(parents=True)
-elif args[:2] == ["rev-parse", "HEAD"]:
-    head = tree / ".git" / "HEAD"
-    print(head.read_text() if head.exists() else "0" * 40)
-elif args[0] == "checkout":
-    (tree / ".git" / "HEAD").write_text(args[-1])
-elif args[0] == "apply":
-    applied = tree / ".git" / "applied"
-    done = applied.read_text().split() if applied.exists() else []
-    name = os.path.basename(args[-1])
-    if "--reverse" in args:
-        sys.exit(0 if name in done else 1)
-    if "--check" in args:
-        sys.exit(1 if name in done else 0)
-    applied.write_text(" ".join([*done, name]))
-"""
-
-# A cmake that, configuring, leaves QEMU's source where QBox's fetch would.
-# With CONFIGURE set to "offline" it fails, having left the empty CPM.cmake
-# that QBox's configure leaves when GitHub does not answer, and with "fails"
-# it fails before that.
-CMAKE = """
-import os
-from pathlib import Path
-if "-B" in sys.argv:
-    build = Path(sys.argv[sys.argv.index("-B") + 1])
-    if os.environ["CONFIGURE"] == "offline":
-        (build / "cmake").mkdir(parents=True, exist_ok=True)
-        (build / "cmake" / "CPM.cmake").write_text("")
-    if os.environ["CONFIGURE"]:
-        sys.exit(1)
-    (build / "_deps" / "libqemu-src" / ".git").mkdir(parents=True, exist_ok=True)
-"""
-
-# What the stand-in for pkg-config does not have, from the environment.
-PKG_CONFIG = """
-import os, sys
-sys.exit(1 if sys.argv[-1] in os.environ.get("MISSING", "").split() else 0)
-"""
-
 
 @pytest.fixture
 def build_qbox(tmp_path):
-    """Run the script with the stand-ins; returns (result, log)."""
+    """Run the script with the stand-ins; returns (result, lines logged)."""
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     log = tmp_path / "log"
-    logger = f"open({str(log)!r}, 'a').write(' '.join(sys.argv) + '\\n')\n"
-    programs = {
-        "git": GIT,
-        "cmake": CMAKE,
-        "pkg-config": PKG_CONFIG,
-        "ninja": "",
-        "meson": "",
-        "bison": "",
-        "flex": "",
-    }
-    for name, body in programs.items():
-        program = bin_directory / name
-        program.write_text(f"#!{sys.executable}\nimport sys\n{logger}{body}")
-        program.chmod(0o755)
+    put_in(bin_directory, log, PROGRAMS)
 
     def run(*args, missing="", configure=""):
         result = subprocess.run(
@@ -122,16 +57,6 @@ def build_qbox(tmp_path):
         return result, lines
 
     return run
-
-
-def calls(lines, program, *words):
-    """The logged commands of `program` that contain every one of `words`."""
-    return [
-        line
-        for line in lines
-        if Path(line.split()[0]).name == program
-        and all(word in line.split() for word in words)
-    ]
 
 
 def test_a_first_run_checks_qbox_out_at_the_pin_and_applies_each_patch_once(
