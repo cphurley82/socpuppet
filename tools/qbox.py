@@ -6,7 +6,7 @@ Usage:
 
 🩺 It asks the doctor first whether this machine has what socpuppet's build
 and QBox's need, and stops, saying what to install, if it has not. Then it
-builds QBox (tools/build_qbox.py).
+builds QBox (tools/build_qbox.py), unless it is built already.
 """
 
 import argparse
@@ -22,6 +22,9 @@ import doctor
 REPOSITORY = Path(__file__).resolve().parents[1]
 #: What the one command needs of this machine, as the doctor's areas.
 AREAS = ("build", "qbox")
+#: The file in QBox's install that says it is built: what CMake finds QBox
+#: by (cmake/Dependencies.cmake).
+QBOX_PACKAGE = Path("lib/cmake/qbox-2.0/qboxConfig.cmake")
 
 
 def main() -> int:
@@ -57,7 +60,14 @@ def main() -> int:
             print(report.show())
         print("Install it, then run this again.")
         return 1
-    build_qbox.build(args.root.resolve(), os.cpu_count() or 4)
+    root = args.root.resolve()
+    if (root / "install" / QBOX_PACKAGE).is_file():
+        print(
+            f"🧦 QBox is built already, in {root / 'install'}. "
+            f"To build it again, delete {root} first."
+        )
+    else:
+        build_qbox.build(root, os.cpu_count() or 4)
     return 0
 
 

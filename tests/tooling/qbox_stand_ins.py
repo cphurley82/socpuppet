@@ -37,7 +37,8 @@ elif args[0] == "apply":
     applied.write_text(" ".join([*done, name]))
 """
 
-# A cmake that, configuring, leaves QEMU's source where QBox's fetch would.
+# A cmake that, configuring, leaves QEMU's source where QBox's fetch would,
+# and installing, leaves QBox's package file where its install would.
 # With CONFIGURE set to "offline" it fails, having left the empty CPM.cmake
 # that QBox's configure leaves when GitHub does not answer, and with "fails"
 # it fails before that.
@@ -52,6 +53,17 @@ if "-B" in sys.argv:
     if os.environ.get("CONFIGURE", ""):
         sys.exit(1)
     (build / "_deps" / "libqemu-src" / ".git").mkdir(parents=True, exist_ok=True)
+    prefix = next(
+        each.split("=", 1)[1]
+        for each in sys.argv
+        if each.startswith("-DCMAKE_INSTALL_PREFIX=")
+    )
+    (build / "prefix").write_text(prefix)
+if "--install" in sys.argv:
+    build = Path(sys.argv[sys.argv.index("--install") + 1])
+    package = Path((build / "prefix").read_text()) / "lib/cmake/qbox-2.0"
+    package.mkdir(parents=True, exist_ok=True)
+    (package / "qboxConfig.cmake").write_text("")
 """
 
 # What the stand-in for pkg-config does not have, from the environment.
