@@ -10,9 +10,9 @@ Real is what makes it good to learn on. The firmware is the real firmware (Zephy
 
 ## Who it is for
 
-A ladder of four. Each rung is written for the person standing on it. The top three stand today; the bottom one is where the project wants to reach.
+A ladder of four. Each rung is written for the person standing on it.
 
-1. 🌱 **Someone who knows a little Python**, or is learning it, and has never seen a chip from the inside: a first-year engineering student, a high-school student who builds things with an AI's help. They should be able to run a show, change one line and watch the chip do something different, in an afternoon, without knowing what TLM is. 🚧 Not served yet. The release gate below says what it takes.
+1. 🌱 **Someone who knows a little Python**, or is learning it, and has never seen a chip from the inside: a first-year engineering student, a high-school student who builds things with an AI's help. They should be able to run a show, change one line and watch the chip do something different, in an afternoon, without knowing what TLM is. [first-show.md](first-show.md) is that page; the release gate below asks that it be measured on a real newcomer, and that the install be one line.
 2. 🎓 **The learner building a first virtual platform**, or curious how a chip boots before the chip exists. The primary reader this year.
 3. 🧵 **The firmware developer**, who installs a board with pip, boots their image on it, runs their tests in CI and attaches a debugger.
 4. **The engineer who builds virtual platforms for a living**, and wants methodology to take home.
