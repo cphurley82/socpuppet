@@ -15,6 +15,7 @@ COULD_NOT_RUN = 77
 
 @pytest.fixture(
     params=[
+        "first_show.py",
         "host_hello.py",
         "ssd_firmware_hello.py",
         "host_and_ssd_hello.py",

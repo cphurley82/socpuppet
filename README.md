@@ -158,6 +158,7 @@ uv run tools/qbox.py
 
 🧪 [The labs](docs/labs/README.md) are sessions to run at the keyboard, and the first, [Linux end to end](docs/labs/linux-tour.md), is this boot with everything you can do to it: `ssh` in, swap the CPU for QEMU's, swap the 🎭 stand-ins for the real models, and watch what changes.
 
+- 🌱 [Your first show](docs/first-show.md): a chip that answers when you type at it, and the line to change, for someone who has never seen a chip from the inside.
 - 🧭 [Why socpuppet exists](docs/vision.md): who it is for, the aims, and how choices get made.
 - 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained and a page for every model.
@@ -168,7 +169,7 @@ uv run tools/qbox.py
 
 Anyone curious about how a chip boots before the chip exists. In the spirit of Raspberry Pi, socpuppet aims to be friendly enough to learn on and solid enough to do real work with. It is written for a ladder of readers, bottom rung first:
 
-- 🌱 Someone who knows a little Python and has never seen a chip from the inside. 🚧 Not served yet: a first page that needs nothing but Python is on the list for the first release.
+- 🌱 Someone who knows a little Python and has never seen a chip from the inside: start at [Your first show](docs/first-show.md), a chip that answers when you type at it.
 - 🎓 The learner building a first virtual platform.
 - 🧵 The firmware developer who installs a board with pip and boots their image on it.
 - The engineer who builds virtual platforms for a living and wants methodology to take home.
