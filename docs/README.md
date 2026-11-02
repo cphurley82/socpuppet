@@ -4,7 +4,7 @@ The map of socpuppet's documentation. Start where you stand; every page says wha
 
 ## 🌱 Never seen a chip from the inside?
 
-Start with the [README](../README.md): it runs a whole chip's boot in a dozen lines of Python, and then a smaller show with no CPU at all. Then 🧪 [the labs](labs/README.md), sessions of commands to run with a line under each saying what to look at. 🚧 A page that needs nothing but Python is on the list for the first release ([vision.md](vision.md), the release gate).
+Start with [Your first show](first-show.md): a chip that answers when you type at it, in a dozen lines of Python, with the four words you need and the line to change. Then the [README](../README.md), which boots a whole chip and then runs a smaller show with no CPU at all, and 🧪 [the labs](labs/README.md), sessions of commands to run with a line under each saying what to look at.
 
 ## 🎓 Learning how a chip boots, or building a first virtual platform
 

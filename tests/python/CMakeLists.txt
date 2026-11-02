@@ -47,8 +47,14 @@ add_test(NAME example_io_manager_hello
           ${SOCPUPPET_TEST_PYTHON} examples/io_manager_hello.py
   WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
 
-# This one boots real firmware. Where the image has not been built it says
+# These boot real firmware. Where the image has not been built each says
 # so and is counted as skipped.
+add_test(NAME example_first_show
+  COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
+          ${SOCPUPPET_TEST_PYTHON} examples/first_show.py
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+set_tests_properties(example_first_show PROPERTIES SKIP_RETURN_CODE 77)
+
 add_test(NAME example_host_hello
   COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${PROJECT_SOURCE_DIR}/python
           ${SOCPUPPET_TEST_PYTHON} examples/host_hello.py
@@ -100,7 +106,8 @@ set_tests_properties(example_boot_from_flash
 # Each is a few seconds, and runs in the quick test preset.
 set_tests_properties(
   example_passthrough_hello example_nvme_hello example_ssd_hello
-  example_io_manager_hello example_host_hello example_ssd_firmware_hello
+  example_io_manager_hello example_first_show example_host_hello
+  example_ssd_firmware_hello
   example_host_and_ssd_hello example_chiplet_host_hello
   example_shell_from_python example_full_bootchain example_boot_from_flash
   PROPERTIES LABELS example)

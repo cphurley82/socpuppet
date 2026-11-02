@@ -16,7 +16,7 @@ from processes import run_file
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 #: The pages a stranger reads first.
-PAGES = ("README.md",)
+PAGES = ("README.md", "docs/first-show.md")
 PYTHON = re.compile(r"^```python\n(.*?)^```\n", re.MULTILINE | re.DOTALL)
 TEXT = re.compile(r"^```text\n(.*?)^```$", re.MULTILINE | re.DOTALL)
 FILE = re.compile(r"examples/[\w/]+\.py")
@@ -25,6 +25,8 @@ IMPORT = re.compile(r"^(?:import|from) socpuppet\b", re.MULTILINE)
 #: The images a program asks for, which it finds as an installed socpuppet
 #: would: built here, or fetched into the cache the first time.
 IMAGE = re.compile(r"images\.find\(\s*\"([^\"]+)\"")
+#: A terminal's color codes, which a page shows as the terminal does: not at all.
+COLOR = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def is_program(code):
@@ -73,8 +75,9 @@ def test_a_block_that_imports_socpuppet_runs_as_pasted_and_prints_what_the_page_
     assert result.returncode == 0, result.stderr
     shown = TEXT.match(after)
     assert shown, "The page shows what the program prints, in a text block"
+    printed = COLOR.sub("", result.stdout)
     for line in shown.group(1).splitlines():
-        assert line in result.stdout, result.stdout
+        assert line in printed, printed
 
 
 @pytest.mark.parametrize(("code", "before", "after"), EXCERPTS)
