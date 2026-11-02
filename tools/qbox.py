@@ -5,15 +5,18 @@ Usage:
   uv run tools/qbox.py
 
 🩺 It asks the doctor first whether this machine has what socpuppet's build
-and QBox's need, and stops, saying what to install, if it has not.
+and QBox's need, and stops, saying what to install, if it has not. Then it
+builds QBox (tools/build_qbox.py).
 """
 
 import argparse
 import dataclasses
+import os
 import platform
 import sys
 from pathlib import Path
 
+import build_qbox
 import doctor
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -34,7 +37,7 @@ def main() -> int:
         default=REPOSITORY / "build" / "qbox",
         help="where QBox's source, build and install go (build/qbox)",
     )
-    parser.parse_args()
+    args = parser.parse_args()
     missing = [
         report
         for report in doctor.examine(
@@ -54,6 +57,7 @@ def main() -> int:
             print(report.show())
         print("Install it, then run this again.")
         return 1
+    build_qbox.build(args.root.resolve(), os.cpu_count() or 4)
     return 0
 
 
