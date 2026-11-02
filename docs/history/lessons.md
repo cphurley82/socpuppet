@@ -194,6 +194,8 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **A job a called workflow runs holds up everything that needs that workflow.** Publishing inside `firmware.yml` would have made every boot test wait on an upload, and published what no test had booted. So what publishes is a job of its own, after the tests.
 - **An environment variable that turns something off is off only until a test takes it away.** cibuildwheel's own test had no firmware because nothing named any, and once images could be fetched, the exit test, which clears the variable, would have booted on every wheel. Say what is left out in the command too (`-m "not long"`).
 - **A rehearsal needs no release.** `build/images` served by `python -m http.server`, with `SOCPUPPET_IMAGES_URL` pointed at it, is the whole path of a fetch, so a wheel can be proved before main has published anything.
+- **A run of the tests is hundreds of requests, so one failed look-up is a matter of when.** A name failed to resolve once on one Mac and failed a 58-minute run, and on a newcomer's first boot it would have ended the show. Asking again costs seconds; only a server that did not answer is asked again, and the waits leave the cache's lock free, or four asking of a dead server take 10, 20, 30 and 40 seconds.
+- **A test that reads the whole session sees something only when the whole session is there.** Each ctest entry chooses by marker, so `test_suite_order` is skipped under them and only the `wheel` job, which chooses nothing, can fail it, an hour later.
 
 ## The platform and its description
 

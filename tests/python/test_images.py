@@ -13,6 +13,7 @@ import io
 import os
 import pathlib
 import random
+import socket
 import threading
 import time
 
@@ -135,6 +136,10 @@ class TestFindingAnImage:
 ALL_ASK_WHILE_ONE_FETCHES = 0.2
 
 
+#: 💡 Nothing listens on port 1, here or on any machine that runs this.
+NOTHING_LISTENS_HERE = "http://127.0.0.1:1"
+
+
 class AReleaseOfImages:
     """🎭 A stand-in for a release on GitHub: its files, over HTTP."""
 
@@ -144,6 +149,9 @@ class AReleaseOfImages:
         self.asked: list[str] = []
         #: How long each image takes to come, in seconds.
         self.slowness = 0.0
+        #: A file whose first request is cut off with no answer, as a server
+        #: out of reach for a moment would.
+        self.hangs_up_once_on: str | None = None
 
     def holds(self, images: dict[str, bytes]) -> None:
         """Publish images, gzipped, with their sums, as the release has them."""
@@ -173,7 +181,11 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
         def do_GET(self):
             name = self.path.removeprefix("/")
             served.asked.append(name)
-            if name.endswith(".gz"):
+            if name == served.hangs_up_once_on:
+                served.hangs_up_once_on = None
+                self.close_connection = True
+                return
+            if served.slowness and name.endswith(".gz"):
                 time.sleep(served.slowness)
             super().do_GET()
 
@@ -193,6 +205,12 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
     yield served
     server.shutdown()
     server.server_close()
+
+
+@pytest.fixture
+def no_waiting(monkeypatch):
+    """A wait before trying again takes no time, so a test does not."""
+    monkeypatch.setattr(time, "sleep", lambda _: None)
 
 
 def in_the_cache():
@@ -439,11 +457,19 @@ class TestWhenAnImageCannotBeFetched:
         assert "404" in str(refused.value)
         assert in_the_cache() == set()
 
+    def test_a_server_that_answers_no_is_not_asked_again(self, release):
+        release.holds({"spam.elf": b"spam"})
+        (release.directory / "spam.elf.gz").unlink()
+
+        with pytest.raises(images.Unavailable):
+            images.find("spam.elf")
+
+        assert release.asked.count("spam.elf.gz") == 1
+
     def test_an_unreachable_server_says_to_check_the_connection_or_mirror_it(
-        self, release, monkeypatch
+        self, release, monkeypatch, no_waiting
     ):
-        # 💡 Nothing listens on port 1, here or on any machine that runs this.
-        monkeypatch.setenv("SOCPUPPET_IMAGES_URL", "http://127.0.0.1:1")
+        monkeypatch.setenv("SOCPUPPET_IMAGES_URL", NOTHING_LISTENS_HERE)
 
         with pytest.raises(images.Unavailable) as refused:
             images.find("uefi.fd")
@@ -477,6 +503,67 @@ class TestWhenAnImageCannotBeFetched:
     def test_it_is_a_file_that_is_not_found_to_whoever_asked(self, release):
         with pytest.raises(FileNotFoundError):
             images.find("spam.elf")
+
+
+class TestWhenTheServerIsOutOfReachForAMoment:
+    @pytest.mark.parametrize("file", ["SHA256SUMS", "spam.elf.gz"])
+    def test_the_image_is_fetched_all_the_same(self, release, no_waiting, file):
+        release.holds({"spam.elf": b"spam"})
+        release.hangs_up_once_on = file
+
+        assert images.find("spam.elf").read_bytes() == b"spam"
+        assert release.asked.count(file) == 2
+
+    def test_a_name_that_fails_to_resolve_is_looked_up_again(
+        self, release, monkeypatch, no_waiting
+    ):
+        release.holds({"spam.elf": b"spam"})
+        a_name_fails_to_resolve_once(monkeypatch, because="no such name")
+
+        assert images.find("spam.elf").read_bytes() == b"spam"
+
+    def test_it_says_it_is_trying_again_and_why(
+        self, release, monkeypatch, no_waiting, capsys
+    ):
+        release.holds({"spam.elf": b"spam"})
+        a_name_fails_to_resolve_once(monkeypatch, because="no such name")
+
+        images.find("spam.elf")
+
+        said = capsys.readouterr().err
+        assert "trying again" in said
+        assert "no such name" in said
+
+    def test_it_waits_longer_before_each_further_try_and_then_gives_up(
+        self, release, monkeypatch
+    ):
+        monkeypatch.setenv("SOCPUPPET_IMAGES_URL", NOTHING_LISTENS_HERE)
+        waits = []
+        monkeypatch.setattr(time, "sleep", waits.append)
+
+        with pytest.raises(images.Unavailable):
+            images.find("spam.elf")
+
+        assert waits == [2, 8]
+
+    def test_a_wait_leaves_the_cache_free_for_another_to_fetch(
+        self, release, monkeypatch
+    ):
+        release.holds({"spam.elf": b"spam", "eggs.elf": b"eggs"})
+        release.hangs_up_once_on = "spam.elf.gz"
+        got_it_meanwhile = []
+
+        with concurrent.futures.ThreadPoolExecutor(1) as another:
+
+            def another_asks_during_the_wait(_):
+                asked = another.submit(images.find, "eggs.elf")
+                done, _ = concurrent.futures.wait([asked], timeout=5)
+                got_it_meanwhile.append(bool(done))
+
+            monkeypatch.setattr(time, "sleep", another_asks_during_the_wait)
+            images.find("spam.elf")
+
+        assert got_it_meanwhile == [True]
 
 
 class TestWhenTheCommandLineAsksForAnImageByName:
@@ -581,3 +668,14 @@ def says_how_to_build(refused, command, after):
     assert "docs/boot-your-firmware.md" in said
     assert "github.com/" in said
     assert said.index(command) > said.index(after)
+
+
+def a_name_fails_to_resolve_once(monkeypatch, because):
+    """The next look-up of a name fails, as one did on a Mac in CI."""
+    look_up = socket.getaddrinfo
+
+    def fails_once(*arguments, **keywords):
+        monkeypatch.setattr(socket, "getaddrinfo", look_up)
+        raise socket.gaierror(8, because)
+
+    monkeypatch.setattr(socket, "getaddrinfo", fails_once)

@@ -28,6 +28,7 @@ import pathlib
 import re
 import shutil
 import sys
+import time
 import urllib.error
 import urllib.request
 import zlib
@@ -59,8 +60,21 @@ _BUILT_BY = {
 }
 
 
-#: How long a server may say nothing, in seconds, before it is given up on.
+#: How long a server may say nothing, in seconds, before this try of it is
+#: given up on.
 _PATIENCE = 60
+#: How long to wait before each further try of a server out of reach, in
+#: seconds.
+_WAITS = (2, 8)
+#: What a server out of reach looks like. An HTTPError is a URLError too, but
+#: a server that answered is not out of reach, and `_download` has said so
+#: before this sees it.
+_OUT_OF_REACH = (
+    urllib.error.URLError,
+    TimeoutError,
+    ConnectionError,
+    http.client.HTTPException,
+)
 #: What a line of SHA256SUMS starts with.
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 #: The bold cyan of a fetch's line, at a terminal.
@@ -106,27 +120,57 @@ def find(name: str, within: pathlib.Path | None = None) -> pathlib.Path:
 
 
 def _fetch(name: str, place: pathlib.Path) -> None:
-    """Put the image `name` in `place`, the cache, or say why it cannot be."""
-    try:
-        place.mkdir(parents=True, exist_ok=True)
-        with (place / ".lock").open("w") as lock:
-            # One at a time: a second that asks waits, and then finds it.
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            if not (place / name).exists():
-                _download(name, place)
-    except Unavailable:
-        raise
-    except OSError as error:
-        raise _unavailable(
-            name,
-            f"It could not be kept in {place}: {error}. SOCPUPPET_CACHE_DIR "
-            "moves the cache somewhere else.",
-        ) from error
+    """Put the image `name` in `place`, the cache, or say why it cannot be.
 
+    It tries again while the server is out of reach, and waits with the cache
+    free, for a fetch that can go ahead, or that brings this image.
 
-def _download(name: str, place: pathlib.Path) -> None:
-    """Fetch the image `name` into `place`, whole and checked."""
+    💡 A first boot should not end because a name failed to resolve for a
+    moment, which one did on a Mac in CI, among the hundreds of requests a
+    run of the tests makes.
+    """
     release = os.environ.get("SOCPUPPET_IMAGES_URL") or URL
+    for wait in (*_WAITS, None):
+        try:
+            _download_unless_another_has(name, place, release)
+            return
+        except Unavailable:
+            raise
+        except _OUT_OF_REACH as error:
+            if wait is None:
+                raise _unavailable(
+                    name,
+                    f"{release} could not be reached ({error}). Check this "
+                    "machine's connection, or name a mirror of the release "
+                    "with SOCPUPPET_IMAGES_URL.",
+                ) from error
+            _say(
+                f"🧦 {release.partition('://')[2]} could not be reached "
+                f"({error}), so trying again in {wait} s"
+            )
+            time.sleep(wait)
+        except OSError as error:
+            raise _unavailable(
+                name,
+                f"It could not be kept in {place}: {error}. "
+                "SOCPUPPET_CACHE_DIR moves the cache somewhere else.",
+            ) from error
+
+
+def _download_unless_another_has(
+    name: str, place: pathlib.Path, release: str
+) -> None:
+    """Fetch the image once, holding the cache so that no one else does."""
+    place.mkdir(parents=True, exist_ok=True)
+    with (place / ".lock").open("w") as lock:
+        # One at a time: a second that asks waits, and then finds it.
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not (place / name).exists():
+            _download(name, place, release)
+
+
+def _download(name: str, place: pathlib.Path, release: str) -> None:
+    """Fetch the image `name` into `place`, whole and checked."""
     part = place / f"{name}.part"
     try:
         wanted = _sums(name, release).get(name)
@@ -162,18 +206,6 @@ def _download(name: str, place: pathlib.Path) -> None:
     except urllib.error.HTTPError as error:
         raise _unavailable(
             name, f"{error.url} answered {error.code}: {error.reason}."
-        ) from error
-    except (
-        urllib.error.URLError,
-        TimeoutError,
-        ConnectionError,
-        http.client.HTTPException,
-    ) as error:
-        raise _unavailable(
-            name,
-            f"{release} could not be reached ({error}). Check this machine's "
-            "connection, or name a mirror of the release with "
-            "SOCPUPPET_IMAGES_URL.",
         ) from error
     finally:
         part.unlink(missing_ok=True)
@@ -215,11 +247,15 @@ def _sums(name: str, release: str) -> dict[str, str]:
 
 
 def _say_fetching(name: str, size: int, release: str) -> None:
-    """Say on standard error that a download has started, once for each."""
-    line = (
+    """Say on standard error that a try at a download has started."""
+    _say(
         f"🧦 Fetching {name} ({size / 1_000_000:.1f} MB) from "
         f"{release.partition('://')[2]}"
     )
+
+
+def _say(line: str) -> None:
+    """Say a line on standard error, in color at a terminal."""
     if sys.stderr.isatty() and not os.environ.get("NO_COLOR"):
         line = f"{_COLOR}{line}{_RESET}"
     print(line, file=sys.stderr)
