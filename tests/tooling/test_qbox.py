@@ -42,6 +42,18 @@ _, PIXMAN_APT, PIXMAN_BREW = next(
 )
 
 
+#: How the stand-in for the boot of Linux ends.
+THE_BOOTS = 7
+#: A uv that says what it was handed, the path to socpuppet's package and
+#: what came in on its standard input, and ends as a boot of Linux might.
+UV = f"""
+import os
+print("socpuppet from " + os.environ.get("PYTHONPATH", ""))
+print("typed: " + sys.stdin.read())
+sys.exit({THE_BOOTS})
+"""
+
+
 @pytest.fixture
 def qbox(tmp_path):
     """Run the script with the stand-ins; returns (result, lines logged).
@@ -52,9 +64,9 @@ def qbox(tmp_path):
     bin_directory = tmp_path / "bin"
     bin_directory.mkdir()
     log = tmp_path / "log"
-    put_in(bin_directory, log, {**PROGRAMS, "c++": "", "dtc": "", "uv": ""})
+    put_in(bin_directory, log, {**PROGRAMS, "c++": "", "dtc": "", "uv": UV})
 
-    def run(*args, missing=""):
+    def run(*args, missing="", typed=""):
         result = subprocess.run(
             [
                 sys.executable,
@@ -68,6 +80,7 @@ def qbox(tmp_path):
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
                 "MISSING": missing,
             },
+            input=typed,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             encoding="utf-8",
@@ -95,7 +108,7 @@ def test_with_no_qbox_built_it_builds_qbox_at_its_pin_into_the_root(
 ):
     result, lines = qbox()
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == THE_BOOTS, result.stdout
     assert calls(lines, "git", "checkout", PIN)
     install = tmp_path / "qbox" / "install"
     assert calls(lines, "cmake", f"-DCMAKE_INSTALL_PREFIX={install}")
@@ -107,7 +120,7 @@ def test_with_qbox_built_it_builds_qbox_no_more_and_says_how_to(qbox):
 
     result, lines = qbox()
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == THE_BOOTS, result.stdout
     assert len(calls(lines, "git", "clone")) == 1
     assert len(calls(lines, "cmake", "--install")) == 1
     assert "delete" in result.stdout.lower()
@@ -118,7 +131,7 @@ def test_then_it_builds_socpuppet_against_that_qbox_with_the_qbox_preset(
 ):
     result, lines = qbox()
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == THE_BOOTS, result.stdout
     install = tmp_path / "qbox" / "install"
     assert calls(
         lines, "cmake", "--preset", "qbox", f"-DSOCPUPPET_QBOX_DIR={install}"
@@ -129,8 +142,21 @@ def test_then_it_builds_socpuppet_against_that_qbox_with_the_qbox_preset(
 def test_the_jobs_option_is_how_many_files_each_build_compiles_at_once(qbox):
     result, lines = qbox("--jobs", "3")
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == THE_BOOTS, result.stdout
     assert calls(lines, "cmake", "--build", "--parallel", "3")
     assert calls(
         lines, "cmake", "--build", "--preset", "qbox", "--parallel", "3"
     )
+
+
+def test_it_ends_by_handing_this_terminal_to_linux_on_qboxs_hart(qbox):
+    result, lines = qbox(typed="uname -a\n")
+
+    (boot,) = calls(lines, "uv")
+    assert boot.split()[1:] == [
+        *("run", "python", "-m", "socpuppet"),
+        *("linux", "--cpu", "qbox_cpu"),
+    ]
+    assert f"socpuppet from {REPO / 'python'}" in result.stdout
+    assert "typed: uname -a" in result.stdout
+    assert result.returncode == THE_BOOTS
