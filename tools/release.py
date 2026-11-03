@@ -68,12 +68,12 @@ def main() -> int:
     command = {"check": check, "pypi": pypi, "github": github, "wait": wait}
     parser.add_argument("command", choices=list(command))
     args = parser.parse_args()
-    return command[args.command](_repository())
+    return command[args.command](repository())
 
 
 def check(root: Path) -> int:
     """Check the release; returns 1 if anything is wrong with it, else 0."""
-    name, version = _project(root)
+    name, version = project(root)
     wanted = f"v{version}"
     on_a_tag = _tag() is not None
     tag = _tag() or wanted
@@ -128,7 +128,7 @@ def check(root: Path) -> int:
 def pypi(root: Path) -> int:
     """Publish the distributions to PyPI, in a run of this repository's tag."""
     built = _built(root)
-    if not _publishing(root):
+    if not publishing(root):
         print(_would_publish("PyPI", built))
         return 0
     _run(
@@ -143,17 +143,17 @@ def pypi(root: Path) -> int:
 
 def github(root: Path) -> int:
     """Make the tag's GitHub release, in a run of this repository's tag."""
-    name, version = _project(root)
+    name, version = project(root)
     tag = f"v{version}"
     built = _built(root)
-    if not _publishing(root):
+    if not publishing(root):
         print(_would_publish(f"GitHub's release {tag}", built))
         return 0
     github_releases.create_once(
         root,
         tag,
         *("--verify-tag", "--notes-from-tag", "--title", f"{name} {version}"),
-        *(("--prerelease",) if _candidate(version) else ("--latest",)),
+        *(("--prerelease",) if candidate(version) else ("--latest",)),
         *(str(path) for path in built),
     )
     return 0
@@ -161,10 +161,10 @@ def github(root: Path) -> int:
 
 def wait(root: Path) -> int:
     """Wait for PyPI's index to list the version's source and a wheel."""
-    name, version = _project(root)
+    name, version = project(root)
     index = f"{_pypi()}/simple/{name}/"
     # 💡 Only a run that published waits: a fork's tag publishes nothing.
-    patience = PATIENCE if _publishing(root) else 0
+    patience = PATIENCE if publishing(root) else 0
     deadline = time.monotonic() + patience
     while True:
         listed = _listed(index)
@@ -195,7 +195,7 @@ def _listed(index: str) -> set[str]:
         raise
 
 
-def _publishing(root: Path) -> bool:
+def publishing(root: Path) -> bool:
     """Whether this is CI's run of a tag of this repository."""
     return _tag() is not None and github_releases.ours(root)
 
@@ -237,12 +237,12 @@ def _built(root: Path) -> list[Path]:
     return [*wheels, *source]
 
 
-def _candidate(version: str) -> bool:
+def candidate(version: str) -> bool:
     """Whether a version is a release candidate's, as 0.1.0rc1 is."""
     return "rc" in version
 
 
-def _project(root: Path) -> tuple[str, str]:
+def project(root: Path) -> tuple[str, str]:
     """The project's name and version, as pyproject.toml has them."""
     with (root / "pyproject.toml").open("rb") as pyproject:
         project = tomllib.load(pyproject)["project"]
@@ -315,7 +315,7 @@ def _git(root: Path, *arguments: str) -> str:
     ).stdout.strip()
 
 
-def _repository() -> Path:
+def repository() -> Path:
     """The top of the git repository this was run in."""
     return Path(
         subprocess.run(

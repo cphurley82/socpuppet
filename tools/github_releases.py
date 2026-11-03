@@ -23,6 +23,11 @@ def repository_url(root: Path) -> str:
         return str(tomllib.load(pyproject)["project"]["urls"]["Repository"])
 
 
+def owner(root: Path) -> str:
+    """The account this repository is under, as its URL names it."""
+    return repository_url(root).rstrip("/").split("/")[-2]
+
+
 def create_once(root: Path, tag: str, *arguments: str) -> bool:
     """Make the release of `tag`, unless it is published already.
 
