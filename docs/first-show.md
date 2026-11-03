@@ -1,6 +1,6 @@
 # Your first show 🌱
 
-A chip that answers when you type at it, in a dozen lines of Python, for someone who knows a little Python and has never seen a chip from the inside. You change one line, and the chip says something different. 🚧 Until socpuppet is on PyPI, "install" means a checkout built as the [README](../README.md#try-it) says, in three commands; the one-line install is on its way ([roadmap.md](roadmap.md)).
+A chip that answers when you type at it, in a dozen lines of Python, for someone who knows a little Python and has never seen a chip from the inside. You change one line, and the chip says something different. It needs nothing but Python and `pip install socpuppet` ([the README](../README.md#try-it) has the other ways to install it).
 
 ## The cast
 
@@ -13,7 +13,7 @@ Four words, then the show.
 
 ## The show
 
-Save this as `my_show.py` and run it from the top of your checkout with `PYTHONPATH=python uv run python my_show.py`; it is also in the checkout as `examples/first_show.py`, where the tests run it. The first time, socpuppet fetches the firmware image and keeps it; after that the show takes about a second.
+Save this as `my_show.py` and run it with `python my_show.py`; in a checkout it is `examples/first_show.py`, where the tests run it. The first time, socpuppet fetches the firmware image and keeps it; after that the show takes about a second.
 
 ```python
 import socpuppet as sp

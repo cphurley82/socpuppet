@@ -57,10 +57,10 @@ Things socpuppet is not trying to be, so that nobody waits for them: cycle accur
 
 ## The release gate
 
-socpuppet is not on PyPI yet. These are the conditions for the first release, drafted to be edited and not yet met:
+These are the conditions for the first release, drafted to be edited:
 
 - Linux boots to a prompt from the wheel, with the images it fetched, in CI, on the interpreter's hart; and on QBox's hart built from a checkout in one command, or in the container.
-- The README's first show works from `pip install socpuppet`, on Linux, macOS and Windows under WSL, from the Homebrew tap on a Mac, and in the container.
+- The README's first show works from `pip install socpuppet`, on Linux and macOS, from the Homebrew tap on a Mac, and in the container. Windows under WSL follows, as a loose end.
 - [boot-your-firmware.md](boot-your-firmware.md) takes a newcomer from nothing to a boot in an afternoon, measured on a real newcomer.
 - A front door to the docs that a stranger can find their way through.
 - 🌱 A first rung for the Python beginner: one page and one example that need nothing but Python, where the reader changes a line and the chip visibly does something different, measured the same way.

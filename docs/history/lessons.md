@@ -201,6 +201,15 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **A run of the tests is hundreds of requests, so one failed look-up is a matter of when.** A name failed to resolve once on one Mac and failed a 58-minute run, and on a newcomer's first boot it would have ended the show. Asking again costs seconds; only a server that did not answer is asked again, and the waits leave the cache's lock free, or four asking of a dead server take 10, 20, 30 and 40 seconds.
 - **A test that reads the whole session sees something only when the whole session is there.** Each ctest entry chooses by marker, so `test_suite_order` is skipped under them and only the `wheel` job, which chooses nothing, can fail it, an hour later.
 
+## The release
+
+- **A test that reads the checkout at import fails the whole run of a wheel's tests**, which run from a copy of `tests/python` alone: the front door read the README so, and every wheel job went red with it. Such a test skips from a copy, as `test_python_tests_from_a_copy.py` holds.
+- ⚠️ **`brew uninstall` takes every dependency no formula needs any more**, whatever was built against it outside Homebrew: a rehearsal's uninstall took twelve formulae from an Intel Mac, gnutls among them, which that Mac's QBox links. `HOMEBREW_NO_AUTOREMOVE` on an uninstall, and `HOMEBREW_NO_INSTALL_UPGRADE` on an install, leave the rest of a Mac alone; and `HOMEBREW_NO_INSTALL_FROM_API` clones all of homebrew-core.
+- **Homebrew's pip is run by `opt_libexec/"bin/python"` of its `python@X.Y`**, and its own pip arguments refuse a wheel. Homebrew no longer bottles Intel Macs, so a Python there is built from source.
+- **`actions/checkout` one commit deep fetches an annotated tag as a lightweight one**, with no message, and `gh release create --notes-from-tag` then takes the commit's; `fetch-depth: 0` keeps the tag as pushed.
+- **A download of artifacts by a pattern that matches nothing succeeds, and says nothing**: a rename on one side would have published a release's source without its wheels. A test holds what is taken to what is uploaded, and a release is published whole or not at all.
+- **git on CI's runners has no identity**, and a test that commits or tags fails there and nowhere else; the tooling tests give theirs one.
+
 ## The platform and its description
 
 - **A fidelity tier is two description functions**, and the registry has no mechanism for one ([vision.md](../vision.md)). A master that needs a different view of memory needs a router of its own; the router takes several masters with one map.
