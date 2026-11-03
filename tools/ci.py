@@ -35,6 +35,7 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -136,7 +137,8 @@ class Job:
     steps: tuple[Step, ...] | Callable[[Mode], tuple[Step, ...]]
     # The tiers it is in: the quick, the nightly, a release, or several.
     tiers: tuple[Tier, ...]
-    # The jobs whose output this one reads, which come before it in JOBS.
+    # The jobs whose output this one reads, or whose verdict it waits for,
+    # which come before it in JOBS.
     needs: tuple[str, ...] = ()
     # What no other job may use while it runs here: the build tree it
     # builds in, the extension every tree puts in python/socpuppet, or the
@@ -334,6 +336,31 @@ def wheel_steps(mode: Mode) -> tuple[Step, ...]:
         Step(
             "test_wheel_pip",
             ("tools/test_wheel.py", "pip", ours),
+            env=REQUIRE_FIRMWARE,
+        ),
+    )
+
+
+def installed_steps(mode: Mode) -> tuple[Step, ...]:
+    """Wait for PyPI to list the release, then install it two ways and test it.
+
+    The release is pyproject.toml's version, which a release's check holds
+    its tag to. It is installed with uv and with pip as a user would, and
+    boots the firmware it fetches.
+    """
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        project = tomllib.load(pyproject)["project"]
+    release = f"{project['name']}=={project['version']}"
+    return (
+        Step("wait", ("uv", "run", "python", "tools/release.py", "wait")),
+        Step(
+            "test_wheel_uv",
+            ("tools/test_wheel.py", "uv", release),
+            env=REQUIRE_FIRMWARE,
+        ),
+        Step(
+            "test_wheel_pip",
+            ("tools/test_wheel.py", "pip", release),
             env=REQUIRE_FIRMWARE,
         ),
     )
@@ -690,6 +717,42 @@ JOBS = [
         ),
         fresh=(SDIST,),
         # PyPI, and GitHub's release of the images, are asked.
+        areas=("network",),
+    ),
+    Job(
+        "pypi",
+        "publish the release's wheels and source to PyPI",
+        tiers=(Tier.RELEASE,),
+        needs=("release-check", "wheel"),
+        steps=(
+            Step(
+                "publish", ("uv", "run", "python", "tools/release.py", "pypi")
+            ),
+        ),
+        areas=("network",),
+    ),
+    Job(
+        "installed",
+        "install the release from PyPI two ways, and test it",
+        tiers=(Tier.RELEASE,),
+        needs=("pypi",),
+        steps=installed_steps,
+        uses=(TESTS_ON_EVERY_CORE,),
+        # dtc compiles the devicetree a boot under OpenSBI is handed.
+        areas=("build", "network"),
+    ),
+    Job(
+        "github-release",
+        "make the release's GitHub release, with the same files",
+        tiers=(Tier.RELEASE,),
+        # It says a version is out: once it installs from PyPI.
+        needs=("release-check", "wheel", "installed"),
+        steps=(
+            Step(
+                "publish",
+                ("uv", "run", "python", "tools/release.py", "github"),
+            ),
+        ),
         areas=("network",),
     ),
 ]

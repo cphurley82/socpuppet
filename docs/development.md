@@ -260,7 +260,14 @@ uv run python tools/ci.py wheel     # this machine's wheel, for the pinned Pytho
 uv run python tools/ci.py release-check     # the same check here: a dry run
 ```
 
-It refuses a tag that is not the version's, has no message, or is not on main; a version that is not X.Y.Z or a release candidate X.Y.ZrcN, or that PyPI already has; and firmware images whose release is not published, since an installed wheel fetches them from there. Run here, it says how to tag the release if it is not tagged yet. The wheels are built next, by the same job and on the same machines as every night (`wheel.yml`), each tested as the nightly tier tests them. 🚧 Publishing and installing the release come next.
+It refuses a tag that is not the version's, has no message, or is not on main; a version that is not X.Y.Z or a release candidate X.Y.ZrcN, or that PyPI already has; and firmware images whose release is not published, since an installed wheel fetches them from there. Run here, it says how to tag the release if it is not tagged yet. Then, each job waiting for the one before:
+
+1. **The wheels**, by the same job and on the same machines as every night (`wheel.yml`), each tested as the nightly tier tests them.
+2. **PyPI**: the wheels and the source, by PyPI's trusted publishing, which trusts a token GitHub gives this one job, in the repository's `pypi` environment. Nothing is uploaded twice, so a run made again skips what PyPI has.
+3. **Installed**: on each machine a wheel is built for, a clean venv installs the release as PyPI serves it, with uv and with pip (`tools/test_wheel.py pip socpuppet==X`), and the Python tests run on it, the README's first show among them. This is the release gate's test ([vision.md](vision.md#the-release-gate)).
+4. **The GitHub release** of the tag, its notes the tag's message and its files the same wheels and source: the project's latest, or a pre-release for a release candidate.
+
+`uv run python tools/ci.py pypi github-release` says what each would publish and publishes nothing: only CI's run of a tag of this repository publishes. 🚧 The Homebrew tap comes next.
 
 ## How changes are made
 

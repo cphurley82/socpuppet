@@ -8,6 +8,7 @@ own jobs and calls the workflows both tiers share. These tests keep the two
 to the same jobs, so that what a developer runs here is what CI runs.
 """
 
+import fnmatch
 import importlib.util
 import itertools
 import json
@@ -47,6 +48,13 @@ RUNNER = load_runner()
 JOBS = {job.name: job for job in RUNNER.JOBS}
 TIER = RUNNER.Tier
 TIER_FILES = {tier.value for tier in TIER}
+# The jobs that publish a GitHub release, the images' and socpuppet's own,
+# and the job that publishes socpuppet to PyPI.
+PUBLISH_GITHUB_RELEASES = {
+    (TIER.QUICK.value, PUBLISHES_THE_IMAGES),
+    (TIER.RELEASE.value, "github-release"),
+}
+PUBLISHES_TO_PYPI = (TIER.RELEASE.value, "pypi")
 # The tiers that build the firmware and boot it. The release tier builds
 # no firmware of its own.
 BUILD_THE_FIRMWARE = (TIER.QUICK, TIER.NIGHTLY)
@@ -207,19 +215,6 @@ def test_only_a_tag_of_a_version_starts_the_release_tier():
     assert triggers_of(TIER.RELEASE) == {"push": {"tags": ["v*"]}}
 
 
-def test_the_release_tiers_check_has_main_and_the_tags_to_find_its_tag_on():
-    # actions/checkout fetches one commit unless told otherwise, and no
-    # main to find the tag's commit on (tools/release.py).
-    check = WORKFLOW_FILES[TIER.RELEASE.value][CHECKS_THE_RELEASE]
-    [checkout] = [
-        step
-        for step in check["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
-    ]
-
-    assert checkout["with"]["fetch-depth"] == 0
-
-
 def test_no_tier_queues_behind_another():
     # Runs of one concurrency group wait for each other, and a newer one
     # waiting takes the place of an older one. A group's fixed part, before
@@ -288,7 +283,7 @@ def test_no_other_step_runs_what_a_job_of_the_runner_runs():
             assert program not in command, f"{where}: {command}"
 
 
-def test_only_the_job_that_publishes_the_images_may_write_to_the_repository():
+def test_only_the_jobs_that_publish_a_github_release_may_write_to_the_repository():
     writers = {
         (file, name)
         for file, jobs in WORKFLOW_FILES.items()
@@ -296,7 +291,118 @@ def test_only_the_job_that_publishes_the_images_may_write_to_the_repository():
         if job.get("permissions", {}).get("contents") == "write"
     }
 
-    assert writers == {(TIER.QUICK.value, PUBLISHES_THE_IMAGES)}
+    assert writers == PUBLISH_GITHUB_RELEASES
+
+
+def test_only_the_job_that_publishes_to_pypi_may_ask_github_for_a_token_of_its_own():
+    # PyPI's trusted publishing trusts a token GitHub gives this job alone.
+    minting = {
+        (file, name)
+        for file, jobs in WORKFLOW_FILES.items()
+        for name, job in jobs.items()
+        if job.get("permissions", {}).get("id-token") == "write"
+    }
+
+    assert minting == {PUBLISHES_TO_PYPI}
+
+
+def test_only_the_job_that_publishes_to_pypi_runs_in_pypis_environment():
+    # Whose rules may ask a person to approve it before it runs.
+    in_pypis_environment = {
+        (file, name)
+        for file, jobs in WORKFLOW_FILES.items()
+        for name, job in jobs.items()
+        if environment_of(job) == "pypi"
+    }
+
+    assert in_pypis_environment == {PUBLISHES_TO_PYPI}
+
+
+def test_each_job_that_publishes_keeps_its_token_out_of_the_checkout():
+    for file, name in PUBLISH_GITHUB_RELEASES | {PUBLISHES_TO_PYPI}:
+        assert (
+            checkout_of(WORKFLOW_FILES[file][name]).get("persist-credentials")
+            is False
+        ), name
+
+
+def test_each_job_that_reads_a_tags_message_has_the_tags_as_they_were_pushed():
+    # A checkout one commit deep fetches the tag as a lightweight one, with
+    # no message: the check would refuse it, and the GitHub release would
+    # take its notes from the commit's message instead.
+    reading = [
+        (where, job)
+        for where, file, name, job in DEFINED_JOBS
+        if file == TIER.RELEASE.value
+        and ({"release-check", "github-release"} & {name})
+    ]
+    assert len(reading) == 2
+    for where, job in reading:
+        assert checkout_of(job).get("fetch-depth") == 0, where
+
+
+def test_a_release_publishes_the_wheels_and_the_source_the_release_built():
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+    for file, name in PUBLISH_GITHUB_RELEASES | {PUBLISHES_TO_PYPI}:
+        if file == TIER.RELEASE.value:
+            assert "wheel" in waits_for(name, jobs), name
+            assert any(
+                setup.get("distributions", "").lower() == "true"
+                for setup in setups_in(jobs[name])
+            ), name
+
+
+def test_what_the_setup_action_takes_of_a_release_is_what_its_jobs_upload():
+    # A pattern that matches nothing downloads nothing, and says nothing:
+    # a release would be published without its wheels.
+    uploaded = {
+        step["with"]["name"].replace("${{ matrix.os }}", machine)
+        for job in jobs_of(TIER.RELEASE).values()
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+        for machine in runners(job)
+    }
+    taken = [
+        step["with"].get("pattern") or step["with"]["name"]
+        for step in SETUP_ACTION["runs"]["steps"]
+        if "inputs.distributions" in step.get("if", "")
+    ]
+
+    assert taken
+    for wanted in taken:
+        assert fnmatch.filter(uploaded, wanted), wanted
+    for name in uploaded:
+        assert any(fnmatch.fnmatchcase(name, wanted) for wanted in taken), name
+
+
+def test_a_release_is_installed_from_pypi_and_not_from_what_the_run_built():
+    installed = WORKFLOW_FILES[TIER.RELEASE.value]["installed"]
+
+    for setup in setups_in(installed):
+        assert "distributions" not in setup
+        assert "firmware" not in setup
+
+
+def test_a_release_is_installed_once_pypi_has_it_and_waits_for_nothing_else():
+    installed = WORKFLOW_FILES[TIER.RELEASE.value]["installed"]
+
+    assert needs_of(installed) == ["pypi"]
+
+
+def test_a_release_is_installed_on_every_machine_a_wheel_is_built_on():
+    installed = WORKFLOW_FILES[TIER.RELEASE.value]["installed"]
+
+    assert set(runners(installed)) == set(
+        runners(jobs_of(TIER.RELEASE)["wheel"])
+    )
+
+
+def test_a_release_is_announced_on_github_once_it_installs_from_pypi():
+    # The GitHub release is the project's latest: it says a version is out,
+    # and pip must be able to install it everywhere first.
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+
+    assert "installed" in waits_for("github-release", jobs)
 
 
 def test_the_job_that_publishes_the_images_runs_on_main_alone():
@@ -311,17 +417,6 @@ def test_the_job_that_publishes_the_images_waits_for_the_tests_that_boot_them():
     job = WORKFLOW_FILES[TIER.QUICK.value][PUBLISHES_THE_IMAGES]
 
     assert {"test-quick", "qbox-quick"} <= set(needs_of(job))
-
-
-def test_the_job_that_publishes_the_images_keeps_its_token_out_of_the_checkout():
-    job = WORKFLOW_FILES[TIER.QUICK.value][PUBLISHES_THE_IMAGES]
-    [checkout] = [
-        step
-        for step in job["steps"]
-        if step.get("uses", "").startswith("actions/checkout@")
-    ]
-
-    assert checkout["with"]["persist-credentials"] is False
 
 
 def test_the_wheel_job_takes_no_firmware_from_the_jobs_that_build_it():
@@ -722,6 +817,26 @@ def called_jobs(job):
 def triggers_in(file):
     """What starts a workflow: its `on`, which YAML reads as True."""
     return WORKFLOW_DEFINITIONS[file][True]
+
+
+def checkout_of(job):
+    """What a job hands actions/checkout."""
+    [checkout] = [
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+    return checkout.get("with", {})
+
+
+def environment_of(job):
+    """The GitHub environment a job runs in, by its name, or None."""
+    environment = job.get("environment")
+    return (
+        environment.get("name")
+        if isinstance(environment, dict)
+        else environment
+    )
 
 
 def needs_of(job):

@@ -42,3 +42,69 @@ jobs:
     uses: ./.github/workflows/wheel.yml
     with:
       os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-15", "macos-26-intel"]'
+
+  pypi:
+    # The wheels and the source, to PyPI, by its trusted publishing: PyPI
+    # trusts a token GitHub gives this job alone, in the pypi environment,
+    # whose rules may ask a person to approve it first. Nothing is uploaded
+    # twice: a run made again skips what PyPI has.
+    name: Publish to PyPI
+    needs: [release-check, wheel]
+    runs-on: ubuntu-26.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/socpuppet
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          distributions: true
+      - run: uv run python tools/ci.py run pypi
+
+  github-release:
+    # The tag's GitHub release, its notes the tag's message and its files
+    # the same wheels and source: the project's latest, or a pre-release
+    # for a release candidate. It says a version is out, so it waits until
+    # the version installs from PyPI on every machine.
+    name: The GitHub release
+    needs: [release-check, wheel, installed]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # The tag as it was pushed, with its message: one commit deep,
+          # it is fetched without one, and the notes would be the commit's.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          distributions: true
+      - run: uv run python tools/ci.py run github-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  installed:
+    # The release gate's test: on each machine a wheel is built for, a
+    # clean venv installs the release as PyPI serves it, with uv and with
+    # pip, and the Python tests run on it, the README's first show among
+    # them, with the firmware fetched from the images' release.
+    name: Installed from PyPI (${{ matrix.os }})
+    needs: pypi
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-15, macos-26-intel]
+    steps:
+      - uses: actions/checkout@v7
+      # dtc compiles the devicetree a boot under OpenSBI is handed.
+      - uses: ./.github/actions/setup
+        with:
+          packages: build
+      - run: uv run python tools/ci.py run installed
