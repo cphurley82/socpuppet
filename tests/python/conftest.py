@@ -85,7 +85,8 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers",
         "long: a test that takes seconds, or most of a minute, on its own: "
-        "the boots of OpenSBI, UEFI and Linux. The long tests are collected "
+        "the boots of OpenSBI, UEFI and Linux; or a stress test, a scene run "
+        "again and again (SOCPUPPET_STRESS_RUNS). The long tests are collected "
         "first, so that none of them starts last. `-m 'not long'` leaves "
         "them out, as the fast test preset does.",
     )
