@@ -1,5 +1,5 @@
 diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/include/cpu.h
-index 386a71db..2c4f7df2 100644
+index bbe22789..7d76f644 100644
 --- a/qemu-components/common/include/cpu.h
 +++ b/qemu-components/common/include/cpu.h
 @@ -14,6 +14,7 @@
@@ -10,20 +10,23 @@ index 386a71db..2c4f7df2 100644
  
  #include <tlm>
  #include <tlm_utils/simple_initiator_socket.h>
-@@ -156,6 +157,12 @@ protected:
+@@ -156,6 +157,15 @@ protected:
  
      gs::async_event m_qemu_kick_ev;
      sc_core::sc_event_or_list m_external_ev;
 +    /* Told on SystemC's thread when the machine stops and when it runs
 +     * again, in coroutine mode: a debugger's breakpoint, attach, pause and
 +     * continue. Only a change is told, and QEMU starts the machine as it is
-+     * initialised, so it starts out running. */
++     * initialised, so it starts out running. A stop and the run after it
++     * that both came between two looks are told as well, by the count of
++     * stops. */
 +    std::function<void(bool stopped)> m_machine_state_cb;
 +    bool m_machine_stopped = false;
++    uint64_t m_machine_stops = 0;
      sc_core::sc_process_handle m_sc_thread; // used for co-routines
  
      std::atomic<bool> m_signaled;
-@@ -397,6 +404,24 @@ protected:
+@@ -405,6 +415,35 @@ protected:
              while (!m_inst.can_run() && !m_finished) {
                  wait_for_work();
              }
@@ -36,8 +39,19 @@ index 386a71db..2c4f7df2 100644
 +            for (;;) {
 +                m_inst.get().lock_iothread();
 +                const bool stopped = m_inst.get().vm_is_stopped();
++                const uint64_t stops = m_inst.get().vm_stop_count();
 +                const bool runnable = m_cpu.can_run();
 +                m_inst.get().unlock_iothread();
++                /*
++                 * A stop since the last look that was never told (its kick
++                 * and the kick of the run after it reached this thread as
++                 * one) is told first.
++                 */
++                if (stops != m_machine_stops && !m_machine_stopped) {
++                    m_machine_stopped = true;
++                    if (m_machine_state_cb) m_machine_state_cb(true);
++                }
++                m_machine_stops = stops;
 +                if (stopped != m_machine_stopped) {
 +                    m_machine_stopped = stopped;
 +                    if (m_machine_state_cb) m_machine_state_cb(stopped);
@@ -48,7 +62,7 @@ index 386a71db..2c4f7df2 100644
          } else {
              while (!m_cpu.can_run() && !m_finished) {
                  if (!m_coroutines && !m_inst.is_tcg_enabled()) {
-@@ -625,6 +650,10 @@ public:
+@@ -649,6 +688,10 @@ public:
       */
      bool can_run() override { return m_cpu.can_run(); }
  
@@ -60,28 +74,33 @@ index 386a71db..2c4f7df2 100644
      {
          if (m_cpu_type.empty()) {
 diff --git a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
-index cfb0508f..12100c64 100644
+index cfb0508f..59c51604 100644
 --- a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
 +++ b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
-@@ -133,6 +133,9 @@ public:
+@@ -133,6 +133,12 @@ public:
      void start_gdb_server(std::string port);
      void vm_start();
      void vm_stop_paused();
 +    /* Whether the machine is stopped, or about to be. Call it with the BQL
 +     * held. */
 +    bool vm_is_stopped();
++    /* How many times the machine has stopped since the GDB server came
++     * up. Call it with the BQL held. */
++    uint64_t vm_stop_count();
  
      void lock_iothread();
      void unlock_iothread();
 diff --git a/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc b/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
-index 9d1741af..a970b467 100644
+index 9d1741af..4bdecd2b 100644
 --- a/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
 +++ b/qemu-components/common/src/libqemu-cxx/libqemu-cxx.cc
-@@ -103,6 +103,8 @@ void LibQemu::vm_start() { m_int->exports().vm_start(); }
+@@ -103,6 +103,10 @@ void LibQemu::vm_start() { m_int->exports().vm_start(); }
  
  void LibQemu::vm_stop_paused() { m_int->exports().vm_stop_paused(); }
  
 +bool LibQemu::vm_is_stopped() { return m_int->exports().vm_is_stopped(); }
++
++uint64_t LibQemu::vm_stop_count() { return m_int->exports().vm_stop_count(); }
 +
  int64_t LibQemu::get_virtual_clock() { return m_int->exports().clock_virtual_get_ns(); }
  

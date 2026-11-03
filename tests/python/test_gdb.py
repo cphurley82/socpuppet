@@ -6,9 +6,11 @@ names, as the boot tests do; the two 32-bit CPUs of the host's manager
 and SSD are DBT-RISE's whatever it says.
 """
 
+import errno
 import functools
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -395,6 +397,124 @@ class TestWhenADebuggerHangsUpWithAnAnswerUnread:
         time.sleep(0.5)
 
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
+
+
+def listening(port):
+    """Whether something on this machine is listening on `port`."""
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError as error:
+            if error.errno == errno.EADDRINUSE:
+                return True
+            raise
+    return False
+
+
+#: How long a script holds up the simulation at most: longer than a
+#: debugger's whole session beside it, which waits for the port and then for
+#: each answer.
+HELD_UP_AT_MOST = 3 * ANSWERS_WITHIN
+#: How long a debugger that said continue waits before the simulation goes
+#: on. 💡 The server sees to a continue as it arrives and answers nothing
+#: while the CPU runs, so there is no answer to wait for. Too short a wait
+#: lets the simulation go on first, and the test then passes when it should
+#: fail; it never fails when it should pass.
+CONTINUE_SEEN_TO_WITHIN = 2
+
+
+def a_cpu_beside_a_script_that_holds_the_simulation(port):
+    """A CPU waiting for a debugger, and a script that holds up the simulation.
+
+    The script runs on the simulation's one thread, as every process does.
+    Once the CPU's port is open it stops there, and nothing else in the
+    simulation moves, until it is let go. 💡 The CPU's server answers a
+    debugger that attaches, reads a register and says continue on a thread
+    of its own, so a debugger can do all three meanwhile.
+
+    Returns the platform, built; an event the script sets once it is
+    holding the simulation; and one that lets it go when it is set.
+    """
+    holding = threading.Event()
+    let_go = threading.Event()
+
+    def hold():
+        # Past the smallest step of time, where the CPU is held for its
+        # debugger and its port opens (docs/upstream.md); one delta at a
+        # time from there, since time stands still while the CPU is held.
+        yield sp.wait(1)
+        while not listening(port):
+            yield sp.wait(0)
+        holding.set()
+        if not let_go.wait(HELD_UP_AT_MOST):
+            raise TimeoutError(
+                f"The debugger did not let the simulation go within "
+                f"{HELD_UP_AT_MOST} s."
+            )
+
+    platform = sp.Platform()
+    cpu = platform.add("cpu", a_cpu(reset_vector=RESET_VECTOR, gdb_port=port))
+    ram = platform.add("ram", sp.Memory(size=0x1000))
+    holder = platform.add("holder", sp.ScriptedBusMaster(hold))
+    holders_ram = platform.add("holders_ram", sp.Memory(size=0x1000))
+    platform.connect(cpu.socket, ram.socket)
+    platform.connect(holder.socket, holders_ram.socket)
+    platform.build()
+    platform.poke(RESET_VECTOR, STORE_0X5A_THEN_SLEEP, via=cpu.socket)
+    return platform, holding, let_go
+
+
+def run_with_a_debugger_while_held_up(platform, port, holding, let_go, session):
+    """Run `platform` with a debugger that comes while the simulation is held up.
+
+    The debugger waits for `holding`, attaches, does `session`, says
+    continue and hangs up, all on a thread of its own, and then sets
+    `let_go`, whatever went wrong. The platform runs for ten microseconds
+    meanwhile, which is enough for the short program once it is let go.
+    What went wrong is raised once the run is over.
+    """
+    errors = []
+
+    def debug():
+        try:
+            if not holding.wait(ANSWERS_WITHIN):
+                raise TimeoutError(
+                    f"The simulation was not held up within {ANSWERS_WITHIN} s."
+                )
+            debugger = GdbClient(port, ANSWERS_WITHIN)
+            try:
+                session(debugger)
+            finally:
+                debugger.continue_()
+                time.sleep(CONTINUE_SEEN_TO_WITHIN)
+                debugger.close()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            let_go.set()
+
+    thread = threading.Thread(target=debug)
+    thread.start()
+    platform.run(sp.us(10))
+    thread.join()
+    if errors:
+        raise errors[0]
+
+
+@pytest.mark.platform
+class TestWhenADebuggerAttachesAndSaysContinueWhileTheSimulationIsHeldUp:
+    def test_the_program_runs_once_the_simulation_goes_on(self):
+        port = free_port()
+        platform, holding, let_go = (
+            a_cpu_beside_a_script_that_holds_the_simulation(port)
+        )
+
+        run_with_a_debugger_while_held_up(
+            platform, port, holding, let_go, GdbClient.program_counter
+        )
+
+        cpu = platform.port("cpu.socket")
+        assert platform.peek32(RESET_VECTOR + 0x200, via=cpu) == 0x5A
 
 
 @pytest.mark.platform
