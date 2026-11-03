@@ -73,5 +73,5 @@ jobs:
       - run: uv run python tools/ci.py run wheel
       - uses: actions/upload-artifact@v7
         with:
-          name: dist-${{ matrix.os }}
+          name: wheels-${{ matrix.os }}
           path: build/wheelhouse/*.whl

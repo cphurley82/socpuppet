@@ -325,10 +325,22 @@ class TestPublishingToPyPI:
         for name in built:
             assert Path(name).name in result.stdout
 
-    def test_with_nothing_built_it_stops_saying_how_to_build_it(
-        self, project, git, web, fakes
+    @pytest.mark.parametrize(
+        "built",
+        [
+            [],
+            ["socpuppet-0.1.0.tar.gz"],
+            ["socpuppet-0.1.0-cp313-cp313-macosx_13_3_arm64.whl"],
+        ],
+        ids=["nothing", "the source alone", "the wheels alone"],
+    )
+    def test_with_less_than_the_wheels_and_the_source_it_publishes_nothing(
+        self, project, git, web, fakes, built
     ):
+        # A version is published once, and one without its wheels or its
+        # source stays that way.
         git("tag", "-a", "v0.1.0", "-m", "The first release")
+        build(project, *built)
 
         result = release(project, web, "pypi", tag="v0.1.0")
 
@@ -367,7 +379,11 @@ class TestTheGitHubRelease:
     ):
         version_on_main(project, git, "0.1.0rc1")
         git("tag", "-a", "v0.1.0rc1", "-m", "A rehearsal")
-        build(project, "socpuppet-0.1.0rc1.tar.gz")
+        build(
+            project,
+            "socpuppet-0.1.0rc1-cp313-cp313-macosx_13_3_arm64.whl",
+            "socpuppet-0.1.0rc1.tar.gz",
+        )
 
         release(project, web, "github", tag="v0.1.0rc1")
 

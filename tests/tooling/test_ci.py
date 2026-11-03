@@ -283,6 +283,32 @@ def test_run_release_check_checks_the_release_then_builds_its_source(ci):
     ]
 
 
+def test_run_pypi_and_github_release_publish_the_release(ci):
+    result, lines = ci("run", "pypi", "github-release")
+
+    assert result.returncode == 0, result.stdout
+    assert lines == [
+        "uv run python tools/release.py pypi",
+        "uv run python tools/release.py github",
+    ]
+
+
+def test_run_installed_waits_for_pypi_then_installs_the_release_two_ways_requiring_the_firmware(
+    ci,
+):
+    a_release(ci, "0.1.0")
+
+    result, _ = ci("run", "installed")
+
+    assert result.returncode == 0, result.stdout
+    required = {"SOCPUPPET_REQUIRE_FIRMWARE": "1"}
+    assert steps_and_their_env(ci) == [
+        ("uv run python tools/release.py wait", {}),
+        ("test_wheel.py uv socpuppet==0.1.0", required),
+        ("test_wheel.py pip socpuppet==0.1.0", required),
+    ]
+
+
 def test_run_test_configures_builds_and_tests_the_dev_tree_in_that_order(ci):
     result, lines = ci("run", "test")
 
@@ -1392,6 +1418,13 @@ def alive(pid):
     except ProcessLookupError:
         return False
     return True
+
+
+def a_release(ci, version):
+    """The repository the runner runs in is socpuppet at `version`."""
+    (ci.root / "pyproject.toml").write_text(
+        f'[project]\nname = "socpuppet"\nversion = "{version}"\n'
+    )
 
 
 def steps_and_their_env(ci):

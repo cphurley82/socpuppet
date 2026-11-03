@@ -40,6 +40,11 @@ inputs:
   zephyr:
     description: Restore Zephyr, its venv and the Zephyr SDK, for twister.
     default: "false"
+  distributions:
+    description: >-
+      Take a release's wheels and source from the jobs that built them,
+      where they are made here: build/wheelhouse and build/sdist.
+    default: "false"
 
 runs:
   using: composite
@@ -207,6 +212,19 @@ runs:
       if: inputs.qbox == 'true'
       shell: bash
       run: tar -xzf qbox-install.tar.gz
+    - name: Take the release's wheels
+      if: inputs.distributions == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        pattern: wheels-*
+        merge-multiple: true
+        path: build/wheelhouse
+    - name: Take the release's source
+      if: inputs.distributions == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: sdist
+        path: build/sdist
     - name: Take the firmware the firmware jobs built
       if: inputs.firmware != ''
       uses: actions/download-artifact@v8

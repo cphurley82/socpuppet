@@ -209,19 +209,32 @@ def _would_publish(where: str, built: list[Path]) -> str:
 
 
 def _built(root: Path) -> list[Path]:
-    """The wheels and the source, from the top of the repository."""
-    built = sorted(
-        path.relative_to(root)
-        for folder, pattern in ((WHEELHOUSE, "*.whl"), (SDIST, "*.tar.gz"))
-        for path in (root / folder).glob(pattern)
+    """The wheels and the source, from the top of the repository.
+
+    A release is published whole, or not at all: a version is published
+    once, and one without its wheels or its source stays that way.
+    """
+    wheels = sorted(
+        p.relative_to(root) for p in (root / WHEELHOUSE).glob("*.whl")
     )
-    if not built:
+    source = sorted(
+        p.relative_to(root) for p in (root / SDIST).glob("*.tar.gz")
+    )
+    if not wheels or not source:
+        missing = " and ".join(
+            what
+            for what, found in (
+                (f"no wheels in {WHEELHOUSE}", wheels),
+                (f"no source in {SDIST}", source),
+            )
+            if not found
+        )
         sys.exit(
-            f"There is nothing in {WHEELHOUSE} or {SDIST} to publish: "
+            f"There are {missing}, and a release is published whole: "
             "`uv run python tools/ci.py release-check wheel` builds this "
             "machine's."
         )
-    return built
+    return [*wheels, *source]
 
 
 def _candidate(version: str) -> bool:
