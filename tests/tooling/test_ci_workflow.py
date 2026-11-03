@@ -147,6 +147,8 @@ ON_THE_OLDEST_UBUNTU_TOO = {
     "qbox-build",
     "qbox",
 }
+# The jobs that run Homebrew's formula, which is for a Mac alone.
+ON_A_MAC_ALONE = {"tap", "tap-installed"}
 # The caches whose contents run on any Linux of the same processor, as on
 # any Mac: the Zephyr SDK's prebuilt tools, its LLVM, and Zephyr with a venv
 # on uv's own Python. One copy serves every Ubuntu.
@@ -576,12 +578,65 @@ def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
 
 def test_each_job_runs_on_the_default_ubuntu_and_only_the_named_few_on_the_oldest_too():
     for where, name, job in WORKFLOW_JOBS:
+        if name in ON_A_MAC_ALONE:
+            continue
         allowed = DEFAULT_UBUNTUS | (
             {OLDEST_UBUNTU} if name in ON_THE_OLDEST_UBUNTU_TOO else set()
         )
         ubuntus = ubuntus_of(job)
         assert ubuntus & DEFAULT_UBUNTUS, where
         assert ubuntus <= allowed, where
+
+
+def test_the_tap_is_rehearsed_and_installed_on_each_mac_a_wheel_is_built_on():
+    # Homebrew's formula installs the wheel of the Mac's own processor.
+    jobs = jobs_of(TIER.RELEASE)
+    macs = {
+        machine
+        for machine in runners(jobs["wheel"])
+        if machine.startswith("macos-")
+    }
+    for name in ON_A_MAC_ALONE:
+        assert set(runners(jobs[name])) == macs, name
+
+
+def test_the_tap_is_rehearsed_once_the_github_release_has_its_wheels():
+    # On a tag the formula installs the wheels from the GitHub release.
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+
+    assert "github-release" in waits_for("tap", jobs)
+
+
+def test_the_tap_is_pushed_once_its_formula_installed_on_each_mac():
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+
+    assert "tap" in waits_for("tap-push", jobs)
+
+
+def test_the_tap_is_installed_from_once_it_is_pushed():
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+
+    assert "tap-push" in waits_for("tap-installed", jobs)
+
+
+def test_the_jobs_that_render_the_formula_take_the_wheels_it_names():
+    jobs = WORKFLOW_FILES[TIER.RELEASE.value]
+    for name in ("tap", "tap-push"):
+        assert any(
+            setup.get("distributions", "").lower() == "true"
+            for setup in setups_in(jobs[name])
+        ), name
+
+
+def test_only_the_job_that_pushes_the_tap_is_given_its_token():
+    given = {
+        (file, name)
+        for file, jobs in WORKFLOW_FILES.items()
+        for name, job in jobs.items()
+        if "secrets.TAP_TOKEN" in json.dumps(job)
+    }
+
+    assert given == {(TIER.RELEASE.value, "tap-push")}
 
 
 def test_the_named_few_run_on_the_oldest_ubuntu_beside_the_default_every_night():

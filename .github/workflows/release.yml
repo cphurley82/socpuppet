@@ -108,3 +108,54 @@ jobs:
         with:
           packages: build
       - run: uv run python tools/ci.py run installed
+
+  tap:
+    # Homebrew's formula of the release, installed from a tap of its own
+    # and tested, on a Mac of each processor, before the tap is touched:
+    # each Mac installs its own processor's wheel from the GitHub release.
+    name: Homebrew's formula (${{ matrix.os }})
+    needs: [wheel, github-release]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26-intel]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          distributions: true
+      - run: uv run python tools/ci.py run tap
+
+  tap-push:
+    # The formula, committed to the tap, homebrew-socpuppet under the same
+    # account, with a token that may write to it alone: the repository's
+    # secret TAP_TOKEN. A release candidate leaves the tap alone.
+    name: Push to the tap
+    needs: [wheel, github-release, tap]
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          distributions: true
+      - run: uv run python tools/ci.py run tap-push
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+
+  tap-installed:
+    # The release gate's test on a Mac: `brew install` from the tap, as a
+    # user would, then the front door on the Python it went into.
+    name: Installed from the tap (${{ matrix.os }})
+    needs: tap-push
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26-intel]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: uv run python tools/ci.py run tap-installed

@@ -755,6 +755,43 @@ JOBS = [
         ),
         areas=("network",),
     ),
+    Job(
+        "tap",
+        "install Homebrew's formula of the release from a tap of its own",
+        tiers=(Tier.RELEASE,),
+        # On a tag the formula installs the GitHub release's wheels.
+        needs=("wheel", "github-release"),
+        steps=(
+            Step(
+                "rehearse",
+                ("uv", "run", "python", "tools/tap.py", "rehearse"),
+            ),
+        ),
+        areas=("build", "network"),
+    ),
+    Job(
+        "tap-push",
+        "push Homebrew's formula of the release to the tap",
+        tiers=(Tier.RELEASE,),
+        needs=("wheel", "github-release", "tap"),
+        steps=(Step("push", ("uv", "run", "python", "tools/tap.py", "push")),),
+        areas=("network",),
+    ),
+    Job(
+        "tap-installed",
+        "install the release from the tap, and run the front door on it",
+        tiers=(Tier.RELEASE,),
+        needs=("tap-push",),
+        steps=(
+            Step(
+                "installed",
+                ("uv", "run", "python", "tools/tap.py", "installed"),
+                env=REQUIRE_FIRMWARE,
+            ),
+        ),
+        uses=(TESTS_ON_EVERY_CORE,),
+        areas=("build", "network"),
+    ),
 ]
 
 

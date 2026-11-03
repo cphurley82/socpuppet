@@ -266,8 +266,30 @@ It refuses a tag that is not the version's, has no message, or is not on main; a
 2. **PyPI**: the wheels and the source, by PyPI's trusted publishing, which trusts a token GitHub gives this one job, in the repository's `pypi` environment. Nothing is uploaded twice, so a run made again skips what PyPI has.
 3. **Installed**: on each machine a wheel is built for, a clean venv installs the release as PyPI serves it, with uv and with pip (`tools/test_wheel.py pip socpuppet==X`), and the Python tests run on it, the README's first show among them. This is the release gate's test ([vision.md](vision.md#the-release-gate)).
 4. **The GitHub release** of the tag, its notes the tag's message and its files the same wheels and source: the project's latest, or a pre-release for a release candidate.
+5. **Homebrew's formula** (`tools/tap.py`, from `tools/socpuppet.rb.in`), installed from a tap of its own and tested on a Mac of each processor: the release's macOS wheel for that processor, from the GitHub release, into Homebrew's Python, with libslirp beside it.
+6. **The tap**: the formula, pushed to `homebrew-socpuppet` under the same account. A release candidate leaves the tap alone.
+7. **Installed from the tap**: `brew install cphurley82/socpuppet/socpuppet` on a Mac of each processor, then the front door on the Python it went into. With the installs from PyPI, this is the gate's test.
 
-`uv run python tools/ci.py pypi github-release` says what each would publish and publishes nothing: only CI's run of a tag of this repository publishes. 🚧 The Homebrew tap comes next.
+`uv run python tools/ci.py pypi github-release tap-push` says what each would publish and publishes nothing: only CI's run of a tag of this repository publishes. `uv run python tools/tap.py rehearse` installs the formula from a tap of its own here, tests it and removes it, with a macOS wheel of each processor in `build/wheelhouse` (a nightly run's `wheels-macos-15` and `wheels-macos-26-intel`). ⚠️ It upgrades nothing and autoremoves nothing: a plain `brew uninstall` takes every dependency no formula needs any more, and a QBox built against Homebrew's gnutls stops loading when gnutls goes.
+
+### Making one
+
+💡 A release candidate rehearses all of it: a version of `X.Y.ZrcN` is published to PyPI as a pre-release, which `pip install socpuppet` passes over, and to GitHub as one, and the tap is left alone.
+
+1. In a pull request, set the version in `pyproject.toml`; merge it.
+2. On main, with the nightly tier green: `git tag -a vX.Y.Z -m "<the notes>" && git push origin vX.Y.Z`.
+3. Approve the `pypi` environment when the run waits for it.
+
+If a job fails, run the failed jobs again: what was published is kept, and nothing is published twice. Before PyPI has the version, the tag can be deleted and pushed again; after, the version is spent, and the next one is a new pull request.
+
+### Before the first release
+
+What GitHub and PyPI need of the maintainer, once:
+
+1. **PyPI**: an account with two-factor authentication, and under its **Publishing**, a pending trusted publisher for the project `socpuppet`: this repository, the workflow `release.yml`, the environment `pypi`. The project is made by the first publish.
+2. **The `pypi` environment**, in this repository's settings: the maintainer as its required reviewer, and its deployments limited to tags `v*`.
+3. **The tap**: a public repository `homebrew-socpuppet` under the same account, with a README on its `main`.
+4. **`TAP_TOKEN`**: a fine-grained token with read and write of the tap's contents and nothing else, as this repository's Actions secret of that name. It expires, and the tap's push fails at its clone until it is renewed.
 
 ## How changes are made
 
