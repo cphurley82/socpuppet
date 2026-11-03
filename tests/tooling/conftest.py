@@ -13,6 +13,15 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 
+# Who commits and tags in the tests' throwaway repositories, and in every git
+# they run: CI's runners have no identity of their own, and git will not
+# commit or tag without one.
+os.environ |= {
+    f"GIT_{role}_{what}": value
+    for role in ("AUTHOR", "COMMITTER")
+    for what, value in (("NAME", "Spam"), ("EMAIL", "spam@example.com"))
+}
+
 # The real configuration, so the tests check the rules the repo is held to.
 CONFIG_FILES = [
     ".clang-format",
