@@ -1,0 +1,35 @@
+name: Release
+
+# A release of socpuppet, made by pushing its tag: `v` and the version in
+# pyproject.toml, annotated with the release's notes, on a commit of main
+# (docs/development.md). Each job is a thin wrapper around tools/ci.py, as
+# in the other tiers.
+
+on:
+  push:
+    tags: ["v*"]
+
+# One run for each tag, and none cancelled while it runs: half a release
+# is worse than a release made twice, which publishes nothing twice.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-check:
+    # The tag is the version's, annotated, and on main; PyPI has no such
+    # version yet; the images an installed wheel fetches are published.
+    # Then the source distribution, built once.
+    name: Check the release
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # main and the tags, to find the tag's commit on main.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - run: uv run python tools/ci.py run release-check
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-sdist
+          path: build/wheelhouse/*.tar.gz

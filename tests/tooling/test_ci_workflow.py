@@ -9,6 +9,7 @@ to the same jobs, so that what a developer runs here is what CI runs.
 """
 
 import importlib.util
+import itertools
 import json
 import re
 import subprocess
@@ -26,6 +27,8 @@ UBUNTU = re.compile(r"ubuntu-\d+\.\d+(?:-arm)?")
 # nightly tier has no need of it, and waits for QBox's verdict without running
 # QBox.
 PUBLISHES_THE_IMAGES = "images"
+# The job that checks a release (tools/release.py check).
+CHECKS_THE_RELEASE = "release-check"
 # The key of a cache kept under the key its restore step looked for.
 KEPT = re.compile(r"\$\{\{ steps\.\w+\.outputs\.cache-primary-key \}\}")
 
@@ -43,6 +46,9 @@ RUNNER = load_runner()
 JOBS = {job.name: job for job in RUNNER.JOBS}
 TIER = RUNNER.Tier
 TIER_FILES = {tier.value for tier in TIER}
+# The tiers that build the firmware and boot it. The release tier builds
+# no firmware of its own.
+BUILD_THE_FIRMWARE = (TIER.QUICK, TIER.NIGHTLY)
 # Each workflow, and its jobs, by its file's name.
 WORKFLOW_DEFINITIONS = {
     path.name: yaml.safe_load(path.read_text())
@@ -139,15 +145,17 @@ PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
 NIGHTLY_COUNTERPART = {"test-quick": "test", "qbox-quick": "qbox"}
 
 
-def test_each_workflow_is_a_tiers_or_one_that_both_tiers_call():
+def test_each_workflow_is_a_tiers_or_one_the_tiers_of_its_jobs_call():
     assert sorted(path.name for path in WORKFLOWS.iterdir()) == sorted(
         WORKFLOW_DEFINITIONS
     )
     assert set(WORKFLOW_DEFINITIONS) >= TIER_FILES
     for file in set(WORKFLOW_DEFINITIONS) - TIER_FILES:
         assert set(triggers_in(file)) == {"workflow_call"}, file
-        for tier in TIER:
-            assert file in called_by(tier), f"{tier.value} calls no {file}"
+        callers = {tier for tier in TIER if file in called_by(tier)}
+        assert len(callers) >= 2, file
+        for name in WORKFLOW_FILES[file]:
+            assert set(JOBS[name].tiers) == callers, f"{file}: {name}"
 
 
 def test_each_workflow_has_a_job_for_each_job_of_its_tier_and_no_other():
@@ -157,12 +165,11 @@ def test_each_workflow_has_a_job_for_each_job_of_its_tier_and_no_other():
         }, tier.value
 
 
-def test_each_job_is_written_once_and_one_of_both_tiers_in_a_workflow_both_call():
-    # So that the two tiers' copies of a job cannot drift apart: there is
-    # one.
+def test_each_job_is_written_once_and_one_of_several_tiers_in_a_workflow_they_call():
+    # So that the tiers' copies of a job cannot drift apart: there is one.
     for name, job in JOBS.items():
         (file,) = [file for file, jobs in DEFINED.items() if name in jobs]
-        if set(job.tiers) == set(TIER):
+        if len(job.tiers) > 1:
             assert file not in TIER_FILES, name
         else:
             assert file in TIER_FILES, name
@@ -189,14 +196,32 @@ def test_only_a_schedule_or_a_person_starts_the_nightly_tier():
     assert set(triggers) == {"schedule", "workflow_dispatch"}
 
 
-def test_neither_tier_queues_behind_the_other():
+def test_only_a_tag_of_a_version_starts_the_release_tier():
+    # Pushed by hand, on a commit of main (docs/development.md).
+    assert triggers_of(TIER.RELEASE) == {"push": {"tags": ["v*"]}}
+
+
+def test_the_release_tiers_check_has_main_and_the_tags_to_find_its_tag_on():
+    # actions/checkout fetches one commit unless told otherwise, and no
+    # main to find the tag's commit on (tools/release.py).
+    check = WORKFLOW_FILES[TIER.RELEASE.value][CHECKS_THE_RELEASE]
+    [checkout] = [
+        step
+        for step in check["steps"]
+        if step.get("uses", "").startswith("actions/checkout@")
+    ]
+
+    assert checkout["with"]["fetch-depth"] == 0
+
+
+def test_no_tier_queues_behind_another():
     # Runs of one concurrency group wait for each other, and a newer one
     # waiting takes the place of an older one. A group's fixed part, before
-    # anything GitHub fills in, keeps one tier's apart from the other's.
-    quick = fixed_part_of_group(TIER.QUICK)
-    nightly = fixed_part_of_group(TIER.NIGHTLY)
-    assert not quick.startswith(nightly)
-    assert not nightly.startswith(quick)
+    # anything GitHub fills in, keeps one tier's apart from another's.
+    for one, other in itertools.permutations(TIER, 2):
+        assert not fixed_part_of_group(one).startswith(
+            fixed_part_of_group(other)
+        ), (one.value, other.value)
 
 
 def test_the_quick_tier_has_a_ci_passed_check_that_needs_every_other_job():
@@ -414,8 +439,16 @@ def test_a_cache_key_names_an_ubuntu_only_in_a_job_that_runs_on_it_alone():
             )
 
 
+def test_the_tiers_that_build_the_firmware_are_the_quick_and_the_nightly():
+    # A release takes its images from the images' release, as an installed
+    # wheel does, and builds no firmware of its own.
+    assert {tier for tier in TIER if "firmware-linux" in jobs_of(tier)} == set(
+        BUILD_THE_FIRMWARE
+    )
+
+
 def test_a_portable_cache_is_keyed_on_system_and_processor_not_on_an_ubuntu():
-    for tier in TIER:
+    for tier in BUILD_THE_FIRMWARE:
         file = tier.value
         seen = set()
         for name, job in jobs_of(tier).items():
@@ -465,7 +498,7 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
 
 
 def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
-    for tier in TIER:
+    for tier in BUILD_THE_FIRMWARE:
         file, jobs = tier.value, jobs_of(tier)
         kept = paths_kept_by(jobs["firmware-linux"])
         assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
@@ -474,7 +507,7 @@ def test_the_linux_firmware_is_cached_and_handed_on_with_its_initramfs():
 
 
 def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
-    for tier in TIER:
+    for tier in BUILD_THE_FIRMWARE:
         file, jobs = tier.value, jobs_of(tier)
         kept = paths_kept_by(jobs["firmware-edk2"])
         assert set(kept) == {"actions/cache", "actions/upload-artifact"}, file
@@ -483,7 +516,7 @@ def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
 
 
 def test_a_change_to_what_the_initramfs_is_made_of_is_a_new_linux_cache():
-    for tier in TIER:
+    for tier in BUILD_THE_FIRMWARE:
         file, jobs = tier.value, jobs_of(tier)
         (key,) = keys_of_what_it_builds(jobs["firmware-linux"])
         assert "firmware/initramfs/**" in hashed_by(key), file

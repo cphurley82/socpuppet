@@ -1,8 +1,8 @@
 """Run CI's jobs: those that can run on this machine, or one in CI.
 
-CI's jobs are in two tiers: the quick tier, on every push and pull request
-(ci.yml), and the nightly tier (nightly.yml), which runs everything on
-every machine.
+CI's jobs are in three tiers: the quick tier, on every push and pull request
+(ci.yml); the nightly tier (nightly.yml), which runs every test on every
+machine; and the release tier, on the tag of a version (release.yml).
 
 Usage:
   uv run python tools/ci.py [-j N] [JOB ...]    the nightly tier's jobs that
@@ -15,7 +15,7 @@ Here, up to three jobs run at a time, short ones first, and each step's
 output is kept in build/ci/. A job named without the jobs it needs takes
 what they make as made already.
 
-`run` is what each job of both workflows calls: it runs the steps
+`run` is what each job of the workflows calls: it runs the steps
 of the jobs named, in order, with their output in CI's log, and stops at the
 first that fails.
 """
@@ -64,13 +64,16 @@ class Tier(enum.Enum):
     """A tier of CI's jobs, by the workflow that runs it.
 
     The quick tier runs on every push and pull request, and leaves out what
-    takes longest. The nightly tier is every job but the quick tier's own,
-    test-quick and qbox-quick, on every machine, and is what a run here runs
-    unless asked otherwise.
+    takes longest. The nightly tier is every job but the quick tier's own
+    (test-quick, qbox-quick) and the release tier's, on every machine, and
+    is what a run here runs unless asked otherwise. The release tier runs on
+    the tag of a version, and checks the release; its jobs run here only
+    when named.
     """
 
     QUICK = "ci.yml"
     NIGHTLY = "nightly.yml"
+    RELEASE = "release.yml"
 
 
 class NoMatch(Exception):
@@ -129,7 +132,7 @@ class Job:
     blurb: str
     # Its steps, or what makes them for where it runs.
     steps: tuple[Step, ...] | Callable[[Mode], tuple[Step, ...]]
-    # The tiers it is in: the quick, the nightly, or both.
+    # The tiers it is in: the quick, the nightly, a release, or several.
     tiers: tuple[Tier, ...]
     # The jobs whose output this one reads, which come before it in JOBS.
     needs: tuple[str, ...] = ()
@@ -668,6 +671,23 @@ JOBS = [
             docker=True,
         )
         for ubuntu in UBUNTUS
+    ),
+    Job(
+        "release-check",
+        "check a release before anything is built, and build its source",
+        tiers=(Tier.RELEASE,),
+        steps=(
+            Step(
+                "check",
+                ("uv", "run", "python", "tools/release.py", "check"),
+            ),
+            Step(
+                "sdist",
+                ("uv", "build", "--sdist", "--out-dir", WHEELHOUSE),
+            ),
+        ),
+        # PyPI, and GitHub's release of the images, are asked.
+        areas=("network",),
     ),
 ]
 
