@@ -1746,6 +1746,16 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Kind**: missing feature.
 - **When it lands**: delete both patch files, and register with QBox's own.
 
+### A stop and a continue that come between two looks are never told
+
+- **Where**: the coroutine loop of `prepare_run_cpu` that `qbox-cpu-machine-state.patch` adds (the entry above), and the kick that `libqemu-vm-stop-state.patch` gives each stop.
+- **What is wrong**: the loop looks at whether the machine is stopped each time the CPU is kicked, and tells only a change. A kick reaches SystemC's thread as a `gs::async_event`, and two kicks that come before the thread gets to them wake the loop once. A debugger that attaches and says continue in that time, the stop's kick and the continue's both waiting, leaves the loop to find the machine running, as if it had never stopped. Neither is told, so `src/socpuppet/models/qbox_cpu.cpp` never lets go of the clock it held for the debugger, and the run never ends. SystemC's thread is busy elsewhere for long enough whenever the machine is loaded: a debugger's own read of memory is answered on that thread, and the loop's look waits behind it.
+- **How to see it**: `TestWhenADebuggerAttachesAndSaysContinueWhileTheSimulationIsHeldUp` in `tests/python/test_gdb.py` under `ctest --preset qbox`, with the patches as they were: a script holds SystemC's thread while a debugger attaches, reads a register and says continue, and the run hangs every time. By chance, CI's QBox jobs hung in `test_gdb.py` once every few runs (2026-11-02 and 2026-11-03), and the two tests that hung there, run 32 at a time on this machine, hung a few times in a hundred. The stacks showed the machine running, the CPU runnable, and the kernel suspended; a trace of the callback showed it never called for that debugger.
+- **What we do**: `libqemu-vm-stop-state.patch` also counts the machine's stops, in the handler that kicks for them, and exports the count as `vm_stop_count`. `qbox-cpu-machine-state.patch` reads it in the same hold of the big lock, and when the count has moved but the machine is running and the loop last told it running, it tells the stop and then the run.
+- **Upstream fix**: with the event the entry above asks for, a count, or a queue of what happened, rather than a look at how things stand.
+- **Kind**: bug, in our own patch.
+- **When it lands**: with the entry above.
+
 ### A CPU that traps on every fetch never yields the simulation
 
 - **Where**: QEMU's `accel/tcg/cpu-exec.c` under `icount`, as QBox runs it in `COROUTINE` mode (`qemu-components/common/include/cpu.h`): the deadline timer that ends a quantum fires on QEMU's instruction count.
