@@ -17,6 +17,15 @@ from processes import run_file
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 #: The pages a stranger reads first.
 PAGES = ("README.md", "docs/first-show.md")
+# 💡 Skipped here and not in a fixture, as other tests of the checkout's
+# files are, because the tests below are made from the pages as the module
+# is read. The README stands for the checkout, so a checkout that has lost
+# one of the other pages still fails.
+if not (ROOT / PAGES[0]).is_file():
+    pytest.skip(
+        f"There is no {ROOT / PAGES[0]} here: it is not in the package.",
+        allow_module_level=True,
+    )
 PYTHON = re.compile(r"^```python\n(.*?)^```\n", re.MULTILINE | re.DOTALL)
 TEXT = re.compile(r"^```text\n(.*?)^```$", re.MULTILINE | re.DOTALL)
 FILE = re.compile(r"examples/[\w/]+\.py")
