@@ -1541,10 +1541,10 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: `CMakeLists.txt` lines 86–91, `file(DOWNLOAD https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.5/CPM.cmake ...)` and then `include()` of what it wrote.
 - **What is wrong**: the download happens on every configure, so QBox cannot be configured offline even when everything it fetches is fetched already, and its status is not checked, so a failed download leaves an empty `CPM.cmake` that is included as if it were CPM. The error is then about something else: `Unknown CMake command "CPMUsePackageLock"`, at line 98.
 - **How to see it**: configure with the network down, or with `HTTPS_PROXY` pointing nowhere.
-- **What we do**: no patch. `tools/ci.py` asks `tools/doctor.py` whether GitHub answers before it starts `qbox-build`, and [setup.md](setup.md#when-something-goes-wrong) says what the error means.
+- **What we do**: no patch. `tools/ci.py` asks `tools/doctor.py` whether GitHub answers before it starts `qbox-build`. GitHub can still answer the one download with nothing, so `tools/build_qbox.py` configures again, up to three times, while `CPM.cmake` comes back empty, and then says to check the network. [setup.md](setup.md#when-something-goes-wrong) says what the error means.
 - **Upstream fix**: download only when the file is missing, pass `STATUS` to `file(DOWNLOAD)` and stop with a message when it fails, or take CPM's own `get_cpm.cmake`, which does both and honours `CPM_SOURCE_CACHE`.
 - **Kind**: build.
-- **When it lands**: drop the setup.md entry.
+- **When it lands**: drop the setup.md entry, and the retry of the configure in `tools/build_qbox.py`.
 
 ### The Hexagon components do not compile as C++20
 

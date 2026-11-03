@@ -41,17 +41,26 @@ elif args[0] == "apply":
 # and installing, leaves the file QBOX_PACKAGE names, if it names one,
 # under the install's prefix, where QBox's install would.
 # With CONFIGURE set to "offline" it fails, having left the empty CPM.cmake
-# that QBox's configure leaves when GitHub does not answer, and with "fails"
-# it fails before that.
+# that QBox's configure leaves when GitHub does not answer; with "offline
+# once" it does so the first time only; and with "fails" it fails before
+# that.
 CMAKE = """
 import os
 from pathlib import Path
 if "-B" in sys.argv:
     build = Path(sys.argv[sys.argv.index("-B") + 1])
-    if os.environ.get("CONFIGURE", "") == "offline":
-        (build / "cmake").mkdir(parents=True, exist_ok=True)
-        (build / "cmake" / "CPM.cmake").write_text("")
-    if os.environ.get("CONFIGURE", ""):
+    cpm = build / "cmake" / "CPM.cmake"
+    configure = os.environ.get("CONFIGURE", "")
+    if configure == "offline once":
+        failed_once = Path(sys.argv[0]).with_name("configure-failed-once")
+        if failed_once.exists():
+            configure = ""
+        else:
+            failed_once.touch()
+    if configure.startswith("offline"):
+        cpm.parent.mkdir(parents=True, exist_ok=True)
+        cpm.write_text("")
+    if configure:
         sys.exit(1)
     (build / "_deps" / "libqemu-src" / ".git").mkdir(parents=True, exist_ok=True)
     prefix = next(

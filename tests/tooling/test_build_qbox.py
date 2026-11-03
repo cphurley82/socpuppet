@@ -190,6 +190,15 @@ def test_a_configure_that_could_not_fetch_cpm_says_to_check_the_network(
     assert "tools/doctor.py network" in result.stdout
 
 
+def test_a_configure_that_could_not_fetch_cpm_once_is_tried_again_and_the_build_goes_on(
+    build_qbox,
+):
+    result, lines = build_qbox(configure="offline once")
+
+    assert result.returncode == 0, result.stdout
+    assert len(calls(lines, "cmake", "-S")) == 2
+
+
 def test_a_configure_that_fails_otherwise_says_nothing_of_the_network(
     build_qbox,
 ):
@@ -197,3 +206,9 @@ def test_a_configure_that_fails_otherwise_says_nothing_of_the_network(
 
     assert result.returncode != 0
     assert "network" not in result.stdout
+
+
+def test_a_configure_that_fails_otherwise_is_not_tried_again(build_qbox):
+    _, lines = build_qbox(configure="fails")
+
+    assert len(calls(lines, "cmake", "-S")) == 1
