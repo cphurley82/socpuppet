@@ -6,6 +6,7 @@ which logs what it was asked and where, so the tests can say how the wheel
 was installed and where its tests ran without installing anything.
 """
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -31,6 +32,25 @@ with (REPO / "pyproject.toml").open("rb") as _pyproject:
         if each.startswith("pytest") and "xdist" not in each
     ]
 
+
+def load(path, beside=()):
+    """Import a file as a module, with `beside` on the path while it loads."""
+    sys.path[:0] = [str(each) for each in beside]
+    try:
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        del sys.path[: len(beside)]
+    return module
+
+
+# The front door's tests, for the pages they read and how they name a file.
+FRONT_DOOR = load(
+    REPO / "tests" / "python" / "test_front_door.py",
+    beside=(REPO / "tests" / "python",),
+)
+
 # uv and a venv's python. `uv venv DIR` makes DIR/bin/python, which is this
 # same script. Each logs its name, arguments and directory, and whether
 # the directory has the Python tests in it.
@@ -42,7 +62,12 @@ with open(os.environ["LOG"], "a") as log:
         "name": os.path.basename(sys.argv[0]),
         "args": args,
         "cwd": os.getcwd(),
-        "has_tests": os.path.exists("tests/conftest.py"),
+        "has_tests": os.path.exists("tests/python/conftest.py"),
+        "files": sorted(
+            os.path.relpath(os.path.join(root, name))
+            for root, _, names in os.walk(".")
+            for name in names
+        ),
     }) + "\n")
 if os.path.basename(sys.argv[0]) == "uv" and args[0] == "venv":
     python = os.path.join(args[-1], "bin", "python")
@@ -146,8 +171,27 @@ def test_the_python_tests_run_on_every_core_long_ones_first(
     (tests,) = [c["args"] for c in calls if c["args"][:2] == ["-m", "pytest"]]
     assert tests[2:] == [
         *("-n", "auto", "--dist", "loadgroup", "--no-loadscope-reorder"),
-        "tests",
+        "tests/python",
     ]
+
+
+@pytest.mark.parametrize("installer", ["uv", "pip"])
+def test_every_page_the_front_door_reads_is_beside_the_copied_tests(
+    test_wheel, installer
+):
+    # With the examples their excerpts name, so the front door runs its
+    # programs on the installed package as it runs them from the checkout.
+    named = {
+        name
+        for page in FRONT_DOOR.PAGES
+        for name in FRONT_DOOR.FILE.findall((REPO / page).read_text())
+    }
+
+    _, calls = test_wheel(installer)
+
+    (tests,) = [c for c in calls if c["args"][:2] == ["-m", "pytest"]]
+    assert set(FRONT_DOOR.PAGES) <= set(tests["files"])
+    assert named <= set(tests["files"])
 
 
 @pytest.mark.parametrize("installer", ["uv", "pip"])
