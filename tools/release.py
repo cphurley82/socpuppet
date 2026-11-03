@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release socpuppet: check a release, and publish it from its tag.
 
-Usage: uv run python tools/release.py check
+Usage: uv run python tools/release.py check|pypi|github|wait
 
 A release is made by pushing a tag, `v` and the version in pyproject.toml,
 annotated with the release's notes, on a commit of main.
@@ -15,6 +15,16 @@ since an installed wheel fetches them from there. Run here, it is a dry
 run, and says how to tag the release if it is not tagged yet. ⚠️ It needs a
 checkout with main and the tags in it: in CI, actions/checkout with
 fetch-depth 0.
+
+`pypi` publishes the distributions in build/wheelhouse to PyPI, by its
+trusted publishing, and skips any it already has. `github` makes the tag's
+GitHub release, its notes the tag's message and its files the same
+distributions: the project's latest, or a pre-release for a release
+candidate. Each publishes only in CI's run of a tag of this repository;
+anywhere else each says what it would publish. `wait` waits for PyPI's
+index to list the version's source and a wheel, which pip reads, so that
+what is installed next is the release: in a run of a tag for up to ten
+minutes, and anywhere else it looks once.
 """
 
 import argparse
@@ -23,6 +33,7 @@ import re
 import runpy
 import subprocess
 import sys
+import time
 import tomllib
 import urllib.error
 import urllib.request
@@ -34,6 +45,13 @@ PIN = Path("python/socpuppet/images_release.py")
 VERSION = re.compile(r"\d+\.\d+\.\d+(rc\d+)?")
 #: Where PyPI is, unless SOCPUPPET_PYPI_URL says otherwise.
 PYPI = "https://pypi.org"
+#: A file an index of PyPI's lists, as its simple page links it.
+LISTED = re.compile(r">([^<>]+)</a>")
+#: Where the jobs that build the distributions leave them.
+WHEELHOUSE = Path("build/wheelhouse")
+#: How long a run of a tag waits for PyPI's index, and how often it looks.
+PATIENCE = 600
+EVERY = 5
 
 
 def main() -> int:
@@ -42,19 +60,18 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("command", choices=["check"])
-    parser.parse_args()
-    return check(_repository())
+    command = {"check": check, "pypi": pypi, "github": github, "wait": wait}
+    parser.add_argument("command", choices=list(command))
+    args = parser.parse_args()
+    return command[args.command](_repository())
 
 
 def check(root: Path) -> int:
     """Check the release; returns 1 if anything is wrong with it, else 0."""
-    with (root / "pyproject.toml").open("rb") as pyproject:
-        project = tomllib.load(pyproject)["project"]
-    name, version = project["name"], project["version"]
+    name, version = _project(root)
     wanted = f"v{version}"
-    on_a_tag = os.environ.get("GITHUB_REF_TYPE") == "tag"
-    tag = os.environ["GITHUB_REF_NAME"] if on_a_tag else wanted
+    on_a_tag = _tag() is not None
+    tag = _tag() or wanted
     problems = []
     if not VERSION.fullmatch(version):
         problems.append(
@@ -90,8 +107,7 @@ def check(root: Path) -> int:
             "published, and an installed wheel fetches its images from "
             "there: it is made by main's first run to pass with them."
         )
-    pypi = os.environ.get("SOCPUPPET_PYPI_URL", PYPI)
-    if _found(f"{pypi}/pypi/{name}/{version}/json"):
+    if _found(f"{_pypi()}/pypi/{name}/{version}/json"):
         problems.append(
             f"PyPI already has {name} {version}, and a version is published "
             "once: change the version in a pull request first."
@@ -102,6 +118,160 @@ def check(root: Path) -> int:
         return 1
     print(f"✅ {name} {version} can be released from {tag}.")
     return 0
+
+
+def pypi(root: Path) -> int:
+    """Publish the distributions to PyPI, in a run of this repository's tag."""
+    built = _built(root)
+    if not _publishing(root):
+        print(_would_publish("PyPI", built))
+        return 0
+    _run(
+        root,
+        *("uv", "publish", "--trusted-publishing", "always"),
+        # 💡 A run made again skips what PyPI already has.
+        *("--check-url", f"{_pypi()}/simple/"),
+        *(str(path) for path in built),
+    )
+    return 0
+
+
+def github(root: Path) -> int:
+    """Make the tag's GitHub release, in a run of this repository's tag."""
+    name, version = _project(root)
+    tag = f"v{version}"
+    built = _built(root)
+    if not _publishing(root):
+        print(_would_publish(f"GitHub's release {tag}", built))
+        return 0
+    there = subprocess.run(
+        ["gh", "release", "view", tag, "--json", "isDraft", "--jq", ".isDraft"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if there.returncode == 0:
+        if there.stdout.strip() != "true":
+            print(f"🧦 {tag} is already published, and is left as it was.")
+            return 0
+        # 💡 A run stopped while uploading leaves a draft.
+        _run(root, "gh", "release", "delete", tag, "--yes")
+    _run(
+        root,
+        *("gh", "release", "create", tag, "--verify-tag", "--notes-from-tag"),
+        *("--title", f"{name} {version}"),
+        *(("--prerelease",) if _candidate(version) else ("--latest",)),
+        *(str(path) for path in built),
+    )
+    return 0
+
+
+def wait(root: Path) -> int:
+    """Wait for PyPI's index to list the version's source and a wheel."""
+    name, version = _project(root)
+    index = f"{_pypi()}/simple/{name}/"
+    # 💡 Only a run that published waits: a fork's tag publishes nothing.
+    patience = PATIENCE if _publishing(root) else 0
+    deadline = time.monotonic() + patience
+    while True:
+        listed = _listed(index)
+        # 💡 Any wheel will do: one `uv publish` uploads all of them.
+        if f"{name}-{version}.tar.gz" in listed and any(
+            each.startswith(f"{name}-{version}-") and each.endswith(".whl")
+            for each in listed
+        ):
+            print(f"✅ PyPI lists {name} {version}.")
+            return 0
+        if time.monotonic() >= deadline:
+            waited = f" after {patience} s" if patience else ""
+            sys.exit(
+                f"PyPI's index, {index}, does not list {name} {version}'s "
+                f"source and a wheel{waited}."
+            )
+        time.sleep(EVERY)
+
+
+def _listed(index: str) -> set[str]:
+    """The files an index's page of a project lists, by name."""
+    try:
+        with urllib.request.urlopen(index, timeout=30) as page:
+            return set(LISTED.findall(page.read().decode()))
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return set()
+        raise
+
+
+def _publishing(root: Path) -> bool:
+    """Whether this is CI's run of a tag of this repository."""
+    here = os.environ.get("GITHUB_REPOSITORY", "")
+    return (
+        _tag() is not None
+        and bool(here)
+        and _repository_url(root).endswith(f"/{here}")
+    )
+
+
+def _would_publish(where: str, built: list[Path]) -> str:
+    """What a run that does not publish says it would have."""
+    listed = "\n".join(f"  {path}" for path in built)
+    return (
+        f"🧦 Only CI's run of a release's tag publishes to {where}:\n{listed}"
+    )
+
+
+def _built(root: Path) -> list[Path]:
+    """The distributions in the wheelhouse, from the top of the repository."""
+    built = sorted(
+        path.relative_to(root)
+        for pattern in ("*.whl", "*.tar.gz")
+        for path in (root / WHEELHOUSE).glob(pattern)
+    )
+    if not built:
+        sys.exit(
+            f"There is nothing in {WHEELHOUSE} to publish: "
+            "`uv run python tools/ci.py wheel` builds this machine's."
+        )
+    return built
+
+
+def _candidate(version: str) -> bool:
+    """Whether a version is a release candidate's, as 0.1.0rc1 is."""
+    return "rc" in version
+
+
+def _project(root: Path) -> tuple[str, str]:
+    """The project's name and version, as pyproject.toml has them."""
+    with (root / "pyproject.toml").open("rb") as pyproject:
+        project = tomllib.load(pyproject)["project"]
+    return str(project["name"]), str(project["version"])
+
+
+def _repository_url(root: Path) -> str:
+    """Where this repository is on the web, as pyproject.toml says."""
+    with (root / "pyproject.toml").open("rb") as pyproject:
+        return str(tomllib.load(pyproject)["project"]["urls"]["Repository"])
+
+
+def _tag() -> str | None:
+    """The tag CI is running for, or None if it is not running for one."""
+    if os.environ.get("GITHUB_REF_TYPE") != "tag":
+        return None
+    return os.environ["GITHUB_REF_NAME"]
+
+
+def _pypi() -> str:
+    """Where PyPI is."""
+    return os.environ.get("SOCPUPPET_PYPI_URL", PYPI)
+
+
+def _run(root: Path, *command: str) -> None:
+    """Run a step of publishing, and stop if it fails."""
+    if subprocess.run(command, cwd=root).returncode != 0:
+        sys.exit(
+            f"`{' '.join(command[:3])}` failed, and says why above. Run this "
+            "job again: what was published already is kept."
+        )
 
 
 def _images(root: Path) -> str:
