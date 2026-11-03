@@ -273,6 +273,16 @@ def test_run_lint_runs_the_linters_and_nothing_else(ci):
     assert lines == ["uv run python tools/lint.py"]
 
 
+def test_run_release_check_checks_the_release_then_builds_its_source(ci):
+    result, lines = ci("run", "release-check")
+
+    assert result.returncode == 0, result.stdout
+    assert lines == [
+        "uv run python tools/release.py check",
+        "uv build --sdist --out-dir build/wheelhouse",
+    ]
+
+
 def test_run_test_configures_builds_and_tests_the_dev_tree_in_that_order(ci):
     result, lines = ci("run", "test")
 
