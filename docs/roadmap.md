@@ -40,7 +40,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 | M32 | Images fetched on first use | M14, M20 | the wheel alone, with no checkout, fetches the images and boots Zephyr's `hello_world` and Linux to its prompt, in CI (`test_fetched_images.py`, [boot-your-firmware.md](boot-your-firmware.md)) | ✅ |
 | M33 | QBox in one command | M27 | one command on a bare checkout ends with Linux at a prompt on QBox's hart, on Linux and macOS, in CI (`tools/qbox.py`, the nightly `qbox-one-command`) | ✅ |
 | M35 | The docs, read by a stranger | M32, M33 | no machine's or person's name outside the licence and `pyproject.toml`, and no date on a page outside the record, under lint (`tools/stranger.py`); every link resolves, under lint; a stranger reaches a boot from the front door: every program on the README and 🌱 [first-show.md](first-show.md) runs as pasted and prints what the page shows (`test_front_door.py`) | ✅ |
-| M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux, macOS and WSL and from the tap on a Mac, each release built, tested and published from its tag | |
+| M36 | The release: PyPI and the tap | M32, M35 | the release gate in [vision.md](vision.md#the-release-gate): the README's first show from `pip install socpuppet` on Linux and macOS and from the tap on a Mac, each release built, tested and published from its tag (`release.yml`'s `installed` and `tap-installed`) | |
 | M37 | The container | M33, M36 | the release's image opens as a devcontainer in VS Code and in a Codespace, and `docker run` of it boots Linux on both harts with nothing fetched or built, in CI | |
 | M34 | Labs in twenty-minute sketches | M36, M37 | every lab states a measured length under twenty minutes and its Python steps run under ctest; the 🌱 first-rung lab needs nothing but one of the release's channels | |
 | M38 | The memory spike, a decision gate | M14, M5 | a report (`history/memory-spike.md`): which controller, who brings it up, where the DRAM lives, what Linux and Zephyr ask, which timed model is the tier later | |
@@ -60,7 +60,7 @@ A milestone is done when its exit test passes in CI. The table is in the order t
 5. **The road to Linux.** The hart and the board run the way Linux will run them, then OpenSBI, then UEFI, then the kernel. (M22 to M28, M20, M24)
 6. **Linux grows, and meets this machine.** A real host for the SSD, a cable to this machine, Ethernet, the IOMMU, the AI processor and the small parts, each under Linux's own driver. (M30, M31, M29, M17, M15, M19, M18)
 7. **The rest of the cast, and fidelity.** What nothing on the road to Linux needs. (M16, M9, M10, M11)
-8. **The first release.** Images fetched on first use, QBox in one command, the docs read by a stranger, the wheel on PyPI and a Homebrew tap with Windows through WSL, a container that opens in VS Code with both harts inside, and then the labs in twenty-minute sketches. (M32 to M37)
+8. **The first release.** Images fetched on first use, QBox in one command, the docs read by a stranger, the wheel on PyPI and a Homebrew tap, a container that opens in VS Code with both harts inside, and then the labs in twenty-minute sketches. (M32 to M37)
 9. **Memory.** Where the DRAM lives, and a DRAM controller firmware brings up. (M38, M39)
 
 Phases 8 and 9 come before the rest of 6 and 7 ([history/decisions.md](history/decisions.md), 2026-10-31). Where the order is stricter than the table's "Needs" column, it is on purpose: M22 came after M21 so that every later milestone gets a board tested by Zephyr's own suites; M28 before M25 so that the spike's block device met a driver nobody here wrote; M29 before M17 because `ssh` needs a bridge at the far end of a card, not a card; M36 after M35 because the README it ships must be true; M37 after M36 because the image is built from the release's wheel and images; M34 last, after both releases, because the channels a release ships through shape how every lab begins. The rest of the ordering, and why, is in [history/decisions.md](history/decisions.md).
@@ -80,9 +80,9 @@ What each milestone delivers, and why. How is planned when it starts.
 
 ### M36: The release: PyPI and the tap
 
-`pip install socpuppet` on Linux, macOS and WSL, a Homebrew tap on a Mac, and a release that builds, tests and publishes itself from a tag. Aim 2, deliver it with `pip install`; the release gate is its exit.
+`pip install socpuppet` on Linux and macOS, a Homebrew tap on a Mac, and a release that builds, tests and publishes itself from a tag. Aim 2, deliver it with `pip install`; the release gate is its exit.
 
-- ⚠️ The maintainer's own hands: the PyPI account and name, the trusted publisher, the tap's repository.
+- ⚠️ The maintainer's own hands, once: the PyPI account and its trusted publisher, the `pypi` environment, the tap's repository and its token ([development.md](development.md#before-the-first-release)); then a release candidate, `v0.0.1rc1`, and `v0.0.1`.
 - After it, the post per act and the upstream track open ([vision.md](vision.md#the-release-gate)).
 
 ### M37: The container
@@ -155,9 +155,11 @@ Each has a date it must be settled by and what happens until then.
 Small things that are nobody's milestone, each with a link to where its detail lives.
 
 - Send the fixes we carry upstream, smallest and clearest first ([upstream.md](upstream.md)).
-- 🌱 Measure [first-show.md](first-show.md) and [boot-your-firmware.md](boot-your-firmware.md) on a real newcomer, which the release gate asks for ([vision.md](vision.md#the-release-gate)); the pages are written, the stopwatch is M36's.
+- 🌱 Measure [first-show.md](first-show.md) and [boot-your-firmware.md](boot-your-firmware.md) on a real newcomer, which the release gate asks for ([vision.md](vision.md#the-release-gate)), from `pip install socpuppet` once it is on PyPI.
 - What the reading pass left: "the host" (the board, not this machine) and "delta cycle" defined on each page that uses them; the 🎭 stand-in pages opening on what each stands in for before the sentence they share; and one name for the IO die's manager across [linux.md](linux.md) and [boards.md](boards.md).
-- The one command for QBox's hart on Windows under WSL, in CI. GitHub has no WSL runner; its `windows-2025` runners carry WSL2, though GitHub does not document it. The checkout belongs inside WSL's own filesystem; the setup action has no Windows branch, and the doctor no fix for one.
+- `pip install socpuppet` and the one command for QBox's hart on Windows under WSL, in CI; the release gate's WSL is here. GitHub has no WSL runner; its `windows-2025` runners carry WSL2, though GitHub does not document it. The checkout belongs inside WSL's own filesystem; the setup action has no Windows branch, and the doctor no fix for one.
+- What a release leaves: attestations of the GitHub release's files, beside the ones `uv publish` uploads to PyPI; `socpuppet --version`; wheels for musl (Alpine); a ruleset that keeps a `v*` tag from being moved or deleted; the README's links, relative and so broken on PyPI's page; and the tap's Python, the newest a wheel is built for, which Homebrew may not have yet ([development.md](development.md#the-release)).
+- QBox on a Mac links Homebrew's gnutls when it is there, which [setup.md](setup.md#5-qbox-optional)'s list of packages leaves out.
 - Delete the releases of images that no commit on main pins: a change under the firmware's sources makes a new one, even a comment's ([development.md](development.md)).
 - A fetch of an image tries again only when its server is out of reach; one cut off partway, or answered with a server's error, fails at once (`python/socpuppet/images.py`).
 - Run the C++ NVMe contract against the SSD with its Zephyr firmware: `SsdRig` in `tests/cpp/contracts/nvme_test.cpp` has a C++ stand-in where the CPU goes, and `tests/python/test_ssd_firmware.py` holds the firmware's share until then.

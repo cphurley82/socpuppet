@@ -2,7 +2,7 @@
 
 How to run a Zephyr application on socpuppet's host board, a simulated RISC-V machine, from a fresh checkout to Zephyr's hello world, then an application of your own, typing on its console, and a debugger on it. Zephyr is an open-source real-time operating system for small devices, and the firmware on these pages is built on it. The other boards and the bigger shows, with two or three firmwares at once, are on [boards.md](boards.md); the steps there are these, and each section says what differs.
 
-🚧 socpuppet is not on PyPI yet, so "install" means building it from a checkout: [setup.md](setup.md) takes a bare machine to a built one in three commands, and [development.md](development.md) is the everyday page. Every command below is run from the checkout.
+Running an image needs socpuppet installed and nothing more: `pip install socpuppet` ([the README](../README.md#try-it) has the other ways). Building an image of your own takes a checkout: [setup.md](setup.md) takes a bare machine to a built one in three commands, and [development.md](development.md) is the everyday page; the commands that build are run from the checkout.
 
 ## The board
 
@@ -70,7 +70,7 @@ print(board.uart.output)
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-Run it with `PYTHONPATH=python uv run python my_show.py` from the checkout. `examples/host_hello.py` is this show with a timeout instead of a fixed duration, and `python -m socpuppet.boards.host <image>` does the same from the command line.
+Run it with `python my_show.py`, or in a checkout with `PYTHONPATH=python uv run python my_show.py`. `examples/host_hello.py` is this show with a timeout instead of a fixed duration, and `python -m socpuppet.boards.host <image>` does the same from the command line.
 
 ## Typing on the console
 

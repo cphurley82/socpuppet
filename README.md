@@ -6,7 +6,7 @@
 
 🌙 Every push runs the quick tests, one boot of each area included, on Linux on both harts and on an Apple silicon Mac; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
 
-> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). Next on stage, the first release: socpuppet on PyPI ([the roadmap](docs/roadmap.md)).
+> 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). And it is out: `pip install socpuppet` ([Try it](#try-it)). Next on stage, the container ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
 
@@ -44,7 +44,7 @@ print(board.uart.output)
 Hello World! socpuppet_host/socpuppet_rv64
 ```
 
-The image is fetched the first time it is asked for, so there is nothing to build; `uv run firmware/build.py zephyr` builds it, and every other image the tests boot, into `build/firmware` if you would rather. Save the show as `my_show.py` and run it from the checkout with `PYTHONPATH=python uv run python my_show.py`, once socpuppet is built ([Try it](#try-it)); `examples/host_hello.py` is the same show with a tidier ending. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
+The image is fetched the first time it is asked for, so there is nothing to build; `uv run firmware/build.py zephyr` builds it, and every other image the tests boot, into `build/firmware` if you would rather. Save the show as `my_show.py` and run it with `python my_show.py`, once socpuppet is installed ([Try it](#try-it)); in a checkout, `examples/host_hello.py` is the same show with a tidier ending. The board Zephyr was built for is generated from the same Python description that builds the simulation, so the two cannot disagree about where the UART is. [Boot your firmware here](docs/boot-your-firmware.md) has the steps for an application of your own.
 
 ## A smaller show
 
@@ -129,7 +129,21 @@ The rest of the cast arrives one example at a time. Each swaps one 🎭 stand-in
 
 ## Try it
 
-socpuppet is not on PyPI yet, so build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.
+On Linux or a Mac, with Python 3.12 or newer:
+
+```sh
+pip install socpuppet
+```
+
+`uv add socpuppet` adds it to a project of yours, and `pipx install socpuppet` installs the `socpuppet` command alone. 🍺 On a Mac with [Homebrew](https://brew.sh), `brew install cphurley82/socpuppet/socpuppet` installs it into Homebrew's Python, so that `python3` there can import it. Then save a show above as `my_show.py` and run `python my_show.py`. 🚧 Windows, under WSL, is not tested yet ([the roadmap](docs/roadmap.md)).
+
+🐧 To boot Linux and type at its shell yourself (its images are fetched the first time):
+
+```sh
+socpuppet linux
+```
+
+🔧 To change socpuppet, or to run its examples and its tests, build it from a checkout. You need a C++20 compiler and [uv](https://docs.astral.sh/uv/); uv brings Python, CMake and Ninja.
 
 ```sh
 git clone https://github.com/cphurley82/socpuppet && cd socpuppet
@@ -141,12 +155,6 @@ PYTHONPATH=python uv run python examples/ssd_hello.py
 ```
 
 ⚠️ The first build compiles SystemC and its companions from source and takes several minutes.
-
-🐧 To boot Linux and type at its shell yourself (its images are fetched the first time, or built by `uv run firmware/build.py`):
-
-```sh
-PYTHONPATH=python uv run python -m socpuppet linux
-```
 
 🧦 Or on the second hart, QEMU's CPU by way of QBox, which is GPL and so built here from source, in one command ([setup.md](docs/setup.md#5-qbox-optional) lists the packages it needs):
 
