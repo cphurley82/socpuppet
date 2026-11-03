@@ -51,6 +51,19 @@ class TestWhenTheExt4TestRunsFromACopyOfTestsPythonAlone:
         assert "firmware/rootfs/etc/inittab" in reason
 
 
+class TestWhenTheFrontDoorTestRunsFromACopyOfTestsPythonAlone:
+    def test_it_skips_saying_the_checkouts_readme_is_not_there(self, tmp_path):
+        shutil.copytree(REPO / "tests" / "python", tmp_path / "tests")
+
+        run = run_pytest(tmp_path, "tests/test_front_door.py")
+
+        # 💡 Skipped whole, it has no tests to run: alone, that is pytest's
+        # NO_TESTS_COLLECTED, and among the rest of tests/python it is a pass.
+        assert run.exit_code == pytest.ExitCode.NO_TESTS_COLLECTED, run.output
+        (reason,) = run.skip_reasons
+        assert "README.md here" in reason
+
+
 class TestWhenTheCablesTestsRunFromACopyOfTestsPythonAlone:
     """They ask the package what the cable lacks, not the checkout's doctor."""
 
@@ -79,10 +92,15 @@ class TestWhenTheCablesTestsRunFromACopyOfTestsPythonAlone:
 
 @dataclass
 class Run:
-    """How a run of pytest went: whether it passed, and what it said."""
+    """How a run of pytest went: how it ended, and what it said."""
 
-    passed: bool
+    exit_code: int
     output: str
+
+    @property
+    def passed(self) -> bool:
+        """Whether every test it collected passed, or was skipped."""
+        return self.exit_code == pytest.ExitCode.OK
 
     @property
     def skip_reasons(self) -> list[str]:
@@ -116,4 +134,4 @@ def run_pytest(directory, test, without_ssh=False):
         stderr=subprocess.STDOUT,
         encoding="utf-8",
     )
-    return Run(result.returncode == 0, result.stdout)
+    return Run(result.returncode, result.stdout)
