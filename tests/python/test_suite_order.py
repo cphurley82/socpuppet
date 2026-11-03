@@ -2,8 +2,8 @@
 
 ctest runs the suite on every core with pytest-xdist, which hands the tests
 out in the order they were collected. A boot of real firmware takes most of
-a minute, so those tests go first: started last, one of them would keep the
-whole run waiting while every other core sat idle.
+a minute, so those tests go first, with the other long tests: started last,
+one of them would keep the whole run waiting while every other core sat idle.
 
 ⚠️ This test sees something only in a run of the whole suite. ctest's three
 entries each choose by marker, and none holds both this test and the boots, so
@@ -34,11 +34,25 @@ BOOTS = {
 }
 
 
-def test_when_the_boots_are_collected_they_come_before_every_other_test(
+def test_when_the_boots_are_collected_none_comes_after_a_test_that_is_not_long(
     request,
 ):
-    boots = [item.path.stem in BOOTS for item in request.session.items]
-    if not any(boots):
+    # 💡 Other long tests, such as a stress test, may go out among them.
+    items = request.session.items
+    if not any(item.path.stem in BOOTS for item in items):
         pytest.skip("the boots of OpenSBI, UEFI and Linux were not collected")
 
-    assert boots == sorted(boots, reverse=True)
+    first_not_long = next(
+        (
+            i
+            for i, item in enumerate(items)
+            if item.get_closest_marker("long") is None
+        ),
+        len(items),
+    )
+    late = [
+        item.nodeid
+        for item in items[first_not_long:]
+        if item.path.stem in BOOTS
+    ]
+    assert late == []
