@@ -6,6 +6,7 @@ checkout is not beside them there, and a test that reads a file of it
 skips.
 """
 
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -18,6 +19,19 @@ import pytest
 from socpuppet import SlirpUnavailable, slirp
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+def load_tool(name):
+    """Import a tool of tools/ as a module."""
+    path = REPO / "tools" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# tools/test_wheel.py, for how it lays its copy of the tests out.
+test_wheel = load_tool("test_wheel")
 
 
 def libslirp_loads_here() -> bool:
@@ -88,6 +102,22 @@ class TestWhenTheCablesTestsRunFromACopyOfTestsPythonAlone:
         assert run.skip_reasons
         for reason in run.skip_reasons:
             assert "ssh is not installed" in reason
+
+
+class TestWhenTheFrontDoorRunsFromACopyLaidOutByTheWheelsTest:
+    """tools/test_wheel.py puts the pages and the examples beside the tests."""
+
+    def test_its_excerpts_are_checked_and_none_skips(self, tmp_path):
+        test_wheel.copy_as_checked_in(tmp_path)
+
+        run = run_pytest(
+            tmp_path,
+            "tests/python/test_front_door.py::"
+            "test_a_block_that_does_not_import_socpuppet_is_an_excerpt_of_a_file_named_beside_it",
+        )
+
+        assert run.passed, run.output
+        assert run.skip_reasons == []
 
 
 @dataclass
