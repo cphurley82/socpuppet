@@ -16,6 +16,7 @@ quick way and from the flash.
 (test_uefi_boots.py).
 """
 
+import platform
 import re
 import time
 
@@ -218,6 +219,15 @@ OUTRUNS_THE_WALL_BY = 2
 @pytest.mark.only_on_qbox(
     "the interpreter boots Linux at about the wall's pace, so only this "
     "hart's clock can be expected to run well ahead of it"
+)
+@pytest.mark.skipif(
+    (platform.system(), platform.machine()) == ("Darwin", "x86_64"),
+    reason=(
+        "with a test worker on every core, an Intel Mac's QBox hart boots "
+        "Linux at about the wall's pace however it is pumped (0.9 to 1.6 "
+        "times, in the nightlies), so a pump that held the clock to the "
+        "wall would pass there too"
+    ),
 )
 class TestWhenTheBootIsPumped:
     def test_the_clock_runs_well_ahead_of_the_wall_to_the_prompt(
