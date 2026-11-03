@@ -25,6 +25,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
     "Topic :: System :: Emulators",
 ]
@@ -108,7 +109,7 @@ SOCPUPPET_BUILD_TESTS = false
 # `uv add socpuppet` will fetch once they are published. CI builds them
 # (see .github/workflows/ci.yml). Each is installed into a fresh environment
 # and tested there, away from the source tree.
-build = ["cp312-*", "cp313-*", "cp314-*"]
+build = ["cp312-*", "cp313-*", "cp314-*", "cp315-*"]
 # manylinux covers the glibc distributions. musl (Alpine) is not built yet.
 skip = ["*-musllinux_*"]
 test-sources = ["tests/python"]
