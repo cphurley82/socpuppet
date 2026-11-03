@@ -1,0 +1,77 @@
+name: Wheels
+
+# The wheels a user installs, built and tested on each machine the caller
+# hands this: the nightly tier, to keep them working, and the release
+# tier, to publish them. Written once, here, so that what a release
+# publishes is what the nightly tier tests.
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: The machines a wheel is built on, as a JSON list.
+        type: string
+        required: true
+
+jobs:
+  wheel:
+    # The wheels a user will install, built by cibuildwheel as configured in
+    # pyproject.toml: one per Python version, for Linux on Intel and Arm
+    # (manylinux) and for macOS on Apple silicon and on Intel. cibuildwheel
+    # installs each into a fresh environment and runs the Python tests
+    # against it, and then one is installed the way a user would, with uv
+    # and with pip, and boots real firmware, fetched as a user's would be
+    # from the release main published. ⚠️ So on a branch with new firmware
+    # sources this is red: their release appears only when main passes with
+    # them, and the same between a merge and that run. This job publishes
+    # nothing: a release publishes the wheels it uploads (release.yml).
+    #
+    # Nearly all of a wheel is the dependencies, which are the same for
+    # every Python version. A compiler cache (ccache, set up in
+    # pyproject.toml) lets the second and third wheel take them from the
+    # first, and keeping the cache from one run to the next lets the first
+    # take them from last time. On Linux the build runs in a container,
+    # which sees the runner's files under /host.
+    name: Portable wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os) }}
+    env:
+      CCACHE_DIR: ${{ startsWith(matrix.os, 'ubuntu') && '/host/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
+      CCACHE_COMPRESS: "1"
+      # The setup action's size for a build's cache, which keeps one set of
+      # builds and not every one since.
+      CCACHE_MAXSIZE: 500M
+    steps:
+      - uses: actions/checkout@v7
+      # Restored everywhere, and kept by main's runs alone, as every build's
+      # compiler cache is (.github/actions/setup). A new version in
+      # pyproject.toml is a new key: the last cache of this machine's has
+      # what still matches.
+      - name: Cache compiled dependencies
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v6
+        with:
+          path: ${{ startsWith(matrix.os, 'ubuntu') && '/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
+          key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-
+      - name: Restore compiled dependencies
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ startsWith(matrix.os, 'ubuntu') && '/home/runner/.cache/ccache' || '/Users/runner/Library/Caches/ccache' }}
+          key: ccache-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/patches/**', 'pyproject.toml') }}
+          restore-keys: |
+            ccache-${{ matrix.os }}-
+      # dtc compiles the devicetree a boot under OpenSBI is handed.
+      - uses: ./.github/actions/setup
+        with:
+          packages: build
+      - run: uv run python tools/ci.py run wheel
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.os }}
+          path: build/wheelhouse/*.whl

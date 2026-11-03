@@ -279,7 +279,7 @@ def test_run_release_check_checks_the_release_then_builds_its_source(ci):
     assert result.returncode == 0, result.stdout
     assert lines == [
         "uv run python tools/release.py check",
-        "uv build --sdist --out-dir build/wheelhouse",
+        "uv build --sdist --out-dir build/sdist",
     ]
 
 

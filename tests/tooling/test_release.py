@@ -333,7 +333,7 @@ class TestPublishingToPyPI:
         result = release(project, web, "pypi", tag="v0.1.0")
 
         assert result.returncode != 0
-        assert "tools/ci.py wheel" in result.stderr
+        assert "tools/ci.py release-check wheel" in result.stderr
         assert fakes.asked("uv") == []
 
 
@@ -453,12 +453,18 @@ class TestWaitingForPyPI:
 
 
 def build(project, *names):
-    """Leave distributions in the wheelhouse; returns their paths."""
-    wheelhouse = project / "build" / "wheelhouse"
-    wheelhouse.mkdir(parents=True)
-    for name in names:
-        (wheelhouse / name).write_text("spam")
-    return [f"build/wheelhouse/{name}" for name in names]
+    """Leave distributions where the jobs that build them do; returns them.
+
+    A wheel goes in the wheelhouse, and the source in a folder of its own.
+    """
+    built = [
+        f"build/{'wheelhouse' if name.endswith('.whl') else 'sdist'}/{name}"
+        for name in names
+    ]
+    for path in built:
+        (project / path).parent.mkdir(parents=True, exist_ok=True)
+        (project / path).write_text("spam")
+    return built
 
 
 @contextlib.contextmanager

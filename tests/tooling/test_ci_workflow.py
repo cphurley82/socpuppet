@@ -13,6 +13,7 @@ import itertools
 import json
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -67,6 +68,11 @@ MACHINES = "${{ fromJSON(inputs.os) }}"
 SETUP = "./.github/actions/setup"
 SETUP_ACTION = yaml.safe_load(
     (REPO / ".github" / "actions" / "setup" / "action.yml").read_text()
+)
+# How big the setup action lets a build's compiler cache grow.
+(SETUP_CCACHE_MAXSIZE,) = re.findall(
+    r"CCACHE_MAXSIZE=(\w+)",
+    (REPO / ".github" / "actions" / "setup" / "action.yml").read_text(),
 )
 # The sets of packages the setup action installs, by name: the patterns of
 # its script's case.
@@ -321,10 +327,73 @@ def test_the_job_that_publishes_the_images_keeps_its_token_out_of_the_checkout()
 def test_the_wheel_job_takes_no_firmware_from_the_jobs_that_build_it():
     # The images must come from the release: the checkout's own would prove
     # nothing about a wheel alone.
-    wheel = WORKFLOW_FILES[TIER.NIGHTLY.value]["wheel"]
+    for tier in (TIER.NIGHTLY, TIER.RELEASE):
+        jobs = WRAPPING_JOBS[tier.value]
+        caller = written_or_called_as("wheel", jobs)
 
-    assert not needs_of(wheel)
-    assert all("firmware" not in setup for setup in setups_in(wheel))
+        # A release's check builds nothing; no other job comes first.
+        assert waits_for(caller, jobs) <= {CHECKS_THE_RELEASE}, tier.value
+        assert all(
+            "firmware" not in setup
+            for setup in setups_in(jobs_of(tier)["wheel"])
+        ), tier.value
+
+
+def test_a_release_builds_every_wheel_the_nightly_tier_builds():
+    # On the same machines, so that each wheel a user may install was
+    # built and tested every night before it was published.
+    assert set(runners(jobs_of(TIER.RELEASE)["wheel"])) == set(
+        runners(jobs_of(TIER.NIGHTLY)["wheel"])
+    )
+
+
+def test_every_job_of_the_release_tier_but_the_check_waits_for_it():
+    # Nothing is built for a tag that is not a release's.
+    release = WRAPPING_JOBS[TIER.RELEASE.value]
+    for name in jobs_of(TIER.RELEASE):
+        if name != CHECKS_THE_RELEASE:
+            caller = written_or_called_as(name, release)
+            assert CHECKS_THE_RELEASE in waits_for(caller, release), name
+
+
+def test_when_the_dependencies_key_changes_the_wheels_compiler_cache_starts_from_its_machines_last_one():
+    # pyproject.toml is in its key, and a release's new version would build
+    # every dependency again: ccache takes what still matches from the last.
+    caches = wheels_compiler_caches()
+    assert caches
+    for cache in caches:
+        key = cache["with"]["key"]
+        [fallback] = cache["with"]["restore-keys"].splitlines()
+
+        assert key.startswith(fallback)
+        assert "hashFiles(" not in fallback
+        assert "${{ matrix.os }}" in fallback
+
+
+def test_the_wheels_compiler_cache_is_saved_by_mains_runs_alone():
+    # As every build's is (the setup action): GitHub keeps 10 GB of caches
+    # for a repository, and a tag's or a branch's copy is read by no other.
+    saving = [
+        cache
+        for cache in wheels_compiler_caches()
+        if cache["uses"].startswith("actions/cache@")
+    ]
+    assert saving
+    for cache in saving:
+        assert cache["if"] == "github.ref == 'refs/heads/main'"
+
+
+def test_the_wheels_compiler_cache_is_kept_to_the_size_of_one_set_of_builds():
+    # Started from the last, it would otherwise grow to ccache's 5 GB.
+    wheel = jobs_of(TIER.NIGHTLY)["wheel"]
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        passed = tomllib.load(pyproject)["tool"]["cibuildwheel"]["linux"][
+            "environment-pass"
+        ]
+
+    assert wheel["env"]["CCACHE_MAXSIZE"] == SETUP_CCACHE_MAXSIZE
+    # And told to the Linux wheels' container, where ccache runs.
+    assert "CCACHE_MAXSIZE" in passed
 
 
 def test_qbox_in_one_command_starts_from_a_bare_checkout():
@@ -572,6 +641,39 @@ def condition_of(job):
     """A job's or a step's if, less the ${{ }} GitHub lets it be wrapped in."""
     condition = job.get("if", "")
     return condition.removeprefix("${{").removesuffix("}}").strip()
+
+
+def wheels_compiler_caches():
+    """The steps of the wheel job that restore or keep its ccache."""
+    return [
+        step
+        for step in jobs_of(TIER.NIGHTLY)["wheel"]["steps"]
+        if step.get("uses", "").startswith("actions/cache")
+    ]
+
+
+def written_or_called_as(name, jobs):
+    """The job of a workflow's that is the job named, or calls it."""
+    if name in jobs:
+        return name
+    (caller,) = [
+        each
+        for each, job in jobs.items()
+        if "uses" in job and name in called_jobs(job)
+    ]
+    return caller
+
+
+def waits_for(name, jobs):
+    """Every job of a workflow's that the job named waits for, at any remove."""
+    waited = set()
+    waiting = list(needs_of(jobs[name]))
+    while waiting:
+        need = waiting.pop()
+        if need not in waited:
+            waited.add(need)
+            waiting.extend(needs_of(jobs[need]))
+    return waited
 
 
 def jobs_of(tier):

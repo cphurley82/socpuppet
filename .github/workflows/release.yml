@@ -31,5 +31,14 @@ jobs:
       - run: uv run python tools/ci.py run release-check
       - uses: actions/upload-artifact@v7
         with:
-          name: dist-sdist
-          path: build/wheelhouse/*.tar.gz
+          name: sdist
+          path: build/sdist/*.tar.gz
+
+  wheel:
+    name: Wheels
+    # Every wheel the nightly tier builds, built and tested the same way
+    # (wheel.yml), once the release is known to be one.
+    needs: release-check
+    uses: ./.github/workflows/wheel.yml
+    with:
+      os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-15", "macos-26-intel"]'

@@ -45,6 +45,8 @@ REPO = Path(__file__).resolve().parents[1]
 LOGS = REPO / "build" / "ci"
 # Where the wheel job leaves the wheels, from the top of the repository.
 WHEELHOUSE = "build/wheelhouse"
+# Where a release's check leaves its source distribution.
+SDIST = "build/sdist"
 # Where a wheel built here on Linux keeps its container's compiler cache.
 CCACHE = "build/ccache"
 ON_LINUX = platform.system() == "Linux"
@@ -648,7 +650,7 @@ JOBS = [
     Job(
         "wheel",
         "build the wheels a user installs, and test one installed two ways",
-        tiers=(Tier.NIGHTLY,),
+        tiers=(Tier.NIGHTLY, Tier.RELEASE),
         steps=wheel_steps,
         uses=(TESTS_ON_EVERY_CORE,),
         fresh=(WHEELHOUSE,),
@@ -683,9 +685,10 @@ JOBS = [
             ),
             Step(
                 "sdist",
-                ("uv", "build", "--sdist", "--out-dir", WHEELHOUSE),
+                ("uv", "build", "--sdist", "--out-dir", SDIST),
             ),
         ),
+        fresh=(SDIST,),
         # PyPI, and GitHub's release of the images, are asked.
         areas=("network",),
     ),
