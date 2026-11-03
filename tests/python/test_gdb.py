@@ -685,18 +685,57 @@ class TestWhenACpusResetComesThroughALinkAndTwoSystemControllers:
         assert found_at >= sp.ns(TRAINING_NS)
 
     def test_once_the_debugger_says_continue_the_program_runs(self):
-        port = free_port()
-        platform = a_cpu_behind_two_system_controllers_and_a_link(port)
+        stored = what_the_program_stores_once_the_debugger_says_continue()
 
-        run_with_a_debugger(
-            platform,
-            port,
-            lambda debugger: None,
-            run=lambda: platform.run(PAST_THE_RELEASE),
-        )
+        assert stored == 0x5A
 
-        cpu = platform.port("compute.cpu.socket")
-        assert platform.peek32(RESET_VECTOR + 0x200, via=cpu) == 0x5A
+
+def what_the_program_stores_once_the_debugger_says_continue():
+    """The word the program stores, run past the release behind the link.
+
+    A debugger attaches to the CPU held after its release and says continue.
+    """
+    port = free_port()
+    platform = a_cpu_behind_two_system_controllers_and_a_link(port)
+    run_with_a_debugger(
+        platform,
+        port,
+        lambda debugger: None,
+        run=lambda: platform.run(PAST_THE_RELEASE),
+    )
+    cpu = platform.port("compute.cpu.socket")
+    return platform.peek32(RESET_VECTOR + 0x200, via=cpu)
+
+
+#: How many times a stress test goes through its scene, each time in a
+#: process of its own: SOCPUPPET_STRESS_RUNS, or 200. Without its fix the
+#: hang below came in about 1 run in 70 (6 of 400), so 200 runs catch it
+#: about 19 nights in 20, in a few seconds of the nightly tier.
+STRESS_RUNS = int(os.environ.get("SOCPUPPET_STRESS_RUNS", "200"))
+
+
+@pytest.mark.long
+@pytest.mark.only_on_qbox(
+    "a race between QBox's thread and QEMU's main loop, which moves QEMU's "
+    "clock on while the CPU is stopped"
+)
+@pytest.mark.platform
+@pytest.mark.parametrize("run", range(STRESS_RUNS))
+class TestWhenADebuggerMeetsACpuHeldAfterItsReleaseAgainAndAgain:
+    """The continue behind the link, again and again, for a rare hang.
+
+    `TestWhenACpusResetComesThroughALinkAndTwoSystemControllers`'s scene.
+    QBox's CPU takes the halt that holds it after its release in a run of
+    its own, and QEMU can move its clock on meanwhile, so that the run ends
+    by waiting for the simulation to catch up with it: a wait the clock
+    held for the debugger would keep from ending (docs/upstream.md). 💡 For
+    a longer stress here, see docs/development.md's tiers of tests.
+    """
+
+    def test_the_program_runs_once_the_debugger_says_continue(self, run):
+        stored = what_the_program_stores_once_the_debugger_says_continue()
+
+        assert stored == 0x5A
 
 
 @pytest.mark.platform

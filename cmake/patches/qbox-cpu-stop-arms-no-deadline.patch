@@ -1,0 +1,48 @@
+diff --git a/qemu-components/common/include/cpu.h b/qemu-components/common/include/cpu.h
+index 7d76f644..07fb8a47 100644
+--- a/qemu-components/common/include/cpu.h
++++ b/qemu-components/common/include/cpu.h
+@@ -557,8 +557,16 @@ protected:
+              * main loop warps the virtual clock to (icount with sleep off),
+              * kicking the CPU every quantum. Both are done holding the BQL,
+              * which the CPU loop is entered and left with.
++             *
++             * And not for a run that only takes a stop, the platform's halt
++             * or a debugger's stop of the machine: the CPU runs nothing, and
++             * a deadline armed meanwhile is one QEMU's main loop can warp
++             * the clock to while the CPU stands stopped, a quantum on. The
++             * sync after the run then waits for SystemC's time to catch up,
++             * which a platform holding its clock for the debugger never lets
++             * it do, and the CPU never looks again.
+              */
+-            rearm_deadline_timer();
++            if (!m_cpu.is_stopped()) rearm_deadline_timer();
+             run_cpu_loop();
+             m_deadline_timer->del();
+             sync_with_kernel();
+diff --git a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
+index 59c51604..6da88b93 100644
+--- a/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
++++ b/qemu-components/common/include/libqemu-cxx/libqemu-cxx.h
+@@ -705,6 +705,8 @@ public:
+     bool loop_is_busy();
+ 
+     bool can_run();
++    /* Whether a run of it runs no instruction: it is stopped, or has a stop to take. */
++    bool is_stopped();
+ 
+     void set_soft_stopped(bool stopped);
+     void halt(bool halted);
+diff --git a/qemu-components/common/src/libqemu-cxx/cpu.cc b/qemu-components/common/src/libqemu-cxx/cpu.cc
+index 021953c1..67d232b1 100644
+--- a/qemu-components/common/src/libqemu-cxx/cpu.cc
++++ b/qemu-components/common/src/libqemu-cxx/cpu.cc
+@@ -21,6 +21,8 @@ bool Cpu::loop_is_busy() { return m_int->exports().cpu_loop_is_busy(m_obj); }
+ 
+ bool Cpu::can_run() { return m_int->exports().cpu_can_run(m_obj); }
+ 
++bool Cpu::is_stopped() { return m_int->exports().cpu_is_stopped(m_obj); }
++
+ void Cpu::set_soft_stopped(bool stopped) { m_int->exports().cpu_set_soft_stopped(m_obj, stopped); }
+ 
+ void Cpu::halt(bool halted) { m_int->exports().cpu_halt(m_obj, halted); }
