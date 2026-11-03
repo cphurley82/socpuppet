@@ -309,6 +309,28 @@ def test_run_installed_waits_for_pypi_then_installs_the_release_two_ways_requiri
     ]
 
 
+def test_run_tap_rehearses_the_formula_then_tap_push_pushes_it(ci):
+    result, lines = ci("run", "tap", "tap-push")
+
+    assert result.returncode == 0, result.stdout
+    assert lines == [
+        "uv run python tools/tap.py rehearse",
+        "uv run python tools/tap.py push",
+    ]
+
+
+def test_run_tap_installed_installs_from_the_tap_requiring_the_firmware(ci):
+    result, _ = ci("run", "tap-installed")
+
+    assert result.returncode == 0, result.stdout
+    assert steps_and_their_env(ci) == [
+        (
+            "uv run python tools/tap.py installed",
+            {"SOCPUPPET_REQUIRE_FIRMWARE": "1"},
+        ),
+    ]
+
+
 def test_run_test_configures_builds_and_tests_the_dev_tree_in_that_order(ci):
     result, lines = ci("run", "test")
 
