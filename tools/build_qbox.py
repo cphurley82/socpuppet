@@ -33,6 +33,10 @@ QBOX_COMMIT = "4d63017c88a147839d49028d0c60666d691460cc"  # 2026-09-24
 #: The file of QBox's install that CMake finds it by (cmake/Dependencies.cmake),
 #: under the install's prefix: so an install that has it is built.
 PACKAGE = Path("lib/cmake/qbox-2.0/qboxConfig.cmake")
+#: How many times QBox is configured before an empty CPM.cmake is taken for
+#: a network that is down: GitHub sometimes answers a download with nothing
+#: when it answers everything else.
+CONFIGURE_TRIES = 3
 
 # What QBox's build stops without: each program or library, as the name it
 # is looked for by, the Ubuntu package it comes in, and the Homebrew
@@ -151,7 +155,42 @@ def build(root: Path, jobs: int) -> None:
 
 
 def configure(source: Path, tree: Path, install: Path) -> None:
-    """Configure QBox, which fetches QEMU, and say so if CPM could not be.
+    """Configure QBox, trying again while CPM.cmake could not be fetched.
+
+    After `CONFIGURE_TRIES` of those, say to check the network.
+    """
+    for attempt in range(1, CONFIGURE_TRIES + 1):
+        try:
+            configure_once(source, tree, install)
+            return
+        except Failed as failure:
+            if not left_cpm_empty(tree):
+                raise
+            if attempt == CONFIGURE_TRIES:
+                raise Failed(
+                    f"{failure}\nQBox's configure could not download "
+                    "CPM.cmake from GitHub, and left it empty. Check the "
+                    "network with `uv run python tools/doctor.py network`, "
+                    "then run this again."
+                ) from failure
+            print(
+                "QBox's configure fetched an empty CPM.cmake; configuring "
+                f"again ({attempt + 1} of {CONFIGURE_TRIES})."
+            )
+
+
+def left_cpm_empty(tree: Path) -> bool:
+    """Whether QBox's configure left CPM.cmake empty.
+
+    It downloads CPM.cmake from GitHub every time, and goes on with an
+    empty file when it cannot (docs/upstream.md).
+    """
+    cpm = tree / "cmake" / "CPM.cmake"
+    return cpm.exists() and cpm.stat().st_size == 0
+
+
+def configure_once(source: Path, tree: Path, install: Path) -> None:
+    """Configure QBox, which fetches QEMU and CPM.
 
     RISC-V's 64-bit QEMU only. C++20, because SystemC only links with code
     built to the same standard as itself, and socpuppet is C++20. No virgl
@@ -160,29 +199,17 @@ def configure(source: Path, tree: Path, install: Path) -> None:
     own tests, which socpuppet does not run, and which on a Mac look for
     LLVM's tools only where Homebrew keeps them on Apple silicon.
     """
-    try:
-        command(
-            *("cmake", "-S", str(source), "-B", str(tree), "-G", "Ninja"),
-            "-DCMAKE_BUILD_TYPE=Release",
-            f"-DCMAKE_INSTALL_PREFIX={install}",
-            "-DCPM_DOWNLOAD_ALL=ON",
-            "-DBUILD_TESTING=OFF",
-            "-DLIBQEMU_TARGETS=riscv64",
-            "-DCMAKE_CXX_STANDARD=20",
-            "-DGS_ENABLE_VIRGLRENDERER=OFF",
-            "-DGS_ENABLE_VIRCLRENDERER=OFF",
-        )
-    except Failed as failure:
-        # QBox's configure downloads CPM.cmake from GitHub every time, and
-        # goes on with an empty file when it cannot (docs/upstream.md).
-        cpm = tree / "cmake" / "CPM.cmake"
-        if cpm.exists() and cpm.stat().st_size == 0:
-            raise Failed(
-                f"{failure}\nQBox's configure could not download CPM.cmake "
-                "from GitHub, and left it empty. Check the network with "
-                "`uv run python tools/doctor.py network`, then run this again."
-            ) from failure
-        raise
+    command(
+        *("cmake", "-S", str(source), "-B", str(tree), "-G", "Ninja"),
+        "-DCMAKE_BUILD_TYPE=Release",
+        f"-DCMAKE_INSTALL_PREFIX={install}",
+        "-DCPM_DOWNLOAD_ALL=ON",
+        "-DBUILD_TESTING=OFF",
+        "-DLIBQEMU_TARGETS=riscv64",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DGS_ENABLE_VIRGLRENDERER=OFF",
+        "-DGS_ENABLE_VIRCLRENDERER=OFF",
+    )
 
 
 def check_what_it_needs() -> None:
