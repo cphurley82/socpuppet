@@ -39,6 +39,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+import github_releases
+
 #: The pin of the images' release, which an installed wheel fetches from.
 PIN = Path("python/socpuppet/images_release.py")
 #: A version a release may have: X.Y.Z, or a release candidate of one.
@@ -144,22 +146,10 @@ def github(root: Path) -> int:
     if not _publishing(root):
         print(_would_publish(f"GitHub's release {tag}", built))
         return 0
-    there = subprocess.run(
-        ["gh", "release", "view", tag, "--json", "isDraft", "--jq", ".isDraft"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    if there.returncode == 0:
-        if there.stdout.strip() != "true":
-            print(f"🧦 {tag} is already published, and is left as it was.")
-            return 0
-        # 💡 A run stopped while uploading leaves a draft.
-        _run(root, "gh", "release", "delete", tag, "--yes")
-    _run(
+    github_releases.create_once(
         root,
-        *("gh", "release", "create", tag, "--verify-tag", "--notes-from-tag"),
-        *("--title", f"{name} {version}"),
+        tag,
+        *("--verify-tag", "--notes-from-tag", "--title", f"{name} {version}"),
         *(("--prerelease",) if _candidate(version) else ("--latest",)),
         *(str(path) for path in built),
     )
@@ -204,12 +194,7 @@ def _listed(index: str) -> set[str]:
 
 def _publishing(root: Path) -> bool:
     """Whether this is CI's run of a tag of this repository."""
-    here = os.environ.get("GITHUB_REPOSITORY", "")
-    return (
-        _tag() is not None
-        and bool(here)
-        and _repository_url(root).endswith(f"/{here}")
-    )
+    return _tag() is not None and github_releases.ours(root)
 
 
 def _would_publish(where: str, built: list[Path]) -> str:
@@ -247,12 +232,6 @@ def _project(root: Path) -> tuple[str, str]:
     return str(project["name"]), str(project["version"])
 
 
-def _repository_url(root: Path) -> str:
-    """Where this repository is on the web, as pyproject.toml says."""
-    with (root / "pyproject.toml").open("rb") as pyproject:
-        return str(tomllib.load(pyproject)["project"]["urls"]["Repository"])
-
-
 def _tag() -> str | None:
     """The tag CI is running for, or None if it is not running for one."""
     if os.environ.get("GITHUB_REF_TYPE") != "tag":
@@ -269,8 +248,8 @@ def _run(root: Path, *command: str) -> None:
     """Run a step of publishing, and stop if it fails."""
     if subprocess.run(command, cwd=root).returncode != 0:
         sys.exit(
-            f"`{' '.join(command[:3])}` failed, and says why above. Run this "
-            "job again: what was published already is kept."
+            f"`{' '.join(command[:3])}` failed, and says why above. What was "
+            "published already is kept: run this job again."
         )
 
 

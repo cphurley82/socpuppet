@@ -37,6 +37,7 @@ import tomllib
 from pathlib import Path
 
 import generated
+import github_releases
 
 #: Where the firmware's jobs are, whose cache keys say what it is built from.
 WORKFLOW = Path(".github/workflows/firmware.yml")
@@ -92,54 +93,22 @@ def publish(root: Path) -> None:
     name = tag(root)
     assets = _make_assets(root)
     listed = "\n".join(f"  {asset}" for asset in assets)
-    here = os.environ.get("GITHUB_REPOSITORY", "")
-    if os.environ.get("GITHUB_REF_NAME") != "main" or not (
-        here and _repository_url(root).endswith(f"/{here}")
+    if os.environ.get("GITHUB_REF_NAME") != "main" or not github_releases.ours(
+        root
     ):
         print(f"🧦 Only a run on main publishes {name}, which is:\n{listed}")
         return
-    there = subprocess.run(
-        [
-            "gh",
-            "release",
-            "view",
-            name,
-            "--json",
-            "isDraft",
-            "--jq",
-            ".isDraft",
-        ],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    if there.returncode == 0:
-        if there.stdout.strip() != "true":
-            print(f"🧦 {name} is already published, and is left as it was.")
-            return
-        # 💡 A run stopped while uploading leaves a draft, which `gh` finds
-        # as it would a release, and which no wheel can fetch from.
-        _gh(root, "release", "delete", name, "--yes")
-    _gh(
+    if github_releases.create_once(
         root,
-        *("release", "create", name),
+        name,
         *("--title", f"Firmware images {name}"),
         *("--target", _commit(root)),
         *("--notes-file", str(ASSETS / NOTES)),
-        # 💡 The latest release of a project is socpuppet's own, one day.
+        # 💡 The latest release of the project is socpuppet's own.
         "--latest=false",
         *(str(asset) for asset in assets),
-    )
-    print(f"🧦 Published {name}:\n{listed}")
-
-
-def _gh(root: Path, *arguments: str) -> None:
-    """Ask GitHub's command line for something, and stop if it cannot."""
-    if subprocess.run(["gh", *arguments], cwd=root).returncode != 0:
-        sys.exit(
-            f"`gh {' '.join(arguments[:3])}` failed, and says why above. "
-            "Nothing is published until its last step: run this job again."
-        )
+    ):
+        print(f"🧦 Published {name}:\n{listed}")
 
 
 def _make_assets(root: Path) -> list[Path]:
@@ -193,9 +162,10 @@ def _notes(root: Path) -> str:
             (name, pin["version"], pin["source"])
             for name, pin in tomllib.load(versions).items()
         ]
+    commit = f"{github_releases.repository_url(root)}/commit/{_commit(root)}"
     return (
         "🧦 The firmware images socpuppet fetches the first time each is "
-        f"needed, built from {_repository_url(root)}/commit/{_commit(root)}.\n"
+        f"needed, built from {commit}.\n"
         "\n"
         "Each image is gzipped on its own. `SHA256SUMS` has the sums of the "
         "images unpacked, so `gunzip *.gz && sha256sum -c SHA256SUMS` checks "
@@ -208,7 +178,7 @@ def _notes(root: Path) -> str:
 
 def pin(root: Path) -> str:
     """What python/socpuppet/images_release.py holds, for this repository."""
-    repository = _repository_url(root)
+    repository = github_releases.repository_url(root)
     return (
         '"""The release of the firmware images this socpuppet asks for.\n'
         "\n"
@@ -271,12 +241,6 @@ def _files(root: Path) -> list[str]:
         text=True,
     )
     return [f for f in listing.stdout.split("\0") if (root / f).is_file()]
-
-
-def _repository_url(root: Path) -> str:
-    """Where this repository is on the web, as pyproject.toml says."""
-    with (root / "pyproject.toml").open("rb") as pyproject:
-        return str(tomllib.load(pyproject)["project"]["urls"]["Repository"])
 
 
 def _commit(root: Path) -> str:
