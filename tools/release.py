@@ -16,7 +16,8 @@ run, and says how to tag the release if it is not tagged yet. ⚠️ It needs a
 checkout with main and the tags in it: in CI, actions/checkout with
 fetch-depth 0.
 
-`pypi` publishes the distributions in build/wheelhouse to PyPI, by its
+`pypi` publishes the distributions, the wheels in build/wheelhouse and the
+source in build/sdist, to PyPI, by its
 trusted publishing, and skips any it already has. `github` makes the tag's
 GitHub release, its notes the tag's message and its files the same
 distributions: the project's latest, or a pre-release for a release
@@ -49,8 +50,10 @@ VERSION = re.compile(r"\d+\.\d+\.\d+(rc\d+)?")
 PYPI = "https://pypi.org"
 #: A file an index of PyPI's lists, as its simple page links it.
 LISTED = re.compile(r">([^<>]+)</a>")
-#: Where the jobs that build the distributions leave them.
+#: Where the jobs that build the distributions leave them: the wheels, and
+#: the source.
 WHEELHOUSE = Path("build/wheelhouse")
+SDIST = Path("build/sdist")
 #: How long a run of a tag waits for PyPI's index, and how often it looks.
 PATIENCE = 600
 EVERY = 5
@@ -206,16 +209,17 @@ def _would_publish(where: str, built: list[Path]) -> str:
 
 
 def _built(root: Path) -> list[Path]:
-    """The distributions in the wheelhouse, from the top of the repository."""
+    """The wheels and the source, from the top of the repository."""
     built = sorted(
         path.relative_to(root)
-        for pattern in ("*.whl", "*.tar.gz")
-        for path in (root / WHEELHOUSE).glob(pattern)
+        for folder, pattern in ((WHEELHOUSE, "*.whl"), (SDIST, "*.tar.gz"))
+        for path in (root / folder).glob(pattern)
     )
     if not built:
         sys.exit(
-            f"There is nothing in {WHEELHOUSE} to publish: "
-            "`uv run python tools/ci.py wheel` builds this machine's."
+            f"There is nothing in {WHEELHOUSE} or {SDIST} to publish: "
+            "`uv run python tools/ci.py release-check wheel` builds this "
+            "machine's."
         )
     return built
 
