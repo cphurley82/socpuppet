@@ -14,15 +14,17 @@ name: Nightly
 #
 # Nothing waits for lint: a job waits only for a job whose output it reads.
 #
-# The Macs are Apple silicon (macos-15, macos-26 and macos-latest, whichever
-# that is) and Intel (macos-26-intel and macos-15-intel). An Intel Mac runs
-# here what it runs natively, as tools/ci.py runs it there; what it builds
-# in the devcontainer's image, the firmware and twister, it does not, as
-# GitHub's Macs have no Docker. macos-26-intel runs test, qbox-build, qbox,
-# qbox-one-command and wheel; macos-15-intel, an older Xcode and SDK, and
-# macos-latest run only test.
+# The Macs are Apple silicon (macos-15, the oldest, and macos-latest,
+# whichever is the newest, so a new macOS arrives here with no edit) and
+# Intel (macos-26-intel and macos-15-intel). An Intel Mac runs here what
+# it runs natively, as tools/ci.py runs it there; what it builds in the
+# devcontainer's image, the firmware and twister, it does not, as GitHub's
+# Macs have no Docker. macos-26-intel runs test, qbox-build, qbox,
+# qbox-one-command and wheel; macos-15-intel, an older Xcode and SDK, runs
+# only test; macos-latest runs test, clang-tidy, and QBox's build and
+# QBox in one command.
 #
-# The clang-tidy jobs run on one Linux and one Mac, the newest, macos-26,
+# The clang-tidy jobs run on one Linux and one Mac, the newest, macos-latest,
 # where qbox-build builds QBox for qbox-tidy. That is enough: clang-tidy
 # reads the compile commands, and an Intel Mac's are an Apple silicon
 # one's; the Intel Mac's builds already meet Homebrew's /usr/local; and
@@ -52,7 +54,7 @@ jobs:
     name: Checks
     uses: ./.github/workflows/checks.yml
     with:
-      os: '["ubuntu-26.04", "macos-26"]'
+      os: '["ubuntu-26.04", "macos-latest"]'
 
   firmware:
     name: Firmware
@@ -140,8 +142,8 @@ jobs:
     with:
       # Ubuntu 24.04 too, the oldest we support: QBox links more of the
       # system's libraries than anything else, and they differ most there.
-      # And macos-26, which builds it for qbox-tidy.
-      os: '["ubuntu-26.04", "ubuntu-24.04", "macos-15", "macos-26", "macos-26-intel"]'
+      # And macos-latest, which builds it for qbox-tidy.
+      os: '["ubuntu-26.04", "ubuntu-24.04", "macos-15", "macos-latest", "macos-26-intel"]'
 
   qbox-tidy:
     # clang-tidy over the adapter of QBox's CPU, which the tidy job's tree
@@ -153,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-26]
+        os: [ubuntu-26.04, macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -220,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-26, macos-26-intel]
+        os: [ubuntu-26.04, macos-latest, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

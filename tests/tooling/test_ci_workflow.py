@@ -147,6 +147,11 @@ ON_THE_OLDEST_UBUNTU_TOO = {
     "qbox-build",
     "qbox",
 }
+# The Apple silicon Macs a job may run on: the oldest socpuppet supports,
+# which keeps the older Xcode and SDK honest, and whichever is the newest.
+# An Intel Mac, as a label names it.
+APPLE_SILICON = {"macos-15", "macos-latest"}
+INTEL_MAC = re.compile(r"macos-\d+-intel")
 # The jobs that run Homebrew's formula, which is for a Mac alone.
 ON_A_MAC_ALONE = {"tap", "tap-installed"}
 # The caches whose contents run on any Linux of the same processor, as on
@@ -208,6 +213,18 @@ def test_the_quick_tier_runs_on_ubuntu_alone():
     for name, job in jobs_of(TIER.QUICK).items():
         for machine in runners(job):
             assert UBUNTU.fullmatch(machine), f"{name}: {machine}"
+
+
+def test_an_apple_silicon_mac_is_the_oldest_by_name_or_the_newest_as_macos_latest():
+    # So a new macOS reaches the nightly tier the day GitHub makes it the
+    # latest, with no workflow to edit. An Intel Mac keeps its version:
+    # GitHub has no macos-latest-intel.
+    for where, _, job in WORKFLOW_JOBS:
+        for machine in runners(job):
+            if machine.startswith("macos-") and not INTEL_MAC.fullmatch(
+                machine
+            ):
+                assert machine in APPLE_SILICON, f"{where}: {machine}"
 
 
 def test_a_push_to_main_and_a_pull_request_start_the_quick_tier():
