@@ -73,6 +73,21 @@ def collected_by(command, *more):
     return {line for line in collected.stdout.splitlines() if "::" in line}
 
 
+def test_coverage_quick_leaves_out_what_the_quick_preset_leaves_out():
+    # So that the quick tier's coverage measures the quick tier's tests.
+    presets = json.loads((REPO / "CMakePresets.json").read_text())
+    (configure,) = [
+        each
+        for each in presets["configurePresets"]
+        if each["name"] == "coverage-quick"
+    ]
+
+    assert (
+        configure["cacheVariables"]["SOCPUPPET_COVERAGE_EXCLUDE"]
+        == preset("quick")["filter"]["exclude"]["label"]
+    )
+
+
 def test_every_test_has_a_label_for_a_preset_to_choose_it_by(dev_tree):
     assert {
         name for name, (_, labels) in selected_by("dev").items() if not labels

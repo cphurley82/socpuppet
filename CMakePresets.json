@@ -10,6 +10,7 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SOCPUPPET_DEVELOPER_MODE": "ON",
         "SOCPUPPET_COVERAGE": "OFF",
+        "SOCPUPPET_COVERAGE_EXCLUDE": "",
         "SOCPUPPET_SANITIZE": "OFF",
         "SOCPUPPET_BUILD_SPIKES": "OFF"
       }
@@ -22,6 +23,14 @@
         "SOCPUPPET_COVERAGE": "ON",
         "SOCPUPPET_COVERAGE_CPP_FLOOR": "90",
         "SOCPUPPET_COVERAGE_PYTHON_FLOOR": "95"
+      }
+    },
+    {
+      "name": "coverage-quick",
+      "displayName": "Coverage of the quick test preset's tests",
+      "inherits": "coverage",
+      "cacheVariables": {
+        "SOCPUPPET_COVERAGE_EXCLUDE": "nightly|qbox"
       }
     },
     {
@@ -68,6 +77,7 @@
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
     { "name": "coverage", "configurePreset": "coverage" },
+    { "name": "coverage-quick", "configurePreset": "coverage-quick" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "spike", "configurePreset": "spike" },
     { "name": "linux", "configurePreset": "linux" },
