@@ -1,20 +1,14 @@
 name: QBox
 
 # QBox's build, which both tiers wait for before they run on QBox's CPU,
-# and clang-tidy over the tree that links it. ci.yml and nightly.yml each
-# call this, so each job here is written once.
+# and before clang-tidy over the tree that links it (tidy.yml). ci.yml and
+# nightly.yml each call this, so it is written once.
 
 on:
   workflow_call:
     inputs:
       os:
         description: The machines QBox is built for, as a JSON list.
-        type: string
-        required: true
-      tidy-os:
-        description: >-
-          The machines clang-tidy runs on, as a JSON list: each is one QBox
-          is built for.
         type: string
         required: true
 
@@ -67,30 +61,3 @@ jobs:
           name: qbox-${{ matrix.os }}
           path: qbox-install.tar.gz
 
-  tidy:
-    # clang-tidy over our own C++, and each of our headers compiled on its
-    # own, over the qbox tree: the dev tree and QBox's adapter, which the
-    # dev tree leaves out. Nothing else is built: clang-tidy reads the
-    # sources and the compile commands that configuring writes, which are
-    # GCC's on Linux and Apple clang's on a Mac, each with its own standard
-    # library, so a system's leg checks our code the way that system
-    # compiles it. Here it needs QBox's build, on every machine: tools/ci.py
-    # falls back to the dev tree without QBox, but a failed build has
-    # turned the run red already, and the dev tree's checks are a subset.
-    name: clang-tidy and header check (${{ matrix.os }})
-    needs: qbox-build
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(inputs.tidy-os) }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          packages: build qbox
-          machine: ${{ matrix.os }}
-          tree: qbox-dev
-          qbox: true
-      - run: uv run python tools/ci.py run tidy

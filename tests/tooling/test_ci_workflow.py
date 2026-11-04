@@ -68,10 +68,9 @@ WORKFLOW_FILES = {
     for file, definition in WORKFLOW_DEFINITIONS.items()
 }
 # How a job calls a workflow both tiers share, and what it hands it: the
-# machines, a JSON list for each input, which the called workflow's
-# matrices are made of.
+# machines, which the called workflow's matrices are made of.
 CALLED = "./.github/workflows/"
-MACHINES = re.compile(r"\$\{\{ fromJSON\(inputs\.([\w-]+)\) \}\}")
+MACHINES = "${{ fromJSON(inputs.os) }}"
 # The action every job takes its setup from, and what it does with what it
 # is given.
 SETUP = "./.github/actions/setup"
@@ -295,6 +294,31 @@ def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
         assert set(JOBS[name].needs) <= set().union(*waits.values()), where
         for need, jobs in waits.items():
             assert jobs & RUNNER.needed_by(JOBS[name]), f"{where}: {need}"
+
+
+def test_each_call_of_a_workflow_waits_for_what_its_jobs_need_of_the_tiers():
+    # A job of a workflow both tiers call cannot wait for a job of the
+    # caller's, so the call waits for it: tidy.yml's for QBox's build.
+    for tier in TIER:
+        jobs = WORKFLOW_FILES[tier.value]
+        in_the_tier = set(jobs_of(tier))
+        for name, call in jobs.items():
+            if "uses" not in call:
+                continue
+            called = called_jobs(call)
+            wanted = {
+                other
+                for each in called
+                for other in (*JOBS[each].needs, *JOBS[each].after)
+                if other in in_the_tier and other not in called
+            }
+            waited = set().union(
+                *(
+                    called_jobs(jobs[need]) if "uses" in jobs[need] else {need}
+                    for need in needs_of(call)
+                )
+            )
+            assert wanted <= waited, f"{tier.value}: {name}"
 
 
 def test_each_job_of_a_workflow_ends_by_running_itself_with_the_runner():
@@ -609,8 +633,22 @@ def test_a_job_that_takes_qbox_runs_only_where_qbox_build_built_it():
         jobs = jobs_of(tier)
         built = set(runners(jobs["qbox-build"]))
         for name, job in jobs.items():
-            if any(setup.get("qbox") == "True" for setup in setups_in(job)):
+            if any(
+                setup.get("qbox", "").lower() == "true"
+                for setup in setups_in(job)
+            ):
                 assert set(runners(job)) <= built, f"{tier.value}: {name}"
+
+
+def test_clang_tidy_runs_at_night_whatever_qboxs_build_did_on_another_machine():
+    # The nightly tier builds QBox on more machines than clang-tidy runs on,
+    # and a call waits for every machine of the workflow it needs: one Mac's
+    # failed build would skip clang-tidy on them all. A machine whose own
+    # QBox failed fails taking it, at the setup action's download.
+    jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    assert condition_of(jobs[written_or_called_as("tidy", jobs)]) == (
+        "!cancelled()"
+    )
 
 
 def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
@@ -875,27 +913,21 @@ def jobs_of(tier):
     jobs = {}
     for name, job in WRAPPING_JOBS[tier.value].items():
         if "uses" in job:
-            handed = {
-                given: json.loads(machines)
-                for given, machines in job.get("with", {}).items()
-            }
+            # A workflow whose jobs all run on Linux is handed none.
+            machines = json.loads(job.get("with", {}).get("os", "[]"))
             called = WORKFLOW_FILES[job["uses"].removeprefix(CALLED)]
             jobs |= {
-                each: given_machines(called[each], handed) for each in called
+                each: given_machines(called[each], machines) for each in called
             }
         else:
             jobs[name] = job
     return jobs
 
 
-def given_machines(job, handed):
-    """A job of a called workflow, its matrix made of the machines handed
-    to the input it reads."""
-    matrix = job.get("strategy", {}).get("matrix", {}).get("os")
-    read = isinstance(matrix, str) and MACHINES.fullmatch(matrix)
-    if not read:
+def given_machines(job, machines):
+    """A job of a called workflow, its matrix made of the machines given."""
+    if job.get("strategy", {}).get("matrix", {}).get("os") != MACHINES:
         return job
-    machines = handed[read[1]]
     return {
         **job,
         "strategy": {
