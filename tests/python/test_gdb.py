@@ -6,11 +6,9 @@ names, as the boot tests do; the two 32-bit CPUs of the host's manager
 and SSD are DBT-RISE's whatever it says.
 """
 
-import errno
 import functools
 import os
 import re
-import socket
 import sys
 import threading
 import time
@@ -24,7 +22,7 @@ from disk_access import run_to_a_verdict
 from gdb_client import GdbClient
 from linux_shell import a_host_with_linux
 from manager_firmware import IMAGE as MANAGER_IMAGE
-from sockets import free_ports
+from sockets import free_ports, listening
 from socpuppet import qemu_trace, ztest
 from socpuppet.boards.cpu_kit import SRAM_BASE
 from socpuppet.boards.host import RAM_BASE, host
@@ -397,18 +395,6 @@ class TestWhenADebuggerHangsUpWithAnAnswerUnread:
         time.sleep(0.5)
 
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
-
-
-def listening(port):
-    """Whether something on this machine is listening on `port`."""
-    with socket.socket() as probe:
-        try:
-            probe.bind(("127.0.0.1", port))
-        except OSError as error:
-            if error.errno == errno.EADDRINUSE:
-                return True
-            raise
-    return False
 
 
 #: How long a script holds up the simulation at most: longer than a
