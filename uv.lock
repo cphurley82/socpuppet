@@ -1399,7 +1399,7 @@ wheels = [
 
 [[package]]
 name = "socpuppet"
-version = "0.0.1"
+version = "0.0.1rc1"
 source = { virtual = "." }
 dependencies = [
     { name = "platformdirs" },
