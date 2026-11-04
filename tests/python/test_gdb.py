@@ -467,7 +467,20 @@ def run_with_a_debugger_while_held_up(platform, port, holding, let_go, session):
                 raise TimeoutError(
                     f"The simulation was not held up within {ANSWERS_WITHIN} s."
                 )
-            debugger = GdbClient(port, ANSWERS_WITHIN)
+            try:
+                debugger = GdbClient(port, ANSWERS_WITHIN)
+            except OSError as error:
+                # ⚠️ A CPU nobody tells to continue holds the whole run
+                # where it is, let go or not, and no limit in simulated
+                # time ends that: so the cause is said at once.
+                print(
+                    f"The debugger on port {port} could not connect "
+                    f"({error}), so its CPU stays held and the run will "
+                    "not end.",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
             try:
                 session(debugger)
             finally:
