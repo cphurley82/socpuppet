@@ -19,7 +19,8 @@ jobs:
     # CI's Linux runner, so what it installs is cached, keyed on QBox's pin
     # and its patches, and this job builds it only when those change. The
     # system's libraries it links are the runner's, so the key names the
-    # runner too.
+    # runner too, and the system's version: macos-latest is a new macOS
+    # under the same name when GitHub moves it.
     #
     # The jobs that build on QBox take it from this job, as an artifact of
     # the run, not from the cache: GitHub drops the least recently used
@@ -34,12 +35,22 @@ jobs:
         os: ${{ fromJSON(inputs.os) }}
     steps:
       - uses: actions/checkout@v7
+      - name: Name the system's version
+        id: system
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            version=$(sw_vers -productVersion | cut -d. -f1)
+          else
+            version=$(. /etc/os-release && echo "$VERSION_ID")
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Restore QBox
         id: qbox
         uses: actions/cache/restore@v6
         with:
           path: build/qbox/install
-          key: qbox-${{ matrix.os }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
+          key: qbox-${{ matrix.os }}-${{ steps.system.outputs.version }}-${{ hashFiles('tools/build_qbox.py', 'cmake/patches/qbox-*', 'cmake/patches/libqemu-*') }}
       - if: steps.qbox.outputs.cache-hit != 'true'
         uses: ./.github/actions/setup
         with:

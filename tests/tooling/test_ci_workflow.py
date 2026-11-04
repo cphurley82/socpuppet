@@ -12,6 +12,8 @@ import fnmatch
 import importlib.util
 import itertools
 import json
+import os
+import platform
 import re
 import subprocess
 import tomllib
@@ -662,6 +664,34 @@ def test_clang_tidy_runs_at_night_whatever_qboxs_build_did_on_another_machine():
     )
 
 
+def test_qboxs_cache_is_keyed_on_the_systems_version_beside_the_runners_name(
+    tmp_path,
+):
+    # macos-latest moves to a new macOS under the same name, and QBox links
+    # the system's libraries: a QBox built on the last macOS is not one for
+    # this one.
+    (job,) = WORKFLOW_FILES[QBOX_BUILD].values()
+    ids = [step.get("id") for step in job["steps"]]
+    restore = job["steps"][ids.index("qbox")]
+    (naming,) = re.findall(
+        r"steps\.([\w-]+)\.outputs\.version", restore["with"]["key"]
+    )
+    assert ids.index(naming) < ids.index("qbox")
+    output = tmp_path / "output"
+    subprocess.run(
+        ["bash", "-c", job["steps"][ids.index(naming)]["run"]],
+        env={
+            **os.environ,
+            "RUNNER_OS": {"Linux": "Linux", "Darwin": "macOS"}[
+                platform.system()
+            ],
+            "GITHUB_OUTPUT": str(output),
+        },
+        check=True,
+    )
+    assert output.read_text() == f"version={this_systems_version()}\n"
+
+
 def test_each_coverage_job_shows_and_keeps_its_report_whatever_its_floors_did():
     # A job below a floor fails at its last step: the figures are what say
     # by how much, and the line-by-line reports which lines.
@@ -963,6 +993,18 @@ def given_machines(job, machines):
             "matrix": {**job["strategy"]["matrix"], "os": machines},
         },
     }
+
+
+def this_systems_version():
+    """The major version of macOS here, or the Ubuntu's version here."""
+    if platform.system() == "Darwin":
+        return platform.mac_ver()[0].split(".")[0]
+    release = dict(
+        line.split("=", 1)
+        for line in Path("/etc/os-release").read_text().splitlines()
+        if "=" in line
+    )
+    return release["VERSION_ID"].strip('"')
 
 
 def called_by(tier):
