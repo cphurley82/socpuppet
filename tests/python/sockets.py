@@ -1,6 +1,7 @@
 """Ports of this machine's, for the tests' servers to listen on."""
 
 import contextlib
+import errno
 import secrets
 import socket
 
@@ -34,3 +35,15 @@ def free_ports(count: int) -> list[int]:
             if len(ports) == count:
                 return ports
     raise RuntimeError(f"There are not {count} free ports among {PORTS}.")
+
+
+def listening(port: int) -> bool:
+    """Whether something on this machine is listening on `port`."""
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError as error:
+            if error.errno == errno.EADDRINUSE:
+                return True
+            raise
+    return False
