@@ -602,7 +602,10 @@ JOBS = [
         tiers=(Tier.QUICK,),
         # Every boot measured took the coverage job an hour and more, the
         # quick tier's longest; the quick preset boots once for each area.
-        steps=coverage_steps("coverage-quick"),
+        # An Intel Mac leaves those out too, as test-quick does there.
+        steps=coverage_steps(
+            "coverage-quick-without-boots" if INTEL_MAC else "coverage-quick"
+        ),
         uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         reconfigures_dev=True,
         areas=("build",),

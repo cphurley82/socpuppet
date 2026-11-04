@@ -126,7 +126,9 @@ if(SOCPUPPET_COVERAGE)
     --gcov-ignore-errors=no_working_dir_found)
   set(_socpuppet_reports ${CMAKE_BINARY_DIR}/coverage)
   set(_socpuppet_left_out ${SOCPUPPET_TOOLING_LABEL})
-  if(SOCPUPPET_COVERAGE_EXCLUDE)
+  # Compared with "", not taken as a truth: if() takes a label such as
+  # "off" or "n" for false.
+  if(NOT SOCPUPPET_COVERAGE_EXCLUDE STREQUAL "")
     string(APPEND _socpuppet_left_out "|${SOCPUPPET_COVERAGE_EXCLUDE}")
   endif()
 

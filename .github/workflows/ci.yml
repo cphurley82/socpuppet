@@ -89,22 +89,10 @@ jobs:
           tree: dev
           compiler-cache: coverage
       - run: uv run python tools/ci.py run coverage-quick
-      - name: Show the figures on the job's page
+      - uses: ./.github/actions/coverage-report
         if: always()
-        run: |
-          {
-            cat build/dev/coverage/cpp.md
-            echo
-            echo "# Python coverage"
-            echo
-            uv run python -m coverage report --format=markdown
-          } >> "$GITHUB_STEP_SUMMARY"
-      - name: Keep the line-by-line reports
-        if: always()
-        uses: actions/upload-artifact@v7
         with:
           name: coverage-quick-report
-          path: build/dev/coverage
 
   qbox-build:
     name: QBox
