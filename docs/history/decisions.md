@@ -5,6 +5,7 @@ Every decision that settled how socpuppet is built, dated, with its reason and w
 ## 2026-11-04
 
 - **The quick tier runs on Linux alone; the Macs run at night.** ↔ 2026-10-29's "The quick tier's Mac is Apple silicon, `macos-latest`". GitHub runs five Macs at a time for an account, and the nightly tier starts in California's evening with about fifteen Mac jobs, so a pull request pushed then waited for a Mac as long as the nightly's own did, up to 77 minutes in run 41835009817. A Mac-only break is found that night, as an Intel Mac's already was. *A newcomer builds it for free on a laptop* ([vision.md](../vision.md)) still holds for a Mac: every Mac CI has builds and tests every night, and on a Mac `tools/ci.py --quick` runs the quick tier before a push. Other Linuxes and a BSD were asked about in issue 64 and not added: GitHub hosts only Ubuntu, Windows and macOS, so either would be a container or a virtual machine, and what breaks on a Mac alone (Apple's SDK and libc++, Homebrew's headers, Apple clang, Mach-O) is not on a BSD either.
+- **The nightly tier's newest Apple silicon Mac is `macos-latest`, never a number; `macos-15` stays the oldest, and the Intel Macs keep theirs.** `macos-latest` was `macos-26` when the change was made, so nothing moved that night; it means a new macOS reaches clang-tidy and QBox's builds the day GitHub makes it the latest, as it already reached `test`. GitHub has no `macos-latest-intel`, so an Intel Mac is named by its version. Asked in issue 64.
 
 ## 2026-11-02
 
