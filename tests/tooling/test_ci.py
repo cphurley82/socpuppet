@@ -113,8 +113,6 @@ OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
 # What the sdist and cibuildwheel fakes leave, to build one wheel here.
 ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
 
-# What CMake finds QBox by once tools/build_qbox.py has installed it.
-QBOX_BUILT = "build/qbox/install/lib/cmake/qbox-2.0/qboxConfig.cmake"
 
 # What a terminal is sent to color what follows.
 GREEN, RED = "\x1b[32m", "\x1b[31m"
@@ -128,10 +126,17 @@ RECORDED = ("SOCPUPPET_", "CIBW_", "CCACHE_")
 
 
 def load(path):
-    """A script of the repository's as a module, for what its tables say."""
+    """A script of the repository's as a module, for what its tables say.
+
+    Its siblings import as they do when it runs, such as tools/needs.py.
+    """
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.path.insert(0, str(path.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(str(path.parent))
     return module
 
 
@@ -140,6 +145,12 @@ JOBS = RUNNER_MODULE.JOBS
 JOBS_BY_NAME = {job.name: job for job in JOBS}
 # The areas of this machine tools/doctor.py checks, by their names.
 AREAS = {area.name: area for area in load(REPO / "tools" / "doctor.py").AREAS}
+# What CMake finds QBox by once tools/build_qbox.py has installed it, as
+# that script spells it: the runner picks the qbox tree for tidy by it.
+BUILD_QBOX = load(REPO / "tools" / "build_qbox.py")
+QBOX_BUILT = str(
+    BUILD_QBOX.install_of(Path("build") / "qbox") / BUILD_QBOX.PACKAGE
+)
 # The jobs that run here with no option given, and the jobs in Docker.
 JOBS_HERE = [job for job in JOBS if not job.docker]
 DOCKER_JOBS = [job.name for job in JOBS if job.docker]
@@ -590,6 +601,16 @@ def test_quick_with_a_job_named_is_refused_and_runs_nothing(ci):
 
 
 @pytest.mark.parametrize("job", JOBS, ids=lambda job: job.name)
+def test_a_job_comes_below_the_jobs_it_needs_or_comes_after_in_the_table(job):
+    # A run starts and skips jobs in the table's order: a job above one it
+    # waits for may be passed over before that one has ended, and never
+    # looked at again.
+    names = [each.name for each in JOBS]
+    for other in (*job.needs, *job.after):
+        assert names.index(other) < names.index(job.name), other
+
+
+@pytest.mark.parametrize("job", JOBS, ids=lambda job: job.name)
 def test_a_job_needs_only_jobs_that_are_in_every_tier_it_is_in(job):
     for need in job.needs:
         assert set(job.tiers) <= set(JOBS_BY_NAME[need].tiers)
@@ -677,7 +698,7 @@ def test_two_at_a_time_runs_jobs_that_share_a_build_tree_one_after_another(
     first, second = next(
         (a, b)
         for a, b in itertools.combinations(JOBS_HERE, 2)
-        if independent(a, b) and set(a.uses) & set(b.uses)
+        if independent(a, b) and set(a.uses_now()) & set(b.uses_now())
     )
 
     result, _ = ci("-j", "2", first.name, second.name, SLOW="0.5")
@@ -1218,29 +1239,65 @@ def test_qbox_on_an_intel_mac_stops_before_twister(ci, where):
     ]
 
 
-def test_tidy_runs_over_the_qbox_tree_when_qbox_is_built_here(ci):
-    # The qbox tree is the dev tree and QBox's adapter, which the dev tree
-    # leaves out.
+def tidy_over(preset):
+    """The commands of tidy over a preset's tree."""
+    return [
+        f"uv run cmake --preset {preset}",
+        f"uv run cmake --build --preset {preset} --target tidy",
+        f"uv run cmake --build --preset {preset} --target check_headers",
+    ]
+
+
+def build_qbox_in(ci):
+    """Install a QBox, as far as CMake finds one, in the fake checkout."""
     (ci.root / QBOX_BUILT).parent.mkdir(parents=True)
     (ci.root / QBOX_BUILT).touch()
 
-    _, lines = ci("run", "tidy")
 
-    assert lines == [
-        "uv run cmake --preset qbox",
-        "uv run cmake --build --preset qbox --target tidy",
-        "uv run cmake --build --preset qbox --target check_headers",
-    ]
+def test_tidy_runs_over_the_qbox_tree_when_qbox_is_built_here(ci):
+    # The qbox tree is the dev tree and QBox's adapter, which the dev tree
+    # leaves out.
+    build_qbox_in(ci)
+
+    _, lines = ci("tidy")
+
+    assert lines == tidy_over("qbox")
 
 
 def test_tidy_runs_over_the_dev_tree_when_qbox_is_not_built_here(ci):
+    _, lines = ci("tidy")
+
+    assert lines == tidy_over("dev")
+
+
+def test_tidy_in_ci_runs_over_the_qbox_tree_built_or_not(ci):
+    # CI hands it QBox's build, so a QBox missing there is a fault, which
+    # configuring the qbox tree says, and not a tree to fall back to.
     _, lines = ci("run", "tidy")
 
-    assert lines == [
-        "uv run cmake --preset dev",
-        "uv run cmake --build --preset dev --target tidy",
-        "uv run cmake --build --preset dev --target check_headers",
-    ]
+    assert lines == tidy_over("qbox")
+
+
+@pytest.mark.parametrize(
+    ("qbox_built", "preset", "other"),
+    [
+        pytest.param(True, "qbox", "test-quick", id="qbox built"),
+        pytest.param(False, "dev", "qbox-quick", id="qbox not built"),
+    ],
+)
+def test_tidy_runs_beside_a_job_on_the_tree_it_does_not_run_over(
+    ci, qbox_built, preset, other
+):
+    if qbox_built:
+        build_qbox_in(ci)
+
+    result, _ = ci("-j", "2", "tidy", other, SLOW="0.5")
+
+    assert result.returncode == 0, result.stdout
+    tidied = [ci.command(command) for command in tidy_over(preset)]
+    others = [c for c in ci.commands() if c["command"] not in tidy_over(preset)]
+    assert tidied[0]["start"] < others[-1]["end"]
+    assert others[0]["start"] < tidied[-1]["end"]
 
 
 def test_a_job_starts_once_the_job_it_comes_after_has_ended(ci):
@@ -1542,10 +1599,10 @@ def verdicts(output):
 
 
 def needed_by(job):
-    """The jobs a job needs, and the jobs they need, from the table."""
-    needed = set(job.needs)
-    for need in job.needs:
-        needed |= needed_by(JOBS_BY_NAME[need])
+    """The jobs a job needs or comes after, and theirs, from the table."""
+    needed = {*job.needs, *job.after}
+    for other in (*job.needs, *job.after):
+        needed |= needed_by(JOBS_BY_NAME[other])
     return needed
 
 

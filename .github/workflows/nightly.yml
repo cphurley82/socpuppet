@@ -7,10 +7,11 @@ name: Nightly
 # with the command that runs it on a developer's machine;
 # `uv run python tools/ci.py` runs every job of this tier that can run
 # there. The jobs this tier shares with ci.yml are in the workflows both
-# call, firmware.yml, checks.yml and qbox-build.yml, each given the machines
-# this tier runs it on, and every job takes its setup from
-# .github/actions/setup. tests/tooling/test_ci_workflow.py keeps the
-# workflows to the jobs tools/ci.py runs.
+# call, firmware.yml, checks.yml, qbox-build.yml and tidy.yml, each given
+# the machines this tier runs it on but checks.yml, whose jobs run on
+# Linux alone. Every job takes its setup from .github/actions/setup.
+# tests/tooling/test_ci_workflow.py keeps the workflows to the jobs
+# tools/ci.py runs.
 #
 # Nothing waits for lint: a job waits only for a job whose output it reads.
 #
@@ -176,7 +177,19 @@ jobs:
       # system's libraries than anything else, and they differ most there.
       # And macos-latest, which builds it for clang-tidy.
       os: '["ubuntu-26.04", "ubuntu-24.04", "macos-15", "macos-latest", "macos-26-intel"]'
-      tidy-os: '["ubuntu-26.04", "macos-latest"]'
+
+  tidy:
+    # After QBox's build, whose tree it checks; nothing waits for it. It
+    # runs whatever that did: the call waits for QBox's build on every
+    # machine, more than clang-tidy runs on, and one Mac's failed build
+    # would skip it on them all. A machine whose own build failed fails at
+    # taking QBox (.github/actions/setup).
+    name: Tidy
+    needs: qbox-build
+    if: ${{ !cancelled() }}
+    uses: ./.github/workflows/tidy.yml
+    with:
+      os: '["ubuntu-26.04", "macos-latest"]'
 
   qbox:
     # The qbox_cpu, QEMU's RISC-V CPU inside SystemC, as a second hart

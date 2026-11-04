@@ -146,8 +146,9 @@ class Job:
     after: tuple[str, ...] = ()
     # What no other job may use while it runs here: the build tree it
     # builds in, the extension every tree puts in python/socpuppet, or the
-    # cores its tests run on (TESTS_ON_EVERY_CORE).
-    uses: tuple[str, ...] = ()
+    # cores its tests run on (TESTS_ON_EVERY_CORE). Or what picks them as
+    # it starts.
+    uses: tuple[str, ...] | Callable[[], tuple[str, ...]] = ()
     # Whether it runs in Docker.
     docker: bool = False
     # Whether it configures build/dev with a preset other than dev, which
@@ -172,6 +173,10 @@ class Job:
     def steps_for(self, mode: Mode) -> tuple[Step, ...]:
         """Its steps, where it runs."""
         return self.steps if isinstance(self.steps, tuple) else self.steps(mode)
+
+    def uses_now(self) -> tuple[str, ...]:
+        """What no other job may use while it runs, if it starts now."""
+        return self.uses if isinstance(self.uses, tuple) else self.uses()
 
 
 # What a job uses that runs the tests on every core. Two at once would each
@@ -227,13 +232,29 @@ QBOX_BUILT = (
 )
 
 
-def tidy_over_the_qbox_tree_if_built(_: Mode) -> tuple[Step, ...]:
-    """clang-tidy and the header check over the qbox tree, if QBox is built.
+def tidy_preset(mode: Mode) -> str:
+    """The preset whose tree clang-tidy and the header check run over.
 
     The qbox tree is the dev tree and QBox's adapter, which the dev tree
-    leaves out. Without QBox, they run over the dev tree.
+    leaves out. Here, without QBox built, they run over the dev tree. In CI
+    always over the qbox tree: the job takes QBox from qbox-build there, so
+    a QBox missing is a fault, which configuring the qbox tree reports.
     """
-    return tidy_steps("qbox" if QBOX_BUILT.is_file() else "dev")
+    return "qbox" if mode is Mode.CI or QBOX_BUILT.is_file() else "dev"
+
+
+def tidy_over_the_qbox_tree(mode: Mode) -> tuple[Step, ...]:
+    """clang-tidy and the header check, over the tree tidy_preset() picks."""
+    return tidy_steps(tidy_preset(mode))
+
+
+def tidy_tree() -> tuple[str, ...]:
+    """The tree tidy uses here, of the two: the one it runs over."""
+    return (
+        ("build/qbox-dev",)
+        if tidy_preset(Mode.HERE) == "qbox"
+        else ("build/dev",)
+    )
 
 
 # Configure and build the qbox preset's tree, which links QBox.
@@ -614,10 +635,10 @@ JOBS = [
         "clang-tidy over our C++, and each header compiled on its own",
         tiers=(Tier.QUICK, Tier.NIGHTLY),
         after=("qbox-build",),
-        steps=tidy_over_the_qbox_tree_if_built,
-        # Either tree, which is picked as it starts: QBox may be built by
+        steps=tidy_over_the_qbox_tree,
+        # The tree it runs over, picked as it starts: QBox may be built by
         # then, by the qbox-build before it.
-        uses=("build/dev", "build/qbox-dev"),
+        uses=tidy_tree,
         # clang-tidy reads the compile commands of this machine's compiler,
         # and its standard library: GCC's and libstdc++ on Linux, Apple
         # clang's and the SDK's libc++ on a Mac. So each system's run checks
@@ -1249,9 +1270,10 @@ class Run:
     """A run of jobs on this machine, each step's output in a log.
 
     Up to `parallel` jobs run at once, each in a thread of its own, and a
-    job starts once the jobs it needs have passed and nothing it uses is in
-    use. A job higher in the table starts before one lower down. Everything
-    is printed from here, as the threads report what they did.
+    job starts once the jobs it needs have passed, those it comes after
+    have ended, and nothing it uses is in use. A job higher in the table
+    starts before one lower down. Everything is printed from here, as the
+    threads report what they did.
     """
 
     def __init__(
@@ -1274,6 +1296,8 @@ class Run:
         self.outcomes: dict[str, Outcome] = {}
         self.running: set[str] = set()
         self.held: set[str] = set()
+        # What each running job holds of it, taken as the job started.
+        self.holding: dict[str, tuple[str, ...]] = {}
         # What the threads tell this one.
         self.events: queue.Queue[StepEnded | JobEnded] = queue.Queue()
         # The step each job is running, which the threads write and this
@@ -1296,7 +1320,7 @@ class Run:
                     report_step(event)
                 else:
                     self.running.remove(event.job)
-                    self.held.difference_update(JOBS_BY_NAME[event.job].uses)
+                    self.held.difference_update(self.holding.pop(event.job))
                     self.end(event.job, event.outcome)
         except KeyboardInterrupt:
             self.stop()
@@ -1336,7 +1360,8 @@ class Run:
                 self.end(job.name, Outcome(Verdict.SKIPPED, detail=reason))
             elif self.ready(job):
                 self.running.add(job.name)
-                self.held.update(job.uses)
+                self.holding[job.name] = job.uses_now()
+                self.held.update(self.holding[job.name])
                 self.say(job.name, "starting")
                 threading.Thread(
                     target=self.work, args=(job,), daemon=True
@@ -1355,7 +1380,7 @@ class Run:
                 for other in (*job.needs, *job.after)
             )
             and len(self.running) < self.parallel
-            and not self.held & set(job.uses)
+            and not self.held & set(job.uses_now())
         )
 
     def work(self, job: Job) -> None:

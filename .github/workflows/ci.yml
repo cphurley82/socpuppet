@@ -13,8 +13,9 @@ name: CI
 # then the setup every job takes from .github/actions/setup (the packages,
 # the caches and the artifacts). A job's log opens with the command that
 # runs the same job on a developer's machine. The jobs this tier shares
-# with nightly.yml are in the workflows both call, firmware.yml, checks.yml
-# and qbox-build.yml, each given the machines this tier runs it on.
+# with nightly.yml are in the workflows both call, firmware.yml, checks.yml,
+# qbox-build.yml and tidy.yml, each given the machines this tier runs it on
+# but checks.yml, whose jobs run on Linux alone.
 # tests/tooling/test_ci_workflow.py keeps the workflows to the jobs
 # tools/ci.py runs. The last job, CI passed, waits for all the others and
 # fails if one of them did: it is the one check main's ruleset requires.
@@ -110,7 +111,15 @@ jobs:
     uses: ./.github/workflows/qbox-build.yml
     with:
       os: '["ubuntu-26.04"]'
-      tidy-os: '["ubuntu-26.04"]'
+
+  tidy:
+    # After QBox's build, whose tree it checks; nothing waits for it but
+    # CI passed.
+    name: Tidy
+    needs: qbox-build
+    uses: ./.github/workflows/tidy.yml
+    with:
+      os: '["ubuntu-26.04"]'
 
   qbox-quick:
     # The quick preset's second opinion: the quick tests and one boot for
@@ -170,7 +179,7 @@ jobs:
     # own condition, as GitHub counts it.
     name: CI passed
     if: always()
-    needs: [checks, firmware, test-quick, coverage-quick, qbox-build, qbox-quick, images]
+    needs: [checks, firmware, test-quick, coverage-quick, qbox-build, tidy, qbox-quick, images]
     runs-on: ubuntu-26.04
     steps:
       - name: A job it needs failed or was cancelled (see the run's summary)
