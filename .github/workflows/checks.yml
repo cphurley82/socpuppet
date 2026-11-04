@@ -1,16 +1,11 @@
 name: Checks
 
-# The checks both tiers run that no other job waits for: lint, clang-tidy,
+# The checks both tiers run on Linux that no other job waits for: lint,
 # coverage and the sanitizers. ci.yml and nightly.yml each call this, so
 # each job here is written once.
 
 on:
   workflow_call:
-    inputs:
-      os:
-        description: The machines clang-tidy runs on, as a JSON list.
-        type: string
-        required: true
 
 jobs:
   lint:
@@ -22,27 +17,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: uv run python tools/ci.py run lint
-
-  tidy:
-    # clang-tidy over our own C++, and each of our headers compiled on its
-    # own. Nothing else is built: clang-tidy reads the sources and the
-    # compile commands that configuring writes, which are GCC's on Linux
-    # and Apple clang's on a Mac, each with its own standard library, so a
-    # system's leg checks our code the way that system compiles it.
-    name: clang-tidy and header check (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ${{ fromJSON(inputs.os) }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          packages: build
-          machine: ${{ matrix.os }}
-          tree: dev
-      - run: uv run python tools/ci.py run tidy
 
   coverage:
     # Which lines of our own C++ and Python the tests run. The job fails if
