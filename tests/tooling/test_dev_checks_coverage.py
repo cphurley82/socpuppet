@@ -178,6 +178,30 @@ def test_a_test_labelled_tooling_is_left_out_of_the_coverage_run(cmake_project):
     assert result.returncode == 0, result.stdout
 
 
+def test_tests_with_a_label_asked_to_be_left_out_are_left_out_beside_the_tooling(
+    cmake_project,
+):
+    project = cmake_project(
+        {
+            "src/widgets/widget.h": WIDGET_HEADER,
+            "vendor/vendor.h": VENDOR_HEADER,
+            "tests/widget_test.cpp": WIDGET_TEST,
+        },
+        CMAKE_LISTS
+        + "add_test(NAME tooling_fails COMMAND ${CMAKE_COMMAND} -E false)\n"
+        "set_tests_properties(tooling_fails PROPERTIES LABELS ${SOCPUPPET_TOOLING_LABEL})\n"
+        "add_test(NAME spam_fails COMMAND ${CMAKE_COMMAND} -E false)\n"
+        "set_tests_properties(spam_fails PROPERTIES LABELS spam)\n",
+    )
+    project.configure(
+        "SOCPUPPET_COVERAGE=ON", "SOCPUPPET_COVERAGE_EXCLUDE=spam"
+    )
+
+    result = project.build("coverage")
+
+    assert result.returncode == 0, result.stdout
+
+
 def test_the_coverage_target_leaves_the_cpp_report_as_files_too(cmake_project):
     project = widget_project(cmake_project)
 

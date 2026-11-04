@@ -20,6 +20,8 @@ set(SOCPUPPET_COVERAGE_CPP_FLOOR 0 CACHE STRING
   "The coverage target fails if the tests run less than this percentage of our C++ lines")
 set(SOCPUPPET_COVERAGE_PYTHON_FLOOR 0 CACHE STRING
   "The coverage target fails if the tests run less than this percentage of our Python lines")
+set(SOCPUPPET_COVERAGE_EXCLUDE "" CACHE STRING
+  "The labels of the tests the coverage target leaves out, as a ctest regular expression, beside the tooling tests")
 
 # The developer tools are installed next to the interpreter (pyproject.toml).
 find_package(Python REQUIRED COMPONENTS Interpreter)
@@ -123,6 +125,10 @@ if(SOCPUPPET_COVERAGE)
     # any more, and what they were about is not there to be measured.
     --gcov-ignore-errors=no_working_dir_found)
   set(_socpuppet_reports ${CMAKE_BINARY_DIR}/coverage)
+  set(_socpuppet_left_out ${SOCPUPPET_TOOLING_LABEL})
+  if(SOCPUPPET_COVERAGE_EXCLUDE)
+    string(APPEND _socpuppet_left_out "|${SOCPUPPET_COVERAGE_EXCLUDE}")
+  endif()
 
   # The Python half. A project with no python/ directory has no Python to
   # measure, and coverage.py would stop at having no data.
@@ -155,7 +161,7 @@ if(SOCPUPPET_COVERAGE)
             ${CMAKE_BINARY_DIR}
     ${_socpuppet_python_erase}
     COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}
-            --output-on-failure --label-exclude ${SOCPUPPET_TOOLING_LABEL}
+            --output-on-failure --label-exclude ${_socpuppet_left_out}
     # Every report is written before either floor is checked, so that
     # missing one floor does not cost the other language its report.
     COMMAND ${CMAKE_COMMAND} -E make_directory ${_socpuppet_reports}/cpp

@@ -2,9 +2,10 @@ name: CI
 
 # The quick tier, on every push to main and every pull request, on Linux
 # alone: lint, the firmware, the quick tests with one boot of each area on
-# both harts, and clang-tidy, coverage and the sanitizers. The rest
-# is nightly.yml's: every other boot, twister, QBox, the wheels and the
-# devcontainer, on every machine CI has. On a developer's machine,
+# both harts, and clang-tidy, the quick tests' coverage and the
+# sanitizers. The rest is nightly.yml's: every other boot, twister, the
+# whole suite's coverage, QBox, the wheels and the devcontainer, on every
+# machine CI has. On a developer's machine,
 # `uv run python tools/ci.py` runs that, and `--quick` runs this.
 #
 # Every job here but the last is a thin wrapper around tools/ci.py, which
@@ -71,6 +72,39 @@ jobs:
           compiler-cache: dev
       - run: uv run python tools/ci.py run test-quick
 
+  coverage-quick:
+    # Which lines of our own C++ and Python the quick preset's tests run,
+    # one boot of each area. The job fails if either falls below the floors
+    # it shares with nightly.yml's coverage of the whole suite
+    # (CMakePresets.json).
+    name: Test coverage of the quick tests
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build cable
+          machine: ubuntu-26.04
+          tree: dev
+          compiler-cache: coverage
+      - run: uv run python tools/ci.py run coverage-quick
+      - name: Show the figures on the job's page
+        if: always()
+        run: |
+          {
+            cat build/dev/coverage/cpp.md
+            echo
+            echo "# Python coverage"
+            echo
+            uv run python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the line-by-line reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-quick-report
+          path: build/dev/coverage
+
   qbox-build:
     name: QBox
     uses: ./.github/workflows/qbox-build.yml
@@ -136,7 +170,7 @@ jobs:
     # own condition, as GitHub counts it.
     name: CI passed
     if: always()
-    needs: [checks, firmware, test-quick, qbox-build, qbox-quick, images]
+    needs: [checks, firmware, test-quick, coverage-quick, qbox-build, qbox-quick, images]
     runs-on: ubuntu-26.04
     steps:
       - name: A job it needs failed or was cancelled (see the run's summary)

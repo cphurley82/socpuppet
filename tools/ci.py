@@ -68,10 +68,10 @@ class Tier(enum.Enum):
 
     The quick tier runs on every push and pull request, and leaves out what
     takes longest. The nightly tier is every job but the quick tier's own
-    (test-quick, qbox-quick) and the release tier's, on every machine, and
-    is what a run here runs unless asked otherwise. The release tier runs on
-    the tag of a version, and checks the release; its jobs run here only
-    when named.
+    (test-quick, qbox-quick, coverage-quick) and the release tier's, on
+    every machine, and is what a run here runs unless asked otherwise. The
+    release tier runs on the tag of a version, and checks the release; its
+    jobs run here only when named.
     """
 
     QUICK = "ci.yml"
@@ -208,6 +208,15 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
         Step("configure", ("uv", "run", "cmake", "--preset", preset)),
         Step("tidy", (*build, "--target", "tidy")),
         Step("check_headers", (*build, "--target", "check_headers")),
+    )
+
+
+def coverage_steps(preset: str) -> tuple[Step, ...]:
+    """Configure a coverage tree, then run its tests and measure them."""
+    build = ("uv", "run", "cmake", "--build", "--preset", preset)
+    return (
+        Step("configure", ("uv", "run", "cmake", "--preset", preset)),
+        Step("coverage", (*build, "--target", "coverage")),
     )
 
 
@@ -560,17 +569,19 @@ JOBS = [
     Job(
         "coverage",
         "which lines of our C++ and Python the tests run, against a floor",
-        tiers=(Tier.QUICK, Tier.NIGHTLY),
-        steps=(
-            Step("configure", ("uv", "run", "cmake", "--preset", "coverage")),
-            Step(
-                "coverage",
-                (
-                    *("uv", "run", "cmake", "--build", "--preset", "coverage"),
-                    *("--target", "coverage"),
-                ),
-            ),
-        ),
+        tiers=(Tier.NIGHTLY,),
+        steps=coverage_steps("coverage"),
+        uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
+        reconfigures_dev=True,
+        areas=("build",),
+    ),
+    Job(
+        "coverage-quick",
+        "which lines the quick preset's tests run, against coverage's floors",
+        tiers=(Tier.QUICK,),
+        # Every boot measured took the coverage job an hour and more, the
+        # quick tier's longest; the quick preset boots once for each area.
+        steps=coverage_steps("coverage-quick"),
         uses=("build/dev", "extension", TESTS_ON_EVERY_CORE),
         reconfigures_dev=True,
         areas=("build",),

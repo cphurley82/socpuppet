@@ -90,6 +90,38 @@ jobs:
           firmware: firmware-*
       - run: uv run python tools/ci.py run test
 
+  coverage:
+    # Which lines of our own C++ and Python the whole suite runs, every
+    # boot included. The job fails if either falls below its floor
+    # (CMakePresets.json).
+    name: Test coverage
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          packages: build cable
+          machine: ubuntu-26.04
+          tree: dev
+          compiler-cache: coverage
+      - run: uv run python tools/ci.py run coverage
+      - name: Show the figures on the job's page
+        if: always()
+        run: |
+          {
+            cat build/dev/coverage/cpp.md
+            echo
+            echo "# Python coverage"
+            echo
+            uv run python -m coverage report --format=markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the line-by-line reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: build/dev/coverage
+
   twister:
     # Zephyr's own test suites, and ours, run on every board by twister,
     # Zephyr's test runner, with socpuppet as the emulator: the

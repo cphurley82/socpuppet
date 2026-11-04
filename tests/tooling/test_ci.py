@@ -697,6 +697,7 @@ ON_EVERY_CORE = [
     "test-quick",
     "qbox-quick",
     "coverage",
+    "coverage-quick",
     "sanitizers",
     "twister",
     "qbox",
@@ -1145,6 +1146,16 @@ def test_coverage_builds_its_target_in_the_coverage_tree(ci):
     assert lines == [
         "uv run cmake --preset coverage",
         "uv run cmake --build --preset coverage --target coverage",
+    ]
+
+
+def test_coverage_quick_builds_its_target_in_the_coverage_quick_tree(ci):
+    # The coverage-quick preset measures the quick preset's tests alone.
+    _, lines = ci("run", "coverage-quick")
+
+    assert lines == [
+        "uv run cmake --preset coverage-quick",
+        "uv run cmake --build --preset coverage-quick --target coverage",
     ]
 
 
