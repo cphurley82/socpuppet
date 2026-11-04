@@ -41,7 +41,7 @@ jobs:
     needs: release-check
     uses: ./.github/workflows/wheel.yml
     with:
-      os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-15", "macos-26-intel"]'
+      os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-latest", "macos-26-intel"]'
 
   pypi:
     # The wheels and the source, to PyPI, by its trusted publishing: PyPI
@@ -100,7 +100,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-15, macos-26-intel]
+        os: [ubuntu-26.04, ubuntu-26.04-arm, macos-latest, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
       # dtc compiles the devicetree a boot under OpenSBI is handed.
@@ -119,7 +119,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26-intel]
+        os: [macos-latest, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -154,7 +154,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-26-intel]
+        os: [macos-latest, macos-26-intel]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

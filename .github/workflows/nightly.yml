@@ -21,8 +21,10 @@ name: Nightly
 # devcontainer's image, the firmware and twister, it does not, as GitHub's
 # Macs have no Docker. macos-26-intel runs test, qbox-build, qbox,
 # qbox-one-command and wheel; macos-15-intel, an older Xcode and SDK, runs
-# only test; macos-latest runs test, clang-tidy, and QBox's build and
-# QBox in one command.
+# only test; macos-latest runs test, clang-tidy, QBox's build, QBox in one
+# command and wheel. A wheel built on the newest Mac still runs on the
+# oldest macOS pyproject.toml's deployment target names: the runner sets
+# the compiler, not the wheel's floor.
 #
 # clang-tidy runs on one Linux and one Mac, the newest, macos-latest, over
 # the tree that links QBox, which qbox-build builds there. That is enough:
@@ -272,7 +274,7 @@ jobs:
     # The wheels a user will install, on every machine (wheel.yml).
     uses: ./.github/workflows/wheel.yml
     with:
-      os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-15", "macos-26-intel"]'
+      os: '["ubuntu-26.04", "ubuntu-26.04-arm", "macos-latest", "macos-26-intel"]'
 
   devcontainer-26-04:
     # The tests, built in the devcontainer's image on Ubuntu 26.04: Linux with
