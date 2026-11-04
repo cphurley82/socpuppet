@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "socpuppet"
-version = "0.0.1"
+version = "0.0.1rc1"
 description = "A whole SoC simulated in SystemC, with Python pulling the strings."
 readme = "README.md"
 license = "MIT"
