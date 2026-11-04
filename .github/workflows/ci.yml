@@ -1,9 +1,8 @@
 name: CI
 
-# The quick tier, on every push to main and every pull request: lint, the
-# firmware, the quick tests with one boot of each area, on Linux on both
-# harts and on an Apple silicon Mac, and clang-tidy, coverage and the
-# sanitizers on Linux. It answers in about half an hour. The rest
+# The quick tier, on every push to main and every pull request, on Linux
+# alone: lint, the firmware, the quick tests with one boot of each area on
+# both harts, and clang-tidy, coverage and the sanitizers. The rest
 # is nightly.yml's: every other boot, twister, QBox, the wheels and the
 # devcontainer, on every machine CI has. On a developer's machine,
 # `uv run python tools/ci.py` runs that, and `--quick` runs this.
@@ -22,12 +21,10 @@ name: CI
 # Nothing waits for lint but CI passed: a job waits only for a job whose
 # output it reads, or, for the release of the images, whose verdict it does.
 #
-# The one Mac here is Apple silicon, macos-latest, which runs the whole
-# test job in about half the time an Intel Mac takes. The Intel Macs were
-# the slowest leg of the run, and the one most often broken by what only
-# they have (Homebrew's headers in /usr/local, a boot that takes minutes);
-# nightly.yml still runs them every night. GitHub runs five Macs at a time
-# for an account; nightly.yml takes the rest.
+# There is no Mac here. GitHub runs five Macs at a time for an account,
+# and a pull request pushed in the evening waits behind nightly.yml's: a
+# Mac leg made the quick tier as slow as the queue. What breaks on a Mac
+# alone is found at night, on every Mac nightly.yml runs.
 
 on:
   push:
@@ -56,15 +53,15 @@ jobs:
 
   test-quick:
     # The dev tree's build and its quick tests: all but the long ones, and
-    # one boot for each area (the quick test preset), on the Mac as on
-    # Linux; the rest of the boots are nightly.yml's.
+    # one boot for each area (the quick test preset); the rest of the boots
+    # are nightly.yml's.
     name: Build and quick tests (${{ matrix.os }})
     needs: firmware
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
+        os: [ubuntu-26.04]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

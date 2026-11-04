@@ -2,6 +2,10 @@
 
 Every decision that settled how socpuppet is built, dated, with its reason and where the reasoning lives. Newest first. A decision that reversed an earlier one says so (↔), and the earlier one stays on the page, because the reason it was wrong is the useful part. The decisions still open are in [roadmap.md](../roadmap.md#open-decisions), and the rules that a decision is judged by are in [vision.md](../vision.md).
 
+## 2026-11-04
+
+- **The quick tier runs on Linux alone; the Macs run at night.** ↔ 2026-10-29's "The quick tier's Mac is Apple silicon, `macos-latest`". GitHub runs five Macs at a time for an account, and the nightly tier starts in California's evening with about fifteen Mac jobs, so a pull request pushed then waited for a Mac as long as the nightly's own did, up to 77 minutes in run 41835009817. A Mac-only break is found that night, as an Intel Mac's already was. *A newcomer builds it for free on a laptop* ([vision.md](../vision.md)) still holds for a Mac: every Mac CI has builds and tests every night, and on a Mac `tools/ci.py --quick` runs the quick tier before a push. Other Linuxes and a BSD were asked about in issue 64 and not added: GitHub hosts only Ubuntu, Windows and macOS, so either would be a container or a virtual machine, and what breaks on a Mac alone (Apple's SDK and libc++, Homebrew's headers, Apple clang, Mach-O) is not on a BSD either.
+
 ## 2026-11-02
 
 - **The first release is 0.0.1, and a release is a tag**: `v` and the version, written once in `pyproject.toml`, annotated with the release's notes, on a commit of main, and checked before anything is built (`tools/release.py check`). The maintainer's call, changed from 0.1.0 while M36 was built.

@@ -201,6 +201,15 @@ def test_each_machine_the_quick_tier_runs_a_job_on_the_nightly_runs_it_on_too():
         assert set(runners(job)) <= set(runners(counterpart)), name
 
 
+def test_the_quick_tier_runs_on_ubuntu_alone():
+    # GitHub runs five Macs at a time for an account, and the nightly
+    # tier's are ahead of a pull request's in the queue: what breaks on a
+    # Mac alone is found at night.
+    for name, job in jobs_of(TIER.QUICK).items():
+        for machine in runners(job):
+            assert UBUNTU.fullmatch(machine), f"{name}: {machine}"
+
+
 def test_a_push_to_main_and_a_pull_request_start_the_quick_tier():
     triggers = triggers_of(TIER.QUICK)
     assert "main" in triggers["push"]["branches"]
