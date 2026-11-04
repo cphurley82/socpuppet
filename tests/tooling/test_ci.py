@@ -113,6 +113,9 @@ OUR_WHEEL = f"build/wheelhouse/socpuppet-0.0.1-{TAG}-{TAG}-spam.whl"
 # What the sdist and cibuildwheel fakes leave, to build one wheel here.
 ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
 
+# What CMake finds QBox by once tools/build_qbox.py has installed it.
+QBOX_BUILT = "build/qbox/install/lib/cmake/qbox-2.0/qboxConfig.cmake"
+
 # What a terminal is sent to color what follows.
 GREEN, RED = "\x1b[32m", "\x1b[31m"
 
@@ -541,12 +544,14 @@ def test_run_opens_with_the_command_that_runs_the_job_and_its_needs_here(ci):
 
 
 @pytest.mark.parametrize("job", JOBS, ids=lambda job: job.name)
-def test_the_command_to_run_a_job_here_names_what_it_needs_before_it(ci, job):
+def test_the_command_to_run_a_job_here_names_what_it_needs_or_comes_after_first(
+    ci, job
+):
     result, _ = ci("run", job.name)
 
     named = command_to_run_here(result.stdout).split()
-    for need in job.needs:
-        assert named.index(need) < named.index(job.name)
+    for other in (*job.needs, *job.after):
+        assert named.index(other) < named.index(job.name)
 
 
 def test_with_no_job_named_every_nightly_job_that_can_run_here_runs_and_no_other(
@@ -932,21 +937,25 @@ def test_a_job_in_docker_named_on_its_own_runs_without_docker_asked_for(ci):
     assert "⏭" not in verdicts(result.stdout).values()
 
 
-def test_the_clang_tidy_jobs_run_here_whatever_the_system(ci):
+def test_the_clang_tidy_job_runs_here_whatever_the_system(ci):
     # On a Mac clang-tidy reads Apple clang's compile commands, and so
     # checks our code the way a Mac compiles it.
-    result, _ = ci("tidy", "qbox-tidy")
+    result, _ = ci("tidy")
 
-    assert verdicts(result.stdout) == {"tidy": "✅", "qbox-tidy": "✅"}
+    assert verdicts(result.stdout) == {"tidy": "✅"}
 
 
-def test_the_list_shows_what_each_job_needs_and_why_one_cannot_run_here(ci):
+def test_the_list_shows_what_each_job_needs_or_comes_after_and_why_one_cannot_run_here(
+    ci,
+):
     result, _ = ci("--list")
 
     entries = listed(result.stdout)
     for job in JOBS:
         for need in job.needs:
-            assert need in needs_line(entries[job.name])
+            assert need in line_of(entries[job.name], "needs")
+        for other in job.after:
+            assert other in line_of(entries[job.name], "after")
     for name in DOCKER_JOBS:
         assert "⏭" in entries[name]
         assert "--docker" in entries[name]
@@ -1116,18 +1125,6 @@ def test_output_to_a_pipe_is_not_colored(ci):
     assert "\x1b[" not in result.stdout
 
 
-def test_tidy_configures_the_dev_tree_and_runs_clang_tidy_then_the_header_check(
-    ci,
-):
-    _, lines = ci("run", "tidy")
-
-    assert lines == [
-        "uv run cmake --preset dev",
-        "uv run cmake --build --preset dev --target tidy",
-        "uv run cmake --build --preset dev --target check_headers",
-    ]
-
-
 def test_twister_builds_the_dev_tree_checks_its_files_then_runs_the_suites(
     ci,
 ):
@@ -1210,14 +1207,65 @@ def test_qbox_on_an_intel_mac_stops_before_twister(ci, where):
     ]
 
 
-def test_qbox_tidy_runs_clang_tidy_then_the_header_check_on_the_qbox_tree(ci):
-    _, lines = ci("run", "qbox-tidy")
+def test_tidy_runs_over_the_qbox_tree_when_qbox_is_built_here(ci):
+    # The qbox tree is the dev tree and QBox's adapter, which the dev tree
+    # leaves out.
+    (ci.root / QBOX_BUILT).parent.mkdir(parents=True)
+    (ci.root / QBOX_BUILT).touch()
+
+    _, lines = ci("run", "tidy")
 
     assert lines == [
         "uv run cmake --preset qbox",
         "uv run cmake --build --preset qbox --target tidy",
         "uv run cmake --build --preset qbox --target check_headers",
     ]
+
+
+def test_tidy_runs_over_the_dev_tree_when_qbox_is_not_built_here(ci):
+    _, lines = ci("run", "tidy")
+
+    assert lines == [
+        "uv run cmake --preset dev",
+        "uv run cmake --build --preset dev --target tidy",
+        "uv run cmake --build --preset dev --target check_headers",
+    ]
+
+
+def test_a_job_starts_once_the_job_it_comes_after_has_ended(ci):
+    # tidy takes the QBox that qbox-build installs, when there is one.
+    result, _ = ci(
+        "tidy",
+        "qbox-build",
+        makes={"tools/build_qbox.py": [QBOX_BUILT]},
+        SLOW="0.5",
+    )
+
+    assert verdicts(result.stdout) == {"qbox-build": "✅", "tidy": "✅"}
+    built = ci.command("uv run tools/build_qbox.py")
+    tidied = ci.command("uv run cmake --preset qbox")
+    assert tidied["start"] >= built["end"]
+
+
+@pytest.mark.parametrize(
+    ("env", "before"),
+    [
+        pytest.param({"FAIL_ON": "tools/build_qbox.py"}, "❌", id="failed"),
+        pytest.param(
+            {
+                "DOCTOR": json.dumps(
+                    {"qbox": {"optional": True, "problems": ["no meson"]}}
+                )
+            },
+            "⏭",
+            id="was skipped",
+        ),
+    ],
+)
+def test_a_job_runs_whatever_the_job_it_comes_after_did(ci, env, before):
+    result, _ = ci("qbox-build", "tidy", **env)
+
+    assert verdicts(result.stdout) == {"qbox-build": before, "tidy": "✅"}
 
 
 def test_wheel_here_builds_this_machines_wheel_from_an_sdist_and_tests_it(ci):
@@ -1534,9 +1582,10 @@ def error_line(output):
     return next(line for line in output.splitlines() if "error:" in line)
 
 
-def needs_line(entry):
+def line_of(entry, word):
+    """The line of a job's entry in the list that begins with a word."""
     return next(
-        line for line in entry.splitlines() if line.strip().startswith("needs")
+        line for line in entry.splitlines() if line.strip().startswith(word)
     )
 
 

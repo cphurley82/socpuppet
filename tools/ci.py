@@ -140,6 +140,10 @@ class Job:
     # The jobs whose output this one reads, or whose verdict it waits for,
     # which come before it in JOBS.
     needs: tuple[str, ...] = ()
+    # The jobs whose output this one takes if they made it, and goes without
+    # if not: when one is in the same run, this waits for it to end, then
+    # runs whatever its verdict. They come before it in JOBS too.
+    after: tuple[str, ...] = ()
     # What no other job may use while it runs here: the build tree it
     # builds in, the extension every tree puts in python/socpuppet, or the
     # cores its tests run on (TESTS_ON_EVERY_CORE).
@@ -205,6 +209,22 @@ def tidy_steps(preset: str) -> tuple[Step, ...]:
         Step("tidy", (*build, "--target", "tidy")),
         Step("check_headers", (*build, "--target", "check_headers")),
     )
+
+
+# What CMake finds QBox by, where tools/build_qbox.py installs it: once
+# it is there, QBox is built (build_qbox.py's built()).
+QBOX_BUILT = (
+    REPO / "build" / "qbox" / "install" / "lib/cmake/qbox-2.0/qboxConfig.cmake"
+)
+
+
+def tidy_over_the_qbox_tree_if_built(_: Mode) -> tuple[Step, ...]:
+    """clang-tidy and the header check over the qbox tree, if QBox is built.
+
+    The qbox tree is the dev tree and QBox's adapter, which the dev tree
+    leaves out. Without QBox, they run over the dev tree.
+    """
+    return tidy_steps("qbox" if QBOX_BUILT.is_file() else "dev")
 
 
 # Configure and build the qbox preset's tree, which links QBox.
@@ -513,18 +533,6 @@ JOBS = [
         areas=("build", "cable"),
     ),
     Job(
-        "tidy",
-        "clang-tidy over our C++, and each header compiled on its own",
-        tiers=(Tier.QUICK, Tier.NIGHTLY),
-        steps=tidy_steps("dev"),
-        uses=("build/dev",),
-        # clang-tidy reads the compile commands of this machine's compiler,
-        # and its standard library: GCC's and libstdc++ on Linux, Apple
-        # clang's and the SDK's libc++ on a Mac. So each system's run checks
-        # our code the way that system compiles it.
-        areas=("build",),
-    ),
-    Job(
         "twister",
         "Zephyr's test suites, and ours, on every board, run by twister",
         tiers=(Tier.NIGHTLY,),
@@ -591,6 +599,21 @@ JOBS = [
         areas=("build", "qbox", "network"),
     ),
     Job(
+        "tidy",
+        "clang-tidy over our C++, and each header compiled on its own",
+        tiers=(Tier.QUICK, Tier.NIGHTLY),
+        after=("qbox-build",),
+        steps=tidy_over_the_qbox_tree_if_built,
+        # Either tree, which is picked as it starts: QBox may be built by
+        # then, by the qbox-build before it.
+        uses=("build/dev", "build/qbox-dev"),
+        # clang-tidy reads the compile commands of this machine's compiler,
+        # and its standard library: GCC's and libstdc++ on Linux, Apple
+        # clang's and the SDK's libc++ on a Mac. So each system's run checks
+        # our code the way that system compiles it.
+        areas=("build",),
+    ),
+    Job(
         "qbox-quick",
         "the quick tests and one boot for each area, on QBox's CPU",
         tiers=(Tier.QUICK,),
@@ -618,15 +641,6 @@ JOBS = [
                 ("uv", "run", "python", "tools/released_images.py", "publish"),
             ),
         ),
-    ),
-    Job(
-        "qbox-tidy",
-        "clang-tidy over the QBox adapter, which the dev tree leaves out",
-        tiers=(Tier.NIGHTLY,),
-        needs=("qbox-build",),
-        steps=tidy_steps("qbox"),
-        uses=("build/qbox-dev",),
-        areas=("build",),
     ),
     Job(
         "qbox",
@@ -913,6 +927,8 @@ def list_jobs(docker: bool) -> None:
         print(f"{indent}runs in {workflows}")
         if job.needs:
             print(f"{indent}needs {', '.join(job.needs)}")
+        if job.after:
+            print(f"{indent}after {', '.join(job.after)}")
         outcome = settled.get(job.name)
         if outcome:
             print(f"{indent}{outcome.verdict.mark()} {outcome.describe()}")
@@ -1318,13 +1334,14 @@ class Run:
     def ready(self, job: Job) -> bool:
         """Whether a job may start now.
 
-        The jobs it needs that were named have passed, there is room for
-        one more, and nothing it uses is in use.
+        The jobs it needs that were named have passed, those it comes after
+        that were named have ended, there is room for one more, and nothing
+        it uses is in use.
         """
         return (
             all(
-                need not in self.named or need in self.outcomes
-                for need in job.needs
+                other not in self.named or other in self.outcomes
+                for other in (*job.needs, *job.after)
             )
             and len(self.running) < self.parallel
             and not self.held & set(job.uses)
@@ -1499,14 +1516,15 @@ def command_for(job: Job) -> str:
 
 
 def needed_by(job: Job) -> set[str]:
-    """The jobs a job needs, and the jobs they need, all the way down."""
+    """The jobs a job needs or comes after, and theirs, all the way down."""
     needed: set[str] = set()
-    waiting = list(job.needs)
+    waiting = [*job.needs, *job.after]
     while waiting:
         name = waiting.pop()
         if name not in needed:
             needed.add(name)
-            waiting.extend(JOBS_BY_NAME[name].needs)
+            other = JOBS_BY_NAME[name]
+            waiting.extend((*other.needs, *other.after))
     return needed
 
 

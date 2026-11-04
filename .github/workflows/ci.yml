@@ -42,8 +42,6 @@ jobs:
   checks:
     name: Checks
     uses: ./.github/workflows/checks.yml
-    with:
-      os: '["ubuntu-26.04"]'
 
   firmware:
     name: Firmware
@@ -78,6 +76,7 @@ jobs:
     uses: ./.github/workflows/qbox-build.yml
     with:
       os: '["ubuntu-26.04"]'
+      tidy-os: '["ubuntu-26.04"]'
 
   qbox-quick:
     # The quick preset's second opinion: the quick tests and one boot for

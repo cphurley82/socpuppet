@@ -68,9 +68,10 @@ WORKFLOW_FILES = {
     for file, definition in WORKFLOW_DEFINITIONS.items()
 }
 # How a job calls a workflow both tiers share, and what it hands it: the
-# machines, which the called workflow's matrices are made of.
+# machines, a JSON list for each input, which the called workflow's
+# matrices are made of.
 CALLED = "./.github/workflows/"
-MACHINES = "${{ fromJSON(inputs.os) }}"
+MACHINES = re.compile(r"\$\{\{ fromJSON\(inputs\.([\w-]+)\) \}\}")
 # The action every job takes its setup from, and what it does with what it
 # is given.
 SETUP = "./.github/actions/setup"
@@ -152,6 +153,8 @@ ON_THE_OLDEST_UBUNTU_TOO = {
 # An Intel Mac, as a label names it.
 APPLE_SILICON = {"macos-15", "macos-latest"}
 INTEL_MAC = re.compile(r"macos-\d+-intel")
+# The workflow that builds QBox, which the jobs on QBox's CPU take.
+QBOX_BUILD = "qbox-build.yml"
 # The jobs that run Homebrew's formula, which is for a Mac alone.
 ON_A_MAC_ALONE = {"tap", "tap-installed"}
 # The caches whose contents run on any Linux of the same processor, as on
@@ -596,6 +599,16 @@ def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
         ), tier.value
 
 
+def test_a_job_that_takes_qbox_runs_only_where_qbox_build_built_it():
+    # It takes the artifact of its own machine's build.
+    for tier in (tier for tier in TIER if QBOX_BUILD in called_by(tier)):
+        jobs = jobs_of(tier)
+        built = set(runners(jobs["qbox-build"]))
+        for name, job in jobs.items():
+            if any(setup.get("qbox") == "True" for setup in setups_in(job)):
+                assert set(runners(job)) <= built, f"{tier.value}: {name}"
+
+
 def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():
     for where, _, _, job in DEFINED_JOBS:
         if "matrix" in job.get("strategy", {}):
@@ -858,20 +871,27 @@ def jobs_of(tier):
     jobs = {}
     for name, job in WRAPPING_JOBS[tier.value].items():
         if "uses" in job:
-            machines = json.loads(job["with"]["os"])
+            handed = {
+                given: json.loads(machines)
+                for given, machines in job.get("with", {}).items()
+            }
             called = WORKFLOW_FILES[job["uses"].removeprefix(CALLED)]
             jobs |= {
-                each: given_machines(called[each], machines) for each in called
+                each: given_machines(called[each], handed) for each in called
             }
         else:
             jobs[name] = job
     return jobs
 
 
-def given_machines(job, machines):
-    """A job of a called workflow, its matrix made of the machines given."""
-    if job.get("strategy", {}).get("matrix", {}).get("os") != MACHINES:
+def given_machines(job, handed):
+    """A job of a called workflow, its matrix made of the machines handed
+    to the input it reads."""
+    matrix = job.get("strategy", {}).get("matrix", {}).get("os")
+    read = isinstance(matrix, str) and MACHINES.fullmatch(matrix)
+    if not read:
         return job
+    machines = handed[read[1]]
     return {
         **job,
         "strategy": {

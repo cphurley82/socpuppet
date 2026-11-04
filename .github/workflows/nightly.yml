@@ -24,13 +24,13 @@ name: Nightly
 # only test; macos-latest runs test, clang-tidy, and QBox's build and
 # QBox in one command.
 #
-# The clang-tidy jobs run on one Linux and one Mac, the newest, macos-latest,
-# where qbox-build builds QBox for qbox-tidy. That is enough: clang-tidy
-# reads the compile commands, and an Intel Mac's are an Apple silicon
-# one's; the Intel Mac's builds already meet Homebrew's /usr/local; and
-# qbox-tidy on one ran for 50 minutes and then lost its runner, most likely
-# to a lack of memory. On a developer's machine, tools/ci.py runs both,
-# whatever the machine.
+# clang-tidy runs on one Linux and one Mac, the newest, macos-latest, over
+# the tree that links QBox, which qbox-build builds there. That is enough:
+# clang-tidy reads the compile commands, and an Intel Mac's are an Apple
+# silicon one's; the Intel Mac's builds already meet Homebrew's
+# /usr/local; and clang-tidy over QBox's tree on one ran for 50 minutes
+# and then lost its runner, most likely to a lack of memory. On a
+# developer's machine, tools/ci.py runs it, whatever the machine.
 
 on:
   # 05:23 UTC, the evening in California: GitHub has started the scheduled
@@ -53,8 +53,6 @@ jobs:
   checks:
     name: Checks
     uses: ./.github/workflows/checks.yml
-    with:
-      os: '["ubuntu-26.04", "macos-latest"]'
 
   firmware:
     name: Firmware
@@ -142,29 +140,9 @@ jobs:
     with:
       # Ubuntu 24.04 too, the oldest we support: QBox links more of the
       # system's libraries than anything else, and they differ most there.
-      # And macos-latest, which builds it for qbox-tidy.
+      # And macos-latest, which builds it for clang-tidy.
       os: '["ubuntu-26.04", "ubuntu-24.04", "macos-15", "macos-latest", "macos-26-intel"]'
-
-  qbox-tidy:
-    # clang-tidy over the adapter of QBox's CPU, which the tidy job's tree
-    # leaves out.
-    name: clang-tidy and header check with QBox (${{ matrix.os }})
-    needs: qbox-build
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, macos-latest]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup
-        with:
-          packages: build qbox
-          machine: ${{ matrix.os }}
-          tree: qbox-dev
-          qbox: true
-      - run: uv run python tools/ci.py run qbox-tidy
+      tidy-os: '["ubuntu-26.04", "macos-latest"]'
 
   qbox:
     # The qbox_cpu, QEMU's RISC-V CPU inside SystemC, as a second hart
