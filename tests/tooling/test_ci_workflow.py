@@ -77,6 +77,13 @@ SETUP = "./.github/actions/setup"
 SETUP_ACTION = yaml.safe_load(
     (REPO / ".github" / "actions" / "setup" / "action.yml").read_text()
 )
+# The action a coverage job shows its figures and keeps its reports with.
+COVERAGE_REPORT = "./.github/actions/coverage-report"
+COVERAGE_REPORT_ACTION = yaml.safe_load(
+    (
+        REPO / ".github" / "actions" / "coverage-report" / "action.yml"
+    ).read_text()
+)
 # How big the setup action lets a build's compiler cache grow.
 (SETUP_CCACHE_MAXSIZE,) = re.findall(
     r"CCACHE_MAXSIZE=(\w+)",
@@ -126,6 +133,10 @@ EVERY_STEP = [
         for step in job["steps"]
     ),
     *((SETUP, step) for step in SETUP_ACTION["runs"]["steps"]),
+    *(
+        (COVERAGE_REPORT, step)
+        for step in COVERAGE_REPORT_ACTION["runs"]["steps"]
+    ),
 ]
 
 # A job that builds QBox, or runs on what that built, is given three hours:
@@ -649,6 +660,23 @@ def test_clang_tidy_runs_at_night_whatever_qboxs_build_did_on_another_machine():
     assert condition_of(jobs[written_or_called_as("tidy", jobs)]) == (
         "!cancelled()"
     )
+
+
+def test_each_coverage_job_shows_and_keeps_its_report_whatever_its_floors_did():
+    # A job below a floor fails at its last step: the figures are what say
+    # by how much, and the line-by-line reports which lines.
+    coverage = {name for name in JOBS if name.startswith("coverage")}
+    for file, jobs in DEFINED.items():
+        for name in coverage & set(jobs):
+            (report,) = [
+                step
+                for step in jobs[name]["steps"]
+                if step.get("uses") == COVERAGE_REPORT
+            ]
+            assert condition_of(report) == "always()", f"{file}: {name}"
+            assert report["with"]["name"] == f"{name}-report", f"{file}: {name}"
+    for step in COVERAGE_REPORT_ACTION["runs"]["steps"]:
+        assert condition_of(step) == "always()", step["name"]
 
 
 def test_a_job_on_several_machines_runs_on_each_whatever_the_others_do():

@@ -1170,6 +1170,9 @@ def test_coverage_builds_its_target_in_the_coverage_tree(ci):
     ]
 
 
+@pytest.mark.skipif(
+    RUNNER_MODULE.INTEL_MAC, reason="an Intel Mac leaves the boots out"
+)
 def test_coverage_quick_builds_its_target_in_the_coverage_quick_tree(ci):
     # The coverage-quick preset measures the quick preset's tests alone.
     _, lines = ci("run", "coverage-quick")
@@ -1177,6 +1180,19 @@ def test_coverage_quick_builds_its_target_in_the_coverage_quick_tree(ci):
     assert lines == [
         "uv run cmake --preset coverage-quick",
         "uv run cmake --build --preset coverage-quick --target coverage",
+    ]
+
+
+@pytest.mark.skipif(not RUNNER_MODULE.INTEL_MAC, reason="for an Intel Mac")
+def test_coverage_quick_on_an_intel_mac_leaves_the_boots_out(ci):
+    # As test-quick does there: a boot of Linux takes minutes, and longer
+    # with coverage's counters.
+    _, lines = ci("run", "coverage-quick")
+
+    assert lines == [
+        "uv run cmake --preset coverage-quick-without-boots",
+        "uv run cmake --build --preset coverage-quick-without-boots"
+        " --target coverage",
     ]
 
 

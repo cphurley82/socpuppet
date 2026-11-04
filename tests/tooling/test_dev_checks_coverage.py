@@ -3,6 +3,8 @@
 It runs the tests and reports which lines of our own code they ran.
 """
 
+import re
+
 WIDGET_HEADER = """\
 #ifndef WIDGETS_WIDGET_H_
 #define WIDGETS_WIDGET_H_
@@ -200,6 +202,8 @@ def test_tests_with_a_label_asked_to_be_left_out_are_left_out_beside_the_tooling
     result = project.build("coverage")
 
     assert result.returncode == 0, result.stdout
+    # And the test with neither label still runs.
+    assert re.search(r"Test +#\d+: widget_test ", result.stdout), result.stdout
 
 
 def test_the_coverage_target_leaves_the_cpp_report_as_files_too(cmake_project):

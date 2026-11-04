@@ -7,6 +7,8 @@ everything, which runs every night (docs/development.md).
 import json
 import subprocess
 
+import pytest
+
 from conftest import REPO, _tool
 
 #: The ctest entries that run pytest, each on its share of the tests.
@@ -73,18 +75,26 @@ def collected_by(command, *more):
     return {line for line in collected.stdout.splitlines() if "::" in line}
 
 
-def test_coverage_quick_leaves_out_what_the_quick_preset_leaves_out():
-    # So that the quick tier's coverage measures the quick tier's tests.
+@pytest.mark.parametrize(
+    ("coverage", "tests"),
+    [
+        ("coverage-quick", "quick"),
+        ("coverage-quick-without-boots", "quick-without-boots"),
+    ],
+)
+def test_coverage_quick_leaves_out_what_the_quick_preset_leaves_out(
+    coverage, tests
+):
+    # So that the quick tier's coverage measures the quick tier's tests,
+    # an Intel Mac's without the boots.
     presets = json.loads((REPO / "CMakePresets.json").read_text())
     (configure,) = [
-        each
-        for each in presets["configurePresets"]
-        if each["name"] == "coverage-quick"
+        each for each in presets["configurePresets"] if each["name"] == coverage
     ]
 
     assert (
         configure["cacheVariables"]["SOCPUPPET_COVERAGE_EXCLUDE"]
-        == preset("quick")["filter"]["exclude"]["label"]
+        == preset(tests)["filter"]["exclude"]["label"]
     )
 
 

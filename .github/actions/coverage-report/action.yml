@@ -1,0 +1,35 @@
+name: Report a coverage job's figures
+description: >-
+  What a coverage job leaves after tools/ci.py has run it: the C++ and the
+  Python figures on the job's page, and the line-by-line reports as an
+  artifact of the run. Each step runs whatever came before it, as the job
+  calls this whatever its floors did: a job below a floor fails at its
+  last step, and the figures say by how much, the reports which lines.
+  ci.yml's coverage-quick and nightly.yml's coverage each take it from
+  here, so that it is written once.
+
+inputs:
+  name:
+    description: The artifact's name, the job's own and -report.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Show the figures on the job's page
+      if: always()
+      shell: bash
+      run: |
+        {
+          cat build/dev/coverage/cpp.md
+          echo
+          echo "# Python coverage"
+          echo
+          uv run python -m coverage report --format=markdown
+        } >> "$GITHUB_STEP_SUMMARY"
+    - name: Keep the line-by-line reports
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: build/dev/coverage

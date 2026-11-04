@@ -34,6 +34,14 @@
       }
     },
     {
+      "name": "coverage-quick-without-boots",
+      "displayName": "Coverage of the quick tests, without the boots, for an Intel Mac",
+      "inherits": "coverage-quick",
+      "cacheVariables": {
+        "SOCPUPPET_COVERAGE_EXCLUDE": "nightly|qbox|boots"
+      }
+    },
+    {
       "name": "asan",
       "displayName": "Development build with sanitizers in the C++ tests",
       "inherits": "dev",
@@ -78,6 +86,10 @@
     { "name": "dev", "configurePreset": "dev" },
     { "name": "coverage", "configurePreset": "coverage" },
     { "name": "coverage-quick", "configurePreset": "coverage-quick" },
+    {
+      "name": "coverage-quick-without-boots",
+      "configurePreset": "coverage-quick-without-boots"
+    },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "spike", "configurePreset": "spike" },
     { "name": "linux", "configurePreset": "linux" },

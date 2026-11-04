@@ -67,7 +67,7 @@ uv run cmake --build --preset coverage --target coverage
 
 That builds our code with counters in it, runs the tests, and prints two tables: one for the C++ under `src/` and one for the Python under `python/`. The line-by-line reports are web pages in `build/dev/coverage/`. The target fails if either figure drops below its floor, which is set in `CMakePresets.json`. CI runs it and keeps the reports as an artifact of the run.
 
-🌙 That measures every test, every boot included, which takes an hour and more with counters in the code, so it is the nightly tier's. A push measures the quick preset's tests, one boot of each area, with `--preset coverage-quick` in place of `--preset coverage` in both commands: the same target and the same floors, with the `nightly` and `qbox` labels left out. Neither counts the QBox adapter, which only the qbox tree builds, nor the real host's pciem paths, which run only as root in a QEMU guest, nor the scripts in `tools/` and `firmware/`, whose tests are the tooling's.
+🌙 That measures every test, every boot included, which takes an hour and more with counters in the code, so it is the nightly tier's. A push measures the quick preset's tests, one boot of each area, with `--preset coverage-quick` in place of `--preset coverage` in both commands: the same target and the same floors, with the `nightly` and `qbox` labels left out. On an Intel Mac, where a boot of Linux takes minutes, `tools/ci.py`'s `coverage-quick` leaves the boots out too, with `--preset coverage-quick-without-boots`, as its `test-quick` does there. Neither counts the QBox adapter, which only the qbox tree builds, nor the real host's pciem paths, which run only as root in a QEMU guest, nor the scripts in `tools/` and `firmware/`, whose tests are the tooling's.
 
 💡 Coverage counts lines of code the compiler produced. An inline or template function that nothing calls produces no code, so it is missing from the C++ report, where you might expect to see it at 0%. A file that is absent from the table has not been tested at all.
 
@@ -134,7 +134,7 @@ uv run python tools/ci.py --list          # the jobs, their tiers, what each nee
 
 ## One build tree, three kinds of build
 
-⚠️ The `dev`, `coverage`, `coverage-quick` and `asan` presets share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage or sanitizer run, go back with:
+⚠️ The `dev`, `asan` and coverage presets (`coverage`, `coverage-quick` and `coverage-quick-without-boots`) share `build/dev`, so that SystemC and the other dependencies are compiled only once. The tree holds whichever kind was configured last, and `cmake --build` does not change that. After a coverage or sanitizer run, go back with:
 
 ```sh
 uv run cmake --preset dev
