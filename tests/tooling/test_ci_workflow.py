@@ -107,11 +107,18 @@ PACKAGE_SETS = set(
 # The quick tier's CI passed check, which runs nothing of the runner's:
 # GitHub reports a job as a check by the job's name.
 CI_PASSED = "CI passed"
-# Each workflow's jobs, by its file's name, less the CI passed check: those
-# that run the runner's, and those that call a workflow.
+# The nightly tier's gate, which runs nothing of the runner's either: it
+# says whether a scheduled run has anything to do, and the rest wait for it.
+GATE = "Anything to do tonight?"
+# The jobs that run nothing of the runner's, by their names.
+PLUMBING = {CI_PASSED, GATE}
+# Each workflow's jobs, by its file's name, less the plumbing: those that
+# run the runner's, and those that call a workflow.
 WRAPPING_JOBS = {
     file: {
-        name: job for name, job in jobs.items() if job.get("name") != CI_PASSED
+        name: job
+        for name, job in jobs.items()
+        if job.get("name") not in PLUMBING
     }
     for file, jobs in WORKFLOW_FILES.items()
 }
@@ -294,6 +301,60 @@ def test_the_ci_passed_check_fails_when_a_job_it_needs_failed_or_was_cancelled()
     assert ci_passed_fails(["success", "cancelled"])
 
 
+def test_the_nightly_tier_has_a_gate_that_waits_for_nothing():
+    # A scheduled run comes hours late, often to a commit a run by hand has
+    # taken already (tools/nightly_gate.py).
+    jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    gate = jobs[gate_of(TIER.NIGHTLY)]
+    assert needs_of(gate) == []
+    assert condition_of(gate) == ""
+
+
+def test_the_nightly_tiers_gate_answers_with_what_its_tool_says():
+    gate = WORKFLOW_FILES[TIER.NIGHTLY.value][gate_of(TIER.NIGHTLY)]
+    (answer,) = [step for step in gate["steps"] if "run" in step]
+    assert "tools/nightly_gate.py" in answer["run"]
+    assert '>> "$GITHUB_OUTPUT"' in answer["run"]
+    assert (
+        gate["outputs"]["run"] == f"${{{{ steps.{answer['id']}.outputs.run }}}}"
+    )
+    assert "GH_TOKEN" in answer["env"]
+
+
+def test_every_job_of_the_nightly_tier_waits_for_the_gate():
+    jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    gate = gate_of(TIER.NIGHTLY)
+    for name in set(jobs) - {gate}:
+        assert gate in waits_for(name, jobs), name
+
+
+def test_a_job_of_the_nightly_tier_that_needs_the_gate_runs_only_when_it_says_to():
+    jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    gate = gate_of(TIER.NIGHTLY)
+    for name, job in jobs.items():
+        if gate in needs_of(job):
+            assert runs(job, gate_says="true"), name
+            assert not runs(job, gate_says="false"), name
+
+
+def test_a_job_of_the_nightly_tier_with_a_condition_of_its_own_needs_the_gate():
+    # !cancelled() and always() run a job whatever its needs did, so one
+    # that waits for the gate only through another job would run past it.
+    jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
+    gate = gate_of(TIER.NIGHTLY)
+    for name, job in jobs.items():
+        if condition_of(job):
+            assert gate in needs_of(job), name
+
+
+def test_no_other_tier_has_a_gate():
+    for tier in set(TIER) - {TIER.NIGHTLY}:
+        assert all(
+            job.get("name") != GATE
+            for job in WORKFLOW_FILES[tier.value].values()
+        ), tier.value
+
+
 def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
     # A job that needs any job of a workflow both tiers call waits for the
     # whole of it, and for nothing it does not need.
@@ -303,6 +364,7 @@ def test_each_job_of_a_workflow_waits_for_the_jobs_it_needs_and_no_more():
             if "uses" in WORKFLOW_FILES[file][need]
             else {need}
             for need in needs_of(job)
+            if need in WRAPPING_JOBS[file]
         }
         assert set(JOBS[name].needs) <= set().union(*waits.values()), where
         for need, jobs in waits.items():
@@ -568,7 +630,7 @@ def test_qbox_in_one_command_starts_from_a_bare_checkout():
     # newcomer's machine has.
     job = WORKFLOW_FILES[TIER.NIGHTLY.value]["qbox-one-command"]
 
-    assert not needs_of(job)
+    assert not set(needs_of(job)) & set(WRAPPING_JOBS[TIER.NIGHTLY.value])
     assert all(
         set(setup) <= {"packages", "machine"} for setup in setups_in(job)
     )
@@ -659,9 +721,8 @@ def test_clang_tidy_runs_at_night_whatever_qboxs_build_did_on_another_machine():
     # failed build would skip clang-tidy on them all. A machine whose own
     # QBox failed fails taking it, at the setup action's download.
     jobs = WORKFLOW_FILES[TIER.NIGHTLY.value]
-    assert condition_of(jobs[written_or_called_as("tidy", jobs)]) == (
-        "!cancelled()"
-    )
+    tidy = jobs[written_or_called_as("tidy", jobs)]
+    assert runs(tidy, gate_says="true", results=["success", "failure"])
 
 
 def test_qboxs_cache_is_keyed_on_the_systems_version_beside_the_runners_name(
@@ -892,6 +953,16 @@ def test_the_devcontainers_image_is_the_default_ubuntu():
     assert set(base_images(dockerfile)) == {f"ubuntu:{version}"}
 
 
+def gate_of(tier):
+    """The name of a tier's gate among its jobs."""
+    (name,) = [
+        name
+        for name, job in WORKFLOW_FILES[tier.value].items()
+        if job.get("name") == GATE
+    ]
+    return name
+
+
 def ci_passed():
     """The name of the quick tier's CI passed check among its jobs."""
     (name,) = [
@@ -926,6 +997,31 @@ def holds(condition, results):
     return eval(python, {"__builtins__": {}}, {"results": results})
 
 
+def runs(job, gate_says, results=("success",)):
+    """Whether GitHub runs a job of the nightly's when its needs end with
+    these results and its gate says this: the few of GitHub's expressions
+    the nightly's conditions are written in, made Python. A condition with
+    no status check of its own is ANDed with success(), as GitHub does."""
+    condition = condition_of(job) or "success()"
+    if not re.search(r"\b(always|cancelled|failure|success)\(\)", condition):
+        condition = f"success() && ({condition})"
+    python = re.sub(r"needs\.\w+\.outputs\.run", "gate_says", condition)
+    python = (
+        python.replace("!cancelled()", "(not cancelled)")
+        .replace("success()", "succeeded")
+        .replace("&&", " and ")
+    )
+    return eval(
+        python,
+        {"__builtins__": {}},
+        {
+            "cancelled": False,
+            "succeeded": all(result == "success" for result in results),
+            "gate_says": gate_says,
+        },
+    )
+
+
 def condition_of(job):
     """A job's or a step's if, less the ${{ }} GitHub lets it be wrapped in."""
     condition = job.get("if", "")
@@ -954,12 +1050,13 @@ def written_or_called_as(name, jobs):
 
 
 def waits_for(name, jobs):
-    """Every job of a workflow's that the job named waits for, at any remove."""
+    """Every job of a workflow's that the job named waits for, at any remove,
+    of those in the jobs given: WRAPPING_JOBS's leave out the plumbing."""
     waited = set()
     waiting = list(needs_of(jobs[name]))
     while waiting:
         need = waiting.pop()
-        if need not in waited:
+        if need in jobs and need not in waited:
             waited.add(need)
             waiting.extend(needs_of(jobs[need]))
     return waited

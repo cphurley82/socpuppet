@@ -2,9 +2,9 @@ name: Nightly
 
 # Every night, every job of the nightly tier, on every machine CI has: the
 # whole suite, every boot of firmware, which the quick tier (ci.yml) runs
-# one of for each area to answer a push in half an hour. Each job is a
-# thin wrapper around tools/ci.py, which holds its steps, and its log opens
-# with the command that runs it on a developer's machine;
+# one of for each area to answer a push in half an hour. Each job but the
+# gate is a thin wrapper around tools/ci.py, which holds its steps, and its
+# log opens with the command that runs it on a developer's machine;
 # `uv run python tools/ci.py` runs every job of this tier that can run
 # there. The jobs this tier shares with ci.yml are in the workflows both
 # call, firmware.yml, checks.yml, qbox-build.yml and tidy.yml, each given
@@ -36,9 +36,10 @@ name: Nightly
 # developer's machine, tools/ci.py runs it, whatever the machine.
 
 on:
-  # 05:23 UTC, the evening in California: GitHub has started the scheduled
-  # runs hours late, and the run is to be done by morning. Off the hour,
-  # when GitHub's schedules are busiest.
+  # 05:23 UTC, the evening in California, off the hour, when GitHub's
+  # schedules are busiest. GitHub starts a scheduled run hours late, so the
+  # night's run is started by hand in the evening, and this one is the
+  # backup: its gate skips a commit a run by hand took (docs/ci.md).
   schedule:
     - cron: "23 5 * * *"
   # And by hand: `gh workflow run nightly.yml`, with `--ref BRANCH` for a
@@ -53,12 +54,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  gate:
+    # Whether a scheduled run has anything to do: not when a run by hand
+    # passed this commit in the last day, or is still on it
+    # (tools/nightly_gate.py); one that failed leaves tonight to try again.
+    # A run by hand always runs. Every other job waits for its word.
+    name: Anything to do tonight?
+    runs-on: ubuntu-26.04
+    # `gh run list` reads the runs, which the default token may not: a
+    # repository can keep it to reading the code.
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+      # Given nothing, uv alone.
+      - uses: ./.github/actions/setup
+      - id: gate
+        run: uv run python tools/nightly_gate.py >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   checks:
     name: Checks
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     uses: ./.github/workflows/checks.yml
 
   firmware:
     name: Firmware
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     uses: ./.github/workflows/firmware.yml
     with:
       # And the Apple silicon Mac twister runs on.
@@ -98,6 +126,8 @@ jobs:
     # boot included. The job fails if either falls below its floor
     # (CMakePresets.json).
     name: Test coverage
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
@@ -159,6 +189,8 @@ jobs:
 
   qbox-build:
     name: QBox
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     uses: ./.github/workflows/qbox-build.yml
     with:
       # Ubuntu 24.04 too, the oldest we support: QBox links more of the
@@ -171,10 +203,11 @@ jobs:
     # runs whatever that did: the call waits for QBox's build on every
     # machine, more than clang-tidy runs on, and one Mac's failed build
     # would skip it on them all. A machine whose own build failed fails at
-    # taking QBox (.github/actions/setup).
+    # taking QBox (.github/actions/setup). It names the gate itself, as
+    # !cancelled() would run it past one that said no.
     name: Tidy
-    needs: qbox-build
-    if: ${{ !cancelled() }}
+    needs: [gate, qbox-build]
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' }}
     uses: ./.github/workflows/tidy.yml
     with:
       os: '["ubuntu-26.04", "macos-latest"]'
@@ -230,6 +263,8 @@ jobs:
     # socpuppet from nothing, and the images are fetched from the release
     # main published. On Linux, an Apple silicon Mac and an Intel Mac.
     name: QBox in one command (${{ matrix.os }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
     strategy:
@@ -272,6 +307,8 @@ jobs:
 
   wheel:
     name: Wheels
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     # The wheels a user will install, on every machine (wheel.yml).
     uses: ./.github/workflows/wheel.yml
     with:
