@@ -152,6 +152,9 @@ class AReleaseOfImages:
         #: A file whose first request is cut off with no answer, as a server
         #: out of reach for a moment would.
         self.hangs_up_once_on: str | None = None
+        #: A file whose first request is answered with this HTTP status, as
+        #: a gateway in front of the server might for a moment.
+        self.fails_once_on: tuple[str, int] | None = None
 
     def holds(self, images: dict[str, bytes]) -> None:
         """Publish images, gzipped, with their sums, as the release has them."""
@@ -184,6 +187,11 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
             if name == served.hangs_up_once_on:
                 served.hangs_up_once_on = None
                 self.close_connection = True
+                return
+            if served.fails_once_on and name == served.fails_once_on[0]:
+                _, status = served.fails_once_on
+                served.fails_once_on = None
+                self.send_error(status)
                 return
             if served.slowness and name.endswith(".gz"):
                 time.sleep(served.slowness)
@@ -510,6 +518,17 @@ class TestWhenTheServerIsOutOfReachForAMoment:
     def test_the_image_is_fetched_all_the_same(self, release, no_waiting, file):
         release.holds({"spam.elf": b"spam"})
         release.hangs_up_once_on = file
+
+        assert images.find("spam.elf").read_bytes() == b"spam"
+        assert release.asked.count(file) == 2
+
+    @pytest.mark.parametrize("file", ["SHA256SUMS", "spam.elf.gz"])
+    @pytest.mark.parametrize("status", [502, 503, 504])
+    def test_when_a_gateway_fails_once_the_image_is_fetched_all_the_same(
+        self, release, no_waiting, file, status
+    ):
+        release.holds({"spam.elf": b"spam"})
+        release.fails_once_on = (file, status)
 
         assert images.find("spam.elf").read_bytes() == b"spam"
         assert release.asked.count(file) == 2

@@ -66,14 +66,23 @@ _PATIENCE = 60
 #: How long to wait before each further try of a server out of reach, in
 #: seconds.
 _WAITS = (2, 8)
-#: What a server out of reach looks like. An HTTPError is a URLError too, but
-#: a server that answered is not out of reach, and `_download` has said so
-#: before this sees it.
+#: What a server out of reach looks like. An HTTPError is a URLError too:
+#: `_download` lets one through only for an answer in `_BUSY`, and makes any
+#: other answer final.
 _OUT_OF_REACH = (
     urllib.error.URLError,
     TimeoutError,
     ConnectionError,
     http.client.HTTPException,
+)
+#: What a server, or a gateway in front of it, answers when it cannot serve
+#: for a moment, as GitHub's release downloads did to CI in November 2026.
+_BUSY = frozenset(
+    {
+        http.client.BAD_GATEWAY,
+        http.client.SERVICE_UNAVAILABLE,
+        http.client.GATEWAY_TIMEOUT,
+    }
 )
 #: What a line of SHA256SUMS starts with.
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -204,6 +213,8 @@ def _download(name: str, place: pathlib.Path, release: str) -> None:
             "was not kept.",
         ) from error
     except urllib.error.HTTPError as error:
+        if error.code in _BUSY:
+            raise
         raise _unavailable(
             name, f"{error.url} answered {error.code}: {error.reason}."
         ) from error
