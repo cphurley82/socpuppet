@@ -272,7 +272,7 @@ It refuses a tag that is not the version's, has no message, or is not on main; a
 6. **The tap**: the formula, pushed to `homebrew-socpuppet` under the same account. A release candidate leaves the tap alone.
 7. **Installed from the tap**: `brew install cphurley82/socpuppet/socpuppet` on a Mac of each processor, then the front door on the Python it went into. With the installs from PyPI, this is the gate's test.
 
-`uv run python tools/ci.py pypi github-release tap-push` says what each would publish and publishes nothing: only CI's run of a tag of this repository publishes. `uv run python tools/tap.py rehearse` installs the formula from a tap of its own here, tests it and removes it, with a macOS wheel of each processor in `build/wheelhouse` (a nightly run's `wheels-macos-latest` and `wheels-macos-26-intel`). ⚠️ It upgrades nothing and autoremoves nothing: a plain `brew uninstall` takes every dependency no formula needs any more, and a QBox built against Homebrew's gnutls stops loading when gnutls goes.
+`uv run python tools/ci.py pypi github-release tap-push` says what each would publish and publishes nothing: only CI's run of a tag of this repository publishes. `uv run python tools/tap.py rehearse` installs the formula from a tap of its own here, tests it and removes it, with a macOS wheel of each processor in `build/wheelhouse` (a nightly run's `wheels-macos-latest` and `wheels-macos-26-intel`). ⚠️ It brings Homebrew's list of formulae up to date, but upgrades nothing and autoremoves nothing: a plain `brew uninstall` takes every dependency no formula needs any more, and a QBox built against Homebrew's gnutls stops loading when gnutls goes.
 
 ### Making one
 

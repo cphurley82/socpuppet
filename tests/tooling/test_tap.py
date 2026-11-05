@@ -286,6 +286,18 @@ class TestTheRehearsal:
         rehearsed = brew.tap / "Formula" / "socpuppet.rb"
         assert rehearsed.read_text() == (project / FORMULA).read_text()
 
+    def test_it_brings_homebrews_list_of_formulae_up_to_date_before_installing(
+        self, project, wheels, brew
+    ):
+        # A runner's image can be older than the Python the formula
+        # depends on, and Homebrew does not update itself unasked here.
+        tap(project, "rehearse")
+
+        asked = brew.asked()
+        (updated,) = brew.asked("update")
+        (installed,) = brew.asked("install ")
+        assert asked.index(updated) < asked.index(installed)
+
     def test_it_upgrades_nothing_else_this_machine_has(
         self, project, wheels, brew
     ):

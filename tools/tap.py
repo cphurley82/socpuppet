@@ -121,6 +121,7 @@ def rehearse(root: Path) -> None:
     """Install the formula from a tap of its own, test it, and remove it."""
     formula = render(root)
     installed_as = f"{REHEARSAL}/{formula.stem}"
+    _update(root)
     # What a rehearsal stopped partway left, which would be in the way.
     _tidy(root, installed_as)
     _brew(root, "tap-new", "--no-git", REHEARSAL)
@@ -308,6 +309,16 @@ def _tap_url(root: Path) -> str:
     return (
         f"https://x-access-token:{token}@github.com/{owner}/homebrew-{TAP}.git"
     )
+
+
+def _update(root: Path) -> None:
+    """Bring Homebrew's list of formulae up to date.
+
+    ⚠️ Homebrew is told not to update itself before it does as asked
+    (QUIET_BREW), and a runner's image can be older than the Python the
+    formula depends on, as macos-26-intel's was for python@3.15.
+    """
+    _brew(root, "update", "--quiet")
 
 
 def _brew(
