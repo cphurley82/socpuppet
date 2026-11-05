@@ -10,13 +10,13 @@
  #include <ctime>
  #include <util/logging.h>
  #include <vector>
-@@ -76,6 +79,30 @@
+@@ -76,6 +79,33 @@
          return NULL;
      }
  
 +    /**
-+     * stop the server started for the given core, if any: it no longer answers, and nothing of it reaches the core
-+     * again, so the core may go. The server itself is left, as it always was: a session's command handler shares the
++     * stop the server started for the given core, if any: it no longer listens or answers, and nothing of it reaches
++     * the core again, so the core may go. The server itself is left, as it always was: a session's command handler shares the
 +     * core's target adapter, which the core deletes itself.
 +     *
 +     * Its thread is waited for, unless it is waiting for the simulation's thread: a debugger's memory access, run or
@@ -36,12 +36,15 @@
 +            std::this_thread::sleep_for(std::chrono::milliseconds(1));
 +        if(!srv->serving.load())
 +            srv->threads.join_all();
++        // The port is free for another. The thread is done with the accept, or waits elsewhere for ever.
++        boost::system::error_code ignored;
++        srv->acceptor.close(ignored);
 +    }
 +
      unsigned short get_port_nr() { return acceptor.local_endpoint().port(); }
  
      void shutdown() override {
-@@ -101,7 +128,10 @@
+@@ -101,7 +131,10 @@
          work_ctrl = new work_guard(io_service.get_executor());
          // boost::thread::hardware_concurrency();
          for(std::size_t i = 0; i < thread_pool_size_; ++i) {
@@ -53,7 +56,7 @@
          }
          createNewSession();
      };
-@@ -140,6 +170,8 @@
+@@ -140,6 +173,8 @@
      work_guard* work_ctrl;
      boost::asio::ip::tcp::acceptor acceptor;
      boost::thread_group threads;

@@ -532,6 +532,20 @@ class TestWhenADebuggerAttachesAndSaysContinueWhileTheSimulationIsHeldUp:
 
 
 @pytest.mark.platform
+class TestWhenAPlatformWithAGdbPortIsGone:
+    def test_its_port_is_free_again(self):
+        # 💡 DBT-RISE's CPU: its server listens from the build.
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port, kind=A_DBT_RISE_CPU)
+
+        del platform
+        # A platform holds itself in a cycle: freed now, not at the exit.
+        gc.collect()
+
+        assert not listening(port)
+
+
+@pytest.mark.platform
 class TestWhenAPlatformGoesWhileADebuggerIsAttached:
     def test_the_debugger_can_hang_up_afterwards_and_the_process_goes_on(self):
         # What CI saw at a process's end: the platform freed, then its
