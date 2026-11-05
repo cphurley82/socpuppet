@@ -446,13 +446,15 @@ class TestWhenAPlatformClassSharesOneProcess:
         self, session_with_socpuppet
     ):
         # Together they run past the limit; each alone stays well inside it.
+        # The last one's limit also covers its process's way out, which on a
+        # busy machine takes a second or more, hence the two seconds spare.
         session_with_socpuppet.makeini(
-            "[pytest]\nsocpuppet_platform_timeout = 3\n"
+            "[pytest]\nsocpuppet_platform_timeout = 5\n"
         )
         a_class_sharing_one_process(
             session_with_socpuppet,
-            test_spam="import time; time.sleep(2)",
-            test_eggs="import time; time.sleep(2)",
+            test_spam="import time; time.sleep(3)",
+            test_eggs="import time; time.sleep(3)",
         )
 
         result = session_with_socpuppet.runpytest_subprocess()
