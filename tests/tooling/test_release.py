@@ -7,6 +7,7 @@ test's own standing for GitHub's release of the images and for PyPI.
 import contextlib
 import functools
 import http.server
+import json
 import os
 import subprocess
 import sys
@@ -23,6 +24,8 @@ IMAGES = "images-spam"
 GITHUB_REPOSITORY = "spam/eggs"
 #: Where a test's fakes for uv and gh are, in its repository and out of git.
 FAKES = "fakes"
+#: What uv and pip ask a package index for: its listing, as JSON.
+JSON = "application/vnd.pypi.simple.v1+json"
 
 
 @pytest.fixture
@@ -30,15 +33,23 @@ def web(tmp_path_factory):
     """A web server, serving what a test puts in its directory.
 
     web.url is where it is; web.put(path, text) publishes a file there, and
-    web.looked(path) is an event set when it is first asked for.
+    web.looked(path) is an event set when it is first asked for. A directory
+    asked for with the JSON of `JSON` answers with its index.json.
     """
     root = tmp_path_factory.mktemp("web")
     asked = {}
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self):
+            asked_for = self.path.lstrip("/")
+            # 💡 An index answers installers' JSON from its own file, as
+            # PyPI's does from its own cached copy.
+            if self.path.endswith("/") and JSON in self.headers.get(
+                "Accept", ""
+            ):
+                self.path += "index.json"
             super().do_GET()
-            asked.setdefault(self.path.lstrip("/"), threading.Event()).set()
+            asked.setdefault(asked_for, threading.Event()).set()
 
         def log_message(self, *args):
             pass
@@ -445,6 +456,22 @@ class TestWaitingForPyPI:
 
         assert result.returncode == 0, result.stdout + result.stderr
 
+    def test_a_version_listed_for_people_but_not_for_installers_is_not_there_yet(
+        self, project, web
+    ):
+        # 💡 uv and pip read the JSON, and PyPI's cache can hold an older one.
+        listed_for_installers(
+            web, "socpuppet-0.0.9.tar.gz", "socpuppet-0.0.9-cp313-spam.whl"
+        )
+        listed_as_a_page(
+            web, "socpuppet-0.1.0.tar.gz", "socpuppet-0.1.0-cp313-spam.whl"
+        )
+
+        result = release(project, web, "wait")
+
+        assert result.returncode != 0
+        assert "0.1.0" in result.stderr
+
     def test_a_version_with_only_its_source_listed_is_not_there_yet(
         self, project, web
     ):
@@ -498,7 +525,21 @@ def listed_after_the_first_look(web, *files):
 
 
 def listed(web, *files):
-    """PyPI's simple index lists these files of socpuppet's."""
+    """PyPI's simple index lists these files of socpuppet's, both ways."""
+    listed_as_a_page(web, *files)
+    listed_for_installers(web, *files)
+
+
+def listed_for_installers(web, *files):
+    """PyPI's simple index lists these files in its JSON for uv and pip."""
+    web.put(
+        "simple/socpuppet/index.json",
+        json.dumps({"files": [{"filename": name} for name in files]}),
+    )
+
+
+def listed_as_a_page(web, *files):
+    """PyPI's simple index lists these files on its page for people."""
     web.put(
         "simple/socpuppet/index.html",
         "".join(f'<a href="../../files/{name}">{name}</a>\n' for name in files),
