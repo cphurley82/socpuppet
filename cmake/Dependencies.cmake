@@ -428,7 +428,9 @@ FetchContent_Declare(dbt_rise_core_git
   # answered one `continue` twice, and the second answer, written to a
   # debugger that had hung up, ended the process. gdb-rude-hangup: so did
   # a debugger whose connection was reset, which is what closing it with
-  # an answer unread does. jit-wait-name: the translating backends' helper
+  # an answer unread does. gdb-server-stops-with-its-core: a server outlived
+  # its core, and a debugger that hung up after the core was gone crashed
+  # the process. jit-wait-name: the translating backends' helper
   # was called wait(), which POSIX has taken, and on macOS the two collide.
   # llvm-pointer-args: LLVM's code took the core's pointers as bytes, so a
   # helper was handed the low eight bits of one.
@@ -438,6 +440,7 @@ FetchContent_Declare(dbt_rise_core_git
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-server-per-core.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-continue-answered-once.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-rude-hangup.patch
+    ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-gdb-server-stops-with-its-core.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-jit-wait-name.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-llvm-pointer-args.patch
     ${CMAKE_CURRENT_LIST_DIR}/patches/dbt-rise-core-llvm-global-string.patch

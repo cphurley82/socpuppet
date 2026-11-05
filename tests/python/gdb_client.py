@@ -55,6 +55,27 @@ class GdbClient:
             raise ConnectionError("The GDB server closed the connection.")
         self._socket.close()
 
+    def start_a_read_the_simulation_answers(self):
+        """Ask for a byte of memory, and return once the server has the ask.
+
+        A read of memory is answered on the simulation's own thread, so it
+        waits until the simulation sees to it. The server acknowledges each
+        packet with a `+` before it starts on it.
+        """
+        self.send("m0,1")
+        # Through the same buffer as a reply, so that nothing already
+        # received is passed over.
+        while not self._received:
+            chunk = self._socket.recv(4096)
+            if not chunk:
+                raise ConnectionError("The GDB server closed the connection.")
+            self._received += chunk
+        if self._received[:1] != b"+":
+            raise ConnectionError(
+                "The GDB server did not acknowledge the read."
+            )
+        self._received = self._received[1:]
+
     def send(self, body):
         """Send one packet, without waiting for what comes back."""
         checksum = sum(body.encode()) % 256
