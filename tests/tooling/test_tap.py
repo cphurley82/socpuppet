@@ -414,6 +414,16 @@ class TestInstalledFromTheTap:
             "tests/python/test_front_door.py"
         ]
 
+    def test_on_a_tag_it_brings_homebrews_list_of_formulae_up_to_date_before_installing(
+        self, project, brew, test_wheel
+    ):
+        tap(project, "installed", tag="v0.0.1")
+
+        asked = brew.asked()
+        (updated,) = brew.asked("update")
+        (installed,) = brew.asked("install ")
+        assert asked.index(updated) < asked.index(installed)
+
     def test_a_release_candidate_is_not_in_the_tap_and_is_not_installed(
         self, project, brew, test_wheel
     ):

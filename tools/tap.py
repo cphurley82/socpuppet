@@ -205,6 +205,7 @@ def installed(root: Path) -> None:
         )
         return
     formula = f"{github_releases.owner(root)}/{TAP}/{name}"
+    _update(root)
     _brew(root, "install", formula, HOMEBREW_NO_INSTALL_UPGRADE="1")
     [python] = [
         each
@@ -312,7 +313,7 @@ def _tap_url(root: Path) -> str:
 
 
 def _update(root: Path) -> None:
-    """Bring Homebrew's list of formulae up to date.
+    """Bring Homebrew's list of formulae, and its taps', up to date.
 
     ⚠️ Homebrew is told not to update itself before it does as asked
     (QUIET_BREW), and a runner's image can be older than the Python the
