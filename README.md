@@ -4,8 +4,6 @@
 
 [![Nightly](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/nightly.yml) [![CI](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cphurley82/socpuppet/actions/workflows/ci.yml)
 
-🌙 Every push runs the quick tests, one boot of each area included, on Linux on both harts; every night runs every test on every machine, Ubuntu and macOS, Intel and Arm. Click a badge for its runs, and a run for each machine's jobs.
-
 > 🚧 Early days, but the show has grown: a chiplet host and an NVMe SSD boot three Zephyr firmwares in one simulation, from a ROM and a flash if you like, with a debugger on each CPU; OpenSBI and UEFI, the firmware a RISC-V server really runs, boot on the host too, and 🐧 Linux boots on them to a shell that you, or Python, can type at, with its root filesystem on the SSD and the SSD's own firmware behind it ([booting Linux](docs/linux.md)). And it is out: `pip install socpuppet` ([Try it](#try-it)). Next on stage, the container ([the roadmap](docs/roadmap.md)).
 
 ## What's the show?
@@ -171,6 +169,7 @@ uv run tools/qbox.py
 - 🚀 [Boot your firmware here](docs/boot-your-firmware.md): your own Zephyr application on the host, with a debugger on it.
 - 💡 [How it is put together](docs/architecture.md), with the vocabulary explained and a page for every model.
 - 🛠️ [Setting up a machine for development](docs/setup.md), from a bare install to every test passing.
+- 🌙 [What CI runs, and when](docs/ci.md): the two badges above, the tiers, and starting the night's run by hand.
 - 📚 [All the docs](docs/README.md), by the reader they are written for.
 
 ## Who's it for?
