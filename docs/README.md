@@ -26,6 +26,7 @@ Start with [Your first show](first-show.md): a chip that answers when you type a
 
 - [Setting up a machine](setup.md): from a bare install to every test passing, QBox and pciem included.
 - [Building and testing](development.md): the everyday loop, the tests, coverage, sanitizers, CI's jobs, the firmware, the package.
+- 🌙 [What CI runs, and when](ci.md): the tiers, the badges, and starting the nightly by hand.
 - [Style, and the tools that hold us to it](style.md).
 - [What we owe upstream](upstream.md): every fix we carry for the projects we borrow from, ready to send.
 - [The roadmap](roadmap.md): phases, milestones, what is next, open decisions and loose ends.
