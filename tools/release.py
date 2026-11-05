@@ -23,12 +23,13 @@ GitHub release, its notes the tag's message and its files the same
 distributions: the project's latest, or a pre-release for a release
 candidate. Each publishes only in CI's run of a tag of this repository;
 anywhere else each says what it would publish. `wait` waits for PyPI's
-index to list the version's source and a wheel, which pip reads, so that
-what is installed next is the release: in a run of a tag for up to ten
-minutes, and anywhere else it looks once.
+index to list the version's source and a wheel to installers, in the JSON
+uv and pip read, so that what is installed next is the release: in a run of
+a tag for up to ten minutes, and anywhere else it looks once.
 """
 
 import argparse
+import json
 import os
 import re
 import runpy
@@ -48,8 +49,10 @@ PIN = Path("python/socpuppet/images_release.py")
 VERSION = re.compile(r"\d+\.\d+\.\d+(rc\d+)?")
 #: Where PyPI is, unless SOCPUPPET_PYPI_URL says otherwise.
 PYPI = "https://pypi.org"
-#: A file an index of PyPI's lists, as its simple page links it.
-LISTED = re.compile(r">([^<>]+)</a>")
+#: What uv and pip ask PyPI's index for: its listing of a project's files,
+#: as JSON (PEP 691), and not the page for people, which PyPI's cache keeps
+#: apart from it.
+LISTING = "application/vnd.pypi.simple.v1+json"
 #: Where the jobs that build the distributions leave them: the wheels, and
 #: the source.
 WHEELHOUSE = Path("build/wheelhouse")
@@ -179,16 +182,18 @@ def wait(root: Path) -> int:
             waited = f" after {patience} s" if patience else ""
             sys.exit(
                 f"PyPI's index, {index}, does not list {name} {version}'s "
-                f"source and a wheel{waited}."
+                f"source and a wheel to installers{waited}. `curl -H "
+                f"'Accept: {LISTING}' {index}` shows what uv and pip see."
             )
         time.sleep(EVERY)
 
 
 def _listed(index: str) -> set[str]:
-    """The files an index's page of a project lists, by name."""
+    """The files an index lists to installers for a project, by name."""
+    asked = urllib.request.Request(index, headers={"Accept": LISTING})
     try:
-        with urllib.request.urlopen(index, timeout=30) as page:
-            return set(LISTED.findall(page.read().decode()))
+        with urllib.request.urlopen(asked, timeout=30) as listing:
+            return {each["filename"] for each in json.load(listing)["files"]}
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return set()
