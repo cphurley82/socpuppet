@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include <iss/debugger/gdb_session.h>
+#include <iss/debugger/server.h>
 #include <sysc/core_complex.h>
 #include <sysc/iss_factory.h>
 #include <systemc>
@@ -103,6 +105,23 @@ constexpr unsigned kTimehCsr = 0xC81;
 // as a bus access does. This lets that out.
 struct CoreComplex : sysc::riscv::core_complex<> {
   using core_complex::core_complex;
+
+  // The CPU's GDB server answers a debugger on a thread of its own, and a
+  // debugger that hangs up is seen to there by a call into the core. So the
+  // server is stopped, and its thread waited for, while the core is still
+  // here: a moment at most, since one waiting on the simulation is left, and
+  // touches only the server (docs/upstream.md).
+  ~CoreComplex() override {
+    try {
+      iss::debugger::server<iss::debugger::gdb_session>::stop(
+          dynamic_cast<iss::debugger_if*>(vm.get()));
+      // Joining the thread can fail, and a destructor must not. The server
+      // has stopped by then, and its thread has finished, so there is
+      // nothing more to do.
+      // NOLINTNEXTLINE(bugprone-empty-catch)
+    } catch (...) {
+    }
+  }
 
   sc_core::sc_time Lead() { return quantum_keeper.get_local_time(); }
 };

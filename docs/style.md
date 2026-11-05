@@ -53,7 +53,7 @@ A literal in a shift or a mask carries `U`: `1U << 3U`, `value & 0xFFU`. 🎓 A 
 ### Where we differ from Google, and why
 
 - **Exceptions are used.** pybind11 turns a C++ exception into a Python one, which is how an error in a model reaches your script, and SystemC reports its own errors by throwing.
-- **`dynamic_cast` is used, in one place.** The platform is wired up by name at run time. A port says which of the four things it is (a `std::variant`), so binding needs no cast. A component is held as a plain `sc_module`, and `Platform::ModuleAt<T>` casts it back for a C++ caller that knows the type, with an error that names both types if it is another.
+- **`dynamic_cast` is used, in two places.** The platform is wired up by name at run time. A port says which of the four things it is (a `std::variant`), so binding needs no cast. A component is held as a plain `sc_module`, and `Platform::ModuleAt<T>` casts it back for a C++ caller that knows the type, with an error that names both types if it is another. And DBT-RISE holds a core as a `vm_if` and finds the core's GDB server by its `debugger_if`, the cast its own `core_complex` makes, so our `CoreComplex` makes the same one to stop that server as the core goes (`models/dbt_rise_cpu.cpp`).
 - **Source files end in `.cpp`,** not `.cc`.
 - **SystemC modules have public data members:** their sockets and ports. Binding is done from outside the module, and this is how every SystemC model is written.
 - **Some names are not ours to choose,** and keep the spelling their owner gave them:

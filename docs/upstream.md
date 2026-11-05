@@ -239,6 +239,16 @@ Each entry says:
 - **Kind**: bug.
 - **When it lands**: drop the patch.
 
+### A GDB server outlives its core
+
+- **Where**: `src/iss/debugger/server.h`: `run_server` makes a server with `new`, and nothing deletes it or stops the thread it answers debuggers on. And `src/iss/debugger/gdb_session.cpp`, `receive_completed`, which sees to a debugger that has hung up by calling the core's target adapter, `handler.t->close()`.
+- **What is wrong**: when a core is destroyed, its server goes on listening and answering on its own thread. A debugger that hangs up after the core has gone, or connects and then hangs up, is seen to with a call into the target adapter the core has deleted, and the process crashes with a segmentation fault. A process that ends with a debugger still attached gets there by itself: Python destroys the platform as it exits, and a debugger that hung up just before is seen to only if the server's thread gets to it late. ⚠️ The server cannot simply be deleted: each session's command handler holds the target adapter in a `std::shared_ptr` while the core deletes the same adapter itself, so a session that is destroyed deletes it a second time.
+- **How to see it**: build a platform with a CPU on a GDB port, connect to the port, drop the platform, and close the connection: the process crashes at once. CI met it by chance twice on 2026-11-05, in the test `TestWhenADebuggerAttachesAndSaysContinueWhileTheSimulationIsHeldUp` on an Intel Mac runner: the test passed, the warning "Communication error (Connection reset by peer)" came after it, and the test's process ended with SIGSEGV.
+- **What we do**: `cmake/patches/dbt-rise-core-gdb-server-stops-with-its-core.patch` adds `server::stop(vm)`, which stops the server's `io_context` and waits for its thread; the server itself is left, as before. Our CPU's `CoreComplex` (`src/socpuppet/models/dbt_rise_cpu.cpp`) calls it as it is destroyed, while the core is still there. ⚠️ A debugger's memory access, run or step waits on the server's thread for the simulation's thread to see to it, which it never does once the core is going, so waiting for that thread would hold the process up for ever. `stop` waits for it for two seconds at most, and leaves a thread that has not finished by then waiting: such a thread touches nothing but the server. `TestWhenAPlatformGoesWhileADebuggerIsAttached` in `tests/python/test_gdb.py` holds both: a debugger that hangs up after the platform has gone, and one whose memory read is waiting as it goes.
+- **Upstream fix**: let a core own its server and stop it in `core_complex`'s destructor; and let the core alone own its target adapter, so that a session holds it by a plain pointer and a server can be deleted.
+- **Kind**: bug.
+- **When it lands**: drop the patch and `CoreComplex`'s destructor.
+
 ### A GDB port that cannot be had ends the build with no word of which
 
 - **Where**: `src/iss/debugger/server.h`, the constructor of `server<SESSION>`, which makes its `acceptor` on the port it was given. It is reached from `core_complex::before_end_of_elaboration`.

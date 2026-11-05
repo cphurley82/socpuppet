@@ -7,6 +7,7 @@ and SSD are DBT-RISE's whatever it says.
 """
 
 import functools
+import gc
 import os
 import re
 import sys
@@ -71,10 +72,18 @@ def a_cpu(**described):
     return kinds[chosen](xlen=64, **described)
 
 
-def cpu_waiting_for_a_debugger(port):
-    """A CPU with a program loaded and a GDB server on `port`, built."""
+#: DBT-RISE's 64-bit CPU, whatever SOCPUPPET_CPU says.
+A_DBT_RISE_CPU = functools.partial(sp.DbtRiseCpu, xlen=64)
+
+
+def cpu_waiting_for_a_debugger(port, kind=a_cpu):
+    """A CPU with a program loaded and a GDB server on `port`, built.
+
+    `kind` makes the CPU from its description: the one SOCPUPPET_CPU names,
+    unless it says otherwise.
+    """
     platform = sp.Platform()
-    cpu = platform.add("cpu", a_cpu(reset_vector=RESET_VECTOR, gdb_port=port))
+    cpu = platform.add("cpu", kind(reset_vector=RESET_VECTOR, gdb_port=port))
     ram = platform.add("ram", sp.Memory(size=0x1000))
     platform.connect(cpu.socket, ram.socket)
     platform.build()
@@ -378,6 +387,13 @@ class TestWhenADebuggerSaysContinueAndHangsUp:
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
 
 
+#: How long a server takes to see a debugger hang up, at most: it is seen to
+#: on the server's own thread, with nothing to wait for. Too short a wait
+#: lets the test end first, and it then passes when it should fail; it never
+#: fails when it should pass.
+HANG_UP_SEEN_TO_WITHIN = 2
+
+
 @pytest.mark.platform
 class TestWhenADebuggerHangsUpWithAnAnswerUnread:
     def test_the_simulation_is_still_there_afterwards(self):
@@ -390,9 +406,8 @@ class TestWhenADebuggerHangsUpWithAnAnswerUnread:
             lambda debugger: None,
             hang_up=GdbClient.close_with_an_answer_unread,
         )
-        # The server hears of it on a thread of its own. Half a second of
-        # wall clock is long enough for it to have ended the process.
-        time.sleep(0.5)
+        # The server hears of it on a thread of its own.
+        time.sleep(HANG_UP_SEEN_TO_WITHIN)
 
         assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
 
@@ -514,6 +529,41 @@ class TestWhenADebuggerAttachesAndSaysContinueWhileTheSimulationIsHeldUp:
 
         cpu = platform.port("cpu.socket")
         assert platform.peek32(RESET_VECTOR + 0x200, via=cpu) == 0x5A
+
+
+@pytest.mark.platform
+class TestWhenAPlatformGoesWhileADebuggerIsAttached:
+    def test_the_debugger_can_hang_up_afterwards_and_the_process_goes_on(self):
+        # What CI saw at a process's end: the platform freed, then its
+        # debugger hanging up. 💡 DBT-RISE's CPU: its server listens from the
+        # build, where QBox's CPU opens its port only once a run starts.
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port, kind=A_DBT_RISE_CPU)
+        debugger = GdbClient(port, ANSWERS_WITHIN)
+
+        del platform
+        # A platform holds itself in a cycle: freed now, not at the exit.
+        gc.collect()
+        debugger.close()
+
+        time.sleep(HANG_UP_SEEN_TO_WITHIN)
+        # ✅ No assert: a process that dies fails the test (socpuppet's
+        # pytest plugin), and a server that reaches the freed CPU kills it.
+
+    def test_one_waiting_for_a_memory_read_does_not_keep_the_process_from_going_on(
+        self,
+    ):
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port, kind=A_DBT_RISE_CPU)
+        debugger = GdbClient(port, ANSWERS_WITHIN)
+        # The simulation is not running, and will not answer it now.
+        debugger.start_a_read_the_simulation_answers()
+
+        del platform
+        gc.collect()
+
+        # ✅ No assert: a test that never ends fails (socpuppet's pytest
+        # plugin), and a platform that waits for the read never goes.
 
 
 @pytest.mark.platform

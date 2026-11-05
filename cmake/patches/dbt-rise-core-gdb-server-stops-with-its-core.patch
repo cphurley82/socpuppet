@@ -1,0 +1,64 @@
+--- a/src/iss/debugger/server.h
++++ b/src/iss/debugger/server.h
+@@ -39,6 +39,9 @@
+ #include <boost/asio.hpp>
+ #include <boost/asio/io_context.hpp>
+ #include <boost/thread.hpp>
++#include <atomic>
++#include <chrono>
++#include <thread>
+ #include <ctime>
+ #include <util/logging.h>
+ #include <vector>
+@@ -76,6 +79,30 @@
+         return NULL;
+     }
+ 
++    /**
++     * stop the server started for the given core, if any: it no longer answers, and nothing of it reaches the core
++     * again, so the core may go. The server itself is left, as it always was: a session's command handler shares the
++     * core's target adapter, which the core deletes itself.
++     *
++     * Its thread is waited for, unless it is waiting for the simulation's thread: a debugger's memory access, run or
++     * step is seen to there, and is never seen to once the core is going. A thread that waits so touches nothing but
++     * the server, and is left waiting. (shutdown() lets the io_context run out of work and waits for the thread, which
++     * a pending accept keeps from ever happening.)
++     * @param vm the core being debugged
++     */
++    static void stop(iss::debugger_if* vm) {
++        auto* srv = get(vm);
++        if(srv == NULL)
++            return;
++        srv->io_service.stop();
++        // Anything else the thread may be doing is over in a moment.
++        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
++        while(srv->serving.load() && std::chrono::steady_clock::now() < deadline)
++            std::this_thread::sleep_for(std::chrono::milliseconds(1));
++        if(!srv->serving.load())
++            srv->threads.join_all();
++    }
++
+     unsigned short get_port_nr() { return acceptor.local_endpoint().port(); }
+ 
+     void shutdown() override {
+@@ -101,7 +128,10 @@
+         work_ctrl = new work_guard(io_service.get_executor());
+         // boost::thread::hardware_concurrency();
+         for(std::size_t i = 0; i < thread_pool_size_; ++i) {
+-            threads.create_thread([this]() -> void { io_service.run(); });
++            threads.create_thread([this]() -> void {
++                io_service.run();
++                serving = false;
++            });
+         }
+         createNewSession();
+     };
+@@ -140,6 +170,8 @@
+     work_guard* work_ctrl;
+     boost::asio::ip::tcp::acceptor acceptor;
+     boost::thread_group threads;
++    // whether the thread is still running the io_context: one flag, for a pool of one thread
++    std::atomic<bool> serving{true};
+ };
+ 
+ } // namespace debugger
