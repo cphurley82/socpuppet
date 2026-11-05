@@ -155,6 +155,8 @@ class AReleaseOfImages:
         #: A file whose first request is answered with this HTTP status, as
         #: a gateway in front of the server might for a moment.
         self.fails_once_on: tuple[str, int] | None = None
+        #: A file whose every request is answered with this HTTP status.
+        self.always_fails_on: tuple[str, int] | None = None
 
     def holds(self, images: dict[str, bytes]) -> None:
         """Publish images, gzipped, with their sums, as the release has them."""
@@ -191,6 +193,10 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
             if served.fails_once_on and name == served.fails_once_on[0]:
                 _, status = served.fails_once_on
                 served.fails_once_on = None
+                self.send_error(status)
+                return
+            if served.always_fails_on and name == served.always_fails_on[0]:
+                _, status = served.always_fails_on
                 self.send_error(status)
                 return
             if served.slowness and name.endswith(".gz"):
@@ -487,6 +493,23 @@ class TestWhenAnImageCannotBeFetched:
         says_how_to_build(
             refused, "`uv run firmware/build.py edk2`", after="connection"
         )
+
+    def test_a_gateway_that_keeps_failing_says_to_try_again_later_or_mirror_it(
+        self, release, no_waiting
+    ):
+        release.holds({"spam.elf": b"spam"})
+        release.always_fails_on = ("spam.elf.gz", 504)
+
+        with pytest.raises(images.Unavailable) as refused:
+            images.find("spam.elf")
+
+        said = str(refused.value)
+        assert "spam.elf.gz" in said
+        assert "504" in said
+        assert "try again later" in said
+        assert "SOCPUPPET_IMAGES_URL" in said
+        assert "connection" not in said
+        says_how_to_build(refused, "`uv run firmware/build.py`", after="504")
 
     def test_a_cache_that_cannot_be_written_says_how_to_move_it(
         self, release, monkeypatch, nothing_said

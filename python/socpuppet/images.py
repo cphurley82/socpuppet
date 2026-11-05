@@ -148,10 +148,7 @@ def _fetch(name: str, place: pathlib.Path) -> None:
         except _OUT_OF_REACH as error:
             if wait is None:
                 raise _unavailable(
-                    name,
-                    f"{release} could not be reached ({error}). Check this "
-                    "machine's connection, or name a mirror of the release "
-                    "with SOCPUPPET_IMAGES_URL.",
+                    name, _why_out_of_reach(release, error)
                 ) from error
             _say(
                 f"🧦 {release.partition('://')[2]} could not be reached "
@@ -164,6 +161,21 @@ def _fetch(name: str, place: pathlib.Path) -> None:
                 f"It could not be kept in {place}: {error}. "
                 "SOCPUPPET_CACHE_DIR moves the cache somewhere else.",
             ) from error
+
+
+def _why_out_of_reach(release: str, error: Exception) -> str:
+    """What went wrong, after the last try of a server out of reach."""
+    if isinstance(error, urllib.error.HTTPError) and error.code in _BUSY:
+        return (
+            f"{error.url} answered {error.code}: {error.reason}, each time "
+            "it was asked. The server is busy for now, so try again later, or "
+            "name a mirror of the release with SOCPUPPET_IMAGES_URL."
+        )
+    return (
+        f"{release} could not be reached ({error}). Check this machine's "
+        "connection, or name a mirror of the release with "
+        "SOCPUPPET_IMAGES_URL."
+    )
 
 
 def _download_unless_another_has(
