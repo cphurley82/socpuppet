@@ -61,6 +61,10 @@ QBOX = Checkout(Path("src"), "qbox-*.patch")
 #: QEMU's, which QBox's configure fetches into QBox's build tree.
 QEMU = Checkout(TREE / "_deps" / "libqemu-src", "libqemu-*.patch")
 CHECKOUTS = (QBOX, QEMU)
+#: What puts a checkout back as its commit has it, discarding any edits
+#: there, as git's arguments after `git -C <checkout>`. The clean, since
+#: some patches add files, which a reset leaves behind.
+PUT_BACK = (("reset", "--hard"), ("clean", "-fd"))
 
 # What QBox's build stops without: each program or library, as the name it
 # is looked for by, the Ubuntu package it comes in, and the Homebrew
@@ -254,23 +258,33 @@ def check_what_it_needs() -> None:
 def patch(root: Path, checkout: Checkout) -> None:
     """Apply each of `checkout`'s patches to it, in the build at `root`."""
     for each in sorted(PATCHES.glob(checkout.glob)):
-        apply(root / checkout.path, each, root)
+        apply(root / checkout.path, each)
 
 
-def apply(tree: Path, patch: Path, root: Path) -> None:
+def apply(tree: Path, patch: Path) -> None:
     """Apply a patch unless it is there already, and stop if it is neither.
 
-    `root` is the build's, which a patch that is neither is fixed by
-    deleting.
+    A patch that is neither was changed since `tree` was patched, and goes
+    in once the checkout is put back as its commit has it.
     """
     if applies(tree, patch):
         git("-C", str(tree), "apply", str(patch))
         print(f"  patched: {patch.name}")
     elif not applies(tree, patch, reverse=True):
         raise Failed(
-            f"{patch.name} does not apply to {tree}.\n"
-            f"Delete {root} and run this again."
+            f"{patch.name} does not apply to {tree}, which an older patch "
+            "changed.\n"
+            f"Put it back with `{put_back(tree)}`, discarding any edits of "
+            f"yours there, and run this again. For {ROOT}, "
+            "`uv run python tools/cleanup.py repair` does that."
         )
+
+
+def put_back(tree: Path) -> str:
+    """The command line that puts the checkout at `tree` back."""
+    return " && ".join(
+        " ".join(("git", "-C", str(tree), *each)) for each in PUT_BACK
+    )
 
 
 def goes_in(tree: Path, patch: Path) -> bool:

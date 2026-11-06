@@ -132,10 +132,10 @@ EXTENSION = Tree(
 #: Where the patches are, from the top of the repository.
 PATCHES = build_qbox.PATCHES.relative_to(build_qbox.REPOSITORY)
 
-#: What repair runs in a stale checkout, discarding uncommitted edits, and
-#: how the report names it.
-RESET_CHECKOUT = (("reset", "--quiet", "--hard"), ("clean", "--quiet", "-fd"))
-RESET_CHECKOUT_SAYS = "git reset --hard and git clean -fd"
+#: How the report names what repair runs in a stale checkout.
+PUT_BACK_SAYS = " and ".join(
+    " ".join(("git", *each)) for each in build_qbox.PUT_BACK
+)
 
 
 class State(enum.Enum):
@@ -346,7 +346,7 @@ def stale_checkouts(root: Path) -> list[Found]:
                     Level.REPAIR,
                     repair=functools.partial(reset, root, path),
                     warning=(
-                        f"repair runs {RESET_CHECKOUT_SAYS} in {path}, "
+                        f"repair runs {PUT_BACK_SAYS} in {path}, "
                         "discarding uncommitted edits"
                     ),
                 )
@@ -356,9 +356,13 @@ def stale_checkouts(root: Path) -> list[Found]:
 
 def reset(root: Path, path: str) -> str:
     """Put the checkout at `path` back as its commit has it, and say so."""
-    for command in RESET_CHECKOUT:
-        subprocess.run(["git", "-C", str(root / path), *command], check=True)
-    return f"🧹 reset {path} ({RESET_CHECKOUT_SAYS})"
+    for each in build_qbox.PUT_BACK:
+        subprocess.run(
+            ["git", "-C", str(root / path), *each],
+            stdout=subprocess.DEVNULL,
+            check=True,
+        )
+    return f"🧹 reset {path} ({PUT_BACK_SAYS})"
 
 
 def unused_in_build(root: Path) -> list[Found]:

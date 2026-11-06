@@ -34,7 +34,7 @@ def build_qbox(tmp_path):
     log = tmp_path / "log"
     put_in(bin_directory, log, PROGRAMS)
 
-    def run(*args, missing="", configure=""):
+    def run(*args, missing="", configure="", broken=""):
         result = subprocess.run(
             [
                 sys.executable,
@@ -48,6 +48,7 @@ def build_qbox(tmp_path):
                 "PATH": f"{bin_directory}{os.pathsep}{os.defpath}",
                 "MISSING": missing,
                 "CONFIGURE": configure,
+                "BROKEN": broken,
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -212,3 +213,15 @@ def test_a_configure_that_fails_otherwise_is_not_tried_again(build_qbox):
     _, lines = build_qbox(configure="fails")
 
     assert len(calls(lines, "cmake", "-S")) == 1
+
+
+@pytest.mark.parametrize("patch", QBOX_PATCHES)
+def test_when_a_patch_neither_applies_nor_reverses_the_build_stops_and_says_to_run_cleanup_repair(
+    build_qbox, patch
+):
+    result, lines = build_qbox(broken=patch)
+
+    assert result.returncode != 0
+    assert patch in result.stdout
+    assert "uv run python tools/cleanup.py repair" in result.stdout
+    assert not calls(lines, "cmake")
