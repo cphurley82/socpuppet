@@ -3,6 +3,7 @@
 
 Usage:
   uv run python tools/cleanup.py          # the report: changes nothing
+  uv run python tools/cleanup.py repair   # fix what is stale in a tree
 
 Each tree under build/ is made by one tool of the repo, and remade by
 running it again, in minutes or in hours. The report names each, its size,
@@ -13,13 +14,14 @@ what no tool of today makes, under build/ and outside it, as unused.
 import argparse
 import enum
 import fnmatch
+import functools
 import os
 import stat
 import subprocess
 import sys
 import sysconfig
-from collections.abc import Iterator
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -28,6 +30,8 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 class Level(enum.Enum):
     """How much a run clears away, each level what the one before does too."""
 
+    #: Removes nothing, but fixes what is stale inside a tree.
+    REPAIR = "repair"
     UNUSED = "unused"
     TREES = "trees"
     EVERYTHING = "everything"
@@ -118,10 +122,16 @@ class State(enum.Enum):
     #: Made by nothing of today: a tree a tool used to build in, a log, a
     #: test's leftover, an extension built for another platform.
     UNUSED = "unused"
+    #: Inside a tree of today, left by something that went wrong.
+    STALE = "stale"
 
 
 #: How a terminal is told to color each state, and to stop.
-COLORS = {State.CURRENT: "\033[32m", State.UNUSED: "\033[31m"}
+COLORS = {
+    State.CURRENT: "\033[32m",
+    State.UNUSED: "\033[31m",
+    State.STALE: "\033[33m",
+}
 RESET = "\033[0m"
 
 #: How each column of the report is aligned: the size to the right.
@@ -137,8 +147,10 @@ class Found:
     state: State
     made_by: str
     cost: str
-    #: The level that removes it.
+    #: The level that removes it, or for what is stale, repairs it.
     level: Level
+    #: What repairs it, if it is stale: returns what it did.
+    repair: Callable[[], str] | None = field(default=None, compare=False)
 
     def row(self) -> tuple[str, ...]:
         """Its columns in the report."""
@@ -163,14 +175,30 @@ def main() -> int:
     parser.add_argument(
         "--root", type=Path, default=REPOSITORY, help=argparse.SUPPRESS
     )
+    parser.add_argument(
+        "level",
+        nargs="?",
+        choices=[Level.REPAIR.value],
+        help="what to do beyond the report: repair fixes what is stale",
+    )
     args = parser.parse_args()
-    report(survey(args.root.resolve()))
+    found = survey(args.root.resolve())
+    report(found)
+    if args.level:
+        for each in found:
+            if each.repair:
+                print(each.repair())
     return 0
 
 
 def survey(root: Path) -> list[Found]:
     """What is in `root`'s build/, and what was left outside it."""
-    return owned(root) + unused_in_build(root) + outside_build(root)
+    return (
+        owned(root)
+        + stale_counters(root)
+        + unused_in_build(root)
+        + outside_build(root)
+    )
 
 
 def owned(root: Path) -> list[Found]:
@@ -178,6 +206,48 @@ def owned(root: Path) -> list[Found]:
     return [
         tree.found(root) for tree in TREES if os.path.lexists(root / tree.path)
     ]
+
+
+def stale_counters(root: Path) -> list[Found]:
+    """The coverage counters left in the presets' trees.
+
+    🎓 A build for coverage leaves a counter, a *.gcda, beside each object
+    it runs. The coverage target deletes them all before it measures, but
+    only after its build, whose test discovery runs the programs; and a
+    counter an interrupted run left truncated can crash them there.
+    """
+    found = []
+    for tree in TREES:
+        if tree.made_by != PRESETS or not (root / tree.path).is_dir():
+            continue
+        counters = [
+            Path(entry.path)
+            for entry in walk(root / tree.path)
+            if entry.name.endswith(".gcda")
+        ]
+        if counters:
+            found.append(
+                Found(
+                    f"{tree.path}/**/*.gcda",
+                    sum(map(size_of, counters)),
+                    State.STALE,
+                    f"{len(counters)} counter{'s' if len(counters) > 1 else ''}"
+                    " of an interrupted coverage run",
+                    "nothing",
+                    Level.REPAIR,
+                    repair=functools.partial(
+                        delete_counters, tree.path, counters
+                    ),
+                )
+            )
+    return found
+
+
+def delete_counters(tree: str, counters: list[Path]) -> str:
+    """Delete the coverage counters of `tree`, and say so."""
+    for counter in counters:
+        counter.unlink()
+    return f"🧹 deleted {len(counters)} *.gcda under {tree}"
 
 
 def unused_in_build(root: Path) -> list[Found]:
@@ -268,7 +338,11 @@ def report(found: list[Found]) -> None:
         cells[0] = paint(cells[0], each.state)
         print("  ".join(cells).rstrip())
     print()
-    totals = (f"{each.value} {human(freed(found, each))}" for each in Level)
+    totals = (
+        f"{each.value} {human(freed(found, each))}"
+        for each in Level
+        if each is not Level.REPAIR
+    )
     print(f"🧹 Each level would free: {'; '.join(totals)}.")
 
 
@@ -281,7 +355,9 @@ def freed(found: list[Found], level: Level) -> int:
     return sum(
         each.size
         for each in found
-        if levels.index(each.level) <= levels.index(level)
+        # What repair fixes is inside a tree, and counted with it.
+        if each.state is not State.STALE
+        and levels.index(each.level) <= levels.index(level)
     )
 
 
