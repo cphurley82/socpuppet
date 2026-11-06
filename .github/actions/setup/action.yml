@@ -68,9 +68,11 @@ runs:
             # socpuppet's build. zlib is for SCC's trace writer, and dtc
             # checks the devicetrees the boards generate and compiles the
             # one a boot under OpenSBI is handed; without it those tests
-            # skip.
+            # skip. gdb takes every thread's native stack of a platform
+            # test that runs out of time (socpuppet's plugin), as lldb,
+            # which a Mac has already, does there.
             build)
-              ubuntu+=(zlib1g-dev device-tree-compiler)
+              ubuntu+=(zlib1g-dev device-tree-compiler gdb)
               mac+=(dtc)
               ;;
             # libslirp, the cable to this machine's network that ssh to
