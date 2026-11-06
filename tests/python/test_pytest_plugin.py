@@ -1,6 +1,7 @@
 import importlib.metadata
 import os
 import platform
+import shutil
 from pathlib import Path
 
 import pytest
@@ -313,12 +314,12 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     def test_the_failure_shows_each_threads_native_stack(self, result):
         skip_unless_a_debugger_can_attach(result)
         # Both threads sleep, and the C library's sleep is in each stack:
-        # `nanosleep` on a Mac, `clock_nanosleep` on Linux.
+        # `nanosleep` on a Mac, `clock_nanosleep` on Linux. Each stack has
+        # a heading, lldb's `thread #2` and gdb's `Thread 2 (...)`.
         result.stdout.fnmatch_lines(
             [
                 "*Every thread's native stack*",
-                "*nanosleep*",
-                "*nanosleep*",
+                *["*hread*", "*nanosleep*"] * 2,
             ]
         )
 
@@ -354,15 +355,16 @@ def a_test_that_never_ends(session):
 def skip_unless_a_debugger_can_attach(result):
     """Skip a test of native stacks where none could be taken.
 
-    A machine with no debugger, or a Mac that keeps a debugger from
-    attaching to a process it did not start, says so in the failure.
+    On a machine with no debugger, or a Mac that keeps lldb from attaching
+    to a process it did not start. On Linux the plugin lets gdb attach, so
+    a refusal there is a failure.
     """
     debugger = pytest_plugin.native_debugger()
-    if f"Install {debugger}" in result.stdout.str():
+    if shutil.which(debugger) is None:
         pytest.skip(f"{debugger} is not installed here.")
-    if f"{debugger} could not" in result.stdout.str():
+    if debugger == "lldb" and "error: attach failed" in result.stdout.str():
         pytest.skip(
-            f"{debugger} may not attach to a process here. On a Mac, "
+            "lldb may not attach to a process here: "
             "`sudo DevToolsSecurity -enable` lets it."
         )
 

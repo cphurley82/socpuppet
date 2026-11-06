@@ -41,6 +41,7 @@ package is imported straight from a source tree, enable it from a
     pytest_plugins = ["socpuppet.pytest_plugin"]
 """
 
+import ctypes
 import json
 import os
 import platform
@@ -121,7 +122,27 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     report_file = os.environ.get(_REPORT_FILE_ENV)
     if report_file:
+        _let_a_debugger_attach()
         config.pluginmanager.register(_ChildReporter(config, report_file))
+
+
+# Linux's prctl() option that names the process that, with those it
+# starts, may attach a debugger to this one (linux/prctl.h).
+_PR_SET_PTRACER = 0x59616D61
+
+
+def _let_a_debugger_attach() -> None:
+    """Let the session's gdb attach to this child, on Linux.
+
+    🎓 With Yama's ``ptrace_scope`` at 1, as on Ubuntu and GitHub's
+    runners, a process may attach only to its own descendants: gdb is the
+    session's child, and so is this process, its sibling. Naming the
+    session, the parent, lets it and what it starts attach. A kernel
+    without Yama refuses the option, which is then not needed.
+    """
+    if platform.system() != "Linux":
+        return
+    ctypes.CDLL(None).prctl(_PR_SET_PTRACER, os.getppid())
 
 
 # What the session tells each xdist worker about how the tests are handed
