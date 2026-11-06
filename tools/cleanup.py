@@ -114,6 +114,20 @@ EXTENSION = Tree(
 )
 
 
+#: QBox's checkout and QEMU's, under build/qbox, and the patches of
+#: cmake/patches that tools/build_qbox.py applies to each.
+CHECKOUTS = (
+    ("build/qbox/src", "qbox-*.patch"),
+    ("build/qbox/build/_deps/libqemu-src", "libqemu-*.patch"),
+)
+
+
+#: What repair runs in a stale checkout, discarding uncommitted edits, and
+#: how the report names it.
+RESET_CHECKOUT = (("reset", "--quiet", "--hard"), ("clean", "--quiet", "-fd"))
+RESET_CHECKOUT_SAYS = "git reset --hard and git clean -fd"
+
+
 class State(enum.Enum):
     """What the report says of a thing it found."""
 
@@ -151,6 +165,8 @@ class Found:
     level: Level
     #: What repairs it, if it is stale: returns what it did.
     repair: Callable[[], str] | None = field(default=None, compare=False)
+    #: What repairing it costs, that the report warns of before it does.
+    warning: str = ""
 
     def row(self) -> tuple[str, ...]:
         """Its columns in the report."""
@@ -196,6 +212,7 @@ def survey(root: Path) -> list[Found]:
     return (
         owned(root)
         + stale_counters(root)
+        + stale_checkouts(root)
         + unused_in_build(root)
         + outside_build(root)
     )
@@ -248,6 +265,69 @@ def delete_counters(tree: str, counters: list[Path]) -> str:
     for counter in counters:
         counter.unlink()
     return f"🧹 deleted {len(counters)} *.gcda under {tree}"
+
+
+def stale_checkouts(root: Path) -> list[Found]:
+    """QBox's checkout, and QEMU's, where a patch of today cannot go.
+
+    tools/build_qbox.py applies each patch of cmake/patches to its checkout
+    unless it is there already. A patch changed since the last build is
+    neither, and stops it.
+    """
+    found = []
+    for path, patches in CHECKOUTS:
+        checkout = root / path
+        if not (checkout / ".git").is_dir():
+            continue
+        stuck = [
+            patch.name
+            for patch in sorted((root / "cmake" / "patches").glob(patches))
+            if not goes_in(checkout, patch)
+        ]
+        if stuck:
+            found.append(
+                Found(
+                    path,
+                    size_of(checkout),
+                    State.STALE,
+                    f"{', '.join(stuck)} neither applies nor reverses",
+                    "minutes",
+                    Level.REPAIR,
+                    repair=functools.partial(reset, root, path),
+                    warning=(
+                        f"repair runs {RESET_CHECKOUT_SAYS} in {path}, "
+                        "discarding uncommitted edits"
+                    ),
+                )
+            )
+    return found
+
+
+def goes_in(checkout: Path, patch: Path) -> bool:
+    """Whether `patch` applies to `checkout`, or is applied already."""
+    return any(
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(checkout),
+                "apply",
+                *direction,
+                "--check",
+                str(patch),
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+        for direction in ((), ("--reverse",))
+    )
+
+
+def reset(root: Path, path: str) -> str:
+    """Put the checkout at `path` back as its commit has it, and say so."""
+    for command in RESET_CHECKOUT:
+        subprocess.run(["git", "-C", str(root / path), *command], check=True)
+    return f"🧹 reset {path} ({RESET_CHECKOUT_SAYS})"
 
 
 def unused_in_build(root: Path) -> list[Found]:
@@ -337,6 +417,9 @@ def report(found: list[Found]) -> None:
         # Painted once padded, so that the color takes no room in a column.
         cells[0] = paint(cells[0], each.state)
         print("  ".join(cells).rstrip())
+    for each in found:
+        if each.warning:
+            print(f"⚠️ {each.warning}")
     print()
     totals = (
         f"{each.value} {human(freed(found, each))}"
