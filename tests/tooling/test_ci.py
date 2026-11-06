@@ -1559,7 +1559,9 @@ def dropped(dependencies):
     return {name for name, path in dependencies.items() if not path.exists()}
 
 
-def wait_for(condition, seconds=10):
+def wait_for(condition, seconds=60):
+    # A deadline, not a wait: under the quick tier every core is busy, and
+    # starting tools/ci.py and a step of it has taken more than ten seconds.
     deadline = time.monotonic() + seconds
     while not condition():
         assert time.monotonic() < deadline, "timed out"
