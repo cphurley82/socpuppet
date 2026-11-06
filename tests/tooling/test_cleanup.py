@@ -302,3 +302,50 @@ def test_the_report_totals_what_each_level_would_free_each_with_the_levels_befor
         "Each level would free: unused 1.0 MB; trees 3.0 MB; everything 6.0 MB."
         in ran.stdout
     )
+
+
+def test_a_counter_left_under_a_preset_tree_is_stale_and_repair_deletes_only_it(
+    repo, cleanup
+):
+    counter = fill(repo, "build/dev/a/b.gcda", 0.25)
+    beside = fill(repo, "build/dev/a/b.o", 1)
+
+    reported = cleanup()
+    repaired = cleanup("repair")
+
+    assert line_of(reported.stdout, "build/dev/**/*.gcda") == [
+        "stale",
+        "build/dev/**/*.gcda",
+        "256.0 KB",
+        "1 counter of an interrupted coverage run",
+        "nothing",
+        "repair",
+    ]
+    assert "🧹 deleted 1 *.gcda under build/dev" in repaired.stdout
+    assert not counter.exists()
+    assert beside.exists()
+
+
+def test_a_counter_in_a_tree_the_presets_do_not_make_is_not_stale_and_repair_keeps_it(
+    repo, cleanup
+):
+    counter = fill(repo, "build/qbox/build/spam.gcda", 0.25)
+
+    reported = cleanup()
+    cleanup("repair")
+
+    assert "build/qbox/**/*.gcda" not in reported.stdout
+    assert counter.exists()
+
+
+def test_repair_removes_nothing_unused_and_no_tree(repo, cleanup):
+    unused = fill(repo, "build/speed-x/spam.o", 1)
+    tree = fill(repo, "build/dev/spam.o", 1)
+    leftover = fill(repo, "cable.pcap", 1)
+
+    ran = cleanup("repair")
+
+    assert ran.returncode == 0, ran.stdout
+    assert unused.exists()
+    assert tree.exists()
+    assert leftover.exists()
