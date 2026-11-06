@@ -385,6 +385,35 @@ class TestWhenAPlatformTestRunsOutOfTimeWhereThereIsNoDebugger:
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
 
 
+class TestWhenAPlatformTestsProcessIsStoppedWhenItRunsOutOfTime:
+    def test_the_failure_still_shows_where_the_test_was(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        # A debugger's attach stops the process too, and one that lets go
+        # can leave it so. No debugger here, so only the test stops it.
+        monkeypatch.setenv("PATH", str(session_with_socpuppet.mkdir("empty")))
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 1\n"
+        )
+        session_with_socpuppet.makepyfile(
+            """
+            import os
+            import signal
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_stops_itself():
+                os.kill(os.getpid(), signal.SIGSTOP)
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_stops_itself"]
+        )
+
+
 class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
     @pytest.fixture
     def result(self, session_with_socpuppet, monkeypatch):

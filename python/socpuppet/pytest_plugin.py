@@ -602,8 +602,14 @@ def _stop(child: subprocess.Popen[str]) -> tuple[str, str]:
     # Aborted, and not simply killed: pytest's fault handler answers the
     # abort signal by writing where Python was, as far as it can tell. (A
     # script runs on a SystemC thread's stack, where it often cannot.) A
-    # child too far gone to answer is killed.
+    # child too far gone to answer is killed. A stopped child, as a
+    # debugger's attach can leave one, takes no signal until it is woken,
+    # so it is woken too, and after the abort: a signal sent to a stopped
+    # process waits, and is taken as it wakes, before it runs anything
+    # more. Woken first, it runs on for the moment before the abort lands,
+    # and the fault handler shows where it got to, not where it was.
     child.send_signal(signal.SIGABRT)
+    child.send_signal(signal.SIGCONT)
     try:
         return child.communicate(timeout=_LAST_WORDS_SECONDS)
     except subprocess.TimeoutExpired:
