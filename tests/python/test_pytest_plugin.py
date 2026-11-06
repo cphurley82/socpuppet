@@ -442,6 +442,31 @@ class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
 
 
+class TestWhenTheDebuggerFindsNoThreadInATestThatRanOutOfTime:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        # 🎓 gdb in batch mode exits with its last command's status, and a
+        # backtrace of every thread of none, which is what a refused attach
+        # leaves it, succeeds.
+        a_debugger_on_the_path(
+            session_with_socpuppet,
+            monkeypatch,
+            'echo "ptrace: Operation not permitted."\nexit 0',
+        )
+        return a_test_that_never_ends(session_with_socpuppet)
+
+    def test_the_failure_says_it_could_not_and_quotes_it(self, result):
+        result.stdout.fnmatch_lines(
+            [
+                f"*{pytest_plugin.native_debugger()} could not*",
+                "*ptrace: Operation not permitted.*",
+            ]
+        )
+
+    def test_the_failure_still_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
 class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
     @pytest.fixture
     def result(self, session_with_socpuppet, monkeypatch):

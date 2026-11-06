@@ -582,7 +582,10 @@ def _native_stacks(pid: int) -> str:
             "take the threads' native stacks, and was stopped."
         )
     said = found.stdout + found.stderr
-    if found.returncode != 0:
+    # ⚠️ gdb's status in batch mode is its last command's, and a backtrace
+    # of every thread of none, as a failed attach leaves it, succeeds: so
+    # an answer with no frame in it did not take the stacks either.
+    if found.returncode != 0 or "#0" not in said:
         return (
             f"{debugger} could not take the threads' native stacks, and "
             f"said what follows.{_LETTING_IT_ATTACH[debugger]}\n\n{said}"
