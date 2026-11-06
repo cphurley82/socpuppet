@@ -159,7 +159,7 @@ The report has a line for each thing it found: whether it is current, stale or u
 | Level | What it does | Making it again |
 |---|---|---|
 | `repair` | Deletes the coverage counters (`*.gcda`) an interrupted run left in a preset's tree; puts QBox's checkout, or QEMU's, back at its commit when a patch of today neither applies to it nor is in it | Minutes: the next `tools/build_qbox.py` applies the patches and builds what changed |
-| `unused` | Removes what no tool of today makes: under `build/`, an old spike's trees or a loose log; outside it, what git ignores and a run leaves over (`.coverage`, `dist/`, an `*.egg-info`, a `*.pcap` capture) | Nothing needs it |
+| `unused` | Removes what no tool of today makes: under `build/`, an old spike's trees or a loose log; outside it, what git ignores and a run leaves over (`.coverage`, `dist/`, `wheelhouse/`, an `*.egg-info`, a `*.pcap` capture) | Nothing needs it |
 | `trees` | Removes the presets' trees, the devcontainer's, CI's, the wheel's, twister's, and the extensions in `python/socpuppet/` | Minutes each |
 | `everything` | Removes `build/qbox` and `build/firmware` too, and warns first | About an hour for QBox, hours for the firmware |
 

@@ -164,14 +164,14 @@ def build(root: Path, jobs: int) -> None:
         git("-C", str(source), "fetch", "--quiet", "origin", QBOX_COMMIT)
         git("-C", str(source), "checkout", "--quiet", "--force", QBOX_COMMIT)
     print(f"🧦 QBox at {QBOX_COMMIT[:8]}, in {source}", flush=True)
-    patch(root, QBOX)
+    apply_patches(root, QBOX)
 
     tree = root / TREE
     install = install_of(root)
     configure(source, tree, install)
     # QEMU is fetched while QBox is configured, and built after. Its
     # patches go in between.
-    patch(root, QEMU)
+    apply_patches(root, QEMU)
     command("cmake", "--build", str(tree), "--parallel", str(jobs))
     with (root / "install.log").open("w") as log:
         command("cmake", "--install", str(tree), stdout=log)
@@ -255,7 +255,7 @@ def check_what_it_needs() -> None:
         )
 
 
-def patch(root: Path, checkout: Checkout) -> None:
+def apply_patches(root: Path, checkout: Checkout) -> None:
     """Apply each of `checkout`'s patches to it, in the build at `root`."""
     for each in sorted(PATCHES.glob(checkout.glob)):
         apply(root / checkout.path, each)
