@@ -210,6 +210,7 @@ What the real-host spike (M30) taught, putting the puppet's drive on this machin
 - **Homebrew's pip is run by `opt_libexec/"bin/python"` of its `python@X.Y`**, and its own pip arguments refuse a wheel. Homebrew no longer bottles Intel Macs, so a Python there is built from source.
 - **`actions/checkout` one commit deep fetches an annotated tag as a lightweight one**, with no message, and `gh release create --notes-from-tag` then takes the commit's; `fetch-depth: 0` keeps the tag as pushed.
 - **A download of artifacts by a pattern that matches nothing succeeds, and says nothing**: a rename on one side would have published a release's source without its wheels. A test holds what is taken to what is uploaded, and a release is published whole or not at all.
+- **A version PyPI lists is not yet a version every request finds**: its listing is cached at the edge, and one request can see the upload while the next, a moment later from the same runner, does not. Waiting for the listing narrows the window; only an install that tries again closes it.
 - **git on CI's runners has no identity**, and a test that commits or tags fails there and nowhere else; the tooling tests give theirs one.
 
 ## The platform and its description
