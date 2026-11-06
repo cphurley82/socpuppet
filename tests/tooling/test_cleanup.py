@@ -507,3 +507,95 @@ def test_a_qbox_patch_with_no_checkout_to_go_in_is_not_a_fault(repo, cleanup):
 
     assert ran.returncode == 0, ran.stdout
     assert "stale" not in ran.stdout
+
+
+def test_unused_removes_what_is_unused_and_says_so_with_its_size(repo, cleanup):
+    fill(repo, "build/speed-x/spam.o", 1)
+    fill(repo, "cable.pcap", 1)
+    tree = fill(repo, "build/dev/spam.o", 1)
+    qbox = fill(repo, "build/qbox/install/eggs.so", 1)
+
+    ran = cleanup("unused")
+
+    assert ran.returncode == 0, ran.stdout
+    assert "🧹 removed build/speed-x (1.0 MB)" in ran.stdout
+    assert "🧹 removed cable.pcap (1.0 MB)" in ran.stdout
+    assert not (repo / "build/speed-x").exists()
+    assert not (repo / "cable.pcap").exists()
+    assert tree.exists()
+    assert qbox.exists()
+
+
+def test_trees_removes_what_unused_does_and_the_trees_remade_in_minutes_and_keeps_qbox_and_the_firmware(
+    repo, cleanup
+):
+    unused = fill(repo, "build/speed-x/spam.o", 1)
+    tree = fill(repo, "build/dev/spam.o", 1)
+    qbox = fill(repo, "build/qbox/install/eggs.so", 1)
+    firmware = fill(repo, "build/firmware/zephyr.elf", 1)
+
+    ran = cleanup("trees")
+
+    assert ran.returncode == 0, ran.stdout
+    assert not unused.exists()
+    assert not tree.exists()
+    assert qbox.exists()
+    assert firmware.exists()
+
+
+def test_everything_removes_qbox_and_the_firmware_and_leaves_the_venv_and_the_local_settings(
+    repo, cleanup
+):
+    qbox = fill(repo, "build/qbox/install/eggs.so", 1)
+    firmware = fill(repo, "build/firmware/zephyr.elf", 1)
+    venv = fill(repo, ".venv/lib/spam.py", 1)
+    settings = fill(repo, ".claude/settings.local.json", 1)
+
+    ran = cleanup("everything")
+
+    assert ran.returncode == 0, ran.stdout
+    assert not qbox.exists()
+    assert not firmware.exists()
+    assert venv.exists()
+    assert settings.exists()
+
+
+def test_everything_warns_first_of_how_long_making_it_all_again_takes(
+    repo, cleanup
+):
+    fill(repo, "build/qbox/install/eggs.so", 1)
+    fill(repo, "build/firmware/zephyr.elf", 1)
+
+    ran = cleanup("everything")
+
+    (warning,) = [
+        line
+        for line in ran.stdout.splitlines()
+        if line.startswith("⚠️ everything removes")
+    ]
+    for tree in load("cleanup").TREES:
+        if tree.level.value == "everything":
+            assert f"{tree.path} ({tree.cost} to make again)" in warning
+    assert ran.stdout.index(warning) < ran.stdout.index("🧹 removed")
+
+
+def test_a_symlink_under_build_is_removed_and_what_it_points_at_is_kept(
+    repo, cleanup, tmp_path_factory
+):
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    kept = fill(elsewhere, "spam.o", 1)
+    (repo / "build").mkdir()
+    (repo / "build/speed-x").symlink_to(elsewhere, target_is_directory=True)
+
+    ran = cleanup("unused")
+
+    assert ran.returncode == 0, ran.stdout
+    assert not os.path.lexists(repo / "build/speed-x")
+    assert kept.exists()
+
+
+def test_a_level_it_does_not_know_is_refused_with_the_usage(cleanup):
+    ran = cleanup("spam")
+
+    assert ran.returncode == 2
+    assert "usage: tools/cleanup.py" in ran.stdout

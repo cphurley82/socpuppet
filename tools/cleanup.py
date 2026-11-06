@@ -2,13 +2,17 @@
 """🧹 What is in build/, and what a build or a test left outside it.
 
 Usage:
-  uv run python tools/cleanup.py          # the report: changes nothing
-  uv run python tools/cleanup.py repair   # fix what is stale in a tree
+  uv run python tools/cleanup.py              # the report: changes nothing
+  uv run python tools/cleanup.py repair       # fix what is stale in a tree
+  uv run python tools/cleanup.py unused       # and remove what is unused
+  uv run python tools/cleanup.py trees        # and the trees made in minutes
+  uv run python tools/cleanup.py everything   # and build/qbox, build/firmware
 
 Each tree under build/ is made by one tool of the repo, and remade by
 running it again, in minutes or in hours. The report names each, its size,
 what makes it and how long that takes, and the level that removes it; and
-what no tool of today makes, under build/ and outside it, as unused.
+what no tool of today makes, under build/ and outside it, as unused. Each
+level does what the ones before it do.
 """
 
 import argparse
@@ -16,6 +20,7 @@ import enum
 import fnmatch
 import functools
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -37,6 +42,14 @@ class Level(enum.Enum):
     UNUSED = "unused"
     TREES = "trees"
     EVERYTHING = "everything"
+
+    def includes(self, other: "Level") -> bool:
+        """Whether this level does what `other` does: being it, or after it.
+
+        The levels are declared in the order they nest.
+        """
+        levels = list(Level)
+        return levels.index(other) <= levels.index(self)
 
 
 @dataclass(frozen=True)
@@ -191,17 +204,57 @@ def main() -> int:
     parser.add_argument(
         "level",
         nargs="?",
-        choices=[Level.REPAIR.value],
-        help="what to do beyond the report: repair fixes what is stale",
+        choices=[level.value for level in Level],
+        help=(
+            "what to do beyond the report: repair fixes what is stale, and "
+            "each level after it removes more, with what the ones before do"
+        ),
     )
     args = parser.parse_args()
-    found = survey(args.root.resolve())
+    root = args.root.resolve()
+    found = survey(root)
     report(found)
     if args.level:
+        level = Level(args.level)
         for each in found:
             if each.repair:
                 print(each.repair())
+        if level is Level.EVERYTHING:
+            warn_of_the_cost(found)
+        for each in removed_by(found, level):
+            remove(root, each)
     return 0
+
+
+def removed_by(found: list[Found], level: Level) -> list[Found]:
+    """What `level` removes of what was found, with the levels before it."""
+    # What repair fixes is inside a tree, and removed with it.
+    return [
+        each
+        for each in found
+        if each.state is not State.STALE and level.includes(each.level)
+    ]
+
+
+def warn_of_the_cost(found: list[Found]) -> None:
+    """Say what everything removes that takes long to make again."""
+    costly = [
+        f"{each.path} ({each.cost} to make again)"
+        for each in found
+        if each.level is Level.EVERYTHING
+    ]
+    if costly:
+        print(f"⚠️ everything removes {' and '.join(costly)}")
+
+
+def remove(root: Path, found: Found) -> None:
+    """Remove what was found from `root`, and say so."""
+    path = root / found.path
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+    print(f"🧹 removed {found.path} ({human(found.size)})")
 
 
 def survey(root: Path) -> list[Found]:
@@ -408,18 +461,8 @@ def report(found: list[Found]) -> None:
 
 
 def freed(found: list[Found], level: Level) -> int:
-    """How much `level` frees of what was found, with the levels before it.
-
-    Level is declared in the order the levels nest.
-    """
-    levels = list(Level)
-    return sum(
-        each.size
-        for each in found
-        # What repair fixes is inside a tree, and counted with it.
-        if each.state is not State.STALE
-        and levels.index(each.level) <= levels.index(level)
-    )
+    """How much `level` frees of what was found, with the levels before it."""
+    return sum(each.size for each in removed_by(found, level))
 
 
 def paint(text: str, state: State) -> str:
