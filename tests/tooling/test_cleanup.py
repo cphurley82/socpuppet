@@ -328,11 +328,11 @@ def test_a_leftover_by_its_name_that_git_does_not_ignore_is_not_reported(
     assert "spam.pcap" not in ran.stdout
 
 
-def test_an_extension_built_for_another_platform_is_unused_and_this_platforms_is_current(
+def test_an_extension_this_python_built_and_one_another_built_such_as_the_devcontainers_are_both_current_until_trees(
     repo, cleanup
 ):
     this = f"python/socpuppet/_core{sysconfig.get_config_var('EXT_SUFFIX')}"
-    other = "python/socpuppet/_core.cpython-312-spam-eggs.so"
+    other = "python/socpuppet/_core.cpython-312-x86_64-linux-gnu.so"
     fill(repo, this, 1)
     fill(repo, other, 1)
 
@@ -347,12 +347,12 @@ def test_an_extension_built_for_another_platform_is_unused_and_this_platforms_is
         "trees",
     ]
     assert line_of(ran.stdout, other) == [
-        "unused",
+        "current",
         other,
         "1.0 MB",
-        "a build for another platform",
-        "nothing",
-        "unused",
+        "a build for another Python, such as the devcontainer's",
+        "minutes",
+        "trees",
     ]
 
 

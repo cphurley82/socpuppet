@@ -118,8 +118,10 @@ LEFTOVERS = (
 )
 
 
-#: The extension a build copies into the package, for each platform it was
-#: built for, and this platform's.
+#: The extension a build copies into the package, named for the Python it
+#: was built for, and this Python's. Another's may be the devcontainer's,
+#: which builds into the same folder, or an older Python's: the two cannot
+#: be told apart, so both are kept until the trees go.
 EXTENSIONS = "python/socpuppet/_core.*.so"
 EXTENSION = Tree(
     f"python/socpuppet/_core{sysconfig.get_config_var('EXT_SUFFIX')}",
@@ -144,7 +146,7 @@ class State(enum.Enum):
     #: Made by a tool of today, and as that tool left it.
     CURRENT = "current"
     #: Made by nothing of today: a tree a tool used to build in, a log, a
-    #: test's leftover, an extension built for another platform.
+    #: test's leftover.
     UNUSED = "unused"
     #: Inside a tree of today, left by something that went wrong.
     STALE = "stale"
@@ -381,10 +383,10 @@ def unused_in_build(root: Path) -> list[Found]:
 def outside_build(root: Path) -> list[Found]:
     """What a build or a test left in `root`, outside build/.
 
-    The extension a build copies into the package is current if it was
-    built for this platform, and unused if for another. A leftover is
-    unused. The rest that git ignores, the virtual environment and the
-    caches, it leaves alone.
+    The extension a build copies into the package is current, whichever
+    Python it was built for (EXTENSIONS). A leftover is unused. The rest
+    that git ignores, the virtual environment and the caches, it leaves
+    alone.
     """
     found = []
     for path in ignored(root):
@@ -392,7 +394,12 @@ def outside_build(root: Path) -> list[Found]:
             found.append(EXTENSION.found(root))
         elif fnmatch.fnmatchcase(path, EXTENSIONS):
             found.append(
-                found_unused(root, path, "a build for another platform")
+                Tree(
+                    path,
+                    "a build for another Python, such as the devcontainer's",
+                    "minutes",
+                    Level.TREES,
+                ).found(root)
             )
         elif any(
             fnmatch.fnmatchcase(Path(path).name, each) for each in LEFTOVERS
