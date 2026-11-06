@@ -1,4 +1,5 @@
 import importlib.metadata
+import os
 import platform
 from pathlib import Path
 
@@ -380,6 +381,49 @@ class TestWhenAPlatformTestRunsOutOfTimeWhereThereIsNoDebugger:
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        a_debugger_on_the_path(
+            session_with_socpuppet,
+            monkeypatch,
+            'echo "error: attach failed: spam" >&2\nexit 1',
+        )
+        return a_test_that_never_ends(session_with_socpuppet)
+
+    @pytest.mark.skipif(
+        pytest_plugin.native_debugger() != "lldb", reason="lldb is a Mac's"
+    )
+    def test_on_a_mac_the_failure_says_how_to_let_lldb_attach(self, result):
+        result.stdout.fnmatch_lines(["*sudo DevToolsSecurity -enable*"])
+
+    def test_the_failure_quotes_what_the_debugger_said(self, result):
+        result.stdout.fnmatch_lines(
+            [
+                f"*{pytest_plugin.native_debugger()} could not*",
+                "*error: attach failed: spam*",
+            ]
+        )
+
+    def test_the_failure_still_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+def a_debugger_on_the_path(session, monkeypatch, script):
+    """Put a stand-in for this machine's debugger first on the PATH.
+
+    It is a shell script that does what `script` says, whatever it is
+    asked.
+    """
+    bin_directory = session.mkdir("bin")
+    debugger = bin_directory / pytest_plugin.native_debugger()
+    debugger.write_text(f"#!/bin/sh\n{script}\n")
+    debugger.chmod(0o755)
+    monkeypatch.setenv(
+        "PATH", f"{bin_directory}{os.pathsep}{os.environ['PATH']}"
+    )
 
 
 class TestWhenAPlatformTestsProcessIsSlowToStart:

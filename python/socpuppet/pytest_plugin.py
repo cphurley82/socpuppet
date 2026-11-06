@@ -529,9 +529,22 @@ def _native_stacks(pid: int) -> str:
         "gdb": ["gdb", "-p", str(pid), "-batch", "-ex", "thread apply all bt"],
     }[debugger]
     found = subprocess.run(command, capture_output=True, text=True)
+    said = found.stdout + found.stderr
+    if found.returncode != 0:
+        # 🎓 macOS lets a debugger attach to a process it did not start
+        # only with the system's developer tools security switched on.
+        letting_it = (
+            " On a Mac, `sudo DevToolsSecurity -enable` lets it attach."
+            if debugger == "lldb"
+            else ""
+        )
+        return (
+            f"{debugger} could not take the threads' native stacks, and "
+            f"said what follows.{letting_it}\n\n{said}"
+        )
     return (
         f"Every thread's native stack, as {debugger} found it before the "
-        f"test was stopped:\n\n{found.stdout}{found.stderr}"
+        f"test was stopped:\n\n{said}"
     )
 
 
