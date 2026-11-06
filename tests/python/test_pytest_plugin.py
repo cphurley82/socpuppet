@@ -303,11 +303,15 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         )
         session_with_socpuppet.makepyfile(
             """
+            import threading
             import time
             import pytest
 
             @pytest.mark.platform
             def test_that_never_ends():
+                threading.Thread(
+                    target=time.sleep, args=(60,), daemon=True
+                ).start()
                 time.sleep(60)
 
             def test_after_it():
@@ -326,6 +330,34 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
 
     def test_the_failure_shows_where_the_test_was(self, result):
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+    def test_the_failure_shows_each_threads_native_stack(self, result):
+        skip_unless_a_debugger_can_attach(result)
+        # Both threads sleep, and the C library's sleep is in each stack:
+        # `nanosleep` on a Mac, `clock_nanosleep` on Linux.
+        result.stdout.fnmatch_lines(
+            [
+                "*Every thread's native stack*",
+                "*nanosleep*",
+                "*nanosleep*",
+            ]
+        )
+
+
+def skip_unless_a_debugger_can_attach(result):
+    """Skip a test of native stacks where none could be taken.
+
+    A machine with no debugger, or a Mac that keeps a debugger from
+    attaching to a process it did not start, says so in the failure.
+    """
+    debugger = pytest_plugin.native_debugger()
+    if f"Install {debugger}" in result.stdout.str():
+        pytest.skip(f"{debugger} is not installed here.")
+    if f"{debugger} could not" in result.stdout.str():
+        pytest.skip(
+            f"{debugger} may not attach to a process here. On a Mac, "
+            "`sudo DevToolsSecurity -enable` lets it."
+        )
 
 
 class TestWhenAPlatformTestsProcessIsSlowToStart:
