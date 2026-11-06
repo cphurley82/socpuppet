@@ -92,7 +92,7 @@ uv run cmake --build --preset dev --target tidy            # clang-tidy, a few m
 uv run cmake --build --preset dev --target check_headers   # each header compiles alone
 ```
 
-- **clang-tidy**, with its warnings as errors. It reads the same code the compiler did and finds what a compiler lets through: arithmetic that mixes `*` and `+` with no brackets, a multiplication done in 32 bits and then widened, a constant at namespace scope whose constructor could throw.
+- **clang-tidy**, with its warnings as errors. It reads the same code the compiler did and finds what a compiler lets through: arithmetic that mixes `*` and `+` with no brackets, a multiplication done in 32 bits and then widened, a constant at namespace scope whose constructor could throw. ⚠️ When clang-tidy cannot compile a source, it half-parses it and finds what is not there, so the target lists only the error and says to fix it or configure the tree again; over the qbox tree, the usual cause is a QBox whose install is gone, which it says.
 - **The header check**, which compiles each of our headers on its own, so that one that leans on what another file happened to include is found. 💡 CI runs both over the qbox tree, the dev tree and QBox's adapter, which the dev tree leaves out. With QBox built here ([QBox, the second hart](#qbox-the-second-hart)), `--preset qbox` in place of `--preset dev` does the same, and `uv run python tools/ci.py tidy` picks the qbox tree whenever QBox is built.
 - **GCC, on Linux.** On a Mac the compiler is Apple's clang, and GCC has warnings it lacks. To have them here, keep a second build tree in the devcontainer's image, which is what CI builds in. The first build is long and later ones are incremental:
 
@@ -130,7 +130,7 @@ uv run python tools/ci.py --list          # the jobs, their tiers, what each nee
 - 💡 **Jobs that build into the same tree take turns.** `test`, `twister`, `coverage`, `coverage-quick` and `sanitizers` all write the extension into `python/socpuppet/`, whichever tree they build, so at most one of them runs at once, and `-j` cannot change that. After `coverage`, `coverage-quick` or `sanitizers`, the run configures `build/dev` for `dev` again.
 - 🎓 This is your machine and not CI's runner, so it runs your compiler and your libraries. A difference between the two, such as a newer GCC with a warning CI's lacks, shows up here as a failure, which is the point. The QBox jobs need the packages [setup.md](setup.md#1-system-packages) lists for QBox, and `qbox-build` takes the better part of ten minutes the first time.
 
-⚠️ A build tree whose dependencies were patched by an older set of patches fails to configure with `patch does not apply`, because `git apply` does not apply a patch twice ([Dependencies](#dependencies)). The runner keeps a hash of `cmake/patches/`, `cmake/Dependencies.cmake` and `tools/build_qbox.py` in each tree, `_deps/.socpuppet-patches` in `build/dev`, `build/qbox-dev`, each Ubuntu's linux preset tree in `build/container`, and QBox's own tree. When a tree's is not the patches' hash, or it has none, the runner deletes that tree's patched dependencies, QBox's rpclib in its tree, so that they are fetched and patched again. Everything not patched is kept, libqemu included. 💡 Each tree has a record of its own because the container keeps its own trees where QBox's are, apart from the host's: a run there sees only its own. A tree deleted and configured afresh between two runs has no record, so the next run fetches its patched dependencies once more.
+⚠️ A build tree whose dependencies were patched by an older set of patches fails to configure with `patch does not apply`, because `git apply` does not apply a patch twice ([Dependencies](#dependencies)). The runner keeps a hash of `cmake/patches/`, `cmake/Dependencies.cmake` and `tools/build_qbox.py` in each tree, `_deps/.socpuppet-patches` in `build/dev`, `build/qbox-dev`, each Ubuntu's linux preset tree in `build/container`, and QBox's own tree. When a tree's is not the patches' hash, or it has none, the runner deletes that tree's patched dependencies, QBox's rpclib in its tree, so that they are fetched and patched again. Everything not patched is kept, libqemu included. 💡 Each tree has a record of its own because the container keeps its own trees where QBox's are, apart from the host's: a run there sees only its own. A tree deleted and configured afresh between two runs has no record, so the next run fetches its patched dependencies once more. ⚠️ QBox's own checkouts, its source in `build/qbox/src` and QEMU's, are patched by `tools/build_qbox.py` and not dropped: `tools/cleanup.py repair` puts them back ([Cleaning up](#cleaning-up)).
 
 ## One build tree, three kinds of build
 
@@ -141,6 +141,37 @@ uv run cmake --preset dev
 ```
 
 Configuring prints a note when the tree is in one of the two special modes.
+
+## Cleaning up
+
+🧹 `tools/cleanup.py` says what is in `build/` and who made it, and clears away as much as you ask: for when a job fails on something a build left behind, or the disk is full. With no argument it only reports, so run that first: the report is the preview, and nothing goes until you name a level.
+
+```sh
+uv run python tools/cleanup.py              # the report: changes nothing
+uv run python tools/cleanup.py repair       # fix what is stale inside a tree
+uv run python tools/cleanup.py unused       # and remove what no tool of today makes
+uv run python tools/cleanup.py trees        # and the trees made again in minutes
+uv run python tools/cleanup.py everything   # and QBox and the firmware, hours to make again
+```
+
+The report has a line for each thing it found: whether it is current, stale or unused, its size, what made it, how long making it again takes, and the level that clears it away. It ends with what each level would free. Each level does what the ones before it do.
+
+| Level | What it does | Making it again |
+|---|---|---|
+| `repair` | Deletes the coverage counters (`*.gcda`) an interrupted run left in a preset's tree; puts QBox's checkout, or QEMU's, back at its commit when a patch of today neither applies to it nor is in it | Minutes: the next `tools/build_qbox.py` applies the patches and builds what changed |
+| `unused` | Removes what no tool of today makes: under `build/`, an old spike's trees or a loose log; outside it, what git ignores and a run leaves over (`.coverage`, `dist/`, an `*.egg-info`, a `*.pcap` capture) | Nothing needs it |
+| `trees` | Removes the presets' trees, the devcontainer's, CI's, the wheel's, twister's, and the extensions in `python/socpuppet/` | Minutes each |
+| `everything` | Removes `build/qbox` and `build/firmware` too, and warns first | About an hour for QBox, hours for the firmware |
+
+When to use which:
+
+- **Back after weeks, or a job fails on something in `build/`**: the report, then `repair`. A counter truncated by an interrupted run crashes the coverage build's tests as it discovers them, before the coverage target deletes the counters; a QBox patch changed since the last build stops `tools/build_qbox.py`. Both are stale state inside a tree that is otherwise fine, and `repair` mends them without making the tree again.
+- **The disk is full**: `unused`, then `trees`.
+- **Starting over**: `everything`.
+
+⚠️ `repair` runs `git reset --hard` and `git clean -fd` in a stale QBox or QEMU checkout, which discards any edits of yours there. The report warns of each before you run it.
+
+💡 `git clean -xfd` is the sledgehammer: it also removes `.venv`, `build/firmware`, `build/qbox` and `.claude/settings.local.json`, and still mends nothing inside a tree it keeps. `tools/cleanup.py` never touches `.venv`, `.claude/`, Python's small caches, or anything git does not ignore. Nor does it touch Docker's volumes, where the devcontainer keeps QBox's trees on a Mac (`docker volume ls`), or a tree's patched dependencies after a change to `cmake/patches/`, which `tools/ci.py` drops at its next run ([Running CI's jobs here](#running-cis-jobs-here)).
 
 ## QBox, the second hart
 
@@ -159,7 +190,7 @@ uv run ctest --preset qbox               # the whole suite, with SOCPUPPET_CPU=q
 - **The fates.** What QBox's CPU does differently is skipped on QBox with the reason: the hart's C++ cases are in one table (`tests/cpp/support/qbox_fates.h`), and a Python test has `@pytest.mark.not_on_qbox(reason)`. A failure that is in neither is new.
 - 💡 CI does all of this every night, in its nightly tier, on Linux and natively on an Apple silicon Mac and an Intel one, with twister on the host board on the first two: the `qbox-build` and `qbox` jobs, which `uv run python tools/ci.py qbox-build qbox` runs here, and `tidy` over the qbox tree on Linux and an Apple silicon Mac. And `qbox-one-command` runs `tools/qbox.py` from a bare checkout on Linux and both Macs, with nothing taken from another job or a cache, and types `uname -a` and `poweroff` at Linux: on this machine, `uv run python tools/ci.py qbox-one-command` reuses what is built. ⚠️ On an Intel Mac, where twister runs in a Linux container with a socpuppet that has no QBox in it, `qbox` stops after its tests, here and in CI, whose Intel Macs have no Docker. QBox itself is built only when its pin or its patches change, and cached.
 - 💡 The extension in `python/socpuppet/` is a copy the last tree built left there, dev's or qbox's, refreshed by every build of either, even one with nothing to relink. `pytest` with `SOCPUPPET_CPU=qbox_cpu` on dev's copy stops at once and says to build the qbox tree.
-- ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.py` applies a patch once. Delete `build/qbox` and run it again.
+- ⚠️ A change to a QBox patch is not applied to a QBox that is already built: `tools/build_qbox.py` applies a patch once, and stops when one in its checkout is neither today's nor gone. `uv run python tools/cleanup.py repair` puts QBox's checkout and QEMU's back at their commits, and the next `tools/build_qbox.py` applies today's patches and builds what changed, in minutes ([Cleaning up](#cleaning-up)).
 - **On a Mac** the four commands work natively, with Homebrew's packages and four patches of ours to QBox and QEMU, or in the devcontainer's image with `tools/devcontainer.py` in front of each, which builds for Linux with GCC as CI does. [setup.md](setup.md#5-qbox-optional) has both, and why the container keeps QBox's trees on Docker volumes.
 
 ## pciem, a real host
