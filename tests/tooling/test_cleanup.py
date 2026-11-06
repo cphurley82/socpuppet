@@ -9,8 +9,10 @@ import json
 import os
 import pty
 import re
+import shutil
 import subprocess
 import sys
+import sysconfig
 import tomllib
 from pathlib import Path
 
@@ -33,7 +35,11 @@ def load(name):
 
 @pytest.fixture
 def cleanup(repo):
-    """Run tools/cleanup.py over the throwaway repository."""
+    """Run tools/cleanup.py over the throwaway repository.
+
+    The repository ignores what the real one does.
+    """
+    shutil.copy(REPO / ".gitignore", repo / ".gitignore")
 
     def run(*args, no_color=True):
         env = {k: v for k, v in os.environ.items() if k != "NO_COLOR"}
@@ -188,3 +194,111 @@ def test_the_report_is_plain_when_stdout_is_not_a_terminal(repo, cleanup):
 
     assert "current" in ran.stdout
     assert "\x1b" not in ran.stdout
+
+
+def test_what_is_under_build_that_no_tool_of_today_makes_is_unused_with_its_size(
+    repo, cleanup
+):
+    fill(repo, "build/speed-x/spam.o", 2)
+    fill(repo, "build/asmjit/eggs.a", 1)
+    fill(repo, "build/spam.log", 0.5)
+
+    ran = cleanup()
+
+    assert ran.returncode == 0, ran.stdout
+    for path, size in (
+        ("build/speed-x", "2.0 MB"),
+        ("build/asmjit", "1.0 MB"),
+        ("build/spam.log", "512.0 KB"),
+    ):
+        assert line_of(ran.stdout, path) == [
+            "unused",
+            path,
+            size,
+            "no tool of today",
+            "nothing",
+            "unused",
+        ]
+
+
+def test_an_ignored_leftover_outside_build_is_unused(repo, cleanup):
+    for leftover in ("cable.pcap", ".coverage", "dist/spam.whl"):
+        fill(repo, leftover, 1)
+    fill(repo, "python/spam.egg-info/PKG-INFO", 1)
+
+    ran = cleanup()
+
+    for path in ("cable.pcap", ".coverage", "dist", "python/spam.egg-info"):
+        assert line_of(ran.stdout, path) == [
+            "unused",
+            path,
+            "1.0 MB",
+            "a leftover outside build/",
+            "nothing",
+            "unused",
+        ]
+
+
+def test_what_git_ignores_that_is_no_leftover_is_not_reported(repo, cleanup):
+    fill(repo, ".venv/lib/spam.py", 1)
+    fill(repo, "tools/__pycache__/spam.pyc", 1)
+
+    ran = cleanup()
+
+    assert ".venv" not in ran.stdout
+    assert "__pycache__" not in ran.stdout
+
+
+def test_a_leftover_by_its_name_that_git_does_not_ignore_is_not_reported(
+    repo, cleanup
+):
+    with (repo / ".gitignore").open("a") as gitignore:
+        gitignore.write("!spam.pcap\n")
+    fill(repo, "spam.pcap", 1)
+
+    ran = cleanup()
+
+    assert "spam.pcap" not in ran.stdout
+
+
+def test_an_extension_built_for_another_platform_is_unused_and_this_platforms_is_current(
+    repo, cleanup
+):
+    this = f"python/socpuppet/_core{sysconfig.get_config_var('EXT_SUFFIX')}"
+    other = "python/socpuppet/_core.cpython-312-spam-eggs.so"
+    fill(repo, this, 1)
+    fill(repo, other, 1)
+
+    ran = cleanup()
+
+    assert line_of(ran.stdout, this) == [
+        "current",
+        this,
+        "1.0 MB",
+        "the presets (CMakePresets.json)",
+        "minutes",
+        "trees",
+    ]
+    assert line_of(ran.stdout, other) == [
+        "unused",
+        other,
+        "1.0 MB",
+        "a build for another platform",
+        "nothing",
+        "unused",
+    ]
+
+
+def test_the_report_totals_what_each_level_would_free_each_with_the_levels_before_it(
+    repo, cleanup
+):
+    fill(repo, "build/speed-x/spam.o", 1)
+    fill(repo, "build/dev/spam.o", 2)
+    fill(repo, "build/qbox/spam.o", 3)
+
+    ran = cleanup()
+
+    assert (
+        "Each level would free: unused 1.0 MB; trees 3.0 MB; everything 6.0 MB."
+        in ran.stdout
+    )
