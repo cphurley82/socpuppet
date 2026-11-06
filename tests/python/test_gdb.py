@@ -299,28 +299,54 @@ class TestWhenACpuReachesABreakpoint:
         # is not over.
         port = free_port()
         platform = cpu_waiting_for_a_debugger(port)
-        the_store = RESET_VECTOR + 8  # the program's third instruction
-        ended = threading.Event()
 
-        def run():
-            platform.run(sp.us(10))
-            ended.set()
+        assert not a_run_ends_while_the_cpu_is_stopped(platform, port)
+        assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
 
-        def session(debugger):
-            debugger.set_breakpoint(the_store)
-            debugger.continue_()
-            debugger.wait_for_a_stop()
-            # Half a second of wall clock, for a run that would end to end.
-            ended_while_stopped = ended.wait(0.5)
-            debugger.remove_breakpoint(the_store)
-            return ended_while_stopped
 
-        ended_while_stopped = run_with_a_debugger(
-            platform, port, session, run=run
+@pytest.mark.only_on_qbox(
+    "QEMU's GDB server reads `time` through the platform's hook, which the "
+    "CPU uses too"
+)
+@pytest.mark.platform
+class TestWhenADebuggerReadsTheTimeRegisterOfAStoppedCpu:
+    def test_the_run_still_waits_while_it_is_stopped(self):
+        # 🎓 The debugger's read goes through the hook the CPU reads `time`
+        # by, on QEMU's own thread: it is not the CPU running.
+        port = free_port()
+        platform = cpu_waiting_for_a_debugger(port)
+
+        assert not a_run_ends_while_the_cpu_is_stopped(
+            platform, port, meanwhile=lambda debugger: debugger.register("time")
         )
 
-        assert not ended_while_stopped
-        assert platform.peek32(RESET_VECTOR + 0x200) == 0x5A
+
+def a_run_ends_while_the_cpu_is_stopped(platform, port, meanwhile=None):
+    """Whether a run of ten microseconds ends while a debugger holds the CPU.
+
+    The debugger on `port` stops the CPU at the program's third
+    instruction, does `meanwhile` if anything, and gives the run half a
+    second of wall clock to end, far more than it needs if time moves on.
+    Then it lets the CPU go, so that the run ends either way.
+    """
+    the_store = RESET_VECTOR + 8
+    ended = threading.Event()
+
+    def run():
+        platform.run(sp.us(10))
+        ended.set()
+
+    def session(debugger):
+        debugger.set_breakpoint(the_store)
+        debugger.continue_()
+        debugger.wait_for_a_stop()
+        if meanwhile is not None:
+            meanwhile(debugger)
+        ended_while_stopped = ended.wait(0.5)
+        debugger.remove_breakpoint(the_store)
+        return ended_while_stopped
+
+    return run_with_a_debugger(platform, port, session, run=run)
 
 
 @pytest.mark.platform
@@ -1003,8 +1029,13 @@ class TestWhenADebuggerReadsTheBootingKernelsBannerAgainAndAgain:
 
     `TestWhenADebuggerIsAttachedToABootingKernel`'s scene, which hung CI's
     macos-15 runner once in about 30 nightly runs: the debugger's session
-    was over, and the run never ended. 💡 For a longer stress here, see
-    docs/development.md's tiers of tests.
+    was over, and the run never ended. A continue that came between QBox's
+    look at the machine and its run of the CPU went unheard, and the CPU's
+    next wait for SystemC's time waited on a clock held for the stop
+    (docs/upstream.md). Without its fix it hung about 1 run in 2,000 (2 of
+    about 3,950) on an Apple M4 with 30 workers, so a night's runs rarely
+    catch it; it is here to keep the scene running. 💡 For a longer stress
+    here, see docs/development.md's tiers of tests.
     """
 
     def test_the_debugger_reads_the_banner_and_the_run_ends(
