@@ -986,27 +986,62 @@ class TestWhenADebuggerIsAttachedToABootingKernel:
         assert pc == start_kernel
 
     def test_it_reads_the_kernels_banner_through_its_symbol(self, firmware):
-        port = free_port()
-        board = a_host_with_linux(firmware, gdb_port=port)
-        start_kernel = symbol(firmware(LINUX_MAP), "start_kernel")
-        linux_banner = symbol(firmware(LINUX_MAP), "linux_banner")
-
-        def session(debugger):
-            debugger.set_breakpoint(start_kernel)
-            debugger.continue_()
-            debugger.wait_for_a_stop()
-            banner = debugger.read_memory(linux_banner, len(b"Linux version "))
-            debugger.remove_breakpoint(start_kernel)
-            return banner
-
-        banner = run_with_debuggers(
-            board.platform,
-            {port: session},
-            run=lambda: board.platform.run(sp.ms(5000)),
-            timeout=KERNEL_ANSWERS_WITHIN,
-        )[port]
+        banner = the_kernels_banner_as_a_debugger_reads_it(firmware)
 
         assert banner == b"Linux version "
+
+
+@pytest.mark.long
+@pytest.mark.only_on_qbox(
+    "a hang on QBox's CPU, after a debugger read the kernel's banner and "
+    "said continue"
+)
+@pytest.mark.platform
+@pytest.mark.parametrize("run", range(STRESS_RUNS))
+class TestWhenADebuggerReadsTheBootingKernelsBannerAgainAndAgain:
+    """The banner read through its symbol, again and again, for a rare hang.
+
+    `TestWhenADebuggerIsAttachedToABootingKernel`'s scene, which hung CI's
+    macos-15 runner once in about 30 nightly runs: the debugger's session
+    was over, and the run never ended. 💡 For a longer stress here, see
+    docs/development.md's tiers of tests.
+    """
+
+    def test_the_debugger_reads_the_banner_and_the_run_ends(
+        self, firmware, run
+    ):
+        banner = the_kernels_banner_as_a_debugger_reads_it(firmware)
+
+        assert banner == b"Linux version "
+
+
+def the_kernels_banner_as_a_debugger_reads_it(firmware):
+    """The first words of `linux_banner`, read by a debugger at `start_kernel`.
+
+    The host boots Linux with a debugger attached, which stops the kernel
+    at `start_kernel`, reads the banner by its symbol's virtual address,
+    takes the breakpoint away and lets the kernel go on; the run ends 5 s
+    of simulated time later.
+    """
+    port = free_port()
+    board = a_host_with_linux(firmware, gdb_port=port)
+    start_kernel = symbol(firmware(LINUX_MAP), "start_kernel")
+    linux_banner = symbol(firmware(LINUX_MAP), "linux_banner")
+
+    def session(debugger):
+        debugger.set_breakpoint(start_kernel)
+        debugger.continue_()
+        debugger.wait_for_a_stop()
+        banner = debugger.read_memory(linux_banner, len(b"Linux version "))
+        debugger.remove_breakpoint(start_kernel)
+        return banner
+
+    return run_with_debuggers(
+        board.platform,
+        {port: session},
+        run=lambda: board.platform.run(sp.ms(5000)),
+        timeout=KERNEL_ANSWERS_WITHIN,
+    )[port]
 
 
 def symbol(system_map, name):
