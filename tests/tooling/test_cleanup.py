@@ -4,6 +4,7 @@ Each test runs the tool as a person would, on a throwaway repository with
 build trees of a few megabytes, and reads what it says and what it left.
 """
 
+import collections
 import importlib.util
 import json
 import os
@@ -24,7 +25,12 @@ MEGABYTE = 1024 * 1024
 
 
 def load(name):
-    """A script of tools/, as a module."""
+    """A script of tools/, as a module.
+
+    A script imports its siblings, as it does when it is run, from tools/.
+    """
+    if str(REPO / "tools") not in sys.path:
+        sys.path.insert(0, str(REPO / "tools"))
     spec = importlib.util.spec_from_file_location(
         name, REPO / "tools" / f"{name}.py"
     )
@@ -97,6 +103,15 @@ def fill(repo, path, megabytes):
     return file
 
 
+BUILD_QBOX = load("build_qbox")
+#: QBox's checkout and QEMU's, from the top of the repository, and the name
+#: of a patch for each.
+Patched = collections.namedtuple("Patched", "path patch")
+QBOX, QEMU = (
+    Patched(each.in_repository().as_posix(), each.glob.replace("*", "spam"))
+    for each in (BUILD_QBOX.QBOX, BUILD_QBOX.QEMU)
+)
+
 #: A patch of the kind cmake/patches holds: it changes spam.txt from "one"
 #: to "two", and adds eggs.txt.
 PATCH = """\
@@ -123,12 +138,12 @@ CHECKOUTS = {
 }
 
 
-def checkout(repo, path, patch, state):
-    """A git checkout at `path`, of one commit, and `patch` for it.
+def checkout(repo, which, state):
+    """QBox's checkout or QEMU's, `which`, of one commit, and a patch for it.
 
     `state` is one of CHECKOUTS. The patch is written to cmake/patches.
     """
-    tree = repo / path
+    tree = repo / which.path
     tree.mkdir(parents=True)
     git = ("git", "-C", str(tree))
     subprocess.run([*git, "init", "--quiet"], check=True)
@@ -137,7 +152,7 @@ def checkout(repo, path, patch, state):
     subprocess.run([*git, "commit", "--quiet", "-m", "spam"], check=True)
     for name, text in CHECKOUTS[state].items():
         (tree / name).write_text(text)
-    write_patch(repo, patch)
+    write_patch(repo, which.patch)
     return tree
 
 
@@ -406,38 +421,34 @@ def test_repair_removes_nothing_unused_and_no_tree(repo, cleanup):
 def test_a_qbox_patch_that_neither_applies_nor_reverses_makes_the_checkout_stale_and_the_report_warns_of_lost_edits(
     repo, cleanup
 ):
-    checkout(
-        repo, "build/qbox/src", "qbox-spam.patch", "patched by an older patch"
-    )
+    checkout(repo, QBOX, "patched by an older patch")
 
     ran = cleanup()
 
     assert ran.returncode == 0, ran.stdout
-    state, path, _size, *rest = line_of(ran.stdout, "build/qbox/src")
+    state, path, _size, *rest = line_of(ran.stdout, QBOX.path)
     assert [state, path, *rest] == [
         "stale",
-        "build/qbox/src",
-        "qbox-spam.patch neither applies nor reverses",
+        QBOX.path,
+        f"{QBOX.patch} neither applies nor reverses",
         "minutes",
         "repair",
     ]
     assert (
-        "⚠️ repair runs git reset --hard and git clean -fd in build/qbox/src, "
-        "discarding uncommitted edits" in ran.stdout
+        "⚠️ repair runs git reset --hard and git clean -fd in "
+        f"{QBOX.path}, discarding uncommitted edits" in ran.stdout
     )
 
 
 def test_repair_puts_the_checkout_back_at_its_commit_so_the_patch_applies_and_says_so(
     repo, cleanup
 ):
-    src = checkout(
-        repo, "build/qbox/src", "qbox-spam.patch", "patched by an older patch"
-    )
+    src = checkout(repo, QBOX, "patched by an older patch")
 
     ran = cleanup("repair")
 
-    assert "🧹 reset build/qbox/src" in ran.stdout
-    assert applies(src, repo / "cmake/patches/qbox-spam.patch")
+    assert f"🧹 reset {QBOX.path}" in ran.stdout
+    assert applies(src, repo / "cmake/patches" / QBOX.patch)
     assert not (src / "eggs.txt").exists()
 
 
@@ -453,9 +464,7 @@ def applies(checkout, patch):
 
 
 def test_the_report_alone_leaves_a_stale_checkout_as_it_is(repo, cleanup):
-    src = checkout(
-        repo, "build/qbox/src", "qbox-spam.patch", "patched by an older patch"
-    )
+    src = checkout(repo, QBOX, "patched by an older patch")
 
     cleanup()
 
@@ -467,13 +476,13 @@ def test_the_report_alone_leaves_a_stale_checkout_as_it_is(repo, cleanup):
 def test_a_checkout_its_patch_applies_to_or_is_applied_in_is_not_stale_and_repair_leaves_it(
     repo, cleanup, state
 ):
-    src = checkout(repo, "build/qbox/src", "qbox-spam.patch", state)
+    src = checkout(repo, QBOX, state)
     before = {name: (src / name).read_text() for name in CHECKOUTS[state]}
 
     reported = cleanup()
     repaired = cleanup("repair")
 
-    assert "build/qbox/src" not in reported.stdout
+    assert QBOX.path not in reported.stdout
     assert "reset" not in repaired.stdout
     assert {name: (src / name).read_text() for name in before} == before
 
@@ -481,21 +490,18 @@ def test_a_checkout_its_patch_applies_to_or_is_applied_in_is_not_stale_and_repai
 def test_qemus_checkout_is_stale_and_repaired_the_same_way_by_the_libqemu_patches(
     repo, cleanup
 ):
-    path = "build/qbox/build/_deps/libqemu-src"
-    src = checkout(
-        repo, path, "libqemu-spam.patch", "patched by an older patch"
-    )
+    src = checkout(repo, QEMU, "patched by an older patch")
 
     reported = cleanup()
     repaired = cleanup("repair")
 
-    assert line_of(reported.stdout, path)[0] == "stale"
-    assert f"🧹 reset {path}" in repaired.stdout
+    assert line_of(reported.stdout, QEMU.path)[0] == "stale"
+    assert f"🧹 reset {QEMU.path}" in repaired.stdout
     assert (src / "spam.txt").read_text() == "one\n"
 
 
 def test_a_qbox_patch_with_no_checkout_to_go_in_is_not_a_fault(repo, cleanup):
-    write_patch(repo, "qbox-spam.patch")
+    write_patch(repo, QBOX.patch)
 
     ran = cleanup("repair")
 

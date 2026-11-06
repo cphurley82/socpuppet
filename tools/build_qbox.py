@@ -23,12 +23,17 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import IO
+from typing import IO, NamedTuple
 
 from needs import Failed, not_installed
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 PATCHES = REPOSITORY / "cmake" / "patches"
+#: Where QBox's source, build and install go unless asked for elsewhere,
+#: from the top of the repository.
+ROOT = Path("build") / "qbox"
+#: Where QBox is built, from the build's root.
+TREE = Path("build")
 QBOX_COMMIT = "4d63017c88a147839d49028d0c60666d691460cc"  # 2026-09-24
 #: The file of QBox's install that CMake finds it by (cmake/Dependencies.cmake),
 #: under the install's prefix: so an install that has it is built.
@@ -37,6 +42,25 @@ PACKAGE = Path("lib/cmake/qbox-2.0/qboxConfig.cmake")
 #: a network that is down: GitHub sometimes answers a download with nothing
 #: when it answers everything else.
 CONFIGURE_TRIES = 3
+
+
+class Checkout(NamedTuple):
+    """A git checkout the build patches, and the patches it applies to it."""
+
+    #: From the build's root.
+    path: Path
+    #: A glob over cmake/patches: the patches that go in it.
+    glob: str
+
+    def in_repository(self) -> Path:
+        """Where it is from the top of the repository, at the usual root."""
+        return ROOT / self.path
+
+
+QBOX = Checkout(Path("src"), "qbox-*.patch")
+#: QEMU's, which QBox's configure fetches into QBox's build tree.
+QEMU = Checkout(TREE / "_deps" / "libqemu-src", "libqemu-*.patch")
+CHECKOUTS = (QBOX, QEMU)
 
 # What QBox's build stops without: each program or library, as the name it
 # is looked for by, the Ubuntu package it comes in, and the Homebrew
@@ -79,7 +103,7 @@ def main() -> int:
     except Failed as failure:
         print(f"build_qbox.py: {failure}", file=sys.stderr)
         return 1
-    if root == REPOSITORY / "build" / "qbox":
+    if root == REPOSITORY / ROOT:
         print("Next: uv run cmake --preset qbox")
     else:
         print(
@@ -98,7 +122,7 @@ def add_build_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--root",
         type=Path,
-        default=REPOSITORY / "build" / "qbox",
+        default=REPOSITORY / ROOT,
         help="where QBox's source, build and install go (build/qbox)",
     )
     parser.add_argument(
@@ -124,7 +148,7 @@ def build(root: Path, jobs: int) -> None:
     check_what_it_needs()
     root.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    source = root / "src"
+    source = root / QBOX.path
     if not (source / ".git").is_dir():
         git("clone", "--quiet", "https://github.com/qualcomm/qbox", str(source))
     head = subprocess.run(
@@ -136,16 +160,14 @@ def build(root: Path, jobs: int) -> None:
         git("-C", str(source), "fetch", "--quiet", "origin", QBOX_COMMIT)
         git("-C", str(source), "checkout", "--quiet", "--force", QBOX_COMMIT)
     print(f"🧦 QBox at {QBOX_COMMIT[:8]}, in {source}", flush=True)
-    for patch in sorted(PATCHES.glob("qbox-*.patch")):
-        apply(source, patch, root)
+    patch(root, QBOX)
 
-    tree = root / "build"
+    tree = root / TREE
     install = install_of(root)
     configure(source, tree, install)
     # QEMU is fetched while QBox is configured, and built after. Its
     # patches go in between.
-    for patch in sorted(PATCHES.glob("libqemu-*.patch")):
-        apply(tree / "_deps" / "libqemu-src", patch, root)
+    patch(root, QEMU)
     command("cmake", "--build", str(tree), "--parallel", str(jobs))
     with (root / "install.log").open("w") as log:
         command("cmake", "--install", str(tree), stdout=log)
@@ -229,28 +251,50 @@ def check_what_it_needs() -> None:
         )
 
 
+def patch(root: Path, checkout: Checkout) -> None:
+    """Apply each of `checkout`'s patches to it, in the build at `root`."""
+    for each in sorted(PATCHES.glob(checkout.glob)):
+        apply(root / checkout.path, each, root)
+
+
 def apply(tree: Path, patch: Path, root: Path) -> None:
     """Apply a patch unless it is there already, and stop if it is neither.
 
     `root` is the build's, which a patch that is neither is fixed by
     deleting.
     """
-    git_apply = ["git", "-C", str(tree), "apply"]
-    if (
-        subprocess.run(
-            [*git_apply, "--check", str(patch)], capture_output=True
-        ).returncode
-        == 0
-    ):
+    if applies(tree, patch):
         git("-C", str(tree), "apply", str(patch))
         print(f"  patched: {patch.name}")
-    elif subprocess.run(
-        [*git_apply, "--reverse", "--check", str(patch)], capture_output=True
-    ).returncode:
+    elif not applies(tree, patch, reverse=True):
         raise Failed(
             f"{patch.name} does not apply to {tree}.\n"
             f"Delete {root} and run this again."
         )
+
+
+def goes_in(tree: Path, patch: Path) -> bool:
+    """Whether `patch` applies to `tree`, or is applied in it already."""
+    return applies(tree, patch) or applies(tree, patch, reverse=True)
+
+
+def applies(tree: Path, patch: Path, *, reverse: bool = False) -> bool:
+    """Whether `patch` applies to `tree`, or with `reverse`, comes out."""
+    return (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(tree),
+                "apply",
+                *(["--reverse"] if reverse else []),
+                "--check",
+                str(patch),
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
 
 def git(*args: str) -> None:

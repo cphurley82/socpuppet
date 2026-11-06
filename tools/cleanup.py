@@ -24,6 +24,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import build_qbox
+
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
@@ -114,13 +116,8 @@ EXTENSION = Tree(
 )
 
 
-#: QBox's checkout and QEMU's, under build/qbox, and the patches of
-#: cmake/patches that tools/build_qbox.py applies to each.
-CHECKOUTS = (
-    ("build/qbox/src", "qbox-*.patch"),
-    ("build/qbox/build/_deps/libqemu-src", "libqemu-*.patch"),
-)
-
+#: Where the patches are, from the top of the repository.
+PATCHES = build_qbox.PATCHES.relative_to(build_qbox.REPOSITORY)
 
 #: What repair runs in a stale checkout, discarding uncommitted edits, and
 #: how the report names it.
@@ -275,14 +272,15 @@ def stale_checkouts(root: Path) -> list[Found]:
     neither, and stops it.
     """
     found = []
-    for path, patches in CHECKOUTS:
+    for each in build_qbox.CHECKOUTS:
+        path = each.in_repository().as_posix()
         checkout = root / path
         if not (checkout / ".git").is_dir():
             continue
         stuck = [
             patch.name
-            for patch in sorted((root / "cmake" / "patches").glob(patches))
-            if not goes_in(checkout, patch)
+            for patch in sorted((root / PATCHES).glob(each.glob))
+            if not build_qbox.goes_in(checkout, patch)
         ]
         if stuck:
             found.append(
@@ -301,26 +299,6 @@ def stale_checkouts(root: Path) -> list[Found]:
                 )
             )
     return found
-
-
-def goes_in(checkout: Path, patch: Path) -> bool:
-    """Whether `patch` applies to `checkout`, or is applied already."""
-    return any(
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(checkout),
-                "apply",
-                *direction,
-                "--check",
-                str(patch),
-            ],
-            capture_output=True,
-        ).returncode
-        == 0
-        for direction in ((), ("--reverse",))
-    )
 
 
 def reset(root: Path, path: str) -> str:
