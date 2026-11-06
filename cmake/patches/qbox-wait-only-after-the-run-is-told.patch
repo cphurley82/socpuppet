@@ -1,0 +1,78 @@
+--- a/qemu-components/common/include/cpu.h
++++ b/qemu-components/common/include/cpu.h
+@@ -564,9 +564,59 @@
+             sync_with_kernel();
+             prepare_run_cpu();
+         }
++    }
++
++    /*
++     * A machine last told stopped has run since, as the CPU found: it is
++     * told running, before anything waits for SystemC's time.
++     *
++     * The look in prepare_run_cpu tells a stop and lets go of the BQL, and a
++     * CPU that is to take its stop can run; the BQL is also let go inside the
++     * run, before the vCPU is run. A debugger's continue that comes in either
++     * gap starts the machine again, its kick spent while nothing waits for
++     * it, and the CPU runs instructions, its deadline armed or not, so that
++     * it gets ahead of SystemC's time. Its next access, or the sync after
++     * the run, then waits for SystemC's time to catch up, which a platform
++     * holding its clock for the stop never lets it do, and the CPU never
++     * looks again. Telling the run first is always safe; a stop is told
++     * after the sync, by the next look.
++     */
++    void tell_the_run(uint64_t stops)
++    {
++        m_machine_stopped = false;
++        m_machine_stops = stops;
++        if (m_machine_state_cb) m_machine_state_cb(false);
++    }
++
++    /*
++     * The CPU asks for its lead as it runs, for an access, which a target may
++     * answer by waiting for SystemC's time, or in a hook of the platform's:
++     * a CPU that runs instructions is a machine that runs. Only on SystemC's
++     * thread, where the coroutine runs the CPU: QEMU's GDB server reads
++     * `time` and the AIA's registers through the same hooks, on QEMU's own
++     * thread, while the machine stays stopped. Only the count of stops is
++     * read, as the BQL may not be held here.
++     */
++    void hear_the_cpu_run()
++    {
++        if (m_machine_stopped && socket.is_on_sysc()) tell_the_run(m_inst.get().vm_stop_count());
+     }
+ 
+     /*
++     * Before a run's sync: the machine has run since it was told stopped if
++     * it runs now or has stopped again since. Called with the BQL held, as
++     * the CPU loop leaves it.
++     */
++    void tell_a_run_since_the_told_stop()
++    {
++        if (!m_machine_stopped) return;
++        const bool stopped = m_inst.get().vm_is_stopped();
++        const uint64_t stops = m_inst.get().vm_stop_count();
++        if (stopped && stops == m_machine_stops) return;
++        tell_the_run(stops);
++    }
++
++    /*
+      * SystemC thread entry when running in coroutine mode.
+      */
+     void mainloop_thread_coroutine()
+@@ -600,6 +650,7 @@
+             if (!m_cpu.is_stopped()) rearm_deadline_timer();
+             run_cpu_loop();
+             m_deadline_timer->del();
++            tell_a_run_since_the_told_stop();
+             sync_with_kernel();
+         }
+     }
+@@ -901,6 +952,7 @@
+     virtual sc_core::sc_time initiator_get_local_time() override
+     {
+         if (m_finished) return sc_core::SC_ZERO_TIME;
++        hear_the_cpu_run();
+ 
+         int64_t vclock_now = cpu_time_ns();
+         sc_core::sc_time sc_t = sc_core::sc_time_stamp();

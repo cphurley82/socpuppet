@@ -5,8 +5,10 @@ packets of the form `$<body>#<checksum>`, each acknowledged with a `+`.
 Using it directly keeps the tests free of a GDB binary.
 """
 
+import re
 import socket
 import time
+from xml.etree import ElementTree
 
 #: How long to wait between tries of a port that is not open yet: short
 #: beside the run's start, which is when QBox's CPU opens its port.
@@ -122,14 +124,18 @@ class GdbClient:
             read += bytes.fromhex(reply)
         return read
 
-    def target_description(self):
+    def target_description(self, annex="target.xml"):
         """The XML a server describes its CPU with: which kind of core,
-        and which registers it has."""
+        and which registers it has.
+
+        `annex` names the part: the description proper, or one of the
+        files it includes (`<xi:include href="...">`).
+        """
         xml = ""
         while True:
             # The answer comes a piece at a time. Each piece starts with
             # `m` if there is more to come and `l` if it is the last.
-            piece = self.ask(f"qXfer:features:read:target.xml:{len(xml):x},400")
+            piece = self.ask(f"qXfer:features:read:{annex}:{len(xml):x},400")
             if piece[:1] not in ("m", "l"):
                 raise RuntimeError(
                     f"The server gave no target description: {piece!r}."
@@ -137,6 +143,33 @@ class GdbClient:
             xml += piece[1:]
             if piece[0] == "l":
                 return xml
+
+    def register(self, name):
+        """The value of the register `name`, by the number the server gives it.
+
+        The server says each register's number in its description; a CSR
+        such as `time` has a number of the server's choosing.
+        """
+        # ⚠️ QEMU's description proper includes its parts with `xi:include`
+        # and never declares the `xi` prefix, which an XML parser refuses,
+        # so they are found by their `href`. Each part parses. A register
+        # that gives no `regnum`, as QEMU's core registers do not, has the
+        # one before it plus one, counted on through the parts in order,
+        # and the first is 0.
+        number = -1
+        for annex in re.findall(r'href="([^"]+)"', self.target_description()):
+            part = ElementTree.fromstring(self.target_description(annex))
+            for reg in part.iter("reg"):
+                regnum = reg.get("regnum")
+                number = int(regnum) if regnum is not None else number + 1
+                if reg.get("name") == name:
+                    value = self.ask(f"p{number:x}")
+                    if not value or value.startswith("E"):
+                        raise RuntimeError(
+                            f"The server would not read {name!r}: {value!r}."
+                        )
+                    return int.from_bytes(bytes.fromhex(value), "little")
+        raise RuntimeError(f"The server describes no register {name!r}.")
 
     def monitor(self, command):
         """What the server prints for GDB's `monitor <command>`.
