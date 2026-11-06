@@ -296,29 +296,7 @@ class TestWhenAPlatformTestRunsAfterOneThatWroteToItsTemporaryDirectory:
 class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     @pytest.fixture
     def result(self, session_with_socpuppet):
-        # The clock starts with the test, not with its process, so the
-        # shortest limit will do however slowly the process starts.
-        session_with_socpuppet.makeini(
-            "[pytest]\nsocpuppet_platform_timeout = 1\n"
-        )
-        session_with_socpuppet.makepyfile(
-            """
-            import threading
-            import time
-            import pytest
-
-            @pytest.mark.platform
-            def test_that_never_ends():
-                threading.Thread(
-                    target=time.sleep, args=(60,), daemon=True
-                ).start()
-                time.sleep(60)
-
-            def test_after_it():
-                pass
-            """
-        )
-        return session_with_socpuppet.runpytest_subprocess()
+        return a_test_that_never_ends(session_with_socpuppet)
 
     def test_it_is_stopped_and_reported_as_failed(self, result):
         result.assert_outcomes(failed=1, passed=1)
@@ -344,6 +322,34 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         )
 
 
+def a_test_that_never_ends(session):
+    """Run a platform test that sleeps in two threads, past a 1 s limit.
+
+    A test after it, which is not a platform test, passes.
+    """
+    # The clock starts with the test, not with its process, so the
+    # shortest limit will do however slowly the process starts.
+    session.makeini("[pytest]\nsocpuppet_platform_timeout = 1\n")
+    session.makepyfile(
+        """
+        import threading
+        import time
+        import pytest
+
+        @pytest.mark.platform
+        def test_that_never_ends():
+            threading.Thread(
+                target=time.sleep, args=(60,), daemon=True
+            ).start()
+            time.sleep(60)
+
+        def test_after_it():
+            pass
+        """
+    )
+    return session.runpytest_subprocess()
+
+
 def skip_unless_a_debugger_can_attach(result):
     """Skip a test of native stacks where none could be taken.
 
@@ -358,6 +364,22 @@ def skip_unless_a_debugger_can_attach(result):
             f"{debugger} may not attach to a process here. On a Mac, "
             "`sudo DevToolsSecurity -enable` lets it."
         )
+
+
+class TestWhenAPlatformTestRunsOutOfTimeWhereThereIsNoDebugger:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        # Python is started by its full path, so nothing else is needed.
+        monkeypatch.setenv("PATH", str(session_with_socpuppet.mkdir("empty")))
+        return a_test_that_never_ends(session_with_socpuppet)
+
+    def test_the_failure_says_which_debugger_to_install(self, result):
+        result.stdout.fnmatch_lines(
+            [f"*Install {pytest_plugin.native_debugger()}*"]
+        )
+
+    def test_the_failure_still_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
 
 
 class TestWhenAPlatformTestsProcessIsSlowToStart:
