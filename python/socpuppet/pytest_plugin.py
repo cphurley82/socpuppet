@@ -91,6 +91,15 @@ def patience_factor() -> int:
     return 3 if intel_mac else 1
 
 
+def native_debugger() -> str:
+    """The debugger that takes a hung test's native stacks on this machine.
+
+    lldb on a Mac, which comes with Xcode's command-line tools, and gdb
+    elsewhere.
+    """
+    return "lldb" if platform.system() == "Darwin" else "gdb"
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     """Add the setting for how long a `platform` test may run."""
     parser.addini(
@@ -329,8 +338,8 @@ def _run_in_child_process(
             stderr=subprocess.PIPE,
             text=True,
         )
-        stdout, stderr, timed_out = _wait_for_child(child, report_file, timeout)
-        if timed_out:
+        stdout, stderr, stacks = _wait_for_child(child, report_file, timeout)
+        if stacks is not None:
             unfinished = (
                 f"The test ran for longer than {_seconds(timeout)} and was "
                 "stopped. A script or a firmware that loops for ever is the "
@@ -376,7 +385,8 @@ def _run_in_child_process(
         reports[_collected_id(first)].append(
             _unfinished_report(
                 first,
-                f"{unfinished} Its output follows.\n\n{output}",
+                f"{unfinished} Its output follows.\n\n{output}"
+                + ("" if stacks is None else f"\n\n{stacks}"),
                 phases_reported={r.when for r in reports[_collected_id(first)]},
             )
         )
@@ -398,12 +408,13 @@ _POLL_SECONDS = 0.1
 
 def _wait_for_child(
     child: subprocess.Popen[str], report_file: IO[bytes], timeout: float
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, str | None]:
     """Wait for a child to end, and stop it if a test runs out of time.
 
     Each test has ``timeout`` seconds from the line in ``report_file`` that
     says it started, and 0 is no limit. Returns what the child wrote to
-    stdout and stderr, and whether it was stopped.
+    stdout and stderr, and, if it was stopped, every thread's native stack
+    as it was before it was (None if it ended by itself).
     """
     # ⚠️ No limit until the first test starts. The session collected the
     # same files with the same conftests before it started the child, so a
@@ -412,15 +423,18 @@ def _wait_for_child(
     while True:
         try:
             stdout, stderr = child.communicate(timeout=_POLL_SECONDS)
-            return stdout, stderr, False
+            return stdout, stderr, None
         except subprocess.TimeoutExpired:
             # Nothing the child wrote is lost: the next call carries on.
             pass
         if timeout and _a_test_started(report_file):
             deadline = time.monotonic() + timeout
         if time.monotonic() > deadline:
+            # Taken while the child is still where it got stuck: the abort
+            # below moves every thread into the fault handler and out.
+            stacks = _native_stacks(child.pid)
             stdout, stderr = _stop(child)
-            return stdout, stderr, True
+            return stdout, stderr, stacks
 
 
 def _a_test_started(report_file: IO[bytes]) -> bool:
@@ -493,6 +507,26 @@ def describe_exit_status(returncode: int) -> str:
 
 def _seconds(seconds: float) -> str:
     return f"{seconds:g} second{'' if seconds == 1 else 's'}"
+
+
+def _native_stacks(pid: int) -> str:
+    """Every thread's native stack in process ``pid``, under a heading.
+
+    pytest's fault handler shows where Python was, and only in the thread
+    it runs on; a hang in C++, as two threads wait for each other, needs
+    every thread's frames in C and C++ too.
+    """
+    debugger = native_debugger()
+    command = {
+        "lldb": ["lldb", "--batch", "-p", str(pid)]
+        + ["-o", "thread backtrace all", "-o", "detach"],
+        "gdb": ["gdb", "-p", str(pid), "-batch", "-ex", "thread apply all bt"],
+    }[debugger]
+    found = subprocess.run(command, capture_output=True, text=True)
+    return (
+        f"Every thread's native stack, as {debugger} found it before the "
+        f"test was stopped:\n\n{found.stdout}{found.stderr}"
+    )
 
 
 # How long a child that was told to stop gets to say where it was.
