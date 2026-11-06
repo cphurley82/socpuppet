@@ -363,13 +363,16 @@ def _run_in_child_process(
             text=True,
         )
         stdout, stderr, stacks = _wait_for_child(child, report_file, timeout)
-        if stacks is not None:
+        output = stdout + stderr
+        timed_out = stacks is not None
+        if timed_out:
             unfinished = (
                 f"The test ran for longer than {_seconds(timeout)} and was "
                 "stopped. A script or a firmware that loops for ever is the "
                 "usual cause. If the test needs longer, raise "
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
+            output += f"\n\n{stacks}"
         elif child.returncode not in _FINISHED:
             unfinished = (
                 "The test's process exited with status "
@@ -378,7 +381,6 @@ def _run_in_child_process(
             )
         else:
             unfinished = None
-        output = stdout + stderr
         reports: dict[str, list[pytest.TestReport]] = {
             _collected_id(item): [] for item in items
         }
@@ -409,8 +411,7 @@ def _run_in_child_process(
         reports[_collected_id(first)].append(
             _unfinished_report(
                 first,
-                f"{unfinished} Its output follows.\n\n{output}"
-                + ("" if stacks is None else f"\n\n{stacks}"),
+                f"{unfinished} Its output follows.\n\n{output}",
                 phases_reported={r.when for r in reports[_collected_id(first)]},
             )
         )
@@ -536,8 +537,21 @@ def _seconds(seconds: float) -> str:
 # How long a debugger gets to attach to a test that ran out of time and
 # take every thread's stack. lldb takes about a second over a Python on an
 # Apple M4; a debugger that takes far longer is stopped, so that the failure
-# still comes.
+# still comes. Not a setting: the plugin's tests shorten it.
 DEBUGGER_SECONDS = 120.0
+
+# What each debugger is told, before the process's number, to take every
+# thread's stack and let go; and how to let it attach where it may not.
+_BACKTRACE_ALL = {
+    "lldb": ["--batch", "-o", "thread backtrace all", "-o", "detach", "-p"],
+    "gdb": ["-batch", "-ex", "thread apply all bt", "-p"],
+}
+# 🎓 macOS lets a debugger attach to a process it did not start only with
+# the developer tools' security switched on.
+_LETTING_IT_ATTACH = {
+    "lldb": " On a Mac, `sudo DevToolsSecurity -enable` lets it attach.",
+    "gdb": "",
+}
 
 
 def _native_stacks(pid: int) -> str:
@@ -553,32 +567,25 @@ def _native_stacks(pid: int) -> str:
             f"Install {debugger} to see every thread's native stack here "
             "the next time a test runs out of time."
         )
-    command = {
-        "lldb": ["lldb", "--batch", "-p", str(pid)]
-        + ["-o", "thread backtrace all", "-o", "detach"],
-        "gdb": ["gdb", "-p", str(pid), "-batch", "-ex", "thread apply all bt"],
-    }[debugger]
+    command = [debugger, *_BACKTRACE_ALL[debugger], str(pid)]
     try:
         found = subprocess.run(
             command, capture_output=True, text=True, timeout=DEBUGGER_SECONDS
         )
     except subprocess.TimeoutExpired:
+        # ⚠️ Only the debugger is killed: lldb's debugserver, if it had
+        # attached, may keep the child stopped, so that the abort's fault
+        # handler never writes and the child is killed after its last words'
+        # wait instead.
         return (
             f"{debugger} took longer than {_seconds(DEBUGGER_SECONDS)} to "
             "take the threads' native stacks, and was stopped."
         )
     said = found.stdout + found.stderr
     if found.returncode != 0:
-        # 🎓 macOS lets a debugger attach to a process it did not start
-        # only with the system's developer tools security switched on.
-        letting_it = (
-            " On a Mac, `sudo DevToolsSecurity -enable` lets it attach."
-            if debugger == "lldb"
-            else ""
-        )
         return (
             f"{debugger} could not take the threads' native stacks, and "
-            f"said what follows.{letting_it}\n\n{said}"
+            f"said what follows.{_LETTING_IT_ATTACH[debugger]}\n\n{said}"
         )
     return (
         f"Every thread's native stack, as {debugger} found it before the "
