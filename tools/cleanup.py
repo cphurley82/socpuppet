@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""🧹 What is in build/, and who made it.
+"""🧹 What is in build/, and what a build or a test left outside it.
 
 Usage:
   uv run python tools/cleanup.py          # the report: changes nothing
 
 Each tree under build/ is made by one tool of the repo, and remade by
 running it again, in minutes or in hours. The report names each, its size,
-what makes it and how long that takes, and the level that removes it.
+what makes it and how long that takes, and the level that removes it; and
+what no tool of today makes, under build/ and outside it, as unused.
 """
 
 import argparse
 import enum
+import fnmatch
 import os
 import stat
+import subprocess
 import sys
+import sysconfig
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +28,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 class Level(enum.Enum):
     """How much a run clears away, each level what the one before does too."""
 
+    UNUSED = "unused"
     TREES = "trees"
     EVERYTHING = "everything"
 
@@ -40,6 +45,17 @@ class Tree:
     cost: str
     #: The level that removes it.
     level: Level
+
+    def found(self, root: Path) -> "Found":
+        """What the report says of it, in `root`."""
+        return Found(
+            self.path,
+            size_of(root / self.path),
+            State.CURRENT,
+            self.made_by,
+            self.cost,
+            self.level,
+        )
 
 
 PRESETS = "the presets (CMakePresets.json)"
@@ -71,15 +87,41 @@ TREES = (
 )
 
 
+#: What a run of the tests or of an example leaves outside build/, which git
+#: ignores and nothing reads again, by the name of the file or directory.
+LEFTOVERS = (
+    ".coverage",
+    ".coverage.*",
+    "dist",
+    "wheelhouse",
+    "*.egg-info",
+    "*.pcap",
+)
+
+
+#: The extension a build copies into the package, for each platform it was
+#: built for, and this platform's.
+EXTENSIONS = "python/socpuppet/_core.*.so"
+EXTENSION = Tree(
+    f"python/socpuppet/_core{sysconfig.get_config_var('EXT_SUFFIX')}",
+    PRESETS,
+    "minutes",
+    Level.TREES,
+)
+
+
 class State(enum.Enum):
     """What the report says of a thing it found."""
 
     #: Made by a tool of today, and as that tool left it.
     CURRENT = "current"
+    #: Made by nothing of today: a tree a tool used to build in, a log, a
+    #: test's leftover, an extension built for another platform.
+    UNUSED = "unused"
 
 
 #: How a terminal is told to color each state, and to stop.
-COLORS = {State.CURRENT: "\033[32m"}
+COLORS = {State.CURRENT: "\033[32m", State.UNUSED: "\033[31m"}
 RESET = "\033[0m"
 
 #: How each column of the report is aligned: the size to the right.
@@ -111,7 +153,7 @@ class Found:
 
 
 def main() -> int:
-    """Report what is in build/. Returns the exit status."""
+    """Report what is in build/, and left outside it. Returns the status."""
     parser = argparse.ArgumentParser(
         prog="tools/cleanup.py",
         description=__doc__,
@@ -127,25 +169,93 @@ def main() -> int:
 
 
 def survey(root: Path) -> list[Found]:
-    """What is under `root`'s build/, of the trees the tools make."""
+    """What is in `root`'s build/, and what was left outside it."""
+    return owned(root) + unused_in_build(root) + outside_build(root)
+
+
+def owned(root: Path) -> list[Found]:
+    """The trees of `root`'s build/ that the tools of today make."""
     return [
-        Found(
-            tree.path,
-            size_of(root / tree.path),
-            State.CURRENT,
-            tree.made_by,
-            tree.cost,
-            tree.level,
-        )
-        for tree in TREES
-        if os.path.lexists(root / tree.path)
+        tree.found(root) for tree in TREES if os.path.lexists(root / tree.path)
     ]
+
+
+def unused_in_build(root: Path) -> list[Found]:
+    """What is in `root`'s build/ that no tool of today makes."""
+    build = root / "build"
+    if not build.is_dir():
+        return []
+    paths = {tree.path for tree in TREES}
+    return [
+        found_unused(root, path)
+        for path in sorted(f"build/{name}" for name in os.listdir(build))
+        if path not in paths
+    ]
+
+
+def outside_build(root: Path) -> list[Found]:
+    """What a build or a test left in `root`, outside build/.
+
+    The extension a build copies into the package is current if it was
+    built for this platform, and unused if for another. A leftover is
+    unused. The rest that git ignores, the virtual environment and the
+    caches, it leaves alone.
+    """
+    found = []
+    for path in ignored(root):
+        if path == EXTENSION.path:
+            found.append(EXTENSION.found(root))
+        elif fnmatch.fnmatchcase(path, EXTENSIONS):
+            found.append(
+                found_unused(root, path, "a build for another platform")
+            )
+        elif any(
+            fnmatch.fnmatchcase(Path(path).name, each) for each in LEFTOVERS
+        ):
+            found.append(found_unused(root, path, "a leftover outside build/"))
+    return found
+
+
+def ignored(root: Path) -> list[str]:
+    """What git ignores in `root` outside build/, a directory as one entry.
+
+    Only what git ignores, so that nothing of the repository's own is ever
+    named.
+    """
+    listed = subprocess.run(
+        [
+            *("git", "-C", str(root), "ls-files", "-z"),
+            *("--others", "--ignored", "--exclude-standard", "--directory"),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return sorted(
+        path.rstrip("/")
+        for path in listed.split("\0")
+        if path and not path.startswith("build/")
+    )
+
+
+def found_unused(
+    root: Path, path: str, made_by: str = "no tool of today"
+) -> Found:
+    """What the report says of `path` in `root`, which nothing today makes."""
+    return Found(
+        path,
+        size_of(root / path),
+        State.UNUSED,
+        made_by,
+        "nothing",
+        Level.UNUSED,
+    )
 
 
 def report(found: list[Found]) -> None:
     """Print a line for each thing found, in columns."""
     if not found:
-        print("✨ Nothing to clean: build/ holds nothing.")
+        print("✨ Nothing to clean: build/ is empty, and nothing is left over.")
         return
     rows = [each.row() for each in found]
     widths = [max(map(len, column)) for column in zip(*rows, strict=True)]
@@ -157,6 +267,22 @@ def report(found: list[Found]) -> None:
         # Painted once padded, so that the color takes no room in a column.
         cells[0] = paint(cells[0], each.state)
         print("  ".join(cells).rstrip())
+    print()
+    totals = (f"{each.value} {human(freed(found, each))}" for each in Level)
+    print(f"🧹 Each level would free: {'; '.join(totals)}.")
+
+
+def freed(found: list[Found], level: Level) -> int:
+    """How much `level` frees of what was found, with the levels before it.
+
+    Level is declared in the order the levels nest.
+    """
+    levels = list(Level)
+    return sum(
+        each.size
+        for each in found
+        if levels.index(each.level) <= levels.index(level)
+    )
 
 
 def paint(text: str, state: State) -> str:
