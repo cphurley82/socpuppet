@@ -152,3 +152,48 @@ def test_when_a_source_is_listed_by_its_full_path_tidy_still_checks_it(
 
     assert result.returncode != 0
     assert "program.cpp:2" in result.stdout
+
+
+def project_including_a_missing_header(cmake_project, *options):
+    """A configured project whose one source includes a header not there.
+
+    It also breaks a check, which clang-tidy, unable to compile it, may
+    report or not.
+    """
+    project = cmake_project(
+        {
+            "program.cpp": (
+                '#include "missing.h"\n\n'
+                "int* Nothing() { return 0; }\n\n"
+                "int main() { return 0; }\n"
+            ),
+        },
+        "add_executable(program program.cpp)\nsocpuppet_dev_checks(program)\n",
+    )
+    project.configure("SOCPUPPET_DEVELOPER_MODE=ON", *options)
+    return project
+
+
+def test_when_a_source_includes_a_header_that_is_not_there_tidy_fails_naming_it_says_to_configure_again_and_lists_no_finding(
+    cmake_project,
+):
+    project = project_including_a_missing_header(cmake_project)
+
+    result = project.build("tidy")
+
+    assert result.returncode != 0
+    assert "'missing.h' file not found" in result.stdout
+    assert "configure the tree again" in result.stdout
+    assert "modernize-use-nullptr" not in result.stdout
+
+
+def test_when_the_tree_is_built_with_a_qbox_that_is_gone_tidy_says_to_build_qbox_again(
+    cmake_project, tmp_path
+):
+    project = project_including_a_missing_header(
+        cmake_project, f"SOCPUPPET_QBOX_DIR={tmp_path / 'gone'}"
+    )
+
+    result = project.build("tidy")
+
+    assert "uv run tools/build_qbox.py" in result.stdout

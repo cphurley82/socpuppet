@@ -27,6 +27,7 @@ set(SOCPUPPET_COVERAGE_EXCLUDE "" CACHE STRING
 find_package(Python REQUIRED COMPONENTS Interpreter)
 get_filename_component(_socpuppet_tools ${Python_EXECUTABLE} DIRECTORY)
 set(_socpuppet_lint ${CMAKE_CURRENT_LIST_DIR}/../tools/lint.py)
+set(_socpuppet_tidy ${CMAKE_CURRENT_LIST_DIR}/../tools/tidy.py)
 
 # clang-tidy reads how each source is compiled from compile_commands.json.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -70,15 +71,24 @@ if(SOCPUPPET_DEVELOPER_MODE)
       COMMAND_ERROR_IS_FATAL ANY)
     set(_socpuppet_tidy_sdk -extra-arg=-isysroot${_socpuppet_sdk})
   endif()
+  # A tree built with QBox finds its headers in QBox's install, which
+  # tools/tidy.py names when they are gone.
+  set(_socpuppet_tidy_qbox)
+  if(SOCPUPPET_QBOX_DIR)
+    set(_socpuppet_tidy_qbox --qbox ${SOCPUPPET_QBOX_DIR})
+  endif()
 
   # Runs clang-tidy, several files at a time, over the sources of our
   # targets and the headers of ours that they include. It is a target to ask
   # for, not part of every build, because it takes far longer than compiling.
+  # tools/tidy.py runs it, and lists no finding when a source cannot be
+  # compiled, since clang-tidy half-parsed it.
   add_custom_target(tidy
-    COMMAND ${Python_EXECUTABLE} ${_socpuppet_tools}/run-clang-tidy.py
-            -quiet
-            -clang-tidy-binary ${_socpuppet_tools}/clang-tidy
+    COMMAND ${Python_EXECUTABLE} ${_socpuppet_tidy}
+            --tools ${_socpuppet_tools}
             -p ${CMAKE_BINARY_DIR}
+            ${_socpuppet_tidy_qbox}
+            -quiet
             ${_socpuppet_tidy_sdk}
             # The compile commands are the real compiler's, and may carry
             # warning flags that only GCC knows.
