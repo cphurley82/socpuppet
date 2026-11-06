@@ -44,6 +44,7 @@ package is imported straight from a source tree, enable it from a
 import json
 import os
 import platform
+import shutil
 import signal
 import subprocess
 import sys
@@ -517,6 +518,11 @@ def _native_stacks(pid: int) -> str:
     every thread's frames in C and C++ too.
     """
     debugger = native_debugger()
+    if shutil.which(debugger) is None:
+        return (
+            f"Install {debugger} to see every thread's native stack here "
+            "the next time a test runs out of time."
+        )
     command = {
         "lldb": ["lldb", "--batch", "-p", str(pid)]
         + ["-o", "thread backtrace all", "-o", "detach"],
