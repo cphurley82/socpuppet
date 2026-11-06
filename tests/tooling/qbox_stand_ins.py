@@ -11,7 +11,8 @@ from pathlib import Path
 
 # A git that clones by making the directory, and applies a patch by noting
 # its name: `apply --check` passes for a patch not yet applied, and
-# `apply --reverse --check` for one that has been.
+# `apply --reverse --check` for one that has been. A patch BROKEN names
+# passes neither, as one changed since the checkout was patched.
 GIT = """
 import os, sys
 from pathlib import Path
@@ -30,6 +31,8 @@ elif args[0] == "apply":
     applied = tree / ".git" / "applied"
     done = applied.read_text().split() if applied.exists() else []
     name = os.path.basename(args[-1])
+    if name in os.environ.get("BROKEN", "").split():
+        sys.exit(1)
     if "--reverse" in args:
         sys.exit(0 if name in done else 1)
     if "--check" in args:
