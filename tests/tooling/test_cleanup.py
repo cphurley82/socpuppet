@@ -594,6 +594,50 @@ def test_a_symlink_under_build_is_removed_and_what_it_points_at_is_kept(
     assert kept.exists()
 
 
+def test_trees_removes_a_tree_without_first_repairing_what_is_stale_in_it(
+    repo, cleanup
+):
+    fill(repo, "build/dev/a/b.gcda", 0.25)
+
+    ran = cleanup("trees")
+
+    assert ran.returncode == 0, ran.stdout
+    assert "🧹 deleted" not in ran.stdout
+    assert not (repo / "build/dev").exists()
+
+
+def test_everything_removes_qbox_without_first_resetting_its_stale_checkout(
+    repo, cleanup
+):
+    checkout(repo, QBOX, "patched by an older patch")
+
+    ran = cleanup("everything")
+
+    assert ran.returncode == 0, ran.stdout
+    assert "🧹 reset" not in ran.stdout
+    assert not (repo / "build/qbox").exists()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can remove anything")
+def test_what_cannot_be_removed_is_said_with_why_and_the_rest_still_goes(
+    repo, cleanup
+):
+    kept = fill(repo, "build/asmjit/spam/eggs.o", 1)
+    after = fill(repo, "build/speed-x/spam.o", 1)
+    kept.parent.chmod(0o500)
+    try:
+        ran = cleanup("unused")
+    finally:
+        kept.parent.chmod(0o700)
+
+    assert ran.returncode == 1
+    assert "❌ could not remove build/asmjit" in ran.stdout
+    assert "Permission denied" in ran.stdout
+    assert "Traceback" not in ran.stdout
+    assert kept.exists()
+    assert not after.exists()
+
+
 def test_a_level_it_does_not_know_is_refused_with_the_usage(cleanup):
     ran = cleanup("spam")
 

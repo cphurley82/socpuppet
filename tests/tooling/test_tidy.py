@@ -31,15 +31,18 @@ FINDING = "src/spam.cpp:4:30: warning: use nullptr [modernize-use-nullptr]"
 def tidy(tmp_path):
     """Run tools/tidy.py over a tree, with run-clang-tidy.py a stand-in.
 
-    The stand-in prints `says` and exits with `status`. `qbox` is QBox's
-    install, for a tree built with it.
+    The stand-in prints `says`, a line or the raw bytes, and exits with
+    `status`. `qbox` is QBox's install, for a tree built with it.
     """
 
     def run(says, status, qbox=None):
         tools = tmp_path / "tools"
         tools.mkdir(exist_ok=True)
+        raw = says if isinstance(says, bytes) else f"{says}\n".encode()
         (tools / "run-clang-tidy.py").write_text(
-            f"import sys\nprint({says!r})\nsys.exit({status})\n"
+            "import sys\n"
+            f"sys.stdout.buffer.write({raw!r})\n"
+            f"sys.exit({status})\n"
         )
         return subprocess.run(
             [
@@ -100,3 +103,13 @@ def test_when_clang_tidy_compiles_every_source_its_output_and_status_pass_throug
 
     assert ran.returncode == status
     assert ran.stdout == f"{FINDING}\n"
+
+
+def test_a_byte_clang_tidy_prints_that_is_not_utf_8_passes_through_and_is_no_crash(
+    tidy,
+):
+    ran = tidy(FINDING.encode() + b" \xff\n", 1)
+
+    assert ran.returncode == 1
+    assert FINDING in ran.stdout
+    assert "Traceback" not in ran.stdout

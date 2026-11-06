@@ -55,7 +55,9 @@ def main() -> int:
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
+        # A quoted source line may hold a byte that is not UTF-8.
         text=True,
+        errors="replace",
     )
     cannot = [
         line for line in ran.stdout.splitlines() if CANNOT_COMPILE in line

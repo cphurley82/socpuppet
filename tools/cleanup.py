@@ -216,26 +216,32 @@ def main() -> int:
     root = args.root.resolve()
     found = survey(root)
     report(found)
-    if args.level:
-        level = Level(args.level)
-        for each in found:
-            if each.repair:
-                print(each.repair())
-        if level is Level.EVERYTHING:
-            warn_of_the_cost(found)
-        for each in removed_by(found, level):
-            remove(root, each)
-    return 0
+    if not args.level:
+        return 0
+    level = Level(args.level)
+    removed = removed_by(found, level)
+    for each in found:
+        if each.repair and not inside(each.path, removed):
+            print(each.repair())
+    if level is Level.EVERYTHING:
+        warn_of_the_cost(found)
+    went = [remove(root, each) for each in removed]
+    return 0 if all(went) else 1
 
 
 def removed_by(found: list[Found], level: Level) -> list[Found]:
     """What `level` removes of what was found, with the levels before it."""
-    # What repair fixes is inside a tree, and removed with it.
+    # What repair fixes is inside a tree, and goes with it (inside()).
     return [
         each
         for each in found
         if each.state is not State.STALE and level.includes(each.level)
     ]
+
+
+def inside(path: str, trees: list[Found]) -> bool:
+    """Whether `path` is under one of `trees`, so goes when they do."""
+    return any(path.startswith(f"{tree.path}/") for tree in trees)
 
 
 def warn_of_the_cost(found: list[Found]) -> None:
@@ -249,14 +255,26 @@ def warn_of_the_cost(found: list[Found]) -> None:
         print(f"⚠️ everything removes {' and '.join(costly)}")
 
 
-def remove(root: Path, found: Found) -> None:
-    """Remove what was found from `root`, and say so."""
+def remove(root: Path, found: Found) -> bool:
+    """Remove what was found from `root`, and say so. Returns whether it went.
+
+    What cannot be removed, such as a file of another user's that a
+    container left, is said, and the rest still goes.
+    """
     path = root / found.path
-    if path.is_dir() and not path.is_symlink():
-        shutil.rmtree(path)
-    else:
-        path.unlink()
+    try:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+    except OSError as error:
+        print(
+            f"❌ could not remove {found.path}: {error}. Remove it by hand, "
+            "with sudo if it is another user's, and run this again."
+        )
+        return False
     print(f"🧹 removed {found.path} ({human(found.size)})")
+    return True
 
 
 def survey(root: Path) -> list[Found]:
