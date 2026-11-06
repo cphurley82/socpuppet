@@ -29,7 +29,9 @@ seconds is stopped and fails, and in a class's process, the tests after it
 fail as never run. The clock starts when the test does: starting the
 process and collecting do not count, and each test of a class's process has
 the whole limit of its own. The limit is a setting in pytest's
-configuration, 1800 unless set (5400 on an Intel Mac), and 0 means no limit::
+configuration, 1800 unless set (5400 on an Intel Mac), and 0 means no limit.
+Before it is stopped, while it is still stuck, a debugger takes every
+thread's native stack for the failure: lldb on a Mac, gdb elsewhere::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
