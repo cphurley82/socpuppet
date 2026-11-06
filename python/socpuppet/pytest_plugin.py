@@ -510,6 +510,13 @@ def _seconds(seconds: float) -> str:
     return f"{seconds:g} second{'' if seconds == 1 else 's'}"
 
 
+# How long a debugger gets to attach to a test that ran out of time and
+# take every thread's stack. lldb takes about a second over a Python on an
+# Apple M4; a debugger that takes far longer is stopped, so that the failure
+# still comes.
+DEBUGGER_SECONDS = 120.0
+
+
 def _native_stacks(pid: int) -> str:
     """Every thread's native stack in process ``pid``, under a heading.
 
@@ -528,7 +535,15 @@ def _native_stacks(pid: int) -> str:
         + ["-o", "thread backtrace all", "-o", "detach"],
         "gdb": ["gdb", "-p", str(pid), "-batch", "-ex", "thread apply all bt"],
     }[debugger]
-    found = subprocess.run(command, capture_output=True, text=True)
+    try:
+        found = subprocess.run(
+            command, capture_output=True, text=True, timeout=DEBUGGER_SECONDS
+        )
+    except subprocess.TimeoutExpired:
+        return (
+            f"{debugger} took longer than {_seconds(DEBUGGER_SECONDS)} to "
+            "take the threads' native stacks, and was stopped."
+        )
     said = found.stdout + found.stderr
     if found.returncode != 0:
         # 🎓 macOS lets a debugger attach to a process it did not start

@@ -411,6 +411,31 @@ class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
 
 
+class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        a_debugger_on_the_path(
+            session_with_socpuppet, monkeypatch, "exec sleep 60"
+        )
+        session_with_socpuppet.makeconftest(
+            """
+            from socpuppet import pytest_plugin
+
+            pytest_plugins = ["socpuppet.pytest_plugin"]
+            pytest_plugin.DEBUGGER_SECONDS = 1
+            """
+        )
+        return a_test_that_never_ends(session_with_socpuppet)
+
+    def test_it_is_stopped_and_the_failure_says_so(self, result):
+        result.stdout.fnmatch_lines(
+            [f"*{pytest_plugin.native_debugger()} took longer than 1 second*"]
+        )
+
+    def test_the_failure_still_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
 def a_debugger_on_the_path(session, monkeypatch, script):
     """Put a stand-in for this machine's debugger first on the PATH.
 
