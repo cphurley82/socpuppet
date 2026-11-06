@@ -53,6 +53,9 @@ class Fix:
 
 # Apple's command line tools, which have the compiler, git and make.
 XCODE = Fix("xcode-select --install")
+# The debugger socpuppet's pytest plugin takes a hung test's native stacks
+# with: lldb, which comes with Xcode's tools, on a Mac, and gdb elsewhere.
+NATIVE_DEBUGGER = "lldb" if platform.system() == "Darwin" else "gdb"
 # For what comes with macOS itself.
 MACOS_HAS_IT = Fix("nothing to install: macOS comes with it")
 # For a system the doctor has no fix of, such as Windows.
@@ -501,6 +504,10 @@ AREAS = (
             program("c++", "build-essential", XCODE),
             # The tests that check a devicetree skip without it.
             program("dtc", "device-tree-compiler", Fix("dtc", BREW)),
+            # Takes every thread's native stack of a platform test that runs
+            # out of time (socpuppet's pytest plugin), whose failure without
+            # it only says to install it.
+            program(NATIVE_DEBUGGER, "gdb", XCODE),
         ),
     ),
     Area(

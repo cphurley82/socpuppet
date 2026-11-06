@@ -51,10 +51,13 @@ RELEASE = "7.0.0-38-generic"
 # What QBox's build needs, as tools/build_qbox.py lists it for the doctor.
 QBOX = DOCTOR_MODULE.BUILD_QBOX
 
+# The debugger that takes a hung platform test's native stacks here.
+NATIVE_DEBUGGER = "lldb" if platform.system() == "Darwin" else "gdb"
+
 # Every program the doctor looks for, each of which the machine has unless
 # a test takes it away.
 PROGRAMS = (
-    *("git", "c++", "dtc", "curl", "make", "iasl", "docker"),
+    *("git", "c++", "dtc", NATIVE_DEBUGGER, "curl", "make", "iasl", "docker"),
     *("flex", "bison", "bc", "mkfs.ext4"),
     *(name for name, _, _ in QBOX.PROGRAMS),
     "pkgutil",
@@ -195,6 +198,7 @@ REQUIRED = [
         "brew install dtc",
         (),
     ),
+    (NATIVE_DEBUGGER, "socpuppet's build", f"{APT} gdb", XCODE, ()),
     (
         "curl",
         "the firmware's build",
