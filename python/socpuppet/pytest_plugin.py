@@ -53,7 +53,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import IO, Any, Literal
+from typing import IO, Any, Literal, NamedTuple
 
 import pytest
 
@@ -362,17 +362,18 @@ def _run_in_child_process(
             stderr=subprocess.PIPE,
             text=True,
         )
-        stdout, stderr, stacks = _wait_for_child(child, report_file, timeout)
+        stdout, stderr, out_of_time = _wait_for_child(
+            child, report_file, timeout
+        )
         output = stdout + stderr
-        timed_out = stacks is not None
-        if timed_out:
+        if out_of_time is not None:
             unfinished = (
                 f"The test ran for longer than {_seconds(timeout)} and was "
                 "stopped. A script or a firmware that loops for ever is the "
                 "usual cause. If the test needs longer, raise "
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
-            output += f"\n\n{stacks}"
+            output += f"\n\n{out_of_time.stacks}"
         elif child.returncode not in _FINISHED:
             unfinished = (
                 "The test's process exited with status "
@@ -385,7 +386,14 @@ def _run_in_child_process(
             _collected_id(item): [] for item in items
         }
         report_file.seek(0)
-        for line in report_file:
+        # ⚠️ A child that ran out of time can run on while the debugger has
+        # it, and after it lets go, and even finish: a debugger holds a
+        # process only while it is attached, and a sleep's clock runs on.
+        # What it reported after its time ran out does not count.
+        reported = report_file.read(
+            -1 if out_of_time is None else out_of_time.reported
+        )
+        for line in reported.splitlines():
             data = json.loads(line)
             if _STARTED in data:
                 # Only the clock needed it.
@@ -431,15 +439,24 @@ def _run_in_child_process(
 _POLL_SECONDS = 0.1
 
 
+class _OutOfTime(NamedTuple):
+    """What the parent took of a child whose test ran out of time."""
+
+    # How many bytes of reports the child had written when it did.
+    reported: int
+    # Every thread's native stack, under a heading.
+    stacks: str
+
+
 def _wait_for_child(
     child: subprocess.Popen[str], report_file: IO[bytes], timeout: float
-) -> tuple[str, str, str | None]:
+) -> tuple[str, str, _OutOfTime | None]:
     """Wait for a child to end, and stop it if a test runs out of time.
 
     Each test has ``timeout`` seconds from the line in ``report_file`` that
     says it started, and 0 is no limit. Returns what the child wrote to
-    stdout and stderr, and, if it was stopped, every thread's native stack
-    as it was before it was (None if it ended by itself).
+    stdout and stderr, and, if it was stopped, what it had reported and
+    where it was when its time ran out (None if it ended by itself).
     """
     # ⚠️ No limit until the first test starts. The session collected the
     # same files with the same conftests before it started the child, so a
@@ -455,11 +472,14 @@ def _wait_for_child(
         if timeout and _a_test_started(report_file):
             deadline = time.monotonic() + timeout
         if time.monotonic() > deadline:
+            # Every report the child had finished writing has been read:
+            # what it had reported is where the file is now.
+            reported = report_file.tell()
             # Taken while the child is still where it got stuck: the abort
             # below moves every thread into the fault handler and out.
             stacks = _native_stacks(child.pid)
             stdout, stderr = _stop(child)
-            return stdout, stderr, stacks
+            return stdout, stderr, _OutOfTime(reported, stacks)
 
 
 def _a_test_started(report_file: IO[bytes]) -> bool:

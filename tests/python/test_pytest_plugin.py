@@ -324,16 +324,17 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         )
 
 
-def a_test_that_never_ends(session):
+def a_test_that_never_ends(session, seconds=60):
     """Run a platform test that sleeps in two threads, past a 1 s limit.
 
-    A test after it, which is not a platform test, passes.
+    Each sleeps for `seconds`. A test after it, which is not a platform
+    test, passes.
     """
     # The clock starts with the test, not with its process, so the
     # shortest limit will do however slowly the process starts.
     session.makeini("[pytest]\nsocpuppet_platform_timeout = 1\n")
     session.makepyfile(
-        """
+        f"""
         import threading
         import time
         import pytest
@@ -341,9 +342,9 @@ def a_test_that_never_ends(session):
         @pytest.mark.platform
         def test_that_never_ends():
             threading.Thread(
-                target=time.sleep, args=(60,), daemon=True
+                target=time.sleep, args=({seconds},), daemon=True
             ).start()
-            time.sleep(60)
+            time.sleep({seconds})
 
         def test_after_it():
             pass
@@ -490,6 +491,23 @@ class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
         result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+
+
+class TestWhenTheDebuggerOutlastsATestThatRanOutOfTime:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        # The test's time runs out at 1 s, and its sleeps end at 3, while
+        # the debugger is still at work. A debugger holds a process only
+        # while it is attached, and the sleeps' clock runs on meanwhile:
+        # lldb on CI's Intel Mac took over a minute, and the test finished
+        # behind its back.
+        a_debugger_on_the_path(
+            session_with_socpuppet, monkeypatch, "exec sleep 5"
+        )
+        return a_test_that_never_ends(session_with_socpuppet, seconds=3)
+
+    def test_it_is_still_reported_as_failed(self, result):
+        result.assert_outcomes(failed=1, passed=1)
 
 
 def a_debugger_on_the_path(session, monkeypatch, script):
