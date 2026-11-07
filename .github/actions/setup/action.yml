@@ -127,7 +127,16 @@ runs:
         elif [[ ${#mac[@]} -gt 0 ]]; then
           brew install "${mac[@]}"
         fi
-    - uses: astral-sh/setup-uv@v7
+    # Pinned to a release, not a major: setup-uv publishes no major tags
+    # since v8, so Dependabot can bump this and never a `@v10`. Under v7 a
+    # nightly's job died on the one fetch of uv's list of versions; v10.0.1
+    # retries that fetch and v10.3.3 reads it from Astral's mirror first.
+    # v9 stopped pruning the cache by default, and the 10 GB (above) wants
+    # it pruned, and saved by main's runs alone, as the caches below are.
+    - uses: astral-sh/setup-uv@v10.3.3
+      with:
+        prune-cache: true
+        save-cache: ${{ github.ref == 'refs/heads/main' }}
     # What FetchContent fetched, for configuring without the network's
     # minutes. Not what it built there: the build tree is new, so ninja has
     # no record of it and builds it again, and the compiler cache is what
