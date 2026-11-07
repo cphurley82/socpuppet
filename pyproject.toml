@@ -91,7 +91,9 @@ minimum-version = "build-system.requires"
 cmake.version = ">=3.28"
 wheel.packages = ["python/socpuppet"]
 # What a source distribution leaves behind: build trees, the write-ups,
-# and experiments that nothing in the package depends on.
+# and experiments that nothing in the package depends on. tools/ stays
+# in: tools/ci.py builds this machine's wheel from an sdist, and the Linux
+# wheel's before-all (below) runs a script from there.
 sdist.exclude = ["build", "dist", "docs", "spikes", "wheelhouse"]
 # One build tree, whichever Python the wheel is for. It is not what saves
 # compiling SystemC and the rest again: scikit-build-core starts every
@@ -133,14 +135,9 @@ test-command = "pytest -m \"not long\" -n auto --dist loadgroup --no-loadscope-r
 test-environment = { SOCPUPPET_FIRMWARE_DIR = "no-firmware-here" }
 
 [tool.cibuildwheel.linux]
-# SCC's trace writer needs zlib's headers. The library itself is part of
-# the manylinux baseline, so the wheel may depend on it.
-#
-# ccache is what lets the second and third wheel reuse what the first
-# compiled: nearly everything in a wheel is SystemC, SCC, Boost and the
-# CPU, which do not care which Python it is for. It comes from EPEL, the
-# extra packages for the manylinux image's distribution.
-before-all = "dnf install -y zlib-devel epel-release && dnf install -y ccache"
+# zlib's headers and ccache, and what each is for, are in the script, which
+# tries again when a mirror of the distribution's packages fails.
+before-all = "sh {package}/tools/manylinux_packages.sh"
 # Where ccache keeps its cache, and how, which the container is told by
 # whatever runs cibuildwheel: CI's wheel job, or tools/ci.py here. A
 # variable that is not set is not passed.
