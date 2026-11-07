@@ -30,8 +30,11 @@ fail as never run. The clock starts when the test does: starting the
 process and collecting do not count, and each test of a class's process has
 the whole limit of its own. The limit is a setting in pytest's
 configuration, 1800 unless set (5400 on an Intel Mac), and 0 means no limit.
-Before it is stopped, while it is still stuck, a debugger takes every
-thread's native stack for the failure: lldb on a Mac, gdb elsewhere::
+When its time runs out, while it is still stuck, its process writes where
+every thread's Python was, and a debugger takes every thread's native stack,
+lldb on a Mac and gdb elsewhere, for the failure. ⚠️ The process has
+SIGUSR1 spoken for, to be asked where its Python is: a test that handles
+that signal itself leaves the failure without it::
 
     [tool.pytest.ini_options]
     socpuppet_platform_timeout = 60
@@ -44,6 +47,7 @@ package is imported straight from a source tree, enable it from a
 """
 
 import ctypes
+import faulthandler
 import json
 import os
 import platform
@@ -60,6 +64,11 @@ import pytest
 # Name of the environment variable that tells a child process where to write
 # its test reports. A process that has it set is a child.
 _REPORT_FILE_ENV = "SOCPUPPET_PYTEST_REPORT_FILE"
+
+# Name of the environment variable that tells a child where to write every
+# thread's Python stack when the parent asks, with the signal below.
+_PYTHON_STACKS_FILE_ENV = "SOCPUPPET_PYTEST_PYTHON_STACKS_FILE"
+_WHERE_IS_PYTHON = signal.SIGUSR1
 
 # The key of the line a child writes there when a test starts, which is when
 # the parent starts the test's clock. No report of pytest's has it.
@@ -125,7 +134,22 @@ def pytest_configure(config: pytest.Config) -> None:
     report_file = os.environ.get(_REPORT_FILE_ENV)
     if report_file:
         _let_a_debugger_attach()
+        _say_where_python_is_when_asked(os.environ[_PYTHON_STACKS_FILE_ENV])
         config.pluginmanager.register(_ChildReporter(config, report_file))
+
+
+def _say_where_python_is_when_asked(path: str) -> None:
+    """Write every thread's Python stack to ``path`` on the parent's signal.
+
+    🎓 The fault handler writes from the signal's handler, in C, so it
+    answers even while Python is stuck in C++ and never gets back to the
+    interpreter. It writes to a file it is given open, which stays open
+    for the life of the process: a signal's handler cannot open one.
+    ⚠️ A script runs on a SystemC thread's stack, where the handler often
+    cannot find its frames; the native stacks show that thread.
+    """
+    stacks = os.open(path, os.O_WRONLY | os.O_APPEND)
+    faulthandler.register(_WHERE_IS_PYTHON, file=stacks, all_threads=True)
 
 
 # Linux's prctl() option that names the process that, with those it
@@ -343,7 +367,10 @@ def _run_in_child_process(
         config._tmp_path_factory  # type: ignore[attr-defined]
     )
     basetemp = tmp_path_factory.mktemp("platform")
-    with tempfile.NamedTemporaryFile(mode="rb", suffix=".jsonl") as report_file:
+    with (
+        tempfile.NamedTemporaryFile(mode="rb", suffix=".jsonl") as report_file,
+        tempfile.NamedTemporaryFile(mode="rb", suffix=".txt") as python_stacks,
+    ):
         child = subprocess.Popen(
             # A node id is relative to the rootdir, so anchor it there. The
             # child keeps our working directory, as an unmarked test would.
@@ -357,13 +384,17 @@ def _run_in_child_process(
                 str(basetemp),
                 *(str(config.rootpath / _collected_id(item)) for item in items),
             ],
-            env={**os.environ, _REPORT_FILE_ENV: report_file.name},
+            env={
+                **os.environ,
+                _REPORT_FILE_ENV: report_file.name,
+                _PYTHON_STACKS_FILE_ENV: python_stacks.name,
+            },
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
         stdout, stderr, out_of_time = _wait_for_child(
-            child, report_file, timeout
+            child, report_file, python_stacks, timeout
         )
         output = stdout + stderr
         if out_of_time is not None:
@@ -373,7 +404,10 @@ def _run_in_child_process(
                 "usual cause. If the test needs longer, raise "
                 f"{_TIMEOUT_SETTING} in pytest's configuration."
             )
-            output += f"\n\n{out_of_time.stacks}"
+            output += (
+                f"\n\n{out_of_time.python_stacks}"
+                f"\n\n{out_of_time.native_stacks}"
+            )
         elif child.returncode not in _FINISHED:
             unfinished = (
                 "The test's process exited with status "
@@ -444,19 +478,26 @@ class _OutOfTime(NamedTuple):
 
     # How many bytes of reports the child had written when it did.
     reported: int
-    # Every thread's native stack, under a heading.
-    stacks: str
+    # Every thread's Python stack then, and its native stack, each under a
+    # heading.
+    python_stacks: str
+    native_stacks: str
 
 
 def _wait_for_child(
-    child: subprocess.Popen[str], report_file: IO[bytes], timeout: float
+    child: subprocess.Popen[str],
+    report_file: IO[bytes],
+    python_stacks: IO[bytes],
+    timeout: float,
 ) -> tuple[str, str, _OutOfTime | None]:
     """Wait for a child to end, and stop it if a test runs out of time.
 
     Each test has ``timeout`` seconds from the line in ``report_file`` that
-    says it started, and 0 is no limit. Returns what the child wrote to
-    stdout and stderr, and, if it was stopped, what it had reported and
-    where it was when its time ran out (None if it ended by itself).
+    says it started, and 0 is no limit. A child that runs out of time is
+    asked to write where its Python is to ``python_stacks``. Returns what
+    the child wrote to stdout and stderr, and, if it was stopped, what it
+    had reported and where it was when its time ran out (None if it ended
+    by itself).
     """
     # ⚠️ No limit until the first test starts. The session collected the
     # same files with the same conftests before it started the child, so a
@@ -475,11 +516,91 @@ def _wait_for_child(
             # Every report the child had finished writing has been read:
             # what it had reported is where the file is now.
             reported = report_file.tell()
-            # Taken while the child is still where it got stuck: the abort
-            # below moves every thread into the fault handler and out.
-            stacks = _native_stacks(child.pid)
-            stdout, stderr = _stop(child)
-            return stdout, stderr, _OutOfTime(reported, stacks)
+            # Both taken while the child is still where it got stuck, the
+            # Python first: the debugger's attach stops the child, and lets
+            # it run on when it lets go.
+            _ask_where_python_is(child, python_stacks)
+            # ⚠️ A child can end while it is asked: its test finishes just
+            # after its time ran out, or its handler for the signal exits.
+            # Its number is then nobody's, or a stranger's, so no debugger
+            # is sent to it.
+            ended = child.poll() is not None
+            if ended:
+                native_stacks = (
+                    "The test's process ended before a debugger could take "
+                    "the threads' native stacks."
+                )
+            else:
+                native_stacks = _native_stacks(child.pid)
+                child.kill()
+            stdout, stderr = child.communicate()
+            return (
+                stdout,
+                stderr,
+                _OutOfTime(
+                    reported,
+                    _where_python_was(python_stacks, ended),
+                    native_stacks,
+                ),
+            )
+
+
+# How long a child that was asked where its Python is gets to say it.
+_LAST_WORDS_SECONDS = 5
+
+
+def _ask_where_python_is(
+    child: subprocess.Popen[str], python_stacks: IO[bytes]
+) -> None:
+    """Have a child write where every thread's Python is, and let it finish.
+
+    It has finished when what it wrote has not grown for two looks in a
+    row: the fault handler writes in pieces, with no last word to wait for,
+    and all of it in far less time than that; one look could fall in a
+    pause while a busy machine has the child waiting its turn.
+
+    A stopped child, as a test or a debugger can leave one, takes no signal
+    until it is woken, so it is woken too, and after the question: a signal
+    sent to a stopped process waits, and is taken as it wakes, before it
+    runs anything more. Woken first, it would run on for the moment before
+    the question lands, and say where it got to, not where it was.
+
+    ⚠️ A child that never answers, as one whose test handles the signal
+    itself, runs on meanwhile, so the native stacks show where it got to.
+    """
+    child.send_signal(_WHERE_IS_PYTHON)
+    child.send_signal(signal.SIGCONT)
+    give_up = time.monotonic() + _LAST_WORDS_SECONDS
+    said_before = 0
+    unchanged = 0
+    while child.poll() is None and time.monotonic() < give_up:
+        time.sleep(_POLL_SECONDS)
+        said = os.path.getsize(python_stacks.name)
+        unchanged = unchanged + 1 if said and said == said_before else 0
+        if unchanged == 2:
+            return
+        said_before = said
+
+
+def _where_python_was(python_stacks: IO[bytes], ended: bool) -> str:
+    """What a child said of where its Python was, under a heading.
+
+    ``ended`` says whether the child had ended by the time it was read.
+    """
+    said = python_stacks.read().decode(errors="replace")
+    if not said and ended:
+        return (
+            "The test's process did not say where its Python was: the "
+            "process ended first."
+        )
+    if not said:
+        return (
+            "The test's process did not say where its Python was. A test "
+            f"that handles {_WHERE_IS_PYTHON.name} itself keeps it from it."
+        )
+    return (
+        f"Every thread's Python stack, when the test ran out of time:\n\n{said}"
+    )
 
 
 def _a_test_started(report_file: IO[bytes]) -> bool:
@@ -556,8 +677,9 @@ def _seconds(seconds: float) -> str:
 
 # How long a debugger gets to attach to a test that ran out of time and
 # take every thread's stack. lldb takes about a second over a Python on an
-# Apple M4; a debugger that takes far longer is stopped, so that the failure
-# still comes. Not a setting: the plugin's tests shorten it.
+# Apple M4, and has taken over a minute on CI's Intel Mac; a debugger that
+# takes far longer is stopped, so that the failure still comes. Not a
+# setting: the plugin's tests shorten it.
 DEBUGGER_SECONDS = 120.0
 
 # What each debugger is told, before the process's number, to take every
@@ -594,9 +716,8 @@ def _native_stacks(pid: int) -> str:
         )
     except subprocess.TimeoutExpired:
         # ⚠️ Only the debugger is killed: lldb's debugserver, if it had
-        # attached, may keep the child stopped, so that the abort's fault
-        # handler never writes and the child is killed after its last words'
-        # wait instead.
+        # attached, may keep the child stopped. That is no matter: its
+        # Python has said where it was, and a stopped child can be killed.
         return (
             f"{debugger} took longer than {_seconds(DEBUGGER_SECONDS)} to "
             "take the threads' native stacks, and was stopped."
@@ -614,27 +735,3 @@ def _native_stacks(pid: int) -> str:
         f"Every thread's native stack, as {debugger} found it before the "
         f"test was stopped:\n\n{said}"
     )
-
-
-# How long a child that was told to stop gets to say where it was.
-_LAST_WORDS_SECONDS = 5
-
-
-def _stop(child: subprocess.Popen[str]) -> tuple[str, str]:
-    """Stop a child that ran out of time, and return what it wrote."""
-    # Aborted, and not simply killed: pytest's fault handler answers the
-    # abort signal by writing where Python was, as far as it can tell. (A
-    # script runs on a SystemC thread's stack, where it often cannot.) A
-    # child too far gone to answer is killed. A stopped child, as a
-    # debugger's attach can leave one, takes no signal until it is woken,
-    # so it is woken too, and after the abort: a signal sent to a stopped
-    # process waits, and is taken as it wakes, before it runs anything
-    # more. Woken first, it runs on for the moment before the abort lands,
-    # and the fault handler shows where it got to, not where it was.
-    child.send_signal(signal.SIGABRT)
-    child.send_signal(signal.SIGCONT)
-    try:
-        return child.communicate(timeout=_LAST_WORDS_SECONDS)
-    except subprocess.TimeoutExpired:
-        child.kill()
-        return child.communicate()
