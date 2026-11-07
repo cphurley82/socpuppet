@@ -298,7 +298,7 @@ class TestWhenAPlatformTestRunsAfterOneThatWroteToItsTemporaryDirectory:
 class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
     @pytest.fixture
     def result(self, session_with_socpuppet):
-        return a_test_that_never_ends(session_with_socpuppet)
+        return a_test_that_runs_out_of_time(session_with_socpuppet)
 
     def test_it_is_stopped_and_reported_as_failed(self, result):
         result.assert_outcomes(failed=1, passed=1)
@@ -309,7 +309,9 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         )
 
     def test_the_failure_shows_where_the_test_was(self, result):
-        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
 
     def test_the_failure_shows_each_threads_native_stack(self, result):
         skip_unless_a_debugger_can_attach(result)
@@ -324,7 +326,7 @@ class TestWhenAPlatformTestRunsForLongerThanTheTimeout:
         )
 
 
-def a_test_that_never_ends(session, seconds=60):
+def a_test_that_runs_out_of_time(session, seconds=60):
     """Run a platform test that sleeps in two threads, past a 1 s limit.
 
     Each sleeps for `seconds`. A test after it, which is not a platform
@@ -340,7 +342,7 @@ def a_test_that_never_ends(session, seconds=60):
         import pytest
 
         @pytest.mark.platform
-        def test_that_never_ends():
+        def test_that_runs_out_of_time():
             threading.Thread(
                 target=time.sleep, args=({seconds},), daemon=True
             ).start()
@@ -375,7 +377,7 @@ class TestWhenAPlatformTestRunsOutOfTimeWhereThereIsNoDebugger:
     def result(self, session_with_socpuppet, monkeypatch):
         # Python is started by its full path, so nothing else is needed.
         monkeypatch.setenv("PATH", str(session_with_socpuppet.mkdir("empty")))
-        return a_test_that_never_ends(session_with_socpuppet)
+        return a_test_that_runs_out_of_time(session_with_socpuppet)
 
     def test_the_failure_says_which_debugger_to_install(self, result):
         result.stdout.fnmatch_lines(
@@ -383,7 +385,9 @@ class TestWhenAPlatformTestRunsOutOfTimeWhereThereIsNoDebugger:
         )
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
-        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
 
 
 class TestWhenAPlatformTestsProcessIsStoppedWhenItRunsOutOfTime:
@@ -423,7 +427,7 @@ class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
             monkeypatch,
             'echo "error: attach failed: spam" >&2\nexit 1',
         )
-        return a_test_that_never_ends(session_with_socpuppet)
+        return a_test_that_runs_out_of_time(session_with_socpuppet)
 
     @pytest.mark.skipif(
         pytest_plugin.native_debugger() != "lldb", reason="lldb is a Mac's"
@@ -440,7 +444,9 @@ class TestWhenTheDebuggerCannotAttachToATestThatRanOutOfTime:
         )
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
-        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
 
 
 class TestWhenTheDebuggerFindsNoThreadInATestThatRanOutOfTime:
@@ -454,7 +460,7 @@ class TestWhenTheDebuggerFindsNoThreadInATestThatRanOutOfTime:
             monkeypatch,
             'echo "ptrace: Operation not permitted."\nexit 0',
         )
-        return a_test_that_never_ends(session_with_socpuppet)
+        return a_test_that_runs_out_of_time(session_with_socpuppet)
 
     def test_the_failure_says_it_could_not_and_quotes_it(self, result):
         result.stdout.fnmatch_lines(
@@ -465,7 +471,9 @@ class TestWhenTheDebuggerFindsNoThreadInATestThatRanOutOfTime:
         )
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
-        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
 
 
 class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
@@ -482,7 +490,7 @@ class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
             pytest_plugin.DEBUGGER_SECONDS = 1
             """
         )
-        return a_test_that_never_ends(session_with_socpuppet)
+        return a_test_that_runs_out_of_time(session_with_socpuppet)
 
     def test_it_is_stopped_and_the_failure_says_so(self, result):
         result.stdout.fnmatch_lines(
@@ -490,24 +498,102 @@ class TestWhenTheDebuggerTakesTooLongOverATestThatRanOutOfTime:
         )
 
     def test_the_failure_still_shows_where_the_test_was(self, result):
-        result.stdout.fnmatch_lines(["*File *, line * in test_that_never_ends"])
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
+
+
+class TestWhenAPlatformTestThatRanOutOfTimeHandlesTheSignalItself:
+    def test_the_failure_says_its_process_did_not_say_where_it_was(
+        self, session_with_socpuppet, monkeypatch
+    ):
+        # No debugger, so the failure comes as soon as the wait is over.
+        monkeypatch.setenv("PATH", str(session_with_socpuppet.mkdir("empty")))
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 1\n"
+        )
+        session_with_socpuppet.makepyfile(
+            """
+            import signal
+            import time
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_keeps_the_signal():
+                signal.signal(signal.SIGUSR1, lambda *_: None)
+                time.sleep(60)
+            """
+        )
+
+        result = session_with_socpuppet.runpytest_subprocess()
+
+        result.stdout.fnmatch_lines(
+            ["*did not say where its Python was*handles SIGUSR1 itself*"]
+        )
+
+
+class TestWhenAPlatformTestThatRanOutOfTimeEndsAsItIsAsked:
+    @pytest.fixture
+    def result(self, session_with_socpuppet, monkeypatch):
+        # The process is gone by the time the debugger would be asked, so
+        # there is nothing to attach to. A stand-in debugger that would
+        # answer shows whether it was asked at all.
+        a_debugger_on_the_path(
+            session_with_socpuppet, monkeypatch, 'echo "#0 spam"'
+        )
+        session_with_socpuppet.makeini(
+            "[pytest]\nsocpuppet_platform_timeout = 1\n"
+        )
+        session_with_socpuppet.makepyfile(
+            """
+            import os
+            import signal
+            import time
+            import pytest
+
+            @pytest.mark.platform
+            def test_that_ends_when_asked():
+                signal.signal(signal.SIGUSR1, lambda *_: os._exit(0))
+                time.sleep(60)
+            """
+        )
+        return session_with_socpuppet.runpytest_subprocess()
+
+    def test_it_is_reported_as_failed(self, result):
+        result.assert_outcomes(failed=1)
+
+    def test_the_failure_says_its_process_ended_first(self, result):
+        result.stdout.fnmatch_lines(
+            [
+                "*did not say where its Python was*process ended*",
+                "*process ended before*native stacks*",
+            ]
+        )
+
+    def test_the_debugger_is_not_asked(self, result):
+        result.stdout.no_fnmatch_line("*#0 spam*")
 
 
 class TestWhenTheDebuggerOutlastsATestThatRanOutOfTime:
     @pytest.fixture
     def result(self, session_with_socpuppet, monkeypatch):
         # The test's time runs out at 1 s, and its sleeps end at 3, while
-        # the debugger is still at work. A debugger holds a process only
-        # while it is attached, and the sleeps' clock runs on meanwhile:
-        # lldb on CI's Intel Mac took over a minute, and the test finished
-        # behind its back.
+        # the debugger is still at work, from 1 s to 6. A debugger holds a
+        # process only while it is attached, and the sleeps' clock runs on
+        # meanwhile: lldb on CI's Intel Mac took over a minute, and the
+        # test finished behind its back.
         a_debugger_on_the_path(
             session_with_socpuppet, monkeypatch, "exec sleep 5"
         )
-        return a_test_that_never_ends(session_with_socpuppet, seconds=3)
+        return a_test_that_runs_out_of_time(session_with_socpuppet, seconds=3)
 
     def test_it_is_still_reported_as_failed(self, result):
         result.assert_outcomes(failed=1, passed=1)
+
+    def test_the_failure_still_shows_where_the_test_was(self, result):
+        result.stdout.fnmatch_lines(
+            ["*File *, line * in test_that_runs_out_of_time"]
+        )
 
 
 def a_debugger_on_the_path(session, monkeypatch, script):
