@@ -650,6 +650,16 @@ def test_each_job_sets_up_with_the_setup_action_alone():
                 assert installer not in step.get("run", ""), where
 
 
+def test_setup_uv_is_pinned_to_a_release_dependabot_can_bump():
+    # setup-uv publishes no major tag since v8, so a pin to one never moves.
+    (step,) = [
+        step
+        for step in SETUP_ACTION["runs"]["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    ]
+    assert re.fullmatch(r"astral-sh/setup-uv@v\d+\.\d+\.\d+", step["uses"])
+
+
 def test_each_set_of_packages_a_job_asks_for_is_one_the_setup_action_has():
     for where, _, _, job in DEFINED_JOBS:
         for given in setups_in(job):
@@ -680,6 +690,14 @@ def test_what_a_build_keeps_for_the_next_run_is_saved_by_mains_runs_alone():
     assert saving
     for step in saving:
         assert "github.ref == 'refs/heads/main'" in step["if"], step["name"]
+    # uv's cache too, which setup-uv saves itself rather than through
+    # actions/cache.
+    (uv,) = [
+        step
+        for step in SETUP_ACTION["runs"]["steps"]
+        if step.get("uses", "").startswith("astral-sh/setup-uv@")
+    ]
+    assert uv["with"]["save-cache"] == "${{ github.ref == 'refs/heads/main' }}"
 
 
 def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
