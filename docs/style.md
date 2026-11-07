@@ -11,7 +11,7 @@ This page has the style rules socpuppet's C++, C, Python, Markdown and register 
 | Python | [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) for docstrings, ruff's formatter for layout | ruff, mypy |
 | Markdown | one paragraph per line, read by a stranger | rumdl, and `tools/stranger.py`, which lint runs |
 | SystemRDL, for register maps | one block to a file, in `regs/` | `tools/regs.py`, which lint runs |
-| CI workflows, and the shell scripts of the spikes ([development.md](development.md#spikes)) | | actionlint, shellcheck |
+| CI workflows, and the shell scripts: the spikes' ([development.md](development.md#spikes)), and a tool's where it runs before any Python is installed (`tools/manylinux_packages.sh`) | | actionlint, shellcheck |
 
 ```sh
 uv run python tools/lint.py          # every linter, over the whole tree
