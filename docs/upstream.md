@@ -1407,7 +1407,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: the release on PyPI, which is an sdist alone; its build (`_custom_build/`, with `checksums.cfg`) downloads the actionlint binary for the machine it is on from rhysd/actionlint's GitHub release.
 - **What is wrong**: every install with a cold cache is a build that fetches from GitHub Releases, with one request and no retry, so a GitHub outage fails the install.
 - **How to see it**: `Building actionlint-py==1.7.12.25` in any `uv sync` with a cold uv cache, on any machine.
-- **What we do**: no patch. The linters are a dependency group of their own, `lint`, so a job that never lints can leave them out.
+- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`).
 - **Upstream fix**: publish a wheel for each platform, built from the binary the sdist downloads, as shellcheck-py does.
 - **Kind**: build.
 - **When it lands**: nothing to delete; a cold install stops reaching GitHub.
@@ -1421,7 +1421,7 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: the release on PyPI, which has wheels for macOS on Intel and Apple silicon, Linux on x86_64 and Windows, and an sdist whose build (`setuptools-download`) downloads `shellcheck-v0.11.0.linux.aarch64.tar.xz` from koalaman/shellcheck's GitHub release.
 - **What is wrong**: on Linux on Arm every install with a cold cache is a build that fetches from GitHub Releases, with one request and no retry.
 - **How to see it**: `Building shellcheck-py==0.11.0.1` in a `uv sync` on `ubuntu-26.04-arm` with a cold uv cache. On 2026-11-08 GitHub answered `HTTP Error 504: Gateway Timeout` and the nightly's arm64 wheel job failed before it built anything.
-- **What we do**: no patch. The linters are a dependency group of their own, `lint`, so a job that never lints can leave them out.
+- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`).
 - **Upstream fix**: publish a `manylinux_2_17_aarch64` wheel, built from the binary the sdist downloads.
 - **Kind**: build.
 - **When it lands**: nothing to delete; a cold install on Arm stops reaching GitHub.

@@ -44,6 +44,12 @@ jobs:
       # The setup action's size for a build's cache, which keeps one set of
       # builds and not every one since.
       CCACHE_MAXSIZE: 500M
+      # The linters' dependency group (pyproject.toml) is left out: this job
+      # never lints, and two of them are builds that fetch a binary from
+      # GitHub at install time, which has failed a nightly
+      # (docs/upstream.md). uv reads it at every `uv run` of the job, the
+      # runner's own and those the runner runs.
+      UV_NO_GROUP: lint
     steps:
       - uses: actions/checkout@v7
       # Restored everywhere, and kept by main's runs alone, as every build's

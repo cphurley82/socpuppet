@@ -33,6 +33,8 @@ UBUNTU = re.compile(r"ubuntu-\d+\.\d+(?:-arm)?")
 PUBLISHES_THE_IMAGES = "images"
 # The job that checks a release (tools/release.py check).
 CHECKS_THE_RELEASE = "release-check"
+# The dependency group of the linters, as docs/upstream.md names it.
+LINT_GROUP = "lint"
 # The key of a cache kept under the key its restore step looked for.
 KEPT = re.compile(r"\$\{\{ steps\.\w+\.outputs\.cache-primary-key \}\}")
 
@@ -623,6 +625,18 @@ def test_the_wheels_compiler_cache_is_kept_to_the_size_of_one_set_of_builds():
     assert wheel["env"]["CCACHE_MAXSIZE"] == SETUP_CCACHE_MAXSIZE
     # And told to the Linux wheels' container, where ccache runs.
     assert "CCACHE_MAXSIZE" in passed
+
+
+def test_the_wheel_job_goes_without_the_linters():
+    # It never lints, and two of them are builds that fetch from GitHub at
+    # install time (docs/upstream.md). In the job's environment, uv leaves
+    # the group out of every `uv run`, the runner's own and those it runs.
+    with (REPO / "pyproject.toml").open("rb") as pyproject:
+        groups = tomllib.load(pyproject)["dependency-groups"]
+    wheel = jobs_of(TIER.NIGHTLY)["wheel"]
+
+    assert wheel["env"]["UV_NO_GROUP"] == LINT_GROUP
+    assert LINT_GROUP in groups
 
 
 def test_qbox_in_one_command_starts_from_a_bare_checkout():
