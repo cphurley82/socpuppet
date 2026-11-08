@@ -17,6 +17,8 @@ TIDY = REPO / "tools" / "tidy.py"
 # Where QBox's install keeps what CMake finds it by, as build_qbox.py says.
 sys.path.insert(0, str(REPO / "tools"))
 BUILD_QBOX = importlib.import_module("build_qbox")
+#: The script tidy.py runs, whose place the stand-in takes.
+RUN_CLANG_TIDY = importlib.import_module("tidy").RUN_CLANG_TIDY
 
 #: What clang-tidy says when a source cannot be compiled.
 CANNOT_COMPILE = (
@@ -39,7 +41,7 @@ def tidy(tmp_path):
         tools = tmp_path / "tools"
         tools.mkdir(exist_ok=True)
         raw = says if isinstance(says, bytes) else f"{says}\n".encode()
-        (tools / "run-clang-tidy.py").write_text(
+        (tools / RUN_CLANG_TIDY).write_text(
             "import sys\n"
             f"sys.stdout.buffer.write({raw!r})\n"
             f"sys.exit({status})\n"

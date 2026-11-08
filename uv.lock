@@ -1401,34 +1401,37 @@ wheels = [
 name = "socpuppet"
 version = "0.0.1"
 source = { virtual = "." }
+default-groups = ["dev", "lint"]
 dependencies = [
     { name = "platformdirs" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "actionlint-py" },
     { name = "cibuildwheel" },
-    { name = "clang-format" },
-    { name = "clang-tidy" },
     { name = "cmake" },
     { name = "coverage" },
-    { name = "cpplint" },
     { name = "dpkt" },
     { name = "ext4" },
     { name = "gcovr" },
     { name = "jsonschema" },
-    { name = "mypy" },
     { name = "ninja" },
     { name = "pyfatfs" },
     { name = "pytest" },
     { name = "pytest-xdist" },
     { name = "pyyaml" },
+    { name = "setuptools" },
+    { name = "systemrdl-compiler" },
+]
+lint = [
+    { name = "actionlint-py" },
+    { name = "clang-format" },
+    { name = "clang-tidy" },
+    { name = "cpplint" },
+    { name = "mypy" },
     { name = "ruff" },
     { name = "rumdl" },
-    { name = "setuptools" },
     { name = "shellcheck-py" },
-    { name = "systemrdl-compiler" },
 ]
 spike = [
     { name = "numpy" },
@@ -1439,28 +1442,30 @@ requires-dist = [{ name = "platformdirs", specifier = ">=4" }]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "actionlint-py", specifier = ">=1.7.12.25" },
     { name = "cibuildwheel", specifier = ">=4.3" },
-    { name = "clang-format", specifier = "==23.1.5" },
-    { name = "clang-tidy", specifier = "==23.1.4" },
     { name = "cmake", specifier = ">=3.28" },
     { name = "coverage", specifier = ">=7.10" },
-    { name = "cpplint", specifier = ">=2.0.2" },
     { name = "dpkt", specifier = ">=1.9" },
     { name = "ext4", specifier = ">=1.4" },
     { name = "gcovr", specifier = ">=8.6" },
     { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "mypy", specifier = ">=1.18" },
     { name = "ninja", specifier = ">=1.11" },
     { name = "pyfatfs", specifier = ">=1.1" },
     { name = "pytest", specifier = ">=9,<9.2" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "setuptools", specifier = "<81" },
+    { name = "systemrdl-compiler", specifier = ">=1.33.0" },
+]
+lint = [
+    { name = "actionlint-py", specifier = ">=1.7.12.25" },
+    { name = "clang-format", specifier = "==23.1.5" },
+    { name = "clang-tidy", specifier = "==23.1.4" },
+    { name = "cpplint", specifier = ">=2.0.2" },
+    { name = "mypy", specifier = ">=1.18" },
     { name = "ruff", specifier = ">=0.16" },
     { name = "rumdl", specifier = "==0.3.2" },
-    { name = "setuptools", specifier = "<81" },
     { name = "shellcheck-py", specifier = ">=0.11.0.1" },
-    { name = "systemrdl-compiler", specifier = ">=1.33.0" },
 ]
 spike = [{ name = "numpy", specifier = ">=2.3" }]
 

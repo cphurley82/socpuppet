@@ -49,18 +49,13 @@ socpuppet = "socpuppet.cli:main"
 # of socpuppet.
 spike = ["numpy>=2.3"]
 dev = [
-    "actionlint-py>=1.7.12.25",
     "cibuildwheel>=4.3",
-    "clang-format==23.1.5",
-    "clang-tidy==23.1.4",
     "cmake>=3.28",
     "coverage>=7.10",
-    "cpplint>=2.0.2",
     "dpkt>=1.9",
     "ext4>=1.4",
     "gcovr>=8.6",
     "jsonschema>=4.26.0",
-    "mypy>=1.18",
     "ninja>=1.11",
     # Makes the FAT disk images the virtio disk is booted with, and
     # reads back what firmware wrote to them.
@@ -70,19 +65,33 @@ dev = [
     "pytest>=9,<9.2",
     "pytest-xdist>=3.8.0",
     "pyyaml>=6.0.3",
-    "ruff>=0.16",
-    "rumdl==0.3.2",
     # pyfatfs is built on PyFilesystem2, which still imports
     # pkg_resources, and setuptools 81 has none (docs/upstream.md).
     "setuptools<81",
-    "shellcheck-py>=0.11.0.1",
     "systemrdl-compiler>=1.33.0",
+]
+# The linters (docs/style.md), which tools/lint.py and tools/tidy.py run
+# from next to the interpreter. A group of their own so that a job that
+# never lints can go without them: two are not wheels but builds that fetch
+# a binary from GitHub at install time (docs/upstream.md).
+lint = [
+    "actionlint-py>=1.7.12.25",
+    "clang-format==23.1.5",
+    "clang-tidy==23.1.4",
+    "cpplint>=2.0.2",
+    "mypy>=1.18",
+    "ruff>=0.16",
+    "rumdl==0.3.2",
+    "shellcheck-py>=0.11.0.1",
 ]
 
 [tool.uv]
 # The dev loop builds with CMake directly (see CMakePresets.json), so
 # `uv sync` only installs tools and never builds the project itself.
 package = false
+# Both are installed by `uv sync` and `uv run`, so a developer has the
+# linters without asking.
+default-groups = ["dev", "lint"]
 
 [tool.scikit-build]
 # This is the packaging path (`uv build`, `pip install .`). It builds the
