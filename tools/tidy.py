@@ -23,6 +23,10 @@ import build_qbox
 
 #: How clang-tidy marks a source it could not compile.
 CANNOT_COMPILE = "[clang-diagnostic-error]"
+#: The developer tools' script that runs clang-tidy over each source.
+RUN_CLANG_TIDY = "run-clang-tidy.py"
+#: clang-tidy, which that script is told to run.
+CLANG_TIDY = "clang-tidy"
 
 
 def main() -> int:
@@ -36,7 +40,7 @@ def main() -> int:
         "--tools",
         type=Path,
         required=True,
-        help="where run-clang-tidy.py and clang-tidy are",
+        help=f"where {RUN_CLANG_TIDY} and {CLANG_TIDY} are",
     )
     parser.add_argument(
         "-p", dest="tree", type=Path, required=True, help="the build tree"
@@ -48,8 +52,8 @@ def main() -> int:
     ran = subprocess.run(
         [
             sys.executable,
-            str(args.tools / "run-clang-tidy.py"),
-            *("-clang-tidy-binary", str(args.tools / "clang-tidy")),
+            str(args.tools / RUN_CLANG_TIDY),
+            *("-clang-tidy-binary", str(args.tools / CLANG_TIDY)),
             *("-p", str(args.tree)),
             *rest,
         ],
