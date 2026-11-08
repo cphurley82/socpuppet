@@ -18,7 +18,7 @@ uv run python tools/lint.py          # every linter, over the whole tree
 uv run python tools/lint.py --fix    # the same, repairing what can be repaired
 ```
 
-`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install. Dependabot, GitHub's bot for stale pins, offers to move them once a week ([development.md](development.md#keeping-the-tools-current)).
+`uv sync` installs all of these tools, at pinned versions, next to cmake and ninja. There is nothing else to install. They are the `lint` dependency group in `pyproject.toml`, which CI's wheel job, which never lints, leaves out. Dependabot, GitHub's bot for stale pins, offers to move them once a week ([development.md](development.md#keeping-the-tools-current)).
 
 ## What happens when
 
