@@ -41,6 +41,8 @@ PYTHONPATH=python uv run python examples/passthrough_hello.py
 
 💡 `ctest` runs the Python tests on every core with [pytest-xdist](https://pytest-xdist.readthedocs.io), which takes about a minute where one core takes six. `--dist loadgroup` hands the tests out one at a time, but for a class marked `@pytest.mark.platform(scope="class")`, whose tests share one process and so one board booted once: socpuppet's plugin makes a group of it, which goes to one worker. The boots of OpenSBI and UEFI take most of a minute each, so they are marked `@pytest.mark.long` and handed out first: started last, one would keep the whole run waiting while every other core sat idle. `--no-loadscope-reorder` stops xdist from putting the classes with the most tests first instead.
 
+⚠️ No two of the three entries, nor the tooling tests' entry (`tooling`), run at once, since each has a worker on every core: two at once put two on each, and a test with a budget on the wall then measures the machine's load, not the work ([lessons.md](history/lessons.md#testing-method)). On a machine with many cores that costs some overlap; on CI's four-core Mac it is what lets the budgets hold.
+
 ## The tests
 
 | Where | What | Runs |

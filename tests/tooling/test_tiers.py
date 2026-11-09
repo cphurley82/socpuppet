@@ -4,6 +4,7 @@
 everything, which runs every night (docs/development.md).
 """
 
+import itertools
 import json
 import subprocess
 
@@ -15,8 +16,8 @@ from conftest import REPO, _tool
 PYTEST_ENTRIES = ("pytest", "pytest_boots", "pytest_long")
 
 
-def selected_by(preset):
-    """The tests a test preset runs: by name, the command and the labels."""
+def shown_by(preset):
+    """The tests a test preset runs, by name, as ctest shows them."""
     shown = subprocess.run(
         [_tool("ctest"), "--preset", preset, "--show-only=json-v1"],
         cwd=REPO,
@@ -25,19 +26,30 @@ def selected_by(preset):
         encoding="utf-8",
     )
     assert shown.returncode == 0, shown.stdout
+    return {test["name"]: test for test in json.loads(shown.stdout)["tests"]}
+
+
+def selected_by(preset):
+    """The tests a test preset runs: by name, the command and the labels."""
     return {
-        test["name"]: (test["command"], labels_of(test))
-        for test in json.loads(shown.stdout)["tests"]
+        name: (test["command"], property_of(test, "LABELS", []))
+        for name, test in shown_by(preset).items()
     }
 
 
-def labels_of(test):
-    (labels,) = [
+def property_of(test, name, default):
+    """A property of a test as ctest shows it, or `default` if it has none."""
+    (value,) = [
         property["value"]
         for property in test.get("properties", [])
-        if property["name"] == "LABELS"
-    ] or [[]]
-    return labels
+        if property["name"] == name
+    ] or [default]
+    return value
+
+
+def on_every_core(test):
+    """Whether the test is a pytest with a worker on every core (`-n auto`)."""
+    return ("-n", "auto") in itertools.pairwise(test["command"])
 
 
 def preset(name):
@@ -168,3 +180,23 @@ def test_qbox_quick_runs_what_fast_does_and_a_boot_of_each_area_on_qboxs_hart(
 
     assert not_cpp(qbox_quick) == {"pytest", "pytest_boots"}
     assert preset("qbox-quick")["environment"]["SOCPUPPET_CPU"] == "qbox_cpu"
+
+
+def test_the_entries_that_run_on_every_core_run_one_after_another(dev_tree):
+    # 💡 Two at once put two workers on every core, and a test with a
+    # budget on the wall (tests/python/test_interactive.py gives Zephyr's
+    # prompt ten seconds) then measures the machine's load, not the work:
+    # the nightly's Intel Mac failed one that way. ctest runs a test that
+    # holds a lock after the last one that held it.
+    dev = shown_by("dev")
+    every_core = {
+        name: test for name, test in dev.items() if on_every_core(test)
+    }
+
+    assert every_core.keys() == {*PYTEST_ENTRIES, "tooling"}
+    locks = {
+        name: property_of(test, "RESOURCE_LOCK", [])
+        for name, test in every_core.items()
+    }
+    assert all(len(lock) == 1 for lock in locks.values()), locks
+    assert len({tuple(lock) for lock in locks.values()}) == 1, locks
