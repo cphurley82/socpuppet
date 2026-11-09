@@ -70,10 +70,11 @@ jobs:
       run: ${{ steps.gate.outputs.run }}
     steps:
       - uses: actions/checkout@v7
-      # Given nothing, uv alone.
+      # Given nothing, uv alone. The gate's tool is Python's own library
+      # alone, so it syncs no environment and puts nothing in uv's cache.
       - uses: ./.github/actions/setup
       - id: gate
-        run: uv run python tools/nightly_gate.py >> "$GITHUB_OUTPUT"
+        run: uv run --no-project python tools/nightly_gate.py >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ github.token }}
 

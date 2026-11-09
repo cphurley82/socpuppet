@@ -1405,9 +1405,9 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 ### No wheels at all
 
 - **Where**: the release on PyPI, which is an sdist alone; its build (`_custom_build/`, with `checksums.cfg`) downloads the actionlint binary for the machine it is on from rhysd/actionlint's GitHub release.
-- **What is wrong**: every install with a cold cache is a build that fetches from GitHub Releases, with one request and no retry, so a GitHub outage fails the install.
-- **How to see it**: `Building actionlint-py==1.7.12.25` in any `uv sync` with a cold uv cache, on any machine.
-- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`).
+- **What is wrong**: every install with a cold cache is a build that fetches from GitHub Releases, so a GitHub outage fails the install: its build tries five times in 30 seconds (`_custom_build/utils/file_ops.py`), and a gateway that is busy stays busy for longer.
+- **How to see it**: `Building actionlint-py==1.7.12.25` in any `uv sync` with a cold uv cache, on any machine. On 2026-11-09 GitHub answered `504 Gateway Time-out` to all five tries, and the nightly's test job on `macos-15-intel` failed before it built anything.
+- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`). The jobs that lint keep uv's cache with a fallback to the machine's last one (`.github/actions/setup`), so a new `uv.lock` finds the wheel built last time and builds nothing.
 - **Upstream fix**: publish a wheel for each platform, built from the binary the sdist downloads, as shellcheck-py does.
 - **Kind**: build.
 - **When it lands**: nothing to delete; a cold install stops reaching GitHub.
@@ -1421,10 +1421,24 @@ Read in `sifive/gpio.cpp` and not acted on, since neither Zephyr's driver nor Li
 - **Where**: the release on PyPI, which has wheels for macOS on Intel and Apple silicon, Linux on x86_64 and Windows, and an sdist whose build (`setuptools-download`) downloads `shellcheck-v0.11.0.linux.aarch64.tar.xz` from koalaman/shellcheck's GitHub release.
 - **What is wrong**: on Linux on Arm every install with a cold cache is a build that fetches from GitHub Releases, with one request and no retry.
 - **How to see it**: `Building shellcheck-py==0.11.0.1` in a `uv sync` on `ubuntu-26.04-arm` with a cold uv cache. On 2026-11-08 GitHub answered `HTTP Error 504: Gateway Timeout` and the nightly's arm64 wheel job failed before it built anything.
-- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`).
+- **What we do**: no patch. The linters are a dependency group of their own, `lint`, and the wheel job, which never lints, leaves it out (`UV_NO_GROUP` in `.github/workflows/wheel.yml`). The jobs that lint keep uv's cache with a fallback to the machine's last one (`.github/actions/setup`), so a new `uv.lock` finds the wheel built last time and builds nothing.
 - **Upstream fix**: publish a `manylinux_2_17_aarch64` wheel, built from the binary the sdist downloads.
 - **Kind**: build.
 - **When it lands**: nothing to delete; a cold install on Arm stops reaching GitHub.
+
+## setup-uv
+
+[astral-sh/setup-uv](https://github.com/astral-sh/setup-uv), version `v10.3.3`, the GitHub Action that puts uv on a runner. Not part of socpuppet: every job of CI's takes uv from it (`.github/actions/setup`).
+
+### Its cache has no fallback
+
+- **Where**: `src/cache/restore-cache.ts`, `restoreCacheFromKey`, which calls `cache.restoreCache` with the one key and no restore keys.
+- **What is wrong**: the key hashes the lock file (`cache-dependency-glob`), so the moment `uv.lock` changes every machine's cache is cold at once, although uv's cache is content-addressed and the last one still holds most of what the new lock wants. A cold cache builds the packages with no wheel for the machine, actionlint-py and shellcheck-py (above), whose builds fetch from GitHub.
+- **How to see it**: `No cache found for key setup-uv-...` in the action's log of every job's run on the first run after a Dependabot bump of `uv.lock`; on 2026-11-08 one made every Mac's nightly cold, and the next morning a cold `uv sync` on `macos-15-intel` died on GitHub's 504.
+- **What we do**: no patch. Its cache is off (`enable-cache: false`), and `.github/actions/setup` keeps uv's cache with `actions/cache` under keys of its own, which fall back to this job's last cache for this uv, then this job's last, then the machine's; `tools/ci.py` prunes it to what uv built at the end of a job, which setup-uv did in its post step.
+- **Upstream fix**: a `restore-keys` input, or restoring from the prefix of the key without the hash when the exact key misses, as `actions/cache` does.
+- **Kind**: missing feature.
+- **When it lands**: the two cache steps of `.github/actions/setup` and the prune in `tools/ci.py` go, and `enable-cache`, `prune-cache` and `save-cache` come back.
 
 ## pyfatfs
 

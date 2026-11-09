@@ -131,12 +131,49 @@ runs:
     # since v8, so Dependabot can bump this and never a `@v10`. Under v7 a
     # nightly's job died on the one fetch of uv's list of versions; v10.0.1
     # retries that fetch and v10.3.3 reads it from Astral's mirror first.
-    # v9 stopped pruning the cache by default, and the 10 GB (above) wants
-    # it pruned, and saved by main's runs alone, as the caches below are.
-    - uses: astral-sh/setup-uv@v10.3.3
+    # Its own cache is off: the steps after it keep uv's (docs/upstream.md).
+    - id: uv
+      uses: astral-sh/setup-uv@v10.3.3
       with:
-        prune-cache: true
-        save-cache: ${{ github.ref == 'refs/heads/main' }}
+        enable-cache: false
+    # uv's cache, kept for each machine and each job as the compiler cache
+    # is, with a fallback that setup-uv's own has not got: a new uv.lock
+    # starts from the machine's last cache, since uv's is content-addressed.
+    # Cold, uv builds actionlint-py from source, whose build fetches from
+    # GitHub, and a bump of uv.lock made every Mac cold, whose caches only
+    # the nightly saves (docs/upstream.md). The key names uv's version too:
+    # setup-uv installs the latest, and a uv that has changed how it lays
+    # the cache out ignores what the last one built, which an exact hit on
+    # the key would keep for ever. tools/ci.py prunes it after a job's last
+    # step to what uv built: a composite action has no step at the end of
+    # the job. ImageOS names the runner's image (macos15).
+    - name: Keep uv's cache under build/
+      shell: bash
+      run: |
+        {
+          echo "UV_CACHE_DIR=$GITHUB_WORKSPACE/build/uv-cache"
+          echo "UV_CACHE_MACHINE=${ImageOS:-$RUNNER_OS}-$RUNNER_ARCH"
+        } >> "$GITHUB_ENV"
+    - name: Cache what uv built
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache@v6
+      with:
+        path: build/uv-cache
+        key: uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-${{ steps.uv.outputs.uv-version }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-${{ steps.uv.outputs.uv-version }}-
+          uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-
+          uv-${{ env.UV_CACHE_MACHINE }}-
+    - name: Restore what uv built
+      if: github.ref != 'refs/heads/main'
+      uses: actions/cache/restore@v6
+      with:
+        path: build/uv-cache
+        key: uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-${{ steps.uv.outputs.uv-version }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-${{ steps.uv.outputs.uv-version }}-
+          uv-${{ env.UV_CACHE_MACHINE }}-${{ github.job }}-
+          uv-${{ env.UV_CACHE_MACHINE }}-
     # What FetchContent fetched, for configuring without the network's
     # minutes. Not what it built there: the build tree is new, so ninja has
     # no record of it and builds it again, and the compiler cache is what
