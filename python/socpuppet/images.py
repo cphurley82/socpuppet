@@ -23,6 +23,7 @@ import fnmatch
 import gzip
 import hashlib
 import http.client
+import itertools
 import os
 import pathlib
 import re
@@ -32,7 +33,7 @@ import time
 import urllib.error
 import urllib.request
 import zlib
-from typing import IO, cast
+from typing import IO, TypeGuard, cast
 
 import platformdirs
 
@@ -64,8 +65,13 @@ _BUILT_BY = {
 #: given up on.
 _PATIENCE = 60
 #: How long to wait before each further try of a server out of reach, in
-#: seconds.
+#: seconds: soon told, for a machine that is offline.
 _WAITS = (2, 8)
+#: How long to wait before each further try of a gateway that answered it is
+#: busy, in seconds: the same, and then minutes more, since the server is
+#: there and a busy gateway stays busy for minutes, as GitHub's did on
+#: 2026-11-09.
+_BUSY_WAITS = (*_WAITS, 30, 60, 120)
 #: What a server out of reach looks like. An HTTPError is a URLError too:
 #: `_download` lets one through only for an answer in `_BUSY`, and makes any
 #: other answer final.
@@ -132,27 +138,36 @@ def _fetch(name: str, place: pathlib.Path) -> None:
     """Put the image `name` in `place`, the cache, or say why it cannot be.
 
     It tries again while the server is out of reach, and waits with the cache
-    free, for a fetch that can go ahead, or that brings this image.
+    free, for a fetch that can go ahead, or that brings this image. It waits
+    seconds for a server that gives no answer and minutes for a gateway that
+    answers it is busy: once the gateway has answered, the server is known to
+    be there, and a try it then drops gets the minutes too.
 
     💡 A first boot should not end because a name failed to resolve for a
     moment, which one did on a Mac in CI, among the hundreds of requests a
     run of the tests makes.
     """
     release = os.environ.get("SOCPUPPET_IMAGES_URL") or URL
-    for wait in (*_WAITS, None):
+    busy = False
+    for tried in itertools.count():
         try:
             _download_unless_another_has(name, place, release)
             return
         except Unavailable:
             raise
         except _OUT_OF_REACH as error:
-            if wait is None:
+            answered_busy = _is_busy(error)
+            busy = busy or answered_busy
+            waits = _BUSY_WAITS if busy else _WAITS
+            if tried >= len(waits):
                 raise _unavailable(
                     name, _why_out_of_reach(release, error)
                 ) from error
+            wait = waits[tried]
+            what = "is busy" if answered_busy else "could not be reached"
             _say(
-                f"🧦 {release.partition('://')[2]} could not be reached "
-                f"({error}), so trying again in {wait} s"
+                f"🧦 {release.partition('://')[2]} {what} ({error}), so trying "
+                f"again in {wait} s"
             )
             time.sleep(wait)
         except OSError as error:
@@ -165,7 +180,7 @@ def _fetch(name: str, place: pathlib.Path) -> None:
 
 def _why_out_of_reach(release: str, error: Exception) -> str:
     """What went wrong, after the last try of a server out of reach."""
-    if isinstance(error, urllib.error.HTTPError) and error.code in _BUSY:
+    if _is_busy(error):
         return (
             f"{error.url} answered {error.code}: {error.reason}, each time "
             "it was asked. The server is busy for now, so try again later, or "
@@ -176,6 +191,11 @@ def _why_out_of_reach(release: str, error: Exception) -> str:
         "connection, or name a mirror of the release with "
         "SOCPUPPET_IMAGES_URL."
     )
+
+
+def _is_busy(error: Exception) -> TypeGuard[urllib.error.HTTPError]:
+    """Whether the server, or a gateway in front of it, said it is busy."""
+    return isinstance(error, urllib.error.HTTPError) and error.code in _BUSY
 
 
 def _download_unless_another_has(
@@ -225,7 +245,7 @@ def _download(name: str, place: pathlib.Path, release: str) -> None:
             "was not kept.",
         ) from error
     except urllib.error.HTTPError as error:
-        if error.code in _BUSY:
+        if _is_busy(error):
             raise
         raise _unavailable(
             name, f"{error.url} answered {error.code}: {error.reason}."
