@@ -35,6 +35,10 @@ PUBLISHES_THE_IMAGES = "images"
 CHECKS_THE_RELEASE = "release-check"
 # The dependency group of the linters, as docs/upstream.md names it.
 LINT_GROUP = "lint"
+# Where the setup action keeps uv's cache, and how its keys name the uv
+# that setup-uv installed.
+UV_CACHE = "build/uv-cache"
+UV_VERSION = "${{ steps.uv.outputs.uv-version }}"
 # The key of a cache kept under the key its restore step looked for.
 KEPT = re.compile(r"\$\{\{ steps\.\w+\.outputs\.cache-primary-key \}\}")
 
@@ -182,6 +186,9 @@ ON_A_MAC_ALONE = {"tap", "tap-installed"}
 # any Mac: the Zephyr SDK's prebuilt tools, its LLVM, and Zephyr with a venv
 # on uv's own Python. One copy serves every Ubuntu.
 PORTABLE_CACHES = {"sdk", "zephyr", "llvm"}
+# What in a key names the runner a job runs on: its matrix's entry, or the
+# runner's image and its architecture, which the setup action writes down.
+NAMES_THE_RUNNER = ("${{ matrix.os }}", "${{ env.UV_CACHE_MACHINE }}")
 
 
 # A job of the quick tier that runs some of what one of the nightly tier
@@ -704,14 +711,57 @@ def test_what_a_build_keeps_for_the_next_run_is_saved_by_mains_runs_alone():
     assert saving
     for step in saving:
         assert "github.ref == 'refs/heads/main'" in step["if"], step["name"]
-    # uv's cache too, which setup-uv saves itself rather than through
-    # actions/cache.
+    # uv's cache among them, and setup-uv keeping none of its own.
+    assert any(step["with"]["path"] == UV_CACHE for step in saving)
     (uv,) = [
         step
         for step in SETUP_ACTION["runs"]["steps"]
         if step.get("uses", "").startswith("astral-sh/setup-uv@")
     ]
-    assert uv["with"]["save-cache"] == "${{ github.ref == 'refs/heads/main' }}"
+    assert uv["with"]["enable-cache"] is False
+
+
+def test_when_uv_lock_changes_uvs_cache_starts_from_the_machines_last_one():
+    # Cold, uv builds actionlint-py from source, and its build fetches from
+    # GitHub, which failed a nightly (docs/upstream.md). uv's cache is
+    # content-addressed, so the last one has what still matches.
+    caches = uv_caches()
+    assert caches
+    for cache in caches:
+        key = cache["with"]["key"]
+        fallbacks = cache["with"]["restore-keys"].splitlines()
+
+        assert "hashFiles('uv.lock')" in key
+        # And from the last one of this uv's: setup-uv installs the latest,
+        # and a uv that lays the cache out anew would find nothing in the
+        # last one's, and an exact hit on the key would never save its own.
+        assert UV_VERSION in key
+        assert key.index(UV_VERSION) < key.index("hashFiles(")
+        assert fallbacks
+        for fallback in fallbacks:
+            assert key.startswith(fallback)
+            assert "hashFiles(" not in fallback
+            assert any(runner in fallback for runner in NAMES_THE_RUNNER)
+
+
+def test_every_job_that_keeps_uvs_cache_has_it_pruned_or_fills_it_with_nothing():
+    # The runner prunes it after a job's last step (tools/ci.py); anything
+    # else a job runs with uv, the nightly tier's gate among them, syncs no
+    # environment, or GitHub would keep every wheel it downloaded.
+    for where, command in uv_commands_besides_the_runner():
+        assert command.startswith("uv run --no-project "), where
+
+
+def test_the_setup_action_keeps_uvs_cache_under_build():
+    # Under build/ beside the devcontainer's (tools/devcontainer.py), and
+    # the same on every runner.
+    told = re.findall(
+        r"UV_CACHE_DIR=([^\s\"]+)",
+        "\n".join(
+            step.get("run", "") for step in SETUP_ACTION["runs"]["steps"]
+        ),
+    )
+    assert told == [f"$GITHUB_WORKSPACE/{UV_CACHE}"]
 
 
 def test_the_jobs_with_qbox_and_only_those_have_a_time_limit():
@@ -944,7 +994,9 @@ def test_a_job_on_several_ubuntu_runners_keys_what_it_builds_on_the_one_it_runs_
             continue
         checked.add(name)
         for key in keys_of_what_it_builds(job):
-            assert "matrix.os" in key, f"{where}: {key}"
+            assert any(runner in key for runner in NAMES_THE_RUNNER), (
+                f"{where}: {key}"
+            )
     assert checked >= ON_THE_OLDEST_UBUNTU_TOO
 
 
@@ -969,7 +1021,11 @@ def test_the_uefi_firmware_is_cached_and_handed_on_with_its_shell():
 def test_a_change_to_what_the_initramfs_is_made_of_is_a_new_linux_cache():
     for tier in BUILD_THE_FIRMWARE:
         file, jobs = tier.value, jobs_of(tier)
-        (key,) = keys_of_what_it_builds(jobs["firmware-linux"])
+        (key,) = [
+            key
+            for key in keys_of_what_it_builds(jobs["firmware-linux"])
+            if cache_named_by(key) == "firmware"
+        ]
         assert "firmware/initramfs/**" in hashed_by(key), file
 
 
@@ -1058,6 +1114,33 @@ def condition_of(job):
     """A job's or a step's if, less the ${{ }} GitHub lets it be wrapped in."""
     condition = job.get("if", "")
     return condition.removeprefix("${{").removesuffix("}}").strip()
+
+
+def uv_commands_besides_the_runner():
+    """Each command a job that sets up uv runs with it, other than the
+    runner, with where it is: every job written in a workflow, the
+    plumbing too, and every line of a step's script."""
+    for file, jobs in WORKFLOW_FILES.items():
+        for name, job in jobs.items():
+            if "uses" in job or not list(setups_in(job)):
+                continue
+            for step in job["steps"]:
+                for line in step.get("run", "").splitlines():
+                    command = line.strip()
+                    if command.startswith(
+                        ("uv ", "uvx ")
+                    ) and not command.startswith(RUN):
+                        yield f"{file}: {name}", command
+
+
+def uv_caches():
+    """The steps of the setup action that restore or keep uv's cache."""
+    return [
+        step
+        for step in SETUP_ACTION["runs"]["steps"]
+        if step.get("uses", "").startswith("actions/cache")
+        and step["with"]["path"] == UV_CACHE
+    ]
 
 
 def wheels_compiler_caches():

@@ -845,6 +845,12 @@ JOBS = [
 
 
 JOBS_BY_NAME = {job.name: job for job in JOBS}
+# What the setup action keeps of uv's cache for the next run: what uv built
+# from source, such as actionlint-py, whose build fetches from GitHub. What
+# it downloaded comes faster from the index than from a restored cache.
+# ⚠️ It runs inside a `uv run`, which holds the cache: without `--force` the
+# prune waits for it for ever.
+PRUNE_UV_CACHE = Step("prune", ("uv", "cache", "prune", "--ci", "--force"))
 # The longest job's name, which the others are padded to in the output.
 NAME_WIDTH = max(len(job.name) for job in JOBS)
 
@@ -979,6 +985,12 @@ def run_for_ci(names: list[str]) -> int:
         for step in job.steps_for(Mode.CI):
             if not run_in_ci(f"{name} ▸ {step.label}", step):
                 return 1
+    # The setup action keeps uv's cache for this machine. A composite
+    # action has no step at the end of a job, so it is pruned here.
+    if os.environ.get("UV_CACHE_MACHINE") and not run_in_ci(
+        "uv ▸ prune its cache", PRUNE_UV_CACHE
+    ):
+        return 1
     return 0
 
 

@@ -15,12 +15,22 @@
 # which go to one worker together. Without --no-loadscope-reorder it hands
 # out the biggest groups first, and the other boots would start last
 # (tests/python/conftest.py puts them first).
+#
+# No two of the three run at once, nor beside the tooling entry
+# (tests/tooling/CMakeLists.txt), since each has a worker on every core
+# already: ctest started all three within a second on a four-core Mac, and
+# a test that gives Zephyr's prompt ten seconds on the wall
+# (test_interactive.py) saw nothing in that time. RESOURCE_LOCK is ctest's
+# way to say so: two tests that name the same lock never run at the same
+# time, and the C++ tests and the examples, which name none, carry on
+# beside. ctest still picks the order, by what each took last time.
 function(socpuppet_add_pytest name marks label)
   add_test(NAME ${name}
     COMMAND ${SOCPUPPET_TEST_PYTHON} -m pytest -m ${marks}
             -n auto --dist loadgroup --no-loadscope-reorder
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
-  set_tests_properties(${name} PROPERTIES LABELS ${label})
+  set_tests_properties(${name} PROPERTIES LABELS ${label}
+                                          RESOURCE_LOCK every_core)
 endfunction()
 socpuppet_add_pytest(pytest "not long" python)
 socpuppet_add_pytest(pytest_boots representative boots)

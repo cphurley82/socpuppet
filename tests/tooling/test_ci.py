@@ -118,8 +118,8 @@ ONE_WHEEL = {"--sdist": [SDIST], "cibuildwheel": [OUR_WHEEL]}
 GREEN, RED = "\x1b[32m", "\x1b[31m"
 
 # What the runner is told by the environment it runs in, which the tests
-# decide for themselves.
-DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR")
+# decide for themselves: CI's own run of them has a uv cache to keep.
+DECIDED_BY_THE_TEST = ("GITHUB_ACTIONS", "NO_COLOR", "UV_CACHE_MACHINE")
 # The variables a fake records: socpuppet's, and cibuildwheel's and
 # ccache's. The tests' own environment has none of them.
 RECORDED = ("SOCPUPPET_", "CIBW_", "CCACHE_")
@@ -508,6 +508,27 @@ def test_run_stops_a_job_at_the_step_that_fails_and_says_which(ci):
         "uv run cmake --build --preset dev",
     ]
     assert "❌ test ▸ build" in result.stdout
+
+
+def test_run_with_a_uv_cache_to_keep_prunes_it_once_the_job_passes(ci):
+    # What the setup action keeps for the next run is what uv built from
+    # source; what it downloaded comes faster from the index than the cache.
+    result, lines = ci("run", "lint", UV_CACHE_MACHINE="spam")
+
+    assert result.returncode == 0, result.stdout
+    assert lines == [
+        "uv run python tools/lint.py",
+        "uv cache prune --ci --force",
+    ]
+
+
+def test_run_with_a_uv_cache_to_keep_leaves_it_be_when_the_job_fails(ci):
+    # A job that fails keeps no cache, so there is nothing to prune it for.
+    _, lines = ci(
+        "run", "lint", UV_CACHE_MACHINE="spam", FAIL_ON="tools/lint.py"
+    )
+
+    assert lines == ["uv run python tools/lint.py"]
 
 
 def test_run_of_two_jobs_does_not_start_the_second_when_the_first_fails(ci):
