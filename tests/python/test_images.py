@@ -152,9 +152,10 @@ class AReleaseOfImages:
         #: A file whose first request is cut off with no answer, as a server
         #: out of reach for a moment would.
         self.hangs_up_once_on: str | None = None
-        #: A file whose first request is answered with this HTTP status, as
-        #: a gateway in front of the server might for a moment.
-        self.fails_once_on: tuple[str, int] | None = None
+        #: A file whose first requests, this many of them, are answered with
+        #: this HTTP status, as a gateway in front of the server might while
+        #: it is busy.
+        self.fails_on: tuple[str, int, int] | None = None
         #: A file whose every request is answered with this HTTP status.
         self.always_fails_on: tuple[str, int] | None = None
 
@@ -186,14 +187,18 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
         def do_GET(self):
             name = self.path.removeprefix("/")
             served.asked.append(name)
+            # A gateway answers first and hangs up after, so that a test
+            # can give both to one file, in that order.
+            if served.fails_on and name == served.fails_on[0]:
+                _, status, times = served.fails_on
+                served.fails_on = (
+                    (name, status, times - 1) if times > 1 else None
+                )
+                self.send_error(status)
+                return
             if name == served.hangs_up_once_on:
                 served.hangs_up_once_on = None
                 self.close_connection = True
-                return
-            if served.fails_once_on and name == served.fails_once_on[0]:
-                _, status = served.fails_once_on
-                served.fails_once_on = None
-                self.send_error(status)
                 return
             if served.always_fails_on and name == served.always_fails_on[0]:
                 _, status = served.always_fails_on
@@ -225,6 +230,14 @@ def release(nothing_said, monkeypatch, tmp_path_factory):
 def no_waiting(monkeypatch):
     """A wait before trying again takes no time, so a test does not."""
     monkeypatch.setattr(time, "sleep", lambda _: None)
+
+
+@pytest.fixture
+def waits(monkeypatch):
+    """Each wait before trying again, in seconds, taking no time."""
+    waited: list[float] = []
+    monkeypatch.setattr(time, "sleep", waited.append)
+    return waited
 
 
 def in_the_cache():
@@ -551,10 +564,42 @@ class TestWhenTheServerIsOutOfReachForAMoment:
         self, release, no_waiting, file, status
     ):
         release.holds({"spam.elf": b"spam"})
-        release.fails_once_on = (file, status)
+        release.fails_on = (file, status, 1)
 
         assert images.find("spam.elf").read_bytes() == b"spam"
         assert release.asked.count(file) == 2
+
+    def test_a_gateway_busy_for_more_tries_than_a_silent_server_gets_is_waited_for(
+        self, release, no_waiting
+    ):
+        release.holds({"spam.elf": b"spam"})
+        release.fails_on = ("spam.elf.gz", 504, 4)
+
+        assert images.find("spam.elf").read_bytes() == b"spam"
+
+    def test_a_busy_gateway_that_then_drops_a_try_is_still_waited_for(
+        self, release, waits
+    ):
+        # Two answers of busy and then a hang-up are three tries, more than
+        # a silent server gets: the server is known to be there.
+        release.holds({"spam.elf": b"spam"})
+        release.fails_on = ("spam.elf.gz", 504, 2)
+        release.hangs_up_once_on = "spam.elf.gz"
+
+        assert images.find("spam.elf").read_bytes() == b"spam"
+        assert waits == [2, 8, 30]
+
+    def test_a_busy_gateway_is_said_to_be_busy_and_not_out_of_reach(
+        self, release, no_waiting, capsys
+    ):
+        release.holds({"spam.elf": b"spam"})
+        release.fails_on = ("spam.elf.gz", 504, 1)
+
+        images.find("spam.elf")
+
+        said = capsys.readouterr().err
+        assert "is busy" in said
+        assert "could not be reached" not in said
 
     def test_a_name_that_fails_to_resolve_is_looked_up_again(
         self, release, monkeypatch, no_waiting
@@ -577,16 +622,25 @@ class TestWhenTheServerIsOutOfReachForAMoment:
         assert "no such name" in said
 
     def test_it_waits_longer_before_each_further_try_and_then_gives_up(
-        self, release, monkeypatch
+        self, release, monkeypatch, waits
     ):
         monkeypatch.setenv("SOCPUPPET_IMAGES_URL", NOTHING_LISTENS_HERE)
-        waits = []
-        monkeypatch.setattr(time, "sleep", waits.append)
 
         with pytest.raises(images.Unavailable):
             images.find("spam.elf")
 
         assert waits == [2, 8]
+
+    def test_it_waits_minutes_for_a_busy_gateway_and_then_gives_up(
+        self, release, waits
+    ):
+        release.holds({"spam.elf": b"spam"})
+        release.always_fails_on = ("spam.elf.gz", 504)
+
+        with pytest.raises(images.Unavailable):
+            images.find("spam.elf")
+
+        assert waits == [2, 8, 30, 60, 120]
 
     def test_a_wait_leaves_the_cache_free_for_another_to_fetch(
         self, release, monkeypatch
