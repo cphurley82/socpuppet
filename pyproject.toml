@@ -81,7 +81,7 @@ lint = [
     "cpplint>=2.0.2",
     "mypy>=1.18",
     "ruff>=0.16",
-    "rumdl==0.3.3",
+    "rumdl==0.3.5",
     "shellcheck-py>=0.11.0.1",
 ]
 
