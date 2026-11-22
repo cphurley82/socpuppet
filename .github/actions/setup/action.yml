@@ -133,7 +133,7 @@ runs:
     # retries that fetch and v10.3.3 reads it from Astral's mirror first.
     # Its own cache is off: the steps after it keep uv's (docs/upstream.md).
     - id: uv
-      uses: astral-sh/setup-uv@v10.3.3
+      uses: astral-sh/setup-uv@v10.4.0
       with:
         enable-cache: false
     # uv's cache, kept for each machine and each job as the compiler cache
